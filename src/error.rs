@@ -35,6 +35,9 @@ pub enum PageError {
     #[error("AI provider error: {0}")]
     Ai(String),
 
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

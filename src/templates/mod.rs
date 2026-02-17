@@ -1,0 +1,114 @@
+use std::path::Path;
+
+use crate::config::CollectionConfig;
+use crate::error::Result;
+use crate::themes;
+
+/// Default base template comes from the "default" bundled theme.
+pub fn default_base() -> &'static str {
+    // This is a static leak but it's a single allocation for the program lifetime.
+    // We use it because themes::default() returns an owned Theme and we need &'static str.
+    themes::default().base_html
+}
+
+pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
+{% block title %}{{ site.title }}{% endblock %}
+{% block content %}
+{% for collection in collections %}
+<section>
+    <h2>{{ collection.label }}</h2>
+    {% for item in collection.items %}
+    <article>
+        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+    </article>
+    {% endfor %}
+    {% if collection.items | length == 0 %}
+    <p>No {{ collection.name }} yet.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% if collections | length == 0 %}
+<p>No content yet. Create some with <code>page new post "My First Post"</code></p>
+{% endif %}
+{% endblock %}"#;
+
+pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    {% if page.date %}<time>{{ page.date }}</time>{% endif %}
+    {% if page.tags | length > 0 %}
+    <div class="tags">
+        {% for tag in page.tags %}<span>{{ tag }}</span>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"#;
+
+pub const DEFAULT_DOC: &str = r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"#;
+
+pub const DEFAULT_PAGE: &str = r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"#;
+
+fn get_default_template(name: &str) -> Option<&'static str> {
+    match name {
+        "base.html" => Some(default_base()),
+        "index.html" => Some(DEFAULT_INDEX),
+        "post.html" => Some(DEFAULT_POST),
+        "doc.html" => Some(DEFAULT_DOC),
+        "page.html" => Some(DEFAULT_PAGE),
+        _ => None,
+    }
+}
+
+/// Load Tera templates from the user's template directory, falling back to
+/// embedded defaults for any template not provided.
+pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> Result<tera::Tera> {
+    let mut tera = if template_dir.exists() {
+        let glob_pattern = format!("{}/**/*.html", template_dir.display());
+        match tera::Tera::new(&glob_pattern) {
+            Ok(t) => t,
+            Err(_) => tera::Tera::default(),
+        }
+    } else {
+        tera::Tera::default()
+    };
+
+    // Always ensure base.html and index.html exist
+    for name in ["base.html", "index.html"] {
+        if tera.get_template(name).is_err() {
+            if let Some(content) = get_default_template(name) {
+                tera.add_raw_template(name, content)?;
+            }
+        }
+    }
+
+    // Register default template for each collection's default_template
+    for collection in collections {
+        let tmpl_name = &collection.default_template;
+        if tera.get_template(tmpl_name).is_err() {
+            if let Some(content) = get_default_template(tmpl_name) {
+                tera.add_raw_template(tmpl_name, content)?;
+            }
+        }
+    }
+
+    Ok(tera)
+}

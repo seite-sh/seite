@@ -15,6 +15,11 @@ fn main() -> Result<()> {
     };
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
+    // Change working directory if --dir is specified
+    if let Some(ref dir) = cli.dir {
+        std::env::set_current_dir(dir)?;
+    }
+
     match &cli.command {
         Command::Init(args) => page::cli::init::run(args)?,
         Command::New(args) => page::cli::new::run(args)?,
