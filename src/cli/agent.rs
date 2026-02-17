@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use clap::Args;
 use walkdir::WalkDir;
@@ -31,7 +31,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
 
     match &args.prompt {
         Some(prompt) if args.once => {
-            // Single-shot mode: run one prompt and exit
+            // Single-shot mode: run one prompt and exit (text output, no streaming parse)
             human::info("Starting agent...");
             let status = Command::new("claude")
                 .args(["-p", prompt])
@@ -47,9 +47,8 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
             }
         }
         Some(prompt) => {
-            // Chat mode starting with a prompt
-            human::info("Starting agent session...");
-            let session_id = run_prompt(prompt, None, &system_prompt, allowed_tools)?;
+            // Chat mode starting with a prompt — stream output with live feedback
+            let session_id = run_streaming(prompt, None, &system_prompt, allowed_tools)?;
             if let Some(sid) = session_id {
                 chat_loop(&sid, allowed_tools)?;
             }
@@ -73,8 +72,9 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Run a single prompt via `claude -p`, return the session ID for follow-ups.
-fn run_prompt(
+/// Run a prompt with streaming JSON output, displaying events in real-time.
+/// Returns the session ID for follow-up messages.
+fn run_streaming(
     prompt: &str,
     session_id: Option<&str>,
     system_prompt: &str,
@@ -82,8 +82,11 @@ fn run_prompt(
 ) -> anyhow::Result<Option<String>> {
     let mut cmd = Command::new("claude");
     cmd.args(["-p", prompt])
-        .args(["--output-format", "json"])
-        .args(["--allowedTools", allowed_tools]);
+        .args(["--output-format", "stream-json"])
+        .args(["--verbose"])
+        .args(["--allowedTools", allowed_tools])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
 
     // First message gets the system prompt; follow-ups use --resume
     match session_id {
@@ -95,36 +98,101 @@ fn run_prompt(
         }
     }
 
-    let output = cmd
-        .output()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.is_empty() {
-            human::error(&format!("Agent error: {stderr}"));
+    let stdout = child.stdout.take().expect("stdout piped");
+    let reader = io::BufReader::new(stdout);
+
+    let mut result_session_id: Option<String> = None;
+    let mut in_text = false;
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.is_empty() {
+            continue;
         }
-        return Ok(None);
+
+        let json: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let event_type = json.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match event_type {
+            "assistant" => {
+                let content = json
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array());
+
+                if let Some(blocks) = content {
+                    for block in blocks {
+                        let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        match block_type {
+                            "thinking" => {
+                                if in_text {
+                                    println!();
+                                    in_text = false;
+                                }
+                                if let Some(thinking) = block.get("thinking").and_then(|t| t.as_str()) {
+                                    if !thinking.is_empty() {
+                                        let styled = console::style("thinking").dim().italic();
+                                        let preview = truncate(thinking, 200);
+                                        println!("  {styled}: {preview}");
+                                    }
+                                }
+                            }
+                            "tool_use" => {
+                                if in_text {
+                                    println!();
+                                    in_text = false;
+                                }
+                                let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                                let input = block.get("input").cloned().unwrap_or_default();
+                                let detail = summarize_tool_input(name, &input);
+                                let styled = console::style(format!("tool: {name}")).cyan();
+                                println!("  {styled} {detail}");
+                            }
+                            "text" => {
+                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                    if !text.is_empty() {
+                                        print!("{text}");
+                                        let _ = io::stdout().flush();
+                                        in_text = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "result" => {
+                if in_text {
+                    println!();
+                    in_text = false;
+                }
+                if let Some(sid) = json.get("session_id").and_then(|s| s.as_str()) {
+                    result_session_id = Some(sid.to_string());
+                }
+            }
+            _ => {}
+        }
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Parse JSON response to extract session_id and result
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
-        // Print the result text
-        if let Some(result) = json.get("result").and_then(|r| r.as_str()) {
-            println!("{result}");
-        }
-        // Return session_id for follow-up
-        if let Some(sid) = json.get("session_id").and_then(|s| s.as_str()) {
-            return Ok(Some(sid.to_string()));
-        }
-    } else {
-        // Fallback: print raw output if JSON parsing fails
-        print!("{stdout}");
+    if in_text {
+        println!();
     }
 
-    Ok(None)
+    let _ = child.wait();
+
+    Ok(result_session_id)
 }
 
 /// Interactive chat loop: prompt the user, send follow-ups to the same session.
@@ -157,7 +225,9 @@ fn chat_loop(session_id: &str, allowed_tools: &str) -> anyhow::Result<()> {
         }
 
         println!();
-        match run_prompt(line, Some(session_id), "", allowed_tools) {
+        // Drop stdin lock so the child can use stdin if needed
+        drop(reader);
+        match run_streaming(line, Some(session_id), "", allowed_tools) {
             Ok(_) => {}
             Err(e) => {
                 human::error(&format!("Agent error: {e}"));
@@ -165,6 +235,8 @@ fn chat_loop(session_id: &str, allowed_tools: &str) -> anyhow::Result<()> {
             }
         }
         println!();
+        // Re-acquire stdin lock
+        reader = stdin.lock();
     }
 
     Ok(())
@@ -178,6 +250,53 @@ fn ensure_claude_installed() -> anyhow::Result<()> {
                 .into(),
         )
         .into()),
+    }
+}
+
+/// Truncate a string to max_len characters, adding "..." if truncated.
+fn truncate(s: &str, max_len: usize) -> String {
+    let s = s.replace('\n', " ");
+    if s.len() <= max_len {
+        s
+    } else {
+        format!("{}...", &s[..max_len])
+    }
+}
+
+/// Produce a short summary of a tool invocation for display.
+fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
+    match tool_name {
+        "Read" => input
+            .get("file_path")
+            .and_then(|p| p.as_str())
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        "Write" => input
+            .get("file_path")
+            .and_then(|p| p.as_str())
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        "Edit" => input
+            .get("file_path")
+            .and_then(|p| p.as_str())
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        "Glob" => input
+            .get("pattern")
+            .and_then(|p| p.as_str())
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        "Grep" => input
+            .get("pattern")
+            .and_then(|p| p.as_str())
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
+        "Bash" => input
+            .get("command")
+            .and_then(|c| c.as_str())
+            .map(|c| truncate(c, 80))
+            .unwrap_or_default(),
+        _ => String::new(),
     }
 }
 
