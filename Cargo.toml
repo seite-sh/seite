@@ -1,0 +1,77 @@
+[package]
+name = "page"
+version = "0.1.0"
+edition = "2021"
+description = "A static site generator with LLM integration"
+license = "MIT"
+rust-version = "1.75"
+
+[[bin]]
+name = "page"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+indicatif = "0.17"
+console = "0.15"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "0.8", features = ["preserve_order"] }
+serde_yaml_ng = "0.10"
+
+# Content processing
+pulldown-cmark = "0.13"
+
+# Templating
+tera = "1.20"
+
+# Web server
+tiny_http = "0.12"
+
+# Async + HTTP client (for LLM calls and deploy)
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Credential storage
+keyring = "3"
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# File system utilities
+walkdir = "2"
+fs_extra = "1.3"
+
+# Browser opening (for OAuth flow)
+webbrowser = "1.0"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# RSS / Sitemap generation
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Slug generation
+slug = "0.1"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

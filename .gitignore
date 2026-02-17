@@ -1,0 +1,6 @@
+/target
+/dist
+.page/
+*.swp
+*.swo
+.DS_Store
