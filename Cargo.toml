@@ -34,13 +34,10 @@ tiny_http = "0.12"
 
 # Async + HTTP client (for LLM calls and deploy)
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"], default-features = false }
 
 # Credential storage
-keyring = "3"
-aes-gcm = "0.10"
-rand = "0.8"
-base64 = "0.22"
+dirs = "6"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
