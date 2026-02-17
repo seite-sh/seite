@@ -1,13 +1,13 @@
-use std::collections::HashMap;
 use std::fs;
 use std::net::TcpStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
+use notify::{RecursiveMode, Watcher};
 use tiny_http::{Header, Response, Server};
-use walkdir::WalkDir;
 
 use crate::build::{self, BuildOptions};
 use crate::config::{ResolvedPaths, SiteConfig};
@@ -84,7 +84,7 @@ pub fn start(
     let watcher_stop = stop.clone();
     let watcher_version = build_version.clone();
     let watcher_config = config.clone();
-    let watcher_paths = clone_paths(paths);
+    let watcher_paths = paths.clone();
     std::thread::spawn(move || {
         watch_and_rebuild(
             &watcher_config,
@@ -97,7 +97,7 @@ pub fn start(
 
     // Spawn HTTP server thread
     let server_stop = stop.clone();
-    let server_paths = clone_paths(paths);
+    let server_paths = paths.clone();
     std::thread::spawn(move || {
         run_serve_loop(server, &server_paths, &build_version, &server_stop);
     });
@@ -201,7 +201,7 @@ fn resolve_file_path(output_dir: &Path, url_path: &str) -> Option<std::path::Pat
         return Some(index);
     }
 
-    Some(candidate)
+    None
 }
 
 fn guess_mime(path: &Path) -> &'static str {
@@ -231,48 +231,61 @@ fn watch_and_rebuild(
     stop: &AtomicBool,
     build_version: &AtomicU64,
 ) {
-    let mut last_mtimes = collect_mtimes(paths);
+    let (tx, rx) = mpsc::channel();
 
-    while !stop.load(Ordering::Relaxed) {
-        std::thread::sleep(Duration::from_secs(1));
+    // Use notify's recommended watcher (FSEvents on macOS, inotify on Linux, ReadDirectoryChanges on Windows)
+    let mut watcher = match notify::recommended_watcher(tx) {
+        Ok(w) => w,
+        Err(e) => {
+            human::error(&format!("Failed to start file watcher: {e}"));
+            return;
+        }
+    };
 
-        let current = collect_mtimes(paths);
-        if current != last_mtimes {
-            human::info("Changes detected, rebuilding...");
-            let opts = BuildOptions { include_drafts };
-            match build::build_site(config, paths, &opts) {
-                Ok(result) => {
-                    build_version.fetch_add(1, Ordering::Relaxed);
-                    human::success(&result.stats.human_display());
-                }
-                Err(e) => {
-                    human::error(&format!("Rebuild failed: {e}"));
-                }
+    // Watch content, templates, and static directories
+    let dirs = [&paths.content, &paths.templates, &paths.static_dir];
+    for dir in &dirs {
+        if dir.exists() {
+            if let Err(e) = watcher.watch(dir, RecursiveMode::Recursive) {
+                human::error(&format!("Failed to watch {}: {e}", dir.display()));
             }
-            last_mtimes = current;
         }
     }
-}
 
-fn collect_mtimes(paths: &ResolvedPaths) -> HashMap<std::path::PathBuf, SystemTime> {
-    let mut map = HashMap::new();
-    let dirs = [&paths.content, &paths.templates, &paths.static_dir];
-    for dir in dirs {
-        if dir.exists() {
-            for entry in WalkDir::new(dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                if let Ok(meta) = entry.metadata() {
-                    if let Ok(mtime) = meta.modified() {
-                        map.insert(entry.path().to_path_buf(), mtime);
+    // Debounce: wait for events, then pause briefly to batch rapid changes
+    let debounce = Duration::from_millis(200);
+
+    while !stop.load(Ordering::Relaxed) {
+        // Block until we get an event or timeout (so we can check `stop`)
+        match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok(Ok(_event)) => {
+                // Got a real fs event — drain any additional events within the debounce window
+                while rx.recv_timeout(debounce).is_ok() {}
+
+                human::info("Changes detected, rebuilding...");
+                let opts = BuildOptions { include_drafts };
+                match build::build_site(config, paths, &opts) {
+                    Ok(result) => {
+                        build_version.fetch_add(1, Ordering::Relaxed);
+                        human::success(&result.stats.human_display());
+                    }
+                    Err(e) => {
+                        human::error(&format!("Rebuild failed: {e}"));
                     }
                 }
             }
+            Ok(Err(e)) => {
+                human::error(&format!("Watch error: {e}"));
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // No events — loop back to check `stop`
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // Watcher dropped — exit
+                break;
+            }
         }
     }
-    map
 }
 
 /// Check if a port is available by trying to connect to it.
@@ -298,12 +311,3 @@ fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
     Err(PageError::Server("no available port found".into()))
 }
 
-fn clone_paths(paths: &ResolvedPaths) -> ResolvedPaths {
-    ResolvedPaths {
-        root: paths.root.clone(),
-        output: paths.output.clone(),
-        content: paths.content.clone(),
-        templates: paths.templates.clone(),
-        static_dir: paths.static_dir.clone(),
-    }
-}

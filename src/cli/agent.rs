@@ -253,13 +253,19 @@ fn ensure_claude_installed() -> anyhow::Result<()> {
     }
 }
 
-/// Truncate a string to max_len characters, adding "..." if truncated.
+/// Truncate a string to approximately max_len characters, adding "..." if truncated.
+/// Uses char boundaries to avoid panicking on multi-byte UTF-8.
 fn truncate(s: &str, max_len: usize) -> String {
     let s = s.replace('\n', " ");
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s
     } else {
-        format!("{}...", &s[..max_len])
+        let end = s
+            .char_indices()
+            .nth(max_len)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..end])
     }
 }
 
