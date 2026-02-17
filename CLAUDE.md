@@ -4,6 +4,8 @@
 
 `page` is a Rust CLI static site generator designed to be AI-native. Content and templates are structured for LLM generation and consumption. Sites ship with `llms.txt`, `llms-full.txt`, and markdown versions of every page alongside the HTML.
 
+The `page agent` command spawns Claude Code as a subprocess with full site context — no API keys needed, uses the user's Claude Code subscription directly.
+
 ## Quick Commands
 
 ```bash
@@ -14,7 +16,8 @@ cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- new doc "Getting Started"
-cargo run -- ai "write about Rust" --type post
+cargo run -- agent "create a blog post about Rust error handling"
+cargo run -- agent   # Interactive Claude Code session with site context
 cargo run -- theme list
 cargo run -- theme apply dark
 cargo run -- deploy
@@ -29,9 +32,7 @@ src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs               Module declarations
   error.rs             PageError enum (thiserror)
-  credential.rs        File-based API key storage (~/.config/page/credentials.toml)
   themes.rs            4 bundled themes (default, minimal, dark, docs)
-  ai/mod.rs            LLM client (Claude + OpenAI APIs)
   build/
     mod.rs             9-step build pipeline
     markdown.rs        pulldown-cmark wrapper
@@ -39,14 +40,13 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
   cli/
-    mod.rs             Cli struct + Command enum (8 subcommands)
+    mod.rs             Cli struct + Command enum (7 subcommands)
     init.rs            Interactive project scaffolding
     new.rs             Create content files
     build.rs           Build command
     serve.rs           Dev server + interactive REPL
     deploy.rs          Deploy command
-    auth.rs            Browser-based API key login
-    ai.rs              AI content/template generation
+    agent.rs           AI agent (spawns Claude Code with site context)
     theme.rs           Theme management
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
@@ -136,23 +136,32 @@ output_dir = "dist"
 
 [deploy]
 target = "github-pages"  # or "cloudflare"
-
-[ai]
-default_provider = "claude"
 ```
+
+### Agent System
+
+`page agent` spawns Claude Code (`claude` CLI) as a subprocess with a rich system prompt containing:
+- Site config (title, description, base_url, collections)
+- Content inventory (titles, dates, tags of existing content per collection)
+- Template list
+- Frontmatter format with examples
+- File naming conventions
+- Available `page` CLI commands
+
+Two modes:
+- `page agent "prompt"` — non-interactive, runs `claude -p` and exits
+- `page agent` — interactive Claude Code session with full site context
+
+The agent has access to `Read`, `Write`, `Edit`, `Glob`, `Grep`, and `Bash` tools.
+Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ### Dev Server
 
 - `page serve` starts HTTP server + file watcher in background threads
 - Returns `ServerHandle` (stop with `Drop` or `.stop()`)
-- Interactive REPL with commands: new, ai, login, theme, build, status, stop
+- Interactive REPL with commands: new, agent, theme, build, status, stop
 - Live reload via `/__livereload` polling endpoint + injected `<script>`
 - Auto-increments port if default (3000) is taken
-
-### Credential Storage
-
-File-based at `~/.config/page/credentials.toml` (or platform equivalent via `dirs` crate).
-Permissions set to `0600` on unix. Stores provider → API key mappings.
 
 ### Themes
 
@@ -219,12 +228,6 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [ ] **Asset pipeline** — CSS/JS minification, image optimization, cache-busting with fingerprinted filenames. Consider `lightningcss` for CSS and a simple hash-based renaming for fingerprints.
 
-- [ ] **`page ai` improvements** — The AI system works but needs refinement:
-  - Better prompts that include site context (existing content, collection structure)
-  - Streaming output so user sees progress
-  - Support for editing existing content ("rewrite this post to be more concise")
-  - AI-powered content suggestions based on site structure
-
 - [ ] **Deploy improvements** — Current deploy is basic:
   - GitHub Pages: Add GitHub Actions workflow generation
   - Cloudflare: Better error messages, auto-detect project name
@@ -241,11 +244,10 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [x] Collections system (posts, docs, pages with presets)
 - [x] Build pipeline with markdown output alongside HTML
-- [x] AI content + template generation (Claude + OpenAI)
+- [x] AI agent via Claude Code (`page agent` spawns `claude` subprocess with site context)
 - [x] Discovery files (robots.txt, llms.txt, llms-full.txt)
 - [x] Bundled themes (default, minimal, dark, docs)
 - [x] Interactive REPL in serve mode
-- [x] Browser-based auth flow with file-based credential storage
 - [x] Live reload dev server with port auto-increment
 - [x] Clean URL output pattern (slug.html / slug.md)
 - [x] RSS feed (posts only) + XML sitemap (all collections)

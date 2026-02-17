@@ -26,8 +26,7 @@ fn main() -> Result<()> {
         Command::Build(args) => page::cli::build::run(args)?,
         Command::Serve(args) => page::cli::serve::run(args)?,
         Command::Deploy(args) => page::cli::deploy::run(args)?,
-        Command::Auth(args) => page::cli::auth::run(args)?,
-        Command::Ai(args) => page::cli::ai::run(args)?,
+        Command::Agent(args) => page::cli::agent::run(args)?,
         Command::Theme(args) => page::cli::theme::run(args)?,
     }
 

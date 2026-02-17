@@ -29,14 +29,8 @@ pub enum PageError {
     #[error("Deploy error: {0}")]
     Deploy(String),
 
-    #[error("Auth error: {0}")]
-    Auth(String),
-
-    #[error("AI provider error: {0}")]
-    Ai(String),
-
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    #[error("Agent error: {0}")]
+    Agent(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

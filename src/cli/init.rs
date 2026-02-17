@@ -125,7 +125,6 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             repo: None,
             project: None,
         },
-        ai: Default::default(),
     };
     let toml_str = toml::to_string_pretty(&config)?;
     fs::write(root.join("page.toml"), toml_str)?;
