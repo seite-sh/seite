@@ -21,7 +21,3 @@ pub fn template_dir() -> String {
 pub fn static_dir() -> String {
     "static".to_string()
 }
-
-pub fn ai_provider() -> String {
-    "claude".to_string()
-}
