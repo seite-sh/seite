@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(cargo update:*)",
+      "Bash(cargo test:*)",
+      "Bash(ls:*)",
+      "Bash(xargs:*)"
     ]
   }
 }

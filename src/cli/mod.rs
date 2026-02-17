@@ -42,7 +42,7 @@ pub enum Command {
     /// Create a new site project
     Init(init::InitArgs),
 
-    /// Create new content (post or page)
+    /// Create new content
     New(new::NewArgs),
 
     /// Build the site
@@ -57,7 +57,7 @@ pub enum Command {
     /// Manage LLM provider authentication
     Auth(auth::AuthArgs),
 
-    /// Generate content using AI
+    /// Generate content or templates using AI
     Ai(ai::AiArgs),
 
     /// Manage themes

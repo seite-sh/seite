@@ -9,12 +9,98 @@ use crate::error::{PageError, Result};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SiteConfig {
     pub site: SiteSection,
+    pub collections: Vec<CollectionConfig>,
     #[serde(default)]
     pub build: BuildSection,
     #[serde(default)]
     pub deploy: DeploySection,
     #[serde(default)]
     pub ai: AiSection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionConfig {
+    pub name: String,
+    pub label: String,
+    pub directory: String,
+    #[serde(default)]
+    pub has_date: bool,
+    #[serde(default)]
+    pub has_rss: bool,
+    #[serde(default)]
+    pub listed: bool,
+    #[serde(default)]
+    pub url_prefix: String,
+    #[serde(default)]
+    pub nested: bool,
+    pub default_template: String,
+}
+
+impl CollectionConfig {
+    pub fn preset_posts() -> Self {
+        Self {
+            name: "posts".into(),
+            label: "Posts".into(),
+            directory: "posts".into(),
+            has_date: true,
+            has_rss: true,
+            listed: true,
+            url_prefix: "/posts".into(),
+            nested: false,
+            default_template: "post.html".into(),
+        }
+    }
+
+    pub fn preset_docs() -> Self {
+        Self {
+            name: "docs".into(),
+            label: "Documentation".into(),
+            directory: "docs".into(),
+            has_date: false,
+            has_rss: false,
+            listed: true,
+            url_prefix: "/docs".into(),
+            nested: true,
+            default_template: "doc.html".into(),
+        }
+    }
+
+    pub fn preset_pages() -> Self {
+        Self {
+            name: "pages".into(),
+            label: "Pages".into(),
+            directory: "pages".into(),
+            has_date: false,
+            has_rss: false,
+            listed: false,
+            url_prefix: "".into(),
+            nested: false,
+            default_template: "page.html".into(),
+        }
+    }
+
+    pub fn from_preset(name: &str) -> Option<Self> {
+        match name {
+            "posts" => Some(Self::preset_posts()),
+            "docs" => Some(Self::preset_docs()),
+            "pages" => Some(Self::preset_pages()),
+            _ => None,
+        }
+    }
+}
+
+/// Find a collection by name, supporting singular→plural normalization.
+pub fn find_collection<'a>(
+    name: &str,
+    collections: &'a [CollectionConfig],
+) -> Option<&'a CollectionConfig> {
+    let normalized = match name {
+        "post" => "posts",
+        "doc" => "docs",
+        "page" => "pages",
+        other => other,
+    };
+    collections.iter().find(|c| c.name == normalized)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
