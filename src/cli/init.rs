@@ -126,6 +126,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             repo: None,
             project: None,
         },
+        languages: Default::default(),
     };
     let toml_str = toml::to_string_pretty(&config)?;
     fs::write(root.join("page.toml"), toml_str)?;
@@ -223,7 +224,7 @@ fn generate_claude_md(
     description: &str,
     collections: &[CollectionConfig],
 ) -> String {
-    let mut md = String::with_capacity(2048);
+    let mut md = String::with_capacity(8192);
 
     // Header
     md.push_str(&format!("# {title}\n\n"));
@@ -233,28 +234,48 @@ fn generate_claude_md(
     md.push_str("This is a static site built with the `page` CLI tool.\n\n");
 
     // Quick commands
-    md.push_str("## Quick Commands\n\n");
+    md.push_str("## Commands\n\n");
     md.push_str("```bash\n");
-    md.push_str("page build              # Build the site\n");
-    md.push_str("page build --drafts     # Build including draft content\n");
-    md.push_str("page serve              # Start dev server with live reload\n");
+    md.push_str("page build                              # Build the site\n");
+    md.push_str("page build --drafts                     # Build including draft content\n");
+    md.push_str("page serve                              # Dev server with live reload + REPL\n");
+    md.push_str("page serve --port 8080                  # Use a specific port\n");
     for c in collections {
+        let singular = singularize(&c.name);
         md.push_str(&format!(
-            "page new {} \"Title\"     # Create new {}\n",
-            singularize(&c.name),
-            singularize(&c.name),
+            "page new {singular} \"Title\"                  # Create new {singular}\n",
         ));
     }
-    md.push_str("page theme list         # List available themes\n");
-    md.push_str("page theme apply <name> # Apply a bundled theme\n");
-    md.push_str("page agent              # Start an AI agent session\n");
+    md.push_str("page new post \"Title\" --tags rust,web   # Create with tags\n");
+    md.push_str("page new post \"Title\" --draft           # Create as draft\n");
+    md.push_str("page new post \"Title\" --lang es         # Create translation (needs [languages.es] in config)\n");
+    md.push_str("page theme list                         # List available themes\n");
+    md.push_str("page theme apply <name>                 # Apply a theme (default, minimal, dark, docs)\n");
+    md.push_str("page agent                              # Interactive AI agent session\n");
+    md.push_str("page agent \"write about Rust\"           # One-shot AI agent prompt\n");
+    md.push_str("page deploy                             # Deploy to configured target\n");
+    md.push_str("```\n\n");
+
+    // Dev server REPL
+    md.push_str("### Dev Server REPL\n\n");
+    md.push_str("`page serve` starts a dev server with live reload and an interactive REPL:\n\n");
+    md.push_str("```\n");
+    md.push_str("new <collection> <title> [--lang <code>]  Create new content\n");
+    md.push_str("agent [prompt]                           Start AI agent or run one-shot\n");
+    md.push_str("theme <name>                             Apply a theme\n");
+    md.push_str("build [--drafts]                         Rebuild the site\n");
+    md.push_str("status                                   Show server info\n");
+    md.push_str("stop                                     Stop and exit\n");
     md.push_str("```\n\n");
 
     // Project structure
     md.push_str("## Project Structure\n\n");
     md.push_str("```\n");
     for c in collections {
-        md.push_str(&format!("content/{}/    # {} content (markdown + YAML frontmatter)\n", c.directory, c.label));
+        md.push_str(&format!(
+            "content/{}/    # {} content (markdown + YAML frontmatter)\n",
+            c.directory, c.label
+        ));
     }
     md.push_str("templates/       # Tera (Jinja2-compatible) HTML templates\n");
     md.push_str("static/          # Static assets (copied as-is to dist/)\n");
@@ -267,7 +288,14 @@ fn generate_claude_md(
     for c in collections {
         md.push_str(&format!("### {}\n", c.label));
         md.push_str(&format!("- Directory: `content/{}/`\n", c.directory));
-        md.push_str(&format!("- URL prefix: `{}`\n", c.url_prefix));
+        md.push_str(&format!(
+            "- URL prefix: `{}`\n",
+            if c.url_prefix.is_empty() {
+                "(root)"
+            } else {
+                &c.url_prefix
+            }
+        ));
         md.push_str(&format!("- Template: `{}`\n", c.default_template));
         if c.has_date {
             md.push_str("- Date-based: yes (filename format: `YYYY-MM-DD-slug.md`)\n");
@@ -275,7 +303,12 @@ fn generate_claude_md(
             md.push_str("- Date-based: no (filename format: `slug.md`)\n");
         }
         if c.nested {
-            md.push_str("- Supports nested directories (e.g., `section/slug.md`)\n");
+            md.push_str(
+                "- Supports nested directories (e.g., `section/slug.md` → `/docs/section/slug`)\n",
+            );
+        }
+        if c.has_rss {
+            md.push_str("- Included in RSS feed (`/feed.xml`)\n");
         }
         md.push('\n');
     }
@@ -294,29 +327,118 @@ fn generate_claude_md(
     md.push_str("  - tag1\n");
     md.push_str("  - tag2\n");
     md.push_str("draft: true              # optional, hides from default build\n");
+    md.push_str("slug: custom-slug        # optional, overrides auto-generated slug\n");
+    md.push_str("template: custom.html    # optional, overrides collection default template\n");
     md.push_str("---\n\n");
     md.push_str("Markdown content here.\n");
     md.push_str("```\n\n");
 
+    // Homepage
+    if collections.iter().any(|c| c.name == "pages") {
+        md.push_str("### Homepage\n\n");
+        md.push_str("To add custom content to the homepage, create `content/pages/index.md`. ");
+        md.push_str("Its rendered content will appear above the collection listings on the index page. ");
+        md.push_str(
+            "The homepage is injected as `{{ page.content }}` in the index template.\n\n",
+        );
+    }
+
+    // Multi-language
+    md.push_str("## Multi-language Support\n\n");
+    md.push_str("Add translations by configuring languages in `page.toml` and creating translated content files:\n\n");
+    md.push_str("```toml\n");
+    md.push_str("# page.toml\n");
+    md.push_str("[languages.es]\n");
+    md.push_str("title = \"Mi Sitio\"              # optional title override\n");
+    md.push_str("description = \"Un sitio web\"     # optional description override\n");
+    md.push_str("```\n\n");
+    md.push_str("Then create translated files with a language suffix before `.md`:\n\n");
+    md.push_str("```\n");
+    md.push_str("content/pages/about.md       # English (default) → /about\n");
+    md.push_str("content/pages/about.es.md    # Spanish            → /es/about\n");
+    if collections.iter().any(|c| c.has_date) {
+        md.push_str("content/posts/2025-01-15-hello.es.md  # Spanish post → /es/posts/hello\n");
+    }
+    md.push_str("```\n\n");
+    md.push_str("- Default language content lives at the root URL (`/about`)\n");
+    md.push_str("- Other languages get a `/{lang}/` prefix (`/es/about`)\n");
+    md.push_str("- Items with the same slug across languages are automatically linked as translations\n");
+    md.push_str("- Per-language RSS feeds, sitemaps with hreflang alternates, and discovery files are generated automatically\n");
+    md.push_str("- Without `[languages.*]` config, the site is single-language and works as normal\n\n");
+
+    // Templates and themes
+    md.push_str("## Templates and Themes\n\n");
+    md.push_str("Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). All templates extend `base.html`.\n\n");
+    md.push_str("### Available Themes\n\n");
+    md.push_str("| Theme | Description |\n");
+    md.push_str("|-------|-------------|\n");
+    md.push_str("| `default` | Clean, readable with system fonts |\n");
+    md.push_str("| `minimal` | Typography-first, serif |\n");
+    md.push_str("| `dark` | Dark mode |\n");
+    md.push_str("| `docs` | Sidebar layout for documentation |\n\n");
+    md.push_str("Apply with `page theme apply <name>`. This overwrites `templates/base.html`.\n\n");
+
+    md.push_str("### Template Variables\n\n");
+    md.push_str("Available in all templates:\n\n");
+    md.push_str("| Variable | Type | Description |\n");
+    md.push_str("|----------|------|-------------|\n");
+    md.push_str("| `site.title` | string | Site title (language-specific if multilingual) |\n");
+    md.push_str("| `site.description` | string | Site description |\n");
+    md.push_str("| `site.base_url` | string | Base URL (e.g., `https://example.com`) |\n");
+    md.push_str("| `site.language` | string | Language code (e.g., `en`) |\n");
+    md.push_str("| `site.author` | string | Author name |\n");
+    md.push_str("| `lang` | string | Current page language code |\n");
+    md.push_str("| `translations` | array | Translation links `[{lang, url}]` (empty if no translations) |\n");
+    md.push_str("| `page.title` | string | Page title |\n");
+    md.push_str("| `page.content` | string | Rendered HTML (use `{{ page.content \\| safe }}`) |\n");
+    md.push_str("| `page.date` | string? | Date (if set) |\n");
+    md.push_str("| `page.description` | string? | Description |\n");
+    md.push_str("| `page.tags` | array | Tags |\n");
+    md.push_str("| `page.url` | string | URL path |\n");
+    md.push_str("| `nav` | array | Sidebar nav sections `[{name, label, items: [{title, url, active}]}]` |\n\n");
+    md.push_str("Index template also gets:\n\n");
+    md.push_str("| Variable | Type | Description |\n");
+    md.push_str("|----------|------|-------------|\n");
+    md.push_str("| `collections` | array | Listed collections `[{name, label, items}]` |\n");
+    md.push_str("| `page` | object? | Homepage content (if `content/pages/index.md` exists) |\n\n");
+
+    md.push_str("### Customizing Templates\n\n");
+    md.push_str("Edit files in `templates/` to customize. Key rules:\n\n");
+    md.push_str("- `base.html` is the root layout — all other templates extend it via `{% extends \"base.html\" %}`\n");
+    md.push_str("- Content goes in `{% block content %}...{% endblock %}`\n");
+    md.push_str("- Title goes in `{% block title %}...{% endblock %}`\n");
+    md.push_str("- When editing `base.html`, preserve these for full functionality:\n");
+    md.push_str("  - `<html lang=\"{{ site.language }}\">` — language attribute\n");
+    md.push_str("  - RSS link: `<link rel=\"alternate\" type=\"application/rss+xml\" ...>`\n");
+    md.push_str("  - hreflang links for SEO: `{% if translations %}...{% endif %}`\n");
+    md.push_str("  - Language switcher: `{% if translations | length > 1 %}...{% endif %}`\n");
+    md.push_str("  - Content block: `{% block content %}{% endblock %}`\n\n");
+
     // Features
     md.push_str("## Features\n\n");
-    md.push_str("- **Syntax highlighting** — Fenced code blocks with language annotations (e.g., \\`\\`\\`rust) are automatically syntax-highlighted using inline styles\n");
+    md.push_str(
+        "- **Syntax highlighting** — Fenced code blocks with language annotations are automatically highlighted\n",
+    );
     if collections.iter().any(|c| c.nested) {
-        md.push_str("- **Docs sidebar navigation** — Doc pages automatically get a sidebar nav listing all docs in the collection, with the current page highlighted. Apply the docs theme with `page theme apply docs`\n");
+        md.push_str("- **Docs sidebar navigation** — Doc pages get a sidebar nav listing all docs, grouped by directory. Use the `docs` theme: `page theme apply docs`\n");
     }
-    md.push_str("- **LLM discoverability** — The site generates `llms.txt` and `llms-full.txt` for LLM consumption\n");
-    md.push_str("- **RSS feed** — Auto-generated for dated collections at `/feed.xml`\n");
-    md.push_str("- **Sitemap** — Auto-generated at `/sitemap.xml`\n");
-    md.push_str("\n");
+    md.push_str("- **Homepage content** — Create `content/pages/index.md` for custom homepage hero/landing content above collection listings\n");
+    md.push_str("- **Multi-language** — Filename-based translations with per-language URLs, RSS, sitemap, and discovery files\n");
+    md.push_str("- **LLM discoverability** — Generates `llms.txt` and `llms-full.txt` for LLM consumption\n");
+    md.push_str("- **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)\n");
+    md.push_str("- **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates\n");
+    md.push_str("- **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`\n");
+    md.push_str("- **Clean URLs** — `/posts/hello-world` (no `.html` extension)\n");
+    md.push_str("- **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)\n\n");
 
     // Key conventions
     md.push_str("## Key Conventions\n\n");
     md.push_str("- Run `page build` after creating or editing content to regenerate the site\n");
-    md.push_str("- Set `draft: true` in frontmatter to exclude content from the default build\n");
-    md.push_str("- URLs are clean (no extension): `/posts/hello-world`\n");
+    md.push_str("- URLs are clean (no extension): `/posts/hello-world` on disk is `dist/posts/hello-world.html`\n");
     md.push_str("- Templates use Tera syntax and extend `base.html`\n");
-    md.push_str("- Each content file produces both HTML and markdown output\n");
-    md.push_str("- Themes: `page theme list` to see options, `page theme apply <name>` to switch\n");
+    md.push_str("- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)\n");
+    md.push_str("- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate\n");
+    md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
 
     md
 }

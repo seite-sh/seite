@@ -22,6 +22,11 @@ pub struct NewArgs {
     /// Mark as draft
     #[arg(long)]
     pub draft: bool,
+
+    /// Language code (e.g., es, fr). Appends language suffix to filename.
+    /// Only needed for non-default language translations.
+    #[arg(long)]
+    pub lang: Option<String>,
 }
 
 pub fn run(args: &NewArgs) -> anyhow::Result<()> {
@@ -63,9 +68,33 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         ..Default::default()
     };
 
+    // Validate --lang if provided: must be a configured non-default language
+    let lang_suffix = if let Some(ref lang) = args.lang {
+        if *lang == site_config.site.language {
+            // Default language doesn't need a suffix
+            None
+        } else if site_config.languages.contains_key(lang) {
+            Some(lang.as_str())
+        } else {
+            anyhow::bail!(
+                "unknown language '{}'. Configured languages: {}",
+                lang,
+                site_config.all_languages().join(", ")
+            );
+        }
+    } else {
+        None
+    };
+
     let filename = if collection.has_date {
         let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-        format!("{date_str}-{slug}.md")
+        if let Some(lang) = lang_suffix {
+            format!("{date_str}-{slug}.{lang}.md")
+        } else {
+            format!("{date_str}-{slug}.md")
+        }
+    } else if let Some(lang) = lang_suffix {
+        format!("{slug}.{lang}.md")
     } else {
         format!("{slug}.md")
     };

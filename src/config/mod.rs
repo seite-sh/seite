@@ -1,5 +1,6 @@
 pub mod defaults;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,17 @@ pub struct SiteConfig {
     pub build: BuildSection,
     #[serde(default)]
     pub deploy: DeploySection,
+    #[serde(default)]
+    pub languages: HashMap<String, LanguageConfig>,
+}
+
+/// Per-language overrides for site metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LanguageConfig {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +188,51 @@ pub struct ResolvedPaths {
 }
 
 impl SiteConfig {
+    /// Returns true if the site has any non-default languages configured.
+    pub fn is_multilingual(&self) -> bool {
+        !self.languages.is_empty()
+    }
+
+    /// All language codes: default language first, then configured extras.
+    pub fn all_languages(&self) -> Vec<String> {
+        let mut langs = vec![self.site.language.clone()];
+        for key in self.languages.keys() {
+            if *key != self.site.language {
+                langs.push(key.clone());
+            }
+        }
+        langs
+    }
+
+    /// The set of configured non-default language codes (for filename detection).
+    pub fn configured_lang_codes(&self) -> std::collections::HashSet<&str> {
+        self.languages.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get the site title for a specific language, falling back to the default.
+    pub fn title_for_lang(&self, lang: &str) -> &str {
+        if lang == self.site.language {
+            &self.site.title
+        } else {
+            self.languages
+                .get(lang)
+                .and_then(|l| l.title.as_deref())
+                .unwrap_or(&self.site.title)
+        }
+    }
+
+    /// Get the site description for a specific language, falling back to the default.
+    pub fn description_for_lang(&self, lang: &str) -> &str {
+        if lang == self.site.language {
+            &self.site.description
+        } else {
+            self.languages
+                .get(lang)
+                .and_then(|l| l.description.as_deref())
+                .unwrap_or(&self.site.description)
+        }
+    }
+
     /// Load config from a `page.toml` file.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {

@@ -5,7 +5,7 @@ pub mod sitemap;
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -100,6 +100,13 @@ struct NavSection {
     items: Vec<NavItem>,
 }
 
+/// A translation link used in templates and the sitemap's xhtml:link alternates.
+#[derive(Serialize, Clone)]
+pub(crate) struct TranslationLink {
+    pub lang: String,
+    pub url: String,
+}
+
 impl SiteContext {
     fn from_config(config: &SiteConfig) -> Self {
         Self {
@@ -107,6 +114,16 @@ impl SiteContext {
             description: config.site.description.clone(),
             base_url: config.site.base_url.clone(),
             language: config.site.language.clone(),
+            author: config.site.author.clone(),
+        }
+    }
+
+    fn for_lang(config: &SiteConfig, lang: &str) -> Self {
+        Self {
+            title: config.title_for_lang(lang).to_string(),
+            description: config.description_for_lang(lang).to_string(),
+            base_url: config.site.base_url.clone(),
+            language: lang.to_string(),
             author: config.site.author.clone(),
         }
     }
@@ -127,7 +144,11 @@ pub fn build_site(
 
     // Step 2: Load templates (collection-aware)
     let tera = templates::load_templates(&paths.templates, &config.collections)?;
-    let site_ctx = SiteContext::from_config(config);
+
+    // Pre-compute configured language codes for filename detection
+    let configured_langs = config.configured_lang_codes();
+    let is_multilingual = config.is_multilingual();
+    let default_lang = &config.site.language;
 
     // Step 3: Process each collection
     let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
@@ -151,7 +172,20 @@ pub fn build_site(
                     continue;
                 }
 
-                let slug = resolve_slug(&fm, rel, collection);
+                // Detect language from filename (only in multilingual mode)
+                let file_lang = if is_multilingual {
+                    content::extract_lang_from_filename(path, &configured_langs)
+                } else {
+                    None
+                };
+                let lang = file_lang.as_deref().unwrap_or(default_lang).to_string();
+
+                // Resolve slug — strip lang suffix from stem for translations
+                let slug = if file_lang.is_some() {
+                    resolve_slug_i18n(&fm, rel, collection, &configured_langs)
+                } else {
+                    resolve_slug(&fm, rel, collection)
+                };
 
                 let mut fm = fm;
                 if fm.date.is_none() && collection.has_date {
@@ -159,7 +193,14 @@ pub fn build_site(
                 }
 
                 let html_body = markdown::markdown_to_html(&raw_body);
-                let url = build_url(&collection.url_prefix, &slug);
+
+                // Build URL: non-default languages get /{lang} prefix
+                let base_url = build_url(&collection.url_prefix, &slug);
+                let url = if lang != *default_lang {
+                    format!("/{lang}{base_url}")
+                } else {
+                    base_url
+                };
 
                 items.push(ContentItem {
                     frontmatter: fm,
@@ -169,6 +210,7 @@ pub fn build_site(
                     slug,
                     collection: collection.name.clone(),
                     url,
+                    lang,
                 });
             }
         }
@@ -180,85 +222,249 @@ pub fn build_site(
             items.sort_by(|a, b| a.frontmatter.title.cmp(&b.frontmatter.title));
         }
 
-        // Render each item (with nav context for sibling links)
-        for item in &items {
-            let mut ctx = build_page_context(&site_ctx, item);
-            let nav = build_nav(&items, &item.slug);
-            ctx.insert("nav", &nav);
-
-            let template_name = item
-                .frontmatter
-                .template
-                .as_deref()
-                .unwrap_or(&collection.default_template);
-            let html = tera
-                .render(template_name, &ctx)
-                .map_err(|e| PageError::Build(format!("rendering '{}': {e}", item.slug)))?;
-
-            let output_path = url_to_output_path(&paths.output, &item.url);
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&output_path, html)?;
-        }
-
         all_collections.insert(collection.name.clone(), items);
     }
 
-    // Step 4: Render index page
-    let mut index_ctx = tera::Context::new();
-    index_ctx.insert("site", &site_ctx);
-
-    let collections_ctx: Vec<CollectionContext> = config
-        .collections
-        .iter()
-        .filter(|c| c.listed)
-        .map(|c| {
-            let items = all_collections.get(&c.name).cloned().unwrap_or_default();
-            CollectionContext {
-                name: c.name.clone(),
-                label: c.label.clone(),
-                items: items
-                    .iter()
-                    .map(|item| ItemSummary {
-                        title: item.frontmatter.title.clone(),
-                        date: item.frontmatter.date.map(|d| d.to_string()),
-                        description: item.frontmatter.description.clone(),
-                        slug: item.slug.clone(),
-                        tags: item.frontmatter.tags.clone(),
-                        url: item.url.clone(),
-                    })
-                    .collect(),
+    // Build translation map: (collection, slug) → Vec<TranslationLink>
+    let translation_map: HashMap<(String, String), Vec<TranslationLink>> = if is_multilingual {
+        let mut map: HashMap<(String, String), Vec<TranslationLink>> = HashMap::new();
+        for (coll_name, items) in &all_collections {
+            for item in items {
+                let key = (coll_name.clone(), item.slug.clone());
+                map.entry(key).or_default().push(TranslationLink {
+                    lang: item.lang.clone(),
+                    url: item.url.clone(),
+                });
             }
+        }
+        map
+    } else {
+        HashMap::new()
+    };
+
+    // Render each item in each collection
+    for collection in &config.collections {
+        if let Some(items) = all_collections.get(&collection.name) {
+            // Nav is built per-language: only sibling items in the same language
+            for item in items {
+                let lang_items: Vec<&ContentItem> = items
+                    .iter()
+                    .filter(|i| i.lang == item.lang)
+                    .collect();
+
+                let site_ctx_for_item = if item.lang == *default_lang {
+                    SiteContext::from_config(config)
+                } else {
+                    SiteContext::for_lang(config, &item.lang)
+                };
+
+                let mut ctx = build_page_context(&site_ctx_for_item, item);
+
+                let nav_items: Vec<ContentItem> = lang_items.into_iter().cloned().collect();
+                let nav = build_nav(&nav_items, &item.slug);
+                ctx.insert("nav", &nav);
+                ctx.insert("lang", &item.lang);
+
+                // Always provide translations (may be empty vec)
+                let empty_translations: Vec<TranslationLink> = Vec::new();
+                let translations = translation_map
+                    .get(&(collection.name.clone(), item.slug.clone()))
+                    .filter(|t| t.len() > 1)
+                    .map(|t| t.as_slice())
+                    .unwrap_or(&empty_translations);
+                ctx.insert("translations", &translations);
+
+                let template_name = item
+                    .frontmatter
+                    .template
+                    .as_deref()
+                    .unwrap_or(&collection.default_template);
+                let html = tera
+                    .render(template_name, &ctx)
+                    .map_err(|e| PageError::Build(format!("rendering '{}': {e}", item.slug)))?;
+
+                let output_path = url_to_output_path(&paths.output, &item.url);
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&output_path, html)?;
+            }
+        }
+    }
+
+    // Extract homepage pages (content/pages/index.md and translations) so they
+    // don't also render as standalone pages at /index (which would collide).
+    let homepage_pages: Vec<ContentItem> = all_collections
+        .get_mut("pages")
+        .map(|pages| {
+            let mut homepages = Vec::new();
+            let mut i = 0;
+            while i < pages.len() {
+                if pages[i].slug == "index" {
+                    homepages.push(pages.remove(i));
+                } else {
+                    i += 1;
+                }
+            }
+            homepages
         })
-        .collect();
-    index_ctx.insert("collections", &collections_ctx);
+        .unwrap_or_default();
 
-    let index_html = tera
-        .render("index.html", &index_ctx)
-        .map_err(|e| PageError::Build(format!("rendering index: {e}")))?;
-    fs::write(paths.output.join("index.html"), index_html)?;
+    // Step 4: Render index page(s)
+    for lang in &config.all_languages() {
+        let lang_site_ctx = SiteContext::for_lang(config, lang);
+        let mut index_ctx = tera::Context::new();
+        index_ctx.insert("site", &lang_site_ctx);
+        index_ctx.insert("lang", lang);
 
-    // Step 5: Generate RSS feed (items from has_rss collections)
-    let rss_items: Vec<&ContentItem> = config
+        // Filter collections for this language
+        let collections_ctx: Vec<CollectionContext> = config
+            .collections
+            .iter()
+            .filter(|c| c.listed)
+            .map(|c| {
+                let items = all_collections
+                    .get(&c.name)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|item| item.lang == *lang)
+                    .collect::<Vec<_>>();
+                CollectionContext {
+                    name: c.name.clone(),
+                    label: c.label.clone(),
+                    items: items
+                        .iter()
+                        .map(|item| ItemSummary {
+                            title: item.frontmatter.title.clone(),
+                            date: item.frontmatter.date.map(|d| d.to_string()),
+                            description: item.frontmatter.description.clone(),
+                            slug: item.slug.clone(),
+                            tags: item.frontmatter.tags.clone(),
+                            url: item.url.clone(),
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        index_ctx.insert("collections", &collections_ctx);
+
+        // Homepage page for this language
+        if let Some(homepage) = homepage_pages.iter().find(|p| p.lang == *lang) {
+            index_ctx.insert(
+                "page",
+                &PageContext {
+                    title: homepage.frontmatter.title.clone(),
+                    content: homepage.html_body.clone(),
+                    date: homepage.frontmatter.date.map(|d| d.to_string()),
+                    description: homepage.frontmatter.description.clone(),
+                    slug: homepage.slug.clone(),
+                    tags: homepage.frontmatter.tags.clone(),
+                    url: if *lang == *default_lang {
+                        "/".to_string()
+                    } else {
+                        format!("/{lang}/")
+                    },
+                },
+            );
+        }
+
+        // Translation links for the index page (always provide, even if empty)
+        let index_translations: Vec<TranslationLink> = if is_multilingual {
+            let translations: Vec<TranslationLink> = config
+                .all_languages()
+                .iter()
+                .filter(|l| homepage_pages.iter().any(|p| p.lang == **l) || **l == *default_lang)
+                .map(|l| TranslationLink {
+                    lang: l.clone(),
+                    url: if *l == *default_lang {
+                        "/".to_string()
+                    } else {
+                        format!("/{l}/")
+                    },
+                })
+                .collect();
+            if translations.len() > 1 {
+                translations
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+        index_ctx.insert("translations", &index_translations);
+
+        let index_html = tera
+            .render("index.html", &index_ctx)
+            .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?;
+
+        if *lang == *default_lang {
+            fs::write(paths.output.join("index.html"), index_html)?;
+        } else {
+            let lang_dir = paths.output.join(lang);
+            fs::create_dir_all(&lang_dir)?;
+            fs::write(lang_dir.join("index.html"), index_html)?;
+        }
+    }
+
+    // Write homepage markdown alongside HTML
+    for homepage in &homepage_pages {
+        let md_content = format!(
+            "{}\n\n{}",
+            content::generate_frontmatter(&homepage.frontmatter),
+            homepage.raw_body
+        );
+        if homepage.lang == *default_lang {
+            fs::write(paths.output.join("index.md"), md_content)?;
+        } else {
+            let lang_dir = paths.output.join(&homepage.lang);
+            fs::create_dir_all(&lang_dir)?;
+            fs::write(lang_dir.join("index.md"), md_content)?;
+        }
+    }
+
+    // Step 5: Generate RSS feed(s)
+    // Default language feed at /feed.xml
+    let default_rss_items: Vec<&ContentItem> = config
         .collections
         .iter()
         .filter(|c| c.has_rss)
         .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
+        .filter(|item| item.lang == *default_lang)
         .collect();
-    let rss = feed::generate_rss(config, &rss_items)?;
+    let rss = feed::generate_rss(config, &default_rss_items)?;
     fs::write(paths.output.join("feed.xml"), rss)?;
 
-    // Step 6: Generate sitemap (all items)
+    // Per-language RSS feeds
+    if is_multilingual {
+        for lang in config.languages.keys() {
+            let lang_rss_items: Vec<&ContentItem> = config
+                .collections
+                .iter()
+                .filter(|c| c.has_rss)
+                .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
+                .filter(|item| item.lang == *lang)
+                .collect();
+            if !lang_rss_items.is_empty() {
+                let lang_rss = feed::generate_rss(config, &lang_rss_items)?;
+                let lang_dir = paths.output.join(lang);
+                fs::create_dir_all(&lang_dir)?;
+                fs::write(lang_dir.join("feed.xml"), lang_rss)?;
+            }
+        }
+    }
+
+    // Step 6: Generate sitemap (all items, all languages)
     let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let sitemap_xml = sitemap::generate_sitemap(config, &all_items)?;
+    let sitemap_xml = sitemap::generate_sitemap(config, &all_items, &translation_map)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
 
     // Step 7: Generate discovery files (robots.txt, llms.txt, llms-full.txt)
     let robots = discovery::generate_robots_txt(config);
     fs::write(paths.output.join("robots.txt"), robots)?;
 
-    let discovery_collections: Vec<(String, Vec<&ContentItem>)> = config
+    // Default language discovery files
+    let default_discovery_collections: Vec<(String, Vec<&ContentItem>)> = config
         .collections
         .iter()
         .map(|c| {
@@ -266,14 +472,40 @@ pub fn build_site(
                 .get(&c.name)
                 .into_iter()
                 .flatten()
+                .filter(|item| item.lang == *default_lang)
                 .collect();
             (c.label.clone(), items)
         })
         .collect();
-    let llms_txt = discovery::generate_llms_txt(config, &discovery_collections);
+    let llms_txt = discovery::generate_llms_txt(config, &default_discovery_collections);
     fs::write(paths.output.join("llms.txt"), llms_txt)?;
-    let llms_full = discovery::generate_llms_full_txt(config, &discovery_collections);
+    let llms_full = discovery::generate_llms_full_txt(config, &default_discovery_collections);
     fs::write(paths.output.join("llms-full.txt"), llms_full)?;
+
+    // Per-language discovery files
+    if is_multilingual {
+        for lang in config.languages.keys() {
+            let lang_collections: Vec<(String, Vec<&ContentItem>)> = config
+                .collections
+                .iter()
+                .map(|c| {
+                    let items: Vec<&ContentItem> = all_collections
+                        .get(&c.name)
+                        .into_iter()
+                        .flatten()
+                        .filter(|item| item.lang == *lang)
+                        .collect();
+                    (c.label.clone(), items)
+                })
+                .collect();
+            let lang_dir = paths.output.join(lang);
+            fs::create_dir_all(&lang_dir)?;
+            let llms = discovery::generate_llms_txt(config, &lang_collections);
+            fs::write(lang_dir.join("llms.txt"), llms)?;
+            let llms_f = discovery::generate_llms_full_txt(config, &lang_collections);
+            fs::write(lang_dir.join("llms-full.txt"), llms_f)?;
+        }
+    }
 
     // Step 8: Output raw markdown alongside HTML for each page
     for collection in &config.collections {
@@ -362,6 +594,37 @@ fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig
     }
 
     filename_slug.to_string()
+}
+
+/// Resolve slug for a translated file by stripping the language suffix from
+/// the filename before delegating to `resolve_slug`.
+fn resolve_slug_i18n(
+    fm: &Frontmatter,
+    rel_path: &Path,
+    collection: &CollectionConfig,
+    configured_langs: &std::collections::HashSet<&str>,
+) -> String {
+    // If frontmatter has an explicit slug, use it directly
+    if fm.slug.is_some() {
+        return resolve_slug(fm, rel_path, collection);
+    }
+    // Strip lang suffix from the stem: "about.es" → "about"
+    let stem = rel_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("untitled");
+    let stripped = content::strip_lang_suffix(stem, configured_langs);
+    let new_filename = format!("{stripped}.md");
+    let new_rel = if let Some(parent) = rel_path.parent() {
+        if parent.as_os_str().is_empty() {
+            PathBuf::from(&new_filename)
+        } else {
+            parent.join(&new_filename)
+        }
+    } else {
+        PathBuf::from(&new_filename)
+    };
+    resolve_slug(fm, &new_rel, collection)
 }
 
 fn parse_date_from_filename(path: &Path) -> Option<chrono::NaiveDate> {

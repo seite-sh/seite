@@ -419,6 +419,283 @@ fn test_index_shows_listed_only() {
     assert!(!index.contains("About"));
 }
 
+// --- homepage as special page ---
+
+#[test]
+fn test_build_homepage_with_index_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Home Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create content/pages/index.md as the homepage
+    let homepage = "---\ntitle: Welcome Home\n---\n\nThis is **hero content** for the homepage.\n";
+    fs::write(site_dir.join("content/pages/index.md"), homepage).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    // Homepage content should appear
+    assert!(index.contains("hero content"));
+    assert!(index.contains("homepage-content"));
+    // Collection listing should still work
+    assert!(index.contains("Hello World"));
+
+    // Homepage markdown should also be output
+    assert!(site_dir.join("dist/index.md").exists());
+}
+
+#[test]
+fn test_build_homepage_without_index_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Home Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    // Collection listing should work as before
+    assert!(index.contains("Hello World"));
+    // No homepage-content div since there's no index.md
+    assert!(!index.contains("homepage-content"));
+}
+
+// --- multi-language (i18n) ---
+
+/// Helper: add `[languages.es]` to a site's page.toml
+fn add_language(site_dir: &std::path::Path, lang: &str, title: &str) {
+    let toml_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    config.push_str(&format!(
+        "\n[languages.{lang}]\ntitle = \"{title}\"\n"
+    ));
+    fs::write(&toml_path, config).unwrap();
+}
+
+#[test]
+fn test_i18n_translated_pages_urls() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "i18n Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "Prueba i18n");
+
+    // Create a page in default language and its Spanish translation
+    let about_en = "---\ntitle: About\n---\n\nAbout us.\n";
+    fs::write(site_dir.join("content/pages/about.md"), about_en).unwrap();
+
+    let about_es = "---\ntitle: Acerca de\n---\n\nSobre nosotros.\n";
+    fs::write(site_dir.join("content/pages/about.es.md"), about_es).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English version at root
+    assert!(site_dir.join("dist/about.html").exists());
+    // Spanish version under /es/
+    assert!(site_dir.join("dist/es/about.html").exists());
+
+    // Verify content
+    let en_html = fs::read_to_string(site_dir.join("dist/about.html")).unwrap();
+    assert!(en_html.contains("About us."));
+
+    let es_html = fs::read_to_string(site_dir.join("dist/es/about.html")).unwrap();
+    assert!(es_html.contains("Sobre nosotros."));
+}
+
+#[test]
+fn test_i18n_per_language_index() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Index i18n", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "Índice i18n");
+
+    // Create a Spanish post
+    let es_post = "---\ntitle: Hola Mundo\ndate: 2025-01-15\n---\n\nContenido en español.\n";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hola-mundo.es.md"),
+        es_post,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default index should have Hello World (English) but NOT Hola Mundo
+    let index_en = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index_en.contains("Hello World"));
+    assert!(!index_en.contains("Hola Mundo"));
+
+    // Spanish index should have Hola Mundo but NOT Hello World
+    let index_es = fs::read_to_string(site_dir.join("dist/es/index.html")).unwrap();
+    assert!(index_es.contains("Hola Mundo"));
+    assert!(!index_es.contains("Hello World"));
+    // Spanish index uses the Spanish site title
+    assert!(index_es.contains("Índice i18n"));
+}
+
+#[test]
+fn test_i18n_sitemap_alternates() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Sitemap i18n", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "Mapa del sitio");
+
+    // Create a page with translation
+    let about_en = "---\ntitle: About\n---\n\nAbout us.\n";
+    fs::write(site_dir.join("content/pages/about.md"), about_en).unwrap();
+    let about_es = "---\ntitle: Acerca de\n---\n\nSobre nosotros.\n";
+    fs::write(site_dir.join("content/pages/about.es.md"), about_es).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+    // Sitemap should contain xhtml namespace for multilingual
+    assert!(sitemap.contains("xmlns:xhtml"));
+    // Should have hreflang alternate links
+    assert!(sitemap.contains("xhtml:link"));
+    assert!(sitemap.contains("hreflang"));
+    // Should contain x-default for index
+    assert!(sitemap.contains("x-default"));
+}
+
+#[test]
+fn test_i18n_per_language_rss() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "RSS i18n", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "RSS i18n ES");
+
+    // Create a Spanish post
+    let es_post = "---\ntitle: Hola Mundo\ndate: 2025-01-15\n---\n\nContenido.\n";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hola-mundo.es.md"),
+        es_post,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default feed should exist and contain Hello World
+    let feed_en = fs::read_to_string(site_dir.join("dist/feed.xml")).unwrap();
+    assert!(feed_en.contains("Hello World"));
+    assert!(!feed_en.contains("Hola Mundo"));
+
+    // Spanish feed should exist
+    let feed_es = fs::read_to_string(site_dir.join("dist/es/feed.xml")).unwrap();
+    assert!(feed_es.contains("Hola Mundo"));
+    assert!(!feed_es.contains("Hello World"));
+}
+
+#[test]
+fn test_i18n_discovery_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Discovery i18n", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "Discovery ES");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default language discovery files at root
+    assert!(site_dir.join("dist/llms.txt").exists());
+    assert!(site_dir.join("dist/llms-full.txt").exists());
+
+    // Per-language discovery files
+    assert!(site_dir.join("dist/es/llms.txt").exists());
+    assert!(site_dir.join("dist/es/llms-full.txt").exists());
+}
+
+#[test]
+fn test_i18n_backward_compat_single_language() {
+    // A site without [languages] should work exactly like before
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Compat Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // No /es/ or other language directories
+    let dist = site_dir.join("dist");
+    assert!(dist.join("index.html").exists());
+    assert!(dist.join("feed.xml").exists());
+    assert!(dist.join("sitemap.xml").exists());
+
+    // Sitemap should NOT have xhtml namespace
+    let sitemap = fs::read_to_string(dist.join("sitemap.xml")).unwrap();
+    assert!(!sitemap.contains("xmlns:xhtml"));
+}
+
+#[test]
+fn test_new_with_lang_flag() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Lang New Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "es", "Prueba");
+
+    page_cmd()
+        .args(["new", "page", "About", "--lang", "es"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    // File should have .es.md suffix
+    assert!(site_dir.join("content/pages/about.es.md").exists());
+}
+
+#[test]
+fn test_new_with_invalid_lang() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Invalid Lang", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    // Don't add any languages
+
+    page_cmd()
+        .args(["new", "page", "About", "--lang", "fr"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown language"));
+}
+
 // --- theme command ---
 
 #[test]
