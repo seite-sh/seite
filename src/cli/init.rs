@@ -298,6 +298,17 @@ fn generate_claude_md(
     md.push_str("Markdown content here.\n");
     md.push_str("```\n\n");
 
+    // Features
+    md.push_str("## Features\n\n");
+    md.push_str("- **Syntax highlighting** — Fenced code blocks with language annotations (e.g., \\`\\`\\`rust) are automatically syntax-highlighted using inline styles\n");
+    if collections.iter().any(|c| c.nested) {
+        md.push_str("- **Docs sidebar navigation** — Doc pages automatically get a sidebar nav listing all docs in the collection, with the current page highlighted. Apply the docs theme with `page theme apply docs`\n");
+    }
+    md.push_str("- **LLM discoverability** — The site generates `llms.txt` and `llms-full.txt` for LLM consumption\n");
+    md.push_str("- **RSS feed** — Auto-generated for dated collections at `/feed.xml`\n");
+    md.push_str("- **Sitemap** — Auto-generated at `/sitemap.xml`\n");
+    md.push_str("\n");
+
     // Key conventions
     md.push_str("## Key Conventions\n\n");
     md.push_str("- Run `page build` after creating or editing content to regenerate the site\n");
@@ -305,7 +316,7 @@ fn generate_claude_md(
     md.push_str("- URLs are clean (no extension): `/posts/hello-world`\n");
     md.push_str("- Templates use Tera syntax and extend `base.html`\n");
     md.push_str("- Each content file produces both HTML and markdown output\n");
-    md.push_str("- The site generates `llms.txt` and `llms-full.txt` for LLM discoverability\n");
+    md.push_str("- Themes: `page theme list` to see options, `page theme apply <name>` to switch\n");
 
     md
 }

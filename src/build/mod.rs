@@ -86,6 +86,20 @@ struct ItemSummary {
     url: String,
 }
 
+#[derive(Serialize)]
+struct NavItem {
+    title: String,
+    url: String,
+    active: bool,
+}
+
+#[derive(Serialize)]
+struct NavSection {
+    name: String,
+    label: String,
+    items: Vec<NavItem>,
+}
+
 impl SiteContext {
     fn from_config(config: &SiteConfig) -> Self {
         Self {
@@ -166,9 +180,12 @@ pub fn build_site(
             items.sort_by(|a, b| a.frontmatter.title.cmp(&b.frontmatter.title));
         }
 
-        // Render each item
+        // Render each item (with nav context for sibling links)
         for item in &items {
-            let ctx = build_page_context(&site_ctx, item);
+            let mut ctx = build_page_context(&site_ctx, item);
+            let nav = build_nav(&items, &item.slug);
+            ctx.insert("nav", &nav);
+
             let template_name = item
                 .frontmatter
                 .template
@@ -350,7 +367,16 @@ fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig
 fn parse_date_from_filename(path: &Path) -> Option<chrono::NaiveDate> {
     let stem = path.file_stem()?.to_str()?;
     if stem.len() >= 10 {
-        chrono::NaiveDate::parse_from_str(&stem[..10], "%Y-%m-%d").ok()
+        match chrono::NaiveDate::parse_from_str(&stem[..10], "%Y-%m-%d") {
+            Ok(date) => Some(date),
+            Err(e) => {
+                tracing::warn!(
+                    "Malformed date in filename '{}': {e}",
+                    path.display()
+                );
+                None
+            }
+        }
     } else {
         None
     }
@@ -391,4 +417,56 @@ fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
         },
     );
     ctx
+}
+
+/// Build a navigation structure from a collection's items, grouped by directory.
+/// Top-level items go in a section with empty name; nested items are grouped by
+/// their first path segment (e.g., "guides/setup" → section "guides").
+fn build_nav(items: &[ContentItem], current_slug: &str) -> Vec<NavSection> {
+    let mut sections: Vec<NavSection> = Vec::new();
+    let mut section_map: HashMap<String, usize> = HashMap::new();
+
+    for item in items {
+        let (section_name, section_label) = if let Some(pos) = item.slug.find('/') {
+            let name = &item.slug[..pos];
+            let label = title_case(name);
+            (name.to_string(), label)
+        } else {
+            (String::new(), String::new())
+        };
+
+        let nav_item = NavItem {
+            title: item.frontmatter.title.clone(),
+            url: item.url.clone(),
+            active: item.slug == current_slug,
+        };
+
+        if let Some(&idx) = section_map.get(&section_name) {
+            sections[idx].items.push(nav_item);
+        } else {
+            let idx = sections.len();
+            section_map.insert(section_name.clone(), idx);
+            sections.push(NavSection {
+                name: section_name,
+                label: section_label,
+                items: vec![nav_item],
+            });
+        }
+    }
+
+    sections
+}
+
+/// Convert a slug segment to title case (e.g., "getting-started" → "Getting Started").
+fn title_case(s: &str) -> String {
+    s.split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }

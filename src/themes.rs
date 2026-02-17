@@ -188,6 +188,13 @@ pub fn docs() -> Theme {
         .sidebar h1 { font-size: 1.1rem; margin-bottom: 1.5rem; }
         .sidebar h1 a { color: #24292e; }
         .sidebar p { font-size: 0.85rem; color: #666; }
+        .sidebar nav { margin-top: 1.5rem; }
+        .sidebar nav h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 1rem 0 0.5rem; }
+        .sidebar nav ul { list-style: none; padding: 0; margin: 0; }
+        .sidebar nav li { margin-bottom: 0.15rem; }
+        .sidebar nav a { color: #24292e; font-size: 0.9rem; display: block; padding: 0.2rem 0.5rem; border-radius: 4px; }
+        .sidebar nav a:hover { background: #e1e4e8; text-decoration: none; }
+        .sidebar nav .active a { font-weight: 600; color: #0366d6; background: #e8f0fe; }
         .content { margin-left: 260px; padding: 2rem 3rem; max-width: 800px; flex: 1; }
         article { margin-bottom: 2rem; }
         article h1 { font-size: 2rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.3rem; }
@@ -214,6 +221,18 @@ pub fn docs() -> Theme {
     <div class="sidebar">
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if nav %}
+        <nav>
+            {% for section in nav %}
+                {% if section.name %}<h3>{{ section.label }}</h3>{% endif %}
+                <ul>
+                {% for item in section.items %}
+                    <li{% if item.active %} class="active"{% endif %}><a href="{{ item.url }}">{{ item.title }}</a></li>
+                {% endfor %}
+                </ul>
+            {% endfor %}
+        </nav>
+        {% endif %}
     </div>
     <div class="content">
         <main>
