@@ -166,6 +166,7 @@ pub enum DeployTarget {
 }
 
 /// Resolved absolute paths for the project directories.
+#[derive(Clone)]
 pub struct ResolvedPaths {
     pub root: PathBuf,
     pub output: PathBuf,

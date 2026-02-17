@@ -222,10 +222,6 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 ### Next Up
 
-- [ ] **Syntax highlighting** — Add `syntect` for code block highlighting in markdown output. Update `build/markdown.rs` to use syntect's HTML generation for fenced code blocks with language annotations.
-
-- [ ] **Navigation generation for docs** — Auto-generate sidebar nav from docs collection directory structure. The `docs` theme has a sidebar but no actual nav links. Should walk the docs tree and produce a nested list.
-
 - [ ] **Asset pipeline** — CSS/JS minification, image optimization, cache-busting with fingerprinted filenames. Consider `lightningcss` for CSS and a simple hash-based renaming for fingerprints.
 
 - [ ] **Deploy improvements** — Current deploy is basic:
@@ -254,3 +250,6 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Nested docs support (docs/guides/setup.md → /docs/guides/setup)
 - [x] Draft exclusion with --drafts flag
 - [x] Deploy to GitHub Pages + Cloudflare Pages
+- [x] Syntax highlighting (syntect, inline styles, base16-ocean.dark theme)
+- [x] Docs sidebar navigation (auto-generated from collection items, grouped by directory)
+- [x] Claude Code scaffolding (`page init` creates `.claude/settings.json` + `CLAUDE.md`)

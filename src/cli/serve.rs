@@ -237,6 +237,7 @@ fn cmd_agent(
 }
 
 /// Split a line into tokens, respecting double quotes.
+/// Note: does not handle escaped quotes (\") or single quotes — sufficient for REPL use.
 fn shell_split(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
