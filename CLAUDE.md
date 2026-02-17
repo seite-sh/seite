@@ -10,11 +10,12 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (8 unit + 16 integration)
+cargo test           # Run all tests (13 unit + 26 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
+cargo run -- new post "Mi Post" --lang es   # Create Spanish translation
 cargo run -- new doc "Getting Started"
 cargo run -- agent "create a blog post about Rust error handling"
 cargo run -- agent   # Interactive Claude Code session with site context
@@ -60,18 +61,18 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       16 integration tests using assert_cmd + tempfile
+  integration.rs       26 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (9 steps)
 
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
-3. Process each collection: walk content dir, parse frontmatter + markdown, resolve slugs/URLs, sort
-4. Render index page with listed collections
-5. Generate RSS feed (from `has_rss` collections only)
-6. Generate sitemap (all items)
-7. Generate discovery files (robots.txt, llms.txt, llms-full.txt)
+3. Process each collection: walk content dir, parse frontmatter + markdown, detect language from filename, resolve slugs/URLs, build translation map, sort
+4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`
+5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
+6. Generate sitemap — all items, with `xhtml:link` alternates for translations
+7. Generate discovery files — per-language `llms.txt` and `llms-full.txt`
 8. Output raw markdown alongside HTML (`slug.md` next to `slug.html`)
 9. Copy static files
 
@@ -113,7 +114,8 @@ struct ContentItem {
     source_path: PathBuf,
     slug: String,                  // e.g., "hello-world" or "guides/setup"
     collection: String,            // e.g., "posts"
-    url: String,                   // e.g., "/posts/hello-world"
+    url: String,                   // e.g., "/posts/hello-world" or "/es/posts/hello-world"
+    lang: String,                  // e.g., "en", "es" — detected from filename
 }
 ```
 
@@ -136,6 +138,14 @@ output_dir = "dist"
 
 [deploy]
 target = "github-pages"  # or "cloudflare"
+
+# Optional: multi-language support (omit for single-language sites)
+[languages.es]
+title = "Mi Sitio"              # optional language-specific overrides
+description = "Un sitio estático"
+
+[languages.fr]
+title = "Mon Site"
 ```
 
 ### Agent System
@@ -198,8 +208,9 @@ Each theme is a `base.html` Tera template with inline CSS.
 ### Templates
 - Tera (Jinja2-compatible) templates
 - All templates extend `base.html`
-- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`
+- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`
 - Embedded defaults in `src/templates/mod.rs`; user templates in `templates/` override them
+- All bundled themes include hreflang tags and language switcher UI when `translations` is non-empty
 
 ### Frontmatter Serialization
 - `serde_yaml_ng` for YAML parsing
@@ -215,6 +226,34 @@ Each theme is a `base.html` Tera template with inline CSS.
 
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "page" → "pages" so users can type either form.
+
+### Multi-language (i18n) Support
+
+Filename-based translation system. Fully backward compatible — single-language sites work identically.
+
+**How it works:**
+- Default language content: `about.md` → `/about`
+- Translation files: `about.es.md` → `/es/about`
+- Language suffix must match a configured language in `[languages.*]` — random `.xx` suffixes are ignored
+- Non-default languages get `/{lang}/` URL prefix
+- Items with the same slug across languages are linked as translations
+
+**Files involved:**
+- `src/config/mod.rs` — `LanguageConfig` struct, `languages` field, helper methods (`is_multilingual()`, `all_languages()`, `title_for_lang()`, etc.)
+- `src/content/mod.rs` — `extract_lang_from_filename()`, `strip_lang_suffix()`, `lang` field on `ContentItem`
+- `src/build/mod.rs` — `TranslationLink` struct, `resolve_slug_i18n()`, translation map, per-language rendering
+- `src/build/sitemap.rs` — `xhtml:link` alternates, per-language index URLs
+- `src/themes.rs` — hreflang `<link>` tags in `<head>`, language switcher nav
+
+**Per-language outputs:**
+- `dist/index.html` (default lang), `dist/{lang}/index.html` (other langs)
+- `dist/feed.xml` (default), `dist/{lang}/feed.xml` (per-lang RSS)
+- `dist/llms.txt`, `dist/{lang}/llms.txt` (per-lang discovery)
+- `dist/sitemap.xml` — single file with `xhtml:link` alternates for all translations
+
+### Homepage as Special Page
+
+If `content/pages/index.md` exists, its rendered content is injected into the index template context as `{{ page.content }}`. This allows custom hero/landing content on the homepage while still listing collections below it. The homepage page is extracted from the pages collection before rendering, so it doesn't collide with `dist/index.html`. Translations of the homepage (`index.es.md`) work as expected.
 
 ## Roadmap
 
@@ -253,3 +292,5 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Syntax highlighting (syntect, inline styles, base16-ocean.dark theme)
 - [x] Docs sidebar navigation (auto-generated from collection items, grouped by directory)
 - [x] Claude Code scaffolding (`page init` creates `.claude/settings.json` + `CLAUDE.md`)
+- [x] Homepage as special page (`content/pages/index.md` → custom homepage content)
+- [x] Multi-language (i18n) support — filename-based translations, per-language URLs, hreflang tags, language switcher, per-language RSS/sitemap/discovery files

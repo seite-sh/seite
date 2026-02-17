@@ -98,7 +98,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
         "stop" | "quit" | "exit" => return LoopAction::Stop,
 
         "help" => {
-            println!("  new <collection> <title>       Create new content");
+            println!("  new <collection> <title> [--lang <code>]  Create new content");
             println!("  agent [prompt]                 Start an AI agent session (or run a single prompt)");
             println!("  theme <name>                   Apply a bundled theme");
             println!("  build [--drafts]               Rebuild the site");
@@ -117,12 +117,30 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "new" => {
             if args.len() < 2 {
-                human::error("Usage: new <collection> <title>");
+                human::error("Usage: new <collection> <title> [--lang <code>]");
                 return LoopAction::Continue;
             }
             let collection_name = &args[0];
-            let title = args[1..].join(" ");
-            cmd_new(config, paths, collection_name, &title);
+            // Parse optional --lang flag from the remaining args
+            let mut title_parts = Vec::new();
+            let mut lang_arg: Option<String> = None;
+            let mut skip_next = false;
+            for (i, arg) in args[1..].iter().enumerate() {
+                if skip_next {
+                    skip_next = false;
+                    continue;
+                }
+                if arg == "--lang" {
+                    if let Some(next) = args[1..].get(i + 1) {
+                        lang_arg = Some(next.clone());
+                        skip_next = true;
+                    }
+                } else {
+                    title_parts.push(arg.as_str());
+                }
+            }
+            let title = title_parts.join(" ");
+            cmd_new(config, paths, collection_name, &title, lang_arg.as_deref());
         }
 
         "agent" => {
@@ -169,6 +187,7 @@ fn cmd_new(
     paths: &crate::config::ResolvedPaths,
     collection_name: &str,
     title: &str,
+    lang: Option<&str>,
 ) {
     let collection = match config::find_collection(collection_name, &config.collections) {
         Some(c) => c,
@@ -180,6 +199,24 @@ fn cmd_new(
             ));
             return;
         }
+    };
+
+    // Resolve language suffix
+    let lang_suffix = if let Some(lang) = lang {
+        if lang == config.site.language {
+            None // default language doesn't need suffix
+        } else if config.languages.contains_key(lang) {
+            Some(lang)
+        } else {
+            human::error(&format!(
+                "Unknown language '{}'. Configured: {}",
+                lang,
+                config.all_languages().join(", ")
+            ));
+            return;
+        }
+    } else {
+        None
     };
 
     let slug = content::slug_from_title(title);
@@ -197,7 +234,13 @@ fn cmd_new(
 
     let filename = if collection.has_date {
         let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-        format!("{date_str}-{slug}.md")
+        if let Some(lang) = lang_suffix {
+            format!("{date_str}-{slug}.{lang}.md")
+        } else {
+            format!("{date_str}-{slug}.md")
+        }
+    } else if let Some(lang) = lang_suffix {
+        format!("{slug}.{lang}.md")
     } else {
         format!("{slug}.md")
     };

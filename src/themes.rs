@@ -32,6 +32,9 @@ pub fn default() -> Theme {
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{{ site.description }}">
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
+    {% endif %}
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #222; }
@@ -44,6 +47,10 @@ pub fn default() -> Theme {
         nav { margin-bottom: 2rem; }
         nav a { margin-right: 1rem; text-decoration: none; font-weight: 500; }
         nav a:hover { text-decoration: underline; }
+        .lang-switcher { display: inline-flex; gap: 0.5rem; font-size: 0.85rem; float: right; margin-top: 0.5rem; }
+        .lang-switcher a { text-decoration: none; padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .lang-switcher a:hover { background: #eee; }
+        .lang-switcher strong { padding: 0.1rem 0.4rem; }
         article { margin-bottom: 2rem; }
         time { color: #666; font-size: 0.9rem; }
         .tags span { background: #eee; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.85rem; }
@@ -58,6 +65,11 @@ pub fn default() -> Theme {
     <header>
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if translations | length > 1 %}
+        <nav class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -82,6 +94,9 @@ pub fn minimal() -> Theme {
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{{ site.description }}">
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
+    {% endif %}
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body { max-width: 600px; margin: 4rem auto; padding: 0 1.5rem; font-family: Georgia, 'Times New Roman', serif; line-height: 1.7; color: #333; font-size: 1.05rem; }
@@ -90,6 +105,10 @@ pub fn minimal() -> Theme {
         header h1 { font-size: 1.2rem; font-weight: normal; letter-spacing: 0.05em; text-transform: uppercase; }
         header h1 a { text-decoration: none; color: inherit; }
         header p { font-style: italic; color: #888; margin-top: -0.5rem; }
+        .lang-switcher { display: inline-flex; gap: 0.5rem; font-size: 0.8rem; float: right; margin-top: 0.3rem; font-family: system-ui, sans-serif; }
+        .lang-switcher a { text-decoration: none; color: #888; }
+        .lang-switcher a:hover { color: #333; }
+        .lang-switcher strong { color: #333; }
         article { margin-bottom: 2.5rem; }
         article h1 { font-size: 1.8rem; }
         article h3 a { text-decoration: none; color: inherit; }
@@ -108,6 +127,11 @@ pub fn minimal() -> Theme {
     <header>
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if translations | length > 1 %}
+        <nav class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -132,6 +156,9 @@ pub fn dark() -> Theme {
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{{ site.description }}">
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
+    {% endif %}
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; color: #e0e0e0; background: #1a1a2e; }
@@ -141,6 +168,10 @@ pub fn dark() -> Theme {
         header h1 { margin-bottom: 0.25rem; }
         header h1 a { text-decoration: none; color: #e0e0e0; }
         header p { margin-top: 0; color: #888; }
+        .lang-switcher { display: inline-flex; gap: 0.5rem; font-size: 0.85rem; float: right; margin-top: 0.5rem; }
+        .lang-switcher a { text-decoration: none; color: #888; padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .lang-switcher a:hover { background: #2a2a4a; color: #e0e0e0; }
+        .lang-switcher strong { padding: 0.1rem 0.4rem; color: #7eb8da; }
         article { margin-bottom: 2rem; }
         time { color: #888; font-size: 0.9rem; }
         .tags span { background: #2a2a4a; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.85rem; color: #aaa; }
@@ -155,6 +186,11 @@ pub fn dark() -> Theme {
     <header>
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if translations | length > 1 %}
+        <nav class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -179,6 +215,9 @@ pub fn docs() -> Theme {
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
     <meta name="description" content="{{ site.description }}">
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
+    {% endif %}
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #24292e; display: flex; min-height: 100vh; }
@@ -188,6 +227,10 @@ pub fn docs() -> Theme {
         .sidebar h1 { font-size: 1.1rem; margin-bottom: 1.5rem; }
         .sidebar h1 a { color: #24292e; }
         .sidebar p { font-size: 0.85rem; color: #666; }
+        .sidebar .lang-switcher { display: flex; gap: 0.4rem; margin-bottom: 1rem; font-size: 0.8rem; }
+        .sidebar .lang-switcher a { color: #666; padding: 0.1rem 0.4rem; border-radius: 3px; }
+        .sidebar .lang-switcher a:hover { background: #e1e4e8; text-decoration: none; }
+        .sidebar .lang-switcher strong { padding: 0.1rem 0.4rem; color: #0366d6; }
         .sidebar nav { margin-top: 1.5rem; }
         .sidebar nav h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 1rem 0 0.5rem; }
         .sidebar nav ul { list-style: none; padding: 0; margin: 0; }
@@ -221,6 +264,11 @@ pub fn docs() -> Theme {
     <div class="sidebar">
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if translations | length > 1 %}
+        <div class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </div>
+        {% endif %}
         {% if nav %}
         <nav>
             {% for section in nav %}
