@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
@@ -35,6 +36,7 @@ pub struct ContentItem {
     pub slug: String,
     pub collection: String,
     pub url: String,
+    pub lang: String,
 }
 
 /// Parse a markdown file with YAML frontmatter delimited by `---`.
@@ -76,6 +78,35 @@ pub fn generate_frontmatter(fm: &Frontmatter) -> String {
 /// Generate a URL-safe slug from a title.
 pub fn slug_from_title(title: &str) -> String {
     slug::slugify(title)
+}
+
+/// Extract a language suffix from a filename, only if it matches a configured language.
+/// Example: "about.es.md" → Some("es") (if "es" is configured)
+/// Example: "about.md" → None
+/// Example: "about.min.md" → None (if "min" is not a configured language)
+pub fn extract_lang_from_filename(path: &Path, configured_langs: &HashSet<&str>) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    if let Some(dot_pos) = stem.rfind('.') {
+        let suffix = &stem[dot_pos + 1..];
+        if configured_langs.contains(suffix) {
+            return Some(suffix.to_string());
+        }
+    }
+    None
+}
+
+/// Strip a language suffix from a file stem, only if it matches a configured language.
+/// Example: "about.es" → "about" (if "es" is configured)
+/// Example: "2025-01-15-hello.fr" → "2025-01-15-hello" (if "fr" is configured)
+/// Example: "about" → "about"
+pub fn strip_lang_suffix<'a>(stem: &'a str, configured_langs: &HashSet<&str>) -> &'a str {
+    if let Some(dot_pos) = stem.rfind('.') {
+        let suffix = &stem[dot_pos + 1..];
+        if configured_langs.contains(suffix) {
+            return &stem[..dot_pos];
+        }
+    }
+    stem
 }
 
 #[cfg(test)]
@@ -142,5 +173,38 @@ mod tests {
         };
         let generated = generate_frontmatter(&fm);
         assert!(generated.contains("draft: true"));
+    }
+
+    #[test]
+    fn test_extract_lang_from_filename() {
+        let langs: HashSet<&str> = ["es", "fr", "de"].into_iter().collect();
+
+        assert_eq!(
+            extract_lang_from_filename(Path::new("about.es.md"), &langs),
+            Some("es".to_string())
+        );
+        assert_eq!(
+            extract_lang_from_filename(Path::new("2025-01-15-hello.fr.md"), &langs),
+            Some("fr".to_string())
+        );
+        assert_eq!(
+            extract_lang_from_filename(Path::new("about.md"), &langs),
+            None
+        );
+        // "min" is not a configured language
+        assert_eq!(
+            extract_lang_from_filename(Path::new("readme.min.md"), &langs),
+            None
+        );
+    }
+
+    #[test]
+    fn test_strip_lang_suffix() {
+        let langs: HashSet<&str> = ["es", "fr"].into_iter().collect();
+
+        assert_eq!(strip_lang_suffix("about.es", &langs), "about");
+        assert_eq!(strip_lang_suffix("2025-01-15-hello.fr", &langs), "2025-01-15-hello");
+        assert_eq!(strip_lang_suffix("about", &langs), "about");
+        assert_eq!(strip_lang_suffix("readme.min", &langs), "readme.min");
     }
 }

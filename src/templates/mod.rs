@@ -14,6 +14,9 @@ pub fn default_base() -> &'static str {
 pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
 {% block title %}{{ site.title }}{% endblock %}
 {% block content %}
+{% if page %}
+<div class="homepage-content">{{ page.content | safe }}</div>
+{% endif %}
 {% for collection in collections %}
 <section>
     <h2>{{ collection.label }}</h2>
@@ -29,7 +32,7 @@ pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
 </section>
 {% endfor %}
-{% if collections | length == 0 %}
+{% if not page and collections | length == 0 %}
 <p>No content yet. Create some with <code>page new post "My First Post"</code></p>
 {% endif %}
 {% endblock %}"#;
