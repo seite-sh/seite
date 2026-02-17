@@ -1,5 +1,4 @@
-pub mod ai;
-pub mod auth;
+pub mod agent;
 pub mod build;
 pub mod deploy;
 pub mod init;
@@ -54,11 +53,8 @@ pub enum Command {
     /// Deploy the site to a hosting provider
     Deploy(deploy::DeployArgs),
 
-    /// Manage LLM provider authentication
-    Auth(auth::AuthArgs),
-
-    /// Generate content or templates using AI
-    Ai(ai::AiArgs),
+    /// Start an AI agent session with full site context
+    Agent(agent::AgentArgs),
 
     /// Manage themes
     Theme(theme::ThemeArgs),

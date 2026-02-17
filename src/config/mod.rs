@@ -14,8 +14,6 @@ pub struct SiteConfig {
     pub build: BuildSection,
     #[serde(default)]
     pub deploy: DeploySection,
-    #[serde(default)]
-    pub ai: AiSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,20 +163,6 @@ pub enum DeployTarget {
     #[default]
     GithubPages,
     Cloudflare,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiSection {
-    #[serde(default = "defaults::ai_provider")]
-    pub default_provider: String,
-}
-
-impl Default for AiSection {
-    fn default() -> Self {
-        Self {
-            default_provider: defaults::ai_provider(),
-        }
-    }
 }
 
 /// Resolved absolute paths for the project directories.

@@ -1,9 +1,7 @@
-pub mod ai;
 pub mod build;
 pub mod cli;
 pub mod config;
 pub mod content;
-pub mod credential;
 pub mod deploy;
 pub mod error;
 pub mod output;

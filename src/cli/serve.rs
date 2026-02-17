@@ -3,12 +3,10 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use crate::ai::{AiClient, Provider};
 use crate::build::{self, BuildOptions};
-use crate::cli::auth;
+use crate::cli::agent;
 use crate::config::{self, SiteConfig};
 use crate::content::{self, Frontmatter};
-use crate::credential;
 use crate::output::human;
 use crate::output::CommandOutput;
 use crate::server;
@@ -101,8 +99,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "help" => {
             println!("  new <collection> <title>       Create new content");
-            println!("  ai <prompt> [--type <type>]    Generate content/template with AI");
-            println!("  login [provider]               Authenticate with an AI provider");
+            println!("  agent [prompt]                 Start an AI agent session (or run a single prompt)");
             println!("  theme <name>                   Apply a bundled theme");
             println!("  build [--drafts]               Rebuild the site");
             println!("  status                         Show server info");
@@ -128,19 +125,8 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
             cmd_new(config, paths, collection_name, &title);
         }
 
-        "ai" => {
-            if args.is_empty() {
-                human::error("Usage: ai <prompt> [--type post|doc|page|template]");
-                return LoopAction::Continue;
-            }
-            cmd_ai(config, paths, args);
-        }
-
-        "login" => {
-            let provider = args.first().map(|s| s.as_str()).unwrap_or("claude");
-            if let Err(e) = auth::login(provider) {
-                human::error(&format!("Login failed: {e}"));
-            }
+        "agent" => {
+            cmd_agent(config, paths, args);
         }
 
         "theme" => {
@@ -232,153 +218,21 @@ fn cmd_new(
     }
 }
 
-fn cmd_ai(config: &SiteConfig, paths: &crate::config::ResolvedPaths, args: &[String]) {
-    // Parse flags out of args: --type <type>, --output <path>
-    let mut gen_type = "post".to_string();
-    let mut output_path: Option<PathBuf> = None;
-    let mut prompt_parts = Vec::new();
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--type" | "-t" => {
-                if i + 1 < args.len() {
-                    gen_type = args[i + 1].clone();
-                    i += 2;
-                } else {
-                    human::error("--type requires a value");
-                    return;
-                }
-            }
-            "--output" | "-o" => {
-                if i + 1 < args.len() {
-                    output_path = Some(PathBuf::from(&args[i + 1]));
-                    i += 2;
-                } else {
-                    human::error("--output requires a value");
-                    return;
-                }
-            }
-            _ => {
-                prompt_parts.push(args[i].clone());
-                i += 1;
-            }
-        }
-    }
-
-    let prompt = prompt_parts.join(" ");
-    if prompt.is_empty() {
-        human::error("Usage: ai <prompt> [--type post|doc|page|template]");
-        return;
-    }
-
-    let provider_name = &config.ai.default_provider;
-    let api_key = match credential::get_key(provider_name) {
-        Ok(key) => key,
-        Err(_) => {
-            human::info(&format!("No API key for {provider_name}. Let's set one up."));
-            if let Err(e) = auth::login(provider_name) {
-                human::error(&format!("Login failed: {e}"));
-                return;
-            }
-            match credential::get_key(provider_name) {
-                Ok(key) => key,
-                Err(e) => {
-                    human::error(&format!("Still no key after login: {e}"));
-                    return;
-                }
-            }
-        }
-    };
-
-    let provider = match provider_name.as_str() {
-        "claude" => Provider::Claude,
-        "openai" => Provider::OpenAI,
-        other => {
-            human::error(&format!("Unknown provider: {other}"));
-            return;
-        }
-    };
-
-    let model = match &provider {
-        Provider::Claude => "claude-sonnet-4-20250514".to_string(),
-        Provider::OpenAI => "gpt-4o".to_string(),
-    };
-
-    let spinner = indicatif::ProgressBar::new_spinner();
-    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-    let client = AiClient::new(provider, api_key, model);
-
-    if gen_type == "template" {
-        spinner.set_message("Generating template...");
-        let raw = match client.generate_template(&prompt) {
-            Ok(r) => r,
-            Err(e) => {
-                spinner.finish_and_clear();
-                human::error(&format!("AI generation failed: {e}"));
-                return;
-            }
-        };
-        spinner.finish_and_clear();
-
-        let out = output_path.unwrap_or_else(|| paths.templates.join("custom.html"));
-        if let Some(parent) = out.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match std::fs::write(&out, raw) {
-            Ok(()) => human::success(&format!("Generated template: {}", out.display())),
-            Err(e) => human::error(&format!("Failed to write: {e}")),
-        }
-    } else {
-        spinner.set_message("Generating content...");
-        let generated = match client.generate(&prompt, &gen_type) {
-            Ok(g) => g,
-            Err(e) => {
-                spinner.finish_and_clear();
-                human::error(&format!("AI generation failed: {e}"));
-                return;
-            }
-        };
-        spinner.finish_and_clear();
-
-        let slug = content::slug_from_title(&generated.title);
-        let collection = config::find_collection(&gen_type, &config.collections);
-        let has_date = collection.map(|c| c.has_date).unwrap_or(false);
-        let date = if has_date {
-            Some(chrono::Local::now().date_naive())
-        } else {
+fn cmd_agent(
+    _config: &SiteConfig,
+    _paths: &crate::config::ResolvedPaths,
+    args: &[String],
+) {
+    let agent_args = agent::AgentArgs {
+        prompt: if args.is_empty() {
             None
-        };
-
-        let fm = Frontmatter {
-            title: generated.title.clone(),
-            date,
-            draft: true,
-            ..Default::default()
-        };
-
-        let out = output_path.unwrap_or_else(|| {
-            let dir_name = collection.map(|c| c.directory.as_str()).unwrap_or("posts");
-            if has_date {
-                let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-                paths.content.join(dir_name).join(format!("{date_str}-{slug}.md"))
-            } else {
-                paths.content.join(dir_name).join(format!("{slug}.md"))
-            }
-        });
-
-        if let Some(parent) = out.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let file_content = format!(
-            "{}\n\n{}\n",
-            content::generate_frontmatter(&fm),
-            generated.body
-        );
-        match std::fs::write(&out, file_content) {
-            Ok(()) => human::success(&format!("Generated: {}", out.display())),
-            Err(e) => human::error(&format!("Failed to write: {e}")),
-        }
+        } else {
+            Some(args.join(" "))
+        },
+        once: false,
+    };
+    if let Err(e) = agent::run(&agent_args) {
+        human::error(&format!("Agent failed: {e}"));
     }
 }
 
