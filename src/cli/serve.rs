@@ -149,17 +149,36 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "theme" => {
             if args.is_empty() {
-                // List themes
+                // List bundled themes
                 for t in crate::themes::all() {
                     println!("  {} - {}", console::style(t.name).bold(), t.description);
                 }
+                // List installed themes
+                let project_root = std::path::PathBuf::from(".");
+                let installed = crate::themes::installed_themes(&project_root);
+                if !installed.is_empty() {
+                    println!();
+                    println!("  {}", console::style("Installed:").underlined());
+                    for t in &installed {
+                        println!("  {} - {}", console::style(&t.name).bold().cyan(), t.description);
+                    }
+                }
             } else {
                 let name = &args[0];
-                match crate::themes::by_name(name) {
-                    Some(theme) => {
+                // Try bundled first, then installed
+                let template_content: Option<String> = crate::themes::by_name(name)
+                    .map(|t| t.base_html.to_string())
+                    .or_else(|| {
+                        let project_root = std::path::PathBuf::from(".");
+                        crate::themes::installed_by_name(&project_root, name)
+                            .map(|t| t.base_html)
+                    });
+
+                match template_content {
+                    Some(content) => {
                         let template_dir = paths.templates.clone();
                         let _ = std::fs::create_dir_all(&template_dir);
-                        match std::fs::write(template_dir.join("base.html"), theme.base_html) {
+                        match std::fs::write(template_dir.join("base.html"), content) {
                             Ok(()) => {
                                 human::success(&format!("Applied theme '{name}'"));
                                 // Rebuild site to reflect the new theme

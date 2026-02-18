@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (25 unit + 76 integration)
+cargo test           # Run all tests (36 unit + 96 integration)
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
@@ -23,6 +23,8 @@ cargo run -- agent   # Interactive Claude Code session with site context
 cargo run -- theme list
 cargo run -- theme apply dark
 cargo run -- theme create "coral brutalist with lime accents"   # AI-generated custom theme
+cargo run -- theme install https://example.com/theme.tera       # Install from URL
+cargo run -- theme export my-theme --description "My theme"     # Export current theme
 cargo run -- deploy
 cargo run -- deploy --dry-run                       # Preview what deploy would do
 cargo run -- deploy --target netlify                 # Deploy to Netlify
@@ -247,6 +249,19 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 Template files: `src/themes/{default,minimal,dark,docs,brutalist,bento}.tera`
 Each registers as `base.html` when applied; user `templates/base.html` overrides any bundled theme.
+
+#### Theme Gallery & Sharing
+
+Themes can be installed from URLs and exported for sharing:
+
+- `page theme install <url>` — downloads a `.tera` file and saves to `templates/themes/<name>.tera`
+- `page theme install <url> --name <name>` — install with a custom name
+- `page theme export <name>` — packages `templates/base.html` as `templates/themes/<name>.tera` with metadata
+- `page theme export <name> --description "..."` — include a description in the exported theme
+
+Installed themes are stored in `templates/themes/` and discovered at runtime. `page theme list` shows both bundled and installed themes. `page theme apply` checks bundled first, then installed.
+
+Theme metadata format: `{#- theme-description: Description here -#}` as a Tera comment in the first 10 lines of the file. The REPL in `page serve` also supports installed themes via the `theme` command.
 
 ## Patterns and Conventions
 
@@ -536,7 +551,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 **Priority 3 — Polish and ecosystem:**
 
 - [ ] AVIF image format — generate AVIF variants alongside WebP in the image pipeline. Eleventy Image v6.0 supports AVIF. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute
-- [ ] Theme gallery/sharing — documentation page showcasing all bundled themes with screenshots + a way for users to share custom themes. Even 20-30 community themes dramatically changes perception. Consider a `page theme install <url>` command that downloads a `.tera` file. Lean into AI theme generation as the differentiator ("why browse themes when AI creates one for you?")
+- [x] Theme gallery/sharing — documentation page showcasing all bundled themes with HTML preview cards, `page theme install <url>` to download community themes, `page theme export <name>` to share custom/AI-generated themes, installed themes stored in `templates/themes/` and managed alongside bundled themes
 - [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`. Use tag overlap + TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page
 
 **Priority 4 — Deploy improvements (existing roadmap items):**
