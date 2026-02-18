@@ -1423,6 +1423,49 @@ fn test_deploy_dry_run_netlify_shows_auth_check() {
         .stdout(predicate::str::contains("Netlify auth"));
 }
 
+#[test]
+fn test_deploy_dry_run_netlify_shows_site_check() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Netlify Site Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    let toml_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    // Dry run should show the Netlify site check
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Netlify site"));
+}
+
+#[test]
+fn test_deploy_dry_run_cloudflare_shows_project_check() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CF Project Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    let toml_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"test-project\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    // Dry run should show the Cloudflare project check
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Cloudflare project"));
+}
+
 // --- image handling ---
 
 /// Helper: write a minimal valid PNG (1x1 pixel) into a site's static directory.
