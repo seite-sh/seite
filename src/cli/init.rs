@@ -126,6 +126,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             target: target.clone(),
             repo: None,
             project: None,
+            domain: None,
         },
         languages: Default::default(),
         images: Default::default(),

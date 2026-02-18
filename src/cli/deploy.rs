@@ -227,10 +227,17 @@ fn run_domain_setup(
         }
     };
 
-    let setup = deploy::domain_setup_instructions(domain, &target, config);
+    // Strip protocol for the domain field (store just the domain)
+    let clean_domain = domain
+        .strip_prefix("https://")
+        .or_else(|| domain.strip_prefix("http://"))
+        .unwrap_or(domain)
+        .trim_end_matches('/');
+
+    let setup = deploy::domain_setup_instructions(clean_domain, &target, config);
     deploy::print_domain_setup(&setup);
 
-    // Update page.toml with the new base_url
+    // Update page.toml with base_url and deploy.domain
     let new_base_url = if domain.starts_with("http") {
         domain.to_string()
     } else {
@@ -239,8 +246,49 @@ fn run_domain_setup(
 
     let mut updates = HashMap::new();
     updates.insert("base_url".to_string(), new_base_url.clone());
+    updates.insert("domain".to_string(), clean_domain.to_string());
     deploy::update_deploy_config(config_path, &updates)?;
-    human::success(&format!("Updated base_url to '{new_base_url}' in page.toml"));
+    human::success(&format!("Updated base_url to '{new_base_url}' and deploy.domain to '{clean_domain}' in page.toml"));
+
+    // Offer to attach the domain to the platform
+    match target {
+        DeployTarget::Cloudflare => {
+            if let Some(ref project) = config.deploy.project {
+                let attach = dialoguer::Confirm::new()
+                    .with_prompt(format!("Attach '{clean_domain}' to Cloudflare Pages project '{project}'?"))
+                    .default(true)
+                    .interact()
+                    .unwrap_or(false);
+                if attach {
+                    match deploy::cloudflare_attach_domain(project, clean_domain) {
+                        Ok(true) => human::success(&format!("Domain '{clean_domain}' attached to project '{project}'")),
+                        Ok(false) => human::warning("Could not attach domain — add it manually in the Cloudflare dashboard"),
+                        Err(e) => human::warning(&format!("API call failed: {e} — add the domain manually")),
+                    }
+                }
+            } else {
+                human::info("Set deploy.project in page.toml to enable automatic domain attachment");
+            }
+        }
+        DeployTarget::Netlify => {
+            let paths = config.resolve_paths(&std::env::current_dir()?);
+            let attach = dialoguer::Confirm::new()
+                .with_prompt(format!("Add '{clean_domain}' to Netlify site?"))
+                .default(true)
+                .interact()
+                .unwrap_or(false);
+            if attach {
+                match deploy::netlify_add_domain(&paths, clean_domain) {
+                    Ok(true) => human::success(&format!("Domain '{clean_domain}' added to Netlify site")),
+                    Ok(false) => human::warning("Could not add domain — run `netlify domains:add` manually"),
+                    Err(e) => human::warning(&format!("Failed: {e}")),
+                }
+            }
+        }
+        DeployTarget::GithubPages => {
+            human::info("CNAME file will be auto-generated during deploy");
+        }
+    }
 
     Ok(())
 }
