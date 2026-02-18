@@ -1,8 +1,8 @@
 User-agent: *
 Allow: /
 
-Sitemap: http://localhost:3000/sitemap.xml
+Sitemap: https://pagecli.dev/sitemap.xml
 
 # AI / LLM crawlers
-# LLMs-txt: http://localhost:3000/llms.txt
-# LLMs-full-txt: http://localhost:3000/llms-full.txt
+# LLMs-txt: https://pagecli.dev/llms.txt
+# LLMs-full-txt: https://pagecli.dev/llms-full.txt

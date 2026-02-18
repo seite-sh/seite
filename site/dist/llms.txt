@@ -4,16 +4,16 @@
 
 ## Documentation
 
-- [AI Agent](http://localhost:3000/docs/agent.md): Use page agent to get AI assistance with content creation, site management, and theme generation.
-- [CLI Reference](http://localhost:3000/docs/cli-reference.md): Complete reference for all page CLI commands, flags, and options.
-- [Collections](http://localhost:3000/docs/collections.md): Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
-- [Configuration](http://localhost:3000/docs/configuration.md): Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.
-- [Deployment](http://localhost:3000/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
-- [Getting Started](http://localhost:3000/docs/getting-started.md): Install page and build your first static site in under a minute.
-- [Multi-Language](http://localhost:3000/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
-- [Templates & Themes](http://localhost:3000/docs/templates.md): Customize your site with Tera templates, overridable blocks, and six bundled themes.
+- [AI Agent](https://pagecli.dev/docs/agent.md): Use page agent to get AI assistance with content creation, site management, and theme generation.
+- [CLI Reference](https://pagecli.dev/docs/cli-reference.md): Complete reference for all page CLI commands, flags, and options.
+- [Collections](https://pagecli.dev/docs/collections.md): Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
+- [Configuration](https://pagecli.dev/docs/configuration.md): Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.
+- [Deployment](https://pagecli.dev/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
+- [Getting Started](https://pagecli.dev/docs/getting-started.md): Install page and build your first static site in under a minute.
+- [Multi-Language](https://pagecli.dev/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
+- [Templates & Themes](https://pagecli.dev/docs/templates.md): Customize your site with Tera templates, overridable blocks, and six bundled themes.
 
 ## Pages
 
-- [About](http://localhost:3000/about.md): page is an AI-native static site generator built with Rust. Zero runtime JavaScript, six bundled themes, single binary.
+- [About](https://pagecli.dev/about.md): page is an AI-native static site generator built with Rust. Zero runtime JavaScript, six bundled themes, single binary.
 

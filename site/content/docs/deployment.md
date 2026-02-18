@@ -104,6 +104,32 @@ page deploy
 page deploy --target netlify --dry-run
 ```
 
+## Custom Domains
+
+Set up a custom domain for any deploy target:
+
+```bash
+page deploy --domain example.com
+```
+
+This will:
+1. Print DNS records to add at your registrar
+2. Update `base_url` and `deploy.domain` in `page.toml`
+3. For Cloudflare: offer to attach the domain to your Pages project via the API
+4. For Netlify: offer to add the domain via `netlify domains:add`
+5. For GitHub Pages: auto-generate a `CNAME` file on the next deploy
+
+You can also set the domain directly in `page.toml`:
+
+```toml
+[deploy]
+target = "cloudflare"
+project = "my-site"
+domain = "example.com"
+```
+
+When `deploy.domain` is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.
+
 ## Override Target
 
 Override the configured target on the command line:
