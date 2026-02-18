@@ -457,7 +457,7 @@ fn run_interactive_recovery(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
     target: &str,
-    config_path: &PathBuf,
+    config_path: &std::path::Path,
 ) -> anyhow::Result<Vec<String>> {
     let mut unresolved = Vec::new();
 

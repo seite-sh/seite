@@ -146,10 +146,16 @@ page deploy [options]
 |------|-------------|
 | `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
 | `--dry-run` | Preview what would be deployed without deploying |
+| `--domain` | Set up a custom domain (prints DNS records, updates config, attaches to platform) |
+| `--setup` | Run guided deploy setup |
+| `--skip-checks` | Skip pre-flight checks |
+| `--base-url` | Override base URL for this deploy |
 
 ```bash
 page deploy                          # Use target from page.toml
 page deploy --dry-run                # Preview changes
 page deploy --target netlify         # Override target
 page deploy --target cloudflare --dry-run
+page deploy --domain example.com     # Set up custom domain
+page deploy --setup                  # Guided setup wizard
 ```
