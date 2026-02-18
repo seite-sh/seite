@@ -51,8 +51,8 @@ pub struct DeployArgs {
 
 pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
     let config_path = PathBuf::from("page.toml");
-    let config = SiteConfig::load(&config_path)?;
-    let paths = config.resolve_paths(&std::env::current_dir()?);
+    let mut config = SiteConfig::load(&config_path)?;
+    let mut paths = config.resolve_paths(&std::env::current_dir()?);
 
     let target_str = resolve_target_str(args, &config);
 
@@ -117,8 +117,11 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
                     }
                 }
 
-                // Reload config in case it was updated (e.g., base_url fix)
-                // We'll just re-read it for the deploy step
+                // Reload config in case it was updated (e.g., base_url fix, project creation)
+                if let Ok(reloaded) = SiteConfig::load(&config_path) {
+                    paths = reloaded.resolve_paths(&std::env::current_dir()?);
+                    config = reloaded;
+                }
             }
         }
     }
