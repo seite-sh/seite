@@ -317,7 +317,7 @@ fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
         if !port_is_available(port) {
             continue;
         }
-        match Server::http(&format!("127.0.0.1:{port}")) {
+        match Server::http(format!("127.0.0.1:{port}")) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }

@@ -165,7 +165,7 @@ impl Default for BuildSection {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeploySection {
     #[serde(default)]
     pub target: DeployTarget,
@@ -173,16 +173,6 @@ pub struct DeploySection {
     pub repo: Option<String>,
     #[serde(default)]
     pub project: Option<String>,
-}
-
-impl Default for DeploySection {
-    fn default() -> Self {
-        Self {
-            target: DeployTarget::default(),
-            repo: None,
-            project: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

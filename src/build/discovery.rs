@@ -12,9 +12,9 @@ pub fn generate_robots_txt(config: &SiteConfig) -> String {
     let mut out = String::new();
     out.push_str("User-agent: *\n");
     out.push_str("Allow: /\n");
-    out.push_str("\n");
+    out.push('\n');
     out.push_str(&format!("Sitemap: {base}/sitemap.xml\n"));
-    out.push_str("\n");
+    out.push('\n');
     // Point AI crawlers to the LLM-optimized files
     out.push_str("# AI / LLM crawlers\n");
     out.push_str(&format!("# LLMs-txt: {base}/llms.txt\n"));
