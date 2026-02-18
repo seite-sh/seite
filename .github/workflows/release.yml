@@ -14,7 +14,6 @@ on:
 permissions:
   contents: write
   actions: read
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,9 +50,35 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache build artifacts
+        if: ${{ !matrix.use_cross }}
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cross binary
+        if: matrix.use_cross
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cross
+          key: ${{ runner.os }}-cross-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install cross
         if: matrix.use_cross
-        run: cargo install cross --locked
+        run: |
+          if [ ! -f ~/.cargo/bin/cross ]; then
+            cargo install cross --locked
+          fi
 
       - name: Build
         run: |
@@ -79,8 +104,6 @@ jobs:
     name: Create release
     needs: build
     runs-on: ubuntu-latest
-    outputs:
-      digests: ${{ steps.hash.outputs.digests }}
     steps:
       - uses: actions/checkout@v4
 
@@ -104,12 +127,6 @@ jobs:
           sha256sum page-*.tar.gz > checksums-sha256.txt
           cat checksums-sha256.txt
 
-      - name: Generate provenance subjects
-        id: hash
-        run: |
-          cd artifacts
-          echo "digests=$(sha256sum page-*.tar.gz | base64 -w0)" >> "$GITHUB_OUTPUT"
-
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -119,17 +136,18 @@ jobs:
             artifacts/page-*.tar.gz
             artifacts/checksums-sha256.txt
 
-  provenance:
-    name: SLSA provenance
-    needs: release
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-    with:
-      base64-subjects: "${{ needs.release.outputs.digests }}"
-      upload-assets: true
+  # TODO: Enable SLSA provenance when repo is public
+  # provenance:
+  #   name: SLSA provenance
+  #   needs: release
+  #   permissions:
+  #     actions: read
+  #     id-token: write
+  #     contents: write
+  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+  #   with:
+  #     base64-subjects: "${{ needs.release.outputs.digests }}"
+  #     upload-assets: true
 
   deploy-site:
     name: Deploy docs site
