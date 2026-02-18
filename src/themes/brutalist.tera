@@ -79,11 +79,15 @@
         hr { border: none; border-top: 3px solid #000; margin: 2rem 0; }
         footer { border: 3px solid #000; padding: 1rem 1.5rem; margin-top: 2rem; font-weight: 700; font-size: 0.85rem; }
         :focus-visible { outline: 3px solid #000; outline-offset: 2px; }
+        .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #000; color: #ffe600; z-index: 100; text-decoration: none; font-weight: 900; text-transform: uppercase; border: 3px solid #ffe600; }
+        .skip-link:focus { top: 0; }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
 </head>
 <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
     <header>
     {% block header %}
         {% if translations | length > 1 %}
@@ -93,13 +97,13 @@
         {% endif %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
-        <form class="search-form" onsubmit="return false">
-            <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
+        <form class="search-form" role="search" aria-label="Site search" onsubmit="return false">
+            <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
         </form>
-        <div id="search-results"></div>
+        <div id="search-results" aria-live="polite"></div>
     {% endblock %}
     </header>
-    <main>
+    <main id="main">
         {% block content %}{% endblock %}
     </main>
     <footer>
