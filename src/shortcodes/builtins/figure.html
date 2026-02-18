@@ -1,0 +1,4 @@
+<figure{% if class %} class="{{ class }}"{% endif %}>
+<img src="{{ src }}" alt="{{ alt | default(value='') }}"{% if width %} width="{{ width }}"{% endif %}{% if height %} height="{{ height }}"{% endif %} loading="lazy">
+{% if caption %}<figcaption>{{ caption }}</figcaption>{% endif %}
+</figure>

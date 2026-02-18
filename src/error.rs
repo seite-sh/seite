@@ -20,6 +20,13 @@ pub enum PageError {
     #[error("Template error: {0}")]
     Template(#[from] tera::Error),
 
+    #[error("Shortcode error in {path} at line {line}: {message}")]
+    Shortcode {
+        path: PathBuf,
+        line: usize,
+        message: String,
+    },
+
     #[error("Build error: {0}")]
     Build(String),
 

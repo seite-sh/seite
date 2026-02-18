@@ -64,6 +64,19 @@
         code { font-size: 0.9em; }
         blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
         img { max-width: 100%; height: auto; }
+        figure { margin: 1.5rem 0; }
+        figure img { display: block; }
+        figcaption { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
+        .video-embed { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 1.5rem 0; border-radius: 4px; }
+        .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+        .callout { border-left: 4px solid #0057b7; background: #f0f4ff; padding: 1rem 1.25rem; margin: 1.5rem 0; border-radius: 0 4px 4px 0; }
+        .callout-title { font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        .callout-info { border-left-color: #0057b7; background: #f0f4ff; }
+        .callout-warning { border-left-color: #d97706; background: #fffbeb; }
+        .callout-danger { border-left-color: #dc2626; background: #fef2f2; }
+        .callout-tip { border-left-color: #16a34a; background: #f0fdf4; }
+        .callout p:last-child { margin-bottom: 0; }
+        .gist-embed { margin: 1.5rem 0; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #eee; color: #666; font-size: 0.85rem; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #0057b7; color: #fff; z-index: 100; text-decoration: none; }
         .skip-link:focus { top: 0; }

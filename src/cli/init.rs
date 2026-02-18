@@ -520,7 +520,41 @@ fn generate_claude_md(
     md.push_str("- **Asset pipeline** — Add `minify = true` and/or `fingerprint = true` to `[build]` in `page.toml` to minify CSS/JS and add content-hash suffixes (`main.a1b2c3d4.css`) with a `dist/asset-manifest.json`\n");
     md.push_str("- **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`\n");
     md.push_str("- **Clean URLs** — `/posts/hello-world` (no `.html` extension)\n");
-    md.push_str("- **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)\n\n");
+    md.push_str("- **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)\n");
+    md.push_str("- **Shortcodes** — Reusable content components in markdown. See syntax below.\n\n");
+
+    // Shortcodes
+    md.push_str("## Shortcodes\n\n");
+    md.push_str("Shortcodes are reusable content components you can use inside markdown files.\n\n");
+    md.push_str("### Inline shortcodes (raw HTML output)\n\n");
+    md.push_str("```markdown\n");
+    md.push_str("{{< youtube(id=\"dQw4w9WgXcQ\") >}}\n");
+    md.push_str("{{< vimeo(id=\"123456\") >}}\n");
+    md.push_str("{{< gist(user=\"octocat\", id=\"abc123\") >}}\n");
+    md.push_str("{{< figure(src=\"/static/photo.jpg\", caption=\"A great photo\", alt=\"Description\") >}}\n");
+    md.push_str("```\n\n");
+    md.push_str("### Body shortcodes (markdown-processed body)\n\n");
+    md.push_str("```markdown\n");
+    md.push_str("{{% callout(type=\"warning\") %}}\n");
+    md.push_str("This is **bold** markdown inside a callout box.\n");
+    md.push_str("{{% end %}}\n");
+    md.push_str("```\n\n");
+    md.push_str("Callout types: `info`, `warning`, `danger`, `tip`\n\n");
+    md.push_str("### Built-in shortcodes\n\n");
+    md.push_str("| Shortcode | Type | Parameters |\n");
+    md.push_str("|-----------|------|------------|\n");
+    md.push_str("| `youtube` | inline | `id` (required), `start`, `title` |\n");
+    md.push_str("| `vimeo` | inline | `id` (required), `title` |\n");
+    md.push_str("| `gist` | inline | `user` (required), `id` (required) |\n");
+    md.push_str("| `figure` | inline | `src` (required), `alt`, `caption`, `width`, `height`, `class` |\n");
+    md.push_str("| `callout` | body | `type` (default: `info`) |\n\n");
+    md.push_str("### Custom shortcodes\n\n");
+    md.push_str("Create Tera templates in `templates/shortcodes/`. Example `templates/shortcodes/alert.html`:\n\n");
+    md.push_str("```html\n");
+    md.push_str("<div class=\"alert alert-{{ level }}\">{{ body }}</div>\n");
+    md.push_str("```\n\n");
+    md.push_str("Use in markdown: `{{% alert(level=\"error\") %}}Something went wrong{{% end %}}`\n\n");
+    md.push_str("Shortcode templates have access to `{{ page }}` and `{{ site }}` context variables.\n\n");
 
     // Design prompts
     md.push_str("## Design Prompts\n\n");
