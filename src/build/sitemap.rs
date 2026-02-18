@@ -15,6 +15,7 @@ pub(crate) fn generate_sitemap(
     config: &SiteConfig,
     items: &[&ContentItem],
     translation_map: &HashMap<(String, String), Vec<TranslationLink>>,
+    extra_urls: &[String],
 ) -> Result<String> {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let base = config.site.base_url.trim_end_matches('/');
@@ -74,6 +75,12 @@ pub(crate) fn generate_sitemap(
         } else {
             write_url(&mut writer, &loc, lastmod)?;
         }
+    }
+
+    // Extra URLs (e.g. tag pages) — simple entries with no lastmod
+    for url in extra_urls {
+        let loc = format!("{base}{url}");
+        write_url(&mut writer, &loc, None)?;
     }
 
     write(&mut writer, Event::End(BytesEnd::new("urlset")))?;

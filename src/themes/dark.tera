@@ -58,7 +58,8 @@
         article h1 { font-size: 2rem; }
         article h2 { font-size: 1.4rem; margin-top: 2rem; }
         time { color: #6b6b6b; font-size: 0.9rem; }
-        .tags span { background: #1a1a1a; border: 1px solid #2a2a2a; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.8rem; color: #a78bfa; }
+        .tags a, .tags span { background: #1a1a1a; border: 1px solid #2a2a2a; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.8rem; color: #a78bfa; text-decoration: none; }
+        .tags a:hover { background: #2a2a2a; border-color: #3a3a3a; }
         pre { background: #111111; padding: 1rem; border-radius: 4px; overflow-x: auto; border: 1px solid #1e1e1e; }
         code { font-size: 0.9em; color: #c4b5fd; background: #111111; padding: 0.1rem 0.3rem; border-radius: 3px; }
         pre code { background: none; padding: 0; }

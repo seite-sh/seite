@@ -56,7 +56,8 @@
         article h3 a { text-decoration: none; color: inherit; }
         article h3 a:hover { text-decoration: underline; }
         time { color: #999; font-size: 0.85rem; font-style: italic; }
-        .tags span { font-size: 0.8rem; color: #888; margin-right: 0.5rem; font-style: italic; }
+        .tags a, .tags span { font-size: 0.8rem; color: #888; margin-right: 0.5rem; font-style: italic; text-decoration: none; }
+        .tags a:hover { color: #555; }
         pre { background: #fafafa; padding: 1rem; border-left: 2px solid #ddd; overflow-x: auto; }
         code { font-size: 0.9em; }
         blockquote { border-left: 2px solid #ccc; margin-left: 0; padding-left: 1.5rem; font-style: italic; color: #666; }
