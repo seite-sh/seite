@@ -2,7 +2,7 @@
 /// at compile time via include_str!. Binary ships with all themes — no downloads needed.
 ///
 /// To edit a theme, modify the corresponding file in src/themes/:
-///   default.tera, minimal.tera, dark.tera, docs.tera
+///   default.tera, minimal.tera, dark.tera, docs.tera, brutalist.tera, bento.tera
 
 pub struct Theme {
     pub name: &'static str,
@@ -11,7 +11,7 @@ pub struct Theme {
 }
 
 pub fn all() -> Vec<Theme> {
-    vec![default(), minimal(), dark(), docs()]
+    vec![default(), minimal(), dark(), docs(), brutalist(), bento()]
 }
 
 pub fn by_name(name: &str) -> Option<Theme> {
@@ -47,5 +47,21 @@ pub fn docs() -> Theme {
         name: "docs",
         description: "Documentation-focused theme with sidebar layout",
         base_html: include_str!("themes/docs.tera"),
+    }
+}
+
+pub fn brutalist() -> Theme {
+    Theme {
+        name: "brutalist",
+        description: "Neo-brutalist theme with thick borders and hard shadows",
+        base_html: include_str!("themes/brutalist.tera"),
+    }
+}
+
+pub fn bento() -> Theme {
+    Theme {
+        name: "bento",
+        description: "Card grid layout inspired by bento box design",
+        base_html: include_str!("themes/bento.tera"),
     }
 }
