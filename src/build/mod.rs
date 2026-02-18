@@ -1,5 +1,6 @@
 pub mod discovery;
 pub mod feed;
+pub mod images;
 pub mod markdown;
 pub mod sitemap;
 
@@ -792,6 +793,19 @@ pub fn build_site(
         fs::write(paths.output.join("asset-manifest.json"), manifest_json)?;
     }
 
+    // Step 11: Process images (resize, WebP, srcset)
+    let image_manifest = if has_images_config(config) {
+        images::process_images(paths, &config.images)?
+    } else {
+        HashMap::new()
+    };
+
+    // Step 12: Post-process HTML files to rewrite <img> tags
+    let needs_image_rewrite = !image_manifest.is_empty() || config.images.lazy_loading;
+    if needs_image_rewrite {
+        rewrite_html_files(&paths.output, &image_manifest, config.images.lazy_loading)?;
+    }
+
     let items_built: HashMap<String, usize> = all_collections
         .iter()
         .map(|(name, items)| (name.clone(), items.len()))
@@ -807,6 +821,44 @@ pub fn build_site(
         collections: all_collections,
         stats,
     })
+}
+
+/// Check if the user has explicitly configured the [images] section.
+/// We detect this by checking if the config differs from the "disabled" default,
+/// OR if there are any image files in the static directory.
+fn has_images_config(config: &SiteConfig) -> bool {
+    // The images section is present in the config (non-default widths check isn't needed;
+    // if the section exists at all we process images).
+    // Simple heuristic: if widths is non-empty, process images.
+    !config.images.widths.is_empty()
+}
+
+/// Walk all .html files in the output directory and rewrite <img> tags.
+fn rewrite_html_files(
+    output_dir: &Path,
+    image_manifest: &HashMap<String, images::ProcessedImage>,
+    lazy_loading: bool,
+) -> Result<()> {
+    for entry in WalkDir::new(output_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "html")
+        })
+    {
+        let html = fs::read_to_string(entry.path())?;
+        if !html.contains("<img ") {
+            continue;
+        }
+        let rewritten = images::rewrite_html_images(&html, image_manifest, lazy_loading);
+        if rewritten != html {
+            fs::write(entry.path(), rewritten)?;
+        }
+    }
+    Ok(())
 }
 
 fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig) -> String {

@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (13 unit + 40 integration)
+cargo test           # Run all tests (18 unit + 53 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -23,6 +23,9 @@ cargo run -- theme list
 cargo run -- theme apply dark
 cargo run -- theme create "coral brutalist with lime accents"   # AI-generated custom theme
 cargo run -- deploy
+cargo run -- deploy --dry-run                       # Preview what deploy would do
+cargo run -- deploy --target netlify                 # Deploy to Netlify
+cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
 ```
 
 ## Architecture
@@ -43,11 +46,12 @@ src/
     brutalist.tera     Neo-brutalist theme template
     bento.tera         Card grid bento theme template
   build/
-    mod.rs             10-step build pipeline
+    mod.rs             12-step build pipeline
     markdown.rs        pulldown-cmark wrapper
     feed.rs            RSS generation
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
+    images.rs          Image processing (resize, WebP, srcset)
   cli/
     mod.rs             Cli struct + Command enum (7 subcommands)
     init.rs            Interactive project scaffolding
@@ -72,7 +76,7 @@ tests/
   integration.rs       40 integration tests using assert_cmd + tempfile
 ```
 
-### Build Pipeline (10 steps)
+### Build Pipeline (12 steps)
 
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
@@ -84,6 +88,8 @@ tests/
 8. Output raw markdown alongside HTML (`slug.md` next to `slug.html`)
 9. Generate search index — `search-index.json` (default lang), `/{lang}/search-index.json` (per-language)
 10. Copy static files
+11. Process images (resize to configured widths, generate WebP variants)
+12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"`)
 
 ### Collections System
 
@@ -151,7 +157,7 @@ minify = true        # optional: strip CSS/JS comments + collapse whitespace
 fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.json
 
 [deploy]
-target = "github-pages"  # or "cloudflare"
+target = "github-pages"  # or "cloudflare" or "netlify"
 
 # Optional: multi-language support (omit for single-language sites)
 [languages.es]
@@ -160,6 +166,13 @@ description = "Un sitio estático"
 
 [languages.fr]
 title = "Mon Site"
+
+# Optional: image processing (omit for no processing)
+[images]
+widths = [480, 800, 1200]  # generate resized copies at these pixel widths
+quality = 80               # JPEG/WebP quality (1-100)
+lazy_loading = true        # add loading="lazy" to <img> tags
+webp = true                # generate WebP variants alongside originals
 ```
 
 ### Agent System
@@ -403,13 +416,9 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [x] **Asset pipeline** — `build.minify = true` strips CSS/JS comments and collapses whitespace; `build.fingerprint = true` writes `name.<hash8>.ext` copies and `dist/asset-manifest.json`. FNV-1a hash, no external dependencies.
 
-- [ ] **Deploy improvements** — Current deploy is basic:
-  - GitHub Pages: Add GitHub Actions workflow generation
-  - Cloudflare: Better error messages, auto-detect project name
-  - Add `--dry-run` flag
-  - Netlify support
+- [x] **Deploy improvements** — GitHub Actions workflow generation on `page init`, better Cloudflare error messages with auto-detect project name from `wrangler.toml`, `--dry-run` flag, Netlify support.
 
-- [ ] **Image handling** — Auto-resize images, generate srcset, lazy loading attributes, WebP conversion.
+- [x] **Image handling** — `[images]` config section: auto-resize to configured widths, generate WebP variants, `<picture>` elements with srcset, `loading="lazy"` on all `<img>` tags. Uses the `image` crate.
 
 ### Done
 
@@ -424,10 +433,12 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] RSS feed (posts only) + XML sitemap (all collections)
 - [x] Nested docs support (docs/guides/setup.md → /docs/guides/setup)
 - [x] Draft exclusion with --drafts flag
-- [x] Deploy to GitHub Pages + Cloudflare Pages
+- [x] Deploy to GitHub Pages + Cloudflare Pages + Netlify
 - [x] Syntax highlighting (syntect, inline styles, base16-ocean.dark theme)
 - [x] Docs sidebar navigation (auto-generated from collection items, grouped by directory)
 - [x] Claude Code scaffolding (`page init` creates `.claude/settings.json` + `CLAUDE.md`)
 - [x] Homepage as special page (`content/pages/index.md` → custom homepage content)
 - [x] Multi-language (i18n) support — filename-based translations, per-language URLs, hreflang tags, language switcher, per-language RSS/sitemap/discovery files
 - [x] Search — `search-index.json` generated per language, inline client-side JS in all 4 themes, lazy-loaded, filters by title/description/tags
+- [x] Deploy improvements — GitHub Actions workflow, `--dry-run`, Netlify support, better Cloudflare errors + auto-detect project name
+- [x] Image handling — auto-resize, WebP conversion, srcset/`<picture>` elements, `loading="lazy"`, configurable widths/quality

@@ -21,3 +21,15 @@ pub fn template_dir() -> String {
 pub fn static_dir() -> String {
     "static".to_string()
 }
+
+pub fn image_widths() -> Vec<u32> {
+    vec![480, 800, 1200]
+}
+
+pub fn image_quality() -> u8 {
+    80
+}
+
+pub fn bool_true() -> bool {
+    true
+}
