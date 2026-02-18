@@ -32,6 +32,8 @@ pub struct BuildStats {
     pub items_built: HashMap<String, usize>,
     pub static_files_copied: usize,
     pub duration_ms: u64,
+    /// Per-step timing: (step_name, duration_ms)
+    pub step_timings: Vec<(String, f64)>,
 }
 
 impl CommandOutput for BuildStats {
@@ -41,12 +43,23 @@ impl CommandOutput for BuildStats {
             .iter()
             .map(|(name, count)| format!("{count} {name}"))
             .collect();
-        format!(
+        let mut out = format!(
             "Built {} in {:.1}s ({} static files copied)",
             parts.join(", "),
             self.duration_ms as f64 / 1000.0,
             self.static_files_copied
-        )
+        );
+        if !self.step_timings.is_empty() {
+            out.push_str("\n  Timings:");
+            for (name, ms) in &self.step_timings {
+                if *ms >= 1.0 {
+                    out.push_str(&format!("\n    {name}: {ms:.1}ms"));
+                } else {
+                    out.push_str(&format!("\n    {name}: <1ms"));
+                }
+            }
+        }
+        out
     }
 }
 
@@ -180,15 +193,20 @@ pub fn build_site(
     opts: &BuildOptions,
 ) -> Result<BuildResult> {
     let start = Instant::now();
+    let mut step_timings: Vec<(String, f64)> = Vec::new();
 
     // Step 1: Clean output directory
+    let step_start = Instant::now();
     if paths.output.exists() {
         fs::remove_dir_all(&paths.output)?;
     }
     fs::create_dir_all(&paths.output)?;
+    step_timings.push(("Clean output".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
     // Step 2: Load templates (collection-aware)
+    let step_start = Instant::now();
     let tera = templates::load_templates(&paths.templates, &config.collections)?;
+    step_timings.push(("Load templates".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
     // Pre-compute configured language codes for filename detection
     let configured_langs = config.configured_lang_codes();
@@ -196,6 +214,7 @@ pub fn build_site(
     let default_lang = &config.site.language;
 
     // Step 3: Process each collection
+    let step_start = Instant::now();
     let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
 
     for collection in &config.collections {
@@ -297,6 +316,8 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Process collections".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Build translation map: (collection, slug) → Vec<TranslationLink>
     let translation_map: HashMap<(String, String), Vec<TranslationLink>> = if is_multilingual {
         let mut map: HashMap<(String, String), Vec<TranslationLink>> = HashMap::new();
@@ -315,6 +336,7 @@ pub fn build_site(
     };
 
     // Render each item in each collection
+    let step_start = Instant::now();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
             // Nav is built per-language: only sibling items in the same language
@@ -364,6 +386,8 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Render pages".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Extract homepage pages (content/pages/index.md and translations) so they
     // don't also render as standalone pages at /index (which would collide).
     let homepage_pages: Vec<ContentItem> = all_collections
@@ -383,6 +407,7 @@ pub fn build_site(
         .unwrap_or_default();
 
     // Step 4: Render index page(s)
+    let step_start = Instant::now();
     for lang in &config.all_languages() {
         let lang_site_ctx = SiteContext::for_lang(config, lang);
         let mut index_ctx = tera::Context::new();
@@ -826,7 +851,10 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Render indexes".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 5: Generate RSS feed(s)
+    let step_start = Instant::now();
     // Default language feed at /feed.xml
     let default_rss_items: Vec<&ContentItem> = config
         .collections
@@ -857,12 +885,17 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Generate RSS".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 6: Generate sitemap (all items, all languages)
+    let step_start = Instant::now();
     let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
     let sitemap_xml = sitemap::generate_sitemap(config, &all_items, &translation_map, &tag_page_urls)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
+    step_timings.push(("Generate sitemap".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
     // Step 7: Generate discovery files (robots.txt, llms.txt, llms-full.txt)
+    let step_start = Instant::now();
     let robots = discovery::generate_robots_txt(config);
     fs::write(paths.output.join("robots.txt"), robots)?;
 
@@ -910,7 +943,10 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Generate discovery files".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 8: Output raw markdown alongside HTML for each page
+    let step_start = Instant::now();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
             for item in items {
@@ -928,7 +964,10 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Output markdown".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 9: Generate search index
+    let step_start = Instant::now();
     let all_search_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
 
     // Root index: default language only
@@ -955,7 +994,10 @@ pub fn build_site(
         }
     }
 
+    step_timings.push(("Generate search index".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 10: Copy static files (with optional minification and fingerprinting)
+    let step_start = Instant::now();
     let mut static_count = 0;
     // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
     let mut asset_manifest: std::collections::HashMap<String, String> =
@@ -1037,18 +1079,26 @@ pub fn build_site(
         fs::write(paths.output.join("asset-manifest.json"), manifest_json)?;
     }
 
+    step_timings.push(("Copy static files".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 11: Process images (resize, WebP, srcset)
+    let step_start = Instant::now();
     let image_manifest = if has_images_config(config) {
         images::process_images(paths, &config.images)?
     } else {
         HashMap::new()
     };
 
+    step_timings.push(("Process images".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Step 12: Post-process HTML files to rewrite <img> tags
+    let step_start = Instant::now();
     let needs_image_rewrite = !image_manifest.is_empty() || config.images.lazy_loading;
     if needs_image_rewrite {
         rewrite_html_files(&paths.output, &image_manifest, config.images.lazy_loading)?;
     }
+
+    step_timings.push(("Post-process HTML".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
     let items_built: HashMap<String, usize> = all_collections
         .iter()
@@ -1059,6 +1109,7 @@ pub fn build_site(
         items_built,
         static_files_copied: static_count,
         duration_ms: start.elapsed().as_millis() as u64,
+        step_timings,
     };
 
     Ok(BuildResult {
