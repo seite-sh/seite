@@ -459,6 +459,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] CI workflows for all targets — `page init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
 - [x] Custom domain helper — `--domain` flag shows DNS record instructions per target, auto-updates base_url in page.toml
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
+- [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback
 
 ### Up Next
 
