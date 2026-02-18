@@ -469,7 +469,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Preview/staging deploys — `--preview` flag creates non-production deploys on Cloudflare (branch deploy) and Netlify (draft deploy)
 - [x] Deploy guided setup — `--setup` flag runs interactive setup: creates repos/projects, configures auth, generates CI workflows, writes config to page.toml
 - [x] CI workflows for all targets — `page init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
-- [x] Custom domain helper — `--domain` flag shows DNS record instructions per target, auto-updates base_url in page.toml
+- [x] Custom domain management — `--domain` flag shows DNS records, updates base_url + `deploy.domain` in page.toml, attaches domain to Cloudflare Pages via API, runs `netlify domains:add` for Netlify, auto-generates CNAME for GitHub Pages. Preflight checks verify domain is attached.
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
 - [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
 
