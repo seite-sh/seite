@@ -53,8 +53,11 @@ page build [options]
 | Flag | Description |
 |------|-------------|
 | `--drafts` | Include draft content in the build |
+| `--strict` | Treat broken internal links as build errors |
 
 The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
+
+After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., `<a href="/posts/nonexistent">`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
 
 ## page serve
 
