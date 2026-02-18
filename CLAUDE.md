@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (18 unit + 53 integration)
+cargo test           # Run all tests (25 unit + 76 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -73,15 +73,15 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       40 integration tests using assert_cmd + tempfile
+  integration.rs       76 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (12 steps)
 
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
-3. Process each collection: walk content dir, parse frontmatter + markdown, detect language from filename, resolve slugs/URLs, build translation map, sort
-4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`
+3. Process each collection: walk content dir, parse frontmatter + markdown, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
+4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`. Also renders: paginated collection indexes, 404 page, tag index + per-tag archive pages
 5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
 6. Generate sitemap — all items, with `xhtml:link` alternates for translations
 7. Generate discovery files — per-language `llms.txt` and `llms-full.txt`
@@ -122,6 +122,7 @@ struct Frontmatter {
     draft: bool,                   // excluded from build unless --drafts
     template: Option<String>,      // override collection default template
     robots: Option<String>,        // per-page <meta name="robots">, e.g. "noindex"
+    extra: HashMap<String, Value>, // arbitrary key-value data → {{ page.extra.field }}
 }
 
 // Resolved during build
@@ -242,10 +243,12 @@ Each registers as `base.html` when applied; user `templates/base.html` overrides
 - Tera (Jinja2-compatible) templates
 - All templates extend `base.html`
 - Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`
-- Additional page variables: `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`
+- Additional page variables: `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
 - Embedded defaults in `src/templates/mod.rs`; user templates in `templates/` override them
 - All bundled themes include hreflang tags and language switcher UI when `translations` is non-empty
 - All bundled themes emit canonical URL, Open Graph, Twitter Card, JSON-LD structured data, `<meta name="robots">` (when set), markdown alternate link, and llms.txt link in `<head>`
+- All bundled themes provide overridable blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
+- All bundled themes include accessibility features: skip-to-main link, `role="search"`, `aria-label`, `aria-live="polite"` on search results, `prefers-reduced-motion: reduce`
 
 ### SEO and GEO (Generative Engine Optimization) Guardrails
 
@@ -410,23 +413,13 @@ via `include_str!` — no runtime file loading. Add new themes in `src/themes.rs
 
 Tasks are ordered by priority. Mark each `[x]` when complete.
 
-### Next Up
-
-- [x] **Pagination** — `paginate = N` field on any `[[collections]]` entry; generates `/posts/`, `/posts/page/2/`, etc. Template gets `{{ pagination.current_page }}`, `{{ pagination.total_pages }}`, `{{ pagination.prev_url }}`, `{{ pagination.next_url }}`.
-
-- [x] **Asset pipeline** — `build.minify = true` strips CSS/JS comments and collapses whitespace; `build.fingerprint = true` writes `name.<hash8>.ext` copies and `dist/asset-manifest.json`. FNV-1a hash, no external dependencies.
-
-- [x] **Deploy improvements** — GitHub Actions workflow generation on `page init`, better Cloudflare error messages with auto-detect project name from `wrangler.toml`, `--dry-run` flag, Netlify support.
-
-- [x] **Image handling** — `[images]` config section: auto-resize to configured widths, generate WebP variants, `<picture>` elements with srcset, `loading="lazy"` on all `<img>` tags. Uses the `image` crate.
-
 ### Done
 
 - [x] Collections system (posts, docs, pages with presets)
 - [x] Build pipeline with markdown output alongside HTML
 - [x] AI agent via Claude Code (`page agent` spawns `claude` subprocess with site context)
 - [x] Discovery files (robots.txt, llms.txt, llms-full.txt)
-- [x] Bundled themes (default, minimal, dark, docs)
+- [x] Bundled themes (default, minimal, dark, docs, brutalist, bento)
 - [x] Interactive REPL in serve mode
 - [x] Live reload dev server with port auto-increment
 - [x] Clean URL output pattern (slug.html / slug.md)
@@ -439,6 +432,19 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Claude Code scaffolding (`page init` creates `.claude/settings.json` + `CLAUDE.md`)
 - [x] Homepage as special page (`content/pages/index.md` → custom homepage content)
 - [x] Multi-language (i18n) support — filename-based translations, per-language URLs, hreflang tags, language switcher, per-language RSS/sitemap/discovery files
-- [x] Search — `search-index.json` generated per language, inline client-side JS in all 4 themes, lazy-loaded, filters by title/description/tags
+- [x] Search — `search-index.json` generated per language, inline client-side JS in all 6 themes, lazy-loaded, filters by title/description/tags
 - [x] Deploy improvements — GitHub Actions workflow, `--dry-run`, Netlify support, better Cloudflare errors + auto-detect project name
 - [x] Image handling — auto-resize, WebP conversion, srcset/`<picture>` elements, `loading="lazy"`, configurable widths/quality
+- [x] Pagination — `paginate = N` on collections, generates `/posts/`, `/posts/page/2/`, etc. with full pagination context
+- [x] Asset pipeline — `build.minify = true` strips CSS/JS comments, `build.fingerprint = true` writes `name.<hash8>.ext` + `asset-manifest.json`
+- [x] Reading time + word count — `{{ page.reading_time }}` and `{{ page.word_count }}` in all templates, 238 WPM average
+- [x] Excerpts — auto-extracted from `<!-- more -->` marker or first paragraph, available as `{{ page.excerpt }}` and `{{ item.excerpt }}`
+- [x] 404 page — generates `dist/404.html` using `404.html` template, dev server serves it on 404
+- [x] Table of contents — auto-generated `{{ page.toc }}` from heading hierarchy, headings get `id` anchors
+- [x] Tag pages — `/tags/` index and `/tags/{tag}/` archive pages, i18n-aware, included in sitemap
+- [x] Custom template blocks — `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}` in all 6 themes
+- [x] Extra frontmatter — `extra:` field in frontmatter passes arbitrary data to templates as `{{ page.extra.field }}`
+- [x] URL collision detection — errors on duplicate URLs, warns on missing content directories
+- [x] Accessibility — skip-to-main link, `role="search"`, `aria-label`, `aria-live="polite"`, `prefers-reduced-motion: reduce` in all 6 themes
+- [x] REPL theme-apply rebuild — applying a theme in the REPL automatically rebuilds the site
+- [x] Build timing — per-step timing in build stats output (12 instrumented steps)
