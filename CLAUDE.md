@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (13 unit + 33 integration)
+cargo test           # Run all tests (13 unit + 36 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -68,7 +68,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       33 integration tests using assert_cmd + tempfile
+  integration.rs       36 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (10 steps)
@@ -356,7 +356,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 ### Next Up
 
-- [ ] **Pagination** — For collections with many items, generate paginated index pages (`/posts/page/2`, etc.).
+- [x] **Pagination** — `paginate = N` field on any `[[collections]]` entry; generates `/posts/`, `/posts/page/2/`, etc. Template gets `{{ pagination.current_page }}`, `{{ pagination.total_pages }}`, `{{ pagination.prev_url }}`, `{{ pagination.next_url }}`.
 
 - [ ] **Asset pipeline** — CSS/JS minification, image optimization, cache-busting with fingerprinted filenames. Consider `lightningcss` for CSS and a simple hash-based renaming for fingerprints.
 

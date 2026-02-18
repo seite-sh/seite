@@ -470,6 +470,8 @@ fn generate_claude_md(
     md.push_str("- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)\n");
     md.push_str("- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate\n");
     md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
+    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `page.toml` to generate `/posts/`, `/posts/page/2/`, etc.\n");
+    md.push_str("  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`\n");
 
     md
 }
