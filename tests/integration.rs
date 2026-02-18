@@ -1919,3 +1919,41 @@ fn test_build_warns_missing_content_dir() {
         .assert()
         .success();
 }
+
+// --- accessibility ---
+
+#[test]
+fn test_build_accessibility_skip_link() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "a11y", "A11y Site", "posts");
+    let site_dir = tmp.path().join("a11y");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(html.contains("skip-link"), "should have skip link class");
+    assert!(html.contains("Skip to main content"), "should have skip link text");
+    assert!(html.contains("id=\"main\""), "main element should have id=\"main\"");
+}
+
+#[test]
+fn test_build_accessibility_aria_search() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "a11ysearch", "A11y Search", "posts");
+    let site_dir = tmp.path().join("a11ysearch");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(html.contains("role=\"search\""), "search form should have role=search");
+    assert!(html.contains("aria-label"), "search input should have aria-label");
+    assert!(html.contains("aria-live=\"polite\""), "search results should have aria-live");
+}
