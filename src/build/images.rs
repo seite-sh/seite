@@ -249,7 +249,7 @@ pub fn rewrite_html_images(
     result
 }
 
-fn extract_attr<'a>(tag: &'a str, attr_name: &str) -> Option<String> {
+fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
     let search = format!("{attr_name}=\"");
     let start = tag.find(&search)?;
     let value_start = start + search.len();
@@ -314,8 +314,7 @@ fn build_picture_element(
 
 fn add_srcset_to_tag(tag: &str, srcset: &str, sizes: &str) -> String {
     // Insert srcset and sizes before the closing >
-    if tag.ends_with("/>") {
-        let base = &tag[..tag.len() - 2];
+    if let Some(base) = tag.strip_suffix("/>") {
         format!("{base} srcset=\"{srcset}\" sizes=\"{sizes}\" />")
     } else {
         let base = &tag[..tag.len() - 1];
@@ -327,8 +326,7 @@ fn add_lazy_to_tag(tag: &str) -> String {
     if tag.contains("loading=") {
         return tag.to_string();
     }
-    if tag.ends_with("/>") {
-        let base = &tag[..tag.len() - 2];
+    if let Some(base) = tag.strip_suffix("/>") {
         format!("{base} loading=\"lazy\" />")
     } else {
         let base = &tag[..tag.len() - 1];
@@ -341,8 +339,7 @@ fn add_dimensions_to_tag(tag: &str, width: u32, height: u32) -> String {
     if tag.contains("width=") || tag.contains("height=") {
         return tag.to_string();
     }
-    if tag.ends_with("/>") {
-        let base = &tag[..tag.len() - 2];
+    if let Some(base) = tag.strip_suffix("/>") {
         format!("{base} width=\"{width}\" height=\"{height}\" />")
     } else {
         let base = &tag[..tag.len() - 1];
