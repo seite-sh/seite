@@ -52,4 +52,6 @@ jobs:
     needs: tag
     if: needs.tag.outputs.created == 'true'
     uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
     secrets: inherit
