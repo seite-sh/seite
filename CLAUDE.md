@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (13 unit + 39 integration)
+cargo test           # Run all tests (13 unit + 40 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -21,6 +21,7 @@ cargo run -- agent "create a blog post about Rust error handling"
 cargo run -- agent   # Interactive Claude Code session with site context
 cargo run -- theme list
 cargo run -- theme apply dark
+cargo run -- theme create "coral brutalist with lime accents"   # AI-generated custom theme
 cargo run -- deploy
 ```
 
@@ -68,7 +69,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       39 integration tests using assert_cmd + tempfile
+  integration.rs       40 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (10 steps)
@@ -185,7 +186,9 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ### Themes
 
-4 bundled themes compiled into the binary (no downloads). Each theme is a Tera template file in `src/themes/` embedded via `include_str!` — edit the `.tera` files directly, Cargo auto-recompiles. The `.tera` extension keeps editors from running HTML validators over the Jinja2 syntax.
+6 bundled themes compiled into the binary (no downloads). Each theme is a Tera template file in `src/themes/` embedded via `include_str!` — edit the `.tera` files directly, Cargo auto-recompiles. The `.tera` extension keeps editors from running HTML validators over the Jinja2 syntax.
+
+`page theme create "<description>"` generates a custom theme by spawning Claude with a rich prompt including all template variable docs, Tera block requirements, and the search/pagination patterns. Claude writes `templates/base.html` directly. Requires Claude Code.
 
 - `default` — 720px centered column, system-ui font, blue links (`#0057b7`). Sensible baseline.
 - `minimal` — 600px column, Georgia serif, bottom-border-only search input. Literary/essay feel.
