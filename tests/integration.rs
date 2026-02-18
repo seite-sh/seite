@@ -1869,3 +1869,53 @@ fn test_build_custom_template_with_blocks() {
     assert!(html.contains("custom-footer"), "should include footer block");
     assert!(html.contains("custom js"), "should include extra_js block");
 }
+
+// --- URL collision detection ---
+
+#[test]
+fn test_build_detects_url_collision() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collide", "Collide Site", "posts,pages");
+    let site_dir = tmp.path().join("collide");
+
+    // Create two content items that would resolve to the same URL
+    // A post with slug override matching a page URL
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-about.md"),
+        "---\ntitle: About Post\ndate: 2025-01-15\nslug: about\n---\nAbout as a post.",
+    )
+    .unwrap();
+    // Another post with the same slug
+    fs::write(
+        site_dir.join("content/posts/2025-01-16-about.md"),
+        "---\ntitle: About Post 2\ndate: 2025-01-16\nslug: about\n---\nAnother about.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("URL collision"));
+}
+
+#[test]
+fn test_build_warns_missing_content_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "missingdir", "Missing Dir", "posts,docs");
+    let site_dir = tmp.path().join("missingdir");
+
+    // Remove the docs content directory
+    let docs_dir = site_dir.join("content/docs");
+    if docs_dir.exists() {
+        fs::remove_dir_all(&docs_dir).unwrap();
+    }
+
+    // Build should still succeed (warning, not error)
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}

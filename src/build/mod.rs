@@ -202,6 +202,13 @@ pub fn build_site(
         let collection_dir = paths.content.join(&collection.directory);
         let mut items = Vec::new();
 
+        if !collection_dir.exists() {
+            tracing::warn!(
+                "Content directory '{}' for collection '{}' does not exist",
+                collection_dir.display(),
+                collection.name
+            );
+        }
         if collection_dir.exists() {
             for entry in WalkDir::new(&collection_dir)
                 .into_iter()
@@ -271,6 +278,23 @@ pub fn build_site(
         }
 
         all_collections.insert(collection.name.clone(), items);
+    }
+
+    // Detect URL collisions: if two content items resolve to the same URL, that's an error.
+    {
+        let mut url_map: HashMap<&str, &std::path::Path> = HashMap::new();
+        for items in all_collections.values() {
+            for item in items {
+                if let Some(existing) = url_map.insert(&item.url, &item.source_path) {
+                    return Err(PageError::Build(format!(
+                        "URL collision: '{}' is claimed by both '{}' and '{}'",
+                        item.url,
+                        existing.display(),
+                        item.source_path.display()
+                    )));
+                }
+            }
+        }
     }
 
     // Build translation map: (collection, slug) → Vec<TranslationLink>
