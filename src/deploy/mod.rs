@@ -1,26 +1,236 @@
+use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
+use std::net::TcpStream;
 use std::process::Command;
+use std::time::Duration;
 
-use crate::config::{ResolvedPaths, SiteConfig};
+use crate::config::{DeployTarget, ResolvedPaths, SiteConfig};
 use crate::error::{PageError, Result};
+use crate::output::human;
 
-pub fn deploy_github_pages(paths: &ResolvedPaths, repo: Option<&str>) -> Result<()> {
-    // Verify git is available
-    Command::new("git")
-        .arg("--version")
+// ---------------------------------------------------------------------------
+// Pre-flight checks (Feature 1)
+// ---------------------------------------------------------------------------
+
+/// Result of a single pre-flight check.
+pub struct PreflightCheck {
+    pub name: String,
+    pub passed: bool,
+    pub message: String,
+}
+
+/// Run all pre-flight checks for the given target. Returns a list of check results.
+/// If any check fails, the deploy should be aborted.
+pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Vec<PreflightCheck> {
+    let mut checks = Vec::new();
+
+    // 1. Output directory exists and is non-empty
+    checks.push(check_output_dir(paths));
+
+    // 2. base_url is not localhost
+    checks.push(check_base_url(config));
+
+    // 3. Target-specific checks
+    match target {
+        "github-pages" => {
+            checks.push(check_cli_available("git", &["--version"]));
+            checks.push(check_git_repo(paths));
+            checks.push(check_git_remote(paths, config.deploy.repo.as_deref()));
+        }
+        "cloudflare" => {
+            checks.push(check_cli_available("wrangler", &["--version"]));
+            checks.push(check_cloudflare_project(config, paths));
+        }
+        "netlify" => {
+            checks.push(check_cli_available("netlify", &["--version"]));
+        }
+        _ => {}
+    }
+
+    checks
+}
+
+fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
+    if !paths.output.exists() {
+        return PreflightCheck {
+            name: "Output directory".into(),
+            passed: false,
+            message: format!("{} does not exist — run `page build` first", paths.output.display()),
+        };
+    }
+    // Check non-empty
+    let has_files = fs::read_dir(&paths.output)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+    if !has_files {
+        return PreflightCheck {
+            name: "Output directory".into(),
+            passed: false,
+            message: format!("{} is empty — run `page build` first", paths.output.display()),
+        };
+    }
+    PreflightCheck {
+        name: "Output directory".into(),
+        passed: true,
+        message: format!("{}", paths.output.display()),
+    }
+}
+
+fn check_base_url(config: &SiteConfig) -> PreflightCheck {
+    let url = &config.site.base_url;
+    let is_localhost = url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0");
+    if is_localhost {
+        PreflightCheck {
+            name: "Base URL".into(),
+            passed: false,
+            message: format!(
+                "base_url is '{url}' — this will produce broken canonical/OG URLs in production. \
+                 Set site.base_url in page.toml to your production URL, or use `page deploy` with --base-url"
+            ),
+        }
+    } else {
+        PreflightCheck {
+            name: "Base URL".into(),
+            passed: true,
+            message: url.clone(),
+        }
+    }
+}
+
+fn check_cli_available(name: &str, args: &[&str]) -> PreflightCheck {
+    match Command::new(name).args(args).output() {
+        Ok(output) if output.status.success() => PreflightCheck {
+            name: format!("{name} CLI"),
+            passed: true,
+            message: String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("installed")
+                .trim()
+                .to_string(),
+        },
+        _ => PreflightCheck {
+            name: format!("{name} CLI"),
+            passed: false,
+            message: format!("{name} is not installed or not on PATH"),
+        },
+    }
+}
+
+fn check_git_repo(paths: &ResolvedPaths) -> PreflightCheck {
+    let is_git = paths.root.join(".git").exists()
+        || Command::new("git")
+            .args(["rev-parse", "--git-dir"])
+            .current_dir(&paths.root)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    if is_git {
+        PreflightCheck {
+            name: "Git repository".into(),
+            passed: true,
+            message: "detected".into(),
+        }
+    } else {
+        PreflightCheck {
+            name: "Git repository".into(),
+            passed: false,
+            message: "not a git repository — run `git init` first".into(),
+        }
+    }
+}
+
+fn check_git_remote(paths: &ResolvedPaths, configured_repo: Option<&str>) -> PreflightCheck {
+    if configured_repo.is_some() {
+        return PreflightCheck {
+            name: "Git remote".into(),
+            passed: true,
+            message: format!("configured: {}", configured_repo.unwrap()),
+        };
+    }
+    match Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&paths.root)
         .output()
-        .map_err(|_| PageError::Deploy("git is not installed".into()))?;
+    {
+        Ok(output) if output.status.success() => PreflightCheck {
+            name: "Git remote".into(),
+            passed: true,
+            message: format!("origin: {}", String::from_utf8_lossy(&output.stdout).trim()),
+        },
+        _ => PreflightCheck {
+            name: "Git remote".into(),
+            passed: false,
+            message: "no remote 'origin' — set deploy.repo in page.toml or run `git remote add origin <url>`".into(),
+        },
+    }
+}
 
+fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
+    if config.deploy.project.is_some() {
+        return PreflightCheck {
+            name: "Cloudflare project".into(),
+            passed: true,
+            message: format!("configured: {}", config.deploy.project.as_ref().unwrap()),
+        };
+    }
+    match detect_cloudflare_project(paths) {
+        Some(name) => PreflightCheck {
+            name: "Cloudflare project".into(),
+            passed: true,
+            message: format!("auto-detected: {name}"),
+        },
+        None => PreflightCheck {
+            name: "Cloudflare project".into(),
+            passed: false,
+            message: "no project name — set deploy.project in page.toml".into(),
+        },
+    }
+}
+
+/// Print pre-flight check results. Returns true if all passed.
+pub fn print_preflight(checks: &[PreflightCheck]) -> bool {
+    human::header("Pre-flight checks");
+    let mut all_passed = true;
+    for check in checks {
+        if check.passed {
+            println!("  {} {}: {}", console::style("✓").green(), check.name, check.message);
+        } else {
+            println!("  {} {}: {}", console::style("✗").red(), check.name, check.message);
+            all_passed = false;
+        }
+    }
+    println!();
+    all_passed
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Pages deploy (Feature 2: .nojekyll, CNAME, git identity)
+// ---------------------------------------------------------------------------
+
+pub fn deploy_github_pages(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    repo: Option<&str>,
+) -> Result<()> {
     let output_dir = &paths.output;
-    if !output_dir.exists() {
-        return Err(PageError::Deploy("output directory does not exist; run build first".into()));
+
+    // Write .nojekyll to prevent GitHub from running Jekyll
+    fs::write(output_dir.join(".nojekyll"), "")?;
+
+    // Write CNAME file if base_url is a custom domain (not github.io)
+    let base_url = &config.site.base_url;
+    if let Some(domain) = extract_custom_domain(base_url) {
+        if !domain.ends_with(".github.io") {
+            fs::write(output_dir.join("CNAME"), &domain)?;
+        }
     }
 
     // Determine repo URL
     let repo_url = match repo {
         Some(url) => url.to_string(),
         None => {
-            // Try to detect from parent git repo
             let output = Command::new("git")
                 .args(["remote", "get-url", "origin"])
                 .current_dir(&paths.root)
@@ -28,14 +238,15 @@ pub fn deploy_github_pages(paths: &ResolvedPaths, repo: Option<&str>) -> Result<
                 .map_err(|e| PageError::Deploy(format!("failed to detect git remote: {e}")))?;
             if !output.status.success() {
                 return Err(PageError::Deploy(
-                    "no repo URL provided and could not detect git remote. Set deploy.repo in page.toml or pass --target".into(),
+                    "no repo URL provided and could not detect git remote. \
+                     Set deploy.repo in page.toml"
+                        .into(),
                 ));
             }
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         }
     };
 
-    // Initialize a git repo in the output directory and push to gh-pages
     let run = |args: &[&str]| -> Result<()> {
         let output = Command::new("git")
             .args(args)
@@ -53,66 +264,71 @@ pub fn deploy_github_pages(paths: &ResolvedPaths, repo: Option<&str>) -> Result<
     };
 
     run(&["init"])?;
+
+    // Set git identity so commits don't fail in fresh environments
+    run(&["config", "user.email", "page-deploy@localhost"])?;
+    run(&["config", "user.name", "page deploy"])?;
+
     run(&["checkout", "-b", "gh-pages"])?;
     run(&["add", "-A"])?;
-    run(&["commit", "-m", "Deploy"])?;
+
+    // Include timestamp in commit message
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+    let commit_msg = format!("Deploy {timestamp}");
+    run(&["commit", "-m", &commit_msg])?;
     run(&["push", "--force", &repo_url, "gh-pages"])?;
 
     Ok(())
 }
 
-pub fn deploy_cloudflare(paths: &ResolvedPaths, project: &str) -> Result<()> {
+// ---------------------------------------------------------------------------
+// Cloudflare deploy (Feature 4: preview support)
+// ---------------------------------------------------------------------------
+
+pub fn deploy_cloudflare(
+    paths: &ResolvedPaths,
+    project: &str,
+    preview: bool,
+) -> Result<Option<String>> {
     let output_dir = &paths.output;
-    if !output_dir.exists() {
-        return Err(PageError::Deploy("output directory does not exist; run build first".into()));
+
+    let mut args = vec![
+        "pages".to_string(),
+        "deploy".to_string(),
+        output_dir.to_str().unwrap_or("dist").to_string(),
+        "--project-name".to_string(),
+        project.to_string(),
+    ];
+    if preview {
+        args.push("--branch".to_string());
+        args.push("preview".to_string());
     }
 
-    // Check if wrangler is available
-    let wrangler_check = Command::new("wrangler")
-        .arg("--version")
-        .output();
+    let output = Command::new("wrangler")
+        .args(&args)
+        .output()
+        .map_err(|e| PageError::Deploy(format!("wrangler failed: {e}")))?;
 
-    match wrangler_check {
-        Ok(output) if output.status.success() => {
-            let result = Command::new("wrangler")
-                .args([
-                    "pages",
-                    "deploy",
-                    output_dir.to_str().unwrap_or("dist"),
-                    "--project-name",
-                    project,
-                ])
-                .status()
-                .map_err(|e| PageError::Deploy(format!("wrangler failed: {e}")))?;
-            if !result.success() {
-                return Err(PageError::Deploy(format!(
-                    "wrangler pages deploy failed for project '{project}'. \
-                     Ensure the project exists in your Cloudflare account. \
-                     Create it at https://dash.cloudflare.com/ or run: \
-                     wrangler pages project create {project}"
-                )));
-            }
-            Ok(())
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(PageError::Deploy(format!(
-                "wrangler CLI returned an error: {stderr}\n\
-                 Ensure wrangler is properly installed and authenticated.\n\
-                 Install: npm install -g wrangler\n\
-                 Auth:    wrangler login"
-            )))
-        }
-        Err(_) => Err(PageError::Deploy(
-            "wrangler CLI is not installed. Install it with:\n  npm install -g wrangler\n\
-             Then authenticate with:\n  wrangler login".into(),
-        )),
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(PageError::Deploy(format!(
+            "wrangler pages deploy failed for project '{project}': {stderr}\n\
+             Ensure the project exists. Create it at https://dash.cloudflare.com/ or run:\n  \
+             wrangler pages project create {project}"
+        )));
     }
+
+    // Try to extract the deploy URL from wrangler output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Print wrangler's output
+    print!("{stdout}");
+
+    let deploy_url = extract_url_from_output(&stdout);
+    Ok(deploy_url)
 }
 
 /// Try to auto-detect the Cloudflare project name from wrangler.toml or the directory name.
 pub fn detect_cloudflare_project(paths: &ResolvedPaths) -> Option<String> {
-    // Try wrangler.toml first
     let wrangler_path = paths.root.join("wrangler.toml");
     if wrangler_path.exists() {
         if let Ok(content) = fs::read_to_string(&wrangler_path) {
@@ -129,69 +345,307 @@ pub fn detect_cloudflare_project(paths: &ResolvedPaths) -> Option<String> {
             }
         }
     }
-
-    // Fall back to directory name
-    paths.root.file_name()
+    paths
+        .root
+        .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
 }
 
-pub fn deploy_netlify(paths: &ResolvedPaths, site_id: Option<&str>) -> Result<()> {
+// ---------------------------------------------------------------------------
+// Netlify deploy (Feature 4: preview support)
+// ---------------------------------------------------------------------------
+
+pub fn deploy_netlify(
+    paths: &ResolvedPaths,
+    site_id: Option<&str>,
+    preview: bool,
+) -> Result<Option<String>> {
     let output_dir = &paths.output;
-    if !output_dir.exists() {
-        return Err(PageError::Deploy("output directory does not exist; run build first".into()));
+
+    let mut args = vec!["deploy", "--dir", output_dir.to_str().unwrap_or("dist")];
+    if !preview {
+        args.push("--prod");
+    }
+    if let Some(id) = site_id {
+        args.push("--site");
+        args.push(id);
+    }
+    // Request JSON output for URL extraction
+    args.push("--json");
+
+    let output = Command::new("netlify")
+        .args(&args)
+        .output()
+        .map_err(|e| PageError::Deploy(format!("netlify deploy failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(PageError::Deploy(format!(
+            "netlify deploy failed: {stderr}\n\
+             Ensure you are logged in (netlify login) and the site exists.\n  \
+             Link to an existing site: netlify link"
+        )));
     }
 
-    // Check if netlify CLI is available
-    let netlify_check = Command::new("netlify")
-        .arg("--version")
-        .output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    match netlify_check {
-        Ok(output) if output.status.success() => {
-            let mut args = vec![
-                "deploy",
-                "--prod",
-                "--dir",
-                output_dir.to_str().unwrap_or("dist"),
-            ];
-            if let Some(id) = site_id {
-                args.push("--site");
-                args.push(id);
-            }
+    // Try to parse JSON output for the deploy URL
+    let deploy_url = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if preview {
+            json.get("deploy_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        } else {
+            json.get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        }
+    } else {
+        extract_url_from_output(&stdout)
+    };
 
-            let result = Command::new("netlify")
-                .args(&args)
-                .status()
-                .map_err(|e| PageError::Deploy(format!("netlify deploy failed: {e}")))?;
-            if !result.success() {
-                return Err(PageError::Deploy(
-                    "netlify deploy failed. Ensure you are logged in (netlify login) \
-                     and the site exists. You can link to an existing site with: \
-                     netlify link".into(),
-                ));
-            }
-            Ok(())
+    // Print a summary instead of raw JSON
+    if let Some(ref url) = deploy_url {
+        if preview {
+            human::info(&format!("Preview URL: {url}"));
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(PageError::Deploy(format!(
-                "netlify CLI returned an error: {stderr}\n\
-                 Ensure netlify-cli is properly installed and authenticated.\n\
-                 Install: npm install -g netlify-cli\n\
-                 Auth:    netlify login"
-            )))
-        }
-        Err(_) => Err(PageError::Deploy(
-            "netlify CLI is not installed. Install it with:\n  npm install -g netlify-cli\n\
-             Then authenticate with:\n  netlify login".into(),
-        )),
     }
+
+    Ok(deploy_url)
 }
+
+// ---------------------------------------------------------------------------
+// base_url lifecycle management (Feature 3)
+// ---------------------------------------------------------------------------
+
+/// Build the site with a temporary base_url override without modifying page.toml.
+/// Returns the base_url that was used.
+pub fn resolve_deploy_base_url(config: &SiteConfig, override_url: Option<&str>) -> String {
+    if let Some(url) = override_url {
+        return url.trim_end_matches('/').to_string();
+    }
+    config.site.base_url.trim_end_matches('/').to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Deploy init — guided setup (Feature 5)
+// ---------------------------------------------------------------------------
+
+pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
+    // Check if gh CLI is available for repo creation
+    let has_gh = Command::new("gh")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    // Ensure git repo exists
+    if !paths.root.join(".git").exists() {
+        human::info("Initializing git repository...");
+        let output = Command::new("git")
+            .args(["init"])
+            .current_dir(&paths.root)
+            .output()
+            .map_err(|e| PageError::Deploy(format!("git init failed: {e}")))?;
+        if !output.status.success() {
+            return Err(PageError::Deploy("git init failed".into()));
+        }
+    }
+
+    // Check for remote
+    let has_remote = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&paths.root)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_remote && has_gh {
+        human::info("Creating GitHub repository...");
+        // Get directory name for repo name
+        let repo_name = paths
+            .root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("my-site");
+
+        let result = Command::new("gh")
+            .args([
+                "repo",
+                "create",
+                repo_name,
+                "--public",
+                "--source",
+                ".",
+                "--push",
+            ])
+            .current_dir(&paths.root)
+            .status()
+            .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
+
+        if !result.success() {
+            human::warning("Could not create GitHub repository automatically.");
+            human::info("Create one manually at https://github.com/new and run:");
+            human::info("  git remote add origin <your-repo-url>");
+        }
+    } else if !has_remote {
+        human::warning("No remote 'origin' found and `gh` CLI not available.");
+        human::info("To set up GitHub Pages:");
+        human::info("  1. Create a repo at https://github.com/new");
+        human::info("  2. git remote add origin <your-repo-url>");
+        human::info("  3. Install gh CLI (optional): https://cli.github.com/");
+    }
+
+    // Enable GitHub Pages via gh if available
+    if has_gh {
+        // Try to enable Pages — this may fail if already enabled, that's fine
+        let _ = Command::new("gh")
+            .args([
+                "api",
+                "repos/{owner}/{repo}/pages",
+                "-X",
+                "POST",
+                "-f",
+                "build_type=workflow",
+            ])
+            .current_dir(&paths.root)
+            .output();
+    }
+
+    // Generate workflow file
+    let workflow_dir = paths.root.join(".github/workflows");
+    fs::create_dir_all(&workflow_dir)?;
+
+    Ok("github-pages".to_string())
+}
+
+pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
+    // Check wrangler
+    let has_wrangler = Command::new("wrangler")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_wrangler {
+        return Err(PageError::Deploy(
+            "wrangler CLI is required for Cloudflare deployment.\n  \
+             Install: npm install -g wrangler\n  \
+             Then:    wrangler login"
+                .into(),
+        ));
+    }
+
+    // Check login status
+    let whoami = Command::new("wrangler")
+        .args(["whoami"])
+        .output()
+        .map_err(|e| PageError::Deploy(format!("wrangler whoami failed: {e}")))?;
+
+    if !whoami.status.success() {
+        human::info("Logging in to Cloudflare...");
+        let login = Command::new("wrangler")
+            .args(["login"])
+            .status()
+            .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
+        if !login.success() {
+            return Err(PageError::Deploy("wrangler login failed".into()));
+        }
+    }
+
+    // Try to create the project
+    let project_name = paths
+        .root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("my-site")
+        .to_string();
+
+    human::info(&format!(
+        "Creating Cloudflare Pages project '{project_name}'..."
+    ));
+    let result = Command::new("wrangler")
+        .args(["pages", "project", "create", &project_name, "--production-branch", "main"])
+        .status()
+        .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
+
+    if !result.success() {
+        human::warning(&format!(
+            "Could not create project '{project_name}' — it may already exist (which is fine)."
+        ));
+    }
+
+    Ok(project_name)
+}
+
+pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
+    let has_netlify = Command::new("netlify")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_netlify {
+        return Err(PageError::Deploy(
+            "netlify CLI is required for Netlify deployment.\n  \
+             Install: npm install -g netlify-cli\n  \
+             Then:    netlify login"
+                .into(),
+        ));
+    }
+
+    // Check login
+    let status = Command::new("netlify")
+        .args(["status"])
+        .output()
+        .map_err(|e| PageError::Deploy(format!("netlify status failed: {e}")))?;
+
+    if !status.status.success() {
+        human::info("Logging in to Netlify...");
+        let login = Command::new("netlify")
+            .args(["login"])
+            .status()
+            .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
+        if !login.success() {
+            return Err(PageError::Deploy("netlify login failed".into()));
+        }
+    }
+
+    // Create a new site
+    let site_name = paths
+        .root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("my-site")
+        .to_string();
+
+    human::info(&format!("Creating Netlify site '{site_name}'..."));
+    let output = Command::new("netlify")
+        .args(["sites:create", "--name", &site_name])
+        .output()
+        .map_err(|e| PageError::Deploy(format!("netlify sites:create failed: {e}")))?;
+
+    if !output.status.success() {
+        human::warning("Could not create Netlify site — it may already exist or the name is taken.");
+        human::info("You can link to an existing site with: netlify link");
+    }
+
+    // Link the site
+    let _ = Command::new("netlify")
+        .args(["link", "--name", &site_name])
+        .current_dir(&paths.root)
+        .status();
+
+    Ok(site_name)
+}
+
+// ---------------------------------------------------------------------------
+// CI workflow generation for all targets (Feature 6)
+// ---------------------------------------------------------------------------
 
 /// Generate a GitHub Actions workflow YAML for building and deploying with GitHub Pages.
 pub fn generate_github_actions_workflow(config: &SiteConfig) -> String {
-    let rust_version = "1.75";
     let output_dir = &config.build.output_dir;
     format!(
         r#"name: Deploy to GitHub Pages
@@ -218,8 +672,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: {rust_version}
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -255,4 +707,670 @@ jobs:
         uses: actions/deploy-pages@v4
 "#
     )
+}
+
+/// Generate a GitHub Actions workflow for Cloudflare Pages deployment.
+pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
+    let output_dir = &config.build.output_dir;
+    let project = config
+        .deploy
+        .project
+        .as_deref()
+        .unwrap_or("your-project-name");
+    format!(
+        r#"name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
+
+      - name: Install page
+        run: cargo install --path .
+
+      - name: Build site
+        run: page build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{{{ secrets.CLOUDFLARE_API_TOKEN }}}}
+          accountId: ${{{{ secrets.CLOUDFLARE_ACCOUNT_ID }}}}
+          command: pages deploy {output_dir} --project-name {project}
+"#
+    )
+}
+
+/// Generate a Netlify configuration file (netlify.toml).
+pub fn generate_netlify_config(config: &SiteConfig) -> String {
+    let output_dir = &config.build.output_dir;
+    format!(
+        r#"[build]
+  command = "cargo install --path . && page build"
+  publish = "{output_dir}"
+
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
+"#
+    )
+}
+
+/// Generate a GitHub Actions workflow for Netlify deployment.
+pub fn generate_netlify_workflow(config: &SiteConfig) -> String {
+    let output_dir = &config.build.output_dir;
+    format!(
+        r#"name: Deploy to Netlify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
+
+      - name: Install page
+        run: cargo install --path .
+
+      - name: Build site
+        run: page build
+
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v3
+        with:
+          publish-dir: {output_dir}
+          production-deploy: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{{{ secrets.NETLIFY_AUTH_TOKEN }}}}
+          NETLIFY_SITE_ID: ${{{{ secrets.NETLIFY_SITE_ID }}}}
+"#
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Custom domain helper (Feature 7)
+// ---------------------------------------------------------------------------
+
+/// DNS instructions for setting up a custom domain.
+pub struct DomainSetup {
+    pub domain: String,
+    pub target: String,
+    pub dns_records: Vec<DnsRecord>,
+    pub notes: Vec<String>,
+}
+
+pub struct DnsRecord {
+    pub record_type: String,
+    pub name: String,
+    pub value: String,
+}
+
+pub fn domain_setup_instructions(
+    domain: &str,
+    target: &DeployTarget,
+    config: &SiteConfig,
+) -> DomainSetup {
+    let is_apex = !domain.contains('.') || domain.matches('.').count() == 1;
+    let subdomain = if is_apex { "www" } else { domain.split('.').next().unwrap_or("www") };
+
+    match target {
+        DeployTarget::GithubPages => {
+            let mut records = vec![];
+            if is_apex {
+                // GitHub Pages requires A records for apex domains
+                for ip in &[
+                    "185.199.108.153",
+                    "185.199.109.153",
+                    "185.199.110.153",
+                    "185.199.111.153",
+                ] {
+                    records.push(DnsRecord {
+                        record_type: "A".into(),
+                        name: "@".into(),
+                        value: ip.to_string(),
+                    });
+                }
+            }
+            // CNAME for www or subdomain
+            let repo_owner = detect_github_username(&config.deploy);
+            let gh_domain = format!("{}.github.io", repo_owner.unwrap_or_else(|| "<username>".into()));
+            records.push(DnsRecord {
+                record_type: "CNAME".into(),
+                name: subdomain.into(),
+                value: gh_domain,
+            });
+            DomainSetup {
+                domain: domain.into(),
+                target: "GitHub Pages".into(),
+                dns_records: records,
+                notes: vec![
+                    "A CNAME file will be automatically created in your deploy output.".into(),
+                    "GitHub will provision an SSL certificate automatically (may take up to 24h).".into(),
+                    "Enable 'Enforce HTTPS' in your repo Settings > Pages after DNS propagates.".into(),
+                ],
+            }
+        }
+        DeployTarget::Cloudflare => {
+            let project = config.deploy.project.as_deref().unwrap_or("<project-name>");
+            let mut records = vec![DnsRecord {
+                record_type: "CNAME".into(),
+                name: if is_apex { "@".into() } else { subdomain.into() },
+                value: format!("{project}.pages.dev"),
+            }];
+            if is_apex {
+                records.push(DnsRecord {
+                    record_type: "CNAME".into(),
+                    name: "www".into(),
+                    value: format!("{project}.pages.dev"),
+                });
+            }
+            DomainSetup {
+                domain: domain.into(),
+                target: "Cloudflare Pages".into(),
+                dns_records: records,
+                notes: vec![
+                    "If your domain is already on Cloudflare, add the custom domain in the Pages project settings.".into(),
+                    format!("Run: wrangler pages project update {project} to configure the custom domain."),
+                    "SSL is automatic when using Cloudflare DNS.".into(),
+                ],
+            }
+        }
+        DeployTarget::Netlify => {
+            let site_name = config.deploy.project.as_deref().unwrap_or("<site-name>");
+            let records = vec![DnsRecord {
+                record_type: "CNAME".into(),
+                name: if is_apex { "@".into() } else { subdomain.into() },
+                value: format!("{site_name}.netlify.app"),
+            }];
+            DomainSetup {
+                domain: domain.into(),
+                target: "Netlify".into(),
+                dns_records: records,
+                notes: vec![
+                    format!("Add the domain in Netlify dashboard or run: netlify domains:add {domain}"),
+                    "Netlify provisions SSL certificates automatically.".into(),
+                    "For apex domains, consider using Netlify DNS for best results.".into(),
+                ],
+            }
+        }
+    }
+}
+
+/// Print domain setup instructions.
+pub fn print_domain_setup(setup: &DomainSetup) {
+    human::header(&format!("Domain setup for {} ({})", setup.domain, setup.target));
+
+    println!("\n  Add these DNS records at your domain registrar:\n");
+    println!(
+        "  {:<8} {:<20} {}",
+        "Type", "Name", "Value"
+    );
+    println!("  {}", "-".repeat(60));
+    for record in &setup.dns_records {
+        println!(
+            "  {:<8} {:<20} {}",
+            record.record_type, record.name, record.value
+        );
+    }
+    println!();
+    for note in &setup.notes {
+        human::info(&format!("  {note}"));
+    }
+    println!();
+}
+
+fn detect_github_username(deploy: &crate::config::DeploySection) -> Option<String> {
+    if let Some(ref repo) = deploy.repo {
+        // Parse from URL: https://github.com/user/repo or git@github.com:user/repo
+        if let Some(rest) = repo.strip_prefix("https://github.com/") {
+            return rest.split('/').next().map(|s| s.to_string());
+        }
+        if let Some(rest) = repo.strip_prefix("git@github.com:") {
+            return rest.split('/').next().map(|s| s.to_string());
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Post-deploy verification (Feature 8)
+// ---------------------------------------------------------------------------
+
+/// Verify a deployment by checking if the URL responds with 200 and has expected content.
+pub fn verify_deployment(url: &str) -> Vec<VerifyResult> {
+    let mut results = Vec::new();
+
+    // Check 1: HTTP connectivity (basic TCP + HTTP check)
+    results.push(verify_http(url));
+
+    // Check 2: Check /robots.txt exists
+    let robots_url = format!("{}/robots.txt", url.trim_end_matches('/'));
+    results.push(verify_url_reachable(&robots_url, "robots.txt"));
+
+    // Check 3: Check /sitemap.xml exists
+    let sitemap_url = format!("{}/sitemap.xml", url.trim_end_matches('/'));
+    results.push(verify_url_reachable(&sitemap_url, "sitemap.xml"));
+
+    // Check 4: Check /llms.txt exists
+    let llms_url = format!("{}/llms.txt", url.trim_end_matches('/'));
+    results.push(verify_url_reachable(&llms_url, "llms.txt"));
+
+    results
+}
+
+pub struct VerifyResult {
+    pub check: String,
+    pub passed: bool,
+    pub message: String,
+}
+
+fn verify_http(url: &str) -> VerifyResult {
+    // Use a minimal HTTP/1.1 GET via TcpStream (no external HTTP crate needed)
+    let parsed = parse_url_for_http(url);
+    match parsed {
+        Some((host, port, path)) => {
+            match TcpStream::connect_timeout(
+                &format!("{host}:{port}").parse().unwrap_or_else(|_| {
+                    std::net::SocketAddr::from(([127, 0, 0, 1], 80))
+                }),
+                Duration::from_secs(10),
+            ) {
+                Ok(mut stream) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+                    let request = format!(
+                        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: page-deploy-verify/1.0\r\n\r\n"
+                    );
+                    if stream.write_all(request.as_bytes()).is_err() {
+                        return VerifyResult {
+                            check: "Homepage".into(),
+                            passed: false,
+                            message: "failed to send HTTP request".into(),
+                        };
+                    }
+                    let mut response = Vec::new();
+                    let _ = std::io::Read::read_to_end(&mut stream, &mut response);
+                    let response_str = String::from_utf8_lossy(&response);
+                    if let Some(status_line) = response_str.lines().next() {
+                        if status_line.contains("200") {
+                            VerifyResult {
+                                check: "Homepage".into(),
+                                passed: true,
+                                message: format!("{url} -> 200 OK"),
+                            }
+                        } else {
+                            VerifyResult {
+                                check: "Homepage".into(),
+                                passed: false,
+                                message: format!("{url} -> {status_line}"),
+                            }
+                        }
+                    } else {
+                        VerifyResult {
+                            check: "Homepage".into(),
+                            passed: false,
+                            message: "empty response".into(),
+                        }
+                    }
+                }
+                Err(e) => VerifyResult {
+                    check: "Homepage".into(),
+                    passed: false,
+                    message: format!("connection failed: {e} (DNS may not have propagated yet)"),
+                },
+            }
+        }
+        None => VerifyResult {
+            check: "Homepage".into(),
+            passed: false,
+            message: format!("could not parse URL: {url}"),
+        },
+    }
+}
+
+fn verify_url_reachable(url: &str, label: &str) -> VerifyResult {
+    let parsed = parse_url_for_http(url);
+    match parsed {
+        Some((host, port, path)) => {
+            let addr_str = format!("{host}:{port}");
+            match addr_str.parse::<std::net::SocketAddr>() {
+                Ok(addr) => match TcpStream::connect_timeout(&addr, Duration::from_secs(10)) {
+                    Ok(mut stream) => {
+                        let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+                        let request = format!(
+                            "HEAD {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: page-deploy-verify/1.0\r\n\r\n"
+                        );
+                        if stream.write_all(request.as_bytes()).is_err() {
+                            return VerifyResult {
+                                check: label.into(),
+                                passed: false,
+                                message: "request failed".into(),
+                            };
+                        }
+                        let mut response = Vec::new();
+                        let _ = std::io::Read::read_to_end(&mut stream, &mut response);
+                        let response_str = String::from_utf8_lossy(&response);
+                        if let Some(status_line) = response_str.lines().next() {
+                            if status_line.contains("200") {
+                                VerifyResult {
+                                    check: label.into(),
+                                    passed: true,
+                                    message: "reachable".into(),
+                                }
+                            } else {
+                                VerifyResult {
+                                    check: label.into(),
+                                    passed: false,
+                                    message: format!("returned {status_line}"),
+                                }
+                            }
+                        } else {
+                            VerifyResult {
+                                check: label.into(),
+                                passed: false,
+                                message: "empty response".into(),
+                            }
+                        }
+                    }
+                    Err(_) => VerifyResult {
+                        check: label.into(),
+                        passed: false,
+                        message: "connection failed".into(),
+                    },
+                },
+                Err(_) => {
+                    // DNS resolution needed — skip verification for non-IP hosts
+                    VerifyResult {
+                        check: label.into(),
+                        passed: true,
+                        message: "skipped (DNS resolution required)".into(),
+                    }
+                }
+            }
+        }
+        None => VerifyResult {
+            check: label.into(),
+            passed: false,
+            message: "invalid URL".into(),
+        },
+    }
+}
+
+pub fn print_verification(results: &[VerifyResult]) {
+    human::header("Post-deploy verification");
+    for r in results {
+        if r.passed {
+            println!("  {} {}: {}", console::style("✓").green(), r.check, r.message);
+        } else {
+            println!("  {} {}: {}", console::style("✗").yellow(), r.check, r.message);
+        }
+    }
+    println!();
+}
+
+// ---------------------------------------------------------------------------
+// Config update helpers
+// ---------------------------------------------------------------------------
+
+/// Update page.toml with deploy settings (target, project, domain).
+pub fn update_deploy_config(
+    config_path: &std::path::Path,
+    updates: &HashMap<String, String>,
+) -> Result<()> {
+    let contents = fs::read_to_string(config_path)?;
+    let mut doc: toml::Table =
+        contents.parse().map_err(|e: toml::de::Error| PageError::ConfigInvalid {
+            message: e.to_string(),
+        })?;
+
+    // Ensure [deploy] section exists
+    if !doc.contains_key("deploy") {
+        doc.insert("deploy".into(), toml::Value::Table(toml::Table::new()));
+    }
+
+    if let Some(deploy) = doc.get_mut("deploy").and_then(|v| v.as_table_mut()) {
+        for (key, value) in updates {
+            deploy.insert(key.clone(), toml::Value::String(value.clone()));
+        }
+    }
+
+    // Update base_url if provided
+    if let Some(base_url) = updates.get("base_url") {
+        if let Some(site) = doc.get_mut("site").and_then(|v| v.as_table_mut()) {
+            site.insert("base_url".into(), toml::Value::String(base_url.clone()));
+        }
+    }
+
+    let new_contents = toml::to_string_pretty(&doc).map_err(|e| PageError::ConfigInvalid {
+        message: e.to_string(),
+    })?;
+    fs::write(config_path, new_contents)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+
+/// Extract a domain from a URL (e.g., "https://example.com/path" -> "example.com").
+pub fn extract_custom_domain(url: &str) -> Option<String> {
+    let without_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let domain = without_scheme.split('/').next()?;
+    let domain = domain.split(':').next()?; // Strip port
+    if domain.is_empty() {
+        None
+    } else {
+        Some(domain.to_string())
+    }
+}
+
+/// Try to extract a URL from command output (e.g., wrangler deploy output).
+fn extract_url_from_output(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("https://") {
+            return Some(trimmed.to_string());
+        }
+        // Look for "URL: https://..." patterns
+        if let Some(pos) = trimmed.find("https://") {
+            let url = &trimmed[pos..];
+            let end = url.find(|c: char| c.is_whitespace()).unwrap_or(url.len());
+            return Some(url[..end].to_string());
+        }
+    }
+    None
+}
+
+/// Parse a URL into (host, port, path) for raw TCP connections.
+fn parse_url_for_http(url: &str) -> Option<(String, u16, String)> {
+    let (scheme, rest) = if let Some(r) = url.strip_prefix("https://") {
+        ("https", r)
+    } else if let Some(r) = url.strip_prefix("http://") {
+        ("http", r)
+    } else {
+        return None;
+    };
+
+    let default_port: u16 = if scheme == "https" { 443 } else { 80 };
+    let (host_port, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+
+    let (host, port) = match host_port.rfind(':') {
+        Some(i) => {
+            let port_str = &host_port[i + 1..];
+            match port_str.parse::<u16>() {
+                Ok(p) => (host_port[..i].to_string(), p),
+                Err(_) => (host_port.to_string(), default_port),
+            }
+        }
+        None => (host_port.to_string(), default_port),
+    };
+
+    Some((host, port, path.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_custom_domain() {
+        assert_eq!(
+            extract_custom_domain("https://example.com"),
+            Some("example.com".into())
+        );
+        assert_eq!(
+            extract_custom_domain("https://blog.example.com/path"),
+            Some("blog.example.com".into())
+        );
+        assert_eq!(
+            extract_custom_domain("http://localhost:3000"),
+            Some("localhost".into())
+        );
+        assert_eq!(extract_custom_domain("not-a-url"), None);
+    }
+
+    #[test]
+    fn test_extract_url_from_output() {
+        let output = "Uploading...\nhttps://abc123.pages.dev\nDone!";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://abc123.pages.dev".into())
+        );
+
+        let output2 = "Deploy URL: https://example.netlify.app done";
+        assert_eq!(
+            extract_url_from_output(output2),
+            Some("https://example.netlify.app".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_url_for_http() {
+        let (host, port, path) = parse_url_for_http("https://example.com/robots.txt").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/robots.txt");
+
+        let (host, port, path) = parse_url_for_http("http://localhost:3000/test").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 3000);
+        assert_eq!(path, "/test");
+    }
+
+    #[test]
+    fn test_resolve_deploy_base_url() {
+        let config = SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: "http://localhost:3000".into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+        };
+
+        // Override takes precedence
+        assert_eq!(
+            resolve_deploy_base_url(&config, Some("https://example.com/")),
+            "https://example.com"
+        );
+
+        // Falls back to config
+        assert_eq!(
+            resolve_deploy_base_url(&config, None),
+            "http://localhost:3000"
+        );
+    }
+
+    #[test]
+    fn test_check_base_url_localhost() {
+        let config = SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: "http://localhost:3000".into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+        };
+        let check = check_base_url(&config);
+        assert!(!check.passed);
+    }
+
+    #[test]
+    fn test_check_base_url_production() {
+        let config = SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: "https://example.com".into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+        };
+        let check = check_base_url(&config);
+        assert!(check.passed);
+    }
 }
