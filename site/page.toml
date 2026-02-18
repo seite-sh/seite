@@ -6,17 +6,6 @@ language = "en"
 author = ""
 
 [[collections]]
-name = "posts"
-label = "Posts"
-directory = "posts"
-has_date = true
-has_rss = true
-listed = true
-url_prefix = "/posts"
-nested = false
-default_template = "post.html"
-
-[[collections]]
 name = "docs"
 label = "Documentation"
 directory = "docs"
