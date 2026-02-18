@@ -75,6 +75,7 @@
             --nav-logo:        #ffffff;
             --item-border:     rgba(255,255,255,0.04);
             --separator:       rgba(255,255,255,0.15);
+            --code-color:      #00ff87;
             --scrollbar-thumb: #222222;
             --radius-sm:       5px;
             --radius:          10px;
@@ -92,10 +93,10 @@
             --border-light:    rgba(0,0,0,0.15);
             --text:            #374151;
             --text-muted:      #6b7280;
-            --text-dim:        #9ca3af;
-            --green:           #059669;
-            --green-dim:       rgba(5,150,105,0.08);
-            --green-border:    rgba(5,150,105,0.22);
+            --text-dim:        #71717a;
+            --green:           #047857;
+            --green-dim:       rgba(4,120,87,0.08);
+            --green-border:    rgba(4,120,87,0.22);
             --blue:            #2563eb;
             --heading:         #111827;
             --heading-sub:     #374151;
@@ -104,6 +105,7 @@
             --nav-logo:        #111827;
             --item-border:     rgba(0,0,0,0.05);
             --separator:       rgba(0,0,0,0.12);
+            --code-color:      #065f46;
             --scrollbar-thumb: #d1d5db;
         }
 
@@ -294,7 +296,7 @@
             border: 1px solid var(--border-light);
             padding: 0.15em 0.4em;
             border-radius: 4px;
-            color: var(--green);
+            color: var(--code-color);
         }
         .article-wrap .content pre {
             background: var(--bg-raised);
@@ -309,7 +311,7 @@
             border: none;
             padding: 0;
             font-size: 0.875rem;
-            color: var(--text);
+            color: var(--heading);
         }
         .article-wrap .content ul, .article-wrap .content ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
         .article-wrap .content li { margin-bottom: 0.35rem; }
@@ -395,7 +397,7 @@
             border: 1px solid var(--border-light);
             padding: 0.15em 0.4em;
             border-radius: 4px;
-            color: var(--green);
+            color: var(--code-color);
         }
         .docs-main .content pre {
             background: var(--bg-raised);
@@ -410,7 +412,7 @@
             border: none;
             padding: 0;
             font-size: 0.875rem;
-            color: var(--text);
+            color: var(--heading);
         }
         .docs-main .content ul, .docs-main .content ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
         .docs-main .content li { margin-bottom: 0.35rem; }
@@ -1012,7 +1014,50 @@
     .doc-nav-next { text-align: right; }
     .doc-nav-placeholder { visibility: hidden; }
 
+    /* ── Right-column TOC ── */
+    .docs-layout { max-width: 1280px; }
+    .docs-toc {
+        width: var(--toc-w);
+        flex-shrink: 0;
+        padding: 2.5rem 0 2rem 2rem;
+        position: sticky;
+        top: 56px;
+        height: calc(100vh - 56px);
+        overflow-y: auto;
+    }
+    .docs-toc::-webkit-scrollbar { width: 3px; }
+    .docs-toc::-webkit-scrollbar-track { background: transparent; }
+    .docs-toc::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+    .docs-toc h4 {
+        font-family: var(--geist);
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+        margin-bottom: 0.65rem;
+        font-weight: 600;
+    }
+    .docs-toc ul { list-style: none; }
+    .docs-toc li { margin-bottom: 0.15rem; }
+    .docs-toc a {
+        font-family: var(--geist);
+        color: var(--text-dim);
+        font-size: 0.76rem;
+        text-decoration: none;
+        display: block;
+        padding: 0.2rem 0;
+        transition: color 0.12s;
+        line-height: 1.4;
+    }
+    .docs-toc a:hover { color: var(--green); text-decoration: none; }
+    .docs-toc a.toc-active { color: var(--green); }
+    .docs-toc .toc-level-3 { padding-left: 0.9rem; }
+    .docs-toc .toc-level-4 { padding-left: 1.8rem; }
+
     /* ── Responsive ── */
+    @media (max-width: 1200px) {
+        .docs-toc { display: none; }
+    }
     @media (max-width: 900px) {
         .docs-sidebar { width: 260px; }
         .docs-main { padding-left: 1rem; }
@@ -1109,23 +1154,6 @@
         <article>
             <h1>Multi-Language</h1>
             <p class="doc-description">Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.</p>
-            
-            <nav class="toc" aria-label="Table of contents">
-                <h4>On this page</h4>
-                <ul>
-                <li class="toc-level-2"><a href="#overview">Overview</a></li>
-                <li class="toc-level-2"><a href="#how-it-works">How It Works</a></li>
-                <li class="toc-level-2"><a href="#configuration">Configuration</a></li>
-                <li class="toc-level-2"><a href="#creating-translations">Creating Translations</a></li>
-                <li class="toc-level-2"><a href="#per-language-output">Per-Language Output</a></li>
-                <li class="toc-level-2"><a href="#url-structure">URL Structure</a></li>
-                <li class="toc-level-2"><a href="#hreflang-tags">hreflang Tags</a></li>
-                <li class="toc-level-2"><a href="#language-switcher">Language Switcher</a></li>
-                <li class="toc-level-2"><a href="#template-variables">Template Variables</a></li>
-                <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
-                </ul>
-            </nav>
-            
             <div class="content"><h2 id="overview">Overview</h2>
 <p><code>page</code> uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.</p>
 <div class="callout callout-info">
@@ -1331,6 +1359,25 @@ about.xx.md   → Ignored (xx not configured)
         
         
     </div>
+    
+    <aside class="docs-toc" aria-label="On this page">
+        <nav>
+            <h4>On this page</h4>
+            <ul>
+            <li class="toc-level-2"><a href="#overview">Overview</a></li>
+            <li class="toc-level-2"><a href="#how-it-works">How It Works</a></li>
+            <li class="toc-level-2"><a href="#configuration">Configuration</a></li>
+            <li class="toc-level-2"><a href="#creating-translations">Creating Translations</a></li>
+            <li class="toc-level-2"><a href="#per-language-output">Per-Language Output</a></li>
+            <li class="toc-level-2"><a href="#url-structure">URL Structure</a></li>
+            <li class="toc-level-2"><a href="#hreflang-tags">hreflang Tags</a></li>
+            <li class="toc-level-2"><a href="#language-switcher">Language Switcher</a></li>
+            <li class="toc-level-2"><a href="#template-variables">Template Variables</a></li>
+            <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
+            </ul>
+        </nav>
+    </aside>
+    
 </div>
 
 
@@ -1424,6 +1471,29 @@ about.xx.md   → Ignored (xx not configured)
     document.addEventListener('click', function(e) {
         if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
     });
+})();
+
+// ── TOC scroll spy ──
+(function(){
+    var toc = document.querySelector('.docs-toc nav');
+    if (!toc) return;
+    var links = Array.from(toc.querySelectorAll('a[href^="#"]'));
+    if (!links.length) return;
+    var headings = links.map(function(a){
+        return document.getElementById(a.getAttribute('href').slice(1));
+    }).filter(Boolean);
+    function activate() {
+        var scrollY = window.scrollY + 80;
+        var active = headings[0];
+        for (var i = 0; i < headings.length; i++) {
+            if (headings[i].offsetTop <= scrollY) active = headings[i];
+        }
+        links.forEach(function(a){ a.classList.remove('toc-active'); });
+        var hit = toc.querySelector('a[href="#' + active.id + '"]');
+        if (hit) hit.classList.add('toc-active');
+    }
+    window.addEventListener('scroll', activate, { passive: true });
+    activate();
 })();
 </script>
 
