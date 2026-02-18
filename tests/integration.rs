@@ -1181,7 +1181,7 @@ fn test_init_github_pages_creates_workflow() {
 }
 
 #[test]
-fn test_init_cloudflare_no_workflow() {
+fn test_init_cloudflare_creates_workflow() {
     let tmp = TempDir::new().unwrap();
     page_cmd()
         .args([
@@ -1200,8 +1200,12 @@ fn test_init_cloudflare_no_workflow() {
         .assert()
         .success();
 
-    // Should NOT have .github/workflows
-    assert!(!tmp.path().join("mysite/.github/workflows").exists());
+    // Should have .github/workflows/deploy.yml for Cloudflare
+    let workflow_path = tmp.path().join("mysite/.github/workflows/deploy.yml");
+    assert!(workflow_path.exists());
+    let content = fs::read_to_string(&workflow_path).unwrap();
+    assert!(content.contains("Cloudflare"));
+    assert!(content.contains("wrangler-action"));
 }
 
 #[test]
@@ -1226,6 +1230,138 @@ fn test_init_netlify_target() {
 
     let config = fs::read_to_string(tmp.path().join("mysite/page.toml")).unwrap();
     assert!(config.contains("netlify"), "config should contain netlify deploy target");
+
+    // Should generate netlify.toml
+    let netlify_toml = tmp.path().join("mysite/netlify.toml");
+    assert!(netlify_toml.exists());
+    let content = fs::read_to_string(&netlify_toml).unwrap();
+    assert!(content.contains("[build]"));
+    assert!(content.contains("page build"));
+
+    // Should also generate GitHub Actions workflow
+    let workflow_path = tmp.path().join("mysite/.github/workflows/deploy.yml");
+    assert!(workflow_path.exists());
+    let workflow = fs::read_to_string(&workflow_path).unwrap();
+    assert!(workflow.contains("Netlify"));
+}
+
+// --- deploy: pre-flight checks ---
+
+#[test]
+fn test_deploy_dry_run_shows_preflight_checks() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Preflight Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pre-flight checks"))
+        .stdout(predicate::str::contains("Output directory"))
+        .stdout(predicate::str::contains("Base URL"));
+}
+
+#[test]
+fn test_deploy_dry_run_warns_localhost_base_url() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Localhost Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Default base_url is localhost — pre-flight should flag it
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("localhost"));
+}
+
+#[test]
+fn test_deploy_dry_run_with_base_url_override() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Override Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--base-url", "https://example.com"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Base URL override: https://example.com"));
+}
+
+#[test]
+fn test_deploy_dry_run_preview_mode() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Preview Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // GitHub Pages doesn't show preview mode, but Netlify does
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "netlify", "--preview"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preview"));
+}
+
+#[test]
+fn test_deploy_dry_run_github_pages_shows_nojekyll() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "NoJekyll Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Update base_url to a custom domain
+    let config_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&config_path).unwrap();
+    let config = config.replace("http://localhost:3000", "https://myblog.com");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".nojekyll"))
+        .stdout(predicate::str::contains("CNAME: myblog.com"));
+}
+
+// --- deploy: domain setup ---
+
+#[test]
+fn test_deploy_domain_updates_base_url() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Domain Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--domain", "myblog.com"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated base_url"))
+        .stdout(predicate::str::contains("myblog.com"));
+
+    // Verify page.toml was updated
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    assert!(config.contains("https://myblog.com"));
+}
+
+#[test]
+fn test_deploy_domain_shows_dns_instructions() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "DNS Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--domain", "myblog.com"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DNS records"))
+        .stdout(predicate::str::contains("github.io"));
 }
 
 // --- image handling ---

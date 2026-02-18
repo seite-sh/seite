@@ -451,3 +451,23 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Accessibility — skip-to-main link, `role="search"`, `aria-label`, `aria-live="polite"`, `prefers-reduced-motion: reduce` in all 6 themes
 - [x] REPL theme-apply rebuild — applying a theme in the REPL automatically rebuilds the site
 - [x] Build timing — per-step timing in build stats output (12 instrumented steps)
+- [x] Deploy pre-flight checks — validates output dir, base_url (warns on localhost), CLI tools, git repo/remote, project config before deploying
+- [x] GitHub Pages deploy hardening — auto-generates `.nojekyll`, `CNAME` for custom domains, sets git user identity, timestamped commit messages
+- [x] base_url lifecycle management — `--base-url` flag overrides base_url at deploy time without modifying page.toml; pre-flight warns on localhost URLs
+- [x] Preview/staging deploys — `--preview` flag creates non-production deploys on Cloudflare (branch deploy) and Netlify (draft deploy)
+- [x] Deploy guided setup — `--setup` flag runs interactive setup: creates repos/projects, configures auth, generates CI workflows, writes config to page.toml
+- [x] CI workflows for all targets — `page init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
+- [x] Custom domain helper — `--domain` flag shows DNS record instructions per target, auto-updates base_url in page.toml
+- [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
+
+### Up Next
+
+- [ ] Deploy history + diff — write `.deploy-log.json` with timestamp, target, commit hash, build duration, content hash; `--dry-run` shows what changed since last deploy
+- [ ] Rollback — `page deploy rollback` restores previous deploy; keep last N commits on GitHub Pages instead of orphan force-push; use Netlify/Cloudflare rollback APIs
+- [ ] Deploy diff — `page deploy --dry-run` shows new/modified/deleted files compared to last deploy via content hash comparison
+- [ ] Environment-aware builds — detect CI environment variables (`GITHUB_ACTIONS`, `NETLIFY`, `CF_PAGES`) and auto-configure behavior (skip prompts, use env secrets for base_url)
+- [ ] Multi-environment config — support `[deploy.production]` and `[deploy.staging]` sections with different base_url, targets, and settings
+- [ ] Atomic deploys with content hashing — skip deploy if content hash unchanged since last deploy; useful in CI to avoid empty deploys
+- [ ] S3/generic hosting target — AWS S3 + CloudFront support via `aws s3 sync` wrapper
+- [ ] Webhook/notification support — post-deploy webhook (Slack, Discord, email) for team workflows
+- [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`
