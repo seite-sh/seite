@@ -54,7 +54,13 @@
         #search-results strong { color: #24292e; font-size: 0.85rem; }
         #search-results .result-meta { font-size: 0.75rem; color: #888; margin-top: 0.1rem; }
         #search-results .no-results { padding: 0.4rem 0.6rem; color: #888; font-size: 0.85rem; }
+        .sidebar nav.site-nav { margin-top: 1rem; margin-bottom: 0.5rem; }
+        .sidebar nav.site-nav a { color: #0366d6; font-size: 0.9rem; display: block; padding: 0.2rem 0.5rem; border-radius: 4px; }
+        .sidebar nav.site-nav a:hover { background: #e1e4e8; text-decoration: none; }
         .sidebar nav { margin-top: 1.5rem; }
+        footer nav { margin-bottom: 0.5rem; }
+        footer nav a { color: #666; text-decoration: none; font-size: 0.85rem; }
+        footer nav a:hover { color: #0366d6; }
         .sidebar nav h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 1rem 0 0.5rem; }
         .sidebar nav ul { list-style: none; padding: 0; margin: 0; }
         .sidebar nav li { margin-bottom: 0.15rem; }
@@ -117,6 +123,11 @@
             <input type="search" id="search-input" placeholder="Search docs..." autocomplete="off" aria-label="Search documentation">
         </form>
         <div id="search-results" aria-live="polite"></div>
+        {% if data.nav %}
+        <nav class="site-nav" aria-label="Main navigation">
+            {% for item in data.nav %}<a href="{{ item.url }}">{{ item.title }}</a>{% endfor %}
+        </nav>
+        {% endif %}
         {% if nav %}
         <nav>
             {% for section in nav %}
@@ -136,7 +147,12 @@
             {% block content %}{% endblock %}
         </main>
         <footer>
-            <p>&copy; {{ site.author }}</p>
+            {% if data.footer %}{% if data.footer.links %}
+            <nav aria-label="Footer navigation">
+                {% for link in data.footer.links %}<a href="{{ link.url }}">{{ link.title }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+            </nav>
+            {% endif %}{% endif %}
+            <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
         </footer>
     </div>
     <script>

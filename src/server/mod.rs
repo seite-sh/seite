@@ -256,8 +256,8 @@ fn watch_and_rebuild(
         }
     };
 
-    // Watch content, templates, and static directories
-    let dirs = [&paths.content, &paths.templates, &paths.static_dir];
+    // Watch content, templates, static, and data directories
+    let dirs = [&paths.content, &paths.templates, &paths.static_dir, &paths.data_dir];
     for dir in &dirs {
         if dir.exists() {
             if let Err(e) = watcher.watch(dir, RecursiveMode::Recursive) {

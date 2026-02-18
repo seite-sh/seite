@@ -81,6 +81,7 @@ src/
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
+  data/mod.rs          Data file loading (YAML/JSON/TOML from data/ dir)
   content/mod.rs       Frontmatter parsing, ContentItem, slug generation
   deploy/mod.rs        GitHub Pages (git push) + Cloudflare (wrangler)
   output/
@@ -98,6 +99,7 @@ tests/
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
 2b. Load shortcode registry (built-in + user-defined from `templates/shortcodes/`)
+2.5. Load data files (YAML/JSON/TOML from `data/` directory → `{{ data.filename }}` in templates)
 3. Process each collection: walk content dir, parse frontmatter, **expand shortcodes**, render markdown to HTML, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
 4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`. Also renders: paginated collection indexes, 404 page, tag index + per-tag archive pages
 5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
@@ -172,6 +174,7 @@ name = "posts"
 
 [build]
 output_dir = "dist"
+data_dir = "data"    # optional: directory for data files (YAML/JSON/TOML)
 minify = true        # optional: strip CSS/JS comments + collapse whitespace
 fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.json
 
@@ -195,6 +198,39 @@ quality = 80               # JPEG/WebP quality (1-100)
 lazy_loading = true        # add loading="lazy" to <img> tags
 webp = true                # generate WebP variants alongside originals
 ```
+
+### Data Files
+
+The `data/` directory holds structured data files (YAML, JSON, TOML) that are loaded at build time and injected into all template contexts as `{{ data.filename }}`.
+
+**How it works:**
+- `data/nav.yaml` → `{{ data.nav }}` (array or object)
+- `data/authors.json` → `{{ data.authors }}`
+- `data/settings.toml` → `{{ data.settings }}`
+- `data/menus/main.yaml` → `{{ data.menus.main }}` (nested directories create nested keys)
+
+**Conflict detection:**
+- Two files with the same stem (`authors.yaml` + `authors.json`) → build error
+- A file and a directory with the same name (`nav.yaml` + `nav/main.yaml`) → build error
+- Unknown file extensions → skipped with warning
+
+**Theme integration:**
+All 6 bundled themes conditionally render `data.nav` (navigation links) and `data.footer` (footer links + copyright). Example `data/nav.yaml`:
+```yaml
+- title: Blog
+  url: /posts
+- title: About
+  url: /about
+```
+Example `data/footer.yaml`:
+```yaml
+links:
+  - title: GitHub
+    url: https://github.com/user/repo
+copyright: "2026 My Company"
+```
+
+**Configuration:** The `data_dir` field in `[build]` defaults to `"data"`. Change it via `data_dir = "my_data"` in `page.toml`.
 
 ### Agent System
 
@@ -302,7 +338,7 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 ### Templates
 - Tera (Jinja2-compatible) templates
 - All templates extend `base.html`
-- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`
+- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
 - Additional page variables: `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
 - Embedded defaults in `src/templates/mod.rs`; user templates in `templates/` override them
 - All bundled themes include hreflang tags and language switcher UI when `translations` is non-empty
@@ -531,6 +567,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
 - [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
 - [x] Shell installer + release CI — `curl | sh` installer, GitHub Actions release workflow (4 platform binaries), SLSA Level 3 provenance, auto-tag from Cargo.toml version, auto-deploy docs site on release
+- [x] Data files — `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. All 6 bundled themes conditionally render `data.nav` and `data.footer`. Nested directories create nested keys. Conflict detection for duplicate stems and path collisions.
 
 ### Up Next
 
@@ -540,7 +577,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [x] Shortcodes — reusable content components in markdown. Hugo-style dual syntax: `{{< name(args) >}}` for inline HTML, `{{% name(args) %}} body {{% end %}}` for markdown-processed bodies. 5 built-in shortcodes (youtube, vimeo, gist, callout, figure) + user-defined from `templates/shortcodes/`. Character-level parser with code block protection. All 6 themes include shortcode CSS.
 - [x] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
-- [ ] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
+- [x] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
 
 **Priority 2 — Improve build pipeline and content model:**
 

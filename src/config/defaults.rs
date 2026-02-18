@@ -22,6 +22,10 @@ pub fn static_dir() -> String {
     "static".to_string()
 }
 
+pub fn data_dir() -> String {
+    "data".to_string()
+}
+
 pub fn image_widths() -> Vec<u32> {
     vec![480, 800, 1200]
 }

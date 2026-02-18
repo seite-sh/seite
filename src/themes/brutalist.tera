@@ -41,6 +41,13 @@
         header h1 a { text-decoration: none; color: inherit; }
         header h1 a:hover { background: #ffe600; }
         header p { margin: 0; font-size: 0.9rem; }
+        nav.site-nav { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0; }
+        nav.site-nav a { display: inline-block; padding: 0.3rem 0.75rem; border: 2px solid #000; border-right: none; font-weight: 700; text-decoration: none; color: #000; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        nav.site-nav a:last-child { border-right: 2px solid #000; }
+        nav.site-nav a:hover { background: #ffe600; }
+        footer nav { margin-bottom: 0.5rem; }
+        footer nav a { color: #000; text-decoration: none; font-weight: 700; }
+        footer nav a:hover { background: #ffe600; }
         .lang-switcher { display: inline-flex; gap: 0; float: right; margin-top: -0.25rem; border: 2px solid #000; }
         .lang-switcher a { text-decoration: none; color: #000; padding: 0.15rem 0.5rem; border-right: 2px solid #000; font-size: 0.8rem; font-weight: 700; }
         .lang-switcher a:last-child { border-right: none; }
@@ -111,6 +118,11 @@
         {% endif %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if data.nav %}
+        <nav class="site-nav" aria-label="Main navigation">
+            {% for item in data.nav %}<a href="{{ item.url }}">{{ item.title }}</a>{% endfor %}
+        </nav>
+        {% endif %}
         <form class="search-form" role="search" aria-label="Site search" onsubmit="return false">
             <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
         </form>
@@ -121,7 +133,12 @@
         {% block content %}{% endblock %}
     </main>
     <footer>
-        <p>&copy; {{ site.author }}</p>
+        {% if data.footer %}{% if data.footer.links %}
+        <nav aria-label="Footer navigation">
+            {% for link in data.footer.links %}<a href="{{ link.url }}">{{ link.title }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+        </nav>
+        {% endif %}{% endif %}
+        <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
     </footer>
     <script>
     (function(){
