@@ -16,12 +16,12 @@ pub struct ThemeArgs {
 
 #[derive(Subcommand)]
 pub enum ThemeCommand {
-    /// List available themes
+    /// List available themes (bundled and installed)
     List,
 
     /// Apply a theme to the current site
     Apply {
-        /// Theme name
+        /// Theme name (bundled or installed)
         name: String,
     },
 
@@ -30,42 +30,104 @@ pub enum ThemeCommand {
         /// Design description for the theme (e.g. "dark glassmorphism with teal accents")
         prompt: String,
     },
+
+    /// Install a theme from a URL
+    Install {
+        /// URL to a .tera theme file
+        url: String,
+
+        /// Name for the installed theme (defaults to filename)
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// Export the current theme as a shareable .tera file
+    Export {
+        /// Name for the exported theme file
+        name: String,
+
+        /// Optional description for the theme
+        #[arg(long)]
+        description: Option<String>,
+    },
 }
 
 pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
     match &args.command {
         ThemeCommand::List => {
-            human::header("Available themes");
-            for theme in themes::all() {
-                println!(
-                    "  {} - {}",
-                    console::style(theme.name).bold(),
-                    theme.description
-                );
-            }
+            run_list()?;
         }
         ThemeCommand::Apply { name } => {
-            let theme = themes::by_name(name)
-                .ok_or_else(|| anyhow::anyhow!(
-                    "unknown theme '{}'. Run 'page theme list' to see available themes",
-                    name
-                ))?;
-
-            // Ensure we're in a page project
-            let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
-
-            let template_dir = PathBuf::from("templates");
-            std::fs::create_dir_all(&template_dir)?;
-            std::fs::write(template_dir.join("base.html"), theme.base_html)?;
-
-            human::success(&format!("Applied theme '{}'", name));
-            human::info("Run 'page build' or the watcher will pick it up automatically.");
+            run_apply(name)?;
         }
         ThemeCommand::Create { prompt } => {
             run_create(prompt)?;
         }
+        ThemeCommand::Install { url, name } => {
+            run_install(url, name.as_deref())?;
+        }
+        ThemeCommand::Export { name, description } => {
+            run_export(name, description.as_deref())?;
+        }
     }
     Ok(())
+}
+
+fn run_list() -> anyhow::Result<()> {
+    human::header("Bundled themes");
+    for theme in themes::all() {
+        println!(
+            "  {} - {}",
+            console::style(theme.name).bold(),
+            theme.description
+        );
+    }
+
+    let project_root = PathBuf::from(".");
+    let installed = themes::installed_themes(&project_root);
+    if !installed.is_empty() {
+        println!();
+        human::header("Installed themes");
+        for theme in &installed {
+            println!(
+                "  {} - {}",
+                console::style(&theme.name).bold().cyan(),
+                theme.description
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn run_apply(name: &str) -> anyhow::Result<()> {
+    // Ensure we're in a page project
+    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+
+    let template_dir = PathBuf::from("templates");
+    std::fs::create_dir_all(&template_dir)?;
+
+    // Check bundled themes first
+    if let Some(theme) = themes::by_name(name) {
+        std::fs::write(template_dir.join("base.html"), theme.base_html)?;
+        human::success(&format!("Applied bundled theme '{}'", name));
+        human::info("Run 'page build' or the watcher will pick it up automatically.");
+        return Ok(());
+    }
+
+    // Check installed themes
+    let project_root = PathBuf::from(".");
+    if let Some(theme) = themes::installed_by_name(&project_root, name) {
+        std::fs::write(template_dir.join("base.html"), &theme.base_html)?;
+        human::success(&format!("Applied installed theme '{}'", name));
+        human::info("Run 'page build' or the watcher will pick it up automatically.");
+        return Ok(());
+    }
+
+    Err(anyhow::anyhow!(
+        "unknown theme '{}'. Run 'page theme list' to see available themes",
+        name
+    ))
 }
 
 fn run_create(user_prompt: &str) -> anyhow::Result<()> {
@@ -99,6 +161,113 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
 
     human::success("Theme written to templates/base.html");
     human::info("Run 'page build' to apply, or 'page serve' to preview live.");
+    Ok(())
+}
+
+fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+
+    // Derive theme name from URL filename or use override
+    let theme_name = match name_override {
+        Some(n) => n.to_string(),
+        None => {
+            let url_path = url.rsplit('/').next().unwrap_or("theme");
+            url_path
+                .strip_suffix(".tera")
+                .or_else(|| url_path.strip_suffix(".html"))
+                .unwrap_or(url_path)
+                .to_string()
+        }
+    };
+
+    // Validate theme name
+    if theme_name.is_empty() || theme_name.contains(std::path::is_separator) || theme_name.contains("..") {
+        return Err(anyhow::anyhow!("invalid theme name: '{}'", theme_name));
+    }
+
+    // Warn if it would shadow a bundled theme
+    if themes::by_name(&theme_name).is_some() {
+        human::info(&format!(
+            "Note: '{}' shadows a bundled theme. Use a different --name to avoid confusion.",
+            theme_name
+        ));
+    }
+
+    human::info(&format!("Downloading theme from {}...", url));
+
+    let body = ureq::get(url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("failed to download theme: {e}"))?
+        .into_string()
+        .map_err(|e| anyhow::anyhow!("failed to read theme response: {e}"))?;
+
+    // Basic validation: should look like a Tera template
+    if !body.contains("<!DOCTYPE") && !body.contains("<!doctype") && !body.contains("<html") {
+        return Err(anyhow::anyhow!(
+            "downloaded file doesn't look like an HTML/Tera template"
+        ));
+    }
+
+    let themes_dir = PathBuf::from("templates").join("themes");
+    std::fs::create_dir_all(&themes_dir)?;
+
+    let dest = themes_dir.join(format!("{theme_name}.tera"));
+    std::fs::write(&dest, &body)?;
+
+    human::success(&format!(
+        "Installed theme '{}' to {}",
+        theme_name,
+        dest.display()
+    ));
+    human::info(&format!(
+        "Apply it with: page theme apply {}",
+        theme_name
+    ));
+
+    Ok(())
+}
+
+fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
+    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+
+    let base_path = PathBuf::from("templates").join("base.html");
+    if !base_path.exists() {
+        return Err(anyhow::anyhow!(
+            "no templates/base.html found. Apply or create a theme first."
+        ));
+    }
+
+    // Validate theme name
+    if name.is_empty() || name.contains(std::path::is_separator) || name.contains("..") {
+        return Err(anyhow::anyhow!("invalid theme name: '{}'", name));
+    }
+
+    let content = std::fs::read_to_string(&base_path)?;
+
+    // Build exported content with metadata header
+    let desc = description.unwrap_or("Custom theme");
+    let exported = format!(
+        "{{#- theme-description: {} -#}}\n{}",
+        desc, content
+    );
+
+    let themes_dir = PathBuf::from("templates").join("themes");
+    std::fs::create_dir_all(&themes_dir)?;
+
+    let dest = themes_dir.join(format!("{name}.tera"));
+    if dest.exists() {
+        return Err(anyhow::anyhow!(
+            "theme '{}' already exists at {}. Remove it first or choose a different name.",
+            name,
+            dest.display()
+        ));
+    }
+
+    std::fs::write(&dest, exported)?;
+
+    human::success(&format!("Exported theme '{}' to {}", name, dest.display()));
+    human::info("Share this .tera file — others can install it with: page theme install <url>");
+
     Ok(())
 }
 

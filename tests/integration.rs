@@ -765,6 +765,170 @@ fn test_theme_create_requires_page_toml() {
         .failure();
 }
 
+#[test]
+fn test_theme_list_shows_bundled() {
+    page_cmd()
+        .args(["theme", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bundled themes"))
+        .stdout(predicate::str::contains("default"))
+        .stdout(predicate::str::contains("minimal"))
+        .stdout(predicate::str::contains("dark"))
+        .stdout(predicate::str::contains("docs"))
+        .stdout(predicate::str::contains("brutalist"))
+        .stdout(predicate::str::contains("bento"));
+}
+
+#[test]
+fn test_theme_apply_installed() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Installed Theme Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Create a fake installed theme
+    let themes_dir = site_dir.join("templates").join("themes");
+    std::fs::create_dir_all(&themes_dir).unwrap();
+    std::fs::write(
+        themes_dir.join("custom-test.tera"),
+        "{#- theme-description: A test installed theme -#}\n<!DOCTYPE html>\n<html><head><title>Custom</title></head><body>custom-test-marker</body></html>",
+    ).unwrap();
+
+    // Apply the installed theme
+    page_cmd()
+        .args(["theme", "apply", "custom-test"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Applied installed theme"));
+
+    // Verify base.html was updated
+    let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("custom-test-marker"), "installed theme should be applied");
+}
+
+#[test]
+fn test_theme_apply_unknown_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Unknown Theme Test", "posts");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["theme", "apply", "nonexistent-theme-xyz"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown theme"));
+}
+
+#[test]
+fn test_theme_export() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Export Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Apply a theme first so templates/base.html exists
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Export it
+    page_cmd()
+        .args(["theme", "export", "my-dark", "--description", "My custom dark theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exported theme 'my-dark'"));
+
+    // Verify the exported file exists and has metadata
+    let exported = std::fs::read_to_string(
+        site_dir.join("templates/themes/my-dark.tera"),
+    ).unwrap();
+    assert!(exported.contains("theme-description: My custom dark theme"), "exported theme should have description");
+    assert!(exported.contains("0a0a0a"), "exported theme should contain dark theme content");
+}
+
+#[test]
+fn test_theme_export_no_base_html() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Export No Base Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Remove base.html to test error case
+    let _ = std::fs::remove_file(site_dir.join("templates/base.html"));
+
+    page_cmd()
+        .args(["theme", "export", "my-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no templates/base.html found"));
+}
+
+#[test]
+fn test_theme_export_duplicate_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Export Dup Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Apply a theme
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Export once
+    page_cmd()
+        .args(["theme", "export", "my-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Export again with same name should fail
+    page_cmd()
+        .args(["theme", "export", "my-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+}
+
+#[test]
+fn test_theme_install_requires_page_toml() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["theme", "install", "https://example.com/theme.tera"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_theme_list_shows_installed() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Installed List Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Create an installed theme
+    let themes_dir = site_dir.join("templates").join("themes");
+    std::fs::create_dir_all(&themes_dir).unwrap();
+    std::fs::write(
+        themes_dir.join("my-custom.tera"),
+        "{#- theme-description: A custom community theme -#}\n<!DOCTYPE html><html></html>",
+    ).unwrap();
+
+    page_cmd()
+        .args(["theme", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installed themes"))
+        .stdout(predicate::str::contains("my-custom"))
+        .stdout(predicate::str::contains("A custom community theme"));
+}
+
 // --- search index ---
 
 #[test]
