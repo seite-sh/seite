@@ -374,8 +374,10 @@ fn generate_claude_md(
     md.push_str("|-------|-------------|\n");
     md.push_str("| `default` | Clean, readable with system fonts |\n");
     md.push_str("| `minimal` | Typography-first, serif |\n");
-    md.push_str("| `dark` | Dark mode |\n");
-    md.push_str("| `docs` | Sidebar layout for documentation |\n\n");
+    md.push_str("| `dark` | Dark mode (true black, violet accent) |\n");
+    md.push_str("| `docs` | Sidebar layout for documentation |\n");
+    md.push_str("| `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |\n");
+    md.push_str("| `bento` | Card grid layout with rounded corners and soft shadows |\n\n");
     md.push_str("Apply with `page theme apply <name>`. This overwrites `templates/base.html`.\n\n");
 
     md.push_str("### Template Variables\n\n");

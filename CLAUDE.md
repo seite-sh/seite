@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (13 unit + 30 integration)
+cargo test           # Run all tests (13 unit + 33 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -33,12 +33,14 @@ src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs               Module declarations
   error.rs             PageError enum (thiserror)
-  themes.rs            4 bundled themes (default, minimal, dark, docs)
+  themes.rs            6 bundled themes (default, minimal, dark, docs, brutalist, bento)
   themes/
     default.tera       Default theme template
     minimal.tera       Minimal theme template
-    dark.tera          Dark mode theme template
+    dark.tera          Dark mode theme template (true black + violet)
     docs.tera          Documentation sidebar theme template
+    brutalist.tera     Neo-brutalist theme template
+    bento.tera         Card grid bento theme template
   build/
     mod.rs             10-step build pipeline
     markdown.rs        pulldown-cmark wrapper
@@ -66,7 +68,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       30 integration tests using assert_cmd + tempfile
+  integration.rs       33 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (10 steps)
@@ -185,10 +187,12 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 - `default` — 720px centered column, system-ui font, blue links (`#0057b7`). Sensible baseline.
 - `minimal` — 600px column, Georgia serif, bottom-border-only search input. Literary/essay feel.
-- `dark` — Same structure as default with a navy-purple background (`#1a1a2e`) and steel-blue links.
+- `dark` — True black (`#0a0a0a`), violet accent (`#8b5cf6`), styled focus rings.
 - `docs` — Fixed 260px sidebar with auto-scrolling nav, GitHub-style colors, table and code support.
+- `brutalist` — Cream (`#fffef0`), 3px black borders, hard 6px/0 shadows, yellow (`#ffe600`) accent. No border-radius.
+- `bento` — 1000px column, CSS grid sections, article cards (border-radius 20px, soft shadow), nth-child dark/indigo accent cards.
 
-Template files: `src/themes/{default,minimal,dark,docs}.tera`
+Template files: `src/themes/{default,minimal,dark,docs,brutalist,bento}.tera`
 Each registers as `base.html` when applied; user `templates/base.html` overrides any bundled theme.
 
 ## Patterns and Conventions
