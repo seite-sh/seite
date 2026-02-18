@@ -250,7 +250,8 @@ fn generate_claude_md(
     md.push_str("page new post \"Title\" --draft           # Create as draft\n");
     md.push_str("page new post \"Title\" --lang es         # Create translation (needs [languages.es] in config)\n");
     md.push_str("page theme list                         # List available themes\n");
-    md.push_str("page theme apply <name>                 # Apply a theme (default, minimal, dark, docs)\n");
+    md.push_str("page theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)\n");
+    md.push_str("page theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
     md.push_str("page agent                              # Interactive AI agent session\n");
     md.push_str("page agent \"write about Rust\"           # One-shot AI agent prompt\n");
     md.push_str("page deploy                             # Deploy to configured target\n");
@@ -429,6 +430,8 @@ fn generate_claude_md(
     md.push_str("- **LLM discoverability** — Generates `llms.txt` and `llms-full.txt` for LLM consumption\n");
     md.push_str("- **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)\n");
     md.push_str("- **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates\n");
+    md.push_str("- **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.\n");
+    md.push_str("- **Asset pipeline** — Add `minify = true` and/or `fingerprint = true` to `[build]` in `page.toml` to minify CSS/JS and add content-hash suffixes (`main.a1b2c3d4.css`) with a `dist/asset-manifest.json`\n");
     md.push_str("- **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`\n");
     md.push_str("- **Clean URLs** — `/posts/hello-world` (no `.html` extension)\n");
     md.push_str("- **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)\n\n");
@@ -472,6 +475,11 @@ fn generate_claude_md(
     md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
     md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `page.toml` to generate `/posts/`, `/posts/page/2/`, etc.\n");
     md.push_str("  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`\n");
+    md.push_str("- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.\n");
+    md.push_str("- Asset pipeline: set `minify = true` and/or `fingerprint = true` under `[build]` in `page.toml`\n");
+    md.push_str("  - `minify` strips CSS/JS comments and collapses whitespace\n");
+    md.push_str("  - `fingerprint` writes `file.<hash8>.ext` copies of each static asset and a `dist/asset-manifest.json` mapping original names to fingerprinted names\n");
+    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
 
     md
 }
