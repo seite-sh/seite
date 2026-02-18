@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Args;
 
@@ -160,7 +160,7 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
     }
 
     // --- Post-deploy verification ---
-    if args.verify || (!args.preview && !args.verify) {
+    if args.verify || !args.preview {
         // Auto-verify on production deploys, skip on preview unless --verify
         if let Some(ref url) = deploy_url {
             if !args.preview || args.verify {
@@ -182,7 +182,7 @@ fn run_domain_setup(
     domain: &str,
     target_str: &str,
     config: &SiteConfig,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> anyhow::Result<()> {
     let target = match target_str {
         "github-pages" => DeployTarget::GithubPages,
@@ -215,7 +215,7 @@ fn run_setup(
     target_str: &str,
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
-    config_path: &PathBuf,
+    config_path: &Path,
 ) -> anyhow::Result<()> {
     human::header(&format!("Setting up deployment for {target_str}"));
 
