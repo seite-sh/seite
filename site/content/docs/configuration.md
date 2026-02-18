@@ -107,16 +107,16 @@ Each language can override `title` and `description`. See [Multi-language](/docs
 
 ## [images]
 
-Optional. Configure automatic image processing:
+Optional. When this section is present, `page` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `page init` include this section by default.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `widths` | array | `[]` | Target widths in pixels for resized copies |
+| `widths` | array | `[480, 800, 1200]` | Target widths in pixels for resized copies |
 | `quality` | int | `80` | JPEG/WebP quality (1-100) |
-| `webp` | bool | `false` | Generate WebP variants |
-| `lazy_loading` | bool | `false` | Add `loading="lazy"` to `<img>` tags |
+| `webp` | bool | `true` | Generate WebP variants |
+| `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
-When configured, images in `static/` are resized to each width, optionally converted to WebP, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements.
+When configured, images in `static/` are resized to each width, optionally converted to WebP, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. To disable image processing, remove the `[images]` section entirely.
 
 ## Frontmatter
 
