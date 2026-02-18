@@ -129,9 +129,24 @@ Card grid layout. 1000px column, CSS grid with mixed card sizes, border-radius 2
 ## Applying Themes
 
 ```bash
-page theme apply dark      # Apply bundled theme
-page theme list            # List all themes
+page theme list              # Show all bundled + installed themes
+page theme apply dark        # Apply a bundled theme
+page theme apply my-custom   # Apply an installed theme
 ```
+
+See the [Theme Gallery](/docs/theme-gallery) for visual previews of all bundled themes.
+
+## Installing & Sharing Themes
+
+Download community themes from a URL, or export your own:
+
+```bash
+page theme install https://example.com/themes/aurora.tera
+page theme install https://example.com/themes/aurora.tera --name my-aurora
+page theme export my-theme --description "Dark theme with green accents"
+```
+
+Installed themes are saved to `templates/themes/<name>.tera` and appear in `page theme list`.
 
 ## Custom Themes with AI
 
@@ -141,7 +156,11 @@ Generate a completely custom theme:
 page theme create "minimal serif with warm earth tones and generous whitespace"
 ```
 
-This uses Claude Code to generate a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features.
+This uses Claude Code to generate a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
+
+```bash
+page theme export earth-tones --description "Warm serif theme with earth tones"
+```
 
 ## Table of Contents
 
