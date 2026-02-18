@@ -1088,3 +1088,332 @@ fn test_build_no_minify_by_default() {
     let css = fs::read_to_string(site_dir.join("dist/static/style.css")).unwrap();
     assert!(css.contains("/* keep"), "CSS should be unmodified when minify is false");
 }
+
+// --- deploy improvements ---
+
+#[test]
+fn test_deploy_dry_run_github_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Dry Run Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("github-pages"))
+        .stdout(predicate::str::contains("gh-pages"));
+}
+
+#[test]
+fn test_deploy_dry_run_cloudflare() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CF Dry Run", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "cloudflare"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("cloudflare"));
+}
+
+#[test]
+fn test_deploy_dry_run_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Netlify Dry Run", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "netlify"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("netlify"));
+}
+
+#[test]
+fn test_deploy_unknown_target() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Unknown Deploy", "posts");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "heroku"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown deploy target"));
+}
+
+#[test]
+fn test_init_github_pages_creates_workflow() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "mysite",
+            "--title",
+            "Workflow Test",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let workflow = tmp.path().join("mysite/.github/workflows/deploy.yml");
+    assert!(workflow.exists(), "GitHub Actions workflow should be created");
+
+    let content = fs::read_to_string(&workflow).unwrap();
+    assert!(content.contains("Deploy to GitHub Pages"));
+    assert!(content.contains("deploy-pages"));
+    assert!(content.contains("page build"));
+}
+
+#[test]
+fn test_init_cloudflare_no_workflow() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "mysite",
+            "--title",
+            "CF Test",
+            "--description",
+            "",
+            "--deploy-target",
+            "cloudflare",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Should NOT have .github/workflows
+    assert!(!tmp.path().join("mysite/.github/workflows").exists());
+}
+
+#[test]
+fn test_init_netlify_target() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "mysite",
+            "--title",
+            "Netlify Init",
+            "--description",
+            "",
+            "--deploy-target",
+            "netlify",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(tmp.path().join("mysite/page.toml")).unwrap();
+    assert!(config.contains("netlify"), "config should contain netlify deploy target");
+}
+
+// --- image handling ---
+
+/// Helper: write a minimal valid PNG (1x1 pixel) into a site's static directory.
+fn write_test_image(site_dir: &std::path::Path, name: &str) {
+    let img_dir = site_dir.join("static/images");
+    fs::create_dir_all(&img_dir).unwrap();
+    // Create a 100x100 red PNG using the image crate
+    let img = image::RgbImage::from_fn(100, 100, |_, _| image::Rgb([255u8, 0, 0]));
+    img.save(img_dir.join(name)).unwrap();
+}
+
+/// Helper: add [images] section to page.toml.
+fn set_images_config(site_dir: &std::path::Path, widths: &str) {
+    let toml_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    config.push_str(&format!(
+        "\n[images]\nwidths = {widths}\nquality = 80\nlazy_loading = true\nwebp = true\n"
+    ));
+    fs::write(&toml_path, config).unwrap();
+}
+
+#[test]
+fn test_build_image_resize_and_webp() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Image Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    write_test_image(&site_dir, "photo.png");
+    set_images_config(&site_dir, "[48]");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Original should be copied
+    assert!(site_dir.join("dist/static/images/photo.png").exists());
+    // Resized version should exist
+    assert!(
+        site_dir.join("dist/static/images/photo-48w.png").exists(),
+        "resized PNG at 48w should exist"
+    );
+    // WebP version should exist
+    assert!(
+        site_dir.join("dist/static/images/photo-48w.webp").exists(),
+        "resized WebP at 48w should exist"
+    );
+    // Full-size WebP should exist
+    assert!(
+        site_dir.join("dist/static/images/photo.webp").exists(),
+        "full-size WebP should exist"
+    );
+}
+
+#[test]
+fn test_build_image_lazy_loading() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Lazy Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Create a page with an image reference
+    let page_content = "---\ntitle: Gallery\n---\n\n![A photo](/static/images/photo.png)\n";
+    fs::write(site_dir.join("content/pages/gallery.md"), page_content).unwrap();
+
+    write_test_image(&site_dir, "photo.png");
+    set_images_config(&site_dir, "[48]");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/gallery.html")).unwrap();
+    assert!(
+        html.contains("loading=\"lazy\""),
+        "img tags should have loading=lazy"
+    );
+}
+
+#[test]
+fn test_build_image_srcset_in_html() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Srcset Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Gallery\n---\n\n![A photo](/static/images/photo.png)\n";
+    fs::write(site_dir.join("content/pages/gallery.md"), page_content).unwrap();
+
+    write_test_image(&site_dir, "photo.png");
+    set_images_config(&site_dir, "[48]");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/gallery.html")).unwrap();
+    assert!(
+        html.contains("srcset="),
+        "img tags should have srcset attribute"
+    );
+    assert!(
+        html.contains("48w"),
+        "srcset should include the 48w variant"
+    );
+}
+
+#[test]
+fn test_build_image_picture_element_webp() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Picture Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Gallery\n---\n\n![A photo](/static/images/photo.png)\n";
+    fs::write(site_dir.join("content/pages/gallery.md"), page_content).unwrap();
+
+    write_test_image(&site_dir, "photo.png");
+    set_images_config(&site_dir, "[48]");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/gallery.html")).unwrap();
+    assert!(
+        html.contains("<picture>"),
+        "should wrap in <picture> element for WebP"
+    );
+    assert!(
+        html.contains("image/webp"),
+        "should have WebP source type"
+    );
+    assert!(
+        html.contains("</picture>"),
+        "should close <picture> element"
+    );
+}
+
+#[test]
+fn test_build_image_skip_larger_than_original() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Skip Large Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Image is 100x100, so widths > 100 should be skipped
+    write_test_image(&site_dir, "small.png");
+    set_images_config(&site_dir, "[48, 200, 1200]");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // 48w should exist (smaller than 100)
+    assert!(site_dir.join("dist/static/images/small-48w.png").exists());
+    // 200w should NOT exist (larger than 100)
+    assert!(!site_dir.join("dist/static/images/small-200w.png").exists());
+    // 1200w should NOT exist
+    assert!(!site_dir.join("dist/static/images/small-1200w.png").exists());
+}
+
+#[test]
+fn test_build_no_image_processing_without_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Image Config", "posts");
+    let site_dir = tmp.path().join("site");
+
+    write_test_image(&site_dir, "photo.png");
+    // No set_images_config — use defaults
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Original should be copied as-is by static file step
+    assert!(site_dir.join("dist/static/images/photo.png").exists());
+    // With default widths [480, 800, 1200], all are > 100px so no resizes
+    // But WebP full-size should still be created since default has webp=true
+    // Actually, the 100x100 image is smaller than all default widths, so no resized copies
+    assert!(!site_dir.join("dist/static/images/photo-480w.png").exists());
+}

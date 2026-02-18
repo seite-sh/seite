@@ -58,7 +58,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let deploy_target = match &args.deploy_target {
         Some(t) => t.clone(),
         None => {
-            let options = ["github-pages", "cloudflare"];
+            let options = ["github-pages", "cloudflare", "netlify"];
             let selection = dialoguer::Select::new()
                 .with_prompt("Deploy target")
                 .items(&options)
@@ -109,6 +109,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     // Generate page.toml
     let target = match deploy_target.as_str() {
         "cloudflare" => DeployTarget::Cloudflare,
+        "netlify" => DeployTarget::Netlify,
         _ => DeployTarget::GithubPages,
     };
     let config = crate::config::SiteConfig {
@@ -122,11 +123,12 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         collections: collections.clone(),
         build: Default::default(),
         deploy: crate::config::DeploySection {
-            target,
+            target: target.clone(),
             repo: None,
             project: None,
         },
         languages: Default::default(),
+        images: Default::default(),
     };
     let toml_str = toml::to_string_pretty(&config)?;
     fs::write(root.join("page.toml"), toml_str)?;
@@ -164,6 +166,14 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             root.join(format!("content/posts/{today}-hello-world.md")),
             post_content,
         )?;
+    }
+
+    // Generate GitHub Actions workflow for github-pages deploy target
+    if target == DeployTarget::GithubPages {
+        let workflow_dir = root.join(".github/workflows");
+        fs::create_dir_all(&workflow_dir)?;
+        let workflow = crate::deploy::generate_github_actions_workflow(&config);
+        fs::write(workflow_dir.join("deploy.yml"), workflow)?;
     }
 
     // Write Claude Code settings (.claude/settings.json)

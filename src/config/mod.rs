@@ -17,6 +17,8 @@ pub struct SiteConfig {
     pub deploy: DeploySection,
     #[serde(default)]
     pub languages: HashMap<String, LanguageConfig>,
+    #[serde(default, skip_serializing_if = "ImageSection::is_default")]
+    pub images: ImageSection,
 }
 
 /// Per-language overrides for site metadata.
@@ -183,12 +185,49 @@ impl Default for DeploySection {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum DeployTarget {
     #[default]
     GithubPages,
     Cloudflare,
+    Netlify,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageSection {
+    /// Generate resized copies at these widths (pixels). Default: [480, 800, 1200].
+    #[serde(default = "defaults::image_widths")]
+    pub widths: Vec<u32>,
+    /// JPEG/WebP quality (1-100). Default: 80.
+    #[serde(default = "defaults::image_quality")]
+    pub quality: u8,
+    /// Add loading="lazy" to img tags. Default: true.
+    #[serde(default = "defaults::bool_true")]
+    pub lazy_loading: bool,
+    /// Generate WebP copies alongside originals. Default: true.
+    #[serde(default = "defaults::bool_true")]
+    pub webp: bool,
+}
+
+impl Default for ImageSection {
+    fn default() -> Self {
+        Self {
+            widths: defaults::image_widths(),
+            quality: defaults::image_quality(),
+            lazy_loading: true,
+            webp: true,
+        }
+    }
+}
+
+impl ImageSection {
+    fn is_default(&self) -> bool {
+        self.widths == defaults::image_widths()
+            && self.quality == defaults::image_quality()
+            && self.lazy_loading
+            && self.webp
+    }
 }
 
 /// Resolved absolute paths for the project directories.
