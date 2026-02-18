@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+
+    <!-- Theme init: run before CSS to prevent flash -->
+    <script>
+    (function(){
+        var s = localStorage.getItem('theme');
+        var t = s || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+    })();
+    </script>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configuration — page docs</title>
     <meta name="description" content="Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.">
@@ -42,25 +52,59 @@
     
 
     <style>
-        /* ---- Design tokens ---- */
-        :root {
-            --bg:           #080808;
-            --bg-raised:    #111111;
-            --bg-card:      #141414;
-            --bg-card-hover:#181818;
-            --border:       rgba(255,255,255,0.07);
-            --border-light: rgba(255,255,255,0.13);
-            --text:         #e2e2e2;
-            --text-muted:   #888;
-            --text-dim:     #555;
-            --green:        #00ff87;
-            --green-dim:    rgba(0,255,135,0.08);
-            --green-border: rgba(0,255,135,0.18);
-            --blue:         #3b82f6;
-            --radius-sm:    5px;
-            --radius:       10px;
-            --radius-lg:    16px;
-            --mono:         'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, 'Courier New', monospace;
+        /* ---- Design tokens: dark (default) ---- */
+        :root,
+        [data-theme="dark"] {
+            --bg:              #080808;
+            --bg-raised:       #111111;
+            --bg-card:         #141414;
+            --bg-card-hover:   #181818;
+            --border:          rgba(255,255,255,0.07);
+            --border-light:    rgba(255,255,255,0.13);
+            --text:            #e2e2e2;
+            --text-muted:      #888;
+            --text-dim:        #555;
+            --green:           #00ff87;
+            --green-dim:       rgba(0,255,135,0.08);
+            --green-border:    rgba(0,255,135,0.18);
+            --blue:            #3b82f6;
+            --heading:         #ffffff;
+            --heading-sub:     #dddddd;
+            --strong:          #ffffff;
+            --nav-bg:          rgba(8,8,8,0.82);
+            --nav-logo:        #ffffff;
+            --item-border:     rgba(255,255,255,0.04);
+            --separator:       rgba(255,255,255,0.15);
+            --scrollbar-thumb: #222222;
+            --radius-sm:       5px;
+            --radius:          10px;
+            --radius-lg:       16px;
+            --mono:            'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, 'Courier New', monospace;
+        }
+
+        /* ---- Design tokens: light ---- */
+        [data-theme="light"] {
+            --bg:              #ffffff;
+            --bg-raised:       #f3f4f6;
+            --bg-card:         #f9fafb;
+            --bg-card-hover:   #eef0f2;
+            --border:          rgba(0,0,0,0.09);
+            --border-light:    rgba(0,0,0,0.15);
+            --text:            #374151;
+            --text-muted:      #6b7280;
+            --text-dim:        #9ca3af;
+            --green:           #059669;
+            --green-dim:       rgba(5,150,105,0.08);
+            --green-border:    rgba(5,150,105,0.22);
+            --blue:            #2563eb;
+            --heading:         #111827;
+            --heading-sub:     #374151;
+            --strong:          #111827;
+            --nav-bg:          rgba(255,255,255,0.88);
+            --nav-logo:        #111827;
+            --item-border:     rgba(0,0,0,0.05);
+            --separator:       rgba(0,0,0,0.12);
+            --scrollbar-thumb: #d1d5db;
         }
 
         /* ---- Reset ---- */
@@ -76,6 +120,19 @@
             -moz-osx-font-smoothing: grayscale;
         }
         img { max-width: 100%; display: block; }
+        figure { margin: 1.5rem 0; }
+        figure img { display: block; }
+        figcaption { font-size: 0.85rem; color: var(--text-dim); margin-top: 0.5rem; }
+        .video-embed { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 1.5rem 0; border-radius: 6px; border: 1px solid var(--border); }
+        .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+        .callout { border-left: 3px solid var(--green); background: var(--bg-raised); padding: 1rem 1.25rem; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+        .callout-title { font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text); }
+        .callout-info { border-left-color: var(--green); }
+        .callout-warning { border-left-color: #f59e0b; }
+        .callout-danger { border-left-color: #ef4444; }
+        .callout-tip { border-left-color: #22c55e; }
+        .callout p:last-child { margin-bottom: 0; }
+        .gist-embed { margin: 1.5rem 0; }
         a { color: var(--green); text-decoration: none; }
         a:hover { text-decoration: underline; }
         :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 3px; }
@@ -106,7 +163,7 @@
             top: 0;
             z-index: 100;
             border-bottom: 1px solid var(--border);
-            background: rgba(8,8,8,0.82);
+            background: var(--nav-bg);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
         }
@@ -120,7 +177,7 @@
             font-family: var(--mono);
             font-size: 1rem;
             font-weight: 700;
-            color: #fff;
+            color: var(--nav-logo);
             letter-spacing: -0.02em;
             display: flex;
             align-items: center;
@@ -144,6 +201,27 @@
             text-decoration: none;
         }
         .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+        /* ---- Theme toggle ---- */
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border-light);
+            color: var(--text-muted);
+            width: 34px;
+            height: 34px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.15s, border-color 0.15s;
+            padding: 0;
+        }
+        .theme-toggle:hover { color: var(--text); border-color: var(--green-border); }
+        [data-theme="dark"]  .icon-moon { display: none; }
+        [data-theme="light"] .icon-sun  { display: none; }
+
         .nav-cta {
             font-family: var(--mono);
             font-size: 0.78rem;
@@ -199,16 +277,16 @@
             font-size: clamp(1.7rem, 4vw, 2.4rem);
             font-weight: 800;
             letter-spacing: -0.04em;
-            color: #fff;
+            color: var(--heading);
             margin-bottom: 2.5rem;
             line-height: 1.15;
         }
-        .article-wrap .content h2 { font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
-        .article-wrap .content h3 { font-size: 1.05rem; font-weight: 700; color: #ddd; margin: 2rem 0 0.65rem; }
+        .article-wrap .content h2 { font-size: 1.35rem; font-weight: 700; color: var(--heading); margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
+        .article-wrap .content h3 { font-size: 1.05rem; font-weight: 700; color: var(--heading-sub); margin: 2rem 0 0.65rem; }
         .article-wrap .content p { margin-bottom: 1.25rem; color: var(--text); }
         .article-wrap .content a { color: var(--green); }
         .article-wrap .content a:hover { opacity: 0.8; }
-        .article-wrap .content strong { color: #fff; }
+        .article-wrap .content strong { color: var(--strong); }
         .article-wrap .content code {
             font-family: var(--mono);
             font-size: 0.82em;
@@ -245,7 +323,7 @@
         .article-wrap .content hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
         .article-wrap .content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
         .article-wrap .content th, .article-wrap .content td { border: 1px solid var(--border); padding: 0.6rem 1rem; text-align: left; }
-        .article-wrap .content th { background: var(--bg-raised); font-weight: 600; color: #fff; }
+        .article-wrap .content th { background: var(--bg-raised); font-weight: 600; color: var(--heading); }
         .article-wrap .content img { border-radius: var(--radius); margin: 1.5rem 0; }
 
         /* ---- Docs sidebar ---- */
@@ -267,7 +345,7 @@
         }
         .docs-sidebar::-webkit-scrollbar { width: 4px; }
         .docs-sidebar::-webkit-scrollbar-track { background: transparent; }
-        .docs-sidebar::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        .docs-sidebar::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
         .docs-sidebar nav h3 {
             font-size: 0.7rem;
             text-transform: uppercase;
@@ -300,16 +378,16 @@
             font-size: clamp(1.7rem, 4vw, 2.4rem);
             font-weight: 800;
             letter-spacing: -0.04em;
-            color: #fff;
+            color: var(--heading);
             margin-bottom: 1.5rem;
             line-height: 1.15;
         }
-        .docs-main .content h2 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
-        .docs-main .content h3 { font-size: 1.05rem; font-weight: 700; color: #ddd; margin: 2rem 0 0.65rem; }
+        .docs-main .content h2 { font-size: 1.25rem; font-weight: 700; color: var(--heading); margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
+        .docs-main .content h3 { font-size: 1.05rem; font-weight: 700; color: var(--heading-sub); margin: 2rem 0 0.65rem; }
         .docs-main .content p { margin-bottom: 1.25rem; color: var(--text); }
         .docs-main .content a { color: var(--green); }
         .docs-main .content a:hover { opacity: 0.8; }
-        .docs-main .content strong { color: #fff; }
+        .docs-main .content strong { color: var(--strong); }
         .docs-main .content code {
             font-family: var(--mono);
             font-size: 0.82em;
@@ -346,7 +424,7 @@
         .docs-main .content hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
         .docs-main .content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
         .docs-main .content th, .docs-main .content td { border: 1px solid var(--border); padding: 0.6rem 1rem; text-align: left; }
-        .docs-main .content th { background: var(--bg-raised); font-weight: 600; color: #fff; }
+        .docs-main .content th { background: var(--bg-raised); font-weight: 600; color: var(--heading); }
         .docs-main .content img { border-radius: var(--radius); margin: 1.5rem 0; }
 
         /* ---- TOC ---- */
@@ -383,7 +461,7 @@
             margin-bottom: 1.5rem;
         }
         .post-meta time { color: var(--text-muted); }
-        .post-meta .separator { color: rgba(255,255,255,0.15); }
+        .post-meta .separator { color: var(--separator); }
 
         /* ---- Tags ---- */
         .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1.5rem; }
@@ -397,7 +475,7 @@
             text-decoration: none;
             transition: background 0.1s;
         }
-        .tags a:hover { background: rgba(0,255,135,0.15); text-decoration: none; }
+        .tags a:hover { background: var(--green-dim); filter: brightness(1.15); text-decoration: none; }
 
         /* ---- Homepage collection listing ---- */
         .homepage-content { margin-bottom: 2.5rem; }
@@ -414,7 +492,7 @@
         }
         .collection-item {
             padding: 1rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--item-border);
         }
         .collection-item:last-child { border-bottom: none; }
         .collection-item h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; }
@@ -512,7 +590,7 @@
         }
         #search-results a:last-child { border-bottom: none; }
         #search-results a:hover { background: var(--bg-card-hover); text-decoration: none; }
-        #search-results strong { color: #fff; }
+        #search-results strong { color: var(--heading); }
         #search-results .result-meta { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.1rem; }
         #search-results .no-results { padding: 0.6rem 0.875rem; color: var(--text-dim); font-size: 0.875rem; }
 
@@ -626,7 +704,7 @@
     }
     .docs-sidebar nav a:hover {
         color: var(--text);
-        background: rgba(255,255,255,0.03);
+        background: var(--bg-raised);
         text-decoration: none;
     }
     .docs-sidebar nav .active a {
@@ -718,7 +796,7 @@
         font-weight: 400;
         font-style: italic;
         letter-spacing: -0.02em;
-        color: #fff;
+        color: var(--heading);
         margin-bottom: 0.6rem;
         line-height: 1.1;
     }
@@ -770,7 +848,7 @@
     .docs-main .content h2 {
         font-size: 1.25rem;
         font-weight: 700;
-        color: #fff;
+        color: var(--heading);
         margin: 3rem 0 1rem;
         letter-spacing: -0.025em;
         padding-top: 1.5rem;
@@ -784,7 +862,7 @@
     .docs-main .content h3 {
         font-size: 1rem;
         font-weight: 600;
-        color: #ddd;
+        color: var(--heading-sub);
         margin: 2rem 0 0.65rem;
     }
     .docs-main .content p {
@@ -794,7 +872,7 @@
     }
     .docs-main .content a { color: var(--green); }
     .docs-main .content a:hover { text-decoration: underline; }
-    .docs-main .content strong { color: #fff; }
+    .docs-main .content strong { color: var(--strong); }
 
     /* Inline code */
     .docs-main .content code {
@@ -960,6 +1038,24 @@
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
+                <!-- Sun: shown in dark mode, click to go light -->
+                <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <!-- Moon: shown in light mode, click to go dark -->
+                <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
             <a href="/docs/getting-started" class="nav-cta">Get started</a>
         </div>
     </nav>
@@ -998,6 +1094,8 @@
                 
                     <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
                 
+                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
@@ -1019,10 +1117,16 @@
                 <li class="toc-level-2"><a href="#site">[site]</a></li>
                 <li class="toc-level-2"><a href="#collections">[[collections]]</a></li>
                 <li class="toc-level-2"><a href="#build">[build]</a></li>
+                <li class="toc-level-2"><a href="#data-files">Data Files</a></li>
+                <li class="toc-level-3"><a href="#supported-formats">Supported formats</a></li>
+                <li class="toc-level-3"><a href="#nested-directories">Nested directories</a></li>
+                <li class="toc-level-3"><a href="#theme-integration">Theme integration</a></li>
+                <li class="toc-level-3"><a href="#conflict-detection">Conflict detection</a></li>
                 <li class="toc-level-2"><a href="#deploy">[deploy]</a></li>
                 <li class="toc-level-2"><a href="#languages">[languages.*]</a></li>
                 <li class="toc-level-2"><a href="#images">[images]</a></li>
                 <li class="toc-level-2"><a href="#frontmatter">Frontmatter</a></li>
+                <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
                 </ul>
             </nav>
             
@@ -1071,6 +1175,10 @@ lazy_loading = true
 <tr><th><code>language</code></th><th>string</th><th><code>"en"</code></th><th>Default language code</th></tr>
 <tr><th><code>author</code></th><th>string</th><th><code>""</code></th><th>Author name for JSON-LD and RSS</th></tr>
 </tbody></table>
+<div class="callout callout-warning">
+<div class="callout-title">Warning</div>
+<p>Set <code>base_url</code> to your real domain before deploying. Leaving it as <code>localhost</code> will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.</p>
+</div>
 <h2 id="collections">[[collections]]</h2>
 <p>Each <code>[[collections]]</code> entry defines a content collection. See <a href="/docs/collections">Collections</a> for full details.</p>
 <pre><code>[[collections]]
@@ -1088,10 +1196,53 @@ paginate = 10
 <h2 id="build">[build]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>output_dir</code></th><th>string</th><th><code>"dist"</code></th><th>Build output directory</th></tr>
+<tr><th><code>data_dir</code></th><th>string</th><th><code>"data"</code></th><th>Directory for data files (YAML/JSON/TOML)</th></tr>
 <tr><th><code>minify</code></th><th>bool</th><th><code>false</code></th><th>Strip CSS/JS comments and collapse whitespace</th></tr>
 <tr><th><code>fingerprint</code></th><th>bool</th><th><code>false</code></th><th>Add content hash to asset filenames for cache busting</th></tr>
 </tbody></table>
+<div class="callout callout-tip">
+<div class="callout-title">Tip</div>
+<p>Enable <code>minify</code> for production builds — it strips CSS/JS comments and collapses whitespace for smaller files. Enable <code>fingerprint</code> when your CDN caches aggressively — content hashes in filenames ensure browsers always fetch the latest version.</p>
+</div>
 <p>When <code>fingerprint = true</code>, static files get hashed names (e.g., <code>style.a1b2c3d4.css</code>) and an <code>asset-manifest.json</code> is written to the output directory.</p>
+<h2 id="data-files">Data Files</h2>
+<p>Place YAML, JSON, or TOML files in the <code>data/</code> directory to make structured data available in all templates as <code>{{ data.filename }}</code>.</p>
+<h3 id="supported-formats">Supported formats</h3>
+<table><thead><tr><th>Extension</th><th>Format</th></tr></thead><tbody>
+<tr><th><code>.yaml</code>, <code>.yml</code></th><th>YAML</th></tr>
+<tr><th><code>.json</code></th><th>JSON</th></tr>
+<tr><th><code>.toml</code></th><th>TOML</th></tr>
+</tbody></table>
+<h3 id="nested-directories">Nested directories</h3>
+<p>Subdirectories create nested keys:</p>
+<pre><code>data/
+  nav.yaml          → {{ data.nav }}
+  authors.json      → {{ data.authors }}
+  menus/
+    main.yaml       → {{ data.menus.main }}
+    footer.yaml     → {{ data.menus.footer }}
+</code></pre>
+<h3 id="theme-integration">Theme integration</h3>
+<p>All bundled themes conditionally render <code>data.nav</code> for header navigation and <code>data.footer</code> for footer links and copyright. Example <code>data/nav.yaml</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">Blog
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">/posts
+</span><span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">About
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">/about
+</span><span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">Docs
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">/docs
+</span></pre>
+<p>Example <code>data/footer.yaml</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#bf616a;">links</span><span style="color:#c0c5ce;">:
+</span><span style="color:#c0c5ce;">  - </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">GitHub
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">https://github.com/user/repo
+</span><span style="color:#c0c5ce;">  - </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">Twitter
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">https://twitter.com/user
+</span><span style="color:#bf616a;">copyright</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">2026 My Company</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<h3 id="conflict-detection">Conflict detection</h3>
+<p>The build will error if two data files share the same stem (e.g., <code>authors.yaml</code> and <code>authors.json</code>) or if a file and directory conflict (e.g., <code>nav.yaml</code> and <code>nav/main.yaml</code>). Unknown file extensions are skipped with a warning.</p>
 <h2 id="deploy">[deploy]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>target</code></th><th>string</th><th><code>"github-pages"</code></th><th>Deploy target: <code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code></th></tr>
@@ -1109,14 +1260,14 @@ title = &quot;Mon Site&quot;
 </code></pre>
 <p>Each language can override <code>title</code> and <code>description</code>. See <a href="/docs/i18n">Multi-language</a> for details.</p>
 <h2 id="images">[images]</h2>
-<p>Optional. Configure automatic image processing:</p>
+<p>Optional. When this section is present, <code>page</code> automatically processes images in <code>static/</code>. When omitted, images are copied as-is with no resizing or rewriting. New projects created with <code>page init</code> include this section by default.</p>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>widths</code></th><th>array</th><th><code>[]</code></th><th>Target widths in pixels for resized copies</th></tr>
+<tr><th><code>widths</code></th><th>array</th><th><code>[480, 800, 1200]</code></th><th>Target widths in pixels for resized copies</th></tr>
 <tr><th><code>quality</code></th><th>int</th><th><code>80</code></th><th>JPEG/WebP quality (1-100)</th></tr>
-<tr><th><code>webp</code></th><th>bool</th><th><code>false</code></th><th>Generate WebP variants</th></tr>
-<tr><th><code>lazy_loading</code></th><th>bool</th><th><code>false</code></th><th>Add <code>loading="lazy"</code> to <code>&lt;img&gt;</code> tags</th></tr>
+<tr><th><code>webp</code></th><th>bool</th><th><code>true</code></th><th>Generate WebP variants</th></tr>
+<tr><th><code>lazy_loading</code></th><th>bool</th><th><code>true</code></th><th>Add <code>loading="lazy"</code> to <code>&lt;img&gt;</code> tags</th></tr>
 </tbody></table>
-<p>When configured, images in <code>static/</code> are resized to each width, optionally converted to WebP, and <code>&lt;img&gt;</code> tags in HTML are rewritten with <code>srcset</code> and <code>&lt;picture&gt;</code> elements.</p>
+<p>When configured, images in <code>static/</code> are resized to each width, optionally converted to WebP, and <code>&lt;img&gt;</code> tags in HTML are rewritten with <code>srcset</code> and <code>&lt;picture&gt;</code> elements. To disable image processing, remove the <code>[images]</code> section entirely.</p>
 <h2 id="frontmatter">Frontmatter</h2>
 <p>Content files use YAML frontmatter between <code>---</code> delimiters:</p>
 <pre style="background-color:#2b303b;">
@@ -1151,6 +1302,12 @@ title = &quot;Mon Site&quot;
 <tr><th><code>robots</code></th><th>string</th><th>No</th><th>Per-page robots directive</th></tr>
 <tr><th><code>extra</code></th><th>map</th><th>No</th><th>Arbitrary data for templates</th></tr>
 </tbody></table>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><a href="/docs/collections">Collections</a> — configure how posts, docs, and pages behave</li>
+<li><a href="/docs/templates">Templates &amp; Themes</a> — use config values and data files in your templates</li>
+<li><a href="/docs/deployment">Deployment</a> — deploy with the settings you've configured</li>
+</ul>
 </div>
         </article>
 
@@ -1179,6 +1336,8 @@ title = &quot;Mon Site&quot;
             
                 
             
+                
+            
         
         
         
@@ -1210,6 +1369,10 @@ title = &quot;Mon Site&quot;
         
             
                 
+            
+            
+            
+        
             
             
             
@@ -1274,6 +1437,19 @@ title = &quot;Mon Site&quot;
     
 
     <script>
+    // ---- Theme toggle ----
+    (function(){
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function(){
+            var html = document.documentElement;
+            var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        });
+    })();
+
+    // ---- Search ----
     (function(){
         var input = document.getElementById('search-input');
         var results = document.getElementById('search-results');

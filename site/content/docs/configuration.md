@@ -54,6 +54,10 @@ lazy_loading = true
 | `language` | string | `"en"` | Default language code |
 | `author` | string | `""` | Author name for JSON-LD and RSS |
 
+{{% callout(type="warning") %}}
+Set `base_url` to your real domain before deploying. Leaving it as `localhost` will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.
+{{% end %}}
+
 ## [[collections]]
 
 Each `[[collections]]` entry defines a content collection. See [Collections](/docs/collections) for full details.
@@ -80,6 +84,10 @@ paginate = 10
 | `data_dir` | string | `"data"` | Directory for data files (YAML/JSON/TOML) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
+
+{{% callout(type="tip") %}}
+Enable `minify` for production builds — it strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively — content hashes in filenames ensure browsers always fetch the latest version.
+{{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
 
@@ -209,3 +217,9 @@ extra:
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |
 | `extra` | map | No | Arbitrary data for templates |
+
+## Next Steps
+
+- [Collections](/docs/collections) — configure how posts, docs, and pages behave
+- [Templates & Themes](/docs/templates) — use config values and data files in your templates
+- [Deployment](/docs/deployment) — deploy with the settings you've configured

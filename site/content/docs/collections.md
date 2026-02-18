@@ -65,6 +65,10 @@ content/posts/
 
 The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
 
+{{% callout(type="tip") %}}
+Use `page serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.
+{{% end %}}
+
 ## Docs
 
 Docs support nested directories for grouped navigation:
@@ -81,6 +85,10 @@ content/docs/
 ```
 
 Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar with sections grouped by directory.
+
+{{% callout(type="info") %}}
+Subdirectories automatically become sidebar sections. Create `content/docs/guides/` and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.
+{{% end %}}
 
 ## Pages
 
@@ -131,3 +139,9 @@ Tags are collected from all posts and generate archive pages:
 - `/tags/rust/` — all posts tagged "rust"
 
 Tag pages are i18n-aware and included in the sitemap.
+
+## Next Steps
+
+- [Configuration](/docs/configuration) — full reference for all collection fields and site settings
+- [Templates & Themes](/docs/templates) — customize how collections are rendered
+- [Shortcodes](/docs/shortcodes) — add rich content like videos, callouts, and figures to your pages

@@ -83,6 +83,30 @@ To override a block, create a template that extends `base.html`:
 {% endblock %}
 ```
 
+Here's a more complete example — a custom `post.html` with reading time, tags, and a back link:
+
+```html
+{% extends "base.html" %}
+
+{% block content %}
+<article>
+  <h1>{{ page.title }}</h1>
+  <p>{{ page.date }} · {{ page.reading_time }} min read</p>
+  {{ page.content | safe }}
+  {% if page.tags %}
+  <div class="tags">
+    {% for tag in page.tags %}<span>{{ tag }}</span>{% endfor %}
+  </div>
+  {% endif %}
+  <a href="/posts">Back to all posts</a>
+</article>
+{% endblock %}
+```
+
+{{% callout(type="info") %}}
+Always use `| safe` with `{{ page.content }}`. Tera escapes HTML by default, so without `| safe` your rendered content would display as raw HTML tags.
+{{% end %}}
+
 ## Extra Frontmatter
 
 Pass arbitrary data to templates using the `extra` field:
@@ -104,6 +128,10 @@ Access in templates:
 <img src="{{ page.extra.hero_image }}" alt="Hero">
 {% endif %}
 ```
+
+{{% callout(type="tip") %}}
+Create `data/nav.yaml` with your links and every bundled theme renders header navigation automatically — no template editing needed.
+{{% end %}}
 
 ## Data Files in Templates
 
@@ -233,3 +261,9 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 </nav>
 {% endif %}
 ```
+
+## Next Steps
+
+- [Theme Gallery](/docs/theme-gallery) — browse all six bundled themes with visual previews
+- [Shortcodes](/docs/shortcodes) — add videos, callouts, and figures to your content
+- [Configuration](/docs/configuration) — data file setup and all `page.toml` options
