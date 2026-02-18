@@ -1,0 +1,133 @@
+---
+title: Collections
+description: Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
+---
+
+## Overview
+
+Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Three presets are available:
+
+| Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
+|--------|-----------|-------|-----|--------|--------|-------------|
+| posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
+| docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
+| pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
+
+## Defining Collections
+
+Collections are configured in `page.toml`:
+
+```toml
+[[collections]]
+name = "posts"
+
+[[collections]]
+name = "docs"
+
+[[collections]]
+name = "pages"
+```
+
+Each preset comes with sensible defaults. You can override any field:
+
+```toml
+[[collections]]
+name = "posts"
+label = "Blog"
+paginate = 10
+```
+
+## Collection Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Collection identifier |
+| `label` | string | capitalized name | Display name in templates |
+| `directory` | string | name | Content directory under `content/` |
+| `url_prefix` | string | `/name` | URL prefix for items |
+| `default_template` | string | preset-based | Template file for rendering |
+| `has_date` | bool | preset-based | Items have dates |
+| `has_rss` | bool | preset-based | Include in RSS feed |
+| `listed` | bool | preset-based | Show on index page |
+| `nested` | bool | preset-based | Support subdirectories as groups |
+| `paginate` | int | none | Items per page (enables pagination) |
+
+## Posts
+
+Posts are date-based content. Filenames should include the date:
+
+```
+content/posts/
+├── 2026-01-15-hello-world.md
+├── 2026-02-01-rust-tips.md
+└── 2026-02-18-new-feature.md
+```
+
+The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
+
+## Docs
+
+Docs support nested directories for grouped navigation:
+
+```
+content/docs/
+├── getting-started.md
+├── guides/
+│   ├── setup.md
+│   └── advanced.md
+└── reference/
+    ├── api.md
+    └── config.md
+```
+
+Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar with sections grouped by directory.
+
+## Pages
+
+Pages are standalone content at root URLs. They're unlisted (not shown on the index page):
+
+```
+content/pages/
+├── about.md        → /about
+├── contact.md      → /contact
+└── index.md        → / (homepage content)
+```
+
+The special file `content/pages/index.md` injects its content into the homepage template as `{{ page.content }}`.
+
+## Pagination
+
+Enable pagination on any listed collection:
+
+```toml
+[[collections]]
+name = "posts"
+paginate = 10
+```
+
+This generates:
+- `/posts/` — page 1
+- `/posts/page/2/` — page 2
+- `/posts/page/3/` — page 3, etc.
+
+Templates receive pagination context:
+
+```
+{{ pagination.current_page }}
+{{ pagination.total_pages }}
+{{ pagination.prev_url }}
+{{ pagination.next_url }}
+```
+
+## Singular/Plural
+
+Both `page new post` and `page new posts` work — the CLI normalizes singular to plural automatically.
+
+## Tag Pages
+
+Tags are collected from all posts and generate archive pages:
+
+- `/tags/` — tag index with all tags and counts
+- `/tags/rust/` — all posts tagged "rust"
+
+Tag pages are i18n-aware and included in the sitemap.

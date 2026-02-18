@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: http://localhost:3000/sitemap.xml
+
+# AI / LLM crawlers
+# LLMs-txt: http://localhost:3000/llms.txt
+# LLMs-full-txt: http://localhost:3000/llms-full.txt

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started - page</title>
+    <meta name="description" content="Install page and build your first static site in under a minute.">
+    <link rel="canonical" href="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;getting-started">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;getting-started">
+    <meta property="og:title" content="Getting Started">
+    <meta property="og:description" content="Install page and build your first static site in under a minute.">
+    
+    <meta property="og:site_name" content="page">
+    <meta property="og:locale" content="en">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Getting Started">
+    <meta name="twitter:description" content="Install page and build your first static site in under a minute.">
+    
+    
+    <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
+    <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
+    <link rel="alternate" type="text/markdown" href="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;getting-started.md">
+    
+    <script type="application/ld+json">
+    
+    {"@context":"https://schema.org","@type":"Article","headline":&quot;Getting Started&quot;,"description":&quot;Install page and build your first static site in under a minute.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;getting-started&quot;}
+    
+    </script>
+    <style>
+        /* === Reset & Base === */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.65;
+            color: #e8e8e8;
+            background: #0a0a0a;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        a { color: #4361ee; text-decoration: none; }
+        a:hover { color: #5a7aff; text-decoration: underline; }
+
+        /* === Skip Link === */
+        .skip-link {
+            position: absolute;
+            top: -100%;
+            left: 0;
+            padding: 0.6rem 1.2rem;
+            background: #4361ee;
+            color: #fff;
+            z-index: 1000;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .skip-link:focus { top: 0; }
+
+        /* === Top Navigation Bar === */
+        .topnav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #0a0a0a;
+            border-bottom: 1px solid #1a1a1a;
+            padding: 0 1.5rem;
+        }
+        .topnav-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+            gap: 1rem;
+        }
+        .topnav-brand {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #e8e8e8;
+            text-decoration: none;
+            font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+            letter-spacing: -0.02em;
+            flex-shrink: 0;
+        }
+        .topnav-brand:hover { color: #fff; text-decoration: none; }
+        .topnav-links {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            list-style: none;
+        }
+        .topnav-links a {
+            color: #999;
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            padding: 0.35rem 0.7rem;
+            border-radius: 6px;
+            transition: color 0.1s, background 0.1s;
+        }
+        .topnav-links a:hover { color: #e8e8e8; background: #161616; text-decoration: none; }
+        .topnav-links a.active { color: #4361ee; }
+        .topnav-search {
+            position: relative;
+            flex-shrink: 0;
+        }
+        .topnav-search input {
+            width: 200px;
+            padding: 0.35rem 0.7rem;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            background: #111;
+            color: #e8e8e8;
+            transition: border-color 0.15s, width 0.2s;
+        }
+        .topnav-search input::placeholder { color: #555; }
+        .topnav-search input:focus {
+            outline: none;
+            border-color: #4361ee;
+            width: 280px;
+        }
+        #search-results {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 360px;
+            margin-top: 4px;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            background: #111;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            z-index: 200;
+            overflow: hidden;
+        }
+        #search-results:empty { display: none; }
+        #search-results a {
+            display: block;
+            padding: 0.6rem 0.85rem;
+            text-decoration: none;
+            border-bottom: 1px solid #1a1a1a;
+            font-size: 0.875rem;
+            color: #4361ee;
+        }
+        #search-results a:last-child { border-bottom: none; }
+        #search-results a:hover { background: #161616; text-decoration: none; }
+        #search-results strong { color: #e8e8e8; display: block; font-size: 0.875rem; }
+        #search-results .result-meta { font-size: 0.75rem; color: #555; margin-top: 0.15rem; }
+        #search-results .no-results { padding: 0.6rem 0.85rem; color: #555; font-size: 0.875rem; }
+
+        /* === Language Switcher === */
+        .lang-switcher {
+            display: inline-flex;
+            gap: 0.25rem;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        .lang-switcher a {
+            color: #666;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+        .lang-switcher a:hover { background: #161616; color: #e8e8e8; text-decoration: none; }
+        .lang-switcher strong { padding: 0.15rem 0.4rem; color: #4361ee; }
+
+        /* === Mobile Menu Toggle === */
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: #e8e8e8;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        /* === Page Layout === */
+        .page-wrapper {
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            flex: 1;
+        }
+
+        /* === Sidebar (docs only) === */
+        .sidebar {
+            width: 240px;
+            flex-shrink: 0;
+            padding: 1.5rem 0 2rem 1.5rem;
+            position: sticky;
+            top: 56px;
+            height: calc(100vh - 56px);
+            overflow-y: auto;
+            border-right: 1px solid #1a1a1a;
+        }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        .sidebar nav { padding-right: 1rem; }
+        .sidebar nav h3 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #666;
+            font-weight: 600;
+            margin: 1.25rem 0 0.4rem;
+        }
+        .sidebar nav h3:first-child { margin-top: 0; }
+        .sidebar nav ul { list-style: none; }
+        .sidebar nav li { margin-bottom: 1px; }
+        .sidebar nav a {
+            color: #999;
+            font-size: 0.85rem;
+            display: block;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: color 0.1s, background 0.1s;
+        }
+        .sidebar nav a:hover { color: #e8e8e8; background: #161616; text-decoration: none; }
+        .sidebar nav .active a { color: #4361ee; font-weight: 600; background: rgba(67, 97, 238, 0.08); }
+
+        /* === Main Content Area === */
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            padding: 2rem 1.5rem 3rem;
+        }
+
+        /* Layout: with sidebar (docs) — cap main at 780px */
+        .has-sidebar .main-content { max-width: 780px; }
+
+        /* Layout: posts — centered narrow column */
+        .layout-post .main-content { max-width: 680px; margin: 0 auto; }
+
+        /* Layout: index/pages — centered wider column */
+        .layout-wide .main-content { max-width: 900px; margin: 0 auto; }
+
+        /* === Article / Content === */
+        article { margin-bottom: 2rem; }
+        article h1 { font-size: 2rem; font-weight: 700; line-height: 1.25; margin-bottom: 0.75rem; color: #fff; }
+        article h2 { font-size: 1.4rem; font-weight: 600; margin-top: 2.25rem; margin-bottom: 0.5rem; color: #fff; }
+        article h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.75rem; margin-bottom: 0.4rem; color: #e8e8e8; }
+        article h4 { font-size: 1rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.3rem; color: #e8e8e8; }
+        article p { margin-bottom: 1rem; }
+        article ul, article ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+        article li { margin-bottom: 0.3rem; }
+        article li > ul, article li > ol { margin-bottom: 0; }
+
+        /* === Post Metadata === */
+        .post-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+        .post-meta time { color: #888; }
+        .post-meta .separator { color: #333; }
+        .post-meta .reading-time { color: #666; }
+        .post-meta .word-count { color: #555; }
+
+        /* === Tags === */
+        .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+        .tags a, .tags span {
+            background: #161616;
+            border: 1px solid #1e1e1e;
+            padding: 0.15rem 0.55rem;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            color: #4361ee;
+            text-decoration: none;
+            transition: background 0.1s, border-color 0.1s;
+        }
+        .tags a:hover { background: #1a1a1a; border-color: #4361ee; text-decoration: none; }
+
+        /* === Code === */
+        pre {
+            background: #161616;
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid #1e1e1e;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+        code {
+            font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+            font-size: 0.875em;
+        }
+        :not(pre) > code {
+            background: #161616;
+            border: 1px solid #1e1e1e;
+            padding: 0.1rem 0.35rem;
+            border-radius: 4px;
+            color: #7aa2f7;
+        }
+        pre code { background: none; border: none; padding: 0; color: inherit; border-radius: 0; }
+
+        /* === Blockquote === */
+        blockquote {
+            border-left: 3px solid #4361ee;
+            margin: 0 0 1rem;
+            padding: 0.5rem 1rem;
+            color: #999;
+        }
+        blockquote p:last-child { margin-bottom: 0; }
+
+        /* === Images === */
+        img { max-width: 100%; height: auto; border-radius: 6px; }
+
+        /* === Tables === */
+        table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+        th, td { border: 1px solid #1e1e1e; padding: 0.5rem 0.9rem; text-align: left; font-size: 0.9rem; }
+        th { background: #111; font-weight: 600; color: #ccc; }
+        td { color: #bbb; }
+
+        /* === Horizontal Rule === */
+        hr { border: none; border-top: 1px solid #1e1e1e; margin: 2rem 0; }
+
+        /* === Table of Contents (docs) === */
+        .toc {
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .toc h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #666;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .toc ul { list-style: none; padding: 0; }
+        .toc li { margin-bottom: 0.2rem; }
+        .toc a { color: #999; font-size: 0.85rem; text-decoration: none; }
+        .toc a:hover { color: #4361ee; }
+        .toc .toc-level-3 { padding-left: 1rem; }
+        .toc .toc-level-4 { padding-left: 2rem; }
+        .toc .toc-level-5 { padding-left: 3rem; }
+        .toc .toc-level-6 { padding-left: 4rem; }
+
+        /* === Homepage / Index === */
+        .homepage-content { margin-bottom: 2.5rem; }
+        .homepage-content h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 1rem; color: #fff; }
+        .homepage-content h2 { font-size: 1.5rem; color: #fff; }
+        .homepage-content p { font-size: 1.1rem; color: #bbb; }
+
+        .collection-section { margin-bottom: 2.5rem; }
+        .collection-section > h2 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .collection-item {
+            padding: 1rem 0;
+            border-bottom: 1px solid #111;
+        }
+        .collection-item:last-child { border-bottom: none; }
+        .collection-item h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .collection-item h3 a { color: #e8e8e8; }
+        .collection-item h3 a:hover { color: #4361ee; text-decoration: none; }
+        .collection-item time { font-size: 0.8rem; color: #555; }
+        .collection-item .item-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.3rem;
+            font-size: 0.8rem;
+            color: #555;
+        }
+        .collection-item .item-meta .separator { color: #333; }
+        .collection-item p, .collection-item .excerpt {
+            font-size: 0.9rem;
+            color: #888;
+            margin: 0.3rem 0 0;
+            line-height: 1.5;
+        }
+        .collection-item .item-tags { margin-top: 0.5rem; }
+        .collection-item .item-tags a, .collection-item .item-tags span {
+            font-size: 0.72rem;
+            padding: 0.1rem 0.4rem;
+        }
+
+        /* === Pagination === */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #1a1a1a;
+            font-size: 0.9rem;
+        }
+        .pagination a {
+            color: #4361ee;
+            text-decoration: none;
+            padding: 0.35rem 0.8rem;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            transition: background 0.1s, border-color 0.1s;
+        }
+        .pagination a:hover { background: #161616; border-color: #4361ee; text-decoration: none; }
+        .pagination .page-info { color: #666; font-size: 0.85rem; }
+
+        /* === Footer === */
+        .site-footer {
+            border-top: 1px solid #1a1a1a;
+            padding: 1.25rem 1.5rem;
+            text-align: center;
+            color: #444;
+            font-size: 0.8rem;
+        }
+        .site-footer a { color: #555; }
+        .site-footer a:hover { color: #4361ee; }
+
+        /* === Focus visible === */
+        :focus-visible { outline: 2px solid #4361ee; outline-offset: 2px; }
+
+        /* === Reduced motion === */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        /* === Responsive: tablet === */
+        @media (max-width: 960px) {
+            .sidebar {
+                position: fixed;
+                top: 56px;
+                left: -280px;
+                width: 260px;
+                height: calc(100vh - 56px);
+                background: #0a0a0a;
+                border-right: 1px solid #1a1a1a;
+                z-index: 90;
+                padding: 1.5rem;
+                transition: left 0.2s ease;
+            }
+            .sidebar.open { left: 0; }
+            .sidebar-backdrop {
+                display: none;
+                position: fixed;
+                top: 56px;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.6);
+                z-index: 80;
+            }
+            .sidebar-backdrop.open { display: block; }
+            .has-sidebar .main-content { max-width: none; }
+            .menu-toggle { display: block; }
+        }
+
+        /* === Responsive: mobile === */
+        @media (max-width: 640px) {
+            .topnav { padding: 0 1rem; }
+            .topnav-inner { height: 48px; }
+            .topnav-links { display: none; }
+            .topnav-links.open { display: flex; position: absolute; top: 48px; left: 0; right: 0; background: #0a0a0a; border-bottom: 1px solid #1a1a1a; flex-direction: column; padding: 0.5rem 0; }
+            .topnav-links.open a { padding: 0.6rem 1.5rem; }
+            .topnav-search input { width: 140px; }
+            .topnav-search input:focus { width: 180px; }
+            #search-results { width: 100vw; right: -1rem; border-radius: 0; }
+            .main-content { padding: 1.5rem 1rem 2rem; }
+            article h1 { font-size: 1.6rem; }
+            .homepage-content h1 { font-size: 1.8rem; }
+            .menu-toggle { display: block; }
+        }
+    </style>
+    
+    
+</head>
+<body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+
+    
+    <nav class="topnav" aria-label="Main navigation">
+        <div class="topnav-inner">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <button class="menu-toggle" aria-label="Toggle sidebar navigation" onclick="document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.sidebar-backdrop').classList.toggle('open');">&#9776;</button>
+                <a href="/" class="topnav-brand">page</a>
+                
+            </div>
+            <div class="topnav-links" id="topnav-links">
+                <a href="/docs">Docs</a>
+                <a href="/posts">Blog</a>
+                <a href="https://github.com/omarish/page">GitHub</a>
+            </div>
+            <form class="topnav-search" role="search" aria-label="Site search" onsubmit="return false">
+                <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
+                <div id="search-results" aria-live="polite"></div>
+            </form>
+        </div>
+    </nav>
+    
+
+    
+    <div class="page-wrapper has-sidebar">
+        <aside class="sidebar" aria-label="Documentation navigation">
+            <nav>
+                
+                    
+                    <ul>
+                    
+                        <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    
+                        <li class="active"><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    
+                        <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    
+                    </ul>
+                
+            </nav>
+        </aside>
+        <div class="sidebar-backdrop" onclick="document.querySelector('.sidebar').classList.remove('open');this.classList.remove('open');"></div>
+        <main id="main" class="main-content" role="main">
+            
+<article>
+    <h1>Getting Started</h1>
+    
+    <nav class="toc" aria-label="Table of contents">
+        <h4>On this page</h4>
+        <ul>
+        <li class="toc-level-2"><a href="#installation">Installation</a></li>
+        <li class="toc-level-2"><a href="#create-your-first-site">Create Your First Site</a></li>
+        <li class="toc-level-2"><a href="#create-content">Create Content</a></li>
+        <li class="toc-level-2"><a href="#build-your-site">Build Your Site</a></li>
+        <li class="toc-level-2"><a href="#development-server">Development Server</a></li>
+        <li class="toc-level-2"><a href="#themes">Themes</a></li>
+        <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
+        </ul>
+    </nav>
+    
+    <div class="content"><h2 id="installation">Installation</h2>
+<p>Install <code>page</code> from source using Cargo:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">cargo</span><span style="color:#c0c5ce;"> install page
+</span></pre>
+<p>Verify the installation:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#bf616a;"> --version
+</span></pre>
+<h2 id="create-your-first-site">Create Your First Site</h2>
+<p>Scaffold a new site with posts, docs, and pages collections:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> init mysite</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">My Site</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">A personal blog</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,docs,pages
+</span><span style="color:#96b5b4;">cd</span><span style="color:#c0c5ce;"> mysite
+</span></pre>
+<p>This creates the following structure:</p>
+<pre><code>mysite/
+├── content/
+│   ├── posts/     # Date-based blog posts with RSS
+│   ├── docs/      # Documentation with sidebar navigation
+│   └── pages/     # Standalone pages (about, contact, etc.)
+├── templates/     # Tera templates (override bundled themes)
+├── static/        # Static assets (CSS, JS, images)
+├── page.toml      # Site configuration
+└── .claude/       # Claude Code agent configuration
+</code></pre>
+<h2 id="create-content">Create Content</h2>
+<p>Add a blog post:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new post &quot;</span><span style="color:#a3be8c;">Hello World</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> intro,welcome
+</span></pre>
+<p>This creates <code>content/posts/2026-02-18-hello-world.md</code> with frontmatter:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">---
+</span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Hello World</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">date</span><span style="color:#c0c5ce;">: </span><span style="color:#d08770;">2026-02-18
+</span><span style="color:#bf616a;">tags</span><span style="color:#c0c5ce;">:
+</span><span style="color:#c0c5ce;">  - </span><span style="color:#a3be8c;">intro
+</span><span style="color:#c0c5ce;">  - </span><span style="color:#a3be8c;">welcome
+</span><span style="color:#c0c5ce;">---
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#a3be8c;">Your content here...
+</span></pre>
+<p>Add a documentation page:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new doc &quot;</span><span style="color:#a3be8c;">Getting Started</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<p>Add a standalone page:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new page &quot;</span><span style="color:#a3be8c;">About</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<h2 id="build-your-site">Build Your Site</h2>
+<p>Build the site to the <code>dist/</code> directory:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
+</span></pre>
+<p>The build generates:</p>
+<ul>
+<li>HTML pages with clean URLs (<code>/posts/hello-world</code>)</li>
+<li>Markdown copies alongside every HTML file</li>
+<li>RSS feed at <code>/feed.xml</code></li>
+<li>XML sitemap at <code>/sitemap.xml</code></li>
+<li>Search index at <code>/search-index.json</code></li>
+<li>LLM discovery files at <code>/llms.txt</code> and <code>/llms-full.txt</code></li>
+</ul>
+<h2 id="development-server">Development Server</h2>
+<p>Start a dev server with live reload:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> serve
+</span></pre>
+<p>The server starts at <code>http://localhost:3000</code> (auto-increments if the port is taken) and watches for file changes. An interactive REPL lets you run commands without restarting:</p>
+<pre><code>page&gt; new post &quot;Another Post&quot;
+page&gt; theme apply dark
+page&gt; build
+page&gt; status
+page&gt; stop
+</code></pre>
+<h2 id="themes">Themes</h2>
+<p>List available themes:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme list
+</span></pre>
+<p>Apply a bundled theme:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply dark
+</span></pre>
+<p>Generate a custom theme with AI:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">minimal serif with warm colors</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li><a href="/docs/cli-reference">CLI Reference</a> — All commands and flags</li>
+<li><a href="/docs/collections">Collections</a> — Configure posts, docs, and pages</li>
+<li><a href="/docs/configuration">Configuration</a> — Full <code>page.toml</code> reference</li>
+<li><a href="/docs/templates">Templates &amp; Themes</a> — Customize the look</li>
+</ul>
+</div>
+</article>
+
+        </main>
+    </div>
+    
+
+    <footer class="site-footer">
+    
+        <p>&copy;  &middot; page</p>
+    
+    </footer>
+
+    <script>
+    (function(){
+        var input = document.getElementById('search-input');
+        if (!input) return;
+        var results = document.getElementById('search-results');
+        var index = null;
+        var indexUrl = '/search-index.json';
+        input.addEventListener('focus', function() {
+            if (index) return;
+            fetch(indexUrl).then(function(r){ return r.json(); }).then(function(data){ index = data; }).catch(function(){ index = []; });
+        });
+        input.addEventListener('input', function() {
+            if (!index) { results.innerHTML = ''; return; }
+            var q = this.value.toLowerCase().trim();
+            if (!q) { results.innerHTML = ''; return; }
+            var matches = index.filter(function(item) {
+                return (item.title && item.title.toLowerCase().includes(q)) ||
+                       (item.description && item.description.toLowerCase().includes(q)) ||
+                       (item.tags && item.tags.some(function(t){ return t.toLowerCase().includes(q); }));
+            }).slice(0, 8);
+            if (matches.length === 0) {
+                results.innerHTML = '<div class="no-results">No results</div>';
+                return;
+            }
+            results.innerHTML = matches.map(function(m) {
+                return '<a href="' + m.url + '"><strong>' + m.title + '</strong>' +
+                       '<div class="result-meta">' + (m.collection || '') + (m.date ? ' \u00b7 ' + m.date : '') + '</div></a>';
+            }).join('');
+        });
+        document.addEventListener('click', function(e) {
+            if (!results.contains(e.target) && e.target !== input) { results.innerHTML = ''; }
+        });
+    })();
+    </script>
+    
+</body>
+</html>
