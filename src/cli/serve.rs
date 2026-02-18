@@ -160,7 +160,16 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                         let template_dir = paths.templates.clone();
                         let _ = std::fs::create_dir_all(&template_dir);
                         match std::fs::write(template_dir.join("base.html"), theme.base_html) {
-                            Ok(()) => human::success(&format!("Applied theme '{name}'")),
+                            Ok(()) => {
+                                human::success(&format!("Applied theme '{name}'"));
+                                // Rebuild site to reflect the new theme
+                                human::info("Rebuilding site...");
+                                let opts = BuildOptions { include_drafts: true };
+                                match build::build_site(config, paths, &opts) {
+                                    Ok(result) => human::success(&result.stats.human_display()),
+                                    Err(e) => human::error(&format!("Rebuild failed: {e}")),
+                                }
+                            }
                             Err(e) => human::error(&format!("Failed to apply theme: {e}")),
                         }
                     }
