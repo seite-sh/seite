@@ -1,0 +1,50 @@
+[site]
+title = "page"
+description = "AI-native static site generator for the modern web"
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+nested = false
+default_template = "post.html"
+
+[[collections]]
+name = "docs"
+label = "Documentation"
+directory = "docs"
+has_date = false
+has_rss = false
+listed = true
+url_prefix = "/docs"
+nested = true
+default_template = "doc.html"
+
+[[collections]]
+name = "pages"
+label = "Pages"
+directory = "pages"
+has_date = false
+has_rss = false
+listed = false
+url_prefix = ""
+nested = false
+default_template = "page.html"
+
+[build]
+output_dir = "dist"
+content_dir = "content"
+template_dir = "templates"
+static_dir = "static"
+
+[deploy]
+target = "github-pages"
+
+[languages]

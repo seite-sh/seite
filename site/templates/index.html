@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
+{% block content %}
+{% if page.content %}
+<div class="homepage-content">{{ page.content | safe }}</div>
+{% endif %}
+{% for collection in collections %}
+<section class="collection-section">
+    <h2>{{ collection.label }}</h2>
+    {% for item in collection.items %}
+    <div class="collection-item">
+        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        <div class="item-meta">
+            {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+            {% if item.date and item.reading_time %}<span class="separator">&middot;</span>{% endif %}
+            {% if item.reading_time %}<span>{{ item.reading_time }} min read</span>{% endif %}
+        </div>
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+        {% if item.tags | length > 0 %}
+        <div class="tags item-tags">
+            {% for tag in item.tags %}<a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/tags/{{ tag | slugify }}/">{{ tag }}</a>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% if collection.items | length == 0 %}
+    <p style="color:#555;">No {{ collection.name }} yet.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% if pagination %}
+<nav class="pagination" aria-label="Pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
+    <span class="page-info">Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% if not page and collections | length == 0 %}
+<p>No content yet. Create some with <code>page new post "My First Post"</code></p>
+{% endif %}
+{% endblock %}
