@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::net::TcpStream;
+use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
@@ -40,10 +41,12 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
         }
         "cloudflare" => {
             checks.push(check_cli_available("wrangler", &["--version"]));
+            checks.push(check_cloudflare_auth());
             checks.push(check_cloudflare_project(config, paths));
         }
         "netlify" => {
             checks.push(check_cli_available("netlify", &["--version"]));
+            checks.push(check_netlify_auth());
         }
         _ => {}
     }
@@ -167,6 +170,69 @@ fn check_git_remote(paths: &ResolvedPaths, configured_repo: Option<&str>) -> Pre
     }
 }
 
+fn check_cloudflare_auth() -> PreflightCheck {
+    // Only check auth if wrangler is installed
+    let has_wrangler = Command::new("wrangler")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !has_wrangler {
+        return PreflightCheck {
+            name: "Cloudflare auth".into(),
+            passed: false,
+            message: "skipped (wrangler not installed)".into(),
+        };
+    }
+    match Command::new("wrangler").args(["whoami"]).output() {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let account = stdout
+                .lines()
+                .find(|l| l.contains('|'))
+                .map(|l| l.trim().to_string())
+                .unwrap_or_else(|| "authenticated".into());
+            PreflightCheck {
+                name: "Cloudflare auth".into(),
+                passed: true,
+                message: account,
+            }
+        }
+        _ => PreflightCheck {
+            name: "Cloudflare auth".into(),
+            passed: false,
+            message: "not logged in — run `wrangler login`".into(),
+        },
+    }
+}
+
+fn check_netlify_auth() -> PreflightCheck {
+    let has_netlify = Command::new("netlify")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !has_netlify {
+        return PreflightCheck {
+            name: "Netlify auth".into(),
+            passed: false,
+            message: "skipped (netlify not installed)".into(),
+        };
+    }
+    match Command::new("netlify").args(["status"]).output() {
+        Ok(output) if output.status.success() => PreflightCheck {
+            name: "Netlify auth".into(),
+            passed: true,
+            message: "authenticated".into(),
+        },
+        _ => PreflightCheck {
+            name: "Netlify auth".into(),
+            passed: false,
+            message: "not logged in — run `netlify login`".into(),
+        },
+    }
+}
+
 fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
     if config.deploy.project.is_some() {
         return PreflightCheck {
@@ -203,6 +269,348 @@ pub fn print_preflight(checks: &[PreflightCheck]) -> bool {
     }
     println!();
     all_passed
+}
+
+// ---------------------------------------------------------------------------
+// Interactive fix system (auto-fix failed pre-flight checks)
+// ---------------------------------------------------------------------------
+
+/// Describes how to fix a failed pre-flight check.
+pub struct FixAction {
+    /// Prompt shown to the user, e.g. "Install wrangler via npm?"
+    pub prompt: String,
+    /// Instructions shown if user declines the fix.
+    pub manual_instructions: Vec<String>,
+}
+
+/// Returns a FixAction for a failed check, or None if the check can't be auto-fixed.
+pub fn try_fix_check(
+    check: &PreflightCheck,
+    paths: &ResolvedPaths,
+    target: &str,
+) -> Option<FixAction> {
+    if check.passed {
+        return None;
+    }
+    match check.name.as_str() {
+        "Output directory" => Some(FixAction {
+            prompt: "Build the site first?".into(),
+            manual_instructions: vec!["Run: page build".into()],
+        }),
+        "Base URL" => Some(FixAction {
+            prompt: "Update base_url in page.toml?".into(),
+            manual_instructions: vec![
+                "Set site.base_url in page.toml to your production URL".into(),
+                "Or use --base-url <url> when deploying".into(),
+            ],
+        }),
+        "git CLI" => None, // Can't auto-install git
+        "wrangler CLI" => {
+            if has_npm() {
+                Some(FixAction {
+                    prompt: "Install wrangler via npm?".into(),
+                    manual_instructions: vec!["Run: npm install -g wrangler".into()],
+                })
+            } else {
+                Some(FixAction {
+                    prompt: String::new(), // No auto-fix without npm
+                    manual_instructions: vec![
+                        "Install Node.js/npm first, then run: npm install -g wrangler".into(),
+                    ],
+                })
+            }
+        }
+        "netlify CLI" => {
+            if has_npm() {
+                Some(FixAction {
+                    prompt: "Install netlify-cli via npm?".into(),
+                    manual_instructions: vec!["Run: npm install -g netlify-cli".into()],
+                })
+            } else {
+                Some(FixAction {
+                    prompt: String::new(),
+                    manual_instructions: vec![
+                        "Install Node.js/npm first, then run: npm install -g netlify-cli".into(),
+                    ],
+                })
+            }
+        }
+        "gh CLI" => {
+            if cfg!(target_os = "macos") && has_brew() {
+                Some(FixAction {
+                    prompt: "Install GitHub CLI via Homebrew?".into(),
+                    manual_instructions: vec!["Run: brew install gh".into()],
+                })
+            } else {
+                Some(FixAction {
+                    prompt: String::new(),
+                    manual_instructions: vec!["Install from: https://cli.github.com/".into()],
+                })
+            }
+        }
+        "Git repository" => Some(FixAction {
+            prompt: "Initialize a git repository here?".into(),
+            manual_instructions: vec!["Run: git init".into()],
+        }),
+        "Git remote" => {
+            let has_gh = Command::new("gh")
+                .args(["--version"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if has_gh {
+                let repo_name = paths
+                    .root
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("my-site");
+                Some(FixAction {
+                    prompt: format!("Create GitHub repository '{repo_name}' and push?"),
+                    manual_instructions: vec![
+                        "Create a repo at https://github.com/new".into(),
+                        "Then run: git remote add origin <your-repo-url>".into(),
+                    ],
+                })
+            } else {
+                Some(FixAction {
+                    prompt: String::new(),
+                    manual_instructions: vec![
+                        "Create a repo at https://github.com/new".into(),
+                        "Then run: git remote add origin <your-repo-url>".into(),
+                        "Tip: install the `gh` CLI for automatic repo creation".into(),
+                    ],
+                })
+            }
+        }
+        "Cloudflare auth" => Some(FixAction {
+            prompt: "Log in to Cloudflare?".into(),
+            manual_instructions: vec!["Run: wrangler login".into()],
+        }),
+        "Netlify auth" => Some(FixAction {
+            prompt: "Log in to Netlify?".into(),
+            manual_instructions: vec!["Run: netlify login".into()],
+        }),
+        "Cloudflare project" => {
+            let project_name = paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site");
+            Some(FixAction {
+                prompt: format!("Create Cloudflare Pages project '{project_name}'?"),
+                manual_instructions: vec![
+                    format!("Run: wrangler pages project create {project_name} --production-branch main"),
+                    "Or set deploy.project in page.toml".into(),
+                ],
+            })
+        }
+        _ => {
+            // Check for netlify-specific project issues
+            if check.name.contains("Netlify") || (target == "netlify" && check.name.contains("project")) {
+                let site_name = paths
+                    .root
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("my-site");
+                Some(FixAction {
+                    prompt: format!("Create Netlify site '{site_name}'?"),
+                    manual_instructions: vec![
+                        format!("Run: netlify sites:create --name {site_name}"),
+                        "Or set deploy.project in page.toml".into(),
+                    ],
+                })
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// Execute the fix for a failed check. Returns Ok(true) if fixed, Ok(false) if fix failed.
+pub fn execute_fix(
+    check_name: &str,
+    paths: &ResolvedPaths,
+    config: &SiteConfig,
+    config_path: &Path,
+) -> Result<bool> {
+    match check_name {
+        "Output directory" => {
+            human::info("Building site...");
+            let opts = crate::build::BuildOptions {
+                include_drafts: false,
+            };
+            match crate::build::build_site(config, paths, &opts) {
+                Ok(result) => {
+                    use crate::output::CommandOutput;
+                    human::success(&result.stats.human_display());
+                    Ok(true)
+                }
+                Err(e) => {
+                    human::error(&format!("Build failed: {e}"));
+                    Ok(false)
+                }
+            }
+        }
+        "Base URL" => {
+            let url: String = dialoguer::Input::new()
+                .with_prompt("Enter your production URL (e.g., https://example.com)")
+                .interact_text()
+                .map_err(|e| PageError::Deploy(format!("input failed: {e}")))?;
+            let url = url.trim().to_string();
+            if url.is_empty() {
+                return Ok(false);
+            }
+            let mut updates = HashMap::new();
+            updates.insert("base_url".into(), url.clone());
+            update_deploy_config(config_path, &updates)?;
+            human::success(&format!("Updated base_url to '{url}' in page.toml"));
+            Ok(true)
+        }
+        "wrangler CLI" => run_install_command("npm", &["install", "-g", "wrangler"], "wrangler"),
+        "netlify CLI" => {
+            run_install_command("npm", &["install", "-g", "netlify-cli"], "netlify-cli")
+        }
+        "gh CLI" => {
+            if cfg!(target_os = "macos") && has_brew() {
+                run_install_command("brew", &["install", "gh"], "GitHub CLI")
+            } else {
+                Ok(false)
+            }
+        }
+        "Git repository" => {
+            human::info("Initializing git repository...");
+            let output = Command::new("git")
+                .args(["init"])
+                .current_dir(&paths.root)
+                .output()
+                .map_err(|e| PageError::Deploy(format!("git init failed: {e}")))?;
+            if output.status.success() {
+                human::success("Git repository initialized");
+                Ok(true)
+            } else {
+                human::error("git init failed");
+                Ok(false)
+            }
+        }
+        "Git remote" => {
+            let repo_name = paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site");
+            human::info(&format!("Creating GitHub repository '{repo_name}'..."));
+            let result = Command::new("gh")
+                .args(["repo", "create", repo_name, "--public", "--source", ".", "--push"])
+                .current_dir(&paths.root)
+                .status()
+                .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
+            if result.success() {
+                human::success(&format!("Created repository '{repo_name}'"));
+                Ok(true)
+            } else {
+                human::error("Could not create GitHub repository");
+                Ok(false)
+            }
+        }
+        "Cloudflare auth" => {
+            human::info("Opening Cloudflare login...");
+            let result = Command::new("wrangler")
+                .args(["login"])
+                .status()
+                .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
+            Ok(result.success())
+        }
+        "Netlify auth" => {
+            human::info("Opening Netlify login...");
+            let result = Command::new("netlify")
+                .args(["login"])
+                .status()
+                .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
+            Ok(result.success())
+        }
+        "Cloudflare project" => {
+            let project_name = paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site");
+            human::info(&format!("Creating Cloudflare Pages project '{project_name}'..."));
+            let result = Command::new("wrangler")
+                .args(["pages", "project", "create", project_name, "--production-branch", "main"])
+                .status()
+                .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
+            if result.success() {
+                // Also update page.toml
+                let mut updates = HashMap::new();
+                updates.insert("project".into(), project_name.to_string());
+                update_deploy_config(config_path, &updates)?;
+                human::success(&format!("Created project '{project_name}' and updated page.toml"));
+                Ok(true)
+            } else {
+                human::warning("Could not create project — it may already exist (which is fine)");
+                Ok(true) // Not fatal
+            }
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Re-run a single check by name (used after fixing).
+pub fn recheck(
+    check_name: &str,
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    _target: &str,
+) -> PreflightCheck {
+    match check_name {
+        "Output directory" => check_output_dir(paths),
+        "Base URL" => check_base_url(config),
+        "git CLI" => check_cli_available("git", &["--version"]),
+        "wrangler CLI" => check_cli_available("wrangler", &["--version"]),
+        "netlify CLI" => check_cli_available("netlify", &["--version"]),
+        "gh CLI" => check_cli_available("gh", &["--version"]),
+        "Git repository" => check_git_repo(paths),
+        "Git remote" => check_git_remote(paths, config.deploy.repo.as_deref()),
+        "Cloudflare auth" => check_cloudflare_auth(),
+        "Netlify auth" => check_netlify_auth(),
+        "Cloudflare project" => check_cloudflare_project(config, paths),
+        _ => PreflightCheck {
+            name: check_name.into(),
+            passed: false,
+            message: "unknown check".into(),
+        },
+    }
+}
+
+fn has_npm() -> bool {
+    Command::new("npm")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn has_brew() -> bool {
+    Command::new("brew")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn run_install_command(cmd: &str, args: &[&str], label: &str) -> Result<bool> {
+    human::info(&format!("Installing {label}..."));
+    let result = Command::new(cmd)
+        .args(args)
+        .status()
+        .map_err(|e| PageError::Deploy(format!("{cmd} failed: {e}")))?;
+    if result.success() {
+        human::success(&format!("{label} installed successfully"));
+        Ok(true)
+    } else {
+        human::error(&format!("Failed to install {label}"));
+        Ok(false)
+    }
 }
 
 // ---------------------------------------------------------------------------
