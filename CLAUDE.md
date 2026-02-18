@@ -11,6 +11,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 ```bash
 cargo build          # Build the binary
 cargo test           # Run all tests (25 unit + 76 integration)
+cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -228,11 +229,13 @@ Each registers as `base.html` when applied; user `templates/base.html` overrides
 - Use `output::human::success()`, `info()`, `error()` for terminal output
 - Implement `CommandOutput` trait for structured output (supports `--json` flag)
 
-### Testing
+### Testing & Linting
 - Integration tests use `assert_cmd::Command` + `tempfile::TempDir`
 - Helper: `init_site(tmp, name, title, collections)` scaffolds a site in a temp dir
 - Test naming: `test_{command}_{behavior}` (e.g., `test_build_excludes_drafts_by_default`)
-- All tests must pass before committing: `cargo test`
+- **Before committing, always run both:** `cargo test` and `cargo clippy`
+- All tests must pass and clippy must produce zero warnings before any commit
+- Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
 ### CLI
 - clap 4.5 with derive macros

@@ -140,6 +140,7 @@ fn get_default_template(name: &str) -> Option<&'static str> {
 /// Load Tera templates from the user's template directory, falling back to
 /// embedded defaults for any template not provided.
 pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> Result<tera::Tera> {
+    #[allow(clippy::manual_unwrap_or_default)]
     let mut tera = if template_dir.exists() {
         let glob_pattern = format!("{}/**/*.html", template_dir.display());
         match tera::Tera::new(&glob_pattern) {

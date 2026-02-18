@@ -3,7 +3,6 @@
 ///
 /// To edit a theme, modify the corresponding file in src/themes/:
 ///   default.tera, minimal.tera, dark.tera, docs.tera, brutalist.tera, bento.tera
-
 pub struct Theme {
     pub name: &'static str,
     pub description: &'static str,
