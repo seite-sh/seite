@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collections — page</title>
+    <title>Collections — page docs</title>
     <meta name="description" content="Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.">
-    <link rel="canonical" href="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;collections">
+    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;collections">
+    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections">
     <meta property="og:title" content="Collections">
     <meta property="og:description" content="Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.">
     
@@ -27,7 +27,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;collections.md">
+    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections.md">
 
     <!-- hreflang -->
     
@@ -35,7 +35,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Collections&quot;,"description":&quot;Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;http:&#x2F;&#x2F;localhost:3000&#x2F;docs&#x2F;collections&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":&quot;Collections&quot;,"description":&quot;Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections&quot;}
     
     </script>
 
@@ -304,7 +304,7 @@
             margin-bottom: 1.5rem;
             line-height: 1.15;
         }
-        .docs-main .content h2 { font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
+        .docs-main .content h2 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
         .docs-main .content h3 { font-size: 1.05rem; font-weight: 700; color: #ddd; margin: 2rem 0 0.65rem; }
         .docs-main .content p { margin-bottom: 1.25rem; color: var(--text); }
         .docs-main .content a { color: var(--green); }
@@ -347,6 +347,7 @@
         .docs-main .content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
         .docs-main .content th, .docs-main .content td { border: 1px solid var(--border); padding: 0.6rem 1rem; text-align: left; }
         .docs-main .content th { background: var(--bg-raised); font-weight: 600; color: #fff; }
+        .docs-main .content img { border-radius: var(--radius); margin: 1.5rem 0; }
 
         /* ---- TOC ---- */
         .toc {
@@ -575,6 +576,374 @@
     </style>
 
     
+<style>
+    /* ── Fonts (shared with homepage for cohesion) ── */
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+        --amber: #ffb224;
+        --amber-dim: rgba(255,178,36,0.08);
+        --amber-border: rgba(255,178,36,0.2);
+        --code-bg: #1a1e26;
+        --sidebar-w: 250px;
+        --toc-w: 200px;
+    }
+
+    /* ── Entrance animation ── */
+    @keyframes doc-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Sidebar enhancements ── */
+    .docs-sidebar {
+        width: var(--sidebar-w);
+        padding: 1.75rem 1.25rem 2rem 0;
+    }
+    .docs-sidebar nav h3 {
+        font-family: var(--geist);
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+        font-weight: 600;
+        margin: 1.5rem 0 0.5rem;
+        padding-left: 0.6rem;
+    }
+    .docs-sidebar nav h3:first-child { margin-top: 0; }
+    .docs-sidebar nav a {
+        font-family: var(--geist);
+        font-size: 0.78rem;
+        padding: 0.35rem 0.6rem;
+        border-radius: 5px;
+        color: var(--text-muted);
+        display: block;
+        text-decoration: none;
+        transition: color 0.12s, background 0.12s;
+        position: relative;
+    }
+    .docs-sidebar nav a:hover {
+        color: var(--text);
+        background: rgba(255,255,255,0.03);
+        text-decoration: none;
+    }
+    .docs-sidebar nav .active a {
+        color: var(--green);
+        font-weight: 600;
+        background: var(--green-dim);
+    }
+    .docs-sidebar nav .active a::before {
+        content: '';
+        position: absolute;
+        left: -1px;
+        top: 6px;
+        bottom: 6px;
+        width: 2px;
+        background: var(--green);
+        border-radius: 1px;
+    }
+
+    /* Sidebar search */
+    .sidebar-search {
+        position: relative;
+        margin-bottom: 1.25rem;
+    }
+    .sidebar-search-icon {
+        position: absolute;
+        left: 0.6rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        color: var(--text-dim);
+        pointer-events: none;
+    }
+    .sidebar-search input {
+        width: 100%;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.45rem 0.6rem 0.45rem 2rem;
+        color: var(--text);
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        outline: none;
+        transition: border-color 0.15s;
+    }
+    .sidebar-search input::placeholder { color: var(--text-dim); }
+    .sidebar-search input:focus { border-color: var(--green-border); }
+    .sidebar-search .sidebar-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 4px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        overflow: hidden;
+        z-index: 50;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .sidebar-search .sidebar-results a {
+        display: block;
+        padding: 0.5rem 0.6rem;
+        font-size: 0.75rem;
+        color: var(--text);
+        border-bottom: 1px solid var(--border);
+        background: none;
+    }
+    .sidebar-search .sidebar-results a:last-child { border-bottom: none; }
+    .sidebar-search .sidebar-results a:hover { background: var(--bg-card-hover); }
+    .sidebar-search .sidebar-results .no-results {
+        padding: 0.5rem 0.6rem;
+        color: var(--text-dim);
+        font-size: 0.75rem;
+        font-family: var(--geist);
+    }
+
+    /* ── Docs main area ── */
+    .docs-main {
+        max-width: 800px;
+        padding: 2.5rem 0 4rem 2.5rem;
+        animation: doc-fade-in 0.5s ease both;
+    }
+
+    /* ── Page title ── */
+    .docs-main article > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: #fff;
+        margin-bottom: 0.6rem;
+        line-height: 1.1;
+    }
+
+    /* Page description */
+    .doc-description {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 2rem;
+        line-height: 1.65;
+        max-width: 600px;
+    }
+
+    /* ── Improved TOC ── */
+    .toc {
+        background: transparent;
+        border: none;
+        border-left: 1px solid var(--border);
+        border-radius: 0;
+        padding: 0 0 0 1rem;
+        margin-bottom: 2.5rem;
+    }
+    .toc h4 {
+        font-family: var(--geist);
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+        margin-bottom: 0.65rem;
+        font-weight: 600;
+    }
+    .toc ul { list-style: none; }
+    .toc li { margin-bottom: 0.15rem; }
+    .toc a {
+        font-family: var(--geist);
+        color: var(--text-dim);
+        font-size: 0.76rem;
+        text-decoration: none;
+        display: block;
+        padding: 0.2rem 0;
+        transition: color 0.12s;
+        line-height: 1.4;
+    }
+    .toc a:hover { color: var(--green); text-decoration: none; }
+    .toc .toc-level-3 { padding-left: 0.9rem; }
+    .toc .toc-level-4 { padding-left: 1.8rem; }
+
+    /* ── Content typography ── */
+    .docs-main .content h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #fff;
+        margin: 3rem 0 1rem;
+        letter-spacing: -0.025em;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+    .docs-main .content h2:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+    .docs-main .content h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #ddd;
+        margin: 2rem 0 0.65rem;
+    }
+    .docs-main .content p {
+        margin-bottom: 1.2rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+    .docs-main .content a { color: var(--green); }
+    .docs-main .content a:hover { text-decoration: underline; }
+    .docs-main .content strong { color: #fff; }
+
+    /* Inline code */
+    .docs-main .content code {
+        font-family: var(--geist);
+        font-size: 0.82em;
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        padding: 0.12em 0.38em;
+        border-radius: 4px;
+        color: var(--green);
+    }
+
+    /* Code blocks — harmonize with syntect ocean-dark */
+    .docs-main .content pre {
+        background: var(--code-bg) !important;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+        position: relative;
+    }
+    .docs-main .content pre code {
+        background: none !important;
+        border: none;
+        padding: 0;
+        font-family: var(--geist);
+        font-size: 0.82rem;
+        color: var(--text);
+        line-height: 1.85;
+    }
+
+    /* Lists */
+    .docs-main .content ul, .docs-main .content ol {
+        margin-bottom: 1.2rem;
+        padding-left: 1.5rem;
+    }
+    .docs-main .content li {
+        margin-bottom: 0.4rem;
+        line-height: 1.7;
+    }
+    .docs-main .content li code {
+        font-size: 0.8em;
+    }
+
+    /* Blockquote */
+    .docs-main .content blockquote {
+        border-left: 2px solid var(--amber);
+        background: var(--amber-dim);
+        padding: 0.9rem 1.25rem;
+        border-radius: 0 8px 8px 0;
+        color: var(--text);
+        margin: 1.5rem 0;
+        font-style: normal;
+    }
+    .docs-main .content blockquote p { margin-bottom: 0; }
+
+    /* Tables */
+    .docs-main .content table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5rem;
+        font-size: 0.85rem;
+    }
+    .docs-main .content th {
+        background: var(--bg-raised);
+        font-family: var(--geist);
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+    }
+    .docs-main .content td {
+        border: 1px solid var(--border);
+        padding: 0.55rem 1rem;
+        color: var(--text);
+    }
+    .docs-main .content td code {
+        font-size: 0.82em;
+    }
+
+    /* HR */
+    .docs-main .content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2.5rem 0;
+    }
+
+    /* Images */
+    .docs-main .content img {
+        border-radius: 10px;
+        margin: 1.5rem 0;
+        border: 1px solid var(--border);
+    }
+
+    /* ── Doc navigation (prev/next) ── */
+    .doc-nav {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-top: 4rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--border);
+    }
+    .doc-nav a {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 1rem 1.25rem;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        text-decoration: none;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .doc-nav a:hover {
+        border-color: var(--green-border);
+        background: var(--bg-card);
+        text-decoration: none;
+    }
+    .doc-nav-label {
+        font-family: var(--geist);
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-dim);
+    }
+    .doc-nav-title {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--green);
+    }
+    .doc-nav-next { text-align: right; }
+    .doc-nav-placeholder { visibility: hidden; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+        .docs-sidebar { width: 260px; }
+        .docs-main { padding-left: 1rem; }
+    }
+    @media (max-width: 640px) {
+        .doc-nav { grid-template-columns: 1fr; }
+    }
+</style>
+
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -601,6 +970,13 @@
 
 <div class="docs-layout">
     <aside class="docs-sidebar" aria-label="Documentation navigation">
+        <div class="sidebar-search" role="search" aria-label="Search documentation">
+            <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="search" id="doc-search-input" placeholder="Search docs…" autocomplete="off" aria-label="Search documentation">
+            <div id="doc-search-results" class="sidebar-results" style="display:none" aria-live="polite"></div>
+        </div>
         <nav>
             
                 
@@ -610,7 +986,7 @@
                 
                     <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li class="active"><a href="&#x2F;docs&#x2F;collections" aria-current="page">Collections</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
                 
@@ -630,6 +1006,7 @@
     <div class="docs-main">
         <article>
             <h1>Collections</h1>
+            <p class="doc-description">Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.</p>
             
             <nav class="toc" aria-label="Table of contents">
                 <h4>On this page</h4>
@@ -740,6 +1117,90 @@ paginate = 10
 <p>Tag pages are i18n-aware and included in the sitemap.</p>
 </div>
         </article>
+
+        
+        
+        
+        
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+                
+            
+        
+        
+        
+        
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
+        
+            
+            
+                
+            
+            
+        
+            
+                
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
+        
+        <nav class="doc-nav" aria-label="Documentation pagination">
+            
+            <a href="&#x2F;docs&#x2F;cli-reference">
+                <span class="doc-nav-label">← Previous</span>
+                <span class="doc-nav-title">CLI Reference</span>
+            </a>
+            
+            
+            <a href="&#x2F;docs&#x2F;configuration" class="doc-nav-next">
+                <span class="doc-nav-label">Next →</span>
+                <span class="doc-nav-title">Configuration</span>
+            </a>
+            
+        </nav>
+        
+        
     </div>
 </div>
 
@@ -790,5 +1251,39 @@ paginate = 10
     </script>
 
     
+<script>
+(function(){
+    var input = document.getElementById('doc-search-input');
+    var results = document.getElementById('doc-search-results');
+    if (!input || !results) return;
+    var index = null;
+    var indexUrl = '/search-index.json';
+    function load(cb) {
+        if (index) { cb(); return; }
+        fetch(indexUrl).then(function(r){return r.json();}).then(function(d){
+            index = d.filter(function(e){ return e.collection === 'docs'; });
+            cb();
+        }).catch(function(){ index = []; });
+    }
+    function search(q) {
+        q = q.toLowerCase().trim();
+        if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
+        var hits = index.filter(function(e){
+            return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q);
+        }).slice(0, 6);
+        results.style.display = 'block';
+        if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
+        results.innerHTML = hits.map(function(e){
+            return '<a href="' + e.url + '">' + e.title + '</a>';
+        }).join('');
+    }
+    input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
+    input.addEventListener('focus', function(){ if (input.value) load(function(){ search(input.value); }); });
+    document.addEventListener('click', function(e) {
+        if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
+    });
+})();
+</script>
+
 </body>
 </html>
