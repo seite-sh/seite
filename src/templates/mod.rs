@@ -12,7 +12,7 @@ pub fn default_base() -> &'static str {
 }
 
 pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
-{% block title %}{{ site.title }}{% endblock %}
+{% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
 {% block content %}
 {% if page %}
 <div class="homepage-content">{{ page.content | safe }}</div>
@@ -32,6 +32,13 @@ pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
 </section>
 {% endfor %}
+{% if pagination %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
+    <span>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+</nav>
+{% endif %}
 {% if not page and collections | length == 0 %}
 <p>No content yet. Create some with <code>page new post "My First Post"</code></p>
 {% endif %}

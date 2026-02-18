@@ -44,6 +44,9 @@ pub struct CollectionConfig {
     #[serde(default)]
     pub nested: bool,
     pub default_template: String,
+    /// Number of items per paginated page. None means no pagination.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paginate: Option<usize>,
 }
 
 impl CollectionConfig {
@@ -58,6 +61,7 @@ impl CollectionConfig {
             url_prefix: "/posts".into(),
             nested: false,
             default_template: "post.html".into(),
+            paginate: None,
         }
     }
 
@@ -72,6 +76,7 @@ impl CollectionConfig {
             url_prefix: "/docs".into(),
             nested: true,
             default_template: "doc.html".into(),
+            paginate: None,
         }
     }
 
@@ -86,6 +91,7 @@ impl CollectionConfig {
             url_prefix: "".into(),
             nested: false,
             default_template: "page.html".into(),
+            paginate: None,
         }
     }
 

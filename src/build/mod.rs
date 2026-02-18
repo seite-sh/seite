@@ -76,7 +76,7 @@ struct CollectionContext {
     items: Vec<ItemSummary>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ItemSummary {
     title: String,
     date: Option<String>,
@@ -98,6 +98,15 @@ struct NavSection {
     name: String,
     label: String,
     items: Vec<NavItem>,
+}
+
+#[derive(Serialize)]
+struct PaginationContext {
+    current_page: usize,
+    total_pages: usize,
+    prev_url: Option<String>,
+    next_url: Option<String>,
+    base_url: String,
 }
 
 /// A translation link used in templates and the sitemap's xhtml:link alternates.
@@ -415,6 +424,101 @@ pub fn build_site(
             let lang_dir = paths.output.join(lang);
             fs::create_dir_all(&lang_dir)?;
             fs::write(lang_dir.join("index.html"), index_html)?;
+        }
+    }
+
+    // Step 4b: Paginated collection index pages
+    // For each listed collection with `paginate` set, render per-language paginated indexes.
+    // Page 1 → dist/{url_prefix}/index.html  (URL: /{url_prefix}/)
+    // Page N → dist/{url_prefix}/page/N/index.html  (URL: /{url_prefix}/page/N/)
+    for lang in &config.all_languages() {
+        let lang_site_ctx = SiteContext::for_lang(config, lang);
+        for c in config.collections.iter().filter(|c| c.listed) {
+            let page_size = match c.paginate {
+                Some(n) if n > 0 => n,
+                _ => continue,
+            };
+            let url_prefix_trimmed = c.url_prefix.trim_start_matches('/');
+            if url_prefix_trimmed.is_empty() {
+                continue;
+            }
+
+            let all_items: Vec<&ContentItem> = all_collections
+                .get(&c.name)
+                .map(|v| v.iter().collect())
+                .unwrap_or_default();
+            let lang_items: Vec<ItemSummary> = all_items
+                .iter()
+                .filter(|item| item.lang == *lang)
+                .map(|item| ItemSummary {
+                    title: item.frontmatter.title.clone(),
+                    date: item.frontmatter.date.map(|d| d.to_string()),
+                    description: item.frontmatter.description.clone(),
+                    slug: item.slug.clone(),
+                    tags: item.frontmatter.tags.clone(),
+                    url: item.url.clone(),
+                })
+                .collect();
+
+            let total = lang_items.len();
+            if total == 0 {
+                continue;
+            }
+            let total_pages = total.div_ceil(page_size);
+
+            // Base collection URL (language-prefixed for non-default languages)
+            let collection_base = if *lang == *default_lang {
+                format!("/{url_prefix_trimmed}")
+            } else {
+                format!("/{lang}/{url_prefix_trimmed}")
+            };
+
+            let page_url = |n: usize| -> String {
+                if n == 1 {
+                    format!("{collection_base}/")
+                } else {
+                    format!("{collection_base}/page/{n}/")
+                }
+            };
+
+            for (page_idx, chunk) in lang_items.chunks(page_size).enumerate() {
+                let page_num = page_idx + 1;
+                let collection_ctx = CollectionContext {
+                    name: c.name.clone(),
+                    label: c.label.clone(),
+                    items: chunk.to_vec(),
+                };
+                let pagination = PaginationContext {
+                    current_page: page_num,
+                    total_pages,
+                    prev_url: if page_num > 1 { Some(page_url(page_num - 1)) } else { None },
+                    next_url: if page_num < total_pages { Some(page_url(page_num + 1)) } else { None },
+                    base_url: collection_base.clone(),
+                };
+                let mut ctx = tera::Context::new();
+                ctx.insert("site", &lang_site_ctx);
+                ctx.insert("lang", lang);
+                ctx.insert("collections", &[collection_ctx]);
+                ctx.insert("pagination", &pagination);
+                ctx.insert("translations", &Vec::<TranslationLink>::new());
+                let html = tera
+                    .render("index.html", &ctx)
+                    .map_err(|e| PageError::Build(format!("rendering {collection_base} page {page_num}: {e}")))?;
+
+                let out_dir = if *lang == *default_lang {
+                    if page_num == 1 {
+                        paths.output.join(url_prefix_trimmed)
+                    } else {
+                        paths.output.join(url_prefix_trimmed).join("page").join(page_num.to_string())
+                    }
+                } else if page_num == 1 {
+                    paths.output.join(lang).join(url_prefix_trimmed)
+                } else {
+                    paths.output.join(lang).join(url_prefix_trimmed).join("page").join(page_num.to_string())
+                };
+                fs::create_dir_all(&out_dir)?;
+                fs::write(out_dir.join("index.html"), html)?;
+            }
         }
     }
 
