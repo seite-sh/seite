@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deployment — page docs</title>
-    <meta name="description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
+    <title>Releases — page docs</title>
+    <meta name="description" content="Release history and changelog for page.">
+    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
-    <meta property="og:title" content="Deployment">
-    <meta property="og:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases">
+    <meta property="og:title" content="Releases">
+    <meta property="og:description" content="Release history and changelog for page.">
     
     <meta property="og:site_name" content="page">
     <meta property="og:locale" content="en">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Deployment">
-    <meta name="twitter:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+    <meta name="twitter:title" content="Releases">
+    <meta name="twitter:description" content="Release history and changelog for page.">
     
 
     
@@ -27,7 +27,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment.md">
+    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases.md">
 
     <!-- hreflang -->
     
@@ -35,7 +35,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Deployment&quot;,"description":&quot;Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":&quot;Releases&quot;,"description":&quot;Release history and changelog for page.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases&quot;}
     
     </script>
 
@@ -990,13 +990,13 @@
                 
                     <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;deployment" aria-current="page">Deployment</a></li>
+                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li class="active"><a href="&#x2F;docs&#x2F;releases" aria-current="page">Releases</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
                 
@@ -1009,150 +1009,23 @@
     <div class="sidebar-backdrop" onclick="document.querySelector('.docs-sidebar').classList.remove('open');this.classList.remove('open');"></div>
     <div class="docs-main">
         <article>
-            <h1>Deployment</h1>
-            <p class="doc-description">Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.</p>
+            <h1>Releases</h1>
+            <p class="doc-description">Release history and changelog for page.</p>
             
-            <nav class="toc" aria-label="Table of contents">
-                <h4>On this page</h4>
-                <ul>
-                <li class="toc-level-2"><a href="#overview">Overview</a></li>
-                <li class="toc-level-2"><a href="#configuration">Configuration</a></li>
-                <li class="toc-level-2"><a href="#github-pages">GitHub Pages</a></li>
-                <li class="toc-level-3"><a href="#manual-deployment">Manual deployment</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-3"><a href="#custom-repository">Custom repository</a></li>
-                <li class="toc-level-2"><a href="#cloudflare-pages">Cloudflare Pages</a></li>
-                <li class="toc-level-3"><a href="#setup">Setup</a></li>
-                <li class="toc-level-3"><a href="#deploy">Deploy</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-2"><a href="#netlify">Netlify</a></li>
-                <li class="toc-level-3"><a href="#setup">Setup</a></li>
-                <li class="toc-level-3"><a href="#deploy">Deploy</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-2"><a href="#custom-domains">Custom Domains</a></li>
-                <li class="toc-level-2"><a href="#override-target">Override Target</a></li>
-                <li class="toc-level-2"><a href="#build-output">Build Output</a></li>
-                </ul>
-            </nav>
-            
-            <div class="content"><h2 id="overview">Overview</h2>
-<p><code>page</code> supports three deployment targets out of the box:</p>
+            <div class="content"><h2 id="v0-1-0">v0.1.0</h2>
+<p>Initial release.</p>
 <ul>
-<li><strong>GitHub Pages</strong> — git-based deployment with auto-generated GitHub Actions</li>
-<li><strong>Cloudflare Pages</strong> — wrangler-based deployment</li>
-<li><strong>Netlify</strong> — CLI-based deployment</li>
+<li>12-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files</li>
+<li>6 bundled themes: default, minimal, dark, docs, brutalist, bento</li>
+<li>AI agent via Claude Code — <code>page agent</code> spawns Claude with full site context</li>
+<li>Multi-language (i18n) support with per-language URLs, RSS feeds, sitemaps, and hreflang tags</li>
+<li>Deploy to GitHub Pages, Cloudflare Pages, and Netlify with guided setup and pre-flight checks</li>
+<li>Image processing: auto-resize, WebP conversion, srcset, lazy loading</li>
+<li>Pagination, tag pages, table of contents, excerpts, reading time</li>
+<li>Custom domain management for all deploy targets</li>
+<li>Interactive dev server with REPL and live reload</li>
+<li>Shell installer for macOS and Linux</li>
 </ul>
-<h2 id="configuration">Configuration</h2>
-<p>Set the deploy target in <code>page.toml</code>:</p>
-<pre><code>[deploy]
-target = &quot;github-pages&quot;
-</code></pre>
-<h2 id="github-pages">GitHub Pages</h2>
-<p>The default deployment target. When you run <code>page init</code> with <code>--deploy-target github-pages</code>, a GitHub Actions workflow is generated at <code>.github/workflows/deploy.yml</code> that builds and deploys on every push to <code>main</code>.</p>
-<h3 id="manual-deployment">Manual deployment</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
-</span></pre>
-<p>This pushes the <code>dist/</code> directory to the <code>gh-pages</code> branch.</p>
-<h3 id="dry-run">Dry run</h3>
-<p>Preview what would be deployed:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h3 id="custom-repository">Custom repository</h3>
-<pre><code>[deploy]
-target = &quot;github-pages&quot;
-repo = &quot;https://github.com/user/repo.git&quot;
-</code></pre>
-<h2 id="cloudflare-pages">Cloudflare Pages</h2>
-<h3 id="setup">Setup</h3>
-<ol>
-<li>Install wrangler: <code>npm install -g wrangler</code></li>
-<li>Authenticate: <code>wrangler login</code></li>
-<li>Configure:</li>
-</ol>
-<pre><code>[deploy]
-target = &quot;cloudflare&quot;
-project = &quot;my-site&quot;
-</code></pre>
-<p>The project name is auto-detected from <code>wrangler.toml</code> if present.</p>
-<h3 id="deploy">Deploy</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
-</span></pre>
-<h3 id="dry-run">Dry run</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h2 id="netlify">Netlify</h2>
-<h3 id="setup">Setup</h3>
-<ol>
-<li>Install Netlify CLI: <code>npm install -g netlify-cli</code></li>
-<li>Authenticate: <code>netlify login</code></li>
-<li>Configure:</li>
-</ol>
-<pre><code>[deploy]
-target = &quot;netlify&quot;
-</code></pre>
-<h3 id="deploy">Deploy</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
-</span></pre>
-<h3 id="dry-run">Dry run</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h2 id="custom-domains">Custom Domains</h2>
-<p>Set up a custom domain for any deploy target:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com
-</span></pre>
-<p>This will:</p>
-<ol>
-<li>Print DNS records to add at your registrar</li>
-<li>Update <code>base_url</code> and <code>deploy.domain</code> in <code>page.toml</code></li>
-<li>For Cloudflare: offer to attach the domain to your Pages project via the API</li>
-<li>For Netlify: offer to add the domain via <code>netlify domains:add</code></li>
-<li>For GitHub Pages: auto-generate a <code>CNAME</code> file on the next deploy</li>
-</ol>
-<p>You can also set the domain directly in <code>page.toml</code>:</p>
-<pre><code>[deploy]
-target = &quot;cloudflare&quot;
-project = &quot;my-site&quot;
-domain = &quot;example.com&quot;
-</code></pre>
-<p>When <code>deploy.domain</code> is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.</p>
-<h2 id="override-target">Override Target</h2>
-<p>Override the configured target on the command line:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify     </span><span style="color:#65737e;"># Deploy to Netlify regardless of page.toml
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare  </span><span style="color:#65737e;"># Deploy to Cloudflare
-</span></pre>
-<h2 id="build-output">Build Output</h2>
-<p>After <code>page build</code>, the <code>dist/</code> directory contains everything needed:</p>
-<pre><code>dist/
-├── index.html           # Homepage
-├── index.md             # Homepage markdown
-├── feed.xml             # RSS feed
-├── sitemap.xml          # XML sitemap
-├── robots.txt           # Robots directives
-├── llms.txt             # LLM summary
-├── llms-full.txt        # Full LLM content
-├── search-index.json    # Client-side search data
-├── 404.html             # Error page
-├── posts/
-│   ├── hello-world.html
-│   └── hello-world.md
-├── docs/
-│   ├── getting-started.html
-│   └── getting-started.md
-└── static/
-    └── ...
-</code></pre>
-<p>All three platforms serve <code>404.html</code> automatically for missing routes.</p>
 </div>
         </article>
 
@@ -1212,24 +1085,30 @@ domain = &quot;example.com&quot;
         
             
             
+            
+                
+            
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
+        
+            
+            
                 
             
             
         
             
                 
-            
-            
-            
-        
-            
-            
-            
-        
-            
-            
-            
-        
             
             
             
@@ -1241,15 +1120,15 @@ domain = &quot;example.com&quot;
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;configuration">
+            <a href="&#x2F;docs&#x2F;i18n">
                 <span class="doc-nav-label">← Previous</span>
-                <span class="doc-nav-title">Configuration</span>
+                <span class="doc-nav-title">Multi-Language</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;getting-started" class="doc-nav-next">
+            <a href="&#x2F;docs&#x2F;templates" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
-                <span class="doc-nav-title">Getting Started</span>
+                <span class="doc-nav-title">Templates &amp; Themes</span>
             </a>
             
         </nav>

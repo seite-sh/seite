@@ -114,7 +114,7 @@ The agent receives your site config, content inventory, template list, and avail
 
 ## page theme
 
-Manage site themes.
+Manage site themes — list, apply, install, export, and generate.
 
 ```bash
 page theme <subcommand>
@@ -122,17 +122,22 @@ page theme <subcommand>
 
 | Subcommand | Description |
 |------------|-------------|
-| `list` | Show available bundled themes |
-| `apply <name>` | Apply a bundled theme |
+| `list` | Show all available themes (bundled + installed) |
+| `apply <name>` | Apply a bundled or installed theme |
 | `create "<description>"` | Generate a custom theme with AI |
+| `install <url>` | Download and install a theme from a URL |
+| `export <name>` | Export the current theme as a shareable `.tera` file |
 
 ```bash
 page theme list
 page theme apply dark
 page theme create "brutalist with neon green accents"
+page theme install https://example.com/themes/aurora.tera
+page theme install https://example.com/themes/aurora.tera --name my-aurora
+page theme export my-theme --description "My custom dark theme"
 ```
 
-Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`.
+Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
 ## page deploy
 

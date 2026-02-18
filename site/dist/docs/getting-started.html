@@ -996,7 +996,11 @@
                 
                     <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
                 
+                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
                 
                 </ul>
             
@@ -1012,6 +1016,10 @@
                 <h4>On this page</h4>
                 <ul>
                 <li class="toc-level-2"><a href="#installation">Installation</a></li>
+                <li class="toc-level-3"><a href="#quick-install-macos-and-linux">Quick install (macOS and Linux)</a></li>
+                <li class="toc-level-3"><a href="#install-from-source">Install from source</a></li>
+                <li class="toc-level-3"><a href="#platform-support">Platform support</a></li>
+                <li class="toc-level-3"><a href="#verify">Verify</a></li>
                 <li class="toc-level-2"><a href="#create-your-first-site">Create Your First Site</a></li>
                 <li class="toc-level-2"><a href="#create-content">Create Content</a></li>
                 <li class="toc-level-2"><a href="#build-your-site">Build Your Site</a></li>
@@ -1022,11 +1030,29 @@
             </nav>
             
             <div class="content"><h2 id="installation">Installation</h2>
-<p>Install <code>page</code> from source using Cargo:</p>
+<h3 id="quick-install-macos-and-linux">Quick install (macOS and Linux)</h3>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | </span><span style="color:#8fa1b3;">sh
+</span></pre>
+<p>This downloads a prebuilt binary for your platform and installs it to <code>~/.local/bin</code>.</p>
+<p>To install a specific version:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#bf616a;">VERSION</span><span style="color:#c0c5ce;">=</span><span style="color:#a3be8c;">v0.1.0 </span><span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | </span><span style="color:#8fa1b3;">sh
+</span></pre>
+<h3 id="install-from-source">Install from source</h3>
+<p>If you have the Rust toolchain installed:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">cargo</span><span style="color:#c0c5ce;"> install page
 </span></pre>
-<p>Verify the installation:</p>
+<h3 id="platform-support">Platform support</h3>
+<table><thead><tr><th>Platform</th><th>Architecture</th><th>Install method</th></tr></thead><tbody>
+<tr><th>macOS</th><th>Apple Silicon (M1/M2/M3/M4)</th><th>Shell installer or cargo</th></tr>
+<tr><th>macOS</th><th>Intel x86_64</th><th>Shell installer or cargo</th></tr>
+<tr><th>Linux</th><th>x86_64</th><th>Shell installer or cargo</th></tr>
+<tr><th>Linux</th><th>aarch64/arm64</th><th>Shell installer or cargo</th></tr>
+<tr><th>Windows</th><th>x86_64</th><th><code>cargo install page</code></th></tr>
+</tbody></table>
+<h3 id="verify">Verify</h3>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">page</span><span style="color:#bf616a;"> --version
 </span></pre>
@@ -1142,6 +1168,10 @@ page&gt; stop
             
                 
             
+                
+            
+                
+            
         
         
         
@@ -1185,6 +1215,14 @@ page&gt; stop
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             

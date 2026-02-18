@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deployment — page docs</title>
-    <meta name="description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
+    <title>Theme Gallery — page docs</title>
+    <meta name="description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
+    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;theme-gallery">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
-    <meta property="og:title" content="Deployment">
-    <meta property="og:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;theme-gallery">
+    <meta property="og:title" content="Theme Gallery">
+    <meta property="og:description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
     
     <meta property="og:site_name" content="page">
     <meta property="og:locale" content="en">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Deployment">
-    <meta name="twitter:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+    <meta name="twitter:title" content="Theme Gallery">
+    <meta name="twitter:description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
     
 
     
@@ -27,7 +27,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment.md">
+    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;theme-gallery.md">
 
     <!-- hreflang -->
     
@@ -35,7 +35,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Deployment&quot;,"description":&quot;Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":&quot;Theme Gallery&quot;,"description":&quot;Browse all bundled themes with visual previews. Install community themes or generate your own with AI.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;theme-gallery&quot;}
     
     </script>
 
@@ -990,7 +990,7 @@
                 
                     <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;deployment" aria-current="page">Deployment</a></li>
+                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
                 
@@ -1000,7 +1000,7 @@
                 
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li class="active"><a href="&#x2F;docs&#x2F;theme-gallery" aria-current="page">Theme Gallery</a></li>
                 
                 </ul>
             
@@ -1009,150 +1009,162 @@
     <div class="sidebar-backdrop" onclick="document.querySelector('.docs-sidebar').classList.remove('open');this.classList.remove('open');"></div>
     <div class="docs-main">
         <article>
-            <h1>Deployment</h1>
-            <p class="doc-description">Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.</p>
+            <h1>Theme Gallery</h1>
+            <p class="doc-description">Browse all bundled themes with visual previews. Install community themes or generate your own with AI.</p>
             
             <nav class="toc" aria-label="Table of contents">
                 <h4>On this page</h4>
                 <ul>
-                <li class="toc-level-2"><a href="#overview">Overview</a></li>
-                <li class="toc-level-2"><a href="#configuration">Configuration</a></li>
-                <li class="toc-level-2"><a href="#github-pages">GitHub Pages</a></li>
-                <li class="toc-level-3"><a href="#manual-deployment">Manual deployment</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-3"><a href="#custom-repository">Custom repository</a></li>
-                <li class="toc-level-2"><a href="#cloudflare-pages">Cloudflare Pages</a></li>
-                <li class="toc-level-3"><a href="#setup">Setup</a></li>
-                <li class="toc-level-3"><a href="#deploy">Deploy</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-2"><a href="#netlify">Netlify</a></li>
-                <li class="toc-level-3"><a href="#setup">Setup</a></li>
-                <li class="toc-level-3"><a href="#deploy">Deploy</a></li>
-                <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>
-                <li class="toc-level-2"><a href="#custom-domains">Custom Domains</a></li>
-                <li class="toc-level-2"><a href="#override-target">Override Target</a></li>
-                <li class="toc-level-2"><a href="#build-output">Build Output</a></li>
+                <li class="toc-level-2"><a href="#bundled-themes">Bundled Themes</a></li>
+                <li class="toc-level-2"><a href="#install-community-themes">Install Community Themes</a></li>
+                <li class="toc-level-2"><a href="#export-share-your-theme">Export &amp; Share Your Theme</a></li>
+                <li class="toc-level-2"><a href="#generate-custom-themes-with-ai">Generate Custom Themes with AI</a></li>
+                <li class="toc-level-2"><a href="#theme-anatomy">Theme Anatomy</a></li>
+                <li class="toc-level-2"><a href="#managing-themes">Managing Themes</a></li>
                 </ul>
             </nav>
             
-            <div class="content"><h2 id="overview">Overview</h2>
-<p><code>page</code> supports three deployment targets out of the box:</p>
+            <div class="content"><h2 id="bundled-themes">Bundled Themes</h2>
+<p>Six production-ready themes ship with every <code>page</code> binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply &lt;name&gt;
+</span></pre>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin: 32px 0;">
+<div style="border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #ffffff; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
+<div style="font-size: 11px; color: #0057b7; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">DEFAULT</div>
+<div style="font-size: 18px; font-weight: 700; color: #111; margin-bottom: 6px;">Clean Readable Baseline</div>
+<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">720px centered column, system-ui font stack, blue links. The sensible starting point for any site.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 1px solid #ddd; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #111111; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #0057b7; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #f8f8f8; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">page theme apply default</div>
+</div>
+<div style="border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #faf9f6; font-family: Georgia, 'Times New Roman', serif; min-height: 140px;">
+<div style="font-size: 11px; color: #888; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; font-family: system-ui, sans-serif;">MINIMAL</div>
+<div style="font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px;">Typography First</div>
+<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">600px column, Georgia serif, understated search. Literary feel that lets content breathe.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #faf9f6; border: 1px solid #ddd; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #1a1a1a; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #888888; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #f0eeeb; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">page theme apply minimal</div>
+</div>
+<div style="border: 1px solid #333; border-radius: 12px; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #0a0a0a; min-height: 140px;">
+<div style="font-size: 11px; color: #8b5cf6; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; font-family: system-ui, sans-serif;">DARK</div>
+<div style="font-size: 18px; font-weight: 700; color: #e8e8e8; margin-bottom: 6px; font-family: system-ui, sans-serif;">True Black + Violet</div>
+<div style="font-size: 13px; color: #999; line-height: 1.5; margin-bottom: 12px; font-family: system-ui, sans-serif;">True black background, violet accent, styled focus rings. Easy on the eyes, day or night.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #0a0a0a; border: 1px solid #333; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #e8e8e8; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #8b5cf6; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #111; border-top: 1px solid #333; font-size: 13px; font-family: monospace; color: #999;">page theme apply dark</div>
+</div>
+<div style="border: 1px solid #d0d7de; border-radius: 12px; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #ffffff; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
+<div style="font-size: 11px; color: #0969da; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">DOCS</div>
+<div style="font-size: 18px; font-weight: 700; color: #1f2328; margin-bottom: 6px;">Sidebar Documentation</div>
+<div style="font-size: 13px; color: #656d76; line-height: 1.5; margin-bottom: 12px;">Fixed 260px sidebar with auto-scrolling nav. GitHub-style colors. Built for technical docs.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 1px solid #ddd; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #1f2328; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #0969da; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 13px; font-family: monospace; color: #656d76;">page theme apply docs</div>
+</div>
+<div style="border: 3px solid #000000; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #fffef0; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
+<div style="font-size: 11px; color: #000; font-weight: 900; letter-spacing: 0.5px; margin-bottom: 8px;">BRUTALIST</div>
+<div style="font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px;">Hard Edges, Bold Type</div>
+<div style="font-size: 13px; color: #333; line-height: 1.5; margin-bottom: 12px;">Cream background, 3px borders, hard shadows, yellow accent. Zero border-radius. Maximum impact.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; background: #fffef0; border: 2px solid #000; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; background: #000000; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; background: #ffe600; border: 2px solid #000; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #ffe600; border-top: 3px solid #000; font-size: 13px; font-family: monospace; color: #000; font-weight: 700;">page theme apply brutalist</div>
+</div>
+<div style="border: 1px solid #e8e4df; border-radius: 20px; overflow: hidden;">
+<div style="padding: 24px 20px 16px; background: #f4f0eb; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
+<div style="font-size: 11px; color: #5046e5; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">BENTO</div>
+<div style="font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px;">Card Grid Layout</div>
+<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">CSS grid, mixed card sizes, rounded corners, soft shadows. Dark and indigo accent cards for rhythm.</div>
+<div style="display: flex; gap: 6px;">
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #f4f0eb; border: 1px solid #ddd; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #1a1a1a; display: inline-block;"></span>
+<span style="width: 20px; height: 20px; border-radius: 50%; background: #5046e5; display: inline-block;"></span>
+</div>
+</div>
+<div style="padding: 10px 20px; background: #e8e4df; border-top: 1px solid #ddd; font-size: 13px; font-family: monospace; color: #555; border-radius: 0 0 20px 20px;">page theme apply bento</div>
+</div>
+</div>
+<h2 id="install-community-themes">Install Community Themes</h2>
+<p>Download and install themes shared by others:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># Install from a URL
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#65737e;"># Install with a custom name
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera</span><span style="color:#bf616a;"> --name</span><span style="color:#c0c5ce;"> my-aurora
+</span></pre>
+<p>Installed themes are saved to <code>templates/themes/&lt;name&gt;.tera</code> and appear in <code>page theme list</code>. Apply them like any bundled theme:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply aurora
+</span></pre>
+<h2 id="export-share-your-theme">Export & Share Your Theme</h2>
+<p>Package your current theme for others to install:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># Export with a description
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export my-theme</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Dark theme with green accents</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#65737e;"># The theme is saved to templates/themes/my-theme.tera
+</span></pre>
+<p>Host the <code>.tera</code> file anywhere (GitHub, your own server, a Gist) and others can install it with <code>page theme install &lt;url&gt;</code>.</p>
+<h2 id="generate-custom-themes-with-ai">Generate Custom Themes with AI</h2>
+<p>Instead of browsing themes, describe what you want and let AI build it:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">minimal dark theme with cyan accents and generous whitespace</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">warm editorial design with serif headings and earth tones</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">neon cyberpunk with scanline effects and monospace everything</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<p>This spawns Claude Code to generate a complete <code>templates/base.html</code> with all required blocks, SEO tags, search, pagination, and accessibility features. Requires <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> installed.</p>
+<p>After generating, export it to share:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export cyberpunk</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Neon cyberpunk with scanlines</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#65737e;"># Share templates/themes/cyberpunk.tera with anyone
+</span></pre>
+<h2 id="theme-anatomy">Theme Anatomy</h2>
+<p>Every theme (bundled or installed) is a single Tera template file that serves as <code>base.html</code>. A valid theme must include:</p>
 <ul>
-<li><strong>GitHub Pages</strong> — git-based deployment with auto-generated GitHub Actions</li>
-<li><strong>Cloudflare Pages</strong> — wrangler-based deployment</li>
-<li><strong>Netlify</strong> — CLI-based deployment</li>
+<li><strong>HTML structure</strong> — <code>&lt;!DOCTYPE html&gt;</code> through <code>&lt;/html&gt;</code></li>
+<li><strong>SEO meta tags</strong> — canonical URL, Open Graph, Twitter Card, JSON-LD</li>
+<li><strong>Template blocks</strong> — <code>title</code>, <code>head</code>, <code>extra_css</code>, <code>header</code>, <code>content</code>, <code>footer</code>, <code>extra_js</code></li>
+<li><strong>Search</strong> — search input + client-side JavaScript using <code>search-index.json</code></li>
+<li><strong>Pagination</strong> — navigation when pagination context exists</li>
+<li><strong>Language switcher</strong> — hreflang links + switcher UI for multilingual sites</li>
+<li><strong>Accessibility</strong> — skip-to-main link, ARIA labels, focus rings, <code>prefers-reduced-motion</code></li>
 </ul>
-<h2 id="configuration">Configuration</h2>
-<p>Set the deploy target in <code>page.toml</code>:</p>
-<pre><code>[deploy]
-target = &quot;github-pages&quot;
-</code></pre>
-<h2 id="github-pages">GitHub Pages</h2>
-<p>The default deployment target. When you run <code>page init</code> with <code>--deploy-target github-pages</code>, a GitHub Actions workflow is generated at <code>.github/workflows/deploy.yml</code> that builds and deploys on every push to <code>main</code>.</p>
-<h3 id="manual-deployment">Manual deployment</h3>
+<p>All inline CSS (no external stylesheets) so the theme is completely self-contained.</p>
+<h2 id="managing-themes">Managing Themes</h2>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme list              </span><span style="color:#65737e;"># Show all bundled + installed themes
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply &lt;name&gt;      # Apply a theme (writes templates/base.html)
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install &lt;url&gt;     # Download a theme from a URL
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export &lt;name&gt;     # Export current theme as shareable .tera file
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">&lt;prompt&gt;</span><span style="color:#c0c5ce;">&quot; </span><span style="color:#65737e;"># Generate a custom theme with AI
 </span></pre>
-<p>This pushes the <code>dist/</code> directory to the <code>gh-pages</code> branch.</p>
-<h3 id="dry-run">Dry run</h3>
-<p>Preview what would be deployed:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h3 id="custom-repository">Custom repository</h3>
-<pre><code>[deploy]
-target = &quot;github-pages&quot;
-repo = &quot;https://github.com/user/repo.git&quot;
-</code></pre>
-<h2 id="cloudflare-pages">Cloudflare Pages</h2>
-<h3 id="setup">Setup</h3>
-<ol>
-<li>Install wrangler: <code>npm install -g wrangler</code></li>
-<li>Authenticate: <code>wrangler login</code></li>
-<li>Configure:</li>
-</ol>
-<pre><code>[deploy]
-target = &quot;cloudflare&quot;
-project = &quot;my-site&quot;
-</code></pre>
-<p>The project name is auto-detected from <code>wrangler.toml</code> if present.</p>
-<h3 id="deploy">Deploy</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
-</span></pre>
-<h3 id="dry-run">Dry run</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h2 id="netlify">Netlify</h2>
-<h3 id="setup">Setup</h3>
-<ol>
-<li>Install Netlify CLI: <code>npm install -g netlify-cli</code></li>
-<li>Authenticate: <code>netlify login</code></li>
-<li>Configure:</li>
-</ol>
-<pre><code>[deploy]
-target = &quot;netlify&quot;
-</code></pre>
-<h3 id="deploy">Deploy</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
-</span></pre>
-<h3 id="dry-run">Dry run</h3>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify</span><span style="color:#bf616a;"> --dry-run
-</span></pre>
-<h2 id="custom-domains">Custom Domains</h2>
-<p>Set up a custom domain for any deploy target:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com
-</span></pre>
-<p>This will:</p>
-<ol>
-<li>Print DNS records to add at your registrar</li>
-<li>Update <code>base_url</code> and <code>deploy.domain</code> in <code>page.toml</code></li>
-<li>For Cloudflare: offer to attach the domain to your Pages project via the API</li>
-<li>For Netlify: offer to add the domain via <code>netlify domains:add</code></li>
-<li>For GitHub Pages: auto-generate a <code>CNAME</code> file on the next deploy</li>
-</ol>
-<p>You can also set the domain directly in <code>page.toml</code>:</p>
-<pre><code>[deploy]
-target = &quot;cloudflare&quot;
-project = &quot;my-site&quot;
-domain = &quot;example.com&quot;
-</code></pre>
-<p>When <code>deploy.domain</code> is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.</p>
-<h2 id="override-target">Override Target</h2>
-<p>Override the configured target on the command line:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify     </span><span style="color:#65737e;"># Deploy to Netlify regardless of page.toml
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare  </span><span style="color:#65737e;"># Deploy to Cloudflare
-</span></pre>
-<h2 id="build-output">Build Output</h2>
-<p>After <code>page build</code>, the <code>dist/</code> directory contains everything needed:</p>
-<pre><code>dist/
-├── index.html           # Homepage
-├── index.md             # Homepage markdown
-├── feed.xml             # RSS feed
-├── sitemap.xml          # XML sitemap
-├── robots.txt           # Robots directives
-├── llms.txt             # LLM summary
-├── llms-full.txt        # Full LLM content
-├── search-index.json    # Client-side search data
-├── 404.html             # Error page
-├── posts/
-│   ├── hello-world.html
-│   └── hello-world.md
-├── docs/
-│   ├── getting-started.html
-│   └── getting-started.md
-└── static/
-    └── ...
-</code></pre>
-<p>All three platforms serve <code>404.html</code> automatically for missing routes.</p>
+<p>In the dev server REPL, type <code>theme</code> to list themes or <code>theme &lt;name&gt;</code> to apply and auto-rebuild.</p>
 </div>
         </article>
 
@@ -1212,45 +1224,50 @@ domain = &quot;example.com&quot;
         
             
             
-                
-            
-            
-        
             
                 
             
+        
             
+            
+            
+                
             
         
             
             
             
-        
-            
-            
+                
             
         
             
             
             
+                
+            
         
             
+            
+            
+                
+            
+        
+            
+            
+                
             
             
         
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;configuration">
+            <a href="&#x2F;docs&#x2F;templates">
                 <span class="doc-nav-label">← Previous</span>
-                <span class="doc-nav-title">Configuration</span>
+                <span class="doc-nav-title">Templates &amp; Themes</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;getting-started" class="doc-nav-next">
-                <span class="doc-nav-label">Next →</span>
-                <span class="doc-nav-title">Getting Started</span>
-            </a>
+            <span class="doc-nav-placeholder"></span>
             
         </nav>
         
