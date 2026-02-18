@@ -1,0 +1,6 @@
+<div class="callout callout-{{ type | default(value='info') }}">
+<div class="callout-title">{% if type == "warning" %}Warning{% elif type == "danger" %}Danger{% elif type == "tip" %}Tip{% else %}Info{% endif %}</div>
+
+{{ body }}
+
+</div>
