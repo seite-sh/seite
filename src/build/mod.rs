@@ -1192,8 +1192,12 @@ pub fn build_site(
 
     // Step 11: Process images (resize, WebP, srcset)
     let step_start = Instant::now();
-    let image_manifest = if has_images_config(config) {
-        images::process_images(paths, &config.images)?
+    let image_manifest = if let Some(ref images_config) = config.images {
+        if !images_config.widths.is_empty() {
+            images::process_images(paths, images_config)?
+        } else {
+            HashMap::new()
+        }
     } else {
         HashMap::new()
     };
@@ -1202,9 +1206,10 @@ pub fn build_site(
 
     // Step 12: Post-process HTML files to rewrite <img> tags
     let step_start = Instant::now();
-    let needs_image_rewrite = !image_manifest.is_empty() || config.images.lazy_loading;
+    let lazy_loading = config.images.as_ref().is_some_and(|img| img.lazy_loading);
+    let needs_image_rewrite = !image_manifest.is_empty() || lazy_loading;
     if needs_image_rewrite {
-        rewrite_html_files(&paths.output, &image_manifest, config.images.lazy_loading)?;
+        rewrite_html_files(&paths.output, &image_manifest, lazy_loading)?;
     }
 
     step_timings.push(("Post-process HTML".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
@@ -1227,15 +1232,6 @@ pub fn build_site(
     })
 }
 
-/// Check if the user has explicitly configured the [images] section.
-/// We detect this by checking if the config differs from the "disabled" default,
-/// OR if there are any image files in the static directory.
-fn has_images_config(config: &SiteConfig) -> bool {
-    // The images section is present in the config (non-default widths check isn't needed;
-    // if the section exists at all we process images).
-    // Simple heuristic: if widths is non-empty, process images.
-    !config.images.widths.is_empty()
-}
 
 /// Walk all .html files in the output directory and rewrite <img> tags.
 fn rewrite_html_files(
