@@ -754,6 +754,17 @@ fn test_theme_apply_dark_revised() {
     assert!(base.contains("8b5cf6"), "dark theme should use violet accent");
 }
 
+#[test]
+fn test_theme_create_requires_page_toml() {
+    // `page theme create` without a page.toml in the directory should fail gracefully
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["theme", "create", "dark glassmorphism"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
 // --- search index ---
 
 #[test]
