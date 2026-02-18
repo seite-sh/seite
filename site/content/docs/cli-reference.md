@@ -3,6 +3,10 @@ title: "CLI Reference"
 description: "Complete reference for all page CLI commands, flags, and options."
 ---
 
+{{% callout(type="tip") %}}
+Run `page <command> --help` for quick inline help on any command.
+{{% end %}}
+
 ## Overview
 
 `page` has seven subcommands:

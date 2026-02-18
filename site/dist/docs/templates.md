@@ -46,6 +46,7 @@ description: Customize your site with Tera templates, overridable blocks, and si
 |----------|-------------|
 | `{{ collections }}` | List of collections (index pages) |
 | `{{ nav }}` | Navigation sections (doc pages) |
+| `{{ data }}` | Data files from `data/` directory |
 | `{{ lang }}` | Current language code |
 | `{{ translations }}` | Available translations |
 | `{{ pagination }}` | Pagination context |
@@ -82,6 +83,30 @@ To override a block, create a template that extends `base.html`:
 {% endblock %}
 ```
 
+Here's a more complete example — a custom `post.html` with reading time, tags, and a back link:
+
+```html
+{% extends "base.html" %}
+
+{% block content %}
+<article>
+  <h1>{{ page.title }}</h1>
+  <p>{{ page.date }} · {{ page.reading_time }} min read</p>
+  {{ page.content | safe }}
+  {% if page.tags %}
+  <div class="tags">
+    {% for tag in page.tags %}<span>{{ tag }}</span>{% endfor %}
+  </div>
+  {% endif %}
+  <a href="/posts">Back to all posts</a>
+</article>
+{% endblock %}
+```
+
+{{% callout(type="info") %}}
+Always use `| safe` with `{{ page.content }}`. Tera escapes HTML by default, so without `| safe` your rendered content would display as raw HTML tags.
+{{% end %}}
+
 ## Extra Frontmatter
 
 Pass arbitrary data to templates using the `extra` field:
@@ -103,6 +128,65 @@ Access in templates:
 <img src="{{ page.extra.hero_image }}" alt="Hero">
 {% endif %}
 ```
+
+{{% callout(type="tip") %}}
+Create `data/nav.yaml` with your links and every bundled theme renders header navigation automatically — no template editing needed.
+{{% end %}}
+
+## Data Files in Templates
+
+Place YAML, JSON, or TOML files in the `data/` directory to inject structured data into all templates. Files are accessible via `{{ data.filename }}`.
+
+### Navigation example
+
+Create `data/nav.yaml`:
+
+```yaml
+- title: Blog
+  url: /posts
+- title: About
+  url: /about
+```
+
+Use in templates:
+
+```html
+{% if data.nav %}
+<nav>
+  {% for item in data.nav %}
+  <a href="{{ item.url }}">{{ item.title }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+```
+
+### Footer example
+
+Create `data/footer.yaml`:
+
+```yaml
+links:
+  - title: GitHub
+    url: https://github.com/user/repo
+copyright: "2026 My Company"
+```
+
+Use in templates:
+
+```html
+{% if data.footer %}
+  {% if data.footer.links %}
+  <nav>
+    {% for link in data.footer.links %}
+    <a href="{{ link.url }}">{{ link.title }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  <p>{{ data.footer.copyright }}</p>
+{% endif %}
+```
+
+All 6 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
 
 ## Bundled Themes
 
@@ -177,3 +261,9 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 </nav>
 {% endif %}
 ```
+
+## Next Steps
+
+- [Theme Gallery](/docs/theme-gallery) — browse all six bundled themes with visual previews
+- [Shortcodes](/docs/shortcodes) — add videos, callouts, and figures to your content
+- [Configuration](/docs/configuration) — data file setup and all `page.toml` options
