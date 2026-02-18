@@ -996,7 +996,11 @@
                 
                     <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
                 
+                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                
                     <li class="active"><a href="&#x2F;docs&#x2F;templates" aria-current="page">Templates &amp; Themes</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
                 
                 </ul>
             
@@ -1026,6 +1030,7 @@
                 <li class="toc-level-3"><a href="#brutalist">brutalist</a></li>
                 <li class="toc-level-3"><a href="#bento">bento</a></li>
                 <li class="toc-level-2"><a href="#applying-themes">Applying Themes</a></li>
+                <li class="toc-level-2"><a href="#installing-sharing-themes">Installing &amp; Sharing Themes</a></li>
                 <li class="toc-level-2"><a href="#custom-themes-with-ai">Custom Themes with AI</a></li>
                 <li class="toc-level-2"><a href="#table-of-contents">Table of Contents</a></li>
                 </ul>
@@ -1129,15 +1134,28 @@
 <p>Card grid layout. 1000px column, CSS grid with mixed card sizes, border-radius 20px, soft shadows. Dark/indigo accent cards.</p>
 <h2 id="applying-themes">Applying Themes</h2>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply dark      </span><span style="color:#65737e;"># Apply bundled theme
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme list            </span><span style="color:#65737e;"># List all themes
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme list              </span><span style="color:#65737e;"># Show all bundled + installed themes
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply dark        </span><span style="color:#65737e;"># Apply a bundled theme
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply my-custom   </span><span style="color:#65737e;"># Apply an installed theme
 </span></pre>
+<p>See the <a href="/docs/theme-gallery">Theme Gallery</a> for visual previews of all bundled themes.</p>
+<h2 id="installing-sharing-themes">Installing & Sharing Themes</h2>
+<p>Download community themes from a URL, or export your own:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera</span><span style="color:#bf616a;"> --name</span><span style="color:#c0c5ce;"> my-aurora
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export my-theme</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Dark theme with green accents</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<p>Installed themes are saved to <code>templates/themes/&lt;name&gt;.tera</code> and appear in <code>page theme list</code>.</p>
 <h2 id="custom-themes-with-ai">Custom Themes with AI</h2>
 <p>Generate a completely custom theme:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">minimal serif with warm earth tones and generous whitespace</span><span style="color:#c0c5ce;">&quot;
 </span></pre>
-<p>This uses Claude Code to generate a <code>templates/base.html</code> with all required blocks, SEO tags, search, and accessibility features.</p>
+<p>This uses Claude Code to generate a <code>templates/base.html</code> with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export earth-tones</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Warm serif theme with earth tones</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
 <h2 id="table-of-contents">Table of Contents</h2>
 <p>Docs and posts automatically get a table of contents. Headings receive <code>id</code> anchors, and <code>{{ page.toc }}</code> provides the structured data:</p>
 <pre style="background-color:#2b303b;">
@@ -1175,6 +1193,10 @@
             
                 
             
+                
+            
+                
+            
         
         
         
@@ -1224,20 +1246,35 @@
         
             
             
+            
                 
+            
+        
+            
+            
+                
+            
+            
+        
+            
+                
+            
             
             
         
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;i18n">
+            <a href="&#x2F;docs&#x2F;releases">
                 <span class="doc-nav-label">← Previous</span>
-                <span class="doc-nav-title">Multi-Language</span>
+                <span class="doc-nav-title">Releases</span>
             </a>
             
             
-            <span class="doc-nav-placeholder"></span>
+            <a href="&#x2F;docs&#x2F;theme-gallery" class="doc-nav-next">
+                <span class="doc-nav-label">Next →</span>
+                <span class="doc-nav-title">Theme Gallery</span>
+            </a>
             
         </nav>
         

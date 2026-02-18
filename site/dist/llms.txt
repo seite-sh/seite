@@ -11,7 +11,9 @@
 - [Deployment](https://pagecli.dev/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
 - [Getting Started](https://pagecli.dev/docs/getting-started.md): Install page and build your first static site in under a minute.
 - [Multi-Language](https://pagecli.dev/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
+- [Releases](https://pagecli.dev/docs/releases.md): Release history and changelog for page.
 - [Templates & Themes](https://pagecli.dev/docs/templates.md): Customize your site with Tera templates, overridable blocks, and six bundled themes.
+- [Theme Gallery](https://pagecli.dev/docs/theme-gallery.md): Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
 
 ## Pages
 

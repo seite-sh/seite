@@ -996,7 +996,11 @@
                 
                     <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
                 
+                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
                 
                 </ul>
             
@@ -1106,21 +1110,26 @@
 </ul>
 <p>The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: <code>npm install -g @anthropic-ai/claude-code</code>.</p>
 <h2 id="page-theme">page theme</h2>
-<p>Manage site themes.</p>
+<p>Manage site themes — list, apply, install, export, and generate.</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme &lt;subcommand&gt;
 </span></pre>
 <table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>list</code></th><th>Show available bundled themes</th></tr>
-<tr><th><code>apply &lt;name&gt;</code></th><th>Apply a bundled theme</th></tr>
+<tr><th><code>list</code></th><th>Show all available themes (bundled + installed)</th></tr>
+<tr><th><code>apply &lt;name&gt;</code></th><th>Apply a bundled or installed theme</th></tr>
 <tr><th><code>create "&lt;description&gt;"</code></th><th>Generate a custom theme with AI</th></tr>
+<tr><th><code>install &lt;url&gt;</code></th><th>Download and install a theme from a URL</th></tr>
+<tr><th><code>export &lt;name&gt;</code></th><th>Export the current theme as a shareable <code>.tera</code> file</th></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme list
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme apply dark
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">brutalist with neon green accents</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera</span><span style="color:#bf616a;"> --name</span><span style="color:#c0c5ce;"> my-aurora
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme export my-theme</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">My custom dark theme</span><span style="color:#c0c5ce;">&quot;
 </span></pre>
-<p>Six bundled themes: <code>default</code>, <code>minimal</code>, <code>dark</code>, <code>docs</code>, <code>brutalist</code>, <code>bento</code>.</p>
+<p>Six bundled themes: <code>default</code>, <code>minimal</code>, <code>dark</code>, <code>docs</code>, <code>brutalist</code>, <code>bento</code>. Installed themes are stored in <code>templates/themes/</code> and listed alongside bundled themes. See the <a href="/docs/theme-gallery">Theme Gallery</a> for visual previews.</p>
 <h2 id="page-deploy">page deploy</h2>
 <p>Deploy the built site.</p>
 <pre style="background-color:#2b303b;">
@@ -1166,6 +1175,10 @@
             
                 
             
+                
+            
+                
+            
         
         
         
@@ -1185,6 +1198,14 @@
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
