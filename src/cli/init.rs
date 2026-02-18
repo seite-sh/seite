@@ -168,12 +168,30 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         )?;
     }
 
-    // Generate GitHub Actions workflow for github-pages deploy target
-    if target == DeployTarget::GithubPages {
-        let workflow_dir = root.join(".github/workflows");
-        fs::create_dir_all(&workflow_dir)?;
-        let workflow = crate::deploy::generate_github_actions_workflow(&config);
-        fs::write(workflow_dir.join("deploy.yml"), workflow)?;
+    // Generate CI workflow and config files based on deploy target
+    match target {
+        DeployTarget::GithubPages => {
+            let workflow_dir = root.join(".github/workflows");
+            fs::create_dir_all(&workflow_dir)?;
+            let workflow = crate::deploy::generate_github_actions_workflow(&config);
+            fs::write(workflow_dir.join("deploy.yml"), workflow)?;
+        }
+        DeployTarget::Cloudflare => {
+            let workflow_dir = root.join(".github/workflows");
+            fs::create_dir_all(&workflow_dir)?;
+            let workflow = crate::deploy::generate_cloudflare_workflow(&config);
+            fs::write(workflow_dir.join("deploy.yml"), workflow)?;
+        }
+        DeployTarget::Netlify => {
+            // Generate netlify.toml
+            let netlify_config = crate::deploy::generate_netlify_config(&config);
+            fs::write(root.join("netlify.toml"), &netlify_config)?;
+            // Also generate GitHub Actions workflow as alternative
+            let workflow_dir = root.join(".github/workflows");
+            fs::create_dir_all(&workflow_dir)?;
+            let workflow = crate::deploy::generate_netlify_workflow(&config);
+            fs::write(workflow_dir.join("deploy.yml"), workflow)?;
+        }
     }
 
     // Write Claude Code settings (.claude/settings.json)
