@@ -84,6 +84,8 @@ struct PageContext {
     excerpt: String,
     /// Table of contents entries extracted from heading hierarchy.
     toc: Vec<markdown::TocEntry>,
+    /// Arbitrary key-value data from frontmatter `extra` field.
+    extra: std::collections::HashMap<String, serde_yaml_ng::Value>,
 }
 
 #[derive(Serialize)]
@@ -430,6 +432,7 @@ pub fn build_site(
                     reading_time,
                     excerpt: excerpt_html,
                     toc: homepage.toc.clone(),
+                    extra: homepage.frontmatter.extra.clone(),
                 }
             } else {
                 PageContext {
@@ -448,6 +451,7 @@ pub fn build_site(
                     reading_time: 0,
                     excerpt: String::new(),
                     toc: Vec::new(),
+                    extra: std::collections::HashMap::new(),
                 }
             };
         index_ctx.insert("page", &index_page_ctx);
@@ -587,6 +591,7 @@ pub fn build_site(
                     reading_time: 0,
                     excerpt: String::new(),
                     toc: Vec::new(),
+                    extra: std::collections::HashMap::new(),
                 });
                 let html = tera
                     .render("index.html", &ctx)
@@ -648,6 +653,7 @@ pub fn build_site(
             reading_time: 0,
             excerpt: String::new(),
             toc: Vec::new(),
+            extra: std::collections::HashMap::new(),
         });
         let html_404 = tera
             .render("404.html", &ctx_404)
@@ -744,6 +750,7 @@ pub fn build_site(
                 reading_time: 0,
                 excerpt: String::new(),
                 toc: Vec::new(),
+                extra: std::collections::HashMap::new(),
             });
             let tags_html = tera
                 .render("tags.html", &tags_ctx)
@@ -780,6 +787,7 @@ pub fn build_site(
                     reading_time: 0,
                     excerpt: String::new(),
                     toc: Vec::new(),
+                    extra: std::collections::HashMap::new(),
                 });
                 let tag_html = tera
                     .render("tag.html", &tag_ctx)
@@ -1305,6 +1313,7 @@ fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
             reading_time,
             excerpt: excerpt_html,
             toc: item.toc.clone(),
+            extra: item.frontmatter.extra.clone(),
         },
     );
     ctx

@@ -65,9 +65,12 @@
         hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
         footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
     </style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
+    {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if translations | length > 1 %}
@@ -79,6 +82,7 @@
             <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
         </form>
         <div id="search-results"></div>
+    {% endblock %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -108,5 +112,7 @@
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
     })();
     </script>
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

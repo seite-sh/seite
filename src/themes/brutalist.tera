@@ -80,9 +80,12 @@
         footer { border: 3px solid #000; padding: 1rem 1.5rem; margin-top: 2rem; font-weight: 700; font-size: 0.85rem; }
         :focus-visible { outline: 3px solid #000; outline-offset: 2px; }
     </style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
+    {% block header %}
         {% if translations | length > 1 %}
         <nav class="lang-switcher">
             {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
@@ -94,6 +97,7 @@
             <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
         </form>
         <div id="search-results"></div>
+    {% endblock %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -123,5 +127,7 @@
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
     })();
     </script>
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>
