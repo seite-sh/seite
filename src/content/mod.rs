@@ -54,6 +54,12 @@ pub struct ContentItem {
     pub excerpt: String,
     /// Table of contents extracted from heading hierarchy.
     pub toc: Vec<crate::build::markdown::TocEntry>,
+    /// Pre-computed word count of the raw markdown body.
+    pub word_count: usize,
+    /// Pre-computed estimated reading time in minutes (238 WPM).
+    pub reading_time: usize,
+    /// Pre-rendered excerpt HTML.
+    pub excerpt_html: String,
 }
 
 /// Parse a markdown file with YAML frontmatter delimited by `---`.

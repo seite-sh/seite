@@ -124,14 +124,14 @@ struct ItemSummary {
     excerpt: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct NavItem {
     title: String,
     url: String,
     active: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct NavSection {
     name: String,
     label: String,
@@ -274,6 +274,9 @@ pub fn build_site(
                 };
 
                 let excerpt = content::extract_excerpt(&raw_body);
+                let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
+                let word_count = raw_body.split_whitespace().count();
+                let reading_time = if word_count == 0 { 0 } else { (word_count / 238).max(1) };
                 items.push(ContentItem {
                     frontmatter: fm,
                     raw_body,
@@ -285,6 +288,9 @@ pub fn build_site(
                     lang,
                     excerpt,
                     toc,
+                    word_count,
+                    reading_time,
+                    excerpt_html,
                 });
             }
         }
@@ -337,26 +343,117 @@ pub fn build_site(
 
     // Render each item in each collection
     let step_start = Instant::now();
+
+    // Pre-compute SiteContext per language (avoid re-creating per item)
+    let mut site_ctx_cache: HashMap<String, SiteContext> = HashMap::new();
+    site_ctx_cache.insert(default_lang.clone(), SiteContext::from_config(config));
+    for lang in config.all_languages() {
+        if lang != *default_lang {
+            site_ctx_cache.insert(lang.clone(), SiteContext::for_lang(config, &lang));
+        }
+    }
+
+    // Pre-serialize an empty nav for non-nested collections
+    let empty_nav: Vec<NavSection> = Vec::new();
+    let empty_nav_value = serde_json::to_value(&empty_nav).unwrap_or_default();
+
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
-            // Nav is built per-language: only sibling items in the same language
+            // Only build nav for nested collections (e.g., docs with sidebar).
+            // Non-nested collections (posts, pages) get an empty nav — their templates
+            // don't use it, and building/cloning a 10k-item nav per page is O(n²).
+            let nav_by_lang: HashMap<&str, serde_json::Value>;
+            let nav_slug_index: HashMap<&str, HashMap<&str, (usize, usize)>>;
+
+            if collection.nested {
+                // Group items by language
+                let mut items_by_lang: HashMap<&str, Vec<&ContentItem>> = HashMap::new();
+                for item in items {
+                    items_by_lang.entry(item.lang.as_str()).or_default().push(item);
+                }
+
+                let mut by_lang = HashMap::new();
+                let mut slug_idx = HashMap::new();
+
+                for (&lang, lang_items) in &items_by_lang {
+                    let mut sections: Vec<NavSection> = Vec::new();
+                    let mut section_map: HashMap<String, usize> = HashMap::new();
+                    let mut si: HashMap<&str, (usize, usize)> = HashMap::new();
+
+                    for item in lang_items {
+                        let (section_name, section_label) = if let Some(pos) = item.slug.find('/') {
+                            let name = &item.slug[..pos];
+                            let label = title_case(name);
+                            (name.to_string(), label)
+                        } else {
+                            (String::new(), String::new())
+                        };
+
+                        let nav_item = NavItem {
+                            title: item.frontmatter.title.clone(),
+                            url: item.url.clone(),
+                            active: false,
+                        };
+
+                        let section_idx = if let Some(&idx) = section_map.get(&section_name) {
+                            sections[idx].items.push(nav_item);
+                            idx
+                        } else {
+                            let idx = sections.len();
+                            section_map.insert(section_name.clone(), idx);
+                            sections.push(NavSection {
+                                name: section_name,
+                                label: section_label,
+                                items: vec![nav_item],
+                            });
+                            idx
+                        };
+                        let item_idx = sections[section_idx].items.len() - 1;
+                        si.insert(&item.slug, (section_idx, item_idx));
+                    }
+
+                    // Pre-serialize to serde_json::Value so per-item clone is cheap
+                    by_lang.insert(lang, serde_json::to_value(&sections).unwrap_or_default());
+                    slug_idx.insert(lang, si);
+                }
+
+                nav_by_lang = by_lang;
+                nav_slug_index = slug_idx;
+            } else {
+                nav_by_lang = HashMap::new();
+                nav_slug_index = HashMap::new();
+            }
+
             for item in items {
-                let lang_items: Vec<&ContentItem> = items
-                    .iter()
-                    .filter(|i| i.lang == item.lang)
-                    .collect();
+                let site_ctx_for_item = site_ctx_cache
+                    .get(item.lang.as_str())
+                    .unwrap_or_else(|| site_ctx_cache.get(default_lang.as_str()).unwrap());
 
-                let site_ctx_for_item = if item.lang == *default_lang {
-                    SiteContext::from_config(config)
+                let mut ctx = build_page_context(site_ctx_for_item, item);
+
+                // Insert nav: pre-serialized Value for nested collections, empty for others
+                if collection.nested {
+                    if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
+                        let mut nav = base_nav.clone();
+                        // Set the active flag on the matching nav item
+                        if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
+                            if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
+                                if let Some(sections) = nav.as_array_mut() {
+                                    if let Some(section) = sections.get_mut(sec_idx) {
+                                        if let Some(items_arr) = section.get_mut("items").and_then(|i| i.as_array_mut()) {
+                                            if let Some(nav_item) = items_arr.get_mut(item_idx) {
+                                                nav_item["active"] = serde_json::Value::Bool(true);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        ctx.insert("nav", &nav);
+                    }
                 } else {
-                    SiteContext::for_lang(config, &item.lang)
-                };
-
-                let mut ctx = build_page_context(&site_ctx_for_item, item);
-
-                let nav_items: Vec<ContentItem> = lang_items.into_iter().cloned().collect();
-                let nav = build_nav(&nav_items, &item.slug);
-                ctx.insert("nav", &nav);
+                    ctx.insert("nav", &empty_nav_value);
+                }
                 ctx.insert("lang", &item.lang);
 
                 // Always provide translations (may be empty vec)
@@ -432,19 +529,16 @@ pub fn build_site(
                     label: c.label.clone(),
                     items: items
                         .iter()
-                        .map(|item| {
-                            let (wc, rt) = compute_reading_stats(&item.raw_body);
-                            ItemSummary {
-                                title: item.frontmatter.title.clone(),
-                                date: item.frontmatter.date.map(|d| d.to_string()),
-                                description: item.frontmatter.description.clone(),
-                                slug: item.slug.clone(),
-                                tags: item.frontmatter.tags.clone(),
-                                url: item.url.clone(),
-                                word_count: wc,
-                                reading_time: rt,
-                                excerpt: markdown::markdown_to_html(&item.excerpt).0,
-                            }
+                        .map(|item| ItemSummary {
+                            title: item.frontmatter.title.clone(),
+                            date: item.frontmatter.date.map(|d| d.to_string()),
+                            description: item.frontmatter.description.clone(),
+                            slug: item.slug.clone(),
+                            tags: item.frontmatter.tags.clone(),
+                            url: item.url.clone(),
+                            word_count: item.word_count,
+                            reading_time: item.reading_time,
+                            excerpt: item.excerpt_html.clone(),
                         })
                         .collect(),
                 }
@@ -463,8 +557,6 @@ pub fn build_site(
         };
         let index_page_ctx =
             if let Some(homepage) = homepage_pages.iter().find(|p| p.lang == *lang) {
-                let (word_count, reading_time) = compute_reading_stats(&homepage.raw_body);
-                let excerpt_html = markdown::markdown_to_html(&homepage.excerpt).0;
                 PageContext {
                     title: homepage.frontmatter.title.clone(),
                     content: homepage.html_body.clone(),
@@ -477,9 +569,9 @@ pub fn build_site(
                     url: index_page_url,
                     collection: homepage.collection.clone(),
                     robots: homepage.frontmatter.robots.clone(),
-                    word_count,
-                    reading_time,
-                    excerpt: excerpt_html,
+                    word_count: homepage.word_count,
+                    reading_time: homepage.reading_time,
+                    excerpt: homepage.excerpt_html.clone(),
                     toc: homepage.toc.clone(),
                     extra: homepage.frontmatter.extra.clone(),
                 }
@@ -566,19 +658,16 @@ pub fn build_site(
             let lang_items: Vec<ItemSummary> = all_items
                 .iter()
                 .filter(|item| item.lang == *lang)
-                .map(|item| {
-                    let (wc, rt) = compute_reading_stats(&item.raw_body);
-                    ItemSummary {
-                        title: item.frontmatter.title.clone(),
-                        date: item.frontmatter.date.map(|d| d.to_string()),
-                        description: item.frontmatter.description.clone(),
-                        slug: item.slug.clone(),
-                        tags: item.frontmatter.tags.clone(),
-                        url: item.url.clone(),
-                        word_count: wc,
-                        reading_time: rt,
-                        excerpt: markdown::markdown_to_html(&item.excerpt).0,
-                    }
+                .map(|item| ItemSummary {
+                    title: item.frontmatter.title.clone(),
+                    date: item.frontmatter.date.map(|d| d.to_string()),
+                    description: item.frontmatter.description.clone(),
+                    slug: item.slug.clone(),
+                    tags: item.frontmatter.tags.clone(),
+                    url: item.url.clone(),
+                    word_count: item.word_count,
+                    reading_time: item.reading_time,
+                    excerpt: item.excerpt_html.clone(),
                 })
                 .collect();
 
@@ -727,7 +816,6 @@ pub fn build_site(
             for c in &config.collections {
                 if let Some(items) = all_collections.get(&c.name) {
                     for item in items.iter().filter(|i| i.lang == *lang) {
-                        let (wc, rt) = compute_reading_stats(&item.raw_body);
                         let summary = ItemSummary {
                             title: item.frontmatter.title.clone(),
                             date: item.frontmatter.date.map(|d| d.to_string()),
@@ -735,9 +823,9 @@ pub fn build_site(
                             slug: item.slug.clone(),
                             tags: item.frontmatter.tags.clone(),
                             url: item.url.clone(),
-                            word_count: wc,
-                            reading_time: rt,
-                            excerpt: markdown::markdown_to_html(&item.excerpt).0,
+                            word_count: item.word_count,
+                            reading_time: item.reading_time,
+                            excerpt: item.excerpt_html.clone(),
                         };
                         for tag in &item.frontmatter.tags {
                             let normalized = tag.to_lowercase();
@@ -1347,14 +1435,6 @@ fn minify_js(raw: &[u8]) -> String {
     result
 }
 
-/// Compute word count and estimated reading time (in minutes) from raw markdown.
-/// Uses 238 words per minute (average adult reading speed).
-fn compute_reading_stats(raw_body: &str) -> (usize, usize) {
-    let word_count = raw_body.split_whitespace().count();
-    let reading_time = if word_count == 0 { 0 } else { (word_count / 238).max(1) };
-    (word_count, reading_time)
-}
-
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     let clean = url.trim_matches('/');
     output_dir.join(format!("{clean}.html"))
@@ -1368,8 +1448,6 @@ fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
 fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
-    let (word_count, reading_time) = compute_reading_stats(&item.raw_body);
-    let excerpt_html = markdown::markdown_to_html(&item.excerpt).0;
     ctx.insert(
         "page",
         &PageContext {
@@ -1384,52 +1462,14 @@ fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
             url: item.url.clone(),
             collection: item.collection.clone(),
             robots: item.frontmatter.robots.clone(),
-            word_count,
-            reading_time,
-            excerpt: excerpt_html,
+            word_count: item.word_count,
+            reading_time: item.reading_time,
+            excerpt: item.excerpt_html.clone(),
             toc: item.toc.clone(),
             extra: item.frontmatter.extra.clone(),
         },
     );
     ctx
-}
-
-/// Build a navigation structure from a collection's items, grouped by directory.
-/// Top-level items go in a section with empty name; nested items are grouped by
-/// their first path segment (e.g., "guides/setup" → section "guides").
-fn build_nav(items: &[ContentItem], current_slug: &str) -> Vec<NavSection> {
-    let mut sections: Vec<NavSection> = Vec::new();
-    let mut section_map: HashMap<String, usize> = HashMap::new();
-
-    for item in items {
-        let (section_name, section_label) = if let Some(pos) = item.slug.find('/') {
-            let name = &item.slug[..pos];
-            let label = title_case(name);
-            (name.to_string(), label)
-        } else {
-            (String::new(), String::new())
-        };
-
-        let nav_item = NavItem {
-            title: item.frontmatter.title.clone(),
-            url: item.url.clone(),
-            active: item.slug == current_slug,
-        };
-
-        if let Some(&idx) = section_map.get(&section_name) {
-            sections[idx].items.push(nav_item);
-        } else {
-            let idx = sections.len();
-            section_map.insert(section_name.clone(), idx);
-            sections.push(NavSection {
-                name: section_name,
-                label: section_label,
-                items: vec![nav_item],
-            });
-        }
-    }
-
-    sections
 }
 
 /// Build a JSON search index from a slice of content items.
