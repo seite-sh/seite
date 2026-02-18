@@ -704,7 +704,54 @@ fn test_theme_list() {
         .args(["theme", "list"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("default"));
+        .stdout(predicate::str::contains("default"))
+        .stdout(predicate::str::contains("brutalist"))
+        .stdout(predicate::str::contains("bento"));
+}
+
+#[test]
+fn test_theme_apply_brutalist() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Brutalist Test", "posts");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["theme", "apply", "brutalist"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("fffef0"), "brutalist theme should have cream background");
+    assert!(base.contains("ffe600"), "brutalist theme should have yellow accent");
+}
+
+#[test]
+fn test_theme_apply_bento() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Bento Test", "posts");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["theme", "apply", "bento"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("border-radius: 20px"), "bento theme should have rounded cards");
+    assert!(base.contains("5046e5"), "bento theme should have indigo accent");
+}
+
+#[test]
+fn test_theme_apply_dark_revised() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Dark Test", "posts");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("0a0a0a"), "dark theme should use true black background");
+    assert!(base.contains("8b5cf6"), "dark theme should use violet accent");
 }
 
 // --- search index ---
