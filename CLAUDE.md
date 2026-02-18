@@ -608,6 +608,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [ ] Atomic deploys with content hashing — skip deploy if content hash unchanged since last deploy; useful in CI to avoid empty deploys
 - [ ] S3/generic hosting target — AWS S3 + CloudFront support via `aws s3 sync` wrapper
 - [ ] Webhook/notification support — post-deploy webhook (Slack, Discord, email) for team workflows
+- [ ] Subdomain deploys — per-collection subdomain support (`subdomain = "docs"` on a collection → `docs.example.com`). Three phases: (1) per-collection `output_dir` override to build collections into separate directories, (2) per-collection `base_url` to make URL resolution, sitemap, RSS, and discovery files subdomain-aware, (3) multi-deploy orchestration so `page deploy` loops over subdomain configs and deploys each one. Config: `subdomain` field on `CollectionConfig`, per-collection domain in `DeploySection`. Affects every layer: config model, build pipeline, URL resolution, sitemap/RSS/discovery generation, and deploy orchestration
 
 #### What NOT to build (deliberate non-goals based on competitive analysis)
 
