@@ -7,10 +7,15 @@ on:
 
 permissions:
   contents: write
+  actions: write
+  id-token: write
 
 jobs:
   tag:
     runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.create.outputs.created }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,9 +39,17 @@ jobs:
           fi
 
       - name: Create and push tag
+        id: create
         if: steps.check.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
