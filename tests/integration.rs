@@ -1782,3 +1782,90 @@ fn test_build_tag_pages_multilingual() {
     assert!(en_html.contains("Hello"), "English tag page should have English post");
     assert!(!en_html.contains("Hola"), "English tag page should NOT have Spanish post");
 }
+
+// --- custom templates and extra frontmatter ---
+
+#[test]
+fn test_build_extra_frontmatter_in_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "extrasite", "Extra Site", "posts");
+    let site_dir = tmp.path().join("extrasite");
+
+    // Create a custom template that uses page.extra
+    let templates_dir = site_dir.join("templates");
+    fs::create_dir_all(&templates_dir).unwrap();
+    fs::write(
+        templates_dir.join("post.html"),
+        r#"{% extends "base.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    {% if page.extra.hero_color %}<div class="hero" style="background: {{ page.extra.hero_color }}">Hero</div>{% endif %}
+    {% if page.extra.featured %}<span class="featured-badge">Featured</span>{% endif %}
+    {{ page.content | safe }}
+</article>
+{% endblock %}"#,
+    )
+    .unwrap();
+
+    // Create a post with extra frontmatter
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-custom.md"),
+        "---\ntitle: Custom Post\ndate: 2025-01-15\nextra:\n  hero_color: \"#ff6600\"\n  featured: true\n---\nCustom content here.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/posts/custom.html")).unwrap();
+    assert!(html.contains("hero"), "should render hero div from extra.hero_color");
+    assert!(html.contains("#ff6600"), "should include hero_color value");
+    assert!(html.contains("featured-badge"), "should render featured badge from extra.featured");
+}
+
+#[test]
+fn test_build_custom_template_with_blocks() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "blocksite", "Block Site", "posts");
+    let site_dir = tmp.path().join("blocksite");
+
+    // Create a custom template that uses the new blocks
+    let templates_dir = site_dir.join("templates");
+    fs::create_dir_all(&templates_dir).unwrap();
+    fs::write(
+        templates_dir.join("post.html"),
+        r#"{% extends "base.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block extra_css %}<style>.custom-style { color: red; }</style>{% endblock %}
+{% block head %}<meta name="custom-meta" content="test-value">{% endblock %}
+{% block content %}
+<article>{{ page.content | safe }}</article>
+{% endblock %}
+{% block footer %}<div class="custom-footer">Custom Footer</div>{% endblock %}
+{% block extra_js %}<script>console.log("custom js")</script>{% endblock %}"#,
+    )
+    .unwrap();
+
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-block-test.md"),
+        "---\ntitle: Block Test\ndate: 2025-01-15\n---\nBlock test content.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/posts/block-test.html")).unwrap();
+    assert!(html.contains("custom-style"), "should include extra_css block");
+    assert!(html.contains("custom-meta"), "should include head block");
+    assert!(html.contains("custom-footer"), "should include footer block");
+    assert!(html.contains("custom js"), "should include extra_js block");
+}
