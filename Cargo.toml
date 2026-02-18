@@ -6,7 +6,7 @@ description = "AI-native static site generator — every page ships as HTML, mar
 license = "MIT"
 repository = "https://github.com/sanchezomar/page"
 homepage = "https://pagecli.dev"
-keywords = ["static-site-generator", "ssg", "markdown", "llm"]
+keywords = ["static-site-generator", "ssg", "markdown", "llm", "ai"]
 categories = ["command-line-utilities", "web-programming"]
 rust-version = "1.75"
 
