@@ -1957,3 +1957,142 @@ fn test_build_accessibility_aria_search() {
     assert!(html.contains("aria-label"), "search input should have aria-label");
     assert!(html.contains("aria-live=\"polite\""), "search results should have aria-live");
 }
+
+// --- edge case tests ---
+
+#[test]
+fn test_build_malformed_frontmatter_errors() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "malformed", "Malformed", "posts");
+    let site_dir = tmp.path().join("malformed");
+
+    // Write a post with invalid YAML frontmatter
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-bad.md"),
+        "---\ntitle: [unclosed bracket\n---\nContent.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_build_empty_content_body() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "emptybody", "Empty Body", "posts");
+    let site_dir = tmp.path().join("emptybody");
+
+    // Post with frontmatter but no body
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-empty.md"),
+        "---\ntitle: Empty Body Post\ndate: 2025-01-15\n---\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/posts/empty.html")).unwrap();
+    assert!(html.contains("Empty Body Post"), "should render title even with empty body");
+}
+
+#[test]
+fn test_build_special_characters_in_title() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "specialchars", "Special Chars", "posts");
+    let site_dir = tmp.path().join("specialchars");
+
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-special.md"),
+        "---\ntitle: \"Rust & WebAssembly: <Fast> \\\"Quotes\\\"\"\ndate: 2025-01-15\n---\nContent with special chars.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Should build without errors — HTML escaping handled by Tera
+    assert!(site_dir.join("dist/posts/special.html").exists());
+}
+
+#[test]
+fn test_build_custom_template_override() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tmploverride", "Override", "posts");
+    let site_dir = tmp.path().join("tmploverride");
+
+    // Create a custom index.html template
+    let templates_dir = site_dir.join("templates");
+    fs::create_dir_all(&templates_dir).unwrap();
+    fs::write(
+        templates_dir.join("index.html"),
+        r#"{% extends "base.html" %}
+{% block title %}Custom Index{% endblock %}
+{% block content %}
+<div class="custom-index">Custom index content for {{ site.title }}</div>
+{% endblock %}"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(html.contains("custom-index"), "should use custom index template");
+    assert!(html.contains("Custom index content"), "should render custom template content");
+}
+
+#[test]
+fn test_build_markdown_output_matches_source() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mdsource", "MD Source", "posts");
+    let site_dir = tmp.path().join("mdsource");
+
+    let original_body = "This is the **original** markdown content.\n\n- Item 1\n- Item 2";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-source.md"),
+        format!("---\ntitle: Source Test\ndate: 2025-01-15\n---\n{original_body}"),
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The .md output should contain the original markdown body
+    let md_output = fs::read_to_string(site_dir.join("dist/posts/source.md")).unwrap();
+    assert!(md_output.contains("**original** markdown content"), "md output should preserve original markdown");
+    assert!(md_output.contains("- Item 1"), "md output should preserve list items");
+}
+
+#[test]
+fn test_build_no_listed_collections() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "unlisted", "Unlisted", "pages");
+    let site_dir = tmp.path().join("unlisted");
+
+    // Pages collection is not listed, so index should show no collections
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Should still generate a valid index.html
+    assert!(site_dir.join("dist/index.html").exists());
+}
