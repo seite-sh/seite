@@ -1,16 +1,50 @@
 {% extends "base.html" %}
-{% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
+{% block title %}{{ page.title }} — {{ site.title }}{% endblock %}
 {% block content %}
-<article>
-    <h1>{{ page.title }}</h1>
-    {% if page.toc | length > 1 %}
-    <nav class="toc" aria-label="Table of contents">
-        <h4>On this page</h4>
-        <ul>
-        {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
-        {% endfor %}</ul>
-    </nav>
-    {% endif %}
-    <div class="content">{{ page.content | safe }}</div>
-</article>
+{% if nav %}
+<div class="docs-layout">
+    <aside class="docs-sidebar" aria-label="Documentation navigation">
+        <nav>
+            {% for section in nav %}
+                {% if section.name %}<h3>{{ section.label }}</h3>{% endif %}
+                <ul>
+                {% for item in section.items %}
+                    <li{% if item.active %} class="active"{% endif %}><a href="{{ item.url }}">{{ item.title }}</a></li>
+                {% endfor %}
+                </ul>
+            {% endfor %}
+        </nav>
+    </aside>
+    <div class="sidebar-backdrop" onclick="document.querySelector('.docs-sidebar').classList.remove('open');this.classList.remove('open');"></div>
+    <div class="docs-main">
+        <article>
+            <h1>{{ page.title }}</h1>
+            {% if page.toc | length > 1 %}
+            <nav class="toc" aria-label="Table of contents">
+                <h4>On this page</h4>
+                <ul>
+                {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+                {% endfor %}</ul>
+            </nav>
+            {% endif %}
+            <div class="content">{{ page.content | safe }}</div>
+        </article>
+    </div>
+</div>
+{% else %}
+<div class="container article-wrap">
+    <article>
+        <h1>{{ page.title }}</h1>
+        {% if page.toc | length > 1 %}
+        <nav class="toc" aria-label="Table of contents">
+            <h4>On this page</h4>
+            <ul>
+            {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+            {% endfor %}</ul>
+        </nav>
+        {% endif %}
+        <div class="content">{{ page.content | safe }}</div>
+    </article>
+</div>
+{% endif %}
 {% endblock %}
