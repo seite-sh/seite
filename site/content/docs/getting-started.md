@@ -5,13 +5,39 @@ description: "Install page and build your first static site in under a minute."
 
 ## Installation
 
-Install `page` from source using Cargo:
+### Quick install (macOS and Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+```
+
+This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
+
+To install a specific version:
+
+```bash
+VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+```
+
+### Install from source
+
+If you have the Rust toolchain installed:
 
 ```bash
 cargo install page
 ```
 
-Verify the installation:
+### Platform support
+
+| Platform | Architecture | Install method |
+|----------|-------------|----------------|
+| macOS | Apple Silicon (M1/M2/M3/M4) | Shell installer or cargo |
+| macOS | Intel x86_64 | Shell installer or cargo |
+| Linux | x86_64 | Shell installer or cargo |
+| Linux | aarch64/arm64 | Shell installer or cargo |
+| Windows | x86_64 | `cargo install page` |
+
+### Verify
 
 ```bash
 page --version

@@ -27,6 +27,9 @@ cargo run -- deploy
 cargo run -- deploy --dry-run                       # Preview what deploy would do
 cargo run -- deploy --target netlify                 # Deploy to Netlify
 cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
+
+# Install (end users)
+curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
 ```
 
 ## Architecture
@@ -203,6 +206,19 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 - Interactive REPL with commands: new, agent, theme, build, status, stop
 - Live reload via `/__livereload` polling endpoint + injected `<script>`
 - Auto-increments port if default (3000) is taken
+
+### Release & Distribution
+
+- **Version source of truth**: `Cargo.toml` `version` field
+- **Auto-tag workflow** (`.github/workflows/release-tag.yml`): detects version changes on `main`, auto-creates `v{version}` git tag
+- **Release workflow** (`.github/workflows/release.yml`): triggers on `v*` tag push, runs 4 jobs:
+  1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64
+  2. `release` — creates GitHub Release with `page-{target}.tar.gz` archives + `checksums-sha256.txt`
+  3. `provenance` — SLSA Level 3 attestations via `slsa-framework/slsa-github-generator`
+  4. `deploy-site` — builds and deploys `site/` to Cloudflare Pages (pagecli.dev)
+- **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
+- **Release flow**: bump version in `Cargo.toml` + update `site/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
+- **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
 ### Themes
 
@@ -474,6 +490,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Custom domain management — `--domain` flag shows DNS records, updates base_url + `deploy.domain` in page.toml, attaches domain to Cloudflare Pages via API, runs `netlify domains:add` for Netlify, auto-generates CNAME for GitHub Pages. Preflight checks verify domain is attached.
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
 - [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
+- [x] Shell installer + release CI — `curl | sh` installer, GitHub Actions release workflow (4 platform binaries), SLSA Level 3 provenance, auto-tag from Cargo.toml version, auto-deploy docs site on release
 
 ### Up Next
 

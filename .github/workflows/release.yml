@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --locked
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../page-${{ matrix.target }}.tar.gz page
+          cd ../../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-${{ matrix.target }}
+          path: page-${{ matrix.target }}.tar.gz
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      digests: ${{ steps.hash.outputs.digests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum page-*.tar.gz > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Generate provenance subjects
+        id: hash
+        run: |
+          cd artifacts
+          echo "digests=$(sha256sum page-*.tar.gz | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/page-*.tar.gz
+            artifacts/checksums-sha256.txt
+
+  provenance:
+    name: SLSA provenance
+    needs: release
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.4.0
+    with:
+      base64-subjects: "${{ needs.release.outputs.digests }}"
+      upload-assets: true
+
+  deploy-site:
+    name: Deploy docs site
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install page
+        run: cargo install --path .
+
+      - name: Build docs site
+        working-directory: site
+        run: page build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name site
+          workingDirectory: site
