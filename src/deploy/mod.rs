@@ -47,6 +47,7 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
         "netlify" => {
             checks.push(check_cli_available("netlify", &["--version"]));
             checks.push(check_netlify_auth());
+            checks.push(check_netlify_site(config, paths));
         }
         _ => {}
     }
@@ -234,23 +235,117 @@ fn check_netlify_auth() -> PreflightCheck {
 }
 
 fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
-    if config.deploy.project.is_some() {
-        return PreflightCheck {
-            name: "Cloudflare project".into(),
-            passed: true,
-            message: format!("configured: {}", config.deploy.project.as_ref().unwrap()),
-        };
-    }
-    match detect_cloudflare_project(paths) {
-        Some(name) => PreflightCheck {
-            name: "Cloudflare project".into(),
-            passed: true,
-            message: format!("auto-detected: {name}"),
-        },
+    let project_name = config
+        .deploy
+        .project
+        .clone()
+        .or_else(|| detect_cloudflare_project(paths));
+
+    match project_name {
+        Some(name) => {
+            // Verify the project actually exists on Cloudflare
+            if cloudflare_project_exists(&name) {
+                PreflightCheck {
+                    name: "Cloudflare project".into(),
+                    passed: true,
+                    message: format!("exists: {name}"),
+                }
+            } else {
+                PreflightCheck {
+                    name: "Cloudflare project".into(),
+                    passed: false,
+                    message: format!("project '{name}' not found on Cloudflare — needs to be created"),
+                }
+            }
+        }
         None => PreflightCheck {
             name: "Cloudflare project".into(),
             passed: false,
             message: "no project name — set deploy.project in page.toml".into(),
+        },
+    }
+}
+
+/// Check if a Cloudflare Pages project exists by listing projects.
+fn cloudflare_project_exists(name: &str) -> bool {
+    // If wrangler isn't installed or not authenticated, skip this check
+    let output = Command::new("wrangler")
+        .args(["pages", "project", "list"])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.lines().any(|line| line.trim().starts_with(name))
+        }
+        _ => true, // Can't verify — assume it exists to avoid false negatives
+    }
+}
+
+fn check_netlify_site(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
+    // If a site ID / project is configured, check if it's linked
+    if let Some(ref project) = config.deploy.project {
+        return PreflightCheck {
+            name: "Netlify site".into(),
+            passed: true,
+            message: format!("configured: {project}"),
+        };
+    }
+
+    // Check if .netlify/state.json exists (netlify link creates this)
+    let state_file = paths.root.join(".netlify/state.json");
+    if state_file.exists() {
+        return PreflightCheck {
+            name: "Netlify site".into(),
+            passed: true,
+            message: "linked via .netlify/state.json".into(),
+        };
+    }
+
+    // Try `netlify status` to see if we're linked to a site
+    let has_netlify = Command::new("netlify")
+        .args(["--version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !has_netlify {
+        return PreflightCheck {
+            name: "Netlify site".into(),
+            passed: false,
+            message: "skipped (netlify not installed)".into(),
+        };
+    }
+
+    match Command::new("netlify")
+        .args(["status", "--json"])
+        .current_dir(&paths.root)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                if json.get("siteData").and_then(|s| s.get("id")).is_some() {
+                    let site_name = json
+                        .get("siteData")
+                        .and_then(|s| s.get("name"))
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("linked");
+                    return PreflightCheck {
+                        name: "Netlify site".into(),
+                        passed: true,
+                        message: format!("linked: {site_name}"),
+                    };
+                }
+            }
+            PreflightCheck {
+                name: "Netlify site".into(),
+                passed: false,
+                message: "no site linked — run `netlify link` or `netlify sites:create`".into(),
+            }
+        }
+        _ => PreflightCheck {
+            name: "Netlify site".into(),
+            passed: false,
+            message: "no site linked — run `netlify link` or `netlify sites:create`".into(),
         },
     }
 }
@@ -287,7 +382,7 @@ pub struct FixAction {
 pub fn try_fix_check(
     check: &PreflightCheck,
     paths: &ResolvedPaths,
-    target: &str,
+    _target: &str,
 ) -> Option<FixAction> {
     if check.passed {
         return None;
@@ -404,25 +499,21 @@ pub fn try_fix_check(
                 ],
             })
         }
-        _ => {
-            // Check for netlify-specific project issues
-            if check.name.contains("Netlify") || (target == "netlify" && check.name.contains("project")) {
-                let site_name = paths
-                    .root
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("my-site");
-                Some(FixAction {
-                    prompt: format!("Create Netlify site '{site_name}'?"),
-                    manual_instructions: vec![
-                        format!("Run: netlify sites:create --name {site_name}"),
-                        "Or set deploy.project in page.toml".into(),
-                    ],
-                })
-            } else {
-                None
-            }
+        "Netlify site" => {
+            let site_name = paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site");
+            Some(FixAction {
+                prompt: format!("Create Netlify site '{site_name}'?"),
+                manual_instructions: vec![
+                    format!("Run: netlify sites:create --name {site_name}"),
+                    "Or run: netlify link".into(),
+                ],
+            })
         }
+        _ => None,
     }
 }
 
@@ -551,6 +642,42 @@ pub fn execute_fix(
                 Ok(true) // Not fatal
             }
         }
+        "Netlify site" => {
+            let site_name = paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site");
+            human::info(&format!("Creating Netlify site '{site_name}'..."));
+            let output = Command::new("netlify")
+                .args(["sites:create", "--name", site_name])
+                .current_dir(&paths.root)
+                .output()
+                .map_err(|e| PageError::Deploy(format!("netlify sites:create failed: {e}")))?;
+            if output.status.success() {
+                human::success(&format!("Created Netlify site '{site_name}'"));
+                // Link the site locally
+                let _ = Command::new("netlify")
+                    .args(["link", "--name", site_name])
+                    .current_dir(&paths.root)
+                    .status();
+                Ok(true)
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stderr.contains("already exists") {
+                    human::info("Site already exists — linking...");
+                    let link_result = Command::new("netlify")
+                        .args(["link", "--name", site_name])
+                        .current_dir(&paths.root)
+                        .status()
+                        .map_err(|e| PageError::Deploy(format!("netlify link failed: {e}")))?;
+                    Ok(link_result.success())
+                } else {
+                    human::error(&format!("Could not create site: {stderr}"));
+                    Ok(false)
+                }
+            }
+        }
         _ => Ok(false),
     }
 }
@@ -574,6 +701,7 @@ pub fn recheck(
         "Cloudflare auth" => check_cloudflare_auth(),
         "Netlify auth" => check_netlify_auth(),
         "Cloudflare project" => check_cloudflare_project(config, paths),
+        "Netlify site" => check_netlify_site(config, paths),
         _ => PreflightCheck {
             name: check_name.into(),
             passed: false,
