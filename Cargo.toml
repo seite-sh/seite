@@ -2,8 +2,9 @@
 name = "page"
 version = "0.1.0"
 edition = "2021"
-description = "A static site generator with LLM integration"
+description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
+repository = "https://github.com/sanchezomar/page"
 rust-version = "1.75"
 
 [[bin]]
