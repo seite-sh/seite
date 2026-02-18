@@ -2884,6 +2884,205 @@ fn test_build_link_check_passes_with_valid_links() {
         .success();
 }
 
+// ── Data files feature ──────────────────────────────────────────────
+
+#[test]
+fn test_build_with_yaml_data_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data YAML", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Create a YAML data file
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/authors.yaml"),
+        "- name: Alice\n  role: Editor\n- name: Bob\n  role: Writer\n",
+    )
+    .unwrap();
+
+    // Modify index template to render data
+    let index_path = site_dir.join("templates/index.html");
+    let index_tmpl = fs::read_to_string(&index_path).unwrap();
+    let modified = index_tmpl.replace(
+        "{% endblock %}",
+        "{% if data.authors %}{% for author in data.authors %}<span class=\"data-author\">{{ author.name }}</span>{% endfor %}{% endif %}{% endblock %}",
+    );
+    fs::write(&index_path, modified).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("data files loaded"));
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index_html.contains("Alice"), "YAML data should be rendered in template");
+    assert!(index_html.contains("Bob"), "YAML data should be rendered in template");
+}
+
+#[test]
+fn test_build_with_json_data_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data JSON", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/social.json"),
+        r#"[{"name": "GitHub", "url": "https://github.com"}]"#,
+    )
+    .unwrap();
+
+    // Modify index template to render data
+    let index_path = site_dir.join("templates/index.html");
+    let index_tmpl = fs::read_to_string(&index_path).unwrap();
+    let modified = index_tmpl.replace(
+        "{% endblock %}",
+        "{% if data.social %}{% for link in data.social %}<a class=\"data-social\" href=\"{{ link.url }}\">{{ link.name }}</a>{% endfor %}{% endif %}{% endblock %}",
+    );
+    fs::write(&index_path, modified).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index_html.contains("GitHub"), "JSON data should be rendered in template");
+}
+
+#[test]
+fn test_build_with_toml_data_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data TOML", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/settings.toml"),
+        "site_name = \"My TOML Site\"\nmax_posts = 10\n",
+    )
+    .unwrap();
+
+    // Modify index template to render data
+    let index_path = site_dir.join("templates/index.html");
+    let index_tmpl = fs::read_to_string(&index_path).unwrap();
+    let modified = index_tmpl.replace(
+        "{% endblock %}",
+        "{% if data.settings %}<span class=\"data-setting\">{{ data.settings.site_name }}</span>{% endif %}{% endblock %}",
+    );
+    fs::write(&index_path, modified).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index_html.contains("My TOML Site"),
+        "TOML data should be rendered in template"
+    );
+}
+
+#[test]
+fn test_build_with_nested_data_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Nested Data", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    fs::create_dir_all(site_dir.join("data/menus")).unwrap();
+    fs::write(
+        site_dir.join("data/menus/main.yaml"),
+        "- title: Home\n  url: /\n- title: About\n  url: /about\n",
+    )
+    .unwrap();
+
+    // Modify index template to render nested data
+    let index_path = site_dir.join("templates/index.html");
+    let index_tmpl = fs::read_to_string(&index_path).unwrap();
+    let modified = index_tmpl.replace(
+        "{% endblock %}",
+        "{% if data.menus %}{% if data.menus.main %}{% for item in data.menus.main %}<a class=\"data-nav\">{{ item.title }}</a>{% endfor %}{% endif %}{% endif %}{% endblock %}",
+    );
+    fs::write(&index_path, modified).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index_html.contains("Home"), "Nested data.menus.main should work");
+    assert!(index_html.contains("About"), "Nested data.menus.main should work");
+}
+
+#[test]
+fn test_build_data_conflict_errors() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data Conflict", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(site_dir.join("data/authors.yaml"), "- name: Alice\n").unwrap();
+    fs::write(
+        site_dir.join("data/authors.json"),
+        r#"[{"name": "Bob"}]"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("data key conflict"));
+}
+
+#[test]
+fn test_build_data_parse_error() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data Error", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/broken.yaml"),
+        "invalid: yaml: [: unclosed\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("broken.yaml"));
+}
+
+#[test]
+fn test_build_no_data_dir_succeeds() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Data", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove the data dir that init creates
+    let data_dir = site_dir.join("data");
+    if data_dir.exists() {
+        fs::remove_dir_all(&data_dir).unwrap();
+    }
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
 #[test]
 fn test_build_link_check_strict_with_cross_collection_links() {
     let tmp = TempDir::new().unwrap();
@@ -2934,4 +3133,79 @@ fn test_build_link_check_reports_broken_target() {
         .assert()
         .success()
         .stdout(predicate::str::contains("/ghost-page"));
+}
+
+#[test]
+fn test_init_creates_data_directory() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Init Data Dir", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    assert!(site_dir.join("data").exists(), "init should create data/ directory");
+    assert!(site_dir.join("data").is_dir());
+}
+
+#[test]
+fn test_build_data_nav_in_theme() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Theme Nav", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Create nav data file matching the theme's expected format
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/nav.yaml"),
+        "- title: Blog\n  url: /posts\n- title: About\n  url: /about\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index_html.contains("Main navigation"),
+        "Theme should render data.nav with aria-label"
+    );
+    // Tera HTML-escapes / to &#x2F; in attribute values
+    assert!(
+        index_html.contains("/posts") || index_html.contains("&#x2F;posts"),
+        "Nav should contain link URLs"
+    );
+    assert!(index_html.contains("Blog"), "Nav should contain link titles");
+}
+
+#[test]
+fn test_build_data_footer_in_theme() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Theme Footer", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Create footer data file
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/footer.yaml"),
+        "links:\n  - title: GitHub\n    url: https://github.com\n  - title: Twitter\n    url: https://twitter.com\ncopyright: \"2026 Test Corp\"\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index_html.contains("Footer navigation"),
+        "Theme should render data.footer with aria-label"
+    );
+    assert!(index_html.contains("GitHub"), "Footer should contain link title");
+    assert!(
+        index_html.contains("2026 Test Corp"),
+        "Footer should use custom copyright"
+    );
 }

@@ -46,6 +46,7 @@ description: "Customize your site with Tera templates, overridable blocks, and s
 |----------|-------------|
 | `{{ collections }}` | List of collections (index pages) |
 | `{{ nav }}` | Navigation sections (doc pages) |
+| `{{ data }}` | Data files from `data/` directory |
 | `{{ lang }}` | Current language code |
 | `{{ translations }}` | Available translations |
 | `{{ pagination }}` | Pagination context |
@@ -103,6 +104,61 @@ Access in templates:
 <img src="{{ page.extra.hero_image }}" alt="Hero">
 {% endif %}
 ```
+
+## Data Files in Templates
+
+Place YAML, JSON, or TOML files in the `data/` directory to inject structured data into all templates. Files are accessible via `{{ data.filename }}`.
+
+### Navigation example
+
+Create `data/nav.yaml`:
+
+```yaml
+- title: Blog
+  url: /posts
+- title: About
+  url: /about
+```
+
+Use in templates:
+
+```html
+{% if data.nav %}
+<nav>
+  {% for item in data.nav %}
+  <a href="{{ item.url }}">{{ item.title }}</a>
+  {% endfor %}
+</nav>
+{% endif %}
+```
+
+### Footer example
+
+Create `data/footer.yaml`:
+
+```yaml
+links:
+  - title: GitHub
+    url: https://github.com/user/repo
+copyright: "2026 My Company"
+```
+
+Use in templates:
+
+```html
+{% if data.footer %}
+  {% if data.footer.links %}
+  <nav>
+    {% for link in data.footer.links %}
+    <a href="{{ link.url }}">{{ link.title }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  <p>{{ data.footer.copyright }}</p>
+{% endif %}
+```
+
+All 6 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
 
 ## Bundled Themes
 

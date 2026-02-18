@@ -144,6 +144,8 @@ pub struct BuildSection {
     pub template_dir: String,
     #[serde(default = "defaults::static_dir")]
     pub static_dir: String,
+    #[serde(default = "defaults::data_dir")]
+    pub data_dir: String,
     /// Minify CSS and JS files during build. Default: false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub minify: bool,
@@ -159,6 +161,7 @@ impl Default for BuildSection {
             content_dir: defaults::content_dir(),
             template_dir: defaults::template_dir(),
             static_dir: defaults::static_dir(),
+            data_dir: defaults::data_dir(),
             minify: false,
             fingerprint: false,
         }
@@ -222,6 +225,7 @@ pub struct ResolvedPaths {
     pub content: PathBuf,
     pub templates: PathBuf,
     pub static_dir: PathBuf,
+    pub data_dir: PathBuf,
 }
 
 impl SiteConfig {
@@ -293,6 +297,7 @@ impl SiteConfig {
             content: project_root.join(&self.build.content_dir),
             templates: project_root.join(&self.build.template_dir),
             static_dir: project_root.join(&self.build.static_dir),
+            data_dir: project_root.join(&self.build.data_dir),
         }
     }
 }

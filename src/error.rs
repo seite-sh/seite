@@ -42,6 +42,9 @@ pub enum PageError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Data file error in {path}: {message}")]
+    Data { path: PathBuf, message: String },
+
     #[error("{0}")]
     Other(String),
 }

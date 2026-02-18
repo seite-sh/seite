@@ -77,10 +77,64 @@ paginate = 10
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `output_dir` | string | `"dist"` | Build output directory |
+| `data_dir` | string | `"data"` | Directory for data files (YAML/JSON/TOML) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
+
+## Data Files
+
+Place YAML, JSON, or TOML files in the `data/` directory to make structured data available in all templates as `{{ data.filename }}`.
+
+### Supported formats
+
+| Extension | Format |
+|-----------|--------|
+| `.yaml`, `.yml` | YAML |
+| `.json` | JSON |
+| `.toml` | TOML |
+
+### Nested directories
+
+Subdirectories create nested keys:
+
+```
+data/
+  nav.yaml          → {{ data.nav }}
+  authors.json      → {{ data.authors }}
+  menus/
+    main.yaml       → {{ data.menus.main }}
+    footer.yaml     → {{ data.menus.footer }}
+```
+
+### Theme integration
+
+All bundled themes conditionally render `data.nav` for header navigation and `data.footer` for footer links and copyright. Example `data/nav.yaml`:
+
+```yaml
+- title: Blog
+  url: /posts
+- title: About
+  url: /about
+- title: Docs
+  url: /docs
+```
+
+Example `data/footer.yaml`:
+
+```yaml
+links:
+  - title: GitHub
+    url: https://github.com/user/repo
+  - title: Twitter
+    url: https://twitter.com/user
+copyright: "2026 My Company"
+```
+
+### Conflict detection
+
+The build will error if two data files share the same stem (e.g., `authors.yaml` and `authors.json`) or if a file and directory conflict (e.g., `nav.yaml` and `nav/main.yaml`). Unknown file extensions are skipped with a warning.
 
 ## [deploy]
 
