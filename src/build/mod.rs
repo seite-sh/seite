@@ -1,6 +1,7 @@
 pub mod discovery;
 pub mod feed;
 pub mod images;
+pub mod links;
 pub mod markdown;
 pub mod sitemap;
 

@@ -61,6 +61,7 @@ src/
       figure.html      Semantic figure with caption
   build/
     mod.rs             12-step build pipeline
+    links.rs           Post-build internal link validation
     markdown.rs        pulldown-cmark wrapper
     feed.rs            RSS generation
     sitemap.rs         XML sitemap generation
@@ -523,7 +524,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 **Priority 1 — Close critical content authoring gaps (these block adoption):**
 
 - [x] Shortcodes — reusable content components in markdown. Hugo-style dual syntax: `{{< name(args) >}}` for inline HTML, `{{% name(args) %}} body {{% end %}}` for markdown-processed bodies. 5 built-in shortcodes (youtube, vimeo, gist, callout, figure) + user-defined from `templates/shortcodes/`. Character-level parser with code block protection. All 6 themes include shortcode CSS.
-- [ ] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
+- [x] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
 - [ ] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
 
 **Priority 2 — Improve build pipeline and content model:**

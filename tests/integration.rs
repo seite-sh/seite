@@ -2640,3 +2640,125 @@ fn test_build_gist_shortcode() {
     let html = fs::read_to_string(site_dir.join("dist/posts/gist.html")).unwrap();
     assert!(html.contains("gist.github.com/octocat/abc123.js"));
 }
+
+// --- internal link checking ---
+
+#[test]
+fn test_build_link_check_warns_broken_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Link Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a post with a broken internal link
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-broken-links.md"),
+        "---\ntitle: Broken Links\ndate: 2025-01-01\n---\n\n[Missing](/posts/nonexistent)\n",
+    )
+    .unwrap();
+
+    // Build without --strict: should succeed but warn
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("broken internal link"));
+}
+
+#[test]
+fn test_build_link_check_strict_fails_on_broken_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Strict Link Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a post with a broken internal link
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-bad-link.md"),
+        "---\ntitle: Bad Link\ndate: 2025-01-01\n---\n\n[Nope](/does/not/exist)\n",
+    )
+    .unwrap();
+
+    // Build with --strict: should fail
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("broken internal link"));
+}
+
+#[test]
+fn test_build_link_check_passes_with_valid_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Valid Links", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a post that links to the homepage and existing content
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-good-links.md"),
+        "---\ntitle: Good Links\ndate: 2025-01-01\n---\n\n[Home](/)\n",
+    )
+    .unwrap();
+
+    // Build with --strict: should succeed (no broken links)
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_build_link_check_strict_with_cross_collection_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Cross Links", "posts,docs,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a doc
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: Guide\n---\n\nA helpful guide.\n",
+    )
+    .unwrap();
+
+    // Create a post that links to the doc
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-with-doc-link.md"),
+        "---\ntitle: Post With Doc Link\ndate: 2025-01-01\n---\n\n[Guide](/docs/guide)\n",
+    )
+    .unwrap();
+
+    // Build with --strict: should succeed
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_build_link_check_reports_broken_target() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Target Report", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a post with a specific broken link
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-specific-broken.md"),
+        "---\ntitle: Specific Broken\ndate: 2025-01-01\n---\n\n[Ghost](/ghost-page)\n",
+    )
+    .unwrap();
+
+    // The output should include the broken URL
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("/ghost-page"));
+}
