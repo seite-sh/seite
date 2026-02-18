@@ -6,5 +6,6 @@ pub mod deploy;
 pub mod error;
 pub mod output;
 pub mod server;
+pub mod shortcodes;
 pub mod templates;
 pub mod themes;
