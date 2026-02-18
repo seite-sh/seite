@@ -553,6 +553,13 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [ ] AVIF image format — generate AVIF variants alongside WebP in the image pipeline. Eleventy Image v6.0 supports AVIF. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute
 - [x] Theme gallery/sharing — documentation page showcasing all bundled themes with HTML preview cards, `page theme install <url>` to download community themes, `page theme export <name>` to share custom/AI-generated themes, installed themes stored in `templates/themes/` and managed alongside bundled themes
 - [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`. Use tag overlap + TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page
+- [ ] Theme community ecosystem — build discoverability and a contributor on-ramp for community themes:
+  - [ ] Curated theme registry — `themes.json` in the repo (served on pagecli.dev) listing community themes with name, description, author, install URL, preview URL, and tags. Seed with the 6 bundled themes
+  - [ ] `page theme browse` command — fetches the registry and displays available community themes with descriptions; `page theme browse --tags dark` to filter; install directly from browse results
+  - [ ] GitHub discovery conventions — `page-theme` GitHub topic, `page-theme-template` template repo with correct structure/metadata/required blocks, naming convention `page-theme-{name}` with `theme.tera` at root
+  - [ ] `page theme validate` command — checks a `.tera` file for all required pieces (HTML structure, SEO meta tags, template blocks, search JS, pagination, accessibility features) before publishing; outputs pass/fail with specific missing items
+  - [ ] Community showcase on pagecli.dev — extend the gallery docs page to include community themes with live preview links and one-click install commands
+  - [ ] Theme contributor guide — docs page explaining how to create, test, validate, and submit a theme to the registry
 
 **Priority 4 — Deploy improvements (existing roadmap items):**
 
