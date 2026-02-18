@@ -494,6 +494,28 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 ### Up Next
 
+#### Competitive gaps (from 2026 SSG competitive analysis vs Hugo, Astro, Zola, Eleventy, Next.js)
+
+**Priority 1 — Close critical content authoring gaps (these block adoption):**
+
+- [ ] Shortcodes — reusable content components in markdown (e.g., `{{ youtube(id="dQw4w9WgXcQ") }}`, `{{ callout(type="warning") }}`). Zola and Hugo both have this; it's table-stakes for serious content sites. Implement as Tera function calls or custom syntax parsed during markdown processing. Start with built-in shortcodes (youtube, vimeo, gist, callout/admonition, figure with caption) + user-defined shortcodes from `templates/shortcodes/` directory
+- [ ] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
+- [ ] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
+
+**Priority 2 — Improve build pipeline and content model:**
+
+- [ ] Incremental builds — only rebuild changed pages in dev mode. Hugo does partial rebuilds; Astro uses Vite HMR. Track content file mtimes, template dependencies, and config changes to determine minimum rebuild set. Critical for sites with 100+ pages where full rebuilds slow down the dev loop
+- [ ] Content from external sources — fetch JSON/YAML from URLs at build time and inject into template context. Astro's Content Layer API can pull from any CMS/API/database. Start simple: `[data_sources]` section in page.toml with `name = "posts"`, `url = "https://api.example.com/posts"`, `format = "json"`. Fetch at build step 3, merge with filesystem content
+- [ ] Math/LaTeX rendering — server-side KaTeX or MathJax rendering in markdown. Hugo added this in 2024. Render `$inline$` and `$$display$$` math blocks to HTML during markdown processing. Use `katex` crate or shell out to katex CLI. Important for technical/academic sites
+
+**Priority 3 — Polish and ecosystem:**
+
+- [ ] AVIF image format — generate AVIF variants alongside WebP in the image pipeline. Eleventy Image v6.0 supports AVIF. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute
+- [ ] Theme gallery/sharing — documentation page showcasing all bundled themes with screenshots + a way for users to share custom themes. Even 20-30 community themes dramatically changes perception. Consider a `page theme install <url>` command that downloads a `.tera` file. Lean into AI theme generation as the differentiator ("why browse themes when AI creates one for you?")
+- [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`. Use tag overlap + TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page
+
+**Priority 4 — Deploy improvements (existing roadmap items):**
+
 - [ ] Deploy history + diff — write `.deploy-log.json` with timestamp, target, commit hash, build duration, content hash; `--dry-run` shows what changed since last deploy
 - [ ] Rollback — `page deploy rollback` restores previous deploy; keep last N commits on GitHub Pages instead of orphan force-push; use Netlify/Cloudflare rollback APIs
 - [ ] Deploy diff — `page deploy --dry-run` shows new/modified/deleted files compared to last deploy via content hash comparison
@@ -502,4 +524,10 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [ ] Atomic deploys with content hashing — skip deploy if content hash unchanged since last deploy; useful in CI to avoid empty deploys
 - [ ] S3/generic hosting target — AWS S3 + CloudFront support via `aws s3 sync` wrapper
 - [ ] Webhook/notification support — post-deploy webhook (Slack, Discord, email) for team workflows
-- [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`
+
+#### What NOT to build (deliberate non-goals based on competitive analysis)
+
+- **JS framework support / component islands** — Astro's territory. Stay opinionated as content-first Tera-based SSG. Adding React/Vue would dilute the single-binary advantage
+- **Server-side rendering / ISR** — Not our market. Stay purely static
+- **GraphQL data layer** — This killed Gatsby. Don't repeat it
+- **Plugin system** — Premature. Focus on making the core excellent with built-in features. A plugin API can come later when there's community demand
