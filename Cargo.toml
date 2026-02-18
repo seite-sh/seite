@@ -54,6 +54,9 @@ quick-xml = { version = "0.37", features = ["serialize"] }
 # Slug generation
 slug = "0.1"
 
+# Image processing
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
