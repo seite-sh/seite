@@ -43,11 +43,17 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
             checks.push(check_cli_available("wrangler", &["--version"]));
             checks.push(check_cloudflare_auth());
             checks.push(check_cloudflare_project(config, paths));
+            if config.deploy.domain.is_some() {
+                checks.push(check_cloudflare_domain(config));
+            }
         }
         "netlify" => {
             checks.push(check_cli_available("netlify", &["--version"]));
             checks.push(check_netlify_auth());
             checks.push(check_netlify_site(config, paths));
+            if config.deploy.domain.is_some() {
+                checks.push(check_netlify_domain(config, paths));
+            }
         }
         _ => {}
     }
@@ -266,23 +272,27 @@ fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> Prefl
     }
 }
 
-/// Check if a Cloudflare Pages project exists by listing projects.
+/// Check if a Cloudflare Pages project exists by listing projects (uses --json for reliability).
 fn cloudflare_project_exists(name: &str) -> bool {
-    // If wrangler isn't installed or not authenticated, skip this check
     let output = Command::new("wrangler")
-        .args(["pages", "project", "list"])
+        .args(["pages", "project", "list", "--json"])
         .output();
     match output {
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            // Wrangler outputs a table with box-drawing characters:
-            //   │ Project Name │ Project Domains    │ ...
-            //   │ site         │ site-4rv.pages.dev │ ...
-            // Split each line by │ and check if any cell matches the project name.
-            stdout.lines().any(|line| {
-                line.split('│')
-                    .any(|cell| cell.trim() == name)
-            })
+            if let Ok(projects) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+                projects.iter().any(|p| {
+                    p.get("Project Name")
+                        .and_then(|v| v.as_str())
+                        .map(|n| n == name)
+                        .unwrap_or(false)
+                })
+            } else {
+                // JSON parse failed — fall back to text search
+                stdout.lines().any(|line| {
+                    line.split('│').any(|cell| cell.trim() == name)
+                })
+            }
         }
         _ => true, // Can't verify — assume it exists to avoid false negatives
     }
@@ -354,6 +364,95 @@ fn check_netlify_site(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCh
             passed: false,
             message: "no site linked — run `netlify link` or `netlify sites:create`".into(),
         },
+    }
+}
+
+fn check_cloudflare_domain(config: &SiteConfig) -> PreflightCheck {
+    let domain = match &config.deploy.domain {
+        Some(d) => d.clone(),
+        None => return PreflightCheck {
+            name: "Cloudflare domain".into(),
+            passed: true,
+            message: "no domain configured".into(),
+        },
+    };
+    let project = match &config.deploy.project {
+        Some(p) => p.clone(),
+        None => return PreflightCheck {
+            name: "Cloudflare domain".into(),
+            passed: false,
+            message: "domain set but no project — set deploy.project in page.toml".into(),
+        },
+    };
+
+    match cloudflare_list_domains(&project) {
+        Ok(domains) => {
+            if domains.iter().any(|d| d == &domain) {
+                PreflightCheck {
+                    name: "Cloudflare domain".into(),
+                    passed: true,
+                    message: format!("attached: {domain}"),
+                }
+            } else {
+                PreflightCheck {
+                    name: "Cloudflare domain".into(),
+                    passed: false,
+                    message: format!("'{domain}' not attached to project '{project}'"),
+                }
+            }
+        }
+        Err(_) => {
+            // Can't verify — skip (non-fatal, API might not be accessible)
+            PreflightCheck {
+                name: "Cloudflare domain".into(),
+                passed: true,
+                message: format!("configured: {domain} (could not verify via API)"),
+            }
+        }
+    }
+}
+
+fn check_netlify_domain(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
+    let domain = match &config.deploy.domain {
+        Some(d) => d.clone(),
+        None => return PreflightCheck {
+            name: "Netlify domain".into(),
+            passed: true,
+            message: "no domain configured".into(),
+        },
+    };
+
+    // Check via netlify CLI
+    let output = Command::new("netlify")
+        .args(["domains:list", "--json"])
+        .current_dir(&paths.root)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if stdout.contains(&domain) {
+                PreflightCheck {
+                    name: "Netlify domain".into(),
+                    passed: true,
+                    message: format!("attached: {domain}"),
+                }
+            } else {
+                PreflightCheck {
+                    name: "Netlify domain".into(),
+                    passed: false,
+                    message: format!("'{domain}' not attached — run `netlify domains:add {domain}`"),
+                }
+            }
+        }
+        _ => {
+            // Can't verify — assume ok
+            PreflightCheck {
+                name: "Netlify domain".into(),
+                passed: true,
+                message: format!("configured: {domain} (could not verify)"),
+            }
+        }
     }
 }
 
@@ -517,6 +616,25 @@ pub fn try_fix_check(
                 manual_instructions: vec![
                     format!("Run: netlify sites:create --name {site_name}"),
                     "Or run: netlify link".into(),
+                ],
+            })
+        }
+        "Cloudflare domain" => {
+            let domain = check.message.split('\'').nth(1).unwrap_or("your-domain.com");
+            Some(FixAction {
+                prompt: format!("Attach domain '{domain}' to Cloudflare Pages project?"),
+                manual_instructions: vec![
+                    format!("Add the domain in the Cloudflare dashboard under Pages > your project > Custom domains"),
+                    format!("Or run: page deploy --domain {domain}"),
+                ],
+            })
+        }
+        "Netlify domain" => {
+            let domain = check.message.split('\'').nth(1).unwrap_or("your-domain.com");
+            Some(FixAction {
+                prompt: format!("Add domain '{domain}' to Netlify site?"),
+                manual_instructions: vec![
+                    format!("Run: netlify domains:add {domain}"),
                 ],
             })
         }
@@ -685,6 +803,49 @@ pub fn execute_fix(
                 }
             }
         }
+        "Cloudflare domain" => {
+            let domain = config.deploy.domain.as_deref().unwrap_or("");
+            let project = config.deploy.project.as_deref().unwrap_or("");
+            if domain.is_empty() || project.is_empty() {
+                return Ok(false);
+            }
+            human::info(&format!("Attaching domain '{domain}' to Cloudflare Pages project '{project}'..."));
+            match cloudflare_attach_domain(project, domain) {
+                Ok(true) => {
+                    human::success(&format!("Domain '{domain}' attached to project '{project}'"));
+                    Ok(true)
+                }
+                Ok(false) => {
+                    human::warning("Could not attach domain via API");
+                    human::info("  Add the domain manually in the Cloudflare dashboard under Pages > Custom domains");
+                    Ok(false)
+                }
+                Err(e) => {
+                    human::warning(&format!("API call failed: {e}"));
+                    human::info("  Add the domain manually in the Cloudflare dashboard under Pages > Custom domains");
+                    Ok(false)
+                }
+            }
+        }
+        "Netlify domain" => {
+            let domain = config.deploy.domain.as_deref().unwrap_or("");
+            if domain.is_empty() {
+                return Ok(false);
+            }
+            human::info(&format!("Adding domain '{domain}' to Netlify site..."));
+            let result = Command::new("netlify")
+                .args(["domains:add", domain])
+                .current_dir(&paths.root)
+                .status()
+                .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
+            if result.success() {
+                human::success(&format!("Domain '{domain}' added to Netlify site"));
+                Ok(true)
+            } else {
+                human::warning("Could not add domain");
+                Ok(false)
+            }
+        }
         _ => Ok(false),
     }
 }
@@ -715,6 +876,8 @@ pub fn recheck(
         "Netlify auth" => check_netlify_auth(),
         "Cloudflare project" => check_cloudflare_project(config, paths),
         "Netlify site" => check_netlify_site(config, paths),
+        "Cloudflare domain" => check_cloudflare_domain(config),
+        "Netlify domain" => check_netlify_domain(config, paths),
         _ => PreflightCheck {
             name: check_name.into(),
             passed: false,
@@ -1518,6 +1681,170 @@ fn detect_github_username(deploy: &crate::config::DeploySection) -> Option<Strin
 }
 
 // ---------------------------------------------------------------------------
+// Cloudflare Pages API (domain management)
+// ---------------------------------------------------------------------------
+
+/// Extract the Cloudflare account ID from `wrangler whoami` output.
+fn get_cloudflare_account_id() -> Option<String> {
+    let output = Command::new("wrangler").args(["whoami"]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Parse table: │ Account Name │ Account ID │
+    for line in stdout.lines() {
+        let cells: Vec<&str> = line.split('│').map(|c| c.trim()).collect();
+        // Look for a cell that looks like a 32-char hex account ID
+        for cell in &cells {
+            if cell.len() == 32 && cell.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Some(cell.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Get a Cloudflare API token. Checks CLOUDFLARE_API_TOKEN env var first,
+/// then falls back to wrangler's stored OAuth token.
+fn get_cloudflare_api_token() -> Option<String> {
+    // 1. Check env var (standard for CI/CD)
+    if let Ok(token) = std::env::var("CLOUDFLARE_API_TOKEN") {
+        if !token.is_empty() {
+            return Some(token);
+        }
+    }
+
+    // 2. Read wrangler's OAuth token from its config file
+    let config_path = if cfg!(target_os = "macos") {
+        dirs_path("Library/Preferences/.wrangler/config/default.toml")
+    } else {
+        dirs_path(".config/.wrangler/config/default.toml")
+    };
+
+    if let Some(path) = config_path {
+        if let Ok(content) = fs::read_to_string(&path) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("oauth_token") {
+                    if let Some(val) = trimmed.split('=').nth(1) {
+                        let token = val.trim().trim_matches('"');
+                        if !token.is_empty() {
+                            return Some(token.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Resolve a path relative to the user's home directory.
+fn dirs_path(relative: &str) -> Option<std::path::PathBuf> {
+    std::env::var("HOME").ok().map(|home| std::path::PathBuf::from(home).join(relative))
+}
+
+/// List custom domains attached to a Cloudflare Pages project.
+fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
+    let account_id = get_cloudflare_account_id()
+        .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
+    let token = get_cloudflare_api_token()
+        .ok_or_else(|| PageError::Deploy("no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into()))?;
+
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
+    );
+
+    let response = ureq::get(&url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Content-Type", "application/json")
+        .call()
+        .map_err(|e| PageError::Deploy(format!("Cloudflare API request failed: {e}")))?;
+
+    let body: serde_json::Value = response.into_json()
+        .map_err(|e| PageError::Deploy(format!("failed to parse Cloudflare API response: {e}")))?;
+
+    let mut domains = Vec::new();
+    if let Some(result_arr) = body.get("result") {
+        if let Some(arr) = result_arr.as_array() {
+            for item in arr {
+                if let Some(name_val) = item.get("name") {
+                    if let Some(name) = name_val.as_str() {
+                        domains.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(domains)
+}
+
+/// Attach a custom domain to a Cloudflare Pages project via the API.
+pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
+    let account_id = get_cloudflare_account_id()
+        .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
+    let token = get_cloudflare_api_token()
+        .ok_or_else(|| PageError::Deploy("no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into()))?;
+
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
+    );
+
+    let body = serde_json::json!({ "name": domain });
+
+    let response = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .send_json(body)
+        .map_err(|e| PageError::Deploy(format!("Cloudflare API request failed: {e}")))?;
+
+    let status = response.status();
+    let resp_body: serde_json::Value = response.into_json().unwrap_or_default();
+
+    if status == 200 || status == 201 {
+        Ok(true)
+    } else {
+        let mut error_msgs = Vec::new();
+        if let Some(errors_val) = resp_body.get("errors") {
+            if let Some(arr) = errors_val.as_array() {
+                for err in arr {
+                    if let Some(msg_val) = err.get("message") {
+                        if let Some(msg) = msg_val.as_str() {
+                            error_msgs.push(msg.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let error_str = if error_msgs.is_empty() {
+            format!("HTTP {status}")
+        } else {
+            error_msgs.join(", ")
+        };
+
+        // Domain already attached is not an error
+        if error_str.contains("already") {
+            human::info(&format!("Domain '{domain}' is already attached"));
+            return Ok(true);
+        }
+
+        human::error(&format!("Cloudflare API error: {error_str}"));
+        Ok(false)
+    }
+}
+
+/// Add a custom domain to a Netlify site via the CLI.
+pub fn netlify_add_domain(paths: &ResolvedPaths, domain: &str) -> Result<bool> {
+    let result = Command::new("netlify")
+        .args(["domains:add", domain])
+        .current_dir(&paths.root)
+        .status()
+        .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
+    Ok(result.success())
+}
+
+// ---------------------------------------------------------------------------
 // Post-deploy verification (Feature 8)
 // ---------------------------------------------------------------------------
 
@@ -1714,11 +2041,15 @@ pub fn update_deploy_config(
 
     if let Some(deploy) = doc.get_mut("deploy").and_then(|v| v.as_table_mut()) {
         for (key, value) in updates {
+            // base_url goes to [site], not [deploy]
+            if key == "base_url" {
+                continue;
+            }
             deploy.insert(key.clone(), toml::Value::String(value.clone()));
         }
     }
 
-    // Update base_url if provided
+    // Update base_url in [site] if provided
     if let Some(base_url) = updates.get("base_url") {
         if let Some(site) = doc.get_mut("site").and_then(|v| v.as_table_mut()) {
             site.insert("base_url".into(), toml::Value::String(base_url.clone()));
