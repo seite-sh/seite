@@ -11,8 +11,14 @@ pub struct Frontmatter {
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub date: Option<NaiveDate>,
+    /// Last-modified date — used in JSON-LD `dateModified` and sitemap `<lastmod>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated: Option<NaiveDate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Absolute URL or path to a social-preview image (og:image / twitter:image).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -21,6 +27,9 @@ pub struct Frontmatter {
     pub draft: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+    /// Per-page `<meta name="robots">` value, e.g. `"noindex"` or `"noindex, nofollow"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub robots: Option<String>,
 }
 
 fn is_false(v: &bool) -> bool {
