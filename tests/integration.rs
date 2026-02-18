@@ -980,3 +980,100 @@ fn test_build_no_pagination_without_config() {
     // Without paginate config, no paginated collection index is generated
     assert!(!site_dir.join("dist/posts/page").exists());
 }
+
+// --- asset pipeline ---
+
+/// Helper: write a CSS file into a site's static directory.
+fn write_static_css(site_dir: &std::path::Path, name: &str, content: &str) {
+    fs::create_dir_all(site_dir.join("static")).unwrap();
+    fs::write(site_dir.join("static").join(name), content).unwrap();
+}
+
+/// Helper: append lines to page.toml [build] section.
+fn set_build_option(site_dir: &std::path::Path, key: &str, value: &str) {
+    let toml_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    config = config.replace(
+        "[build]",
+        &format!("[build]\n{key} = {value}"),
+    );
+    fs::write(&toml_path, config).unwrap();
+}
+
+#[test]
+fn test_build_minify_css() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Minify Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    write_static_css(
+        &site_dir,
+        "style.css",
+        "/* header styles */\nbody {\n    color : red ;\n    background : blue ;\n}\n",
+    );
+    set_build_option(&site_dir, "minify", "true");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let css = fs::read_to_string(site_dir.join("dist/static/style.css")).unwrap();
+    assert!(!css.contains("/* header"), "minified CSS should not contain comments");
+    assert!(!css.contains("    "), "minified CSS should not have indentation");
+    assert!(css.contains("color:red"), "minified CSS should collapse whitespace around colon");
+}
+
+#[test]
+fn test_build_fingerprint_writes_manifest() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Fingerprint Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    write_static_css(&site_dir, "main.css", "body { color: red; }");
+    set_build_option(&site_dir, "fingerprint", "true");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Manifest must exist
+    let manifest_path = site_dir.join("dist/asset-manifest.json");
+    assert!(manifest_path.exists(), "asset-manifest.json should be generated");
+    let manifest = fs::read_to_string(&manifest_path).unwrap();
+    assert!(manifest.contains("/static/main.css"), "manifest should map original path");
+    // Fingerprinted file should exist alongside original
+    let dist_static = site_dir.join("dist/static");
+    let has_fingerprinted = fs::read_dir(&dist_static)
+        .unwrap()
+        .any(|e| {
+            e.ok()
+                .and_then(|e| e.file_name().into_string().ok())
+                .map(|n| n.starts_with("main.") && n.ends_with(".css") && n != "main.css")
+                .unwrap_or(false)
+        });
+    assert!(has_fingerprinted, "fingerprinted CSS file should exist in dist/static");
+}
+
+#[test]
+fn test_build_no_minify_by_default() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Minify Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    let original_css = "/* keep this comment */\nbody {\n    color: red;\n}\n";
+    write_static_css(&site_dir, "style.css", original_css);
+    // No set_build_option — minify defaults to false
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let css = fs::read_to_string(site_dir.join("dist/static/style.css")).unwrap();
+    assert!(css.contains("/* keep"), "CSS should be unmodified when minify is false");
+}

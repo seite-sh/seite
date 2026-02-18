@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (13 unit + 36 integration)
+cargo test           # Run all tests (13 unit + 39 integration)
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
@@ -68,7 +68,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       36 integration tests using assert_cmd + tempfile
+  integration.rs       39 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (10 steps)
@@ -143,6 +143,8 @@ name = "posts"
 
 [build]
 output_dir = "dist"
+minify = true        # optional: strip CSS/JS comments + collapse whitespace
+fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.json
 
 [deploy]
 target = "github-pages"  # or "cloudflare"
@@ -358,7 +360,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [x] **Pagination** — `paginate = N` field on any `[[collections]]` entry; generates `/posts/`, `/posts/page/2/`, etc. Template gets `{{ pagination.current_page }}`, `{{ pagination.total_pages }}`, `{{ pagination.prev_url }}`, `{{ pagination.next_url }}`.
 
-- [ ] **Asset pipeline** — CSS/JS minification, image optimization, cache-busting with fingerprinted filenames. Consider `lightningcss` for CSS and a simple hash-based renaming for fingerprints.
+- [x] **Asset pipeline** — `build.minify = true` strips CSS/JS comments and collapses whitespace; `build.fingerprint = true` writes `name.<hash8>.ext` copies and `dist/asset-manifest.json`. FNV-1a hash, no external dependencies.
 
 - [ ] **Deploy improvements** — Current deploy is basic:
   - GitHub Pages: Add GitHub Actions workflow generation

@@ -142,6 +142,12 @@ pub struct BuildSection {
     pub template_dir: String,
     #[serde(default = "defaults::static_dir")]
     pub static_dir: String,
+    /// Minify CSS and JS files during build. Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub minify: bool,
+    /// Add content-hash fingerprints to static filenames and write asset-manifest.json. Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fingerprint: bool,
 }
 
 impl Default for BuildSection {
@@ -151,6 +157,8 @@ impl Default for BuildSection {
             content_dir: defaults::content_dir(),
             template_dir: defaults::template_dir(),
             static_dir: defaults::static_dir(),
+            minify: false,
+            fingerprint: false,
         }
     }
 }
