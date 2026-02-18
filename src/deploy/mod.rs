@@ -142,11 +142,11 @@ fn check_git_repo(paths: &ResolvedPaths) -> PreflightCheck {
 }
 
 fn check_git_remote(paths: &ResolvedPaths, configured_repo: Option<&str>) -> PreflightCheck {
-    if configured_repo.is_some() {
+    if let Some(repo) = configured_repo {
         return PreflightCheck {
             name: "Git remote".into(),
             passed: true,
-            message: format!("configured: {}", configured_repo.unwrap()),
+            message: format!("configured: {repo}"),
         };
     }
     match Command::new("git")
@@ -940,10 +940,7 @@ pub fn print_domain_setup(setup: &DomainSetup) {
     human::header(&format!("Domain setup for {} ({})", setup.domain, setup.target));
 
     println!("\n  Add these DNS records at your domain registrar:\n");
-    println!(
-        "  {:<8} {:<20} {}",
-        "Type", "Name", "Value"
-    );
+    println!("  {:<8} {:<20} Value", "Type", "Name");
     println!("  {}", "-".repeat(60));
     for record in &setup.dns_records {
         println!(
