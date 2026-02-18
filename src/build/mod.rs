@@ -667,8 +667,11 @@ pub fn build_site(
         }
     }
 
-    // Step 10: Copy static files
+    // Step 10: Copy static files (with optional minification and fingerprinting)
     let mut static_count = 0;
+    // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
+    let mut asset_manifest: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
             .into_iter()
@@ -683,9 +686,67 @@ pub fn build_site(
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(entry.path(), &dest)?;
+
+            let ext = entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let is_css = ext == "css";
+            let is_js = ext == "js";
+
+            if (config.build.minify && (is_css || is_js)) || config.build.fingerprint {
+                let content = fs::read(entry.path())?;
+                let processed: Vec<u8> = if config.build.minify && is_css {
+                    minify_css(&content).into_bytes()
+                } else if config.build.minify && is_js {
+                    minify_js(&content).into_bytes()
+                } else {
+                    content.clone()
+                };
+
+                fs::write(&dest, &processed)?;
+
+                if config.build.fingerprint {
+                    let hash = fnv_hash8(&processed);
+                    // Build fingerprinted name: foo.css → foo.<hash>.css
+                    let stem = entry.path().file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let fp_name = format!("{stem}.{hash}.{ext}");
+                    let fp_dest = dest
+                        .parent()
+                        .map(|p| p.join(&fp_name))
+                        .unwrap_or_else(|| PathBuf::from(&fp_name));
+                    fs::write(&fp_dest, &processed)?;
+
+                    // Record in manifest using Unix-style paths
+                    let orig_url = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
+                    let fp_rel = rel
+                        .parent()
+                        .map(|p| {
+                            let p = p.to_string_lossy();
+                            if p.is_empty() {
+                                fp_name.clone()
+                            } else {
+                                format!("{}/{fp_name}", p.replace('\\', "/"))
+                            }
+                        })
+                        .unwrap_or_else(|| fp_name.clone());
+                    let fp_url = format!("/static/{fp_rel}");
+                    asset_manifest.insert(orig_url, fp_url);
+                }
+            } else {
+                fs::copy(entry.path(), &dest)?;
+            }
             static_count += 1;
         }
+    }
+
+    // Write asset manifest if fingerprinting is on
+    if config.build.fingerprint && !asset_manifest.is_empty() {
+        let manifest_json = serde_json::to_string_pretty(&asset_manifest)
+            .unwrap_or_else(|_| "{}".to_string());
+        fs::write(paths.output.join("asset-manifest.json"), manifest_json)?;
     }
 
     let items_built: HashMap<String, usize> = all_collections
@@ -794,6 +855,106 @@ fn build_url(url_prefix: &str, slug: &str) -> String {
     } else {
         format!("{prefix}/{slug}")
     }
+}
+
+/// FNV-1a hash → first 8 hex chars, used for cache-busting fingerprints.
+fn fnv_hash8(data: &[u8]) -> String {
+    let mut hash: u64 = 14695981039346656037;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    format!("{hash:016x}")[..8].to_string()
+}
+
+/// Minify CSS: strip comments and collapse whitespace around syntax characters.
+fn minify_css(raw: &[u8]) -> String {
+    let s = String::from_utf8_lossy(raw);
+    // Remove block comments
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'*') {
+            chars.next(); // consume '*'
+            // Skip until '*/'
+            while let Some(c2) = chars.next() {
+                if c2 == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    break;
+                }
+            }
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
+    }
+    // Collapse runs of whitespace (including newlines) into a single space
+    let mut result = String::with_capacity(out.len());
+    let mut prev_space = false;
+    for c in out.chars() {
+        if c.is_whitespace() {
+            if !prev_space {
+                result.push(' ');
+            }
+            prev_space = true;
+        } else {
+            prev_space = false;
+            result.push(c);
+        }
+    }
+    // Remove spaces around CSS delimiters
+    for (pat, rep) in &[
+        (" { ", "{"),
+        ("{ ", "{"),
+        (" {", "{"),
+        (" } ", "}"),
+        ("} ", "}"),
+        (" }", "}"),
+        (" : ", ":"),
+        (": ", ":"),
+        (" :", ":"),
+        (" ; ", ";"),
+        ("; ", ";"),
+        (" ;", ";"),
+        (" , ", ","),
+        (", ", ","),
+        (" ,", ","),
+    ] {
+        result = result.replace(pat, rep);
+    }
+    result.trim().to_string()
+}
+
+/// Minify JS: strip line comments and collapse blank lines.
+/// Deliberately conservative — does not touch string contents or block structure.
+fn minify_js(raw: &[u8]) -> String {
+    let s = String::from_utf8_lossy(raw);
+    let mut out = String::with_capacity(s.len());
+    let mut in_single = false; // inside single-line string ''
+    let mut in_double = false; // inside double-line string ""
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        // Toggle string state (simplified — doesn't handle escape sequences perfectly)
+        if c == '\'' && !in_double { in_single = !in_single; }
+        if c == '"' && !in_single { in_double = !in_double; }
+        // Strip // line comments only outside strings
+        if !in_single && !in_double && c == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
+            while i < chars.len() && chars[i] != '\n' { i += 1; }
+            out.push('\n');
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    // Remove blank lines
+    let result: String = out
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    result
 }
 
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
