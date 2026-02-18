@@ -160,6 +160,8 @@ fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.js
 
 [deploy]
 target = "github-pages"  # or "cloudflare" or "netlify"
+# project = "my-site"    # Cloudflare/Netlify project name
+# domain = "example.com" # Custom domain (auto-attached via API)
 
 # Optional: multi-language support (omit for single-language sites)
 [languages.es]

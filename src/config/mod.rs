@@ -173,6 +173,8 @@ pub struct DeploySection {
     pub repo: Option<String>,
     #[serde(default)]
     pub project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
