@@ -14,7 +14,7 @@ pub fn default_base() -> &'static str {
 pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
 {% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
 {% block content %}
-{% if page %}
+{% if page.content %}
 <div class="homepage-content">{{ page.content | safe }}</div>
 {% endif %}
 {% for collection in collections %}
