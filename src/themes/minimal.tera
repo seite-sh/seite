@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="{{ site.language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ site.title }}{% endblock %}</title>
+    <meta name="description" content="{{ site.description }}">
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
+    {% endif %}
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body { max-width: 600px; margin: 4rem auto; padding: 0 1.5rem; font-family: Georgia, 'Times New Roman', serif; line-height: 1.7; color: #333; font-size: 1.05rem; }
+        a { color: #333; }
+        header { margin-bottom: 3rem; }
+        header h1 { font-size: 1.2rem; font-weight: normal; letter-spacing: 0.05em; text-transform: uppercase; }
+        header h1 a { text-decoration: none; color: inherit; }
+        header p { font-style: italic; color: #888; margin-top: -0.5rem; }
+        .lang-switcher { display: inline-flex; gap: 0.5rem; font-size: 0.8rem; float: right; margin-top: 0.3rem; font-family: system-ui, sans-serif; }
+        .lang-switcher a { text-decoration: none; color: #888; }
+        .lang-switcher a:hover { color: #333; }
+        .lang-switcher strong { color: #333; }
+        .search-form { margin-top: 1.2rem; }
+        .search-form input { width: 100%; padding: 0.35rem 0; border: none; border-bottom: 1px solid #ccc; font-size: 0.9rem; font-family: inherit; background: transparent; color: #333; }
+        .search-form input:focus { outline: none; border-bottom-color: #333; }
+        #search-results { margin-top: 0.5rem; }
+        #search-results a { display: block; padding: 0.4rem 0; text-decoration: none; border-bottom: 1px solid #eee; font-size: 0.9rem; color: #333; font-family: system-ui, sans-serif; }
+        #search-results a:hover { color: #000; }
+        #search-results .result-meta { font-size: 0.78rem; color: #aaa; font-style: normal; margin-top: 0.1rem; }
+        #search-results .no-results { padding: 0.4rem 0; color: #aaa; font-size: 0.85rem; font-family: system-ui, sans-serif; }
+        article { margin-bottom: 2.5rem; }
+        article h1 { font-size: 1.8rem; }
+        article h3 a { text-decoration: none; color: inherit; }
+        article h3 a:hover { text-decoration: underline; }
+        time { color: #999; font-size: 0.85rem; font-style: italic; }
+        .tags span { font-size: 0.8rem; color: #888; margin-right: 0.5rem; font-style: italic; }
+        pre { background: #fafafa; padding: 1rem; border-left: 2px solid #ddd; overflow-x: auto; }
+        code { font-size: 0.9em; }
+        blockquote { border-left: 2px solid #ccc; margin-left: 0; padding-left: 1.5rem; font-style: italic; color: #666; }
+        img { max-width: 100%; height: auto; }
+        hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+        footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ site.title }}</a></h1>
+        {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if translations | length > 1 %}
+        <nav class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}
+        <form class="search-form" onsubmit="return false">
+            <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
+        </form>
+        <div id="search-results"></div>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>&copy; {{ site.author }}</p>
+    </footer>
+    <script>
+    (function(){
+        var index = null;
+        var input = document.getElementById('search-input');
+        var results = document.getElementById('search-results');
+        var indexUrl = {% if lang and lang != site.language %}'/' + {{ lang | json_encode() }} + '/search-index.json'{% else %}'/search-index.json'{% endif %};
+        function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
+        function search(q) {
+            q = q.toLowerCase().trim();
+            if (!q) { results.innerHTML = ''; return; }
+            var hits = index.filter(function(e){
+                return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
+            }).slice(0, 8);
+            if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
+            results.innerHTML = hits.map(function(e){
+                var meta = [e.collection, e.date].filter(Boolean).join(' · ');
+                return '<a href="' + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
+            }).join('');
+        }
+        input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
+    })();
+    </script>
+</body>
+</html>

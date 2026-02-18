@@ -107,6 +107,17 @@ pub(crate) struct TranslationLink {
     pub url: String,
 }
 
+#[derive(Serialize)]
+struct SearchEntry<'a> {
+    title: &'a str,
+    description: Option<&'a str>,
+    url: &'a str,
+    collection: &'a str,
+    tags: &'a [String],
+    date: Option<String>,
+    lang: &'a str,
+}
+
 impl SiteContext {
     fn from_config(config: &SiteConfig) -> Self {
         Self {
@@ -525,7 +536,34 @@ pub fn build_site(
         }
     }
 
-    // Step 9: Copy static files
+    // Step 9: Generate search index
+    let all_search_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
+
+    // Root index: default language only
+    let default_search_items: Vec<&ContentItem> = all_search_items
+        .iter()
+        .filter(|i| i.lang == *default_lang)
+        .copied()
+        .collect();
+    let search_json = generate_search_index(&default_search_items, config);
+    fs::write(paths.output.join("search-index.json"), &search_json)?;
+
+    // Per-language indexes for non-default languages
+    if is_multilingual {
+        for lang_code in config.languages.keys() {
+            let lang_items: Vec<&ContentItem> = all_search_items
+                .iter()
+                .filter(|i| i.lang == *lang_code)
+                .copied()
+                .collect();
+            let lang_json = generate_search_index(&lang_items, config);
+            let lang_dir = paths.output.join(lang_code);
+            fs::create_dir_all(&lang_dir)?;
+            fs::write(lang_dir.join("search-index.json"), lang_json)?;
+        }
+    }
+
+    // Step 10: Copy static files
     let mut static_count = 0;
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
@@ -718,6 +756,33 @@ fn build_nav(items: &[ContentItem], current_slug: &str) -> Vec<NavSection> {
     }
 
     sections
+}
+
+/// Build a JSON search index from a slice of content items.
+/// Only items from `listed: true` collections are included.
+fn generate_search_index(items: &[&ContentItem], config: &SiteConfig) -> String {
+    let listed: std::collections::HashSet<&str> = config
+        .collections
+        .iter()
+        .filter(|c| c.listed)
+        .map(|c| c.name.as_str())
+        .collect();
+
+    let entries: Vec<SearchEntry> = items
+        .iter()
+        .filter(|item| listed.contains(item.collection.as_str()))
+        .map(|item| SearchEntry {
+            title: &item.frontmatter.title,
+            description: item.frontmatter.description.as_deref(),
+            url: &item.url,
+            collection: &item.collection,
+            tags: &item.frontmatter.tags,
+            date: item.frontmatter.date.map(|d| d.to_string()),
+            lang: &item.lang,
+        })
+        .collect();
+
+    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Convert a slug segment to title case (e.g., "getting-started" → "Getting Started").
