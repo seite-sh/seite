@@ -13,6 +13,18 @@
             <li><a href="/docs/getting-started">Docs</a></li>
             <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
         </ul>
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
+            <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+            <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+        </button>
         <a href="/docs/getting-started" class="nav-cta">Get started</a>
     </div>
 </nav>
@@ -31,8 +43,12 @@
     }
 
     /* ── Dot-grid background ──────────────────────── */
-    body {
+    [data-theme="dark"] body {
         background-image: radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px);
+        background-size: 28px 28px;
+    }
+    [data-theme="light"] body {
+        background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px);
         background-size: 28px 28px;
     }
 
@@ -140,7 +156,7 @@
         font-style: italic;
         letter-spacing: -0.03em;
         line-height: 1.0;
-        color: #fff;
+        color: var(--heading);
         margin-bottom: 1.8rem;
         max-width: 900px;
         margin-left: auto;
@@ -219,7 +235,7 @@
     }
     .btn-secondary:hover {
         color: var(--text);
-        border-color: rgba(255,255,255,0.3);
+        border-color: var(--border-light);
         transform: translateY(-2px);
         text-decoration: none;
     }
@@ -231,11 +247,11 @@
         margin: 0 auto;
         border-radius: 14px;
         overflow: hidden;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid var(--border);
         box-shadow:
             0 0 0 1px rgba(0,255,135,0.03),
             0 0 80px rgba(0,255,135,0.04),
-            0 50px 100px -20px rgba(0,0,0,0.7);
+            0 50px 100px -20px rgba(0,0,0,0.4);
         text-align: left;
         animation-delay: 0.55s;
     }
@@ -310,7 +326,7 @@
         flex-wrap: wrap;
     }
     .ribbon-sep {
-        color: rgba(255,255,255,0.1);
+        color: var(--border-light);
         font-size: 0.6rem;
     }
     .ribbon-highlight { color: var(--green); }
@@ -338,7 +354,7 @@
         font-weight: 400;
         font-style: italic;
         letter-spacing: -0.02em;
-        color: #fff;
+        color: var(--heading);
         line-height: 1.05;
     }
     .section-sub {
@@ -365,7 +381,7 @@
         transition: background 0.25s ease;
         position: relative;
     }
-    .feature-card:hover { background: #0d0d0d; }
+    .feature-card:hover { background: var(--bg-card-hover); }
     .feature-card::after {
         content: '';
         position: absolute;
@@ -395,7 +411,7 @@
         font-family: 'Geist Mono', var(--mono);
         font-size: 0.82rem;
         font-weight: 500;
-        color: #fff;
+        color: var(--heading);
         margin-bottom: 0.65rem;
         letter-spacing: 0.01em;
     }
@@ -508,7 +524,7 @@
     .step-num::before { content: counter(step-counter); }
     .step-body { padding-top: 0.15rem; }
     .step-body strong {
-        color: #fff;
+        color: var(--strong);
         font-size: 0.88rem;
         font-weight: 600;
         display: block;
@@ -551,7 +567,7 @@
         font-weight: 400;
         font-style: italic;
         letter-spacing: -0.02em;
-        color: #fff;
+        color: var(--heading);
         margin-bottom: 1.2rem;
         line-height: 1.05;
     }
@@ -571,7 +587,7 @@
         padding: 0.5rem 0;
         font-family: 'Geist Mono', var(--mono);
         font-size: 0.6rem;
-        color: #1a1a1a;
+        color: var(--item-border);
         letter-spacing: 0.15em;
         user-select: none;
         overflow: hidden;
