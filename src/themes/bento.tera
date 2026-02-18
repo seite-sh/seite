@@ -104,9 +104,12 @@
             main section { grid-template-columns: 1fr; }
         }
     </style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
+    {% block header %}
         <div class="header-top">
             <h1><a href="/">{{ site.title }}</a></h1>
             {% if translations | length > 1 %}
@@ -120,6 +123,7 @@
             <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
         </form>
         <div id="search-results"></div>
+    {% endblock %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -149,5 +153,7 @@
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
     })();
     </script>
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

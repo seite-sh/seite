@@ -72,9 +72,12 @@
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #1e1e1e; color: #555; font-size: 0.85rem; }
         :focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
     </style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
+    {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if translations | length > 1 %}
@@ -86,6 +89,7 @@
             <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
         </form>
         <div id="search-results"></div>
+    {% endblock %}
     </header>
     <main>
         {% block content %}{% endblock %}
@@ -115,5 +119,7 @@
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
     })();
     </script>
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

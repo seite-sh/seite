@@ -83,9 +83,12 @@
             body { flex-direction: column; }
         }
     </style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
 </head>
 <body>
     <div class="sidebar">
+    {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if translations | length > 1 %}
@@ -109,6 +112,7 @@
             {% endfor %}
         </nav>
         {% endif %}
+    {% endblock %}
     </div>
     <div class="content">
         <main>
@@ -140,5 +144,7 @@
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
     })();
     </script>
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
 </body>
 </html>
