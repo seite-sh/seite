@@ -1,41 +1,686 @@
 {% extends "base.html" %}
-{% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
-{% block content %}
-{% if page.content %}
-<div class="homepage-content">{{ page.content | safe }}</div>
-{% endif %}
-{% for collection in collections %}
-<section class="collection-section">
-    <h2>{{ collection.label }}</h2>
-    {% for item in collection.items %}
-    <div class="collection-item">
-        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
-        <div class="item-meta">
-            {% if item.date %}<time>{{ item.date }}</time>{% endif %}
-            {% if item.date and item.reading_time %}<span class="separator">&middot;</span>{% endif %}
-            {% if item.reading_time %}<span>{{ item.reading_time }} min read</span>{% endif %}
-        </div>
-        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
-        {% if item.tags | length > 0 %}
-        <div class="tags item-tags">
-            {% for tag in item.tags %}<a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/tags/{{ tag | slugify }}/">{{ tag }}</a>{% endfor %}
-        </div>
-        {% endif %}
+{% block title %}{{ site.title }} — AI-native static site generator{% endblock %}
+
+{% block header %}
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+    <div class="container nav-inner">
+        <a href="/" class="nav-logo">
+            <span class="nav-logo-caret">▸</span>{{ site.title }}
+        </a>
+        <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#quickstart">Quickstart</a></li>
+            <li><a href="/docs/getting-started">Docs</a></li>
+            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+        <a href="/docs/getting-started" class="nav-cta">Get started</a>
     </div>
-    {% endfor %}
-    {% if collection.items | length == 0 %}
-    <p style="color:#555;">No {{ collection.name }} yet.</p>
-    {% endif %}
-</section>
-{% endfor %}
-{% if pagination %}
-<nav class="pagination" aria-label="Pagination">
-    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
-    <span class="page-info">Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
-    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
 </nav>
-{% endif %}
-{% if not page and collections | length == 0 %}
-<p>No content yet. Create some with <code>page new post "My First Post"</code></p>
-{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ---- Landing-page styles ---- */
+
+    /* Dot-grid background */
+    body {
+        background-image: radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px);
+        background-size: 32px 32px;
+    }
+
+    /* -- Hero -- */
+    .hero {
+        padding: 5rem 0 4.5rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .hero::before {
+        content: '';
+        position: absolute;
+        top: -80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 700px;
+        height: 500px;
+        background: radial-gradient(ellipse, rgba(0,255,135,0.055) 0%, transparent 68%);
+        pointer-events: none;
+    }
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        border-radius: 100px;
+        padding: 0.3rem 1rem;
+        font-size: 0.78rem;
+        font-family: var(--mono);
+        color: var(--green);
+        margin-bottom: 1.75rem;
+        letter-spacing: 0.01em;
+    }
+    .hero-badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+        flex-shrink: 0;
+        box-shadow: 0 0 6px var(--green);
+    }
+    .hero h1 {
+        font-size: clamp(2.5rem, 6.5vw, 4.4rem);
+        font-weight: 900;
+        letter-spacing: -0.055em;
+        line-height: 1.04;
+        color: #fff;
+        margin-bottom: 1.5rem;
+        max-width: 860px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .gradient-text {
+        background: linear-gradient(135deg, var(--green) 0%, #3b82f6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .hero-sub {
+        font-size: clamp(1rem, 2.5vw, 1.175rem);
+        color: var(--text-muted);
+        max-width: 540px;
+        margin: 0 auto 2.5rem;
+        line-height: 1.72;
+    }
+    .hero-actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 4rem;
+    }
+    .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: var(--green);
+        color: #000;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding: 0.65rem 1.5rem;
+        border-radius: var(--radius);
+        transition: opacity 0.15s, transform 0.15s;
+        text-decoration: none;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); text-decoration: none; }
+    .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: var(--bg-card);
+        color: var(--text);
+        font-size: 0.875rem;
+        padding: 0.65rem 1.4rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border-light);
+        transition: border-color 0.15s, transform 0.15s;
+        text-decoration: none;
+    }
+    .btn-secondary:hover { border-color: rgba(255,255,255,0.25); transform: translateY(-1px); text-decoration: none; }
+    .btn-secondary svg { flex-shrink: 0; }
+
+    /* -- Terminal window -- */
+    .terminal-wrap {
+        max-width: 700px;
+        margin: 0 auto;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        border: 1px solid var(--border-light);
+        box-shadow:
+            0 0 0 1px rgba(0,255,135,0.04),
+            0 0 60px rgba(0,255,135,0.06),
+            0 40px 80px rgba(0,0,0,0.5);
+        text-align: left;
+    }
+    .terminal-bar {
+        background: #1a1a1a;
+        padding: 0.7rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-bottom: 1px solid var(--border);
+    }
+    .t-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .t-dot-red    { background: #ff5f57; }
+    .t-dot-amber  { background: #febc2e; }
+    .t-dot-green  { background: #28c840; }
+    .terminal-title {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        margin-left: auto;
+        letter-spacing: 0.03em;
+    }
+    .terminal-body {
+        background: #0d0d0d;
+        padding: 1.5rem 1.75rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        line-height: 1.85;
+    }
+    .t-line { display: flex; gap: 0.6rem; min-height: 1.85em; }
+    .t-prompt { color: var(--green); user-select: none; flex-shrink: 0; }
+    .t-cmd { color: #e2e2e2; }
+    .t-flag { color: #7dd3fc; }
+    .t-ok { color: #4ade80; padding-left: 0.25rem; }
+    .t-dim { color: var(--text-dim); padding-left: 0.25rem; font-style: italic; }
+    .t-gap { height: 0.65rem; }
+
+    /* -- Stats bar -- */
+    .stats-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        margin: 4.5rem 0;
+        flex-wrap: wrap;
+    }
+    .stat {
+        text-align: center;
+        padding: 2rem 3rem;
+        flex: 1;
+        min-width: 130px;
+        position: relative;
+    }
+    .stat + .stat::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1px;
+        height: 36px;
+        background: var(--border);
+    }
+    .stat-value {
+        display: block;
+        font-size: 2.1rem;
+        font-weight: 900;
+        font-family: var(--mono);
+        color: #fff;
+        letter-spacing: -0.06em;
+        line-height: 1;
+        margin-bottom: 0.4rem;
+    }
+    .stat-label {
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    /* -- Sections -- */
+    .section { padding: 5rem 0; }
+    .section-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        margin-bottom: 0.75rem;
+    }
+    .section-title {
+        font-size: clamp(1.9rem, 4vw, 2.7rem);
+        font-weight: 900;
+        letter-spacing: -0.045em;
+        color: #fff;
+        line-height: 1.08;
+        margin-bottom: 1rem;
+    }
+    .section-sub {
+        font-size: 1rem;
+        color: var(--text-muted);
+        max-width: 500px;
+        line-height: 1.7;
+    }
+
+    /* -- Feature grid -- */
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        margin-top: 3.5rem;
+        background: var(--border);
+        gap: 1px;
+    }
+    .feature-card {
+        background: var(--bg-card);
+        padding: 2rem 1.75rem;
+        transition: background 0.15s;
+    }
+    .feature-card:hover { background: var(--bg-card-hover); }
+    .feature-icon {
+        width: 38px;
+        height: 38px;
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1.1rem;
+        font-size: 1.05rem;
+        flex-shrink: 0;
+    }
+    .feature-card h3 {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+    }
+    .feature-card p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+    }
+    .feature-card p code {
+        font-family: var(--mono);
+        font-size: 0.8em;
+        background: rgba(0,0,0,0.4);
+        border: 1px solid var(--border-light);
+        padding: 0.1em 0.35em;
+        border-radius: 3px;
+        color: var(--green);
+    }
+
+    /* -- Quickstart -- */
+    .quickstart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3rem;
+        align-items: start;
+        margin-top: 3.5rem;
+    }
+    .code-block {
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+    }
+    .code-block-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-card);
+    }
+    .code-block-title {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        letter-spacing: 0.05em;
+    }
+    .copy-btn {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--text-dim);
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.2rem 0.55rem;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+        line-height: 1.4;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--border-light); }
+    .code-block-body {
+        padding: 1.5rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        line-height: 2;
+    }
+    .c-comment { color: var(--text-dim); }
+    .c-cmd { color: var(--green); }
+    .c-arg { color: var(--text); }
+    .c-flag { color: #7dd3fc; }
+    .c-blank { height: 0.65rem; }
+
+    /* Steps */
+    .steps-list {
+        list-style: none;
+        counter-reset: step-counter;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .step-item {
+        counter-increment: step-counter;
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    .step-num {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-light);
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--green);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0.1rem;
+    }
+    .step-num::before { content: counter(step-counter); }
+    .step-body { padding-top: 0.05rem; }
+    .step-body strong { color: #fff; font-size: 0.9rem; display: block; margin-bottom: 0.3rem; }
+    .step-body span { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; }
+    .step-body code {
+        font-family: var(--mono);
+        font-size: 0.8em;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-light);
+        padding: 0.1em 0.4em;
+        border-radius: 3px;
+        color: var(--green);
+    }
+
+    /* -- CTA section -- */
+    .cta-section {
+        text-align: center;
+        padding: 6rem 0 5rem;
+        border-top: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+    }
+    .cta-section::before {
+        content: '';
+        position: absolute;
+        bottom: -60px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 600px;
+        height: 400px;
+        background: radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    .cta-section h2 {
+        font-size: clamp(2rem, 5vw, 3.2rem);
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        color: #fff;
+        margin-bottom: 1rem;
+        line-height: 1.08;
+    }
+    .cta-section > .container > p {
+        color: var(--text-muted);
+        margin-bottom: 2.5rem;
+        font-size: 1.05rem;
+        max-width: 420px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* -- Responsive -- */
+    @media (max-width: 900px) {
+        .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+        .quickstart-grid { grid-template-columns: 1fr; }
+        .hero { padding: 3.5rem 0 3rem; }
+        .section { padding: 3.5rem 0; }
+        .cta-section { padding: 4rem 0 3rem; }
+        .stat { padding: 1.5rem 1.5rem; min-width: 100px; }
+    }
+    @media (max-width: 600px) {
+        .feature-grid { grid-template-columns: 1fr; }
+        .stat + .stat::before { display: none; }
+        .stats-bar { flex-direction: column; }
+        .stat { padding: 1.25rem 1.5rem; border-top: 1px solid var(--border); }
+        .stat:first-child { border-top: none; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <div class="hero-badge">
+            <span class="hero-badge-dot" aria-hidden="true"></span>
+            {{ page.extra.hero_badge | default(value="Built in Rust · AI-native · Open source") }}
+        </div>
+
+        <h1>
+            {{ page.extra.hero_line_1 | default(value="The static site generator") }}<br>
+            for <span class="gradient-text">{{ page.extra.hero_accent | default(value="AI-native") }}</span>
+            {{ page.extra.hero_line_2 | default(value="developers.") }}
+        </h1>
+
+        <p class="hero-sub">{{ page.description | default(value=site.description) }}</p>
+
+        <div class="hero-actions">
+            <a href="/docs/getting-started" class="btn-primary">Get started →</a>
+            <a href="{{ page.extra.github_url | default(value='https://github.com/sanchezomar/page') }}" class="btn-secondary" rel="noopener noreferrer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                GitHub
+            </a>
+        </div>
+
+        <!-- Terminal demo -->
+        <div class="terminal-wrap" role="img" aria-label="page CLI demonstration">
+            <div class="terminal-bar" aria-hidden="true">
+                <span class="t-dot t-dot-red"></span>
+                <span class="t-dot t-dot-amber"></span>
+                <span class="t-dot t-dot-green"></span>
+                <span class="terminal-title">zsh — 80×24</span>
+            </div>
+            <div class="terminal-body">
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page init myblog <span class="t-flag">--title "My Blog" --collections posts,docs</span></span>
+                </div>
+                <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
+                <div class="t-line"><span class="t-ok">✓ Scaffolded templates + .claude/CLAUDE.md</span></div>
+                <div class="t-gap"></div>
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page agent <span class="t-flag">"write a post about Rust error handling"</span></span>
+                </div>
+                <div class="t-line"><span class="t-dim">↳ Spawning Claude Code with site context…</span></div>
+                <div class="t-line"><span class="t-ok">✓ Written to content/posts/2026-02-18-rust-error-handling.md</span></div>
+                <div class="t-gap"></div>
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page deploy <span class="t-flag">--target github-pages</span></span>
+                </div>
+                <div class="t-line"><span class="t-dim">↳ Pre-flight checks passed · Building…</span></div>
+                <div class="t-line"><span class="t-ok">✓ Deployed in 3.2s → https://myblog.github.io</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Stats -->
+<div class="container">
+    <div class="stats-bar" aria-label="Project at a glance">
+        <div class="stat">
+            <span class="stat-value">12</span>
+            <span class="stat-label">Build steps</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">6</span>
+            <span class="stat-label">Bundled themes</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">3</span>
+            <span class="stat-label">Deploy targets</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">0</span>
+            <span class="stat-label">Config required</span>
+        </div>
+    </div>
+</div>
+
+<!-- Features -->
+<section class="section" id="features">
+    <div class="container">
+        <p class="section-eyebrow">// features</p>
+        <h2 class="section-title">
+            {{ page.extra.features_headline_1 | default(value="Everything you need.") }}<br>
+            {{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}
+        </h2>
+        <p class="section-sub">{{ page.extra.features_sub | default(value="") }}</p>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_1_icon | default(value="⚡") }}</div>
+                <h3>{{ page.extra.feature_1_title | default(value="Blazing fast builds") }}</h3>
+                <p>{{ page.extra.feature_1_body | default(value="") }}</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_2_icon | default(value="🤖") }}</div>
+                <h3>{{ page.extra.feature_2_title | default(value="AI-native by design") }}</h3>
+                <p>{{ page.extra.feature_2_body | default(value="") }}</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_3_icon | default(value="🌐") }}</div>
+                <h3>{{ page.extra.feature_3_title | default(value="i18n out of the box") }}</h3>
+                <p>{{ page.extra.feature_3_body | default(value="") }}</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_4_icon | default(value="🔍") }}</div>
+                <h3>{{ page.extra.feature_4_title | default(value="SEO + GEO optimized") }}</h3>
+                <p>{{ page.extra.feature_4_body | default(value="") }}</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_5_icon | default(value="🚀") }}</div>
+                <h3>{{ page.extra.feature_5_title | default(value="One-command deploys") }}</h3>
+                <p>{{ page.extra.feature_5_body | default(value="") }}</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">{{ page.extra.feature_6_icon | default(value="🎨") }}</div>
+                <h3>{{ page.extra.feature_6_title | default(value="Themes that ship") }}</h3>
+                <p>{{ page.extra.feature_6_body | default(value="") }}</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Quickstart -->
+<section class="section" id="quickstart">
+    <div class="container">
+        <p class="section-eyebrow">// quickstart</p>
+        <h2 class="section-title">Up and running<br>in 30 seconds.</h2>
+
+        <div class="quickstart-grid">
+            <!-- Code block -->
+            <div class="code-block">
+                <div class="code-block-header">
+                    <span class="code-block-title">install + init</span>
+                    <button
+                        class="copy-btn"
+                        aria-label="Copy install commands"
+                        onclick="var t='cargo install page-cli\npage init mysite --title &quot;My Site&quot;\ncd mysite\npage serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied!';}.bind(this)).catch(function(){});">copy</button>
+                </div>
+                <div class="code-block-body">
+                    <div><span class="c-comment"># install (requires Rust)</span></div>
+                    <div><span class="c-cmd">cargo</span> <span class="c-arg">install page-cli</span></div>
+                    <div class="c-blank"></div>
+                    <div><span class="c-comment"># scaffold a new site</span></div>
+                    <div><span class="c-cmd">page</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
+                    <div><span class="c-cmd">cd</span> <span class="c-arg">mysite</span></div>
+                    <div class="c-blank"></div>
+                    <div><span class="c-comment"># start dev server with live reload</span></div>
+                    <div><span class="c-cmd">page</span> <span class="c-arg">serve</span></div>
+                </div>
+            </div>
+
+            <!-- Steps -->
+            <ol class="steps-list" aria-label="Getting started steps">
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Install page</strong>
+                        <span>Requires Rust. Run <code>cargo install page-cli</code>.
+                        Single static binary, no runtime dependencies.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Scaffold your site</strong>
+                        <span>Run <code>page init mysite</code>. Generates config, templates,
+                        and a Claude Code context file at <code>.claude/CLAUDE.md</code>.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Create content with AI</strong>
+                        <span>Run <code>page agent "write about X"</code>. Claude reads your site
+                        context and generates content directly into the right directory.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Deploy anywhere</strong>
+                        <span>Run <code>page deploy</code>. Pre-flight checks, build, push.
+                        GitHub Pages, Cloudflare, or Netlify — all built in.</span>
+                    </div>
+                </li>
+            </ol>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+    <div class="container">
+        <h2>{{ page.extra.cta_headline | default(value="Ship sites that speak to everyone.") }}</h2>
+        <p>{{ page.extra.cta_sub | default(value="HTML for browsers. Markdown for LLMs. Structured data for search engines.") }}</p>
+        <div class="hero-actions">
+            <a href="/docs/getting-started" class="btn-primary">Get started →</a>
+            <a href="{{ page.extra.github_url | default(value='https://github.com/sanchezomar/page') }}" class="btn-secondary" rel="noopener noreferrer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                View on GitHub
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block footer %}
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span class="footer-logo">
+            <span class="footer-logo-caret">▸</span>{{ site.title }}
+        </span>
+        <ul class="footer-links">
+            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="/feed.xml">RSS</a></li>
+            <li><a href="/llms.txt">llms.txt</a></li>
+            <li><a href="/sitemap.xml">Sitemap</a></li>
+        </ul>
+    </div>
+</footer>
 {% endblock %}

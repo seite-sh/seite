@@ -1,73 +1,34 @@
 ---
 title: page
-description: AI-native static site generator. Ships llms.txt, markdown alongside HTML, and a built-in Claude Code agent. Built with Rust.
+description: Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.
+extra:
+  github_url: https://github.com/sanchezomar/page
+  feature_2_body: Every site ships with <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown alongside HTML. Run <code>page agent</code> to spawn Claude Code with full site context.
+  features_headline_1: Everything you need.
+  features_headline_2: Nothing you don't.
+  hero_badge: Built in Rust · AI-native · Open source
+  feature_1_title: Sub-second Rust builds
+  feature_1_body: 12-step build pipeline with per-step timing. Compiled to a single static binary — no Node.js, no node_modules, no build dependencies.
+  feature_4_body: Canonical URLs, Open Graph, Twitter Cards, JSON-LD structured data, XML sitemap, and per-page robots directives — generated automatically from your content.
+  feature_5_title: One-command deploys
+  feature_6_title: 6 themes, AI-generated customs
+  cta_sub: HTML for browsers. Markdown for LLMs. Structured data for search engines.
+  feature_2_icon: 🤖
+  feature_4_icon: 🔍
+  feature_1_icon: ⚡
+  feature_2_title: AI-native by design
+  feature_4_title: SEO + GEO optimized
+  feature_3_icon: 🌐
+  feature_5_icon: 🚀
+  hero_line_2: developers.
+  feature_3_body: Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites.
+  feature_5_body: GitHub Pages, Cloudflare Pages, and Netlify. Pre-flight checks, <code>--dry-run</code> preview, and auto-generated GitHub Actions workflows.
+  features_sub: A 12-step build pipeline that outputs HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files. All from a single Rust binary with no runtime dependencies.
+  cta_headline: Ship sites that speak to everyone.
+  hero_line_1: The static site generator
+  feature_3_title: i18n out of the box
+  feature_6_icon: 🎨
+  hero_accent: AI-native
+  feature_6_body: 'Ship with default, dark, minimal, docs, brutalist, and bento themes. Or generate a custom one: <code>page theme create "coral brutalist with lime accents"</code>.'
 ---
 
-# Build sites that speak to humans and machines
-
-**page** is a static site generator designed for the AI era. Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. No configuration required — it just works.
-
-```bash
-cargo install page
-page init mysite --collections posts,docs,pages
-cd mysite
-page serve
-```
-
----
-
-## Why page?
-
-### AI-Native Output
-
-Every page generates `llms.txt`, `llms-full.txt`, and raw markdown files alongside HTML. Your content is ready for LLM consumption from day one.
-
-### Built-in AI Agent
-
-Run `page agent` to launch an interactive Claude Code session with full site context — your config, content inventory, templates, and CLI commands are all available. Or pass a prompt directly: `page agent "write a post about Rust error handling"`.
-
-### Six Bundled Themes
-
-Ship with **default**, **minimal**, **dark**, **docs**, **brutalist**, and **bento** themes. Apply with one command or generate a completely custom theme with AI: `page theme create "coral brutalist with lime accents"`.
-
-### Complete SEO + GEO
-
-Canonical URLs, Open Graph, Twitter Cards, JSON-LD structured data, XML sitemap, RSS feeds, and per-page robots directives — all generated automatically from your content.
-
-### Multi-Language Support
-
-Filename-based translations: `about.md` for English, `about.es.md` for Spanish. Per-language URLs, hreflang tags, RSS feeds, search indexes, and discovery files — all automatic.
-
-### Deploy Anywhere
-
-GitHub Pages, Cloudflare Pages, or Netlify. One command: `page deploy`. Includes `--dry-run` to preview changes and auto-generated GitHub Actions workflows.
-
----
-
-## Quick Start
-
-**1. Create a site**
-
-```bash
-page init mysite --title "My Site" --collections posts,docs,pages
-cd mysite
-```
-
-**2. Write content**
-
-```bash
-page new post "Hello World" --tags intro,welcome
-```
-
-**3. Build and preview**
-
-```bash
-page build    # Generates dist/ with HTML, markdown, RSS, sitemap, llms.txt
-page serve    # Dev server with live reload at localhost:3000
-```
-
-**4. Deploy**
-
-```bash
-page deploy   # Push to GitHub Pages, Cloudflare, or Netlify
-```

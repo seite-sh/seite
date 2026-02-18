@@ -3,220 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>page</title>
-    <meta name="description" content="AI-native static site generator. Ships llms.txt, markdown alongside HTML, and a built-in Claude Code agent. Built with Rust.">
+    <title>page — AI-native static site generator</title>
+    <meta name="description" content="Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.">
     <link rel="canonical" href="http:&#x2F;&#x2F;localhost:3000&#x2F;">
+
+    <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:url" content="http:&#x2F;&#x2F;localhost:3000&#x2F;">
     <meta property="og:title" content="page">
-    <meta property="og:description" content="AI-native static site generator. Ships llms.txt, markdown alongside HTML, and a built-in Claude Code agent. Built with Rust.">
+    <meta property="og:description" content="Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.">
     
     <meta property="og:site_name" content="page">
     <meta property="og:locale" content="en">
+
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="page">
-    <meta name="twitter:description" content="AI-native static site generator. Ships llms.txt, markdown alongside HTML, and a built-in Claude Code agent. Built with Rust.">
+    <meta name="twitter:description" content="Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.">
     
+
     
+
+    <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
     <link rel="alternate" type="text/markdown" href="http:&#x2F;&#x2F;localhost:3000&#x2F;.md">
+
+    <!-- hreflang -->
     
+
+    <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;page&quot;,"description":&quot;AI-native static site generator. Ships llms.txt, markdown alongside HTML, and a built-in Claude Code agent. Built with Rust.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;http:&#x2F;&#x2F;localhost:3000&#x2F;&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":&quot;page&quot;,"description":&quot;Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;http:&#x2F;&#x2F;localhost:3000&#x2F;&quot;}
     
     </script>
+
+    
+
     <style>
-        /* === Reset & Base === */
+        /* ---- Design tokens ---- */
+        :root {
+            --bg:           #080808;
+            --bg-raised:    #111111;
+            --bg-card:      #141414;
+            --bg-card-hover:#181818;
+            --border:       rgba(255,255,255,0.07);
+            --border-light: rgba(255,255,255,0.13);
+            --text:         #e2e2e2;
+            --text-muted:   #888;
+            --text-dim:     #555;
+            --green:        #00ff87;
+            --green-dim:    rgba(0,255,135,0.08);
+            --green-border: rgba(0,255,135,0.18);
+            --blue:         #3b82f6;
+            --radius-sm:    5px;
+            --radius:       10px;
+            --radius-lg:    16px;
+            --mono:         'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, 'Courier New', monospace;
+        }
+
+        /* ---- Reset ---- */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html { scroll-behavior: smooth; }
         body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+            font-size: 16px;
             line-height: 1.65;
-            color: #e8e8e8;
-            background: #0a0a0a;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
-        a { color: #4361ee; text-decoration: none; }
-        a:hover { color: #5a7aff; text-decoration: underline; }
+        img { max-width: 100%; display: block; }
+        a { color: var(--green); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 3px; }
 
-        /* === Skip Link === */
+        /* ---- Accessibility ---- */
         .skip-link {
             position: absolute;
-            top: -100%;
-            left: 0;
-            padding: 0.6rem 1.2rem;
-            background: #4361ee;
-            color: #fff;
-            z-index: 1000;
+            top: -120px;
+            left: 1rem;
+            background: var(--green);
+            color: #000;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.875rem;
+            z-index: 9999;
+            transition: top 0.15s;
             text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: 600;
         }
-        .skip-link:focus { top: 0; }
+        .skip-link:focus { top: 1rem; }
 
-        /* === Top Navigation Bar === */
-        .topnav {
+        /* ---- Layout ---- */
+        .container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 1.5rem; }
+
+        /* ---- Nav ---- */
+        .site-nav {
             position: sticky;
             top: 0;
             z-index: 100;
-            background: #0a0a0a;
-            border-bottom: 1px solid #1a1a1a;
-            padding: 0 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: rgba(8,8,8,0.82);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
-        .topnav-inner {
-            max-width: 1200px;
-            margin: 0 auto;
+        .nav-inner {
+            display: flex;
+            align-items: center;
+            height: 56px;
+            gap: 2rem;
+        }
+        .nav-logo {
+            font-family: var(--mono);
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-shrink: 0;
+            text-decoration: none;
+        }
+        .nav-logo:hover { text-decoration: none; }
+        .nav-logo-caret { color: var(--green); }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 1.75rem;
+            list-style: none;
+            flex: 1;
+        }
+        .nav-links a {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            transition: color 0.15s;
+            text-decoration: none;
+        }
+        .nav-links a:hover { color: var(--text); text-decoration: none; }
+        .nav-cta {
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            padding: 0.4rem 1rem;
+            background: var(--green);
+            color: #000;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            transition: opacity 0.15s;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+        .nav-cta:hover { opacity: 0.85; text-decoration: none; }
+
+        /* ---- Footer ---- */
+        .site-footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem 0;
+            margin-top: 5rem;
+        }
+        .footer-inner {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            height: 56px;
             gap: 1rem;
         }
-        .topnav-brand {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #e8e8e8;
-            text-decoration: none;
-            font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
-            letter-spacing: -0.02em;
-            flex-shrink: 0;
-        }
-        .topnav-brand:hover { color: #fff; text-decoration: none; }
-        .topnav-links {
+        .footer-logo {
+            font-family: var(--mono);
+            font-size: 0.85rem;
+            color: var(--text-dim);
             display: flex;
             align-items: center;
-            gap: 0.25rem;
+            gap: 0.35rem;
+        }
+        .footer-logo-caret { color: var(--green); opacity: 0.5; }
+        .footer-links {
+            display: flex;
+            gap: 1.5rem;
             list-style: none;
         }
-        .topnav-links a {
-            color: #999;
-            text-decoration: none;
-            font-size: 0.875rem;
-            font-weight: 500;
-            padding: 0.35rem 0.7rem;
-            border-radius: 6px;
-            transition: color 0.1s, background 0.1s;
-        }
-        .topnav-links a:hover { color: #e8e8e8; background: #161616; text-decoration: none; }
-        .topnav-links a.active { color: #4361ee; }
-        .topnav-search {
-            position: relative;
-            flex-shrink: 0;
-        }
-        .topnav-search input {
-            width: 200px;
-            padding: 0.35rem 0.7rem;
-            border: 1px solid #1e1e1e;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            font-family: inherit;
-            background: #111;
-            color: #e8e8e8;
-            transition: border-color 0.15s, width 0.2s;
-        }
-        .topnav-search input::placeholder { color: #555; }
-        .topnav-search input:focus {
-            outline: none;
-            border-color: #4361ee;
-            width: 280px;
-        }
-        #search-results {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            width: 360px;
-            margin-top: 4px;
-            border: 1px solid #1e1e1e;
-            border-radius: 8px;
-            background: #111;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-            z-index: 200;
-            overflow: hidden;
-        }
-        #search-results:empty { display: none; }
-        #search-results a {
-            display: block;
-            padding: 0.6rem 0.85rem;
-            text-decoration: none;
-            border-bottom: 1px solid #1a1a1a;
-            font-size: 0.875rem;
-            color: #4361ee;
-        }
-        #search-results a:last-child { border-bottom: none; }
-        #search-results a:hover { background: #161616; text-decoration: none; }
-        #search-results strong { color: #e8e8e8; display: block; font-size: 0.875rem; }
-        #search-results .result-meta { font-size: 0.75rem; color: #555; margin-top: 0.15rem; }
-        #search-results .no-results { padding: 0.6rem 0.85rem; color: #555; font-size: 0.875rem; }
-
-        /* === Language Switcher === */
-        .lang-switcher {
-            display: inline-flex;
-            gap: 0.25rem;
+        .footer-links a {
+            color: var(--text-dim);
             font-size: 0.8rem;
-            margin-left: 0.5rem;
-        }
-        .lang-switcher a {
-            color: #666;
-            padding: 0.15rem 0.4rem;
-            border-radius: 4px;
+            transition: color 0.15s;
             text-decoration: none;
         }
-        .lang-switcher a:hover { background: #161616; color: #e8e8e8; text-decoration: none; }
-        .lang-switcher strong { padding: 0.15rem 0.4rem; color: #4361ee; }
+        .footer-links a:hover { color: var(--text-muted); text-decoration: none; }
 
-        /* === Mobile Menu Toggle === */
-        .menu-toggle {
-            display: none;
+        /* ---- Inner page (article) ---- */
+        .article-wrap { padding: 3.5rem 0 6rem; }
+        .article-wrap article { max-width: 720px; margin: 0 auto; }
+        .article-wrap h1 {
+            font-size: clamp(1.7rem, 4vw, 2.4rem);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            color: #fff;
+            margin-bottom: 2.5rem;
+            line-height: 1.15;
+        }
+        .article-wrap .content h2 { font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
+        .article-wrap .content h3 { font-size: 1.05rem; font-weight: 700; color: #ddd; margin: 2rem 0 0.65rem; }
+        .article-wrap .content p { margin-bottom: 1.25rem; color: var(--text); }
+        .article-wrap .content a { color: var(--green); }
+        .article-wrap .content a:hover { opacity: 0.8; }
+        .article-wrap .content strong { color: #fff; }
+        .article-wrap .content code {
+            font-family: var(--mono);
+            font-size: 0.82em;
+            background: var(--bg-raised);
+            border: 1px solid var(--border-light);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            color: var(--green);
+        }
+        .article-wrap .content pre {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+        }
+        .article-wrap .content pre code {
             background: none;
             border: none;
-            color: #e8e8e8;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0.25rem;
-            line-height: 1;
+            padding: 0;
+            font-size: 0.875rem;
+            color: var(--text);
         }
+        .article-wrap .content ul, .article-wrap .content ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+        .article-wrap .content li { margin-bottom: 0.35rem; }
+        .article-wrap .content blockquote {
+            border-left: 3px solid var(--green);
+            padding-left: 1.25rem;
+            color: var(--text-muted);
+            margin: 1.5rem 0;
+            font-style: italic;
+        }
+        .article-wrap .content hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+        .article-wrap .content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .article-wrap .content th, .article-wrap .content td { border: 1px solid var(--border); padding: 0.6rem 1rem; text-align: left; }
+        .article-wrap .content th { background: var(--bg-raised); font-weight: 600; color: #fff; }
+        .article-wrap .content img { border-radius: var(--radius); margin: 1.5rem 0; }
 
-        /* === Page Layout === */
-        .page-wrapper {
+        /* ---- Docs sidebar ---- */
+        .docs-layout {
             display: flex;
-            max-width: 1200px;
+            max-width: 1120px;
             margin: 0 auto;
-            width: 100%;
-            flex: 1;
+            padding: 0 1.5rem;
         }
-
-        /* === Sidebar (docs only) === */
-        .sidebar {
+        .docs-sidebar {
             width: 240px;
             flex-shrink: 0;
-            padding: 1.5rem 0 2rem 1.5rem;
+            padding: 2rem 1.5rem 2rem 0;
             position: sticky;
             top: 56px;
             height: calc(100vh - 56px);
             overflow-y: auto;
-            border-right: 1px solid #1a1a1a;
+            border-right: 1px solid var(--border);
         }
-        .sidebar::-webkit-scrollbar { width: 4px; }
-        .sidebar::-webkit-scrollbar-track { background: transparent; }
-        .sidebar::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
-        .sidebar nav { padding-right: 1rem; }
-        .sidebar nav h3 {
+        .docs-sidebar::-webkit-scrollbar { width: 4px; }
+        .docs-sidebar::-webkit-scrollbar-track { background: transparent; }
+        .docs-sidebar::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        .docs-sidebar nav h3 {
             font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: #666;
+            color: var(--text-dim);
             font-weight: 600;
             margin: 1.25rem 0 0.4rem;
         }
-        .sidebar nav h3:first-child { margin-top: 0; }
-        .sidebar nav ul { list-style: none; }
-        .sidebar nav li { margin-bottom: 1px; }
-        .sidebar nav a {
-            color: #999;
+        .docs-sidebar nav h3:first-child { margin-top: 0; }
+        .docs-sidebar nav ul { list-style: none; }
+        .docs-sidebar nav li { margin-bottom: 1px; }
+        .docs-sidebar nav a {
+            color: var(--text-muted);
             font-size: 0.85rem;
             display: block;
             padding: 0.3rem 0.6rem;
@@ -224,186 +288,150 @@
             text-decoration: none;
             transition: color 0.1s, background 0.1s;
         }
-        .sidebar nav a:hover { color: #e8e8e8; background: #161616; text-decoration: none; }
-        .sidebar nav .active a { color: #4361ee; font-weight: 600; background: rgba(67, 97, 238, 0.08); }
-
-        /* === Main Content Area === */
-        .main-content {
+        .docs-sidebar nav a:hover { color: var(--text); background: var(--bg-raised); text-decoration: none; }
+        .docs-sidebar nav .active a { color: var(--green); font-weight: 600; background: var(--green-dim); }
+        .docs-main {
             flex: 1;
             min-width: 0;
-            padding: 2rem 1.5rem 3rem;
+            max-width: 780px;
+            padding: 2rem 0 3rem 2rem;
         }
+        .docs-main article h1 {
+            font-size: clamp(1.7rem, 4vw, 2.4rem);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            color: #fff;
+            margin-bottom: 1.5rem;
+            line-height: 1.15;
+        }
+        .docs-main .content h2 { font-size: 1.35rem; font-weight: 700; color: #fff; margin: 2.5rem 0 0.9rem; letter-spacing: -0.025em; }
+        .docs-main .content h3 { font-size: 1.05rem; font-weight: 700; color: #ddd; margin: 2rem 0 0.65rem; }
+        .docs-main .content p { margin-bottom: 1.25rem; color: var(--text); }
+        .docs-main .content a { color: var(--green); }
+        .docs-main .content a:hover { opacity: 0.8; }
+        .docs-main .content strong { color: #fff; }
+        .docs-main .content code {
+            font-family: var(--mono);
+            font-size: 0.82em;
+            background: var(--bg-raised);
+            border: 1px solid var(--border-light);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            color: var(--green);
+        }
+        .docs-main .content pre {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+        }
+        .docs-main .content pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 0.875rem;
+            color: var(--text);
+        }
+        .docs-main .content ul, .docs-main .content ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+        .docs-main .content li { margin-bottom: 0.35rem; }
+        .docs-main .content blockquote {
+            border-left: 3px solid var(--green);
+            padding-left: 1.25rem;
+            color: var(--text-muted);
+            margin: 1.5rem 0;
+            font-style: italic;
+        }
+        .docs-main .content hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+        .docs-main .content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .docs-main .content th, .docs-main .content td { border: 1px solid var(--border); padding: 0.6rem 1rem; text-align: left; }
+        .docs-main .content th { background: var(--bg-raised); font-weight: 600; color: #fff; }
 
-        /* Layout: with sidebar (docs) — cap main at 780px */
-        .has-sidebar .main-content { max-width: 780px; }
+        /* ---- TOC ---- */
+        .toc {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .toc h4 {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .toc ul { list-style: none; }
+        .toc li { margin-bottom: 0.2rem; }
+        .toc a { color: var(--text-muted); font-size: 0.85rem; text-decoration: none; }
+        .toc a:hover { color: var(--green); text-decoration: none; }
+        .toc .toc-level-3 { padding-left: 1rem; }
+        .toc .toc-level-4 { padding-left: 2rem; }
 
-        /* Layout: posts — centered narrow column */
-        .layout-post .main-content { max-width: 680px; margin: 0 auto; }
-
-        /* Layout: index/pages — centered wider column */
-        .layout-wide .main-content { max-width: 900px; margin: 0 auto; }
-
-        /* === Article / Content === */
-        article { margin-bottom: 2rem; }
-        article h1 { font-size: 2rem; font-weight: 700; line-height: 1.25; margin-bottom: 0.75rem; color: #fff; }
-        article h2 { font-size: 1.4rem; font-weight: 600; margin-top: 2.25rem; margin-bottom: 0.5rem; color: #fff; }
-        article h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.75rem; margin-bottom: 0.4rem; color: #e8e8e8; }
-        article h4 { font-size: 1rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.3rem; color: #e8e8e8; }
-        article p { margin-bottom: 1rem; }
-        article ul, article ol { margin-bottom: 1rem; padding-left: 1.5rem; }
-        article li { margin-bottom: 0.3rem; }
-        article li > ul, article li > ol { margin-bottom: 0; }
-
-        /* === Post Metadata === */
+        /* ---- Post meta ---- */
         .post-meta {
             display: flex;
             align-items: center;
             gap: 0.75rem;
             flex-wrap: wrap;
             font-size: 0.85rem;
-            color: #666;
+            color: var(--text-dim);
             margin-bottom: 1.5rem;
         }
-        .post-meta time { color: #888; }
-        .post-meta .separator { color: #333; }
-        .post-meta .reading-time { color: #666; }
-        .post-meta .word-count { color: #555; }
+        .post-meta time { color: var(--text-muted); }
+        .post-meta .separator { color: rgba(255,255,255,0.15); }
 
-        /* === Tags === */
-        .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
-        .tags a, .tags span {
-            background: #161616;
-            border: 1px solid #1e1e1e;
+        /* ---- Tags ---- */
+        .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1.5rem; }
+        .tags a {
+            background: var(--green-dim);
+            border: 1px solid var(--green-border);
             padding: 0.15rem 0.55rem;
             border-radius: 4px;
             font-size: 0.78rem;
-            color: #4361ee;
+            color: var(--green);
             text-decoration: none;
-            transition: background 0.1s, border-color 0.1s;
+            transition: background 0.1s;
         }
-        .tags a:hover { background: #1a1a1a; border-color: #4361ee; text-decoration: none; }
+        .tags a:hover { background: rgba(0,255,135,0.15); text-decoration: none; }
 
-        /* === Code === */
-        pre {
-            background: #161616;
-            padding: 1rem 1.25rem;
-            border-radius: 8px;
-            overflow-x: auto;
-            border: 1px solid #1e1e1e;
-            margin-bottom: 1rem;
-            line-height: 1.5;
-        }
-        code {
-            font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
-            font-size: 0.875em;
-        }
-        :not(pre) > code {
-            background: #161616;
-            border: 1px solid #1e1e1e;
-            padding: 0.1rem 0.35rem;
-            border-radius: 4px;
-            color: #7aa2f7;
-        }
-        pre code { background: none; border: none; padding: 0; color: inherit; border-radius: 0; }
-
-        /* === Blockquote === */
-        blockquote {
-            border-left: 3px solid #4361ee;
-            margin: 0 0 1rem;
-            padding: 0.5rem 1rem;
-            color: #999;
-        }
-        blockquote p:last-child { margin-bottom: 0; }
-
-        /* === Images === */
-        img { max-width: 100%; height: auto; border-radius: 6px; }
-
-        /* === Tables === */
-        table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
-        th, td { border: 1px solid #1e1e1e; padding: 0.5rem 0.9rem; text-align: left; font-size: 0.9rem; }
-        th { background: #111; font-weight: 600; color: #ccc; }
-        td { color: #bbb; }
-
-        /* === Horizontal Rule === */
-        hr { border: none; border-top: 1px solid #1e1e1e; margin: 2rem 0; }
-
-        /* === Table of Contents (docs) === */
-        .toc {
-            background: #111;
-            border: 1px solid #1e1e1e;
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 2rem;
-        }
-        .toc h4 {
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #666;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-        .toc ul { list-style: none; padding: 0; }
-        .toc li { margin-bottom: 0.2rem; }
-        .toc a { color: #999; font-size: 0.85rem; text-decoration: none; }
-        .toc a:hover { color: #4361ee; }
-        .toc .toc-level-3 { padding-left: 1rem; }
-        .toc .toc-level-4 { padding-left: 2rem; }
-        .toc .toc-level-5 { padding-left: 3rem; }
-        .toc .toc-level-6 { padding-left: 4rem; }
-
-        /* === Homepage / Index === */
+        /* ---- Homepage collection listing ---- */
         .homepage-content { margin-bottom: 2.5rem; }
-        .homepage-content h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 1rem; color: #fff; }
-        .homepage-content h2 { font-size: 1.5rem; color: #fff; }
-        .homepage-content p { font-size: 1.1rem; color: #bbb; }
-
         .collection-section { margin-bottom: 2.5rem; }
         .collection-section > h2 {
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: #666;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
             font-weight: 600;
             margin-bottom: 1rem;
             padding-bottom: 0.5rem;
-            border-bottom: 1px solid #1a1a1a;
+            border-bottom: 1px solid var(--border);
         }
         .collection-item {
             padding: 1rem 0;
-            border-bottom: 1px solid #111;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
         }
         .collection-item:last-child { border-bottom: none; }
-        .collection-item h3 {
-            font-size: 1.05rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-        .collection-item h3 a { color: #e8e8e8; }
-        .collection-item h3 a:hover { color: #4361ee; text-decoration: none; }
-        .collection-item time { font-size: 0.8rem; color: #555; }
+        .collection-item h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; }
+        .collection-item h3 a { color: var(--text); text-decoration: none; }
+        .collection-item h3 a:hover { color: var(--green); text-decoration: none; }
         .collection-item .item-meta {
             display: flex;
             align-items: center;
             gap: 0.6rem;
-            margin-bottom: 0.3rem;
             font-size: 0.8rem;
-            color: #555;
+            color: var(--text-dim);
+            margin-bottom: 0.3rem;
         }
-        .collection-item .item-meta .separator { color: #333; }
-        .collection-item p, .collection-item .excerpt {
-            font-size: 0.9rem;
-            color: #888;
-            margin: 0.3rem 0 0;
-            line-height: 1.5;
-        }
+        .collection-item p, .collection-item .excerpt { font-size: 0.9rem; color: var(--text-muted); margin: 0.3rem 0 0; line-height: 1.5; }
         .collection-item .item-tags { margin-top: 0.5rem; }
-        .collection-item .item-tags a, .collection-item .item-tags span {
-            font-size: 0.72rem;
-            padding: 0.1rem 0.4rem;
-        }
+        .collection-item .item-tags a { font-size: 0.72rem; padding: 0.1rem 0.4rem; }
 
-        /* === Pagination === */
+        /* ---- Pagination ---- */
         .pagination {
             display: flex;
             align-items: center;
@@ -411,58 +439,97 @@
             gap: 1rem;
             margin-top: 2rem;
             padding-top: 1.5rem;
-            border-top: 1px solid #1a1a1a;
+            border-top: 1px solid var(--border);
             font-size: 0.9rem;
         }
         .pagination a {
-            color: #4361ee;
+            color: var(--green);
             text-decoration: none;
             padding: 0.35rem 0.8rem;
-            border: 1px solid #1e1e1e;
-            border-radius: 6px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
             transition: background 0.1s, border-color 0.1s;
         }
-        .pagination a:hover { background: #161616; border-color: #4361ee; text-decoration: none; }
-        .pagination .page-info { color: #666; font-size: 0.85rem; }
+        .pagination a:hover { background: var(--bg-raised); border-color: var(--green-border); text-decoration: none; }
+        .pagination .page-info { color: var(--text-dim); font-size: 0.85rem; }
 
-        /* === Footer === */
-        .site-footer {
-            border-top: 1px solid #1a1a1a;
-            padding: 1.25rem 1.5rem;
-            text-align: center;
-            color: #444;
+        /* ---- Language switcher ---- */
+        .lang-switcher {
+            display: inline-flex;
+            gap: 0.4rem;
             font-size: 0.8rem;
+            margin-left: auto;
         }
-        .site-footer a { color: #555; }
-        .site-footer a:hover { color: #4361ee; }
-
-        /* === Focus visible === */
-        :focus-visible { outline: 2px solid #4361ee; outline-offset: 2px; }
-
-        /* === Reduced motion === */
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                transition-duration: 0.01ms !important;
-                scroll-behavior: auto !important;
-            }
+        .lang-switcher a {
+            color: var(--text-muted);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            text-decoration: none;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .lang-switcher a:hover { color: var(--text); border-color: var(--border-light); text-decoration: none; }
+        .lang-switcher strong {
+            color: var(--green);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--green-border);
         }
 
-        /* === Responsive: tablet === */
-        @media (max-width: 960px) {
-            .sidebar {
+        /* ---- Search ---- */
+        .search-form { margin-bottom: 1rem; }
+        .search-form input {
+            width: 100%;
+            max-width: 400px;
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.5rem 0.875rem;
+            color: var(--text);
+            font-size: 0.875rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .search-form input::placeholder { color: var(--text-dim); }
+        .search-form input:focus { border-color: var(--green); }
+        #search-results {
+            margin-top: 0.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        #search-results a {
+            display: block;
+            padding: 0.6rem 0.875rem;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: background 0.1s;
+        }
+        #search-results a:last-child { border-bottom: none; }
+        #search-results a:hover { background: var(--bg-card-hover); text-decoration: none; }
+        #search-results strong { color: #fff; }
+        #search-results .result-meta { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.1rem; }
+        #search-results .no-results { padding: 0.6rem 0.875rem; color: var(--text-dim); font-size: 0.875rem; }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 900px) {
+            .docs-sidebar {
                 position: fixed;
                 top: 56px;
                 left: -280px;
                 width: 260px;
                 height: calc(100vh - 56px);
-                background: #0a0a0a;
-                border-right: 1px solid #1a1a1a;
+                background: var(--bg);
                 z-index: 90;
                 padding: 1.5rem;
                 transition: left 0.2s ease;
+                border-right: 1px solid var(--border);
             }
-            .sidebar.open { left: 0; }
+            .docs-sidebar.open { left: 0; }
             .sidebar-backdrop {
                 display: none;
                 position: fixed;
@@ -474,265 +541,755 @@
                 z-index: 80;
             }
             .sidebar-backdrop.open { display: block; }
-            .has-sidebar .main-content { max-width: none; }
-            .menu-toggle { display: block; }
+            .docs-main { max-width: none; padding-left: 0; }
+            .menu-toggle { display: inline-flex !important; }
+        }
+        @media (max-width: 640px) {
+            .nav-links { display: none; }
+            .footer-inner { flex-direction: column; align-items: flex-start; }
         }
 
-        /* === Responsive: mobile === */
-        @media (max-width: 640px) {
-            .topnav { padding: 0 1rem; }
-            .topnav-inner { height: 48px; }
-            .topnav-links { display: none; }
-            .topnav-links.open { display: flex; position: absolute; top: 48px; left: 0; right: 0; background: #0a0a0a; border-bottom: 1px solid #1a1a1a; flex-direction: column; padding: 0.5rem 0; }
-            .topnav-links.open a { padding: 0.6rem 1.5rem; }
-            .topnav-search input { width: 140px; }
-            .topnav-search input:focus { width: 180px; }
-            #search-results { width: 100vw; right: -1rem; border-radius: 0; }
-            .main-content { padding: 1.5rem 1rem 2rem; }
-            article h1 { font-size: 1.6rem; }
-            .homepage-content h1 { font-size: 1.8rem; }
-            .menu-toggle { display: block; }
+        /* ---- Menu toggle (docs mobile) ---- */
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-sm);
+            line-height: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ---- Reduced motion ---- */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
         }
     </style>
+
     
-    
+<style>
+    /* ---- Landing-page styles ---- */
+
+    /* Dot-grid background */
+    body {
+        background-image: radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px);
+        background-size: 32px 32px;
+    }
+
+    /* -- Hero -- */
+    .hero {
+        padding: 5rem 0 4.5rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .hero::before {
+        content: '';
+        position: absolute;
+        top: -80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 700px;
+        height: 500px;
+        background: radial-gradient(ellipse, rgba(0,255,135,0.055) 0%, transparent 68%);
+        pointer-events: none;
+    }
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        border-radius: 100px;
+        padding: 0.3rem 1rem;
+        font-size: 0.78rem;
+        font-family: var(--mono);
+        color: var(--green);
+        margin-bottom: 1.75rem;
+        letter-spacing: 0.01em;
+    }
+    .hero-badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+        flex-shrink: 0;
+        box-shadow: 0 0 6px var(--green);
+    }
+    .hero h1 {
+        font-size: clamp(2.5rem, 6.5vw, 4.4rem);
+        font-weight: 900;
+        letter-spacing: -0.055em;
+        line-height: 1.04;
+        color: #fff;
+        margin-bottom: 1.5rem;
+        max-width: 860px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .gradient-text {
+        background: linear-gradient(135deg, var(--green) 0%, #3b82f6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .hero-sub {
+        font-size: clamp(1rem, 2.5vw, 1.175rem);
+        color: var(--text-muted);
+        max-width: 540px;
+        margin: 0 auto 2.5rem;
+        line-height: 1.72;
+    }
+    .hero-actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 4rem;
+    }
+    .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: var(--green);
+        color: #000;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding: 0.65rem 1.5rem;
+        border-radius: var(--radius);
+        transition: opacity 0.15s, transform 0.15s;
+        text-decoration: none;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); text-decoration: none; }
+    .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: var(--bg-card);
+        color: var(--text);
+        font-size: 0.875rem;
+        padding: 0.65rem 1.4rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border-light);
+        transition: border-color 0.15s, transform 0.15s;
+        text-decoration: none;
+    }
+    .btn-secondary:hover { border-color: rgba(255,255,255,0.25); transform: translateY(-1px); text-decoration: none; }
+    .btn-secondary svg { flex-shrink: 0; }
+
+    /* -- Terminal window -- */
+    .terminal-wrap {
+        max-width: 700px;
+        margin: 0 auto;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        border: 1px solid var(--border-light);
+        box-shadow:
+            0 0 0 1px rgba(0,255,135,0.04),
+            0 0 60px rgba(0,255,135,0.06),
+            0 40px 80px rgba(0,0,0,0.5);
+        text-align: left;
+    }
+    .terminal-bar {
+        background: #1a1a1a;
+        padding: 0.7rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-bottom: 1px solid var(--border);
+    }
+    .t-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .t-dot-red    { background: #ff5f57; }
+    .t-dot-amber  { background: #febc2e; }
+    .t-dot-green  { background: #28c840; }
+    .terminal-title {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        margin-left: auto;
+        letter-spacing: 0.03em;
+    }
+    .terminal-body {
+        background: #0d0d0d;
+        padding: 1.5rem 1.75rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        line-height: 1.85;
+    }
+    .t-line { display: flex; gap: 0.6rem; min-height: 1.85em; }
+    .t-prompt { color: var(--green); user-select: none; flex-shrink: 0; }
+    .t-cmd { color: #e2e2e2; }
+    .t-flag { color: #7dd3fc; }
+    .t-ok { color: #4ade80; padding-left: 0.25rem; }
+    .t-dim { color: var(--text-dim); padding-left: 0.25rem; font-style: italic; }
+    .t-gap { height: 0.65rem; }
+
+    /* -- Stats bar -- */
+    .stats-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        margin: 4.5rem 0;
+        flex-wrap: wrap;
+    }
+    .stat {
+        text-align: center;
+        padding: 2rem 3rem;
+        flex: 1;
+        min-width: 130px;
+        position: relative;
+    }
+    .stat + .stat::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1px;
+        height: 36px;
+        background: var(--border);
+    }
+    .stat-value {
+        display: block;
+        font-size: 2.1rem;
+        font-weight: 900;
+        font-family: var(--mono);
+        color: #fff;
+        letter-spacing: -0.06em;
+        line-height: 1;
+        margin-bottom: 0.4rem;
+    }
+    .stat-label {
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    /* -- Sections -- */
+    .section { padding: 5rem 0; }
+    .section-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        margin-bottom: 0.75rem;
+    }
+    .section-title {
+        font-size: clamp(1.9rem, 4vw, 2.7rem);
+        font-weight: 900;
+        letter-spacing: -0.045em;
+        color: #fff;
+        line-height: 1.08;
+        margin-bottom: 1rem;
+    }
+    .section-sub {
+        font-size: 1rem;
+        color: var(--text-muted);
+        max-width: 500px;
+        line-height: 1.7;
+    }
+
+    /* -- Feature grid -- */
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        margin-top: 3.5rem;
+        background: var(--border);
+        gap: 1px;
+    }
+    .feature-card {
+        background: var(--bg-card);
+        padding: 2rem 1.75rem;
+        transition: background 0.15s;
+    }
+    .feature-card:hover { background: var(--bg-card-hover); }
+    .feature-icon {
+        width: 38px;
+        height: 38px;
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1.1rem;
+        font-size: 1.05rem;
+        flex-shrink: 0;
+    }
+    .feature-card h3 {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+    }
+    .feature-card p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+    }
+    .feature-card p code {
+        font-family: var(--mono);
+        font-size: 0.8em;
+        background: rgba(0,0,0,0.4);
+        border: 1px solid var(--border-light);
+        padding: 0.1em 0.35em;
+        border-radius: 3px;
+        color: var(--green);
+    }
+
+    /* -- Quickstart -- */
+    .quickstart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3rem;
+        align-items: start;
+        margin-top: 3.5rem;
+    }
+    .code-block {
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+    }
+    .code-block-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-card);
+    }
+    .code-block-title {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        letter-spacing: 0.05em;
+    }
+    .copy-btn {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--text-dim);
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.2rem 0.55rem;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+        line-height: 1.4;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--border-light); }
+    .code-block-body {
+        padding: 1.5rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        line-height: 2;
+    }
+    .c-comment { color: var(--text-dim); }
+    .c-cmd { color: var(--green); }
+    .c-arg { color: var(--text); }
+    .c-flag { color: #7dd3fc; }
+    .c-blank { height: 0.65rem; }
+
+    /* Steps */
+    .steps-list {
+        list-style: none;
+        counter-reset: step-counter;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .step-item {
+        counter-increment: step-counter;
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    .step-num {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-light);
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--green);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0.1rem;
+    }
+    .step-num::before { content: counter(step-counter); }
+    .step-body { padding-top: 0.05rem; }
+    .step-body strong { color: #fff; font-size: 0.9rem; display: block; margin-bottom: 0.3rem; }
+    .step-body span { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; }
+    .step-body code {
+        font-family: var(--mono);
+        font-size: 0.8em;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-light);
+        padding: 0.1em 0.4em;
+        border-radius: 3px;
+        color: var(--green);
+    }
+
+    /* -- CTA section -- */
+    .cta-section {
+        text-align: center;
+        padding: 6rem 0 5rem;
+        border-top: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+    }
+    .cta-section::before {
+        content: '';
+        position: absolute;
+        bottom: -60px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 600px;
+        height: 400px;
+        background: radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    .cta-section h2 {
+        font-size: clamp(2rem, 5vw, 3.2rem);
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        color: #fff;
+        margin-bottom: 1rem;
+        line-height: 1.08;
+    }
+    .cta-section > .container > p {
+        color: var(--text-muted);
+        margin-bottom: 2.5rem;
+        font-size: 1.05rem;
+        max-width: 420px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* -- Responsive -- */
+    @media (max-width: 900px) {
+        .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+        .quickstart-grid { grid-template-columns: 1fr; }
+        .hero { padding: 3.5rem 0 3rem; }
+        .section { padding: 3.5rem 0; }
+        .cta-section { padding: 4rem 0 3rem; }
+        .stat { padding: 1.5rem 1.5rem; min-width: 100px; }
+    }
+    @media (max-width: 600px) {
+        .feature-grid { grid-template-columns: 1fr; }
+        .stat + .stat::before { display: none; }
+        .stats-bar { flex-direction: column; }
+        .stat { padding: 1.25rem 1.5rem; border-top: 1px solid var(--border); }
+        .stat:first-child { border-top: none; }
+    }
+</style>
+
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
 
     
-    <nav class="topnav" aria-label="Main navigation">
-        <div class="topnav-inner">
-            <div style="display:flex;align-items:center;gap:0.75rem;">
-                
-                <a href="/" class="topnav-brand">page</a>
-                
-            </div>
-            <div class="topnav-links" id="topnav-links">
-                <a href="/docs">Docs</a>
-                <a href="/posts">Blog</a>
-                <a href="https://github.com/omarish/page">GitHub</a>
-            </div>
-            <form class="topnav-search" role="search" aria-label="Site search" onsubmit="return false">
-                <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
-                <div id="search-results" aria-live="polite"></div>
-            </form>
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+    <div class="container nav-inner">
+        <a href="/" class="nav-logo">
+            <span class="nav-logo-caret">▸</span>page
+        </a>
+        <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#quickstart">Quickstart</a></li>
+            <li><a href="/docs/getting-started">Docs</a></li>
+            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+        <a href="/docs/getting-started" class="nav-cta">Get started</a>
+    </div>
+</nav>
+
+
+    <main id="main">
+        
+
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <div class="hero-badge">
+            <span class="hero-badge-dot" aria-hidden="true"></span>
+            Built in Rust · AI-native · Open source
         </div>
-    </nav>
-    
 
-    
-    <div class="page-wrapper layout-wide">
-        <main id="main" class="main-content" role="main">
-            
+        <h1>
+            The static site generator<br>
+            for <span class="gradient-text">AI-native</span>
+            developers.
+        </h1>
 
-<div class="homepage-content"><h1 id="build-sites-that-speak-to-humans-and-machines">Build sites that speak to humans and machines</h1>
-<p><strong>page</strong> is a static site generator designed for the AI era. Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. No configuration required — it just works.</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">cargo</span><span style="color:#c0c5ce;"> install page
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> init mysite</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,docs,pages
-</span><span style="color:#96b5b4;">cd</span><span style="color:#c0c5ce;"> mysite
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> serve
-</span></pre>
-<hr />
-<h2 id="why-page">Why page?</h2>
-<h3 id="ai-native-output">AI-Native Output</h3>
-<p>Every page generates <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown files alongside HTML. Your content is ready for LLM consumption from day one.</p>
-<h3 id="built-in-ai-agent">Built-in AI Agent</h3>
-<p>Run <code>page agent</code> to launch an interactive Claude Code session with full site context — your config, content inventory, templates, and CLI commands are all available. Or pass a prompt directly: <code>page agent "write a post about Rust error handling"</code>.</p>
-<h3 id="six-bundled-themes">Six Bundled Themes</h3>
-<p>Ship with <strong>default</strong>, <strong>minimal</strong>, <strong>dark</strong>, <strong>docs</strong>, <strong>brutalist</strong>, and <strong>bento</strong> themes. Apply with one command or generate a completely custom theme with AI: <code>page theme create "coral brutalist with lime accents"</code>.</p>
-<h3 id="complete-seo-geo">Complete SEO + GEO</h3>
-<p>Canonical URLs, Open Graph, Twitter Cards, JSON-LD structured data, XML sitemap, RSS feeds, and per-page robots directives — all generated automatically from your content.</p>
-<h3 id="multi-language-support">Multi-Language Support</h3>
-<p>Filename-based translations: <code>about.md</code> for English, <code>about.es.md</code> for Spanish. Per-language URLs, hreflang tags, RSS feeds, search indexes, and discovery files — all automatic.</p>
-<h3 id="deploy-anywhere">Deploy Anywhere</h3>
-<p>GitHub Pages, Cloudflare Pages, or Netlify. One command: <code>page deploy</code>. Includes <code>--dry-run</code> to preview changes and auto-generated GitHub Actions workflows.</p>
-<hr />
-<h2 id="quick-start">Quick Start</h2>
-<p><strong>1. Create a site</strong></p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> init mysite</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">My Site</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,docs,pages
-</span><span style="color:#96b5b4;">cd</span><span style="color:#c0c5ce;"> mysite
-</span></pre>
-<p><strong>2. Write content</strong></p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new post &quot;</span><span style="color:#a3be8c;">Hello World</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> intro,welcome
-</span></pre>
-<p><strong>3. Build and preview</strong></p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build    </span><span style="color:#65737e;"># Generates dist/ with HTML, markdown, RSS, sitemap, llms.txt
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> serve    </span><span style="color:#65737e;"># Dev server with live reload at localhost:3000
-</span></pre>
-<p><strong>4. Deploy</strong></p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy   </span><span style="color:#65737e;"># Push to GitHub Pages, Cloudflare, or Netlify
-</span></pre>
+        <p class="hero-sub">Every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.</p>
+
+        <div class="hero-actions">
+            <a href="/docs/getting-started" class="btn-primary">Get started →</a>
+            <a href="https:&#x2F;&#x2F;github.com&#x2F;sanchezomar&#x2F;page" class="btn-secondary" rel="noopener noreferrer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                GitHub
+            </a>
+        </div>
+
+        <!-- Terminal demo -->
+        <div class="terminal-wrap" role="img" aria-label="page CLI demonstration">
+            <div class="terminal-bar" aria-hidden="true">
+                <span class="t-dot t-dot-red"></span>
+                <span class="t-dot t-dot-amber"></span>
+                <span class="t-dot t-dot-green"></span>
+                <span class="terminal-title">zsh — 80×24</span>
+            </div>
+            <div class="terminal-body">
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page init myblog <span class="t-flag">--title "My Blog" --collections posts,docs</span></span>
+                </div>
+                <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
+                <div class="t-line"><span class="t-ok">✓ Scaffolded templates + .claude/CLAUDE.md</span></div>
+                <div class="t-gap"></div>
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page agent <span class="t-flag">"write a post about Rust error handling"</span></span>
+                </div>
+                <div class="t-line"><span class="t-dim">↳ Spawning Claude Code with site context…</span></div>
+                <div class="t-line"><span class="t-ok">✓ Written to content/posts/2026-02-18-rust-error-handling.md</span></div>
+                <div class="t-gap"></div>
+                <div class="t-line">
+                    <span class="t-prompt">$</span>
+                    <span class="t-cmd">page deploy <span class="t-flag">--target github-pages</span></span>
+                </div>
+                <div class="t-line"><span class="t-dim">↳ Pre-flight checks passed · Building…</span></div>
+                <div class="t-line"><span class="t-ok">✓ Deployed in 3.2s → https://myblog.github.io</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Stats -->
+<div class="container">
+    <div class="stats-bar" aria-label="Project at a glance">
+        <div class="stat">
+            <span class="stat-value">12</span>
+            <span class="stat-label">Build steps</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">6</span>
+            <span class="stat-label">Bundled themes</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">3</span>
+            <span class="stat-label">Deploy targets</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">0</span>
+            <span class="stat-label">Config required</span>
+        </div>
+    </div>
+</div>
+
+<!-- Features -->
+<section class="section" id="features">
+    <div class="container">
+        <p class="section-eyebrow">// features</p>
+        <h2 class="section-title">
+            Everything you need.<br>
+            Nothing you don&#x27;t.
+        </h2>
+        <p class="section-sub">A 12-step build pipeline that outputs HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files. All from a single Rust binary with no runtime dependencies.</p>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">⚡</div>
+                <h3>Sub-second Rust builds</h3>
+                <p>12-step build pipeline with per-step timing. Compiled to a single static binary — no Node.js, no node_modules, no build dependencies.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🤖</div>
+                <h3>AI-native by design</h3>
+                <p>Every site ships with &lt;code&gt;llms.txt&lt;&#x2F;code&gt;, &lt;code&gt;llms-full.txt&lt;&#x2F;code&gt;, and raw markdown alongside HTML. Run &lt;code&gt;page agent&lt;&#x2F;code&gt; to spawn Claude Code with full site context.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🌐</div>
+                <h3>i18n out of the box</h3>
+                <p>Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🔍</div>
+                <h3>SEO + GEO optimized</h3>
+                <p>Canonical URLs, Open Graph, Twitter Cards, JSON-LD structured data, XML sitemap, and per-page robots directives — generated automatically from your content.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🚀</div>
+                <h3>One-command deploys</h3>
+                <p>GitHub Pages, Cloudflare Pages, and Netlify. Pre-flight checks, &lt;code&gt;--dry-run&lt;&#x2F;code&gt; preview, and auto-generated GitHub Actions workflows.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" aria-hidden="true">🎨</div>
+                <h3>6 themes, AI-generated customs</h3>
+                <p>Ship with default, dark, minimal, docs, brutalist, and bento themes. Or generate a custom one: &lt;code&gt;page theme create &quot;coral brutalist with lime accents&quot;&lt;&#x2F;code&gt;.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Quickstart -->
+<section class="section" id="quickstart">
+    <div class="container">
+        <p class="section-eyebrow">// quickstart</p>
+        <h2 class="section-title">Up and running<br>in 30 seconds.</h2>
+
+        <div class="quickstart-grid">
+            <!-- Code block -->
+            <div class="code-block">
+                <div class="code-block-header">
+                    <span class="code-block-title">install + init</span>
+                    <button
+                        class="copy-btn"
+                        aria-label="Copy install commands"
+                        onclick="var t='cargo install page-cli\npage init mysite --title &quot;My Site&quot;\ncd mysite\npage serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied!';}.bind(this)).catch(function(){});">copy</button>
+                </div>
+                <div class="code-block-body">
+                    <div><span class="c-comment"># install (requires Rust)</span></div>
+                    <div><span class="c-cmd">cargo</span> <span class="c-arg">install page-cli</span></div>
+                    <div class="c-blank"></div>
+                    <div><span class="c-comment"># scaffold a new site</span></div>
+                    <div><span class="c-cmd">page</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
+                    <div><span class="c-cmd">cd</span> <span class="c-arg">mysite</span></div>
+                    <div class="c-blank"></div>
+                    <div><span class="c-comment"># start dev server with live reload</span></div>
+                    <div><span class="c-cmd">page</span> <span class="c-arg">serve</span></div>
+                </div>
+            </div>
+
+            <!-- Steps -->
+            <ol class="steps-list" aria-label="Getting started steps">
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Install page</strong>
+                        <span>Requires Rust. Run <code>cargo install page-cli</code>.
+                        Single static binary, no runtime dependencies.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Scaffold your site</strong>
+                        <span>Run <code>page init mysite</code>. Generates config, templates,
+                        and a Claude Code context file at <code>.claude/CLAUDE.md</code>.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Create content with AI</strong>
+                        <span>Run <code>page agent "write about X"</code>. Claude reads your site
+                        context and generates content directly into the right directory.</span>
+                    </div>
+                </li>
+                <li class="step-item">
+                    <span class="step-num" aria-hidden="true"></span>
+                    <div class="step-body">
+                        <strong>Deploy anywhere</strong>
+                        <span>Run <code>page deploy</code>. Pre-flight checks, build, push.
+                        GitHub Pages, Cloudflare, or Netlify — all built in.</span>
+                    </div>
+                </li>
+            </ol>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+    <div class="container">
+        <h2>Ship sites that speak to everyone.</h2>
+        <p>HTML for browsers. Markdown for LLMs. Structured data for search engines.</p>
+        <div class="hero-actions">
+            <a href="/docs/getting-started" class="btn-primary">Get started →</a>
+            <a href="https:&#x2F;&#x2F;github.com&#x2F;sanchezomar&#x2F;page" class="btn-secondary" rel="noopener noreferrer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                View on GitHub
+            </a>
+        </div>
+    </div>
 </div>
 
 
-<section class="collection-section">
-    <h2>Posts</h2>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;posts&#x2F;introducing-page">Introducing page</a></h3>
-        <div class="item-meta">
-            <time>2026-02-18</time>
-            <span class="separator">&middot;</span>
-            <span>1 min read</span>
-        </div>
-        <p>page is a new static site generator built with Rust, designed for the AI era. Ships with llms.txt, markdown output, and a built-in Claude Code agent.</p>
-        
-        <div class="tags item-tags">
-            <a href="/tags/release/">release</a><a href="/tags/rust/">rust</a>
-        </div>
-        
-    </div>
-    
-    
-</section>
+    </main>
 
-<section class="collection-section">
-    <h2>Documentation</h2>
     
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;agent">AI Agent</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>1 min read</span>
-        </div>
-        <p>Use page agent to get AI assistance with content creation, site management, and theme generation.</p>
-        
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span class="footer-logo">
+            <span class="footer-logo-caret">▸</span>page
+        </span>
+        <ul class="footer-links">
+            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="/feed.xml">RSS</a></li>
+            <li><a href="/llms.txt">llms.txt</a></li>
+            <li><a href="/sitemap.xml">Sitemap</a></li>
+        </ul>
     </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>2 min read</span>
-        </div>
-        <p>Complete reference for all page CLI commands, flags, and options.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;collections">Collections</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>2 min read</span>
-        </div>
-        <p>Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;configuration">Configuration</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>2 min read</span>
-        </div>
-        <p>Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;deployment">Deployment</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>1 min read</span>
-        </div>
-        <p>Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>1 min read</span>
-        </div>
-        <p>Install page and build your first static site in under a minute.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>1 min read</span>
-        </div>
-        <p>Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.</p>
-        
-    </div>
-    
-    <div class="collection-item">
-        <h3><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></h3>
-        <div class="item-meta">
-            
-            
-            <span>2 min read</span>
-        </div>
-        <p>Customize your site with Tera templates, overridable blocks, and six bundled themes.</p>
-        
-    </div>
-    
-    
-</section>
+</footer>
 
-
-
-
-        </main>
-    </div>
-    
-
-    <footer class="site-footer">
-    
-        <p>&copy;  &middot; page</p>
-    
-    </footer>
 
     <script>
     (function(){
         var input = document.getElementById('search-input');
-        if (!input) return;
         var results = document.getElementById('search-results');
+        if (!input || !results) return;
         var index = null;
         var indexUrl = '/search-index.json';
-        input.addEventListener('focus', function() {
-            if (index) return;
-            fetch(indexUrl).then(function(r){ return r.json(); }).then(function(data){ index = data; }).catch(function(){ index = []; });
-        });
-        input.addEventListener('input', function() {
-            if (!index) { results.innerHTML = ''; return; }
-            var q = this.value.toLowerCase().trim();
+        function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
+        function search(q) {
+            q = q.toLowerCase().trim();
             if (!q) { results.innerHTML = ''; return; }
-            var matches = index.filter(function(item) {
-                return (item.title && item.title.toLowerCase().includes(q)) ||
-                       (item.description && item.description.toLowerCase().includes(q)) ||
-                       (item.tags && item.tags.some(function(t){ return t.toLowerCase().includes(q); }));
+            var hits = index.filter(function(e){
+                return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
             }).slice(0, 8);
-            if (matches.length === 0) {
-                results.innerHTML = '<div class="no-results">No results</div>';
-                return;
-            }
-            results.innerHTML = matches.map(function(m) {
-                return '<a href="' + m.url + '"><strong>' + m.title + '</strong>' +
-                       '<div class="result-meta">' + (m.collection || '') + (m.date ? ' \u00b7 ' + m.date : '') + '</div></a>';
+            if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
+            results.innerHTML = hits.map(function(e){
+                var meta = [e.collection, e.date].filter(Boolean).join(' \u00b7 ');
+                return '<a href="' + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
             }).join('');
-        });
+        }
+        input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
         document.addEventListener('click', function(e) {
             if (!results.contains(e.target) && e.target !== input) { results.innerHTML = ''; }
         });
     })();
     </script>
+
     
 </body>
 </html>
