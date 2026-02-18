@@ -87,7 +87,8 @@
         article h3 a { color: inherit; }
         article h3 a:hover { text-decoration: underline; }
         time { font-size: 0.8rem; color: #9ca3af; display: block; margin-bottom: 0.4rem; }
-        .tags span { background: #ede9fe; color: #5046e5; border: 1px solid #ddd6fe; padding: 0.1rem 0.5rem; border-radius: 20px; margin-right: 0.3rem; font-size: 0.75rem; font-weight: 600; }
+        .tags a, .tags span { background: #ede9fe; color: #5046e5; border: 1px solid #ddd6fe; padding: 0.1rem 0.5rem; border-radius: 20px; margin-right: 0.3rem; font-size: 0.75rem; font-weight: 600; text-decoration: none; }
+        .tags a:hover { background: #ddd6fe; }
         pre { background: #f8f8f8; padding: 1rem; border-radius: 12px; overflow-x: auto; border: 1px solid #e5e7eb; }
         code { font-size: 0.9em; background: #ede9fe; color: #5046e5; padding: 0.1rem 0.35rem; border-radius: 4px; }
         pre code { background: none; padding: 0; color: inherit; }

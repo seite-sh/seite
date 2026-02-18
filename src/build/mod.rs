@@ -76,6 +76,14 @@ struct PageContext {
     collection: String,
     /// Per-page robots meta value, e.g. "noindex".
     robots: Option<String>,
+    /// Word count of the raw markdown body.
+    word_count: usize,
+    /// Estimated reading time in minutes (based on 238 WPM average).
+    reading_time: usize,
+    /// Auto-extracted excerpt rendered as HTML.
+    excerpt: String,
+    /// Table of contents entries extracted from heading hierarchy.
+    toc: Vec<markdown::TocEntry>,
 }
 
 #[derive(Serialize)]
@@ -93,6 +101,12 @@ struct ItemSummary {
     slug: String,
     tags: Vec<String>,
     url: String,
+    /// Word count of the raw markdown body.
+    word_count: usize,
+    /// Estimated reading time in minutes.
+    reading_time: usize,
+    /// Auto-extracted excerpt rendered as HTML.
+    excerpt: String,
 }
 
 #[derive(Serialize)]
@@ -221,7 +235,7 @@ pub fn build_site(
                     fm.date = parse_date_from_filename(path);
                 }
 
-                let html_body = markdown::markdown_to_html(&raw_body);
+                let (html_body, toc) = markdown::markdown_to_html(&raw_body);
 
                 // Build URL: non-default languages get /{lang} prefix
                 let base_url = build_url(&collection.url_prefix, &slug);
@@ -231,6 +245,7 @@ pub fn build_site(
                     base_url
                 };
 
+                let excerpt = content::extract_excerpt(&raw_body);
                 items.push(ContentItem {
                     frontmatter: fm,
                     raw_body,
@@ -240,6 +255,8 @@ pub fn build_site(
                     collection: collection.name.clone(),
                     url,
                     lang,
+                    excerpt,
+                    toc,
                 });
             }
         }
@@ -364,13 +381,19 @@ pub fn build_site(
                     label: c.label.clone(),
                     items: items
                         .iter()
-                        .map(|item| ItemSummary {
-                            title: item.frontmatter.title.clone(),
-                            date: item.frontmatter.date.map(|d| d.to_string()),
-                            description: item.frontmatter.description.clone(),
-                            slug: item.slug.clone(),
-                            tags: item.frontmatter.tags.clone(),
-                            url: item.url.clone(),
+                        .map(|item| {
+                            let (wc, rt) = compute_reading_stats(&item.raw_body);
+                            ItemSummary {
+                                title: item.frontmatter.title.clone(),
+                                date: item.frontmatter.date.map(|d| d.to_string()),
+                                description: item.frontmatter.description.clone(),
+                                slug: item.slug.clone(),
+                                tags: item.frontmatter.tags.clone(),
+                                url: item.url.clone(),
+                                word_count: wc,
+                                reading_time: rt,
+                                excerpt: markdown::markdown_to_html(&item.excerpt).0,
+                            }
                         })
                         .collect(),
                 }
@@ -389,6 +412,8 @@ pub fn build_site(
         };
         let index_page_ctx =
             if let Some(homepage) = homepage_pages.iter().find(|p| p.lang == *lang) {
+                let (word_count, reading_time) = compute_reading_stats(&homepage.raw_body);
+                let excerpt_html = markdown::markdown_to_html(&homepage.excerpt).0;
                 PageContext {
                     title: homepage.frontmatter.title.clone(),
                     content: homepage.html_body.clone(),
@@ -401,6 +426,10 @@ pub fn build_site(
                     url: index_page_url,
                     collection: homepage.collection.clone(),
                     robots: homepage.frontmatter.robots.clone(),
+                    word_count,
+                    reading_time,
+                    excerpt: excerpt_html,
+                    toc: homepage.toc.clone(),
                 }
             } else {
                 PageContext {
@@ -415,6 +444,10 @@ pub fn build_site(
                     url: index_page_url,
                     collection: String::new(),
                     robots: None,
+                    word_count: 0,
+                    reading_time: 0,
+                    excerpt: String::new(),
+                    toc: Vec::new(),
                 }
             };
         index_ctx.insert("page", &index_page_ctx);
@@ -480,13 +513,19 @@ pub fn build_site(
             let lang_items: Vec<ItemSummary> = all_items
                 .iter()
                 .filter(|item| item.lang == *lang)
-                .map(|item| ItemSummary {
-                    title: item.frontmatter.title.clone(),
-                    date: item.frontmatter.date.map(|d| d.to_string()),
-                    description: item.frontmatter.description.clone(),
-                    slug: item.slug.clone(),
-                    tags: item.frontmatter.tags.clone(),
-                    url: item.url.clone(),
+                .map(|item| {
+                    let (wc, rt) = compute_reading_stats(&item.raw_body);
+                    ItemSummary {
+                        title: item.frontmatter.title.clone(),
+                        date: item.frontmatter.date.map(|d| d.to_string()),
+                        description: item.frontmatter.description.clone(),
+                        slug: item.slug.clone(),
+                        tags: item.frontmatter.tags.clone(),
+                        url: item.url.clone(),
+                        word_count: wc,
+                        reading_time: rt,
+                        excerpt: markdown::markdown_to_html(&item.excerpt).0,
+                    }
                 })
                 .collect();
 
@@ -544,6 +583,10 @@ pub fn build_site(
                     url: page_url(page_num),
                     collection: String::new(),
                     robots: None,
+                    word_count: 0,
+                    reading_time: 0,
+                    excerpt: String::new(),
+                    toc: Vec::new(),
                 });
                 let html = tera
                     .render("index.html", &ctx)
@@ -582,6 +625,175 @@ pub fn build_site(
         }
     }
 
+    // Step 4b: Generate 404 page
+    if tera.get_template("404.html").is_ok() {
+        let mut ctx_404 = tera::Context::new();
+        ctx_404.insert("site", &SiteContext::from_config(config));
+        ctx_404.insert("lang", default_lang);
+        ctx_404.insert("translations", &Vec::<TranslationLink>::new());
+        ctx_404.insert("collections", &Vec::<CollectionContext>::new());
+        ctx_404.insert("page", &PageContext {
+            title: "Page Not Found".to_string(),
+            content: String::new(),
+            date: None,
+            updated: None,
+            description: None,
+            image: None,
+            slug: "404".to_string(),
+            tags: Vec::new(),
+            url: "/404".to_string(),
+            collection: String::new(),
+            robots: Some("noindex".to_string()),
+            word_count: 0,
+            reading_time: 0,
+            excerpt: String::new(),
+            toc: Vec::new(),
+        });
+        let html_404 = tera
+            .render("404.html", &ctx_404)
+            .map_err(|e| PageError::Build(format!("rendering 404 page: {e}")))?;
+        fs::write(paths.output.join("404.html"), html_404)?;
+    }
+
+    // Step 4c: Generate tag pages
+    // Collect all tags per language from all collections
+    let mut tag_page_urls: Vec<String> = Vec::new();
+    if tera.get_template("tags.html").is_ok() && tera.get_template("tag.html").is_ok() {
+        for lang in &config.all_languages() {
+            let lang_prefix = if *lang == *default_lang {
+                String::new()
+            } else {
+                format!("/{lang}")
+            };
+            let tags_base_url = format!("{lang_prefix}/tags");
+
+            // Gather all tags and their items for this language
+            let mut tag_map: HashMap<String, Vec<ItemSummary>> = HashMap::new();
+            for c in &config.collections {
+                if let Some(items) = all_collections.get(&c.name) {
+                    for item in items.iter().filter(|i| i.lang == *lang) {
+                        let (wc, rt) = compute_reading_stats(&item.raw_body);
+                        let summary = ItemSummary {
+                            title: item.frontmatter.title.clone(),
+                            date: item.frontmatter.date.map(|d| d.to_string()),
+                            description: item.frontmatter.description.clone(),
+                            slug: item.slug.clone(),
+                            tags: item.frontmatter.tags.clone(),
+                            url: item.url.clone(),
+                            word_count: wc,
+                            reading_time: rt,
+                            excerpt: markdown::markdown_to_html(&item.excerpt).0,
+                        };
+                        for tag in &item.frontmatter.tags {
+                            let normalized = tag.to_lowercase();
+                            tag_map.entry(normalized).or_default().push(summary.clone());
+                        }
+                    }
+                }
+            }
+
+            if tag_map.is_empty() {
+                continue;
+            }
+
+            // Sort tags alphabetically
+            let mut sorted_tags: Vec<(String, Vec<ItemSummary>)> =
+                tag_map.into_iter().collect();
+            sorted_tags.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let lang_site_ctx = SiteContext::for_lang(config, lang);
+
+            // Generate tags index page
+            #[derive(Serialize)]
+            struct TagIndexEntry {
+                name: String,
+                url: String,
+                count: usize,
+            }
+
+            let tag_entries: Vec<TagIndexEntry> = sorted_tags
+                .iter()
+                .map(|(tag, items)| {
+                    let tag_slug = slug::slugify(tag);
+                    TagIndexEntry {
+                        name: tag.clone(),
+                        url: format!("{tags_base_url}/{tag_slug}/"),
+                        count: items.len(),
+                    }
+                })
+                .collect();
+
+            let mut tags_ctx = tera::Context::new();
+            tags_ctx.insert("site", &lang_site_ctx);
+            tags_ctx.insert("lang", lang);
+            tags_ctx.insert("tags", &tag_entries);
+            tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
+            tags_ctx.insert("page", &PageContext {
+                title: "Tags".to_string(),
+                content: String::new(),
+                date: None,
+                updated: None,
+                description: None,
+                image: None,
+                slug: "tags".to_string(),
+                tags: Vec::new(),
+                url: format!("{tags_base_url}/"),
+                collection: String::new(),
+                robots: None,
+                word_count: 0,
+                reading_time: 0,
+                excerpt: String::new(),
+                toc: Vec::new(),
+            });
+            let tags_html = tera
+                .render("tags.html", &tags_ctx)
+                .map_err(|e| PageError::Build(format!("rendering tags index: {e}")))?;
+            let tags_dir = paths.output.join(tags_base_url.trim_start_matches('/'));
+            fs::create_dir_all(&tags_dir)?;
+            fs::write(tags_dir.join("index.html"), tags_html)?;
+            tag_page_urls.push(format!("{tags_base_url}/"));
+
+            // Generate individual tag pages
+            for (tag, items) in &sorted_tags {
+                let tag_slug = slug::slugify(tag);
+                let tag_url = format!("{tags_base_url}/{tag_slug}/");
+                let mut tag_ctx = tera::Context::new();
+                tag_ctx.insert("site", &lang_site_ctx);
+                tag_ctx.insert("lang", lang);
+                tag_ctx.insert("tag_name", tag);
+                tag_ctx.insert("items", items);
+                tag_ctx.insert("tags_url", &format!("{tags_base_url}/"));
+                tag_ctx.insert("translations", &Vec::<TranslationLink>::new());
+                tag_ctx.insert("page", &PageContext {
+                    title: format!("Tag: {tag}"),
+                    content: String::new(),
+                    date: None,
+                    updated: None,
+                    description: None,
+                    image: None,
+                    slug: format!("tags/{tag_slug}"),
+                    tags: Vec::new(),
+                    url: tag_url.clone(),
+                    collection: String::new(),
+                    robots: None,
+                    word_count: 0,
+                    reading_time: 0,
+                    excerpt: String::new(),
+                    toc: Vec::new(),
+                });
+                let tag_html = tera
+                    .render("tag.html", &tag_ctx)
+                    .map_err(|e| PageError::Build(format!("rendering tag '{tag}': {e}")))?;
+                let tag_dir = paths.output.join(
+                    format!("{}/{tag_slug}", tags_base_url.trim_start_matches('/')),
+                );
+                fs::create_dir_all(&tag_dir)?;
+                fs::write(tag_dir.join("index.html"), tag_html)?;
+                tag_page_urls.push(tag_url);
+            }
+        }
+    }
+
     // Step 5: Generate RSS feed(s)
     // Default language feed at /feed.xml
     let default_rss_items: Vec<&ContentItem> = config
@@ -615,7 +827,7 @@ pub fn build_site(
 
     // Step 6: Generate sitemap (all items, all languages)
     let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let sitemap_xml = sitemap::generate_sitemap(config, &all_items, &translation_map)?;
+    let sitemap_xml = sitemap::generate_sitemap(config, &all_items, &translation_map, &tag_page_urls)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
 
     // Step 7: Generate discovery files (robots.txt, llms.txt, llms-full.txt)
@@ -1052,6 +1264,14 @@ fn minify_js(raw: &[u8]) -> String {
     result
 }
 
+/// Compute word count and estimated reading time (in minutes) from raw markdown.
+/// Uses 238 words per minute (average adult reading speed).
+fn compute_reading_stats(raw_body: &str) -> (usize, usize) {
+    let word_count = raw_body.split_whitespace().count();
+    let reading_time = if word_count == 0 { 0 } else { (word_count / 238).max(1) };
+    (word_count, reading_time)
+}
+
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     let clean = url.trim_matches('/');
     output_dir.join(format!("{clean}.html"))
@@ -1065,6 +1285,8 @@ fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
 fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
+    let (word_count, reading_time) = compute_reading_stats(&item.raw_body);
+    let excerpt_html = markdown::markdown_to_html(&item.excerpt).0;
     ctx.insert(
         "page",
         &PageContext {
@@ -1079,6 +1301,10 @@ fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
             url: item.url.clone(),
             collection: item.collection.clone(),
             robots: item.frontmatter.robots.clone(),
+            word_count,
+            reading_time,
+            excerpt: excerpt_html,
+            toc: item.toc.clone(),
         },
     );
     ctx

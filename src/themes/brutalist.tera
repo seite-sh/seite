@@ -66,7 +66,8 @@
         article h3 a { text-decoration: none; color: #000; }
         article h3 a:hover { background: #ffe600; }
         time { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem; }
-        .tags span { background: #ffe600; border: 2px solid #000; padding: 0.1rem 0.4rem; margin-right: 0.25rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+        .tags a, .tags span { background: #ffe600; border: 2px solid #000; padding: 0.1rem 0.4rem; margin-right: 0.25rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; }
+        .tags a:hover { background: #ffd000; box-shadow: 2px 2px 0 #000; }
         pre { background: #fff; padding: 1rem; border: 3px solid #000; overflow-x: auto; border-radius: 0; box-shadow: 4px 4px 0 #000; }
         code { font-size: 0.9em; background: #ffe600; padding: 0.1rem 0.3rem; }
         pre code { background: none; padding: 0; }

@@ -46,6 +46,10 @@ pub struct ContentItem {
     pub collection: String,
     pub url: String,
     pub lang: String,
+    /// Auto-extracted excerpt (raw markdown): `<!-- more -->` marker or first paragraph.
+    pub excerpt: String,
+    /// Table of contents extracted from heading hierarchy.
+    pub toc: Vec<crate::build::markdown::TocEntry>,
 }
 
 /// Parse a markdown file with YAML frontmatter delimited by `---`.
@@ -116,6 +120,23 @@ pub fn strip_lang_suffix<'a>(stem: &'a str, configured_langs: &HashSet<&str>) ->
         }
     }
     stem
+}
+
+/// Extract an excerpt from raw markdown content.
+/// Checks for `<!-- more -->` marker first; falls back to the first paragraph
+/// (text before the first blank line).
+pub fn extract_excerpt(raw_body: &str) -> String {
+    // Check for <!-- more --> marker
+    if let Some(pos) = raw_body.find("<!-- more -->") {
+        return raw_body[..pos].trim().to_string();
+    }
+    // Fall back to first non-empty paragraph (before first blank line)
+    raw_body
+        .split("\n\n")
+        .find(|p| !p.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -215,5 +236,30 @@ mod tests {
         assert_eq!(strip_lang_suffix("2025-01-15-hello.fr", &langs), "2025-01-15-hello");
         assert_eq!(strip_lang_suffix("about", &langs), "about");
         assert_eq!(strip_lang_suffix("readme.min", &langs), "readme.min");
+    }
+
+    #[test]
+    fn test_extract_excerpt_more_marker() {
+        let body = "First paragraph here.\n\nSecond paragraph.\n\n<!-- more -->\n\nThird paragraph.";
+        assert_eq!(
+            extract_excerpt(body),
+            "First paragraph here.\n\nSecond paragraph."
+        );
+    }
+
+    #[test]
+    fn test_extract_excerpt_first_paragraph() {
+        let body = "This is the intro paragraph.\n\nThis is the second paragraph.\n\nAnd a third.";
+        assert_eq!(extract_excerpt(body), "This is the intro paragraph.");
+    }
+
+    #[test]
+    fn test_extract_excerpt_empty() {
+        assert_eq!(extract_excerpt(""), "");
+    }
+
+    #[test]
+    fn test_extract_excerpt_single_paragraph() {
+        assert_eq!(extract_excerpt("Just one paragraph"), "Just one paragraph");
     }
 }
