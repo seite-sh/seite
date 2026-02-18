@@ -52,7 +52,7 @@
     }
     .docs-sidebar nav a:hover {
         color: var(--text);
-        background: rgba(255,255,255,0.03);
+        background: var(--bg-raised);
         text-decoration: none;
     }
     .docs-sidebar nav .active a {
@@ -144,7 +144,7 @@
         font-weight: 400;
         font-style: italic;
         letter-spacing: -0.02em;
-        color: #fff;
+        color: var(--heading);
         margin-bottom: 0.6rem;
         line-height: 1.1;
     }
@@ -196,7 +196,7 @@
     .docs-main .content h2 {
         font-size: 1.25rem;
         font-weight: 700;
-        color: #fff;
+        color: var(--heading);
         margin: 3rem 0 1rem;
         letter-spacing: -0.025em;
         padding-top: 1.5rem;
@@ -210,7 +210,7 @@
     .docs-main .content h3 {
         font-size: 1rem;
         font-weight: 600;
-        color: #ddd;
+        color: var(--heading-sub);
         margin: 2rem 0 0.65rem;
     }
     .docs-main .content p {
@@ -220,7 +220,7 @@
     }
     .docs-main .content a { color: var(--green); }
     .docs-main .content a:hover { text-decoration: underline; }
-    .docs-main .content strong { color: #fff; }
+    .docs-main .content strong { color: var(--strong); }
 
     /* Inline code */
     .docs-main .content code {
@@ -360,7 +360,50 @@
     .doc-nav-next { text-align: right; }
     .doc-nav-placeholder { visibility: hidden; }
 
+    /* ── Right-column TOC ── */
+    .docs-layout { max-width: 1280px; }
+    .docs-toc {
+        width: var(--toc-w);
+        flex-shrink: 0;
+        padding: 2.5rem 0 2rem 2rem;
+        position: sticky;
+        top: 56px;
+        height: calc(100vh - 56px);
+        overflow-y: auto;
+    }
+    .docs-toc::-webkit-scrollbar { width: 3px; }
+    .docs-toc::-webkit-scrollbar-track { background: transparent; }
+    .docs-toc::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+    .docs-toc h4 {
+        font-family: var(--geist);
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--text-dim);
+        margin-bottom: 0.65rem;
+        font-weight: 600;
+    }
+    .docs-toc ul { list-style: none; }
+    .docs-toc li { margin-bottom: 0.15rem; }
+    .docs-toc a {
+        font-family: var(--geist);
+        color: var(--text-dim);
+        font-size: 0.76rem;
+        text-decoration: none;
+        display: block;
+        padding: 0.2rem 0;
+        transition: color 0.12s;
+        line-height: 1.4;
+    }
+    .docs-toc a:hover { color: var(--green); text-decoration: none; }
+    .docs-toc a.toc-active { color: var(--green); }
+    .docs-toc .toc-level-3 { padding-left: 0.9rem; }
+    .docs-toc .toc-level-4 { padding-left: 1.8rem; }
+
     /* ── Responsive ── */
+    @media (max-width: 1200px) {
+        .docs-toc { display: none; }
+    }
     @media (max-width: 900px) {
         .docs-sidebar { width: 260px; }
         .docs-main { padding-left: 1rem; }
@@ -398,14 +441,6 @@
         <article>
             <h1>{{ page.title }}</h1>
             {% if page.description %}<p class="doc-description">{{ page.description }}</p>{% endif %}
-            {% if page.toc | length > 1 %}
-            <nav class="toc" aria-label="Table of contents">
-                <h4>On this page</h4>
-                <ul>
-                {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
-                {% endfor %}</ul>
-            </nav>
-            {% endif %}
             <div class="content">{{ page.content | safe }}</div>
         </article>
 
@@ -453,6 +488,16 @@
         {% endif %}
         {% endif %}
     </div>
+    {% if page.toc | length > 1 %}
+    <aside class="docs-toc" aria-label="On this page">
+        <nav>
+            <h4>On this page</h4>
+            <ul>
+            {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+            {% endfor %}</ul>
+        </nav>
+    </aside>
+    {% endif %}
 </div>
 {% else %}
 <div class="container article-wrap">
@@ -504,6 +549,29 @@
     document.addEventListener('click', function(e) {
         if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
     });
+})();
+
+// ── TOC scroll spy ──
+(function(){
+    var toc = document.querySelector('.docs-toc nav');
+    if (!toc) return;
+    var links = Array.from(toc.querySelectorAll('a[href^="#"]'));
+    if (!links.length) return;
+    var headings = links.map(function(a){
+        return document.getElementById(a.getAttribute('href').slice(1));
+    }).filter(Boolean);
+    function activate() {
+        var scrollY = window.scrollY + 80;
+        var active = headings[0];
+        for (var i = 0; i < headings.length; i++) {
+            if (headings[i].offsetTop <= scrollY) active = headings[i];
+        }
+        links.forEach(function(a){ a.classList.remove('toc-active'); });
+        var hit = toc.querySelector('a[href="#' + active.id + '"]');
+        if (hit) hit.classList.add('toc-active');
+    }
+    window.addEventListener('scroll', activate, { passive: true });
+    activate();
 })();
 </script>
 {% endblock %}
