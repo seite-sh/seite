@@ -64,11 +64,15 @@
         img { max-width: 100%; height: auto; }
         hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
         footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
+        .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #333; color: #fff; z-index: 100; text-decoration: none; font-family: system-ui, sans-serif; }
+        .skip-link:focus { top: 0; }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
 </head>
 <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
     <header>
     {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
@@ -78,13 +82,13 @@
             {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
         </nav>
         {% endif %}
-        <form class="search-form" onsubmit="return false">
-            <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
+        <form class="search-form" role="search" aria-label="Site search" onsubmit="return false">
+            <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
         </form>
-        <div id="search-results"></div>
+        <div id="search-results" aria-live="polite"></div>
     {% endblock %}
     </header>
-    <main>
+    <main id="main">
         {% block content %}{% endblock %}
     </main>
     <footer>
