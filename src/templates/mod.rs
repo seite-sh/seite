@@ -24,7 +24,7 @@ pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
     <article>
         <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
         {% if item.date %}<time>{{ item.date }}</time>{% endif %}
-        {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
     </article>
     {% endfor %}
     {% if collection.items | length == 0 %}
@@ -50,23 +50,32 @@ pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
 <article>
     <h1>{{ page.title }}</h1>
     {% if page.date %}<time>{{ page.date }}</time>{% endif %}
+    {% if page.reading_time %}<span class="reading-time">{{ page.reading_time }} min read</span>{% endif %}
     {% if page.tags | length > 0 %}
     <div class="tags">
-        {% for tag in page.tags %}<span>{{ tag }}</span>{% endfor %}
+        {% for tag in page.tags %}<a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
     </div>
     {% endif %}
     <div class="content">{{ page.content | safe }}</div>
 </article>
 {% endblock %}"#;
 
-pub const DEFAULT_DOC: &str = r#"{% extends "base.html" %}
+pub const DEFAULT_DOC: &str = r##"{% extends "base.html" %}
 {% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
 {% block content %}
 <article>
     <h1>{{ page.title }}</h1>
+    {% if page.toc | length > 1 %}
+    <nav class="toc">
+        <h4>Contents</h4>
+        <ul>
+        {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+        {% endfor %}</ul>
+    </nav>
+    {% endif %}
     <div class="content">{{ page.content | safe }}</div>
 </article>
-{% endblock %}"#;
+{% endblock %}"##;
 
 pub const DEFAULT_PAGE: &str = r#"{% extends "base.html" %}
 {% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
@@ -77,6 +86,43 @@ pub const DEFAULT_PAGE: &str = r#"{% extends "base.html" %}
 </article>
 {% endblock %}"#;
 
+pub const DEFAULT_404: &str = r#"{% extends "base.html" %}
+{% block title %}Page Not Found — {{ site.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>404 — Page Not Found</h1>
+    <p>The page you requested could not be found. <a href="/">Go to the homepage</a>.</p>
+</article>
+{% endblock %}"#;
+
+pub const DEFAULT_TAGS_INDEX: &str = r#"{% extends "base.html" %}
+{% block title %}Tags — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Tags</h1>
+<div class="tags-index">
+    {% for tag in tags %}
+    <a href="{{ tag.url }}" class="tag-link">{{ tag.name }} <span class="tag-count">({{ tag.count }})</span></a>
+    {% endfor %}
+</div>
+{% endblock %}"#;
+
+pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
+{% block title %}Tag: {{ tag_name }} — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Tagged "{{ tag_name }}"</h1>
+<div class="tag-items">
+    {% for item in items %}
+    <article>
+        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+        {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} min read</span>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+    </article>
+    {% endfor %}
+</div>
+<p><a href="{{ tags_url }}">&larr; All tags</a></p>
+{% endblock %}"##;
+
 fn get_default_template(name: &str) -> Option<&'static str> {
     match name {
         "base.html" => Some(default_base()),
@@ -84,6 +130,9 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "post.html" => Some(DEFAULT_POST),
         "doc.html" => Some(DEFAULT_DOC),
         "page.html" => Some(DEFAULT_PAGE),
+        "404.html" => Some(DEFAULT_404),
+        "tags.html" => Some(DEFAULT_TAGS_INDEX),
+        "tag.html" => Some(DEFAULT_TAG),
         _ => None,
     }
 }
@@ -101,8 +150,8 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
         tera::Tera::default()
     };
 
-    // Always ensure base.html and index.html exist
-    for name in ["base.html", "index.html"] {
+    // Always ensure essential templates exist
+    for name in ["base.html", "index.html", "404.html", "tags.html", "tag.html"] {
         if tera.get_template(name).is_err() {
             if let Some(content) = get_default_template(name) {
                 tera.add_raw_template(name, content)?;

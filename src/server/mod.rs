@@ -152,8 +152,22 @@ fn run_serve_loop(
                         continue;
                     }
                 }
-                let _ =
-                    request.respond(Response::from_string("404 Not Found").with_status_code(404));
+                // Try to serve custom 404.html if it exists
+                let not_found_path = paths.output.join("404.html");
+                if not_found_path.exists() {
+                    let content = fs::read(&not_found_path).unwrap_or_default();
+                    let content = inject_livereload(&content);
+                    let header =
+                        Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
+                    let _ = request.respond(
+                        Response::from_data(content)
+                            .with_header(header)
+                            .with_status_code(404),
+                    );
+                } else {
+                    let _ = request
+                        .respond(Response::from_string("404 Not Found").with_status_code(404));
+                }
             }
             Ok(None) => {}
             Err(_) => break,

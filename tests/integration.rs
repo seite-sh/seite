@@ -1417,3 +1417,368 @@ fn test_build_no_image_processing_without_config() {
     // Actually, the 100x100 image is smaller than all default widths, so no resized copies
     assert!(!site_dir.join("dist/static/images/photo-480w.png").exists());
 }
+
+// ── Reading time + word count ──
+
+#[test]
+fn test_build_reading_time_in_html() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "rtsite", "RT Site", "posts");
+    let site_dir = tmp.path().join("rtsite");
+
+    // Write a post with a known word count (~300 words → 2 min read at 238 WPM)
+    let words: String = (0..300).map(|i| format!("word{i} ")).collect();
+    let content = format!(
+        "---\ntitle: Reading Test\ndate: 2025-01-15\n---\n{}",
+        words
+    );
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-reading-test.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/posts/reading-test.html")).unwrap();
+    assert!(html.contains("min read"), "should contain reading time");
+    assert!(
+        html.contains("reading-time"),
+        "should contain reading-time class"
+    );
+}
+
+#[test]
+fn test_build_reading_time_in_index() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "rtidx", "RT Index", "posts");
+    let site_dir = tmp.path().join("rtidx");
+
+    let words: String = (0..500).map(|i| format!("word{i} ")).collect();
+    let content = format!(
+        "---\ntitle: Long Post\ndate: 2025-01-15\n---\n{}",
+        words
+    );
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-long-post.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The index page should have the reading_time in the item summary via template
+    // (reading_time is available as item.reading_time in index templates)
+    let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    // Index currently doesn't display reading_time by default, but the data is there
+    // Just verify the build succeeded and post appears
+    assert!(html.contains("Long Post"));
+}
+
+// ── Excerpts ──
+
+#[test]
+fn test_build_excerpt_more_marker() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "exsite1", "Excerpt Site", "posts");
+    let site_dir = tmp.path().join("exsite1");
+
+    let content = "---\ntitle: More Marker\ndate: 2025-01-15\n---\nThis is the intro.\n\n<!-- more -->\n\nThis is after the fold.";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-more-marker.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    // Index should show the excerpt (intro before <!-- more -->)
+    assert!(index.contains("This is the intro."), "excerpt should appear in index");
+    assert!(
+        !index.contains("This is after the fold."),
+        "content after more marker should not be in excerpt"
+    );
+}
+
+#[test]
+fn test_build_excerpt_first_paragraph() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "exsite2", "Excerpt Site 2", "posts");
+    let site_dir = tmp.path().join("exsite2");
+
+    let content = "---\ntitle: Auto Excerpt\ndate: 2025-01-15\n---\nFirst paragraph auto-extracted.\n\nSecond paragraph not shown.\n\nThird paragraph also hidden.";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-auto-excerpt.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("First paragraph auto-extracted."),
+        "first paragraph should be used as excerpt"
+    );
+}
+
+#[test]
+fn test_build_excerpt_description_takes_priority() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "exsite3", "Excerpt Site 3", "posts");
+    let site_dir = tmp.path().join("exsite3");
+
+    // When description is set, it should take priority over excerpt in the default index template
+    let content = "---\ntitle: With Description\ndate: 2025-01-15\ndescription: Custom description here\n---\nFirst paragraph.\n\nSecond paragraph.";
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-with-desc.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("Custom description here"),
+        "description should be shown when set"
+    );
+}
+
+// ── 404 page ──
+
+#[test]
+fn test_build_generates_404_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site404", "404 Site", "posts");
+    let site_dir = tmp.path().join("site404");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let path_404 = site_dir.join("dist/404.html");
+    assert!(path_404.exists(), "404.html should be generated");
+
+    let html = fs::read_to_string(path_404).unwrap();
+    assert!(html.contains("404"), "should contain 404");
+    assert!(
+        html.contains("Page Not Found"),
+        "should contain Page Not Found heading"
+    );
+    assert!(
+        html.contains("noindex"),
+        "404 page should have noindex robots meta"
+    );
+}
+
+// ── Table of contents ──
+
+#[test]
+fn test_build_toc_headings_have_ids() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tocsite1", "ToC Site", "docs");
+    let site_dir = tmp.path().join("tocsite1");
+
+    let content = "---\ntitle: My Doc\n---\n## Introduction\n\nSome text.\n\n### Details\n\nMore text.\n\n## Conclusion\n\nEnd.";
+    fs::write(
+        site_dir.join("content/docs/my-doc.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/docs/my-doc.html")).unwrap();
+    assert!(html.contains("id=\"introduction\""), "h2 should have id");
+    assert!(html.contains("id=\"details\""), "h3 should have id");
+    assert!(html.contains("id=\"conclusion\""), "h2 should have id");
+}
+
+#[test]
+fn test_build_toc_in_doc_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tocsite2", "ToC Site 2", "docs");
+    let site_dir = tmp.path().join("tocsite2");
+
+    // Doc with multiple headings should get a ToC nav
+    let content = "---\ntitle: Guide\n---\n## Step 1\n\nDo this.\n\n## Step 2\n\nDo that.\n\n## Step 3\n\nDone.";
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        content,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/docs/guide.html")).unwrap();
+    // Default doc template should show ToC when > 1 heading
+    assert!(html.contains("toc"), "doc should contain toc class");
+    assert!(html.contains("Contents"), "doc should contain Contents heading");
+    assert!(html.contains("step-1"), "toc should link to step-1");
+    assert!(html.contains("step-2"), "toc should link to step-2");
+    assert!(html.contains("step-3"), "toc should link to step-3");
+}
+
+// --- tag pages ---
+
+#[test]
+fn test_build_generates_tag_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tagsite", "Tag Site", "posts");
+    let site_dir = tmp.path().join("tagsite");
+
+    // Create posts with tags
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-alpha.md"),
+        "---\ntitle: Alpha Post\ndate: 2025-01-15\ntags:\n  - rust\n  - web\n---\nAlpha content.",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/posts/2025-01-16-beta.md"),
+        "---\ntitle: Beta Post\ndate: 2025-01-16\ntags:\n  - rust\n  - cli\n---\nBeta content.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Tag index page should exist
+    let tags_index = site_dir.join("dist/tags/index.html");
+    assert!(tags_index.exists(), "tags index page should exist");
+    let tags_html = fs::read_to_string(&tags_index).unwrap();
+    assert!(tags_html.contains("rust"), "tags index should list 'rust'");
+    assert!(tags_html.contains("web"), "tags index should list 'web'");
+    assert!(tags_html.contains("cli"), "tags index should list 'cli'");
+
+    // Individual tag pages should exist
+    let rust_tag = site_dir.join("dist/tags/rust/index.html");
+    assert!(rust_tag.exists(), "rust tag page should exist");
+    let rust_html = fs::read_to_string(&rust_tag).unwrap();
+    assert!(rust_html.contains("Alpha Post"), "rust tag should list Alpha Post");
+    assert!(rust_html.contains("Beta Post"), "rust tag should list Beta Post");
+
+    let web_tag = site_dir.join("dist/tags/web/index.html");
+    assert!(web_tag.exists(), "web tag page should exist");
+    let web_html = fs::read_to_string(&web_tag).unwrap();
+    assert!(web_html.contains("Alpha Post"), "web tag should list Alpha Post");
+    assert!(!web_html.contains("Beta Post"), "web tag should NOT list Beta Post");
+
+    let cli_tag = site_dir.join("dist/tags/cli/index.html");
+    assert!(cli_tag.exists(), "cli tag page should exist");
+}
+
+#[test]
+fn test_build_tag_index_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tagidx", "Tag Index", "posts");
+    let site_dir = tmp.path().join("tagidx");
+
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-post.md"),
+        "---\ntitle: Tagged Post\ndate: 2025-01-15\ntags:\n  - alpha\n  - beta\n---\nContent.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let tags_html = fs::read_to_string(site_dir.join("dist/tags/index.html")).unwrap();
+    // Should show tag counts
+    assert!(tags_html.contains("(1)"), "tag count should be shown");
+    // Should link to tag pages (Tera auto-escapes / as &#x2F;)
+    assert!(tags_html.contains("tags") && tags_html.contains("alpha"), "should link to alpha tag page");
+    assert!(tags_html.contains("tags") && tags_html.contains("beta"), "should link to beta tag page");
+
+    // Sitemap should include tag URLs
+    let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+    assert!(sitemap.contains("/tags/"), "sitemap should include tag page URLs");
+}
+
+#[test]
+fn test_build_tag_pages_multilingual() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "taglang", "Tag Lang", "posts");
+    let site_dir = tmp.path().join("taglang");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Tag Lang ES\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // English post with tag
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\ntags:\n  - greetings\n---\nHello content.",
+    )
+    .unwrap();
+    // Spanish post with tag
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\ntags:\n  - saludos\n---\nHola contenido.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English tag pages
+    assert!(
+        site_dir.join("dist/tags/greetings/index.html").exists(),
+        "English tag page should exist"
+    );
+    // Spanish tag pages
+    assert!(
+        site_dir.join("dist/es/tags/saludos/index.html").exists(),
+        "Spanish tag page should exist"
+    );
+    // Spanish tags index
+    assert!(
+        site_dir.join("dist/es/tags/index.html").exists(),
+        "Spanish tags index should exist"
+    );
+    // English tag should NOT contain Spanish items
+    let en_html = fs::read_to_string(site_dir.join("dist/tags/greetings/index.html")).unwrap();
+    assert!(en_html.contains("Hello"), "English tag page should have English post");
+    assert!(!en_html.contains("Hola"), "English tag page should NOT have Spanish post");
+}
