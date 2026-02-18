@@ -237,6 +237,18 @@ Each registers as `base.html` when applied; user `templates/base.html` overrides
 - All tests must pass and clippy must produce zero warnings before any commit
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
+### Documentation
+- The documentation site lives in `site/` and is built with `page` itself
+- Docs are in `site/content/docs/` — one markdown file per topic
+- **When changing user-facing features (CLI flags, commands, config options, deploy behavior, build steps), update the corresponding docs:**
+  - `site/content/docs/cli-reference.md` — all CLI commands and flags
+  - `site/content/docs/deployment.md` — deploy targets, pre-flight checks, setup
+  - `site/content/docs/configuration.md` — `page.toml` options
+  - `site/content/docs/collections.md` — collection presets and config
+  - `site/content/docs/templates.md` — template variables and blocks
+  - `site/content/docs/i18n.md` — multi-language features
+- Also update `CLAUDE.md` itself when adding new patterns, conventions, or architecture
+
 ### CLI
 - clap 4.5 with derive macros
 - Each subcommand has its own file in `src/cli/` with `{Command}Args` struct + `pub fn run(args) -> anyhow::Result<()>`
@@ -459,7 +471,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] CI workflows for all targets — `page init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
 - [x] Custom domain helper — `--domain` flag shows DNS record instructions per target, auto-updates base_url in page.toml
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
-- [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback
+- [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
 
 ### Up Next
 
