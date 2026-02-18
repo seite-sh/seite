@@ -49,8 +49,19 @@ src/
     docs.tera          Documentation sidebar theme template
     brutalist.tera     Neo-brutalist theme template
     bento.tera         Card grid bento theme template
+  shortcodes/
+    mod.rs             ShortcodeRegistry, expand(), value types
+    parser.rs          Character-level scanner, code block skip, arg parsing
+    builtins.rs        BuiltinShortcode struct, all() with include_str!
+    builtins/
+      youtube.html     Responsive YouTube embed
+      vimeo.html       Responsive Vimeo embed
+      gist.html        GitHub Gist embed
+      callout.html     Admonition/callout body shortcode
+      figure.html      Semantic figure with caption
   build/
     mod.rs             12-step build pipeline
+    links.rs           Post-build internal link validation
     markdown.rs        pulldown-cmark wrapper
     feed.rs            RSS generation
     sitemap.rs         XML sitemap generation
@@ -77,14 +88,15 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       76 integration tests using assert_cmd + tempfile
+  integration.rs       88+ integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (12 steps)
 
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
-3. Process each collection: walk content dir, parse frontmatter + markdown, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
+2b. Load shortcode registry (built-in + user-defined from `templates/shortcodes/`)
+3. Process each collection: walk content dir, parse frontmatter, **expand shortcodes**, render markdown to HTML, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
 4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`. Also renders: paginated collection indexes, 404 page, tag index + per-tag archive pages
 5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
 6. Generate sitemap — all items, with `xhtml:link` alternates for translations
@@ -316,6 +328,19 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 - `updated:` — last-modified date (YYYY-MM-DD) for JSON-LD `dateModified`
 - `robots:` — per-page robots directive (e.g., `"noindex"`, `"noindex, nofollow"`)
 
+### Shortcodes
+- Two syntax forms: inline `{{< name(args) >}}` (raw HTML) and body `{{% name(args) %}} markdown {{% end %}}`
+- Named args only: `key="string"`, `key=42`, `key=3.14`, `key=true`
+- Shortcodes expanded **before** `markdown_to_html()` — output goes through the markdown pipeline
+- `raw_body` on `ContentItem` stays unexpanded (for `.md` output and `llms-full.txt`)
+- Built-in shortcodes: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`
+- User-defined shortcodes: Tera templates in `templates/shortcodes/*.html`
+- User shortcodes override built-ins with the same name
+- Shortcodes inside fenced code blocks and inline code spans are NOT expanded
+- `ShortcodeRegistry` uses a separate Tera instance (not the page template Tera)
+- All 6 bundled themes include CSS for `.video-embed`, `.callout-*`, `figure`/`figcaption`
+- To add a built-in shortcode: create template in `src/shortcodes/builtins/`, add entry in `builtins.rs`
+
 ### Frontmatter Serialization
 - `serde_yaml_ng` for YAML parsing
 - `skip_serializing_if` on all optional fields — only emit what's set
@@ -498,8 +523,8 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 **Priority 1 — Close critical content authoring gaps (these block adoption):**
 
-- [ ] Shortcodes — reusable content components in markdown (e.g., `{{ youtube(id="dQw4w9WgXcQ") }}`, `{{ callout(type="warning") }}`). Zola and Hugo both have this; it's table-stakes for serious content sites. Implement as Tera function calls or custom syntax parsed during markdown processing. Start with built-in shortcodes (youtube, vimeo, gist, callout/admonition, figure with caption) + user-defined shortcodes from `templates/shortcodes/` directory
-- [ ] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
+- [x] Shortcodes — reusable content components in markdown. Hugo-style dual syntax: `{{< name(args) >}}` for inline HTML, `{{% name(args) %}} body {{% end %}}` for markdown-processed bodies. 5 built-in shortcodes (youtube, vimeo, gist, callout, figure) + user-defined from `templates/shortcodes/`. Character-level parser with code block protection. All 6 themes include shortcode CSS.
+- [x] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
 - [ ] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
 
 **Priority 2 — Improve build pipeline and content model:**

@@ -1,6 +1,7 @@
 pub mod discovery;
 pub mod feed;
 pub mod images;
+pub mod links;
 pub mod markdown;
 pub mod sitemap;
 
@@ -208,6 +209,12 @@ pub fn build_site(
     let tera = templates::load_templates(&paths.templates, &config.collections)?;
     step_timings.push(("Load templates".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
+    // Step 2b: Load shortcode registry (built-in + user-defined)
+    let step_start = Instant::now();
+    let shortcodes_dir = paths.templates.join("shortcodes");
+    let shortcode_registry = crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir)?;
+    step_timings.push(("Load shortcodes".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
     // Pre-compute configured language codes for filename detection
     let configured_langs = config.configured_lang_codes();
     let is_multilingual = config.is_multilingual();
@@ -263,7 +270,21 @@ pub fn build_site(
                     fm.date = parse_date_from_filename(path);
                 }
 
-                let (html_body, toc) = markdown::markdown_to_html(&raw_body);
+                // Expand shortcodes before markdown rendering
+                let sc_page = serde_json::json!({
+                    "title": fm.title,
+                    "slug": &slug,
+                    "collection": &collection.name,
+                    "tags": &fm.tags,
+                });
+                let sc_site = serde_json::json!({
+                    "title": &config.site.title,
+                    "base_url": &config.site.base_url,
+                    "language": &config.site.language,
+                });
+                let expanded_body =
+                    shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
+                let (html_body, toc) = markdown::markdown_to_html(&expanded_body);
 
                 // Build URL: non-default languages get /{lang} prefix
                 let base_url = build_url(&collection.url_prefix, &slug);
@@ -273,7 +294,7 @@ pub fn build_site(
                     base_url
                 };
 
-                let excerpt = content::extract_excerpt(&raw_body);
+                let excerpt = content::extract_excerpt(&expanded_body);
                 let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
                 let word_count = raw_body.split_whitespace().count();
                 let reading_time = if word_count == 0 { 0 } else { (word_count / 238).max(1) };

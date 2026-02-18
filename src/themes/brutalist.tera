@@ -73,6 +73,20 @@
         pre code { background: none; padding: 0; }
         blockquote { border-left: 6px solid #000; margin-left: 0; padding: 0.75rem 1rem; background: #ffe600; font-weight: 700; }
         img { max-width: 100%; height: auto; border: 3px solid #000; }
+        figure { margin: 2rem 0; }
+        figure img { display: block; }
+        figcaption { font-size: 0.85rem; font-weight: 700; margin-top: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .video-embed { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 2rem 0; border: 3px solid #000; box-shadow: 5px 5px 0 #000; }
+        .video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+        .callout { border: 3px solid #000; padding: 1rem 1.25rem; margin: 2rem 0; box-shadow: 5px 5px 0 #000; }
+        .callout-title { font-weight: 900; margin-bottom: 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; background: #000; color: #ffe600; padding: 0.1rem 0.5rem; }
+        .callout-info { background: #fffef0; }
+        .callout-warning { background: #ffe600; }
+        .callout-danger { background: #ff4d00; color: #fff; }
+        .callout-danger .callout-title { background: #fff; color: #ff4d00; }
+        .callout-tip { background: #aaff00; }
+        .callout p:last-child { margin-bottom: 0; }
+        .gist-embed { margin: 2rem 0; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 2px solid #000; padding: 0.5rem 0.75rem; text-align: left; }
         th { background: #000; color: #ffe600; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }

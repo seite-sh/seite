@@ -396,6 +396,22 @@ Markdown content here.
 - `page theme list` — List available themes
 - `page theme apply <name>` — Apply a bundled theme
 
+## Shortcodes
+
+Use shortcodes for reusable content components in markdown:
+
+**Inline (raw HTML):** `{{< name(args) >}}`
+**Body (markdown):** `{{% name(args) %}} ... {{% end %}}`
+
+Built-in shortcodes:
+- `{{< youtube(id="VIDEO_ID") >}}` — responsive YouTube embed
+- `{{< vimeo(id="VIDEO_ID") >}}` — responsive Vimeo embed
+- `{{< gist(user="USER", id="GIST_ID") >}}` — GitHub Gist embed
+- `{{< figure(src="/static/img.jpg", caption="Caption", alt="Alt text") >}}` — figure with caption
+- `{{% callout(type="info") %}} Markdown body {{% end %}}` — callout box (types: info, warning, danger, tip)
+
+Custom shortcodes: create Tera templates in `templates/shortcodes/name.html`.
+
 ## Important Notes
 - After creating or editing content files, run `page build` to regenerate the site.
 - Set `draft: true` in frontmatter to exclude content from the default build.
