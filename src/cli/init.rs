@@ -233,6 +233,35 @@ fn generate_claude_md(
     }
     md.push_str("This is a static site built with the `page` CLI tool.\n\n");
 
+    // SEO and GEO requirements — top-level, mandatory
+    md.push_str("## SEO and GEO Requirements\n\n");
+    md.push_str("> **These are non-negotiable rules for every page on this site.**\n");
+    md.push_str("> They apply when writing content, creating templates, or asking the AI agent to build or redesign anything.\n\n");
+    md.push_str("### Every page `<head>` MUST include\n\n");
+    md.push_str("1. **Canonical URL** — `<link rel=\"canonical\" href=\"{{ site.base_url }}{{ page.url | default(value='/') }}\">` (deduplicates indexed URLs)\n");
+    md.push_str("2. **Open Graph tags** — `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`\n");
+    md.push_str("   - `og:type = article` when `page.collection` is set; `website` for the homepage\n");
+    md.push_str("   - `og:image` only when `page.image` is set\n");
+    md.push_str("3. **Twitter Card tags** — `twitter:card`, `twitter:title`, `twitter:description`\n");
+    md.push_str("   - `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise\n");
+    md.push_str("4. **JSON-LD structured data** — `<script type=\"application/ld+json\">` block:\n");
+    md.push_str("   - `BlogPosting` for posts (include `datePublished`, `dateModified` if `page.updated` is set)\n");
+    md.push_str("   - `Article` for docs and other collection pages\n");
+    md.push_str("   - `WebSite` for the homepage/index\n");
+    md.push_str("5. **Markdown alternate link** — `<link rel=\"alternate\" type=\"text/markdown\" href=\"{{ site.base_url }}{{ page.url }}.md\">` (LLM-native differentiator)\n");
+    md.push_str("6. **llms.txt discovery** — `<link rel=\"alternate\" type=\"text/plain\" title=\"LLM Summary\" href=\"/llms.txt\">`\n");
+    md.push_str("7. **RSS autodiscovery** — `<link rel=\"alternate\" type=\"application/rss+xml\" ...>`\n");
+    md.push_str("8. **Language attribute** — `<html lang=\"{{ site.language }}\">` (already in bundled themes)\n\n");
+    md.push_str("### Per-page frontmatter best practices\n\n");
+    md.push_str("- **Always set `description:`** — used verbatim in `<meta name=\"description\">`, `og:description`, `twitter:description`, and JSON-LD. Without it, `site.description` is used as a fallback but that is generic.\n");
+    md.push_str("- **Set `image:`** for posts with a visual — unlocks `og:image`, `twitter:image`, and the `summary_large_image` card type\n");
+    md.push_str("- **Set `updated:`** when you revise existing content — populates `dateModified` in JSON-LD\n");
+    md.push_str("- **Set `robots: noindex`** on draft-like or utility pages (tag pages, test pages) that should not appear in search results\n\n");
+    md.push_str("### What NOT to do\n\n");
+    md.push_str("- Do not remove canonical, OG, Twitter Card, or JSON-LD blocks when customizing `base.html`\n");
+    md.push_str("- Do not use `site.description` directly for meta tags — always use `page.description | default(value=site.description)`\n");
+    md.push_str("- Do not hardcode URLs — always compose from `site.base_url ~ page.url`\n\n");
+
     // Quick commands
     md.push_str("## Commands\n\n");
     md.push_str("```bash\n");
@@ -323,13 +352,16 @@ fn generate_claude_md(
     if collections.iter().any(|c| c.has_date) {
         md.push_str("date: 2025-01-15        # required for dated collections\n");
     }
-    md.push_str("description: \"Optional\"  # optional summary\n");
+    md.push_str("description: \"Optional\"  # page description — used in meta/OG/Twitter/JSON-LD\n");
+    md.push_str("image: /static/og.png    # optional social-preview image (og:image / twitter:image)\n");
+    md.push_str("updated: 2025-06-01      # optional last-modified date → JSON-LD dateModified\n");
     md.push_str("tags:                     # optional\n");
     md.push_str("  - tag1\n");
     md.push_str("  - tag2\n");
     md.push_str("draft: true              # optional, hides from default build\n");
     md.push_str("slug: custom-slug        # optional, overrides auto-generated slug\n");
     md.push_str("template: custom.html    # optional, overrides collection default template\n");
+    md.push_str("robots: noindex          # optional, per-page <meta name=\"robots\">\n");
     md.push_str("---\n\n");
     md.push_str("Markdown content here.\n");
     md.push_str("```\n\n");
@@ -394,10 +426,14 @@ fn generate_claude_md(
     md.push_str("| `translations` | array | Translation links `[{lang, url}]` (empty if no translations) |\n");
     md.push_str("| `page.title` | string | Page title |\n");
     md.push_str("| `page.content` | string | Rendered HTML (use `{{ page.content \\| safe }}`) |\n");
-    md.push_str("| `page.date` | string? | Date (if set) |\n");
-    md.push_str("| `page.description` | string? | Description |\n");
+    md.push_str("| `page.date` | string? | Publish date (if set) |\n");
+    md.push_str("| `page.updated` | string? | Last-modified date (from `updated:` frontmatter) |\n");
+    md.push_str("| `page.description` | string? | Page description |\n");
+    md.push_str("| `page.image` | string? | Social-preview image URL (from `image:` frontmatter) |\n");
     md.push_str("| `page.tags` | array | Tags |\n");
     md.push_str("| `page.url` | string | URL path |\n");
+    md.push_str("| `page.collection` | string | Collection name (e.g., `posts`) — empty string on homepage |\n");
+    md.push_str("| `page.robots` | string? | Per-page robots directive (from `robots:` frontmatter) |\n");
     md.push_str("| `nav` | array | Sidebar nav sections `[{name, label, items: [{title, url, active}]}]` |\n\n");
     md.push_str("Index template also gets:\n\n");
     md.push_str("| Variable | Type | Description |\n");
@@ -412,10 +448,30 @@ fn generate_claude_md(
     md.push_str("- Title goes in `{% block title %}...{% endblock %}`\n");
     md.push_str("- When editing `base.html`, preserve these for full functionality:\n");
     md.push_str("  - `<html lang=\"{{ site.language }}\">` — language attribute\n");
+    md.push_str("  - `<link rel=\"canonical\">` — canonical URL (required for SEO)\n");
+    md.push_str("  - Open Graph tags: `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`\n");
+    md.push_str("  - Twitter Card tags: `twitter:card`, `twitter:title`, `twitter:description`\n");
+    md.push_str("  - JSON-LD `<script type=\"application/ld+json\">` — structured data for search engines and LLMs\n");
+    md.push_str("  - `<meta name=\"robots\">` — only emitted when `page.robots` is set in frontmatter\n");
+    md.push_str("  - `<link rel=\"alternate\" type=\"text/markdown\">` — markdown version for LLM consumption\n");
+    md.push_str("  - `<link rel=\"alternate\" type=\"text/plain\" href=\"/llms.txt\">` — LLM summary discovery\n");
     md.push_str("  - RSS link: `<link rel=\"alternate\" type=\"application/rss+xml\" ...>`\n");
-    md.push_str("  - hreflang links for SEO: `{% if translations %}...{% endif %}`\n");
+    md.push_str("  - hreflang links for i18n: `{% if translations %}...{% endif %}`\n");
     md.push_str("  - Language switcher: `{% if translations | length > 1 %}...{% endif %}`\n");
     md.push_str("  - Content block: `{% block content %}{% endblock %}`\n\n");
+    md.push_str("### SEO and GEO Guardrails\n\n");
+    md.push_str("All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO Requirements** at the top of this file). ");
+    md.push_str("When writing a custom `base.html` or modifying an existing one, you **must** preserve all of the following:\n\n");
+    md.push_str("- **Always** include `<link rel=\"canonical\">` pointing to `{{ site.base_url }}{{ page.url | default(value='/') }}`\n");
+    md.push_str("- **Always** use `{{ page.description | default(value=site.description) }}` for description meta — not `site.description` alone\n");
+    md.push_str("- **Always** include Open Graph (`og:*`) and Twitter Card (`twitter:*`) tags for social sharing\n");
+    md.push_str("- **Always** include JSON-LD structured data: `BlogPosting` for posts, `Article` for docs/pages, `WebSite` for index\n");
+    md.push_str("- **Use** `og:type = article` when `page.collection` is set; `website` for the homepage\n");
+    md.push_str("- **Use** `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise\n");
+    md.push_str("- **Include** `<link rel=\"alternate\" type=\"text/markdown\">` — this is your LLM-native differentiator\n");
+    md.push_str("- **Include** `<link rel=\"alternate\" type=\"text/plain\" href=\"/llms.txt\">` — LLM discovery\n");
+    md.push_str("- **Add** `description:`, `image:`, and `updated:` to frontmatter for best SEO/GEO coverage\n");
+    md.push_str("- **Use** `robots: noindex` in frontmatter for pages that should not appear in search results\n\n");
 
     // Features
     md.push_str("## Features\n\n");
@@ -427,7 +483,8 @@ fn generate_claude_md(
     }
     md.push_str("- **Homepage content** — Create `content/pages/index.md` for custom homepage hero/landing content above collection listings\n");
     md.push_str("- **Multi-language** — Filename-based translations with per-language URLs, RSS, sitemap, and discovery files\n");
-    md.push_str("- **LLM discoverability** — Generates `llms.txt` and `llms-full.txt` for LLM consumption\n");
+    md.push_str("- **SEO+GEO optimized** — Every page gets canonical URL, Open Graph, Twitter Card, JSON-LD structured data (`BlogPosting`/`Article`/`WebSite`), and per-page robots meta. No plugins needed.\n");
+    md.push_str("- **LLM discoverability** — Generates `llms.txt` and `llms-full.txt` for LLM consumption; `<link rel=\"alternate\" type=\"text/markdown\">` in every page's `<head>`\n");
     md.push_str("- **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)\n");
     md.push_str("- **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates\n");
     md.push_str("- **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.\n");

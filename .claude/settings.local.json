@@ -5,7 +5,9 @@
       "Bash(cargo update:*)",
       "Bash(cargo test:*)",
       "Bash(ls:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

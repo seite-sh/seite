@@ -108,11 +108,14 @@ The dev server resolves `/posts/hello-world` to `posts/hello-world.html`.
 struct Frontmatter {
     title: String,
     date: Option<NaiveDate>,       // required for posts, auto-parsed from filename
+    updated: Option<NaiveDate>,    // last-modified date → JSON-LD dateModified, sitemap lastmod
     description: Option<String>,
+    image: Option<String>,         // absolute URL or path → og:image / twitter:image
     slug: Option<String>,          // override auto-generated slug
     tags: Vec<String>,
     draft: bool,                   // excluded from build unless --drafts
     template: Option<String>,      // override collection default template
+    robots: Option<String>,        // per-page <meta name="robots">, e.g. "noindex"
 }
 
 // Resolved during build
@@ -226,8 +229,43 @@ Each registers as `base.html` when applied; user `templates/base.html` overrides
 - Tera (Jinja2-compatible) templates
 - All templates extend `base.html`
 - Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`
+- Additional page variables: `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`
 - Embedded defaults in `src/templates/mod.rs`; user templates in `templates/` override them
 - All bundled themes include hreflang tags and language switcher UI when `translations` is non-empty
+- All bundled themes emit canonical URL, Open Graph, Twitter Card, JSON-LD structured data, `<meta name="robots">` (when set), markdown alternate link, and llms.txt link in `<head>`
+
+### SEO and GEO (Generative Engine Optimization) Guardrails
+
+Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating or modifying theme templates, ensure all of the following are present:
+
+**Required meta tags (all pages):**
+- `<link rel="canonical">` — always `{{ site.base_url }}{{ page.url | default(value='/') }}`
+- `<meta name="description">` — use `{{ page.description | default(value=site.description) }}` (per-page first, site fallback)
+- `og:type` — `"article"` when `page.collection` is set, `"website"` for index/homepage
+- `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
+- `og:image` — conditional on `page.image` (set `image:` in frontmatter)
+- `twitter:card` — `"summary_large_image"` when `page.image` exists, `"summary"` otherwise
+- `twitter:title`, `twitter:description`
+
+**Structured data (JSON-LD):**
+- Posts (`page.collection == 'posts'`): `BlogPosting` with `headline`, `description`, `datePublished`, `dateModified` (from `page.updated`), `author`, `publisher`, `url`
+- Docs/pages (`page.collection` set but not posts): `Article` with same fields minus dates
+- Index/homepage: `WebSite` with `name`, `description`, `url`
+
+**Discovery links:**
+- `<link rel="alternate" type="application/rss+xml">` — RSS feed
+- `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">` — LLM discovery
+- `<link rel="alternate" type="text/markdown">` — markdown version (when `page.url` is set)
+
+**Per-page robots:**
+- `<meta name="robots" content="{{ page.robots }}">` — only emitted when `robots:` is set in frontmatter
+- Use `robots: "noindex"` in frontmatter for pages that should not be indexed
+
+**Frontmatter fields for SEO:**
+- `description:` — page-specific description for meta/OG/Twitter/JSON-LD
+- `image:` — absolute URL or `/static/…` path to social preview image
+- `updated:` — last-modified date (YYYY-MM-DD) for JSON-LD `dateModified`
+- `robots:` — per-page robots directive (e.g., `"noindex"`, `"noindex, nofollow"`)
 
 ### Frontmatter Serialization
 - `serde_yaml_ng` for YAML parsing

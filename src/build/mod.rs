@@ -63,10 +63,18 @@ struct PageContext {
     title: String,
     content: String,
     date: Option<String>,
+    /// Last-modified date string (ISO 8601). Populated from `updated` frontmatter field.
+    updated: Option<String>,
     description: Option<String>,
+    /// Absolute URL or path to social-preview image (og:image / twitter:image).
+    image: Option<String>,
     slug: String,
     tags: Vec<String>,
     url: String,
+    /// Collection name ("posts", "docs", "pages", etc.).
+    collection: String,
+    /// Per-page robots meta value, e.g. "noindex".
+    robots: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -369,25 +377,46 @@ pub fn build_site(
             .collect();
         index_ctx.insert("collections", &collections_ctx);
 
-        // Homepage page for this language
-        if let Some(homepage) = homepage_pages.iter().find(|p| p.lang == *lang) {
-            index_ctx.insert(
-                "page",
-                &PageContext {
+        // Always insert a `page` context so templates can unconditionally access
+        // page.url, page.collection, etc. for SEO/GEO meta tags.
+        // When no homepage page exists, `page.content` is empty so
+        // `{% if page.content %}` gates the homepage content block correctly.
+        let index_page_url = if *lang == *default_lang {
+            "/".to_string()
+        } else {
+            format!("/{lang}/")
+        };
+        let index_page_ctx =
+            if let Some(homepage) = homepage_pages.iter().find(|p| p.lang == *lang) {
+                PageContext {
                     title: homepage.frontmatter.title.clone(),
                     content: homepage.html_body.clone(),
                     date: homepage.frontmatter.date.map(|d| d.to_string()),
+                    updated: homepage.frontmatter.updated.map(|d| d.to_string()),
                     description: homepage.frontmatter.description.clone(),
+                    image: homepage.frontmatter.image.clone(),
                     slug: homepage.slug.clone(),
                     tags: homepage.frontmatter.tags.clone(),
-                    url: if *lang == *default_lang {
-                        "/".to_string()
-                    } else {
-                        format!("/{lang}/")
-                    },
-                },
-            );
-        }
+                    url: index_page_url,
+                    collection: homepage.collection.clone(),
+                    robots: homepage.frontmatter.robots.clone(),
+                }
+            } else {
+                PageContext {
+                    title: String::new(),
+                    content: String::new(),
+                    date: None,
+                    updated: None,
+                    description: None,
+                    image: None,
+                    slug: "index".to_string(),
+                    tags: Vec::new(),
+                    url: index_page_url,
+                    collection: String::new(),
+                    robots: None,
+                }
+            };
+        index_ctx.insert("page", &index_page_ctx);
 
         // Translation links for the index page (always provide, even if empty)
         let index_translations: Vec<TranslationLink> = if is_multilingual {
@@ -501,6 +530,20 @@ pub fn build_site(
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
+                // Always provide a page context so SEO meta tags can access page.url etc.
+                ctx.insert("page", &PageContext {
+                    title: String::new(),
+                    content: String::new(),
+                    date: None,
+                    updated: None,
+                    description: None,
+                    image: None,
+                    slug: String::new(),
+                    tags: Vec::new(),
+                    url: page_url(page_num),
+                    collection: String::new(),
+                    robots: None,
+                });
                 let html = tera
                     .render("index.html", &ctx)
                     .map_err(|e| PageError::Build(format!("rendering {collection_base} page {page_num}: {e}")))?;
@@ -976,10 +1019,14 @@ fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
             title: item.frontmatter.title.clone(),
             content: item.html_body.clone(),
             date: item.frontmatter.date.map(|d| d.to_string()),
+            updated: item.frontmatter.updated.map(|d| d.to_string()),
             description: item.frontmatter.description.clone(),
+            image: item.frontmatter.image.clone(),
             slug: item.slug.clone(),
             tags: item.frontmatter.tags.clone(),
             url: item.url.clone(),
+            collection: item.collection.clone(),
+            robots: item.frontmatter.robots.clone(),
         },
     );
     ctx
