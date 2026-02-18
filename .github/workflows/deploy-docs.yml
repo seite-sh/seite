@@ -1,0 +1,33 @@
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "src/themes/**"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest page binary
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | INSTALL_DIR=/usr/local/bin sh
+
+      - name: Build docs site
+        working-directory: site
+        run: page build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name site
+          workingDirectory: site
