@@ -43,6 +43,10 @@ cargo install page
 page --version
 ```
 
+{{% callout(type="tip") %}}
+Run `page --help` to see all available commands at a glance.
+{{% end %}}
+
 ## Create Your First Site
 
 Scaffold a new site with posts, docs, and pages collections:
@@ -51,6 +55,10 @@ Scaffold a new site with posts, docs, and pages collections:
 page init mysite --title "My Site" --description "A personal blog" --collections posts,docs,pages
 cd mysite
 ```
+
+{{% callout(type="info") %}}
+All flags are optional. Run `page init mysite` and interactive prompts will guide you through each setting.
+{{% end %}}
 
 This creates the following structure:
 
@@ -134,6 +142,10 @@ page> status
 page> stop
 ```
 
+{{% callout(type="tip") %}}
+The REPL is the fastest way to iterate. Create content, switch themes, and rebuild — all without leaving the dev server.
+{{% end %}}
+
 ## Themes
 
 List available themes:
@@ -156,7 +168,8 @@ page theme create "minimal serif with warm colors"
 
 ## Next Steps
 
-- [CLI Reference](/docs/cli-reference) — All commands and flags
-- [Collections](/docs/collections) — Configure posts, docs, and pages
-- [Configuration](/docs/configuration) — Full `page.toml` reference
-- [Templates & Themes](/docs/templates) — Customize the look
+- [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
+- [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
+- [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
+- [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
+- [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you

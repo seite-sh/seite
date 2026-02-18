@@ -99,6 +99,10 @@ page theme apply <name>
 
 </div>
 
+{{% callout(type="tip") %}}
+In the dev server REPL, type `theme dark` to instantly preview any theme with live reload — no restart needed.
+{{% end %}}
+
 ## Install Community Themes
 
 Download and install themes shared by others:
@@ -142,6 +146,10 @@ page theme create "neon cyberpunk with scanline effects and monospace everything
 
 This spawns Claude Code to generate a complete `templates/base.html` with all required blocks, SEO tags, search, pagination, and accessibility features. Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
 
+{{% callout(type="info") %}}
+AI-generated themes are production-ready — Claude includes all SEO meta tags, search functionality, pagination, accessibility features, and responsive design automatically.
+{{% end %}}
+
 After generating, export it to share:
 
 ```bash
@@ -174,3 +182,8 @@ page theme create "<prompt>" # Generate a custom theme with AI
 ```
 
 In the dev server REPL, type `theme` to list themes or `theme <name>` to apply and auto-rebuild.
+
+## Next Steps
+
+- [Templates & Themes](/docs/templates) — customize theme blocks, override templates, and use data files
+- [AI Agent](/docs/agent) — use Claude for content creation, site management, and more

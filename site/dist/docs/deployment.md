@@ -11,6 +11,16 @@ description: Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify
 - **Cloudflare Pages** — wrangler-based deployment
 - **Netlify** — CLI-based deployment
 
+## Which Target Should I Choose?
+
+| Target | Best for | Highlights |
+|--------|----------|------------|
+| **GitHub Pages** | Open-source projects | Simplest setup, free, auto-generated CI workflow |
+| **Cloudflare Pages** | Production sites | Fastest global CDN, custom domain API, preview deploys |
+| **Netlify** | Team workflows | Familiar DX, draft deploys, easy rollbacks |
+
+All three are free for static sites. You can switch targets anytime by changing one line in `page.toml`.
+
 ## Configuration
 
 Set the deploy target in `page.toml`:
@@ -19,6 +29,14 @@ Set the deploy target in `page.toml`:
 [deploy]
 target = "github-pages"
 ```
+
+{{% callout(type="warning") %}}
+Make sure `base_url` in `page.toml` is set to your real domain before deploying. The default `localhost` URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use `--base-url` to override at deploy time without modifying the config file.
+{{% end %}}
+
+{{% callout(type="info") %}}
+`page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
+{{% end %}}
 
 ## GitHub Pages
 
@@ -40,6 +58,10 @@ Preview what would be deployed:
 ```bash
 page deploy --dry-run
 ```
+
+{{% callout(type="tip") %}}
+Always run `--dry-run` before your first deploy to verify everything looks right. It shows exactly what would be pushed without making any changes.
+{{% end %}}
 
 ### Custom repository
 
@@ -165,3 +187,8 @@ dist/
 ```
 
 All three platforms serve `404.html` automatically for missing routes.
+
+## Next Steps
+
+- [Configuration](/docs/configuration) — all deploy-related settings in `page.toml`
+- [CLI Reference](/docs/cli-reference) — complete list of `page deploy` flags

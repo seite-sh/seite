@@ -41,6 +41,10 @@ Claude receives a rich system prompt containing:
 
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 
+{{% callout(type="info") %}}
+The agent can run `page build` and `page serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
+{{% end %}}
+
 ## One-Shot Mode
 
 Pass a prompt directly for non-interactive use:
@@ -52,6 +56,51 @@ page agent "update the homepage to include a features section"
 ```
 
 Claude writes the files directly and exits.
+
+## Example Prompts
+
+Here are prompts that work well, grouped by use case:
+
+### Content creation
+
+```bash
+page agent "write a technical tutorial about async Rust, include code examples and a summary"
+page agent "create a blog post comparing static site generators, with a table of features"
+page agent "add an FAQ page with 10 common questions about our product"
+```
+
+### Site management
+
+```bash
+page agent "add the tag 'tutorial' to all posts that contain code blocks"
+page agent "create Spanish translations for all docs pages"
+page agent "reorganize the docs into guides/ and reference/ subdirectories"
+```
+
+### Theme and design
+
+```bash
+page agent "update the homepage to add a testimonials section with three cards"
+page agent "add a custom footer with social links and a newsletter signup"
+```
+
+### Debugging
+
+```bash
+page agent "the build is failing on my Spanish translations, help me fix it"
+page agent "find and fix any broken internal links in my content"
+page agent "my RSS feed is missing some posts, diagnose the issue"
+```
+
+## Tips for Effective Prompts
+
+{{% callout(type="tip") %}}
+Be specific about format and tone. "Write a 1500-word technical tutorial about Rust error handling with code examples" gives better results than "write a post about Rust".
+{{% end %}}
+
+{{% callout(type="tip") %}}
+The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include — just describe what you want.
+{{% end %}}
 
 ## Theme Generation
 
@@ -86,3 +135,9 @@ The agent has access to these tools:
 ## Claude Code Scaffolding
 
 When you run `page init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
+
+## Next Steps
+
+- [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
+- [CLI Reference](/docs/cli-reference) — all `page agent` flags and options
+- [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet
