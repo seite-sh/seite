@@ -1641,10 +1641,14 @@ fn write_test_image(site_dir: &std::path::Path, name: &str) {
     img.save(img_dir.join(name)).unwrap();
 }
 
-/// Helper: add [images] section to page.toml.
+/// Helper: set [images] section in page.toml (replaces existing if present).
 fn set_images_config(site_dir: &std::path::Path, widths: &str) {
     let toml_path = site_dir.join("page.toml");
     let mut config = fs::read_to_string(&toml_path).unwrap();
+    // Remove existing [images] section if present
+    if let Some(pos) = config.find("\n[images]") {
+        config.truncate(pos);
+    }
     config.push_str(&format!(
         "\n[images]\nwidths = {widths}\nquality = 80\nlazy_loading = true\nwebp = true\n"
     ));
@@ -1803,8 +1807,14 @@ fn test_build_no_image_processing_without_config() {
     init_site(&tmp, "site", "No Image Config", "posts");
     let site_dir = tmp.path().join("site");
 
+    // Remove the [images] section so image processing is truly disabled
+    let toml_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    if let Some(pos) = config.find("\n[images]") {
+        fs::write(&toml_path, &config[..pos]).unwrap();
+    }
+
     write_test_image(&site_dir, "photo.png");
-    // No set_images_config — use defaults
 
     page_cmd()
         .arg("build")
@@ -1814,10 +1824,9 @@ fn test_build_no_image_processing_without_config() {
 
     // Original should be copied as-is by static file step
     assert!(site_dir.join("dist/static/images/photo.png").exists());
-    // With default widths [480, 800, 1200], all are > 100px so no resizes
-    // But WebP full-size should still be created since default has webp=true
-    // Actually, the 100x100 image is smaller than all default widths, so no resized copies
+    // No [images] config means no processing at all — no resizes, no WebP
     assert!(!site_dir.join("dist/static/images/photo-480w.png").exists());
+    assert!(!site_dir.join("dist/static/images/photo.webp").exists());
 }
 
 // ── Reading time + word count ──

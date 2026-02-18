@@ -17,8 +17,8 @@ pub struct SiteConfig {
     pub deploy: DeploySection,
     #[serde(default)]
     pub languages: HashMap<String, LanguageConfig>,
-    #[serde(default, skip_serializing_if = "ImageSection::is_default")]
-    pub images: ImageSection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<ImageSection>,
 }
 
 /// Per-language overrides for site metadata.
@@ -213,14 +213,6 @@ impl Default for ImageSection {
     }
 }
 
-impl ImageSection {
-    fn is_default(&self) -> bool {
-        self.widths == defaults::image_widths()
-            && self.quality == defaults::image_quality()
-            && self.lazy_loading
-            && self.webp
-    }
-}
 
 /// Resolved absolute paths for the project directories.
 #[derive(Clone)]
