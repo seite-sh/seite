@@ -275,7 +275,14 @@ fn cloudflare_project_exists(name: &str) -> bool {
     match output {
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            stdout.lines().any(|line| line.trim().starts_with(name))
+            // Wrangler outputs a table with box-drawing characters:
+            //   │ Project Name │ Project Domains    │ ...
+            //   │ site         │ site-4rv.pages.dev │ ...
+            // Split each line by │ and check if any cell matches the project name.
+            stdout.lines().any(|line| {
+                line.split('│')
+                    .any(|cell| cell.trim() == name)
+            })
         }
         _ => true, // Can't verify — assume it exists to avoid false negatives
     }
