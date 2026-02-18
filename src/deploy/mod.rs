@@ -683,12 +683,18 @@ pub fn execute_fix(
 }
 
 /// Re-run a single check by name (used after fixing).
+/// Re-reads config from disk for checks that depend on page.toml values,
+/// since execute_fix may have updated the file.
 pub fn recheck(
     check_name: &str,
-    config: &SiteConfig,
+    _config: &SiteConfig,
     paths: &ResolvedPaths,
     _target: &str,
 ) -> PreflightCheck {
+    // Reload config from disk — fixes may have updated page.toml
+    let fresh_config = SiteConfig::load(std::path::Path::new("page.toml")).ok();
+    let config = fresh_config.as_ref().unwrap_or(_config);
+
     match check_name {
         "Output directory" => check_output_dir(paths),
         "Base URL" => check_base_url(config),
