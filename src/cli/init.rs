@@ -104,6 +104,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     }
     fs::create_dir_all(root.join("templates"))?;
     fs::create_dir_all(root.join("static"))?;
+    fs::create_dir_all(root.join("data"))?;
     fs::create_dir_all(root.join(".claude"))?;
 
     // Generate page.toml
@@ -226,8 +227,10 @@ fn generate_claude_settings() -> String {
       "Write(content/**)",
       "Write(templates/**)",
       "Write(static/**)",
+      "Write(data/**)",
       "Edit(content/**)",
       "Edit(templates/**)",
+      "Edit(data/**)",
       "Bash(page build:*)",
       "Bash(page build)",
       "Bash(page new:*)",
@@ -338,6 +341,7 @@ fn generate_claude_md(
     }
     md.push_str("templates/       # Tera (Jinja2-compatible) HTML templates\n");
     md.push_str("static/          # Static assets (copied as-is to dist/)\n");
+    md.push_str("data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n");
     md.push_str("dist/            # Build output (generated, do not edit)\n");
     md.push_str("page.toml        # Site configuration\n");
     md.push_str("```\n\n");

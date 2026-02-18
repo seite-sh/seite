@@ -39,6 +39,12 @@
         header h1 { font-size: 1.2rem; font-weight: normal; letter-spacing: 0.05em; text-transform: uppercase; }
         header h1 a { text-decoration: none; color: inherit; }
         header p { font-style: italic; color: #888; margin-top: -0.5rem; }
+        nav.site-nav { margin-top: 0.5rem; font-family: system-ui, sans-serif; font-size: 0.85rem; }
+        nav.site-nav a { color: #666; margin-right: 1rem; text-decoration: none; border-bottom: 1px solid transparent; }
+        nav.site-nav a:hover { color: #333; border-bottom-color: #333; }
+        footer nav { margin-bottom: 0.5rem; font-family: system-ui, sans-serif; font-size: 0.8rem; }
+        footer nav a { color: #aaa; text-decoration: none; }
+        footer nav a:hover { color: #555; }
         .lang-switcher { display: inline-flex; gap: 0.5rem; font-size: 0.8rem; float: right; margin-top: 0.3rem; font-family: system-ui, sans-serif; }
         .lang-switcher a { text-decoration: none; color: #888; }
         .lang-switcher a:hover { color: #333; }
@@ -90,6 +96,11 @@
     {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
+        {% if data.nav %}
+        <nav class="site-nav" aria-label="Main navigation">
+            {% for item in data.nav %}<a href="{{ item.url }}">{{ item.title }}</a>{% endfor %}
+        </nav>
+        {% endif %}
         {% if translations | length > 1 %}
         <nav class="lang-switcher">
             {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
@@ -105,7 +116,12 @@
         {% block content %}{% endblock %}
     </main>
     <footer>
-        <p>&copy; {{ site.author }}</p>
+        {% if data.footer %}{% if data.footer.links %}
+        <nav aria-label="Footer navigation">
+            {% for link in data.footer.links %}<a href="{{ link.url }}">{{ link.title }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+        </nav>
+        {% endif %}{% endif %}
+        <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
     </footer>
     <script>
     (function(){

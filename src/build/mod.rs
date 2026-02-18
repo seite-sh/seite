@@ -32,6 +32,7 @@ pub struct BuildResult {
 pub struct BuildStats {
     pub items_built: HashMap<String, usize>,
     pub static_files_copied: usize,
+    pub data_files_loaded: usize,
     pub duration_ms: u64,
     /// Per-step timing: (step_name, duration_ms)
     pub step_timings: Vec<(String, f64)>,
@@ -45,11 +46,15 @@ impl CommandOutput for BuildStats {
             .map(|(name, count)| format!("{count} {name}"))
             .collect();
         let mut out = format!(
-            "Built {} in {:.1}s ({} static files copied)",
+            "Built {} in {:.1}s ({} static files copied",
             parts.join(", "),
             self.duration_ms as f64 / 1000.0,
             self.static_files_copied
         );
+        if self.data_files_loaded > 0 {
+            out.push_str(&format!(", {} data files loaded", self.data_files_loaded));
+        }
+        out.push(')');
         if !self.step_timings.is_empty() {
             out.push_str("\n  Timings:");
             for (name, ms) in &self.step_timings {
@@ -214,6 +219,11 @@ pub fn build_site(
     let shortcodes_dir = paths.templates.join("shortcodes");
     let shortcode_registry = crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir)?;
     step_timings.push(("Load shortcodes".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
+    // Step 2.5: Load data files
+    let step_start = Instant::now();
+    let data = crate::data::load_data_dir(&paths.data_dir)?;
+    step_timings.push(("Load data files".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
 
     // Pre-compute configured language codes for filename detection
     let configured_langs = config.configured_lang_codes();
@@ -450,7 +460,7 @@ pub fn build_site(
                     .get(item.lang.as_str())
                     .unwrap_or_else(|| site_ctx_cache.get(default_lang.as_str()).unwrap());
 
-                let mut ctx = build_page_context(site_ctx_for_item, item);
+                let mut ctx = build_page_context(site_ctx_for_item, item, &data);
 
                 // Insert nav: pre-serialized Value for nested collections, empty for others
                 if collection.nested {
@@ -530,6 +540,7 @@ pub fn build_site(
         let lang_site_ctx = SiteContext::for_lang(config, lang);
         let mut index_ctx = tera::Context::new();
         index_ctx.insert("site", &lang_site_ctx);
+        index_ctx.insert("data", &data);
         index_ctx.insert("lang", lang);
 
         // Filter collections for this language
@@ -729,6 +740,7 @@ pub fn build_site(
                 };
                 let mut ctx = tera::Context::new();
                 ctx.insert("site", &lang_site_ctx);
+                ctx.insert("data", &data);
                 ctx.insert("lang", lang);
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
@@ -793,6 +805,7 @@ pub fn build_site(
     if tera.get_template("404.html").is_ok() {
         let mut ctx_404 = tera::Context::new();
         ctx_404.insert("site", &SiteContext::from_config(config));
+        ctx_404.insert("data", &data);
         ctx_404.insert("lang", default_lang);
         ctx_404.insert("translations", &Vec::<TranslationLink>::new());
         ctx_404.insert("collections", &Vec::<CollectionContext>::new());
@@ -889,6 +902,7 @@ pub fn build_site(
 
             let mut tags_ctx = tera::Context::new();
             tags_ctx.insert("site", &lang_site_ctx);
+            tags_ctx.insert("data", &data);
             tags_ctx.insert("lang", lang);
             tags_ctx.insert("tags", &tag_entries);
             tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
@@ -924,6 +938,7 @@ pub fn build_site(
                 let tag_url = format!("{tags_base_url}/{tag_slug}/");
                 let mut tag_ctx = tera::Context::new();
                 tag_ctx.insert("site", &lang_site_ctx);
+                tag_ctx.insert("data", &data);
                 tag_ctx.insert("lang", lang);
                 tag_ctx.insert("tag_name", tag);
                 tag_ctx.insert("items", items);
@@ -1219,9 +1234,11 @@ pub fn build_site(
         .map(|(name, items)| (name.clone(), items.len()))
         .collect();
 
+    let data_files_count = crate::data::count_data_files(&paths.data_dir);
     let stats = BuildStats {
         items_built,
         static_files_copied: static_count,
+        data_files_loaded: data_files_count,
         duration_ms: start.elapsed().as_millis() as u64,
         step_timings,
     };
@@ -1462,9 +1479,10 @@ fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     output_dir.join(format!("{clean}.md"))
 }
 
-fn build_page_context(site: &SiteContext, item: &ContentItem) -> tera::Context {
+fn build_page_context(site: &SiteContext, item: &ContentItem, data: &serde_json::Value) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
+    ctx.insert("data", data);
     ctx.insert(
         "page",
         &PageContext {

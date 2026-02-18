@@ -2,6 +2,7 @@ pub mod build;
 pub mod cli;
 pub mod config;
 pub mod content;
+pub mod data;
 pub mod deploy;
 pub mod error;
 pub mod output;
