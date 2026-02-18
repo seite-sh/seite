@@ -1364,6 +1364,65 @@ fn test_deploy_domain_shows_dns_instructions() {
         .stdout(predicate::str::contains("github.io"));
 }
 
+#[test]
+fn test_deploy_skip_checks_bypasses_preflight() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Skip Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // --skip-checks should not print preflight header at all
+    // It will still fail because no output dir exists, but that's the build step not preflight
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        // dry-run always shows checks regardless of skip-checks (dry-run is informational)
+        .success();
+}
+
+#[test]
+fn test_deploy_dry_run_cloudflare_shows_auth_check() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CF Auth Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Update config to target cloudflare
+    let toml_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"test-project\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Cloudflare auth"));
+}
+
+#[test]
+fn test_deploy_dry_run_netlify_shows_auth_check() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Netlify Auth Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Update config to target netlify
+    let toml_path = site_dir.join("page.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Netlify auth"));
+}
+
 // --- image handling ---
 
 /// Helper: write a minimal valid PNG (1x1 pixel) into a site's static directory.

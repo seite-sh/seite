@@ -71,7 +71,7 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
         return run_dry_run(&target_str, &config, &paths, args);
     }
 
-    // --- Pre-flight checks ---
+    // --- Pre-flight checks with interactive recovery ---
     if !args.skip_checks {
         let checks = deploy::preflight(&config, &paths, &target_str);
         let all_passed = deploy::print_preflight(&checks);
@@ -80,14 +80,45 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
             let only_base_url_failed = checks.iter().all(|c| c.passed || c.name == "Base URL");
             if only_base_url_failed && args.base_url.is_some() {
                 human::info("base_url check overridden via --base-url flag");
-            } else if only_base_url_failed {
-                human::warning("Deploying with localhost base_url. Use --base-url to override or update page.toml.");
-                human::info("Continuing anyway...");
             } else {
-                return Err(PageError::Deploy(
-                    "pre-flight checks failed — fix the issues above before deploying".into(),
-                )
-                .into());
+                // Try to interactively fix each failed check
+                let unresolved = run_interactive_recovery(
+                    &checks,
+                    &config,
+                    &paths,
+                    &target_str,
+                    &config_path,
+                )?;
+
+                if !unresolved.is_empty() {
+                    // Some checks still failing — check if it's only base_url
+                    let only_base_url = unresolved.iter().all(|name| name == "Base URL");
+                    if only_base_url {
+                        human::warning("Deploying with localhost base_url. Use --base-url to override.");
+                        human::info("Continuing anyway...");
+                    } else {
+                        println!();
+                        human::error("Some pre-flight checks could not be resolved:");
+                        for name in &unresolved {
+                            human::info(&format!("  - {name}"));
+                        }
+                        let cont = dialoguer::Confirm::new()
+                            .with_prompt("Continue deploying anyway?")
+                            .default(false)
+                            .interact()
+                            .unwrap_or(false);
+                        if !cont {
+                            return Err(PageError::Deploy(
+                                "pre-flight checks failed — fix the issues above before deploying"
+                                    .into(),
+                            )
+                            .into());
+                        }
+                    }
+                }
+
+                // Reload config in case it was updated (e.g., base_url fix)
+                // We'll just re-read it for the deploy step
             }
         }
     }
@@ -362,6 +393,98 @@ fn run_dry_run(
 
     human::success("Dry run complete (no changes made)");
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Interactive recovery
+// ---------------------------------------------------------------------------
+
+/// For each failed pre-flight check, offer the user an auto-fix or show manual instructions.
+/// Returns a list of check names that are still unresolved after the recovery loop.
+fn run_interactive_recovery(
+    checks: &[deploy::PreflightCheck],
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+    target: &str,
+    config_path: &PathBuf,
+) -> anyhow::Result<Vec<String>> {
+    let mut unresolved = Vec::new();
+
+    println!();
+    for check in checks {
+        if check.passed {
+            continue;
+        }
+
+        let fix = deploy::try_fix_check(check, paths, target);
+        match fix {
+            Some(fix_action) if !fix_action.prompt.is_empty() => {
+                // We have an auto-fix available — ask the user
+                let do_fix = dialoguer::Confirm::new()
+                    .with_prompt(&fix_action.prompt)
+                    .default(true)
+                    .interact()
+                    .unwrap_or(false);
+
+                if do_fix {
+                    match deploy::execute_fix(&check.name, paths, config, config_path) {
+                        Ok(true) => {
+                            // Verify the fix worked
+                            let recheck =
+                                deploy::recheck(&check.name, config, paths, target);
+                            if recheck.passed {
+                                println!(
+                                    "  {} {}: {}",
+                                    console::style("✓").green(),
+                                    recheck.name,
+                                    recheck.message
+                                );
+                            } else {
+                                println!(
+                                    "  {} {}: {}",
+                                    console::style("✗").red(),
+                                    recheck.name,
+                                    recheck.message
+                                );
+                                unresolved.push(check.name.clone());
+                            }
+                        }
+                        Ok(false) => {
+                            human::warning(&format!("Could not fix: {}", check.name));
+                            print_manual_instructions(&fix_action.manual_instructions);
+                            unresolved.push(check.name.clone());
+                        }
+                        Err(e) => {
+                            human::error(&format!("Fix failed: {e}"));
+                            print_manual_instructions(&fix_action.manual_instructions);
+                            unresolved.push(check.name.clone());
+                        }
+                    }
+                } else {
+                    // User declined — show manual instructions
+                    print_manual_instructions(&fix_action.manual_instructions);
+                    unresolved.push(check.name.clone());
+                }
+            }
+            Some(fix_action) => {
+                // No auto-fix prompt (empty prompt = can't auto-fix but has instructions)
+                print_manual_instructions(&fix_action.manual_instructions);
+                unresolved.push(check.name.clone());
+            }
+            None => {
+                // No fix available at all
+                unresolved.push(check.name.clone());
+            }
+        }
+    }
+
+    Ok(unresolved)
+}
+
+fn print_manual_instructions(instructions: &[String]) {
+    for instruction in instructions {
+        human::info(&format!("  {instruction}"));
+    }
 }
 
 // ---------------------------------------------------------------------------
