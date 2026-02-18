@@ -133,26 +133,22 @@ jobs:
 
   deploy-site:
     name: Deploy docs site
-    needs: release
+    needs: [build, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          name: page-x86_64-unknown-linux-gnu
+          path: artifacts
 
-      - name: Install page
-        run: cargo install --path .
+      - name: Install page from release artifact
+        run: |
+          tar xzf artifacts/page-x86_64-unknown-linux-gnu.tar.gz -C artifacts
+          chmod +x artifacts/page
+          sudo mv artifacts/page /usr/local/bin/page
+          page --version
 
       - name: Build docs site
         working-directory: site
