@@ -5,6 +5,7 @@ edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
 repository = "https://github.com/sanchezomar/page"
+homepage = "https://pagecli.dev"
 rust-version = "1.75"
 
 [[bin]]
