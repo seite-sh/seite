@@ -9,6 +9,7 @@ homepage = "https://pagecli.dev"
 keywords = ["static-site-generator", "ssg", "markdown", "llm", "ai"]
 categories = ["command-line-utilities", "web-programming"]
 rust-version = "1.75"
+readme = "README.md"
 
 [[bin]]
 name = "page"
