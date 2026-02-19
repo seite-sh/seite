@@ -39,6 +39,9 @@ pub enum PageError {
     #[error("Agent error: {0}")]
     Agent(String),
 
+    #[error("Workspace error: {0}")]
+    Workspace(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

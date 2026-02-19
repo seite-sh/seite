@@ -23,11 +23,12 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Init(args) => page::cli::init::run(args)?,
         Command::New(args) => page::cli::new::run(args)?,
-        Command::Build(args) => page::cli::build::run(args)?,
-        Command::Serve(args) => page::cli::serve::run(args)?,
-        Command::Deploy(args) => page::cli::deploy::run(args)?,
+        Command::Build(args) => page::cli::build::run(args, cli.site.as_deref())?,
+        Command::Serve(args) => page::cli::serve::run(args, cli.site.as_deref())?,
+        Command::Deploy(args) => page::cli::deploy::run(args, cli.site.as_deref())?,
         Command::Agent(args) => page::cli::agent::run(args)?,
         Command::Theme(args) => page::cli::theme::run(args)?,
+        Command::Workspace(args) => page::cli::workspace::run(args)?,
     }
 
     Ok(())
