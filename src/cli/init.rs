@@ -395,6 +395,7 @@ fn generate_claude_md(
     md.push_str("slug: custom-slug        # optional, overrides auto-generated slug\n");
     md.push_str("template: custom.html    # optional, overrides collection default template\n");
     md.push_str("robots: noindex          # optional, per-page <meta name=\"robots\">\n");
+    md.push_str("weight: 1                # optional, sort order for non-date collections (lower first)\n");
     md.push_str("---\n\n");
     md.push_str("Markdown content here.\n");
     md.push_str("```\n\n");
@@ -603,7 +604,17 @@ fn generate_claude_md(
     md.push_str("- Asset pipeline: set `minify = true` and/or `fingerprint = true` under `[build]` in `page.toml`\n");
     md.push_str("  - `minify` strips CSS/JS comments and collapses whitespace\n");
     md.push_str("  - `fingerprint` writes `file.<hash8>.ext` copies of each static asset and a `dist/asset-manifest.json` mapping original names to fingerprinted names\n");
-    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
+    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n\n");
+
+    // Documentation links
+    md.push_str("## Documentation\n\n");
+    md.push_str("Full documentation: <https://pagecli.dev/docs/getting-started>\n\n");
+    md.push_str("- [Getting Started](https://pagecli.dev/docs/getting-started) — install and create your first site\n");
+    md.push_str("- [Configuration](https://pagecli.dev/docs/configuration) — full `page.toml` reference\n");
+    md.push_str("- [Templates & Themes](https://pagecli.dev/docs/templates) — customize templates and themes\n");
+    md.push_str("- [Shortcodes](https://pagecli.dev/docs/shortcodes) — reusable content components\n");
+    md.push_str("- [CLI Reference](https://pagecli.dev/docs/cli-reference) — all commands and flags\n");
+    md.push_str("- [AI Agent](https://pagecli.dev/docs/agent) — using the AI assistant\n");
 
     md
 }

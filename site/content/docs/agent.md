@@ -1,6 +1,7 @@
 ---
 title: "AI Agent"
 description: "Use page agent to get AI assistance with content creation, site management, and theme generation."
+weight: 8
 ---
 
 ## Overview

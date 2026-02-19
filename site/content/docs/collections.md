@@ -1,6 +1,7 @@
 ---
 title: "Collections"
 description: "Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS."
+weight: 3
 ---
 
 ## Overview
@@ -89,6 +90,19 @@ Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar w
 {{% callout(type="info") %}}
 Subdirectories automatically become sidebar sections. Create `content/docs/guides/` and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.
 {{% end %}}
+
+### Sidebar Ordering
+
+By default, docs are sorted alphabetically by title. Use `weight` in frontmatter to control the order:
+
+```yaml
+---
+title: "Getting Started"
+weight: 1
+---
+```
+
+Lower values appear first. Items without `weight` sort alphabetically after all weighted items. This lets you create a guided learning path instead of a plain alphabetical list.
 
 ## Pages
 
