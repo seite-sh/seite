@@ -163,9 +163,11 @@ page deploy [options]
 | `--setup` | Run guided deploy setup |
 | `--skip-checks` | Skip pre-flight checks |
 | `--base-url` | Override base URL for this deploy |
+| `--no-commit` | Skip auto-commit and push (overrides `deploy.auto_commit`) |
 
 ```bash
-page deploy                          # Use target from page.toml
+page deploy                          # Commit, push, build, and deploy
+page deploy --no-commit              # Deploy without auto-commit/push
 page deploy --dry-run                # Preview changes
 page deploy --target netlify         # Override target
 page deploy --target cloudflare --dry-run

@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::config::{DeployTarget, ResolvedPaths, SiteConfig};
 use crate::error::{PageError, Result};
 use crate::output::human;
+use crate::platform::npm_cmd;
 
 // ---------------------------------------------------------------------------
 // Pre-flight checks (Feature 1)
@@ -109,7 +110,7 @@ fn check_base_url(config: &SiteConfig) -> PreflightCheck {
 }
 
 fn check_cli_available(name: &str, args: &[&str]) -> PreflightCheck {
-    match Command::new(name).args(args).output() {
+    match npm_cmd(name).args(args).output() {
         Ok(output) if output.status.success() => PreflightCheck {
             name: format!("{name} CLI"),
             passed: true,
@@ -179,7 +180,7 @@ fn check_git_remote(paths: &ResolvedPaths, configured_repo: Option<&str>) -> Pre
 
 fn check_cloudflare_auth() -> PreflightCheck {
     // Only check auth if wrangler is installed
-    let has_wrangler = Command::new("wrangler")
+    let has_wrangler = npm_cmd("wrangler")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -191,7 +192,7 @@ fn check_cloudflare_auth() -> PreflightCheck {
             message: "skipped (wrangler not installed)".into(),
         };
     }
-    match Command::new("wrangler").args(["whoami"]).output() {
+    match npm_cmd("wrangler").args(["whoami"]).output() {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let account = stdout
@@ -214,7 +215,7 @@ fn check_cloudflare_auth() -> PreflightCheck {
 }
 
 fn check_netlify_auth() -> PreflightCheck {
-    let has_netlify = Command::new("netlify")
+    let has_netlify = npm_cmd("netlify")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -226,7 +227,7 @@ fn check_netlify_auth() -> PreflightCheck {
             message: "skipped (netlify not installed)".into(),
         };
     }
-    match Command::new("netlify").args(["status"]).output() {
+    match npm_cmd("netlify").args(["status"]).output() {
         Ok(output) if output.status.success() => PreflightCheck {
             name: "Netlify auth".into(),
             passed: true,
@@ -274,7 +275,7 @@ fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> Prefl
 
 /// Check if a Cloudflare Pages project exists by listing projects (uses --json for reliability).
 fn cloudflare_project_exists(name: &str) -> bool {
-    let output = Command::new("wrangler")
+    let output = npm_cmd("wrangler")
         .args(["pages", "project", "list", "--json"])
         .output();
     match output {
@@ -319,7 +320,7 @@ fn check_netlify_site(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCh
     }
 
     // Try `netlify status` to see if we're linked to a site
-    let has_netlify = Command::new("netlify")
+    let has_netlify = npm_cmd("netlify")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -332,7 +333,7 @@ fn check_netlify_site(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCh
         };
     }
 
-    match Command::new("netlify")
+    match npm_cmd("netlify")
         .args(["status", "--json"])
         .current_dir(&paths.root)
         .output()
@@ -423,7 +424,7 @@ fn check_netlify_domain(config: &SiteConfig, paths: &ResolvedPaths) -> Preflight
     };
 
     // Check via netlify CLI
-    let output = Command::new("netlify")
+    let output = npm_cmd("netlify")
         .args(["domains:list", "--json"])
         .current_dir(&paths.root)
         .output();
@@ -730,7 +731,7 @@ pub fn execute_fix(
         }
         "Cloudflare auth" => {
             human::info("Opening Cloudflare login...");
-            let result = Command::new("wrangler")
+            let result = npm_cmd("wrangler")
                 .args(["login"])
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
@@ -738,7 +739,7 @@ pub fn execute_fix(
         }
         "Netlify auth" => {
             human::info("Opening Netlify login...");
-            let result = Command::new("netlify")
+            let result = npm_cmd("netlify")
                 .args(["login"])
                 .status()
                 .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
@@ -751,7 +752,7 @@ pub fn execute_fix(
                 .and_then(|n| n.to_str())
                 .unwrap_or("my-site");
             human::info(&format!("Creating Cloudflare Pages project '{project_name}'..."));
-            let result = Command::new("wrangler")
+            let result = npm_cmd("wrangler")
                 .args(["pages", "project", "create", project_name, "--production-branch", "main"])
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
@@ -774,7 +775,7 @@ pub fn execute_fix(
                 .and_then(|n| n.to_str())
                 .unwrap_or("my-site");
             human::info(&format!("Creating Netlify site '{site_name}'..."));
-            let output = Command::new("netlify")
+            let output = npm_cmd("netlify")
                 .args(["sites:create", "--name", site_name])
                 .current_dir(&paths.root)
                 .output()
@@ -782,7 +783,7 @@ pub fn execute_fix(
             if output.status.success() {
                 human::success(&format!("Created Netlify site '{site_name}'"));
                 // Link the site locally
-                let _ = Command::new("netlify")
+                let _ = npm_cmd("netlify")
                     .args(["link", "--name", site_name])
                     .current_dir(&paths.root)
                     .status();
@@ -791,7 +792,7 @@ pub fn execute_fix(
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 if stderr.contains("already exists") {
                     human::info("Site already exists — linking...");
-                    let link_result = Command::new("netlify")
+                    let link_result = npm_cmd("netlify")
                         .args(["link", "--name", site_name])
                         .current_dir(&paths.root)
                         .status()
@@ -833,7 +834,7 @@ pub fn execute_fix(
                 return Ok(false);
             }
             human::info(&format!("Adding domain '{domain}' to Netlify site..."));
-            let result = Command::new("netlify")
+            let result = npm_cmd("netlify")
                 .args(["domains:add", domain])
                 .current_dir(&paths.root)
                 .status()
@@ -887,7 +888,7 @@ pub fn recheck(
 }
 
 fn has_npm() -> bool {
-    Command::new("npm")
+    npm_cmd("npm")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -904,7 +905,7 @@ fn has_brew() -> bool {
 
 fn run_install_command(cmd: &str, args: &[&str], label: &str) -> Result<bool> {
     human::info(&format!("Installing {label}..."));
-    let result = Command::new(cmd)
+    let result = npm_cmd(cmd)
         .args(args)
         .status()
         .map_err(|e| PageError::Deploy(format!("{cmd} failed: {e}")))?;
@@ -915,6 +916,123 @@ fn run_install_command(cmd: &str, args: &[&str], label: &str) -> Result<bool> {
         human::error(&format!("Failed to install {label}"));
         Ok(false)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-commit and push (pre-deploy git workflow)
+// ---------------------------------------------------------------------------
+
+/// Result of the auto-commit and push step.
+pub struct GitPushResult {
+    /// Current branch name.
+    pub branch: String,
+    /// Whether the branch is main or master.
+    pub is_main: bool,
+    /// Whether a new commit was created (false if working tree was clean).
+    pub committed: bool,
+}
+
+/// Auto-commit all changes and push to the remote before deploying.
+///
+/// Steps:
+/// 1. Detect current branch
+/// 2. If there are uncommitted changes, stage and commit them
+/// 3. Push to origin (with --set-upstream if no tracking branch)
+///
+/// Returns `GitPushResult` with branch info and whether a commit was made.
+pub fn auto_commit_and_push(paths: &ResolvedPaths) -> Result<GitPushResult> {
+    let root = &paths.root;
+
+    // 1. Get current branch name
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| PageError::Deploy(format!("git rev-parse failed: {e}")))?;
+
+    if !branch_output.status.success() {
+        return Err(PageError::Deploy(
+            "not a git repository or no commits yet — skipping auto-commit".into(),
+        ));
+    }
+
+    let branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+    let is_main = branch == "main" || branch == "master";
+
+    // 2. Check for uncommitted changes
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| PageError::Deploy(format!("git status failed: {e}")))?;
+
+    let has_changes = !String::from_utf8_lossy(&status_output.stdout)
+        .trim()
+        .is_empty();
+
+    let mut committed = false;
+    if has_changes {
+        // Stage all changes
+        let add_output = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(root)
+            .output()
+            .map_err(|e| PageError::Deploy(format!("git add failed: {e}")))?;
+
+        if !add_output.status.success() {
+            return Err(PageError::Deploy(
+                "git add -A failed".into(),
+            ));
+        }
+
+        // Commit
+        let commit_output = Command::new("git")
+            .args(["commit", "-m", "Deploy: update site content"])
+            .current_dir(root)
+            .output()
+            .map_err(|e| PageError::Deploy(format!("git commit failed: {e}")))?;
+
+        if !commit_output.status.success() {
+            let stderr = String::from_utf8_lossy(&commit_output.stderr);
+            return Err(PageError::Deploy(format!("git commit failed: {stderr}")));
+        }
+
+        committed = true;
+    }
+
+    // 3. Push to remote
+    // Check if there's a tracking branch
+    let has_upstream = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "@{u}"])
+        .current_dir(root)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let push_args = if has_upstream {
+        vec!["push"]
+    } else {
+        vec!["push", "--set-upstream", "origin", &branch]
+    };
+
+    let push_output = Command::new("git")
+        .args(&push_args)
+        .current_dir(root)
+        .output()
+        .map_err(|e| PageError::Deploy(format!("git push failed: {e}")))?;
+
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        return Err(PageError::Deploy(format!("git push failed: {stderr}")));
+    }
+
+    Ok(GitPushResult {
+        branch,
+        is_main,
+        committed,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,7 +1134,7 @@ pub fn deploy_cloudflare(
         args.push("preview".to_string());
     }
 
-    let output = Command::new("wrangler")
+    let output = npm_cmd("wrangler")
         .args(&args)
         .output()
         .map_err(|e| PageError::Deploy(format!("wrangler failed: {e}")))?;
@@ -1086,7 +1204,7 @@ pub fn deploy_netlify(
     // Request JSON output for URL extraction
     args.push("--json");
 
-    let output = Command::new("netlify")
+    let output = npm_cmd("netlify")
         .args(&args)
         .output()
         .map_err(|e| PageError::Deploy(format!("netlify deploy failed: {e}")))?;
@@ -1234,7 +1352,7 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
 
 pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
     // Check wrangler
-    let has_wrangler = Command::new("wrangler")
+    let has_wrangler = npm_cmd("wrangler")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -1250,14 +1368,14 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
     }
 
     // Check login status
-    let whoami = Command::new("wrangler")
+    let whoami = npm_cmd("wrangler")
         .args(["whoami"])
         .output()
         .map_err(|e| PageError::Deploy(format!("wrangler whoami failed: {e}")))?;
 
     if !whoami.status.success() {
         human::info("Logging in to Cloudflare...");
-        let login = Command::new("wrangler")
+        let login = npm_cmd("wrangler")
             .args(["login"])
             .status()
             .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
@@ -1277,7 +1395,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
     human::info(&format!(
         "Creating Cloudflare Pages project '{project_name}'..."
     ));
-    let result = Command::new("wrangler")
+    let result = npm_cmd("wrangler")
         .args(["pages", "project", "create", &project_name, "--production-branch", "main"])
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
@@ -1292,7 +1410,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
 }
 
 pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
-    let has_netlify = Command::new("netlify")
+    let has_netlify = npm_cmd("netlify")
         .args(["--version"])
         .output()
         .map(|o| o.status.success())
@@ -1308,14 +1426,14 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
     }
 
     // Check login
-    let status = Command::new("netlify")
+    let status = npm_cmd("netlify")
         .args(["status"])
         .output()
         .map_err(|e| PageError::Deploy(format!("netlify status failed: {e}")))?;
 
     if !status.status.success() {
         human::info("Logging in to Netlify...");
-        let login = Command::new("netlify")
+        let login = npm_cmd("netlify")
             .args(["login"])
             .status()
             .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
@@ -1333,7 +1451,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
         .to_string();
 
     human::info(&format!("Creating Netlify site '{site_name}'..."));
-    let output = Command::new("netlify")
+    let output = npm_cmd("netlify")
         .args(["sites:create", "--name", &site_name])
         .output()
         .map_err(|e| PageError::Deploy(format!("netlify sites:create failed: {e}")))?;
@@ -1344,7 +1462,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
     }
 
     // Link the site
-    let _ = Command::new("netlify")
+    let _ = npm_cmd("netlify")
         .args(["link", "--name", &site_name])
         .current_dir(&paths.root)
         .status();
@@ -1686,7 +1804,7 @@ fn detect_github_username(deploy: &crate::config::DeploySection) -> Option<Strin
 
 /// Extract the Cloudflare account ID from `wrangler whoami` output.
 fn get_cloudflare_account_id() -> Option<String> {
-    let output = Command::new("wrangler").args(["whoami"]).output().ok()?;
+    let output = npm_cmd("wrangler").args(["whoami"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1715,11 +1833,7 @@ fn get_cloudflare_api_token() -> Option<String> {
     }
 
     // 2. Read wrangler's OAuth token from its config file
-    let config_path = if cfg!(target_os = "macos") {
-        dirs_path("Library/Preferences/.wrangler/config/default.toml")
-    } else {
-        dirs_path(".config/.wrangler/config/default.toml")
-    };
+    let config_path = crate::platform::wrangler_config_path();
 
     if let Some(path) = config_path {
         if let Ok(content) = fs::read_to_string(&path) {
@@ -1738,11 +1852,6 @@ fn get_cloudflare_api_token() -> Option<String> {
     }
 
     None
-}
-
-/// Resolve a path relative to the user's home directory.
-fn dirs_path(relative: &str) -> Option<std::path::PathBuf> {
-    std::env::var("HOME").ok().map(|home| std::path::PathBuf::from(home).join(relative))
 }
 
 /// List custom domains attached to a Cloudflare Pages project.
@@ -1836,7 +1945,7 @@ pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
 
 /// Add a custom domain to a Netlify site via the CLI.
 pub fn netlify_add_domain(paths: &ResolvedPaths, domain: &str) -> Result<bool> {
-    let result = Command::new("netlify")
+    let result = npm_cmd("netlify")
         .args(["domains:add", domain])
         .current_dir(&paths.root)
         .status()

@@ -168,7 +168,7 @@ impl Default for BuildSection {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeploySection {
     #[serde(default)]
     pub target: DeployTarget,
@@ -178,6 +178,21 @@ pub struct DeploySection {
     pub project: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Auto-commit and push before deploying. Default: true.
+    #[serde(default = "crate::config::defaults::bool_true")]
+    pub auto_commit: bool,
+}
+
+impl Default for DeploySection {
+    fn default() -> Self {
+        Self {
+            target: DeployTarget::default(),
+            repo: None,
+            project: None,
+            domain: None,
+            auto_commit: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
