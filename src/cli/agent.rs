@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use clap::Args;
 use walkdir::WalkDir;
@@ -9,6 +9,7 @@ use crate::config::{ResolvedPaths, SiteConfig};
 use crate::content;
 use crate::error::PageError;
 use crate::output::human;
+use crate::platform::npm_cmd;
 
 #[derive(Args)]
 pub struct AgentArgs {
@@ -33,7 +34,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
         Some(prompt) if args.once => {
             // Single-shot mode: run one prompt and exit (text output, no streaming parse)
             human::info("Starting agent...");
-            let status = Command::new("claude")
+            let status = npm_cmd("claude")
                 .args(["-p", prompt])
                 .args(["--append-system-prompt", &system_prompt])
                 .args(["--allowedTools", allowed_tools])
@@ -57,7 +58,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
             // Interactive Claude Code session (full TUI)
             human::info("Starting interactive agent session...");
             human::info("The agent has full context about your site. Type your requests.");
-            let status = Command::new("claude")
+            let status = npm_cmd("claude")
                 .args(["--append-system-prompt", &system_prompt])
                 .args(["--allowedTools", allowed_tools])
                 .status()
@@ -80,7 +81,7 @@ fn run_streaming(
     system_prompt: &str,
     allowed_tools: &str,
 ) -> anyhow::Result<Option<String>> {
-    let mut cmd = Command::new("claude");
+    let mut cmd = npm_cmd("claude");
     cmd.args(["-p", prompt])
         .args(["--output-format", "stream-json"])
         .args(["--verbose"])
@@ -243,7 +244,7 @@ fn chat_loop(session_id: &str, allowed_tools: &str) -> anyhow::Result<()> {
 }
 
 fn ensure_claude_installed() -> anyhow::Result<()> {
-    match Command::new("claude").arg("--version").output() {
+    match npm_cmd("claude").arg("--version").output() {
         Ok(output) if output.status.success() => Ok(()),
         _ => Err(PageError::Agent(
             "Claude Code is not installed. Install it with: npm install -g @anthropic-ai/claude-code"
