@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod discovery;
 pub mod feed;
 pub mod images;
@@ -1235,6 +1236,13 @@ pub fn build_site(
     }
 
     step_timings.push(("Post-process HTML".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+
+    // Step 13: Inject analytics scripts (and optional cookie consent banner)
+    if let Some(ref analytics_config) = config.analytics {
+        let step_start = Instant::now();
+        analytics::inject_analytics_into_html_files(&paths.output, analytics_config)?;
+        step_timings.push(("Inject analytics".to_string(), step_start.elapsed().as_secs_f64() * 1000.0));
+    }
 
     let items_built: HashMap<String, usize> = all_collections
         .iter()

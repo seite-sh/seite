@@ -19,6 +19,8 @@ pub struct SiteConfig {
     pub languages: HashMap<String, LanguageConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<ImageSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analytics: Option<AnalyticsSection>,
 }
 
 /// Per-language overrides for site metadata.
@@ -229,6 +231,30 @@ impl Default for ImageSection {
             webp: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AnalyticsProvider {
+    Google,
+    Gtm,
+    Plausible,
+    Fathom,
+    Umami,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalyticsSection {
+    /// Analytics provider: "google", "gtm", "plausible", "fathom", "umami"
+    pub provider: AnalyticsProvider,
+    /// Measurement/tracking ID (e.g., "G-XXXXXXX", "GTM-XXXXX", site ID)
+    pub id: String,
+    /// Show a cookie consent banner and gate analytics on user consent. Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cookie_consent: bool,
+    /// Custom script URL (required for Umami, optional for others).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script_url: Option<String>,
 }
 
 
