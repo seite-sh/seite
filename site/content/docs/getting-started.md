@@ -1,6 +1,7 @@
 ---
 title: "Getting Started"
 description: "Install page and build your first static site in under a minute."
+weight: 1
 ---
 
 ## Installation

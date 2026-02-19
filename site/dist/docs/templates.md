@@ -1,6 +1,7 @@
 ---
 title: Templates & Themes
 description: Customize your site with Tera templates, overridable blocks, and six bundled themes.
+weight: 4
 ---
 
 ## Template Engine

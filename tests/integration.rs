@@ -3209,3 +3209,109 @@ fn test_build_data_footer_in_theme() {
         "Footer should use custom copyright"
     );
 }
+
+#[test]
+fn test_build_docs_sorted_by_weight() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Weight Sort", "docs");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create 3 docs with weights out of alphabetical order
+    fs::write(
+        site_dir.join("content/docs/zebra.md"),
+        "---\ntitle: Zebra\nweight: 1\n---\n\nFirst by weight.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/alpha.md"),
+        "---\ntitle: Alpha\nweight: 3\n---\n\nThird by weight.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/middle.md"),
+        "---\ntitle: Middle\nweight: 2\n---\n\nSecond by weight.\n",
+    )
+    .unwrap();
+
+    // Apply docs theme for sidebar nav
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Check the sidebar order in any built doc page
+    let html = fs::read_to_string(site_dir.join("dist/docs/zebra.html")).unwrap();
+    let pos_zebra = html.find(">Zebra<").expect("Zebra should be in sidebar");
+    let pos_middle = html.find(">Middle<").expect("Middle should be in sidebar");
+    let pos_alpha = html.find(">Alpha<").expect("Alpha should be in sidebar");
+
+    assert!(
+        pos_zebra < pos_middle && pos_middle < pos_alpha,
+        "Docs should be sorted by weight: Zebra(1) < Middle(2) < Alpha(3), got positions: {} {} {}",
+        pos_zebra, pos_middle, pos_alpha
+    );
+}
+
+#[test]
+fn test_build_docs_weight_mixed_with_unweighted() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Mixed Weight", "docs");
+
+    let site_dir = tmp.path().join("site");
+
+    // Weighted items should come first, unweighted sort alphabetically after
+    fs::write(
+        site_dir.join("content/docs/second.md"),
+        "---\ntitle: Second\nweight: 2\n---\n\nWeighted second.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/first.md"),
+        "---\ntitle: First\nweight: 1\n---\n\nWeighted first.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/bravo.md"),
+        "---\ntitle: Bravo\n---\n\nUnweighted B.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/alpha-unweighted.md"),
+        "---\ntitle: Alpha Unweighted\n---\n\nUnweighted A.\n",
+    )
+    .unwrap();
+
+    // Apply docs theme for sidebar nav
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/docs/first.html")).unwrap();
+    let pos_first = html.find(">First<").expect("First should be in sidebar");
+    let pos_second = html.find(">Second<").expect("Second should be in sidebar");
+    let pos_alpha = html.find(">Alpha Unweighted<").expect("Alpha Unweighted should be in sidebar");
+    let pos_bravo = html.find(">Bravo<").expect("Bravo should be in sidebar");
+
+    // Weighted items first (by weight), then unweighted (alphabetically)
+    assert!(
+        pos_first < pos_second && pos_second < pos_alpha && pos_alpha < pos_bravo,
+        "Expected: First(w1) < Second(w2) < Alpha Unweighted(none) < Bravo(none), got: {} {} {} {}",
+        pos_first, pos_second, pos_alpha, pos_bravo
+    );
+}

@@ -326,11 +326,18 @@ pub fn build_site(
             }
         }
 
-        // Sort: date-based collections by date desc, others by title
+        // Sort: date-based collections by date desc, others by weight then title
         if collection.has_date {
             items.sort_by(|a, b| b.frontmatter.date.cmp(&a.frontmatter.date));
         } else {
-            items.sort_by(|a, b| a.frontmatter.title.cmp(&b.frontmatter.title));
+            items.sort_by(|a, b| {
+                match (a.frontmatter.weight, b.frontmatter.weight) {
+                    (Some(wa), Some(wb)) => wa.cmp(&wb).then_with(|| a.frontmatter.title.cmp(&b.frontmatter.title)),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.frontmatter.title.cmp(&b.frontmatter.title),
+                }
+            });
         }
 
         all_collections.insert(collection.name.clone(), items);

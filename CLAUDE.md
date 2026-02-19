@@ -142,6 +142,7 @@ struct Frontmatter {
     draft: bool,                   // excluded from build unless --drafts
     template: Option<String>,      // override collection default template
     robots: Option<String>,        // per-page <meta name="robots">, e.g. "noindex"
+    weight: Option<i32>,           // ordering for non-date collections (lower first, unweighted sort last alphabetically)
     extra: HashMap<String, Value>, // arbitrary key-value data → {{ page.extra.field }}
 }
 

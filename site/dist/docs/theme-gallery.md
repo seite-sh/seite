@@ -1,6 +1,7 @@
 ---
 title: Theme Gallery
 description: Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
+weight: 9
 ---
 
 ## Bundled Themes
