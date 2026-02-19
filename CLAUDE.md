@@ -80,7 +80,8 @@ src/
       callout.html     Admonition/callout body shortcode
       figure.html      Semantic figure with caption
   build/
-    mod.rs             12-step build pipeline
+    mod.rs             13-step build pipeline
+    analytics.rs       Analytics injection + cookie consent banner
     links.rs           Post-build internal link validation
     markdown.rs        pulldown-cmark wrapper
     feed.rs            RSS generation
@@ -128,7 +129,7 @@ tests/
   integration.rs       138 integration tests using assert_cmd + tempfile
 ```
 
-### Build Pipeline (12 steps)
+### Build Pipeline (13 steps)
 
 1. Clean output directory (`dist/`)
 2. Load Tera templates (user-provided + embedded defaults)
@@ -144,6 +145,7 @@ tests/
 10. Copy static files
 11. Process images (resize to configured widths, generate WebP variants)
 12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"`)
+13. Inject analytics scripts (and optional cookie consent banner) into all HTML files
 
 ### Collections System
 
@@ -233,6 +235,13 @@ widths = [480, 800, 1200]  # generate resized copies at these pixel widths
 quality = 80               # JPEG/WebP quality (1-100)
 lazy_loading = true        # add loading="lazy" to <img> tags
 webp = true                # generate WebP variants alongside originals
+
+# Optional: analytics (omit for no analytics)
+[analytics]
+provider = "google"        # "google", "gtm", "plausible", "fathom", "umami"
+id = "G-XXXXXXXXXX"        # measurement/tracking ID
+cookie_consent = true      # show consent banner and gate analytics on acceptance
+# script_url = "..."       # custom script URL (required for self-hosted Umami)
 ```
 
 ### Data Files
