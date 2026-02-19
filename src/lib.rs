@@ -5,6 +5,7 @@ pub mod content;
 pub mod data;
 pub mod deploy;
 pub mod error;
+pub mod meta;
 pub mod output;
 pub mod platform;
 pub mod server;

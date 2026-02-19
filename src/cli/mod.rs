@@ -3,8 +3,10 @@ pub mod build;
 pub mod deploy;
 pub mod init;
 pub mod new;
+pub mod self_update;
 pub mod serve;
 pub mod theme;
+pub mod upgrade;
 pub mod workspace;
 
 use clap::{Parser, Subcommand};
@@ -66,4 +68,10 @@ pub enum Command {
 
     /// Manage multi-site workspaces
     Workspace(workspace::WorkspaceArgs),
+
+    /// Upgrade project config to match the current page version
+    Upgrade(upgrade::UpgradeArgs),
+
+    /// Update the page binary to the latest release
+    SelfUpdate(self_update::SelfUpdateArgs),
 }

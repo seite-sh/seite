@@ -5,6 +5,7 @@ use clap::Args;
 
 use crate::config::{CollectionConfig, DeployTarget};
 use crate::content;
+use crate::meta;
 use crate::output::human;
 use crate::templates;
 
@@ -106,6 +107,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join("static"))?;
     fs::create_dir_all(root.join("data"))?;
     fs::create_dir_all(root.join(".claude"))?;
+    fs::create_dir_all(root.join(".page"))?;
 
     // Generate page.toml
     let target = match deploy_target.as_str() {
@@ -197,6 +199,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         }
     }
 
+    // Write project metadata (.page/config.json)
+    meta::write(&root, &meta::PageMeta::current())?;
+
     // Write Claude Code settings (.claude/settings.json)
     fs::write(
         root.join(".claude/settings.json"),
@@ -218,7 +223,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Generate .claude/settings.json with pre-approved tools for the page workflow.
+/// Generate .claude/settings.json with pre-approved tools and MCP server config.
 fn generate_claude_settings() -> String {
     r#"{
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
@@ -245,10 +250,27 @@ fn generate_claude_settings() -> String {
       "Read(.env)",
       "Read(.env.*)"
     ]
+  },
+  "mcpServers": {
+    "page": {
+      "command": "page",
+      "args": ["mcp"]
+    }
   }
 }
 "#
     .to_string()
+}
+
+/// The MCP server block that should be present in .claude/settings.json.
+/// Used by upgrade to merge into existing settings.
+pub fn mcp_server_block() -> serde_json::Value {
+    serde_json::json!({
+        "page": {
+            "command": "page",
+            "args": ["mcp"]
+        }
+    })
 }
 
 /// Generate a CLAUDE.md tailored to the site's collections and structure.

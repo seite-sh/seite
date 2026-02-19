@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (36 unit + 96 integration)
+cargo test           # Run all tests (103 unit + 138 integration)
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- build   # Build site from page.toml in current dir
@@ -38,6 +38,14 @@ cargo run -- workspace list                         # List sites
 cargo run -- workspace status                       # Detailed status
 cargo run -- build --site blog                      # Build one site in workspace
 cargo run -- serve --site docs                      # Serve one site in workspace
+
+# Project upgrade & self-update
+cargo run -- upgrade                               # Upgrade project config to current binary version
+cargo run -- upgrade --check                       # Check if upgrade needed (exit 1 = outdated, for CI)
+cargo run -- upgrade --force                       # Upgrade without confirmation
+cargo run -- self-update                           # Update page binary to latest release
+cargo run -- self-update --check                   # Check for new version without installing
+cargo run -- self-update --target-version 0.2.0    # Pin a specific version
 
 # Install (end users)
 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh       # macOS/Linux
@@ -79,16 +87,19 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
+  meta.rs              Project metadata (.page/config.json) — version tracking, upgrade detection
   cli/
-    mod.rs             Cli struct + Command enum (8 subcommands)
-    init.rs            Interactive project scaffolding
+    mod.rs             Cli struct + Command enum (10 subcommands)
+    init.rs            Interactive project scaffolding (creates .page/config.json + MCP config)
     new.rs             Create content files
-    build.rs           Build command (workspace-aware)
+    build.rs           Build command (workspace-aware, nudges on outdated project)
     serve.rs           Dev server + interactive REPL (workspace-aware)
     deploy.rs          Deploy command (workspace-aware)
     agent.rs           AI agent (spawns Claude Code with site context)
     theme.rs           Theme management
     workspace.rs       Workspace CLI (init, list, add, status)
+    upgrade.rs         Upgrade project config to current binary (version-gated steps)
+    self_update.rs     Self-update binary from GitHub Releases
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
@@ -107,7 +118,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       88+ integration tests using assert_cmd + tempfile
+  integration.rs       138 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (12 steps)
@@ -286,6 +297,36 @@ Multi-site workspaces let you manage multiple `page` sites from a single directo
 - **Workspace serve** (`workspace::server`): unified HTTP server routing `/<site-name>/...` to each site's output dir, per-site file watching with selective rebuilds, auto-generated workspace index at `/`
 - **Workspace deploy** (`workspace::deploy`): iterates sites, runs pre-flight checks + build + deploy per-site, each site can use a different deploy target
 - **Config overrides**: `page-workspace.toml` can override `base_url` and `output_dir` per-site without touching each site's `page.toml`
+
+### Project Metadata & Upgrades
+
+`.page/config.json` stores tooling metadata — which version of `page` last scaffolded or upgraded the project. This is fully owned by the tool; users never edit it.
+
+```json
+{
+  "version": "0.1.0",
+  "initialized_at": "2026-02-19T14:30:00+00:00"
+}
+```
+
+**Key module:** `src/meta.rs` — `PageMeta` struct, `load()`, `write()`, `needs_upgrade()`, `project_version()`, `binary_version()`.
+
+**Upgrade system** (`src/cli/upgrade.rs`):
+- Version-gated steps: each `UpgradeStep` has an `introduced_in` version and a `check` function that returns `UpgradeAction`s
+- Three action types: `Create` (new file), `MergeJson` (additive merge into JSON), `Append` (append section to text file)
+- Non-destructive: never removes user content, only adds missing entries
+- `--check` mode exits with code 1 if outdated (for CI)
+- Adding a new upgrade step: add an `UpgradeStep` to `upgrade_steps()` with the version that introduces it
+
+**Self-update** (`src/cli/self_update.rs`):
+- Downloads binary from GitHub Releases using `ureq` (same dep as Cloudflare API)
+- Detects platform via compile-time `cfg!(target_os)` / `cfg!(target_arch)`
+- Verifies SHA256 checksum using system `sha256sum` / `shasum` (same approach as `install.sh`)
+- Atomic binary replacement: rename current → backup, copy new → target, restore on failure
+
+**Build nudge** (`src/cli/build.rs`): at the start of `run()`, checks `meta::needs_upgrade()` and prints a one-liner if outdated.
+
+**MCP server config**: `page init` writes `.claude/settings.json` with a `mcpServers.page` block. `page upgrade` merges this into existing settings without overwriting user entries.
 
 ### Release & Distribution
 
@@ -601,6 +642,9 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Data files — `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. All 6 bundled themes conditionally render `data.nav` and `data.footer`. Nested directories create nested keys. Conflict detection for duplicate stems and path collisions.
 - [x] Windows support — PowerShell installer (`install.ps1`), Windows x86_64 release binaries, platform helpers for `.cmd` shims and backslash path normalization
 - [x] Multi-site workspaces — `page workspace init/list/add/status` commands, `page-workspace.toml` config, global `--site` flag, workspace-aware build/serve/deploy, unified dev server with per-site routing and selective file watching, per-site deploy orchestration with independent targets
+- [x] Project metadata & upgrades — `.page/config.json` tracks binary version that last scaffolded the project. `page upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `page build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
+- [x] Self-update — `page self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
+- [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects. Prepares for `page mcp` command (MCP server implementation is next).
 
 ### Up Next
 
