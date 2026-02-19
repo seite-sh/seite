@@ -20,9 +20,15 @@ To install a specific version:
 VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
 ```
 
+### Quick install (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex
+```
+
 ### Install from source
 
-If you have the Rust toolchain installed:
+If you have the Rust toolchain installed (all platforms):
 
 ```bash
 cargo install page
@@ -36,7 +42,7 @@ cargo install page
 | macOS | Intel x86_64 | Shell installer or cargo |
 | Linux | x86_64 | Shell installer or cargo |
 | Linux | aarch64/arm64 | Shell installer or cargo |
-| Windows | x86_64 | `cargo install page` |
+| Windows | x86_64 | PowerShell installer or cargo |
 
 ### Verify
 
@@ -173,4 +179,5 @@ page theme create "minimal serif with warm colors"
 - [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
 - [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
 - [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
 - [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you

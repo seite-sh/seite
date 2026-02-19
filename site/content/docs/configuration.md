@@ -220,8 +220,38 @@ extra:
 | `robots` | string | No | Per-page robots directive |
 | `extra` | map | No | Arbitrary data for templates |
 
+## page-workspace.toml
+
+For multi-site setups, a `page-workspace.toml` at the workspace root configures all sites. Each site still has its own `page.toml`.
+
+```toml
+[workspace]
+name = "my-workspace"
+shared_data = "data"           # Shared data directory (optional)
+shared_static = "static"       # Shared static assets (optional)
+shared_templates = "templates" # Shared templates (optional)
+
+[[sites]]
+name = "blog"
+path = "sites/blog"
+# base_url = "https://blog.example.com"  # Override site base_url
+# output_dir = "dist/blog"               # Override output location
+
+[[sites]]
+name = "docs"
+path = "sites/docs"
+
+[cross_site]
+unified_sitemap = false    # Combine all sites into one sitemap
+cross_site_links = false   # Validate links across sites
+unified_search = false     # Combined search index
+```
+
+See [Workspaces](/docs/workspace) for the full guide.
+
 ## Next Steps
 
 - [Collections](/docs/collections) — configure how posts, docs, and pages behave
 - [Templates & Themes](/docs/templates) — use config values and data files in your templates
 - [Deployment](/docs/deployment) — deploy with the settings you've configured
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
