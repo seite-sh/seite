@@ -134,6 +134,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         },
         languages: Default::default(),
         images: Some(crate::config::ImageSection::default()),
+        analytics: None,
     };
     let toml_str = toml::to_string_pretty(&config)?;
     fs::write(root.join("page.toml"), toml_str)?;

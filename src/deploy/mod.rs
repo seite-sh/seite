@@ -2305,6 +2305,7 @@ mod tests {
             deploy: Default::default(),
             languages: Default::default(),
             images: Default::default(),
+            analytics: None,
         };
 
         // Override takes precedence
@@ -2335,6 +2336,7 @@ mod tests {
             deploy: Default::default(),
             languages: Default::default(),
             images: Default::default(),
+            analytics: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2355,6 +2357,7 @@ mod tests {
             deploy: Default::default(),
             languages: Default::default(),
             images: Default::default(),
+            analytics: None,
         };
         let check = check_base_url(&config);
         assert!(check.passed);
