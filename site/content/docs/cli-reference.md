@@ -10,7 +10,7 @@ Run `page <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`page` has seven subcommands:
+`page` has eight subcommands:
 
 | Command | Description |
 |---------|-------------|
@@ -21,6 +21,19 @@ Run `page <command> --help` for quick inline help on any command.
 | `agent` | AI assistant with site context |
 | `theme` | Manage themes |
 | `deploy`| Deploy to hosting platforms |
+| `workspace` | Manage multi-site workspaces |
+
+### Global Flags
+
+These flags work with any command:
+
+| Flag | Description |
+|------|-------------|
+| `--site <name>` | Target a specific site in a workspace |
+| `--config <path>` | Path to config file |
+| `--dir <path>` | Project directory |
+| `--verbose` | Enable verbose logging |
+| `--json` | Output results as JSON |
 
 ## page init
 
@@ -173,4 +186,43 @@ page deploy --target netlify         # Override target
 page deploy --target cloudflare --dry-run
 page deploy --domain example.com     # Set up custom domain
 page deploy --setup                  # Guided setup wizard
+```
+
+## page workspace
+
+Manage multi-site workspaces. See the [Workspaces](/docs/workspace) guide for full details.
+
+```bash
+page workspace <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `init [name]` | Initialize a new workspace in the current directory |
+| `list` | List all sites in the workspace |
+| `add <name>` | Add a new site to the workspace |
+| `status` | Show detailed workspace status |
+
+### workspace add flags
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Site directory path (default: `sites/<name>`) |
+| `--title` | Site title |
+| `--collections` | Comma-separated collections (default: `posts,pages`) |
+
+```bash
+page workspace init my-workspace
+page workspace add blog --collections posts,pages --title "Blog"
+page workspace add docs --collections docs --path sites/documentation
+page workspace list
+page workspace status
+```
+
+When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by default. Use `--site` to target one:
+
+```bash
+page build --site blog               # Build only the blog
+page serve --site docs               # Serve only the docs
+page deploy --site blog --dry-run    # Preview blog deploy
 ```

@@ -31,8 +31,17 @@ cargo run -- deploy --dry-run                       # Preview what deploy would 
 cargo run -- deploy --target netlify                 # Deploy to Netlify
 cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
 
+# Workspace commands
+cargo run -- workspace init my-workspace           # Initialize workspace
+cargo run -- workspace add blog --collections posts,pages  # Add a site
+cargo run -- workspace list                         # List sites
+cargo run -- workspace status                       # Detailed status
+cargo run -- build --site blog                      # Build one site in workspace
+cargo run -- serve --site docs                      # Serve one site in workspace
+
 # Install (end users)
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh       # macOS/Linux
+irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex            # Windows
 ```
 
 ## Architecture
@@ -71,20 +80,26 @@ src/
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
   cli/
-    mod.rs             Cli struct + Command enum (7 subcommands)
+    mod.rs             Cli struct + Command enum (8 subcommands)
     init.rs            Interactive project scaffolding
     new.rs             Create content files
-    build.rs           Build command
-    serve.rs           Dev server + interactive REPL
-    deploy.rs          Deploy command
+    build.rs           Build command (workspace-aware)
+    serve.rs           Dev server + interactive REPL (workspace-aware)
+    deploy.rs          Deploy command (workspace-aware)
     agent.rs           AI agent (spawns Claude Code with site context)
     theme.rs           Theme management
+    workspace.rs       Workspace CLI (init, list, add, status)
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
   data/mod.rs          Data file loading (YAML/JSON/TOML from data/ dir)
   content/mod.rs       Frontmatter parsing, ContentItem, slug generation
   deploy/mod.rs        GitHub Pages (git push) + Cloudflare (wrangler)
+  workspace/
+    mod.rs             WorkspaceConfig, ExecutionContext, resolve_context()
+    build.rs           Multi-site build orchestration
+    server.rs          Unified dev server with per-site routing + file watching
+    deploy.rs          Multi-site deploy orchestration
   output/
     mod.rs             CommandOutput trait
     human.rs           Colored terminal output
@@ -260,16 +275,29 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 - Live reload via `/__livereload` polling endpoint + injected `<script>`
 - Auto-increments port if default (3000) is taken
 
+### Workspace System
+
+Multi-site workspaces let you manage multiple `page` sites from a single directory with a `page-workspace.toml` config.
+
+- **Detection**: `workspace::find_workspace_root()` walks up from cwd looking for `page-workspace.toml`
+- **Execution context**: `workspace::resolve_context()` returns either `Standalone` or `Workspace` — all commands check this
+- **Global `--site` flag**: filters operations to a single site within the workspace
+- **Workspace build** (`workspace::build`): iterates sites, builds each with its own config/paths, per-site link validation
+- **Workspace serve** (`workspace::server`): unified HTTP server routing `/<site-name>/...` to each site's output dir, per-site file watching with selective rebuilds, auto-generated workspace index at `/`
+- **Workspace deploy** (`workspace::deploy`): iterates sites, runs pre-flight checks + build + deploy per-site, each site can use a different deploy target
+- **Config overrides**: `page-workspace.toml` can override `base_url` and `output_dir` per-site without touching each site's `page.toml`
+
 ### Release & Distribution
 
 - **Version source of truth**: `Cargo.toml` `version` field
 - **Auto-tag workflow** (`.github/workflows/release-tag.yml`): detects version changes on `main`, auto-creates `v{version}` git tag
 - **Release workflow** (`.github/workflows/release.yml`): triggers on `v*` tag push, runs 4 jobs:
-  1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64
+  1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64, Windows x86_64
   2. `release` — creates GitHub Release with `page-{target}.tar.gz` archives + `checksums-sha256.txt`
   3. `provenance` — SLSA Level 3 attestations via `slsa-framework/slsa-github-generator`
   4. `deploy-site` — builds and deploys `site/` to Cloudflare Pages (pagecli.dev)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
+- **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
 - **Release flow**: bump version in `Cargo.toml` + update `site/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
 - **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
@@ -571,6 +599,8 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
 - [x] Shell installer + release CI — `curl | sh` installer, GitHub Actions release workflow (4 platform binaries), SLSA Level 3 provenance, auto-tag from Cargo.toml version, auto-deploy docs site on release
 - [x] Data files — `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. All 6 bundled themes conditionally render `data.nav` and `data.footer`. Nested directories create nested keys. Conflict detection for duplicate stems and path collisions.
+- [x] Windows support — PowerShell installer (`install.ps1`), Windows x86_64 release binaries, platform helpers for `.cmd` shims and backslash path normalization
+- [x] Multi-site workspaces — `page workspace init/list/add/status` commands, `page-workspace.toml` config, global `--site` flag, workspace-aware build/serve/deploy, unified dev server with per-site routing and selective file watching, per-site deploy orchestration with independent targets
 
 ### Up Next
 
