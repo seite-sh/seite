@@ -10,7 +10,7 @@ Run `page <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`page` has eight subcommands:
+`page` has ten subcommands:
 
 | Command | Description |
 |---------|-------------|
@@ -22,6 +22,8 @@ Run `page <command> --help` for quick inline help on any command.
 | `theme` | Manage themes |
 | `deploy`| Deploy to hosting platforms |
 | `workspace` | Manage multi-site workspaces |
+| `upgrade` | Update project config to match current binary |
+| `self-update` | Update the page binary to the latest release |
 
 ### Global Flags
 
@@ -226,3 +228,57 @@ page build --site blog               # Build only the blog
 page serve --site docs               # Serve only the docs
 page deploy --site blog --dry-run    # Preview blog deploy
 ```
+
+## page upgrade
+
+Update project configuration files to match the current binary version. When you upgrade the `page` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
+
+```bash
+page upgrade [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Apply all upgrades without confirmation |
+| `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
+
+```bash
+page upgrade                # Interactive: shows changes, asks for confirmation
+page upgrade --force        # Apply all changes without prompting
+page upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
+```
+
+Upgrade is **additive and non-destructive**:
+- Merges into `.claude/settings.json` — adds new entries, never removes yours
+- Appends to `CLAUDE.md` — adds new sections, never modifies existing content
+- Creates `.page/config.json` if missing — tracks the project's config version
+- Each upgrade step is version-gated, so running it on a current project is a fast no-op
+
+{{% callout(type="tip") %}}
+`page build` will nudge you with a one-liner when your project config is outdated: *"Run `page upgrade` for new features."* The build still succeeds — the nudge is informational only.
+{{% end %}}
+
+## page self-update
+
+Update the `page` binary itself to the latest release (or a specific version).
+
+```bash
+page self-update [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Check for updates without installing |
+| `--target-version` | Update to a specific version (e.g., `0.2.0` or `v0.2.0`) |
+
+```bash
+page self-update                          # Update to latest release
+page self-update --check                  # Just check, don't install
+page self-update --target-version 0.2.0   # Pin a specific version
+```
+
+The command downloads the appropriate binary for your platform from GitHub Releases, verifies the SHA256 checksum, and replaces the running binary atomically.
+
+{{% callout(type="info") %}}
+After updating the binary, run `page upgrade` in each of your projects to bring their config files up to date.
+{{% end %}}

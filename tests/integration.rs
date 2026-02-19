@@ -3315,3 +3315,330 @@ fn test_build_docs_weight_mixed_with_unweighted() {
         pos_first, pos_second, pos_alpha, pos_bravo
     );
 }
+
+// ── Project metadata & upgrade ──────────────────────────────────────
+
+#[test]
+fn test_init_creates_page_meta() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Meta Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // .page/config.json should exist
+    let meta_path = site_dir.join(".page/config.json");
+    assert!(meta_path.exists(), ".page/config.json should be created by init");
+
+    let content = fs::read_to_string(&meta_path).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    assert!(
+        meta.get("version").is_some(),
+        "meta should have a version field"
+    );
+    assert!(
+        meta.get("initialized_at").is_some(),
+        "meta should have an initialized_at timestamp"
+    );
+}
+
+#[test]
+fn test_init_creates_mcp_server_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "MCP Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let settings_path = site_dir.join(".claude/settings.json");
+    assert!(settings_path.exists());
+
+    let content = fs::read_to_string(&settings_path).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    // Should have mcpServers.page
+    assert!(
+        settings.pointer("/mcpServers/page").is_some(),
+        "settings should include mcpServers.page"
+    );
+    assert_eq!(
+        settings.pointer("/mcpServers/page/command").and_then(|v| v.as_str()),
+        Some("page"),
+        "MCP command should be 'page'"
+    );
+    assert_eq!(
+        settings
+            .pointer("/mcpServers/page/args")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
+        Some(vec!["mcp"]),
+        "MCP args should be ['mcp']"
+    );
+}
+
+#[test]
+fn test_upgrade_on_fresh_project_is_noop() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Up To Date", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // A freshly initialized project should already be up to date
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}
+
+#[test]
+fn test_upgrade_adds_mcp_to_existing_project() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Upgrade MCP", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Simulate a pre-MCP project by removing the MCP config and version stamp
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    // Write a .claude/settings.json WITHOUT mcpServers
+    fs::write(
+        site_dir.join(".claude/settings.json"),
+        r#"{
+  "permissions": {
+    "allow": ["Read", "Glob", "Grep"],
+    "deny": ["Read(.env)"]
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    // Run upgrade
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mcpServers"));
+
+    // Verify MCP was added
+    let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(
+        settings.pointer("/mcpServers/page").is_some(),
+        "upgrade should add mcpServers.page"
+    );
+
+    // Verify existing permissions were preserved
+    assert!(
+        settings
+            .pointer("/permissions/allow")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().any(|v| v.as_str() == Some("Read")))
+            .unwrap_or(false),
+        "upgrade should preserve existing permissions"
+    );
+
+    // Verify .page/config.json was created
+    assert!(
+        site_dir.join(".page/config.json").exists(),
+        "upgrade should create .page/config.json"
+    );
+}
+
+#[test]
+fn test_upgrade_appends_mcp_section_to_claude_md() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CLAUDE.md Upgrade", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove version stamp to trigger upgrade
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    // Verify CLAUDE.md doesn't have MCP section yet (init doesn't add it)
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert!(
+        !claude_md.contains("## MCP Server"),
+        "init-generated CLAUDE.md should not have MCP section"
+    );
+    // Remember some original content to verify it's preserved
+    assert!(
+        claude_md.contains("## Commands"),
+        "CLAUDE.md should have Commands section from init"
+    );
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let updated = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert!(
+        updated.contains("## MCP Server"),
+        "upgrade should append MCP Server section to CLAUDE.md"
+    );
+    // Original content should still be there
+    assert!(
+        updated.contains("## Commands"),
+        "upgrade should preserve existing CLAUDE.md content"
+    );
+}
+
+#[test]
+fn test_upgrade_check_mode_exits_nonzero() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Check Mode", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove version stamp to make it look outdated
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure(); // exit 1 = upgrades needed
+}
+
+#[test]
+fn test_upgrade_check_mode_succeeds_when_current() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Check Current", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}
+
+#[test]
+fn test_upgrade_preserves_existing_mcp_servers() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Preserve MCP", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove version stamp to trigger upgrade
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    // Write settings with a DIFFERENT MCP server (e.g., user has their own)
+    fs::write(
+        site_dir.join(".claude/settings.json"),
+        r#"{
+  "permissions": { "allow": ["Read"] },
+  "mcpServers": {
+    "custom-server": {
+      "command": "my-tool",
+      "args": ["serve"]
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    // Both MCP servers should exist
+    assert!(
+        settings.pointer("/mcpServers/page").is_some(),
+        "upgrade should add page MCP server"
+    );
+    assert!(
+        settings.pointer("/mcpServers/custom-server").is_some(),
+        "upgrade should preserve existing MCP servers"
+    );
+}
+
+#[test]
+fn test_upgrade_outside_project_fails() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["upgrade"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No page.toml"));
+}
+
+#[test]
+fn test_build_nudges_when_outdated() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Nudge Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove .page/config.json to simulate pre-tracking project
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("page upgrade"));
+}
+
+#[test]
+fn test_build_no_nudge_when_current() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Nudge", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Fresh init should not nudge
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("page upgrade").not());
+}
+
+#[test]
+fn test_upgrade_idempotent() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Idempotent", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove version stamp so first upgrade does work
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+
+    // First upgrade
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Second upgrade should be a no-op
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}
+
+// ── self-update command ─────────────────────────────────────────────
+
+#[test]
+fn test_self_update_check_when_current() {
+    // --check with --target-version set to current version should succeed (already up to date)
+    page_cmd()
+        .args([
+            "self-update",
+            "--check",
+            "--target-version",
+            env!("CARGO_PKG_VERSION"),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}

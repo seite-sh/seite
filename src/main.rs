@@ -29,6 +29,8 @@ fn main() -> Result<()> {
         Command::Agent(args) => page::cli::agent::run(args)?,
         Command::Theme(args) => page::cli::theme::run(args)?,
         Command::Workspace(args) => page::cli::workspace::run(args)?,
+        Command::Upgrade(args) => page::cli::upgrade::run(args)?,
+        Command::SelfUpdate(args) => page::cli::self_update::run(args)?,
     }
 
     Ok(())
