@@ -53,10 +53,36 @@ pub struct DeployArgs {
     pub no_commit: bool,
 }
 
-pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
+pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+
+    // Check for workspace context
+    if let Some(ws_root) = crate::workspace::find_workspace_root(&cwd) {
+        let ws_config =
+            crate::workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+
+        let opts = crate::workspace::deploy::WorkspaceDeployOptions {
+            site_filter: site_filter.map(String::from),
+            build: args.build,
+            dry_run: args.dry_run,
+            preview: args.preview,
+            base_url: args.base_url.clone(),
+            verify: args.verify,
+            skip_checks: args.skip_checks,
+            no_commit: args.no_commit,
+        };
+
+        return crate::workspace::deploy::deploy_workspace(&ws_config, &ws_root, &opts);
+    }
+
+    // Standalone mode
+    if site_filter.is_some() {
+        human::warning("--site flag ignored (not in a workspace)");
+    }
+
     let config_path = PathBuf::from("page.toml");
     let mut config = SiteConfig::load(&config_path)?;
-    let mut paths = config.resolve_paths(&std::env::current_dir()?);
+    let mut paths = config.resolve_paths(&cwd);
 
     let target_str = resolve_target_str(args, &config);
 

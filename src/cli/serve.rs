@@ -10,6 +10,7 @@ use crate::content::{self, Frontmatter};
 use crate::output::human;
 use crate::output::CommandOutput;
 use crate::server;
+use crate::workspace;
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -24,9 +25,103 @@ pub struct ServeArgs {
 
 const DEFAULT_PORT: u16 = 3000;
 
-pub fn run(args: &ServeArgs) -> anyhow::Result<()> {
+pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+
+    // Check for workspace context
+    if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
+        let ws_config =
+            workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+
+        // Build all sites first
+        if args.build {
+            human::info("Building workspace...");
+            let build_opts = workspace::build::WorkspaceBuildOptions {
+                include_drafts: true,
+                strict: false,
+                site_filter: site_filter.map(String::from),
+            };
+            workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
+        }
+
+        let port = args.port.unwrap_or(DEFAULT_PORT);
+        let auto_increment = args.port.is_none();
+
+        // If --site is specified, serve only that site in standalone mode
+        if let Some(site_name) = site_filter {
+            let ws_site = ws_config.find_site(site_name).ok_or_else(|| {
+                anyhow::anyhow!("unknown site '{site_name}' in workspace")
+            })?;
+            let (config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+            let handle = server::start(&config, &paths, port, true, auto_increment)?;
+
+            human::info(&format!(
+                "Serving site '{site_name}'. Type \"help\" for commands, \"stop\" to quit (port {})",
+                handle.port()
+            ));
+
+            run_repl(&config, &paths, &handle)?;
+            return Ok(());
+        }
+
+        // Workspace dev server (all sites)
+        let handle = workspace::server::start(&ws_config, &ws_root, port, auto_increment)?;
+
+        human::info(&format!(
+            "Type \"stop\" to quit (server on port {})",
+            handle.port()
+        ));
+
+        let stdin = io::stdin();
+        let reader = stdin.lock();
+        print_prompt();
+
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            let line = line.trim().to_string();
+            if line.is_empty() {
+                print_prompt();
+                continue;
+            }
+
+            match line.as_str() {
+                "stop" | "quit" | "exit" => {
+                    handle.stop();
+                    human::info("Server stopped");
+                    break;
+                }
+                "status" => {
+                    human::info(&format!("Workspace: {}", ws_config.workspace.name));
+                    for site in &ws_config.sites {
+                        human::info(&format!("  /{} -> {}", site.name, site.path));
+                    }
+                }
+                "help" => {
+                    println!("  status                         Show workspace sites");
+                    println!("  stop                           Stop the server and exit");
+                }
+                _ => {
+                    human::error(&format!(
+                        "Unknown command: {line}. Type \"help\" for available commands."
+                    ));
+                }
+            }
+            print_prompt();
+        }
+
+        return Ok(());
+    }
+
+    // Standalone mode
+    if site_filter.is_some() {
+        human::warning("--site flag ignored (not in a workspace)");
+    }
+
     let config = SiteConfig::load(&PathBuf::from("page.toml"))?;
-    let paths = config.resolve_paths(&std::env::current_dir()?);
+    let paths = config.resolve_paths(&cwd);
 
     if args.build {
         human::info("Building site...");
@@ -46,6 +141,16 @@ pub fn run(args: &ServeArgs) -> anyhow::Result<()> {
         handle.port()
     ));
 
+    run_repl(&config, &paths, &handle)?;
+
+    Ok(())
+}
+
+fn run_repl(
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+    handle: &server::ServerHandle,
+) -> anyhow::Result<()> {
     let stdin = io::stdin();
     let reader = stdin.lock();
     print_prompt();
@@ -61,7 +166,7 @@ pub fn run(args: &ServeArgs) -> anyhow::Result<()> {
             continue;
         }
 
-        match dispatch(&line, &config, &paths) {
+        match dispatch(&line, config, paths) {
             LoopAction::Continue => {}
             LoopAction::Stop => {
                 handle.stop();

@@ -5,6 +5,7 @@ pub mod init;
 pub mod new;
 pub mod serve;
 pub mod theme;
+pub mod workspace;
 
 use clap::{Parser, Subcommand};
 
@@ -34,6 +35,10 @@ pub struct Cli {
     /// Project directory
     #[arg(short, long, global = true)]
     pub dir: Option<String>,
+
+    /// Target a specific site in a workspace
+    #[arg(short, long, global = true)]
+    pub site: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -58,4 +63,7 @@ pub enum Command {
 
     /// Manage themes
     Theme(theme::ThemeArgs),
+
+    /// Manage multi-site workspaces
+    Workspace(workspace::WorkspaceArgs),
 }

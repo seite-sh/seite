@@ -6,6 +6,7 @@ use crate::build::{self, links, BuildOptions};
 use crate::config::SiteConfig;
 use crate::output::human;
 use crate::output::CommandOutput;
+use crate::workspace;
 
 #[derive(Args)]
 pub struct BuildArgs {
@@ -18,9 +19,31 @@ pub struct BuildArgs {
     pub strict: bool,
 }
 
-pub fn run(args: &BuildArgs) -> anyhow::Result<()> {
+pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+
+    // Check for workspace context
+    if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
+        let ws_config =
+            workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+
+        let opts = workspace::build::WorkspaceBuildOptions {
+            include_drafts: args.drafts,
+            strict: args.strict,
+            site_filter: site_filter.map(String::from),
+        };
+
+        workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;
+        return Ok(());
+    }
+
+    // Standalone mode
+    if site_filter.is_some() {
+        human::warning("--site flag ignored (not in a workspace)");
+    }
+
     let config = SiteConfig::load(&PathBuf::from("page.toml"))?;
-    let paths = config.resolve_paths(&std::env::current_dir()?);
+    let paths = config.resolve_paths(&cwd);
 
     let opts = BuildOptions {
         include_drafts: args.drafts,
