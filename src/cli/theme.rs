@@ -1,11 +1,11 @@
 use std::path::PathBuf;
-use std::process::Command;
 
 use clap::{Args, Subcommand};
 
 use crate::config::SiteConfig;
 use crate::error::PageError;
 use crate::output::human;
+use crate::platform::npm_cmd;
 use crate::themes;
 
 #[derive(Args)]
@@ -132,7 +132,7 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
 
 fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     // Check Claude Code is available
-    match Command::new("claude").arg("--version").output() {
+    match npm_cmd("claude").arg("--version").output() {
         Ok(o) if o.status.success() => {}
         _ => return Err(PageError::Agent(
             "Claude Code is not installed. Install it with: npm install -g @anthropic-ai/claude-code".into()
@@ -149,7 +149,7 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     human::info(&format!("Generating theme: \"{}\"", user_prompt));
     human::info("Claude is writing templates/base.html...");
 
-    let status = Command::new("claude")
+    let status = npm_cmd("claude")
         .args(["-p", &full_prompt])
         .args(["--allowedTools", "Write,Edit,Read"])
         .status()

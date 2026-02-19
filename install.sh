@@ -4,6 +4,10 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
 #
+# Works on macOS, Linux, and WSL (Windows Subsystem for Linux).
+# For native Windows, use install.ps1 instead:
+#   irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex
+#
 # Options (via environment variables):
 #   VERSION     Pin to a specific release (e.g., VERSION=v0.1.0)
 #   INSTALL_DIR Override install location (default: ~/.local/bin)

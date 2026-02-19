@@ -1310,7 +1310,9 @@ fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig
         if let Some(parent) = rel_path.parent() {
             let parent_str = parent.to_str().unwrap_or("");
             if !parent_str.is_empty() {
-                return format!("{}/{}", parent_str, filename_slug);
+                // Normalize backslashes for Windows paths → URL-style forward slashes
+                let parent_str = parent_str.replace('\\', "/");
+                return format!("{parent_str}/{filename_slug}");
             }
         }
     }
