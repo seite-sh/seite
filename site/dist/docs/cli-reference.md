@@ -1,6 +1,7 @@
 ---
 title: CLI Reference
 description: Complete reference for all page CLI commands, flags, and options.
+weight: 10
 ---
 
 {{% callout(type="tip") %}}

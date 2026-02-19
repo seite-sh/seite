@@ -1123,27 +1123,27 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
-                
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
-                
-                    <li class="active"><a href="&#x2F;docs&#x2F;collections" aria-current="page">Collections</a></li>
+                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
-                
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
-                
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
-                
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
-                
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li class="active"><a href="&#x2F;docs&#x2F;collections" aria-current="page">Collections</a></li>
                 
                     <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
                 
+                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                
                     <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
                 
                 </ul>
             
@@ -1219,6 +1219,15 @@ paginate = 10
 <div class="callout-title">Info</div>
 <p>Subdirectories automatically become sidebar sections. Create <code>content/docs/guides/</code> and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.</p>
 </div>
+<h3 id="sidebar-ordering">Sidebar Ordering</h3>
+<p>By default, docs are sorted alphabetically by title. Use <code>weight</code> in frontmatter to control the order:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">---
+</span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Getting Started</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">weight</span><span style="color:#c0c5ce;">: </span><span style="color:#d08770;">1
+</span><span style="color:#c0c5ce;">---
+</span></pre>
+<p>Lower values appear first. Items without <code>weight</code> sort alphabetically after all weighted items. This lets you create a guided learning path instead of a plain alphabetical list.</p>
 <h2 id="pages">Pages</h2>
 <p>Pages are standalone content at root URLs. They're unlisted (not shown on the index page):</p>
 <pre><code>content/pages/
@@ -1350,15 +1359,15 @@ paginate = 10
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;cli-reference">
+            <a href="&#x2F;docs&#x2F;configuration">
                 <span class="doc-nav-label">← Previous</span>
-                <span class="doc-nav-title">CLI Reference</span>
+                <span class="doc-nav-title">Configuration</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;configuration" class="doc-nav-next">
+            <a href="&#x2F;docs&#x2F;templates" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
-                <span class="doc-nav-title">Configuration</span>
+                <span class="doc-nav-title">Templates &amp; Themes</span>
             </a>
             
         </nav>
@@ -1375,6 +1384,7 @@ paginate = 10
             <li class="toc-level-2"><a href="#collection-fields">Collection Fields</a></li>
             <li class="toc-level-2"><a href="#posts">Posts</a></li>
             <li class="toc-level-2"><a href="#docs">Docs</a></li>
+            <li class="toc-level-3"><a href="#sidebar-ordering">Sidebar Ordering</a></li>
             <li class="toc-level-2"><a href="#pages">Pages</a></li>
             <li class="toc-level-2"><a href="#pagination">Pagination</a></li>
             <li class="toc-level-2"><a href="#singular-plural">Singular&#x2F;Plural</a></li>

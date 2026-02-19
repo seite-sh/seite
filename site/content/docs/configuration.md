@@ -1,6 +1,7 @@
 ---
 title: "Configuration"
 description: "Complete page.toml reference — site settings, collections, build options, deployment, languages, and images."
+weight: 2
 ---
 
 ## Overview

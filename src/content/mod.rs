@@ -30,6 +30,10 @@ pub struct Frontmatter {
     /// Per-page `<meta name="robots">` value, e.g. `"noindex"` or `"noindex, nofollow"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub robots: Option<String>,
+    /// Ordering weight for non-date collections. Lower values sort first.
+    /// When unset, items sort after weighted items, alphabetically by title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<i32>,
     /// Arbitrary key-value data passed through to templates as `page.extra`.
     /// Use this for custom per-page data that doesn't fit standard fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

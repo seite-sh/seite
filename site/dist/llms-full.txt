@@ -6,474 +6,180 @@
 
 ## Documentation
 
-### AI Agent
+### Getting Started
 
-*Use page agent to get AI assistance with content creation, site management, and theme generation.*
+*Install page and build your first static site in under a minute.*
 
-## Overview
+## Installation
 
-`page` integrates directly with Claude Code. The `page agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
-
-No API keys needed. It uses your Claude Code subscription directly.
-
-## Setup
-
-Install Claude Code:
+### Quick install (macOS and Linux)
 
 ```bash
-npm install -g @anthropic-ai/claude-code
+curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
 ```
 
-Verify it's available:
+This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
+
+To install a specific version:
 
 ```bash
-claude --version
+VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
 ```
 
-## Interactive Mode
+### Install from source
 
-Launch an interactive session:
+If you have the Rust toolchain installed:
 
 ```bash
-page agent
+cargo install page
 ```
 
-Claude receives a rich system prompt containing:
-- Your site config (title, description, base URL, collections)
-- Content inventory (titles, dates, tags of every existing page)
-- Available templates
-- Frontmatter format with examples
-- File naming conventions
-- All `page` CLI commands
+### Platform support
 
-You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
+| Platform | Architecture | Install method |
+|----------|-------------|----------------|
+| macOS | Apple Silicon (M1/M2/M3/M4) | Shell installer or cargo |
+| macOS | Intel x86_64 | Shell installer or cargo |
+| Linux | x86_64 | Shell installer or cargo |
+| Linux | aarch64/arm64 | Shell installer or cargo |
+| Windows | x86_64 | `cargo install page` |
+
+### Verify
+
+```bash
+page --version
+```
+
+{{% callout(type="tip") %}}
+Run `page --help` to see all available commands at a glance.
+{{% end %}}
+
+## Create Your First Site
+
+Scaffold a new site with posts, docs, and pages collections:
+
+```bash
+page init mysite --title "My Site" --description "A personal blog" --collections posts,docs,pages
+cd mysite
+```
 
 {{% callout(type="info") %}}
-The agent can run `page build` and `page serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
+All flags are optional. Run `page init mysite` and interactive prompts will guide you through each setting.
 {{% end %}}
 
-## One-Shot Mode
+This creates the following structure:
 
-Pass a prompt directly for non-interactive use:
+```
+mysite/
+├── content/
+│   ├── posts/     # Date-based blog posts with RSS
+│   ├── docs/      # Documentation with sidebar navigation
+│   └── pages/     # Standalone pages (about, contact, etc.)
+├── templates/     # Tera templates (override bundled themes)
+├── static/        # Static assets (CSS, JS, images)
+├── page.toml      # Site configuration
+└── .claude/       # Claude Code agent configuration
+```
+
+## Create Content
+
+Add a blog post:
 
 ```bash
-page agent "create a blog post about Rust error handling best practices"
-page agent "add a docs page explaining the deployment process"
-page agent "update the homepage to include a features section"
+page new post "Hello World" --tags intro,welcome
 ```
 
-Claude writes the files directly and exits.
+This creates `content/posts/2026-02-18-hello-world.md` with frontmatter:
 
-## Example Prompts
-
-Here are prompts that work well, grouped by use case:
-
-### Content creation
-
-```bash
-page agent "write a technical tutorial about async Rust, include code examples and a summary"
-page agent "create a blog post comparing static site generators, with a table of features"
-page agent "add an FAQ page with 10 common questions about our product"
-```
-
-### Site management
-
-```bash
-page agent "add the tag 'tutorial' to all posts that contain code blocks"
-page agent "create Spanish translations for all docs pages"
-page agent "reorganize the docs into guides/ and reference/ subdirectories"
-```
-
-### Theme and design
-
-```bash
-page agent "update the homepage to add a testimonials section with three cards"
-page agent "add a custom footer with social links and a newsletter signup"
-```
-
-### Debugging
-
-```bash
-page agent "the build is failing on my Spanish translations, help me fix it"
-page agent "find and fix any broken internal links in my content"
-page agent "my RSS feed is missing some posts, diagnose the issue"
-```
-
-## Tips for Effective Prompts
-
-{{% callout(type="tip") %}}
-Be specific about format and tone. "Write a 1500-word technical tutorial about Rust error handling with code examples" gives better results than "write a post about Rust".
-{{% end %}}
-
-{{% callout(type="tip") %}}
-The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include — just describe what you want.
-{{% end %}}
-
-## Theme Generation
-
-Generate custom themes with AI:
-
-```bash
-page theme create "dark mode with neon green accents and brutalist layout"
-```
-
-Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly.
-
-## REPL Integration
-
-The dev server REPL also supports the agent:
-
-```
-page> agent "write a post about our latest release"
-```
-
-This is useful for quick content creation while previewing your site.
-
-## What the Agent Can Do
-
-The agent has access to these tools:
-- **Read** — read any file in your project
-- **Write** — create new content files
-- **Edit** — modify existing files
-- **Glob** — find files by pattern
-- **Grep** — search file contents
-- **Bash** — run CLI commands (build, serve, deploy)
-
-## Claude Code Scaffolding
-
-When you run `page init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
-
-## Next Steps
-
-- [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
-- [CLI Reference](/docs/cli-reference) — all `page agent` flags and options
-- [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet
-
-
+```yaml
+---
+title: "Hello World"
+date: 2026-02-18
+tags:
+  - intro
+  - welcome
 ---
 
-### CLI Reference
+Your content here...
+```
 
-*Complete reference for all page CLI commands, flags, and options.*
+Add a documentation page:
+
+```bash
+page new doc "Getting Started"
+```
+
+Add a standalone page:
+
+```bash
+page new page "About"
+```
+
+## Build Your Site
+
+Build the site to the `dist/` directory:
+
+```bash
+page build
+```
+
+The build generates:
+- HTML pages with clean URLs (`/posts/hello-world`)
+- Markdown copies alongside every HTML file
+- RSS feed at `/feed.xml`
+- XML sitemap at `/sitemap.xml`
+- Search index at `/search-index.json`
+- LLM discovery files at `/llms.txt` and `/llms-full.txt`
+
+## Development Server
+
+Start a dev server with live reload:
+
+```bash
+page serve
+```
+
+The server starts at `http://localhost:3000` (auto-increments if the port is taken) and watches for file changes. An interactive REPL lets you run commands without restarting:
+
+```
+page> new post "Another Post"
+page> theme apply dark
+page> build
+page> status
+page> stop
+```
 
 {{% callout(type="tip") %}}
-Run `page <command> --help` for quick inline help on any command.
+The REPL is the fastest way to iterate. Create content, switch themes, and rebuild — all without leaving the dev server.
 {{% end %}}
 
-## Overview
+## Themes
 
-`page` has seven subcommands:
-
-| Command | Description |
-|---------|-------------|
-| `init`  | Create a new site |
-| `build` | Build the site |
-| `serve` | Development server with live reload |
-| `new`   | Create content files |
-| `agent` | AI assistant with site context |
-| `theme` | Manage themes |
-| `deploy`| Deploy to hosting platforms |
-
-## page init
-
-Create a new site directory with scaffolded structure.
-
-```bash
-page init <name> [options]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--title` | Site title |
-| `--description` | Site description |
-| `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
-| `--collections` | Comma-separated list: `posts,docs,pages` |
-
-If flags are omitted, `page init` prompts interactively.
-
-```bash
-# Non-interactive
-page init mysite --title "My Blog" --deploy-target github-pages --collections posts,pages
-
-# Interactive
-page init mysite
-```
-
-## page build
-
-Build the site from `page.toml` in the current directory.
-
-```bash
-page build [options]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--drafts` | Include draft content in the build |
-| `--strict` | Treat broken internal links as build errors |
-
-The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
-
-After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., `<a href="/posts/nonexistent">`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
-
-## page serve
-
-Start a development server with live reload.
-
-```bash
-page serve [options]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--port` | Starting port (default: 3000, auto-increments if taken) |
-| `--drafts` | Include drafts |
-
-The server injects a live-reload script that polls for changes. An interactive REPL accepts commands:
-
-- `new <collection> "Title"` — create content
-- `agent [prompt]` — launch AI agent
-- `theme apply <name>` — apply theme and rebuild
-- `build` — rebuild the site
-- `status` — show server info
-- `stop` — stop the server
-
-## page new
-
-Create a new content file with frontmatter.
-
-```bash
-page new <collection> "Title" [options]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--tags` | Comma-separated tags (posts only) |
-| `--lang` | Language code for translations (e.g., `es`, `fr`) |
-
-```bash
-page new post "My Post" --tags rust,web
-page new doc "API Guide"
-page new page "About"
-page new post "Mi Post" --lang es    # Spanish translation
-```
-
-## page agent
-
-Launch an AI assistant with full site context.
-
-```bash
-page agent [prompt]
-```
-
-Two modes:
-- **Interactive**: `page agent` — opens a Claude Code session
-- **One-shot**: `page agent "write a blog post about Rust"` — runs and exits
-
-The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
-
-## page theme
-
-Manage site themes — list, apply, install, export, and generate.
-
-```bash
-page theme <subcommand>
-```
-
-| Subcommand | Description |
-|------------|-------------|
-| `list` | Show all available themes (bundled + installed) |
-| `apply <name>` | Apply a bundled or installed theme |
-| `create "<description>"` | Generate a custom theme with AI |
-| `install <url>` | Download and install a theme from a URL |
-| `export <name>` | Export the current theme as a shareable `.tera` file |
+List available themes:
 
 ```bash
 page theme list
+```
+
+Apply a bundled theme:
+
+```bash
 page theme apply dark
-page theme create "brutalist with neon green accents"
-page theme install https://example.com/themes/aurora.tera
-page theme install https://example.com/themes/aurora.tera --name my-aurora
-page theme export my-theme --description "My custom dark theme"
 ```
 
-Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
-
-## page deploy
-
-Deploy the built site.
+Generate a custom theme with AI:
 
 ```bash
-page deploy [options]
+page theme create "minimal serif with warm colors"
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
-| `--dry-run` | Preview what would be deployed without deploying |
-| `--domain` | Set up a custom domain (prints DNS records, updates config, attaches to platform) |
-| `--setup` | Run guided deploy setup |
-| `--skip-checks` | Skip pre-flight checks |
-| `--base-url` | Override base URL for this deploy |
-
-```bash
-page deploy                          # Use target from page.toml
-page deploy --dry-run                # Preview changes
-page deploy --target netlify         # Override target
-page deploy --target cloudflare --dry-run
-page deploy --domain example.com     # Set up custom domain
-page deploy --setup                  # Guided setup wizard
-```
-
-
----
-
-### Collections
-
-*Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.*
-
-## Overview
-
-Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Three presets are available:
-
-| Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
-|--------|-----------|-------|-----|--------|--------|-------------|
-| posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
-| docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
-| pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
-
-## Defining Collections
-
-Collections are configured in `page.toml`:
-
-```toml
-[[collections]]
-name = "posts"
-
-[[collections]]
-name = "docs"
-
-[[collections]]
-name = "pages"
-```
-
-Each preset comes with sensible defaults. You can override any field:
-
-```toml
-[[collections]]
-name = "posts"
-label = "Blog"
-paginate = 10
-```
-
-## Collection Fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `name` | string | required | Collection identifier |
-| `label` | string | capitalized name | Display name in templates |
-| `directory` | string | name | Content directory under `content/` |
-| `url_prefix` | string | `/name` | URL prefix for items |
-| `default_template` | string | preset-based | Template file for rendering |
-| `has_date` | bool | preset-based | Items have dates |
-| `has_rss` | bool | preset-based | Include in RSS feed |
-| `listed` | bool | preset-based | Show on index page |
-| `nested` | bool | preset-based | Support subdirectories as groups |
-| `paginate` | int | none | Items per page (enables pagination) |
-
-## Posts
-
-Posts are date-based content. Filenames should include the date:
-
-```
-content/posts/
-├── 2026-01-15-hello-world.md
-├── 2026-02-01-rust-tips.md
-└── 2026-02-18-new-feature.md
-```
-
-The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
-
-{{% callout(type="tip") %}}
-Use `page serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.
-{{% end %}}
-
-## Docs
-
-Docs support nested directories for grouped navigation:
-
-```
-content/docs/
-├── getting-started.md
-├── guides/
-│   ├── setup.md
-│   └── advanced.md
-└── reference/
-    ├── api.md
-    └── config.md
-```
-
-Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar with sections grouped by directory.
-
-{{% callout(type="info") %}}
-Subdirectories automatically become sidebar sections. Create `content/docs/guides/` and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.
-{{% end %}}
-
-## Pages
-
-Pages are standalone content at root URLs. They're unlisted (not shown on the index page):
-
-```
-content/pages/
-├── about.md        → /about
-├── contact.md      → /contact
-└── index.md        → / (homepage content)
-```
-
-The special file `content/pages/index.md` injects its content into the homepage template as `{{ page.content }}`.
-
-## Pagination
-
-Enable pagination on any listed collection:
-
-```toml
-[[collections]]
-name = "posts"
-paginate = 10
-```
-
-This generates:
-- `/posts/` — page 1
-- `/posts/page/2/` — page 2
-- `/posts/page/3/` — page 3, etc.
-
-Templates receive pagination context:
-
-```
-{{ pagination.current_page }}
-{{ pagination.total_pages }}
-{{ pagination.prev_url }}
-{{ pagination.next_url }}
-```
-
-## Singular/Plural
-
-Both `page new post` and `page new posts` work — the CLI normalizes singular to plural automatically.
-
-## Tag Pages
-
-Tags are collected from all posts and generate archive pages:
-
-- `/tags/` — tag index with all tags and counts
-- `/tags/rust/` — all posts tagged "rust"
-
-Tag pages are i18n-aware and included in the sitemap.
 
 ## Next Steps
 
-- [Configuration](/docs/configuration) — full reference for all collection fields and site settings
-- [Templates & Themes](/docs/templates) — customize how collections are rendered
-- [Shortcodes](/docs/shortcodes) — add rich content like videos, callouts, and figures to your pages
+- [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
+- [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
+- [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
+- [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
+- [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you
 
 
 ---
@@ -706,733 +412,165 @@ extra:
 
 ---
 
-### Deployment
+### Collections
 
-*Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.*
+*Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.*
 
 ## Overview
 
-`page` supports three deployment targets out of the box:
+Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Three presets are available:
 
-- **GitHub Pages** — git-based deployment with auto-generated GitHub Actions
-- **Cloudflare Pages** — wrangler-based deployment
-- **Netlify** — CLI-based deployment
+| Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
+|--------|-----------|-------|-----|--------|--------|-------------|
+| posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
+| docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
+| pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
 
-## Which Target Should I Choose?
+## Defining Collections
 
-| Target | Best for | Highlights |
-|--------|----------|------------|
-| **GitHub Pages** | Open-source projects | Simplest setup, free, auto-generated CI workflow |
-| **Cloudflare Pages** | Production sites | Fastest global CDN, custom domain API, preview deploys |
-| **Netlify** | Team workflows | Familiar DX, draft deploys, easy rollbacks |
-
-All three are free for static sites. You can switch targets anytime by changing one line in `page.toml`.
-
-## Configuration
-
-Set the deploy target in `page.toml`:
+Collections are configured in `page.toml`:
 
 ```toml
-[deploy]
-target = "github-pages"
+[[collections]]
+name = "posts"
+
+[[collections]]
+name = "docs"
+
+[[collections]]
+name = "pages"
 ```
 
-{{% callout(type="warning") %}}
-Make sure `base_url` in `page.toml` is set to your real domain before deploying. The default `localhost` URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use `--base-url` to override at deploy time without modifying the config file.
-{{% end %}}
+Each preset comes with sensible defaults. You can override any field:
 
-{{% callout(type="info") %}}
-`page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
-{{% end %}}
-
-## GitHub Pages
-
-The default deployment target. When you run `page init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
-
-### Manual deployment
-
-```bash
-page build
-page deploy
+```toml
+[[collections]]
+name = "posts"
+label = "Blog"
+paginate = 10
 ```
 
-This pushes the `dist/` directory to the `gh-pages` branch.
+## Collection Fields
 
-### Dry run
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Collection identifier |
+| `label` | string | capitalized name | Display name in templates |
+| `directory` | string | name | Content directory under `content/` |
+| `url_prefix` | string | `/name` | URL prefix for items |
+| `default_template` | string | preset-based | Template file for rendering |
+| `has_date` | bool | preset-based | Items have dates |
+| `has_rss` | bool | preset-based | Include in RSS feed |
+| `listed` | bool | preset-based | Show on index page |
+| `nested` | bool | preset-based | Support subdirectories as groups |
+| `paginate` | int | none | Items per page (enables pagination) |
 
-Preview what would be deployed:
+## Posts
 
-```bash
-page deploy --dry-run
+Posts are date-based content. Filenames should include the date:
+
 ```
+content/posts/
+├── 2026-01-15-hello-world.md
+├── 2026-02-01-rust-tips.md
+└── 2026-02-18-new-feature.md
+```
+
+The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
 
 {{% callout(type="tip") %}}
-Always run `--dry-run` before your first deploy to verify everything looks right. It shows exactly what would be pushed without making any changes.
+Use `page serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.
 {{% end %}}
 
-### Custom repository
+## Docs
 
-```toml
-[deploy]
-target = "github-pages"
-repo = "https://github.com/user/repo.git"
-```
-
-## Cloudflare Pages
-
-### Setup
-
-1. Install wrangler: `npm install -g wrangler`
-2. Authenticate: `wrangler login`
-3. Configure:
-
-```toml
-[deploy]
-target = "cloudflare"
-project = "my-site"
-```
-
-The project name is auto-detected from `wrangler.toml` if present.
-
-### Deploy
-
-```bash
-page build
-page deploy
-```
-
-### Dry run
-
-```bash
-page deploy --target cloudflare --dry-run
-```
-
-## Netlify
-
-### Setup
-
-1. Install Netlify CLI: `npm install -g netlify-cli`
-2. Authenticate: `netlify login`
-3. Configure:
-
-```toml
-[deploy]
-target = "netlify"
-```
-
-### Deploy
-
-```bash
-page build
-page deploy
-```
-
-### Dry run
-
-```bash
-page deploy --target netlify --dry-run
-```
-
-## Custom Domains
-
-Set up a custom domain for any deploy target:
-
-```bash
-page deploy --domain example.com
-```
-
-This will:
-1. Print DNS records to add at your registrar
-2. Update `base_url` and `deploy.domain` in `page.toml`
-3. For Cloudflare: offer to attach the domain to your Pages project via the API
-4. For Netlify: offer to add the domain via `netlify domains:add`
-5. For GitHub Pages: auto-generate a `CNAME` file on the next deploy
-
-You can also set the domain directly in `page.toml`:
-
-```toml
-[deploy]
-target = "cloudflare"
-project = "my-site"
-domain = "example.com"
-```
-
-When `deploy.domain` is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.
-
-## Override Target
-
-Override the configured target on the command line:
-
-```bash
-page deploy --target netlify     # Deploy to Netlify regardless of page.toml
-page deploy --target cloudflare  # Deploy to Cloudflare
-```
-
-## Build Output
-
-After `page build`, the `dist/` directory contains everything needed:
+Docs support nested directories for grouped navigation:
 
 ```
-dist/
-├── index.html           # Homepage
-├── index.md             # Homepage markdown
-├── feed.xml             # RSS feed
-├── sitemap.xml          # XML sitemap
-├── robots.txt           # Robots directives
-├── llms.txt             # LLM summary
-├── llms-full.txt        # Full LLM content
-├── search-index.json    # Client-side search data
-├── 404.html             # Error page
-├── posts/
-│   ├── hello-world.html
-│   └── hello-world.md
-├── docs/
-│   ├── getting-started.html
-│   └── getting-started.md
-└── static/
-    └── ...
+content/docs/
+├── getting-started.md
+├── guides/
+│   ├── setup.md
+│   └── advanced.md
+└── reference/
+    ├── api.md
+    └── config.md
 ```
 
-All three platforms serve `404.html` automatically for missing routes.
-
-## Next Steps
-
-- [Configuration](/docs/configuration) — all deploy-related settings in `page.toml`
-- [CLI Reference](/docs/cli-reference) — complete list of `page deploy` flags
-
-
----
-
-### Getting Started
-
-*Install page and build your first static site in under a minute.*
-
-## Installation
-
-### Quick install (macOS and Linux)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
-```
-
-This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
-
-To install a specific version:
-
-```bash
-VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
-```
-
-### Install from source
-
-If you have the Rust toolchain installed:
-
-```bash
-cargo install page
-```
-
-### Platform support
-
-| Platform | Architecture | Install method |
-|----------|-------------|----------------|
-| macOS | Apple Silicon (M1/M2/M3/M4) | Shell installer or cargo |
-| macOS | Intel x86_64 | Shell installer or cargo |
-| Linux | x86_64 | Shell installer or cargo |
-| Linux | aarch64/arm64 | Shell installer or cargo |
-| Windows | x86_64 | `cargo install page` |
-
-### Verify
-
-```bash
-page --version
-```
-
-{{% callout(type="tip") %}}
-Run `page --help` to see all available commands at a glance.
-{{% end %}}
-
-## Create Your First Site
-
-Scaffold a new site with posts, docs, and pages collections:
-
-```bash
-page init mysite --title "My Site" --description "A personal blog" --collections posts,docs,pages
-cd mysite
-```
+Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar with sections grouped by directory.
 
 {{% callout(type="info") %}}
-All flags are optional. Run `page init mysite` and interactive prompts will guide you through each setting.
+Subdirectories automatically become sidebar sections. Create `content/docs/guides/` and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.
 {{% end %}}
 
-This creates the following structure:
+### Sidebar Ordering
 
-```
-mysite/
-├── content/
-│   ├── posts/     # Date-based blog posts with RSS
-│   ├── docs/      # Documentation with sidebar navigation
-│   └── pages/     # Standalone pages (about, contact, etc.)
-├── templates/     # Tera templates (override bundled themes)
-├── static/        # Static assets (CSS, JS, images)
-├── page.toml      # Site configuration
-└── .claude/       # Claude Code agent configuration
-```
-
-## Create Content
-
-Add a blog post:
-
-```bash
-page new post "Hello World" --tags intro,welcome
-```
-
-This creates `content/posts/2026-02-18-hello-world.md` with frontmatter:
+By default, docs are sorted alphabetically by title. Use `weight` in frontmatter to control the order:
 
 ```yaml
 ---
-title: "Hello World"
-date: 2026-02-18
-tags:
-  - intro
-  - welcome
+title: "Getting Started"
+weight: 1
 ---
-
-Your content here...
 ```
 
-Add a documentation page:
+Lower values appear first. Items without `weight` sort alphabetically after all weighted items. This lets you create a guided learning path instead of a plain alphabetical list.
 
-```bash
-page new doc "Getting Started"
-```
+## Pages
 
-Add a standalone page:
-
-```bash
-page new page "About"
-```
-
-## Build Your Site
-
-Build the site to the `dist/` directory:
-
-```bash
-page build
-```
-
-The build generates:
-- HTML pages with clean URLs (`/posts/hello-world`)
-- Markdown copies alongside every HTML file
-- RSS feed at `/feed.xml`
-- XML sitemap at `/sitemap.xml`
-- Search index at `/search-index.json`
-- LLM discovery files at `/llms.txt` and `/llms-full.txt`
-
-## Development Server
-
-Start a dev server with live reload:
-
-```bash
-page serve
-```
-
-The server starts at `http://localhost:3000` (auto-increments if the port is taken) and watches for file changes. An interactive REPL lets you run commands without restarting:
+Pages are standalone content at root URLs. They're unlisted (not shown on the index page):
 
 ```
-page> new post "Another Post"
-page> theme apply dark
-page> build
-page> status
-page> stop
+content/pages/
+├── about.md        → /about
+├── contact.md      → /contact
+└── index.md        → / (homepage content)
 ```
 
-{{% callout(type="tip") %}}
-The REPL is the fastest way to iterate. Create content, switch themes, and rebuild — all without leaving the dev server.
-{{% end %}}
+The special file `content/pages/index.md` injects its content into the homepage template as `{{ page.content }}`.
 
-## Themes
+## Pagination
 
-List available themes:
-
-```bash
-page theme list
-```
-
-Apply a bundled theme:
-
-```bash
-page theme apply dark
-```
-
-Generate a custom theme with AI:
-
-```bash
-page theme create "minimal serif with warm colors"
-```
-
-## Next Steps
-
-- [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
-- [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
-- [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
-- [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
-- [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you
-
-
----
-
-### Multi-Language
-
-*Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.*
-
-## Overview
-
-`page` uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.
-
-{{% callout(type="info") %}}
-Single-language sites need zero i18n config. Everything works identically whether or not you add `[languages.*]` sections. i18n is purely additive.
-{{% end %}}
-
-## How It Works
-
-Default language content uses plain filenames:
-
-```
-content/posts/hello-world.md     → /posts/hello-world
-content/pages/about.md           → /about
-```
-
-Translations add a language suffix before the extension:
-
-```
-content/posts/hello-world.es.md  → /es/posts/hello-world
-content/pages/about.es.md        → /es/about
-```
-
-Items with the same slug across languages are automatically linked as translations.
-
-## Configuration
-
-Enable multi-language support by adding language sections to `page.toml`:
+Enable pagination on any listed collection:
 
 ```toml
-[site]
-language = "en"
-title = "My Site"
-
-[languages.es]
-title = "Mi Sitio"
-description = "Un sitio web est&aacute;tico"
-
-[languages.fr]
-title = "Mon Site"
-description = "Un site web statique"
+[[collections]]
+name = "posts"
+paginate = 10
 ```
 
-Each language can override `title` and `description`. The default language is set in `[site].language`.
+This generates:
+- `/posts/` — page 1
+- `/posts/page/2/` — page 2
+- `/posts/page/3/` — page 3, etc.
 
-## Creating Translations
-
-Use the `--lang` flag with `page new`:
-
-```bash
-page new post "Hello World"             # English (default)
-page new post "Hola Mundo" --lang es    # Spanish translation
-```
-
-Or create files manually — the language suffix must match a configured language code:
+Templates receive pagination context:
 
 ```
-about.md      → English (default)
-about.es.md   → Spanish
-about.fr.md   → French
-about.xx.md   → Ignored (xx not configured)
+{{ pagination.current_page }}
+{{ pagination.total_pages }}
+{{ pagination.prev_url }}
+{{ pagination.next_url }}
 ```
 
-{{% callout(type="tip") %}}
-Files with a `.xx.md` suffix are safely ignored if `xx` isn't a configured language. You won't accidentally create broken translations from random filename patterns.
-{{% end %}}
+## Singular/Plural
 
-## Per-Language Output
+Both `page new post` and `page new posts` work — the CLI normalizes singular to plural automatically.
 
-When multi-language is enabled, `page` generates per-language versions of:
+## Tag Pages
 
-| Output | Default language | Other languages |
-|--------|-----------------|-----------------|
-| Index page | `dist/index.html` | `dist/{lang}/index.html` |
-| RSS feed | `dist/feed.xml` | `dist/{lang}/feed.xml` |
-| LLM discovery | `dist/llms.txt` | `dist/{lang}/llms.txt` |
-| Search index | `dist/search-index.json` | `dist/{lang}/search-index.json` |
-| Sitemap | `dist/sitemap.xml` (all languages, with alternates) | |
+Tags are collected from all posts and generate archive pages:
 
-## URL Structure
+- `/tags/` — tag index with all tags and counts
+- `/tags/rust/` — all posts tagged "rust"
 
-Non-default languages get a `/{lang}/` prefix:
-
-```
-/posts/hello-world          # English
-/es/posts/hello-world       # Spanish
-/fr/posts/hello-world       # French
-```
-
-## hreflang Tags
-
-All bundled themes automatically emit `<link rel="alternate" hreflang="...">` tags when translations exist, helping search engines serve the right language.
-
-## Language Switcher
-
-Bundled themes include a language switcher UI when `translations` is non-empty. It shows links to all available translations of the current page.
-
-## Template Variables
-
-| Variable | Description |
-|----------|-------------|
-| `{{ lang }}` | Current page language code |
-| `{{ translations }}` | Array of `{lang, url}` for available translations |
-| `{{ site.language }}` | Default site language |
-
-Use in templates:
-
-```html
-{% if translations %}
-<nav class="lang-switcher">
-  {% for t in translations %}
-    {% if t.lang == lang %}
-      <strong>{{ t.lang }}</strong>
-    {% else %}
-      <a href="{{ t.url }}">{{ t.lang }}</a>
-    {% endif %}
-  {% endfor %}
-</nav>
-{% endif %}
-```
+Tag pages are i18n-aware and included in the sitemap.
 
 ## Next Steps
 
-- [Collections](/docs/collections) — how translations work across posts, docs, and pages
-- [Templates & Themes](/docs/templates) — language switcher template code and theme blocks
-- [Deployment](/docs/deployment) — per-language output files and how they deploy
-
-
----
-
-### Releases
-
-*Release history and changelog for page.*
-
-## v0.1.0
-
-Initial release.
-
-- 12-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
-- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
-- AI agent via Claude Code — `page agent` spawns Claude with full site context
-- Multi-language (i18n) support with per-language URLs, RSS feeds, sitemaps, and hreflang tags
-- Deploy to GitHub Pages, Cloudflare Pages, and Netlify with guided setup and pre-flight checks
-- Image processing: auto-resize, WebP conversion, srcset, lazy loading
-- Pagination, tag pages, table of contents, excerpts, reading time
-- Custom domain management for all deploy targets
-- Interactive dev server with REPL and live reload
-- Shell installer for macOS and Linux
-
-
----
-
-### Shortcodes
-
-*Reusable content components for embedding videos, callouts, figures, and custom elements in markdown*
-
-Shortcodes are reusable content components you can use inside markdown files. They let you embed rich content like videos, callout boxes, and figures without writing raw HTML.
-
-## Syntax
-
-There are two types of shortcodes:
-
-### Inline shortcodes
-
-Output raw HTML. Use `{{<` and `>}}` delimiters:
-
-```
-{{< youtube(id="dQw4w9WgXcQ") >}}
-```
-
-### Body shortcodes
-
-Wrap markdown content that gets processed normally. Use `{{% ` and ` %}}` delimiters with a `{{% end %}}` closing tag:
-
-```
-{{% callout(type="warning") %}}
-This is **bold** markdown inside the callout.
-{{% end %}}
-```
-
-{{% callout(type="tip") %}}
-Content inside body shortcodes is processed as regular markdown — bold, links, lists, and code blocks all work as expected.
-{{% end %}}
-
-### Arguments
-
-All arguments are named (key=value). Supported value types:
-
-- **Strings**: `id="dQw4w9WgXcQ"` (quoted)
-- **Integers**: `width=800`
-- **Floats**: `ratio=1.5`
-- **Booleans**: `autoplay=true`
-
-## Built-in shortcodes
-
-### youtube
-
-Embeds a responsive YouTube video player.
-
-```
-{{< youtube(id="dQw4w9WgXcQ") >}}
-```
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `id` | yes | YouTube video ID |
-| `start` | no | Start time in seconds |
-| `title` | no | Accessible title (default: "YouTube video") |
-
-### vimeo
-
-Embeds a responsive Vimeo video player.
-
-```
-{{< vimeo(id="123456") >}}
-```
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `id` | yes | Vimeo video ID |
-| `title` | no | Accessible title (default: "Vimeo video") |
-
-### gist
-
-Embeds a GitHub Gist.
-
-```
-{{< gist(user="octocat", id="abc123") >}}
-```
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `user` | yes | GitHub username |
-| `id` | yes | Gist ID |
-
-### figure
-
-Renders a semantic `<figure>` element with optional caption.
-
-```
-{{< figure(src="/static/photo.jpg", caption="Sunset over the bay", alt="Orange sunset") >}}
-```
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `src` | yes | Image path or URL |
-| `alt` | no | Alt text for accessibility |
-| `caption` | no | Caption displayed below the image |
-| `width` | no | Image width attribute |
-| `height` | no | Image height attribute |
-| `class` | no | CSS class on the figure element |
-
-### callout
-
-Renders an admonition/callout box. This is a **body shortcode** — the content between the tags is processed as markdown.
-
-```
-{{% callout(type="warning") %}}
-Be careful with this operation. It **cannot be undone**.
-{{% end %}}
-```
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
-
-All six bundled themes include styled callout boxes with appropriate colors for each type.
-
-## Custom shortcodes
-
-Create Tera templates in the `templates/shortcodes/` directory. Each `.html` file becomes a shortcode named after the file.
-
-### Example: alert shortcode
-
-Create `templates/shortcodes/alert.html`:
-
-```html
-<div class="alert alert-{{ level | default(value='info') }}">
-{{ body }}
-</div>
-```
-
-Use in markdown:
-
-```
-{{% alert(level="error") %}}
-Something went wrong. Please try again.
-{{% end %}}
-```
-
-### Template variables
-
-Shortcode templates have access to:
-
-- All named arguments as top-level variables
-- `{{ body }}` — the raw body content (for body shortcodes)
-- `{{ page }}` — current page context (title, slug, tags, etc.)
-- `{{ site }}` — site context (title, base_url, language)
-
-### Example: button shortcode with conditional styling
-
-Create `templates/shortcodes/button.html`:
-
-```html
-<a href="{{ url }}"
-   class="btn{% if style %} btn-{{ style }}{% endif %}"
-   {% if external %}target="_blank" rel="noopener"{% endif %}>
-  {{ label | default(value="Click here") }}
-</a>
-```
-
-Use in markdown:
-
-```
-{{< button(url="/docs/getting-started", label="Get Started", style="primary") >}}
-{{< button(url="https://github.com/user/repo", label="GitHub", external=true) >}}
-```
-
-### Overriding built-in shortcodes
-
-To customize a built-in shortcode, create a file with the same name in `templates/shortcodes/`. For example, `templates/shortcodes/youtube.html` will override the built-in YouTube embed.
-
-## Escaping shortcodes
-
-To show shortcode syntax literally (e.g., in documentation), put it inside a fenced code block:
-
-````
-```
-{{< youtube(id="example") >}}
-```
-````
-
-Shortcodes inside fenced code blocks and inline code spans are never expanded.
-
-## Error handling
-
-- **Unknown shortcode**: Build fails with the shortcode name and available alternatives
-- **Unclosed body shortcode**: Build fails with the file path and line number
-- **Missing arguments**: Build fails when the template references an undefined variable
-- **Invalid syntax**: Build fails with a descriptive error and line number
-
-All error messages include the source file path and line number for quick debugging.
-
-## Next Steps
-
-- [Templates & Themes](/docs/templates) — template variables available inside shortcode templates
-- [Theme Gallery](/docs/theme-gallery) — all bundled themes include styling for built-in shortcodes
+- [Configuration](/docs/configuration) — full reference for all collection fields and site settings
+- [Templates & Themes](/docs/templates) — customize how collections are rendered
+- [Shortcodes](/docs/shortcodes) — add rich content like videos, callouts, and figures to your pages
 
 
 ---
@@ -1709,6 +847,683 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 
 ---
 
+### Shortcodes
+
+*Reusable content components for embedding videos, callouts, figures, and custom elements in markdown*
+
+Shortcodes are reusable content components you can use inside markdown files. They let you embed rich content like videos, callout boxes, and figures without writing raw HTML.
+
+## Syntax
+
+There are two types of shortcodes:
+
+### Inline shortcodes
+
+Output raw HTML. Use `{{<` and `>}}` delimiters:
+
+```
+{{< youtube(id="dQw4w9WgXcQ") >}}
+```
+
+### Body shortcodes
+
+Wrap markdown content that gets processed normally. Use `{{% ` and ` %}}` delimiters with a `{{% end %}}` closing tag:
+
+```
+{{% callout(type="warning") %}}
+This is **bold** markdown inside the callout.
+{{% end %}}
+```
+
+{{% callout(type="tip") %}}
+Content inside body shortcodes is processed as regular markdown — bold, links, lists, and code blocks all work as expected.
+{{% end %}}
+
+### Arguments
+
+All arguments are named (key=value). Supported value types:
+
+- **Strings**: `id="dQw4w9WgXcQ"` (quoted)
+- **Integers**: `width=800`
+- **Floats**: `ratio=1.5`
+- **Booleans**: `autoplay=true`
+
+## Built-in shortcodes
+
+### youtube
+
+Embeds a responsive YouTube video player.
+
+```
+{{< youtube(id="dQw4w9WgXcQ") >}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | yes | YouTube video ID |
+| `start` | no | Start time in seconds |
+| `title` | no | Accessible title (default: "YouTube video") |
+
+### vimeo
+
+Embeds a responsive Vimeo video player.
+
+```
+{{< vimeo(id="123456") >}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | yes | Vimeo video ID |
+| `title` | no | Accessible title (default: "Vimeo video") |
+
+### gist
+
+Embeds a GitHub Gist.
+
+```
+{{< gist(user="octocat", id="abc123") >}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `user` | yes | GitHub username |
+| `id` | yes | Gist ID |
+
+### figure
+
+Renders a semantic `<figure>` element with optional caption.
+
+```
+{{< figure(src="/static/photo.jpg", caption="Sunset over the bay", alt="Orange sunset") >}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `src` | yes | Image path or URL |
+| `alt` | no | Alt text for accessibility |
+| `caption` | no | Caption displayed below the image |
+| `width` | no | Image width attribute |
+| `height` | no | Image height attribute |
+| `class` | no | CSS class on the figure element |
+
+### callout
+
+Renders an admonition/callout box. This is a **body shortcode** — the content between the tags is processed as markdown.
+
+```
+{{% callout(type="warning") %}}
+Be careful with this operation. It **cannot be undone**.
+{{% end %}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
+
+All six bundled themes include styled callout boxes with appropriate colors for each type.
+
+## Custom shortcodes
+
+Create Tera templates in the `templates/shortcodes/` directory. Each `.html` file becomes a shortcode named after the file.
+
+### Example: alert shortcode
+
+Create `templates/shortcodes/alert.html`:
+
+```html
+<div class="alert alert-{{ level | default(value='info') }}">
+{{ body }}
+</div>
+```
+
+Use in markdown:
+
+```
+{{% alert(level="error") %}}
+Something went wrong. Please try again.
+{{% end %}}
+```
+
+### Template variables
+
+Shortcode templates have access to:
+
+- All named arguments as top-level variables
+- `{{ body }}` — the raw body content (for body shortcodes)
+- `{{ page }}` — current page context (title, slug, tags, etc.)
+- `{{ site }}` — site context (title, base_url, language)
+
+### Example: button shortcode with conditional styling
+
+Create `templates/shortcodes/button.html`:
+
+```html
+<a href="{{ url }}"
+   class="btn{% if style %} btn-{{ style }}{% endif %}"
+   {% if external %}target="_blank" rel="noopener"{% endif %}>
+  {{ label | default(value="Click here") }}
+</a>
+```
+
+Use in markdown:
+
+```
+{{< button(url="/docs/getting-started", label="Get Started", style="primary") >}}
+{{< button(url="https://github.com/user/repo", label="GitHub", external=true) >}}
+```
+
+### Overriding built-in shortcodes
+
+To customize a built-in shortcode, create a file with the same name in `templates/shortcodes/`. For example, `templates/shortcodes/youtube.html` will override the built-in YouTube embed.
+
+## Escaping shortcodes
+
+To show shortcode syntax literally (e.g., in documentation), put it inside a fenced code block:
+
+````
+```
+{{< youtube(id="example") >}}
+```
+````
+
+Shortcodes inside fenced code blocks and inline code spans are never expanded.
+
+## Error handling
+
+- **Unknown shortcode**: Build fails with the shortcode name and available alternatives
+- **Unclosed body shortcode**: Build fails with the file path and line number
+- **Missing arguments**: Build fails when the template references an undefined variable
+- **Invalid syntax**: Build fails with a descriptive error and line number
+
+All error messages include the source file path and line number for quick debugging.
+
+## Next Steps
+
+- [Templates & Themes](/docs/templates) — template variables available inside shortcode templates
+- [Theme Gallery](/docs/theme-gallery) — all bundled themes include styling for built-in shortcodes
+
+
+---
+
+### Multi-Language
+
+*Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.*
+
+## Overview
+
+`page` uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.
+
+{{% callout(type="info") %}}
+Single-language sites need zero i18n config. Everything works identically whether or not you add `[languages.*]` sections. i18n is purely additive.
+{{% end %}}
+
+## How It Works
+
+Default language content uses plain filenames:
+
+```
+content/posts/hello-world.md     → /posts/hello-world
+content/pages/about.md           → /about
+```
+
+Translations add a language suffix before the extension:
+
+```
+content/posts/hello-world.es.md  → /es/posts/hello-world
+content/pages/about.es.md        → /es/about
+```
+
+Items with the same slug across languages are automatically linked as translations.
+
+## Configuration
+
+Enable multi-language support by adding language sections to `page.toml`:
+
+```toml
+[site]
+language = "en"
+title = "My Site"
+
+[languages.es]
+title = "Mi Sitio"
+description = "Un sitio web est&aacute;tico"
+
+[languages.fr]
+title = "Mon Site"
+description = "Un site web statique"
+```
+
+Each language can override `title` and `description`. The default language is set in `[site].language`.
+
+## Creating Translations
+
+Use the `--lang` flag with `page new`:
+
+```bash
+page new post "Hello World"             # English (default)
+page new post "Hola Mundo" --lang es    # Spanish translation
+```
+
+Or create files manually — the language suffix must match a configured language code:
+
+```
+about.md      → English (default)
+about.es.md   → Spanish
+about.fr.md   → French
+about.xx.md   → Ignored (xx not configured)
+```
+
+{{% callout(type="tip") %}}
+Files with a `.xx.md` suffix are safely ignored if `xx` isn't a configured language. You won't accidentally create broken translations from random filename patterns.
+{{% end %}}
+
+## Per-Language Output
+
+When multi-language is enabled, `page` generates per-language versions of:
+
+| Output | Default language | Other languages |
+|--------|-----------------|-----------------|
+| Index page | `dist/index.html` | `dist/{lang}/index.html` |
+| RSS feed | `dist/feed.xml` | `dist/{lang}/feed.xml` |
+| LLM discovery | `dist/llms.txt` | `dist/{lang}/llms.txt` |
+| Search index | `dist/search-index.json` | `dist/{lang}/search-index.json` |
+| Sitemap | `dist/sitemap.xml` (all languages, with alternates) | |
+
+## URL Structure
+
+Non-default languages get a `/{lang}/` prefix:
+
+```
+/posts/hello-world          # English
+/es/posts/hello-world       # Spanish
+/fr/posts/hello-world       # French
+```
+
+## hreflang Tags
+
+All bundled themes automatically emit `<link rel="alternate" hreflang="...">` tags when translations exist, helping search engines serve the right language.
+
+## Language Switcher
+
+Bundled themes include a language switcher UI when `translations` is non-empty. It shows links to all available translations of the current page.
+
+## Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{ lang }}` | Current page language code |
+| `{{ translations }}` | Array of `{lang, url}` for available translations |
+| `{{ site.language }}` | Default site language |
+
+Use in templates:
+
+```html
+{% if translations %}
+<nav class="lang-switcher">
+  {% for t in translations %}
+    {% if t.lang == lang %}
+      <strong>{{ t.lang }}</strong>
+    {% else %}
+      <a href="{{ t.url }}">{{ t.lang }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>
+{% endif %}
+```
+
+## Next Steps
+
+- [Collections](/docs/collections) — how translations work across posts, docs, and pages
+- [Templates & Themes](/docs/templates) — language switcher template code and theme blocks
+- [Deployment](/docs/deployment) — per-language output files and how they deploy
+
+
+---
+
+### Deployment
+
+*Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.*
+
+## Overview
+
+`page` supports three deployment targets out of the box:
+
+- **GitHub Pages** — git-based deployment with auto-generated GitHub Actions
+- **Cloudflare Pages** — wrangler-based deployment
+- **Netlify** — CLI-based deployment
+
+## Which Target Should I Choose?
+
+| Target | Best for | Highlights |
+|--------|----------|------------|
+| **GitHub Pages** | Open-source projects | Simplest setup, free, auto-generated CI workflow |
+| **Cloudflare Pages** | Production sites | Fastest global CDN, custom domain API, preview deploys |
+| **Netlify** | Team workflows | Familiar DX, draft deploys, easy rollbacks |
+
+All three are free for static sites. You can switch targets anytime by changing one line in `page.toml`.
+
+## Configuration
+
+Set the deploy target in `page.toml`:
+
+```toml
+[deploy]
+target = "github-pages"
+```
+
+{{% callout(type="warning") %}}
+Make sure `base_url` in `page.toml` is set to your real domain before deploying. The default `localhost` URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use `--base-url` to override at deploy time without modifying the config file.
+{{% end %}}
+
+{{% callout(type="info") %}}
+`page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
+{{% end %}}
+
+## GitHub Pages
+
+The default deployment target. When you run `page init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
+
+### Manual deployment
+
+```bash
+page build
+page deploy
+```
+
+This pushes the `dist/` directory to the `gh-pages` branch.
+
+### Dry run
+
+Preview what would be deployed:
+
+```bash
+page deploy --dry-run
+```
+
+{{% callout(type="tip") %}}
+Always run `--dry-run` before your first deploy to verify everything looks right. It shows exactly what would be pushed without making any changes.
+{{% end %}}
+
+### Custom repository
+
+```toml
+[deploy]
+target = "github-pages"
+repo = "https://github.com/user/repo.git"
+```
+
+## Cloudflare Pages
+
+### Setup
+
+1. Install wrangler: `npm install -g wrangler`
+2. Authenticate: `wrangler login`
+3. Configure:
+
+```toml
+[deploy]
+target = "cloudflare"
+project = "my-site"
+```
+
+The project name is auto-detected from `wrangler.toml` if present.
+
+### Deploy
+
+```bash
+page build
+page deploy
+```
+
+### Dry run
+
+```bash
+page deploy --target cloudflare --dry-run
+```
+
+## Netlify
+
+### Setup
+
+1. Install Netlify CLI: `npm install -g netlify-cli`
+2. Authenticate: `netlify login`
+3. Configure:
+
+```toml
+[deploy]
+target = "netlify"
+```
+
+### Deploy
+
+```bash
+page build
+page deploy
+```
+
+### Dry run
+
+```bash
+page deploy --target netlify --dry-run
+```
+
+## Custom Domains
+
+Set up a custom domain for any deploy target:
+
+```bash
+page deploy --domain example.com
+```
+
+This will:
+1. Print DNS records to add at your registrar
+2. Update `base_url` and `deploy.domain` in `page.toml`
+3. For Cloudflare: offer to attach the domain to your Pages project via the API
+4. For Netlify: offer to add the domain via `netlify domains:add`
+5. For GitHub Pages: auto-generate a `CNAME` file on the next deploy
+
+You can also set the domain directly in `page.toml`:
+
+```toml
+[deploy]
+target = "cloudflare"
+project = "my-site"
+domain = "example.com"
+```
+
+When `deploy.domain` is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.
+
+## Override Target
+
+Override the configured target on the command line:
+
+```bash
+page deploy --target netlify     # Deploy to Netlify regardless of page.toml
+page deploy --target cloudflare  # Deploy to Cloudflare
+```
+
+## Build Output
+
+After `page build`, the `dist/` directory contains everything needed:
+
+```
+dist/
+├── index.html           # Homepage
+├── index.md             # Homepage markdown
+├── feed.xml             # RSS feed
+├── sitemap.xml          # XML sitemap
+├── robots.txt           # Robots directives
+├── llms.txt             # LLM summary
+├── llms-full.txt        # Full LLM content
+├── search-index.json    # Client-side search data
+├── 404.html             # Error page
+├── posts/
+│   ├── hello-world.html
+│   └── hello-world.md
+├── docs/
+│   ├── getting-started.html
+│   └── getting-started.md
+└── static/
+    └── ...
+```
+
+All three platforms serve `404.html` automatically for missing routes.
+
+## Next Steps
+
+- [Configuration](/docs/configuration) — all deploy-related settings in `page.toml`
+- [CLI Reference](/docs/cli-reference) — complete list of `page deploy` flags
+
+
+---
+
+### AI Agent
+
+*Use page agent to get AI assistance with content creation, site management, and theme generation.*
+
+## Overview
+
+`page` integrates directly with Claude Code. The `page agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
+
+No API keys needed. It uses your Claude Code subscription directly.
+
+## Setup
+
+Install Claude Code:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+Verify it's available:
+
+```bash
+claude --version
+```
+
+## Interactive Mode
+
+Launch an interactive session:
+
+```bash
+page agent
+```
+
+Claude receives a rich system prompt containing:
+- Your site config (title, description, base URL, collections)
+- Content inventory (titles, dates, tags of every existing page)
+- Available templates
+- Frontmatter format with examples
+- File naming conventions
+- All `page` CLI commands
+
+You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
+
+{{% callout(type="info") %}}
+The agent can run `page build` and `page serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
+{{% end %}}
+
+## One-Shot Mode
+
+Pass a prompt directly for non-interactive use:
+
+```bash
+page agent "create a blog post about Rust error handling best practices"
+page agent "add a docs page explaining the deployment process"
+page agent "update the homepage to include a features section"
+```
+
+Claude writes the files directly and exits.
+
+## Example Prompts
+
+Here are prompts that work well, grouped by use case:
+
+### Content creation
+
+```bash
+page agent "write a technical tutorial about async Rust, include code examples and a summary"
+page agent "create a blog post comparing static site generators, with a table of features"
+page agent "add an FAQ page with 10 common questions about our product"
+```
+
+### Site management
+
+```bash
+page agent "add the tag 'tutorial' to all posts that contain code blocks"
+page agent "create Spanish translations for all docs pages"
+page agent "reorganize the docs into guides/ and reference/ subdirectories"
+```
+
+### Theme and design
+
+```bash
+page agent "update the homepage to add a testimonials section with three cards"
+page agent "add a custom footer with social links and a newsletter signup"
+```
+
+### Debugging
+
+```bash
+page agent "the build is failing on my Spanish translations, help me fix it"
+page agent "find and fix any broken internal links in my content"
+page agent "my RSS feed is missing some posts, diagnose the issue"
+```
+
+## Tips for Effective Prompts
+
+{{% callout(type="tip") %}}
+Be specific about format and tone. "Write a 1500-word technical tutorial about Rust error handling with code examples" gives better results than "write a post about Rust".
+{{% end %}}
+
+{{% callout(type="tip") %}}
+The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include — just describe what you want.
+{{% end %}}
+
+## Theme Generation
+
+Generate custom themes with AI:
+
+```bash
+page theme create "dark mode with neon green accents and brutalist layout"
+```
+
+Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly.
+
+## REPL Integration
+
+The dev server REPL also supports the agent:
+
+```
+page> agent "write a post about our latest release"
+```
+
+This is useful for quick content creation while previewing your site.
+
+## What the Agent Can Do
+
+The agent has access to these tools:
+- **Read** — read any file in your project
+- **Write** — create new content files
+- **Edit** — modify existing files
+- **Glob** — find files by pattern
+- **Grep** — search file contents
+- **Bash** — run CLI commands (build, serve, deploy)
+
+## Claude Code Scaffolding
+
+When you run `page init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
+
+## Next Steps
+
+- [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
+- [CLI Reference](/docs/cli-reference) — all `page agent` flags and options
+- [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet
+
+
+---
+
 ### Theme Gallery
 
 *Browse all bundled themes with visual previews. Install community themes or generate your own with AI.*
@@ -1897,6 +1712,204 @@ In the dev server REPL, type `theme` to list themes or `theme <name>` to apply a
 
 - [Templates & Themes](/docs/templates) — customize theme blocks, override templates, and use data files
 - [AI Agent](/docs/agent) — use Claude for content creation, site management, and more
+
+
+---
+
+### CLI Reference
+
+*Complete reference for all page CLI commands, flags, and options.*
+
+{{% callout(type="tip") %}}
+Run `page <command> --help` for quick inline help on any command.
+{{% end %}}
+
+## Overview
+
+`page` has seven subcommands:
+
+| Command | Description |
+|---------|-------------|
+| `init`  | Create a new site |
+| `build` | Build the site |
+| `serve` | Development server with live reload |
+| `new`   | Create content files |
+| `agent` | AI assistant with site context |
+| `theme` | Manage themes |
+| `deploy`| Deploy to hosting platforms |
+
+## page init
+
+Create a new site directory with scaffolded structure.
+
+```bash
+page init <name> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--title` | Site title |
+| `--description` | Site description |
+| `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
+| `--collections` | Comma-separated list: `posts,docs,pages` |
+
+If flags are omitted, `page init` prompts interactively.
+
+```bash
+# Non-interactive
+page init mysite --title "My Blog" --deploy-target github-pages --collections posts,pages
+
+# Interactive
+page init mysite
+```
+
+## page build
+
+Build the site from `page.toml` in the current directory.
+
+```bash
+page build [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--drafts` | Include draft content in the build |
+| `--strict` | Treat broken internal links as build errors |
+
+The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
+
+After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., `<a href="/posts/nonexistent">`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
+
+## page serve
+
+Start a development server with live reload.
+
+```bash
+page serve [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--port` | Starting port (default: 3000, auto-increments if taken) |
+| `--drafts` | Include drafts |
+
+The server injects a live-reload script that polls for changes. An interactive REPL accepts commands:
+
+- `new <collection> "Title"` — create content
+- `agent [prompt]` — launch AI agent
+- `theme apply <name>` — apply theme and rebuild
+- `build` — rebuild the site
+- `status` — show server info
+- `stop` — stop the server
+
+## page new
+
+Create a new content file with frontmatter.
+
+```bash
+page new <collection> "Title" [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--tags` | Comma-separated tags (posts only) |
+| `--lang` | Language code for translations (e.g., `es`, `fr`) |
+
+```bash
+page new post "My Post" --tags rust,web
+page new doc "API Guide"
+page new page "About"
+page new post "Mi Post" --lang es    # Spanish translation
+```
+
+## page agent
+
+Launch an AI assistant with full site context.
+
+```bash
+page agent [prompt]
+```
+
+Two modes:
+- **Interactive**: `page agent` — opens a Claude Code session
+- **One-shot**: `page agent "write a blog post about Rust"` — runs and exits
+
+The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
+
+## page theme
+
+Manage site themes — list, apply, install, export, and generate.
+
+```bash
+page theme <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | Show all available themes (bundled + installed) |
+| `apply <name>` | Apply a bundled or installed theme |
+| `create "<description>"` | Generate a custom theme with AI |
+| `install <url>` | Download and install a theme from a URL |
+| `export <name>` | Export the current theme as a shareable `.tera` file |
+
+```bash
+page theme list
+page theme apply dark
+page theme create "brutalist with neon green accents"
+page theme install https://example.com/themes/aurora.tera
+page theme install https://example.com/themes/aurora.tera --name my-aurora
+page theme export my-theme --description "My custom dark theme"
+```
+
+Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
+
+## page deploy
+
+Deploy the built site.
+
+```bash
+page deploy [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
+| `--dry-run` | Preview what would be deployed without deploying |
+| `--domain` | Set up a custom domain (prints DNS records, updates config, attaches to platform) |
+| `--setup` | Run guided deploy setup |
+| `--skip-checks` | Skip pre-flight checks |
+| `--base-url` | Override base URL for this deploy |
+
+```bash
+page deploy                          # Use target from page.toml
+page deploy --dry-run                # Preview changes
+page deploy --target netlify         # Override target
+page deploy --target cloudflare --dry-run
+page deploy --domain example.com     # Set up custom domain
+page deploy --setup                  # Guided setup wizard
+```
+
+
+---
+
+### Releases
+
+*Release history and changelog for page.*
+
+## v0.1.0
+
+Initial release.
+
+- 12-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
+- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
+- AI agent via Claude Code — `page agent` spawns Claude with full site context
+- Multi-language (i18n) support with per-language URLs, RSS feeds, sitemaps, and hreflang tags
+- Deploy to GitHub Pages, Cloudflare Pages, and Netlify with guided setup and pre-flight checks
+- Image processing: auto-resize, WebP conversion, srcset, lazy loading
+- Pagination, tag pages, table of contents, excerpts, reading time
+- Custom domain management for all deploy targets
+- Interactive dev server with REPL and live reload
+- Shell installer for macOS and Linux
 
 
 ---

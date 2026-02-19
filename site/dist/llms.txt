@@ -4,17 +4,17 @@
 
 ## Documentation
 
-- [AI Agent](https://pagecli.dev/docs/agent.md): Use page agent to get AI assistance with content creation, site management, and theme generation.
-- [CLI Reference](https://pagecli.dev/docs/cli-reference.md): Complete reference for all page CLI commands, flags, and options.
-- [Collections](https://pagecli.dev/docs/collections.md): Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
-- [Configuration](https://pagecli.dev/docs/configuration.md): Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.
-- [Deployment](https://pagecli.dev/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
 - [Getting Started](https://pagecli.dev/docs/getting-started.md): Install page and build your first static site in under a minute.
-- [Multi-Language](https://pagecli.dev/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
-- [Releases](https://pagecli.dev/docs/releases.md): Release history and changelog for page.
-- [Shortcodes](https://pagecli.dev/docs/shortcodes.md): Reusable content components for embedding videos, callouts, figures, and custom elements in markdown
+- [Configuration](https://pagecli.dev/docs/configuration.md): Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.
+- [Collections](https://pagecli.dev/docs/collections.md): Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
 - [Templates & Themes](https://pagecli.dev/docs/templates.md): Customize your site with Tera templates, overridable blocks, and six bundled themes.
+- [Shortcodes](https://pagecli.dev/docs/shortcodes.md): Reusable content components for embedding videos, callouts, figures, and custom elements in markdown
+- [Multi-Language](https://pagecli.dev/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
+- [Deployment](https://pagecli.dev/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
+- [AI Agent](https://pagecli.dev/docs/agent.md): Use page agent to get AI assistance with content creation, site management, and theme generation.
 - [Theme Gallery](https://pagecli.dev/docs/theme-gallery.md): Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
+- [CLI Reference](https://pagecli.dev/docs/cli-reference.md): Complete reference for all page CLI commands, flags, and options.
+- [Releases](https://pagecli.dev/docs/releases.md): Release history and changelog for page.
 
 ## Pages
 
