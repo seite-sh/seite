@@ -47,6 +47,10 @@ pub struct DeployArgs {
     /// Skip pre-flight checks
     #[arg(long)]
     pub skip_checks: bool,
+
+    /// Skip auto-commit and push (overrides deploy.auto_commit)
+    #[arg(long)]
+    pub no_commit: bool,
 }
 
 pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
@@ -126,6 +130,32 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
         }
     }
 
+    // --- Auto-commit and push ---
+    let mut preview = args.preview;
+    let should_auto_commit = config.deploy.auto_commit && !args.no_commit;
+    if should_auto_commit {
+        match deploy::auto_commit_and_push(&paths) {
+            Ok(result) => {
+                if result.committed {
+                    human::success(&format!("Committed and pushed to {}", result.branch));
+                } else {
+                    human::info(&format!("No uncommitted changes, pushed to {}", result.branch));
+                }
+                // Auto-enable preview when on a non-main branch
+                if !result.is_main && !preview {
+                    human::info(&format!(
+                        "On branch '{}' — deploying as preview",
+                        result.branch
+                    ));
+                    preview = true;
+                }
+            }
+            Err(e) => {
+                human::warning(&format!("Auto-commit skipped: {e}"));
+            }
+        }
+    }
+
     // --- Resolve base_url for this deploy ---
     let deploy_base_url = deploy::resolve_deploy_base_url(&config, args.base_url.as_deref());
 
@@ -156,21 +186,21 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
             Some(deploy_base_url.clone())
         }
         "cloudflare" => {
-            human::info(if args.preview {
+            human::info(if preview {
                 "Deploying preview to Cloudflare Pages..."
             } else {
                 "Deploying to Cloudflare Pages..."
             });
             let project = resolve_cloudflare_project(&config, &paths)?;
-            deploy::deploy_cloudflare(&paths, &project, args.preview)?
+            deploy::deploy_cloudflare(&paths, &project, preview)?
         }
         "netlify" => {
-            human::info(if args.preview {
+            human::info(if preview {
                 "Deploying preview to Netlify..."
             } else {
                 "Deploying to Netlify..."
             });
-            deploy::deploy_netlify(&paths, config.deploy.project.as_deref(), args.preview)?
+            deploy::deploy_netlify(&paths, config.deploy.project.as_deref(), preview)?
         }
         other => {
             return Err(PageError::Deploy(format!(
@@ -180,7 +210,7 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
         }
     };
 
-    if args.preview {
+    if preview {
         if let Some(ref url) = deploy_url {
             human::success(&format!("Preview deployed: {url}"));
         } else {
@@ -194,10 +224,10 @@ pub fn run(args: &DeployArgs) -> anyhow::Result<()> {
     }
 
     // --- Post-deploy verification ---
-    if args.verify || !args.preview {
+    if args.verify || !preview {
         // Auto-verify on production deploys, skip on preview unless --verify
         if let Some(ref url) = deploy_url {
-            if !args.preview || args.verify {
+            if !preview || args.verify {
                 human::info("Verifying deployment...");
                 let results = deploy::verify_deployment(url);
                 deploy::print_verification(&results);

@@ -128,6 +128,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             repo: None,
             project: None,
             domain: None,
+            auto_commit: true,
         },
         languages: Default::default(),
         images: Some(crate::config::ImageSection::default()),
@@ -315,7 +316,8 @@ fn generate_claude_md(
     md.push_str("page theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
     md.push_str("page agent                              # Interactive AI agent session\n");
     md.push_str("page agent \"write about Rust\"           # One-shot AI agent prompt\n");
-    md.push_str("page deploy                             # Deploy to configured target\n");
+    md.push_str("page deploy                             # Commit, push, build, and deploy\n");
+    md.push_str("page deploy --no-commit                 # Deploy without auto-commit/push\n");
     md.push_str("```\n\n");
 
     // Dev server REPL
@@ -604,7 +606,8 @@ fn generate_claude_md(
     md.push_str("- Asset pipeline: set `minify = true` and/or `fingerprint = true` under `[build]` in `page.toml`\n");
     md.push_str("  - `minify` strips CSS/JS comments and collapses whitespace\n");
     md.push_str("  - `fingerprint` writes `file.<hash8>.ext` copies of each static asset and a `dist/asset-manifest.json` mapping original names to fingerprinted names\n");
-    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n\n");
+    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
+    md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
 
     // Documentation links
     md.push_str("## Documentation\n\n");

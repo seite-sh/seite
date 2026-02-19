@@ -25,7 +25,8 @@ cargo run -- theme apply dark
 cargo run -- theme create "coral brutalist with lime accents"   # AI-generated custom theme
 cargo run -- theme install https://example.com/theme.tera       # Install from URL
 cargo run -- theme export my-theme --description "My theme"     # Export current theme
-cargo run -- deploy
+cargo run -- deploy                                 # Commit, push, build, and deploy
+cargo run -- deploy --no-commit                     # Deploy without auto-commit/push
 cargo run -- deploy --dry-run                       # Preview what deploy would do
 cargo run -- deploy --target netlify                 # Deploy to Netlify
 cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
@@ -183,6 +184,7 @@ fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.js
 target = "github-pages"  # or "cloudflare" or "netlify"
 # project = "my-site"    # Cloudflare/Netlify project name
 # domain = "example.com" # Custom domain (auto-attached via API)
+auto_commit = true        # auto-commit + push before deploy; non-main branches auto-use preview
 
 # Optional: multi-language support (omit for single-language sites)
 [languages.es]
