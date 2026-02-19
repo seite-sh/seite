@@ -78,7 +78,8 @@ mysite/
 ├── templates/     # Tera templates (override bundled themes)
 ├── static/        # Static assets (CSS, JS, images)
 ├── page.toml      # Site configuration
-└── .claude/       # Claude Code agent configuration
+├── .claude/       # Claude Code agent configuration (includes MCP server)
+└── .page/         # Project metadata (version tracking)
 ```
 
 ## Create Content
@@ -172,6 +173,22 @@ Generate a custom theme with AI:
 ```bash
 page theme create "minimal serif with warm colors"
 ```
+
+## Updating
+
+Update the binary itself:
+
+```bash
+page self-update
+```
+
+After updating, bring your project's config files up to date:
+
+```bash
+page upgrade
+```
+
+This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive — your existing settings are preserved.
 
 ## Next Steps
 

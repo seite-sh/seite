@@ -4,6 +4,7 @@ use clap::Args;
 
 use crate::build::{self, links, BuildOptions};
 use crate::config::SiteConfig;
+use crate::meta;
 use crate::output::human;
 use crate::output::CommandOutput;
 use crate::workspace;
@@ -21,6 +22,19 @@ pub struct BuildArgs {
 
 pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
+
+    // Nudge if project config is outdated
+    if cwd.join("page.toml").exists() && meta::needs_upgrade(&cwd) {
+        let project_ver = meta::project_version(&cwd);
+        let label = if project_ver == (0, 0, 0) {
+            "pre-tracking".to_string()
+        } else {
+            meta::format_version(project_ver)
+        };
+        human::info(&format!(
+            "Project config is from page {label}. Run `page upgrade` for new features."
+        ));
+    }
 
     // Check for workspace context
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
