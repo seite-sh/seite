@@ -152,6 +152,7 @@ The build will error if two data files share the same stem (e.g., `authors.yaml`
 | `target` | string | `"github-pages"` | Deploy target: `github-pages`, `cloudflare`, `netlify` |
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
+| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
 
 ## [languages.*]
 
