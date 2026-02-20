@@ -70,6 +70,95 @@ Tests that require a real browser or deployed environment and can't be covered b
 - [ ] Works with `page serve` live reload (rebuilt pages still have analytics)
 - [ ] Works in workspace mode (`page build --site blog`)
 
+## Trust Center / Compliance Hub
+
+### Init scaffolding (interactive)
+
+- [ ] Run `page init trustsite --collections posts,pages,trust` — triggers trust prompts
+- [ ] Verify company name prompt appears and accepts input
+- [ ] Verify framework multi-select shows all 7 options (SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3)
+- [ ] Verify section multi-select shows all 7 options with sensible defaults
+- [ ] Verify per-framework status prompt appears (Active / In Progress / Planned) for each selected framework
+- [ ] After completion, verify directory structure:
+  - `data/trust/certifications.yaml`
+  - `data/trust/subprocessors.yaml`
+  - `data/trust/faq.yaml`
+  - `content/trust/security-overview.md`
+  - `content/trust/vulnerability-disclosure.md`
+  - `content/trust/certifications/<framework>.md` per selected framework
+  - `templates/trust-item.html`
+  - `templates/trust-index.html`
+
+### Init scaffolding (non-interactive / CI)
+
+- [ ] Run `page init site --collections posts,pages,trust --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,subprocessors,faq,disclosure` — no prompts
+- [ ] Verify same directory structure as interactive mode
+- [ ] Verify `page.toml` has `[trust]` section with company and frameworks
+- [ ] Verify CLAUDE.md has `## Trust Center` section with correct company name
+
+### Build and render
+
+- [ ] Run `page build` on a trust-enabled site — builds successfully
+- [ ] Open `/trust/` in browser — hub page renders with:
+  - Hero section with company name
+  - Certification cards with status badges (green=active, yellow=in_progress, gray=planned)
+  - Content sections for each trust page
+  - Subprocessor table (if data exists)
+  - FAQ accordion (if data exists)
+- [ ] Click a certification card — navigates to `/trust/certifications/<slug>`
+- [ ] Certification detail page shows status badge, auditor, scope, dates
+- [ ] Individual trust pages (`/trust/security-overview`, `/trust/vulnerability-disclosure`) render correctly
+- [ ] Breadcrumb navigation works (Trust Center > Page Title)
+
+### Theme compatibility
+
+- [ ] Trust center renders correctly with `default` theme
+- [ ] Trust center renders correctly with `minimal` theme
+- [ ] Trust center renders correctly with `dark` theme
+- [ ] Trust center renders correctly with `docs` theme
+- [ ] Trust center renders correctly with `brutalist` theme
+- [ ] Trust center renders correctly with `bento` theme
+- [ ] Status badges are visually distinct across all themes
+- [ ] Subprocessor table is responsive (scrollable on mobile)
+
+### Data files
+
+- [ ] Edit `data/trust/certifications.yaml` — add a new entry, rebuild, verify it appears
+- [ ] Change a certification status from `planned` to `active` — badge color changes
+- [ ] Add a subprocessor to `data/trust/subprocessors.yaml` — table updates
+- [ ] Add a FAQ to `data/trust/faq.yaml` — accordion item appears
+- [ ] Delete a data file (e.g., remove `faq.yaml`) — build still works, FAQ section hidden
+
+### Multi-language
+
+- [ ] Create `content/trust/security-overview.es.md` with Spanish content
+- [ ] Add `[languages.es]` to `page.toml`
+- [ ] Build — verify `/es/trust/security-overview` exists with Spanish content
+- [ ] Trust center index at `/es/trust/` renders in Spanish context
+- [ ] Language switcher shows on trust pages when translations exist
+
+### MCP integration
+
+- [ ] Start MCP server with `page mcp` on a trust-enabled project
+- [ ] Send `resources/list` — verify `page://trust` resource appears
+- [ ] Send `resources/read` with `uri: "page://trust"` — returns JSON with:
+  - `config` (company, frameworks)
+  - `certifications` (from YAML)
+  - `subprocessors` (count + items)
+  - `faq` (count + items)
+  - `content_items` (trust collection items)
+- [ ] Verify `page://config` includes `trust` section
+- [ ] `page_search` with `collection: "trust"` finds trust center content
+
+### Edge cases
+
+- [ ] Init with `--collections trust` only (no posts/pages) — works correctly
+- [ ] Init without trust collection — no trust files, no `[trust]` in page.toml
+- [ ] Build with empty trust content dir but valid data files — index renders data sections only
+- [ ] Build with content but no data files — renders content sections only
+- [ ] `page new trust "Privacy Policy"` creates correct content file
+- [ ] Nested trust paths work: `content/trust/certifications/soc2.md` → `/trust/certifications/soc2`
+
 ## Domain-Routed Downloads (pagecli.dev)
 
 ### Install script routing

@@ -339,6 +339,114 @@ pub const DEFAULT_ROADMAP_TIMELINE: &str = r#"{% extends "base.html" %}
 </div>
 {% endblock %}"#;
 
+pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
+{% block title %}{{ page.title }} — {{ t.trust_center }} — {{ site.title }}{% endblock %}
+{% block content %}
+<article class="trust-page">
+    <nav class="trust-breadcrumb"><a href="{{ lang_prefix }}/trust/">{{ t.trust_center }}</a> &rsaquo; {{ page.title }}</nav>
+    <h1>{{ page.title }}</h1>
+    {% if page.description %}<p class="trust-description">{{ page.description }}</p>{% endif %}
+    {% if page.extra.type == "certification" and page.extra.framework %}
+    {% if data.trust.certifications %}
+    {% for cert in data.trust.certifications %}
+    {% if cert.framework == page.extra.framework %}
+    <div class="cert-detail">
+        <span class="cert-status cert-status--{{ cert.status }}">
+            {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
+        </span>
+        {% if cert.auditor %}<div class="cert-meta"><strong>{{ t.auditor }}:</strong> {{ cert.auditor }}</div>{% endif %}
+        {% if cert.scope %}<div class="cert-meta"><strong>{{ t.scope }}:</strong> {{ cert.scope }}</div>{% endif %}
+        {% if cert.issued %}<div class="cert-meta"><strong>{{ t.issued }}:</strong> {{ cert.issued }}</div>{% endif %}
+        {% if cert.expires %}<div class="cert-meta"><strong>{{ t.expires }}:</strong> {{ cert.expires }}</div>{% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"##;
+
+pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
+{% block title %}{{ t.trust_center }} — {{ site.title }}{% endblock %}
+{% block content %}
+<div class="trust-hub">
+    <div class="trust-hero">
+        <h1>{{ t.trust_center }}</h1>
+        <p>{{ t.trust_hero_subtitle | replace(from="{site}", to=site.title) }}</p>
+    </div>
+
+    {% if data.trust.certifications %}
+    <section class="trust-section">
+        <h2>{{ t.certifications_compliance }}</h2>
+        <div class="cert-grid">
+            {% for cert in data.trust.certifications %}
+            <div class="cert-card">
+                <div class="cert-card__header">
+                    <span class="cert-status cert-status--{{ cert.status }}">
+                        {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
+                    </span>
+                </div>
+                <h3 class="cert-card__title">{{ cert.name }}</h3>
+                {% if cert.description %}<p class="cert-card__desc">{{ cert.description }}</p>{% endif %}
+                {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link">{{ t.learn_more }} &rarr;</a>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% for collection in collections %}
+    {% if collection.items | length > 0 %}
+    <section class="trust-section">
+        <h2>{{ collection.label }}</h2>
+        {% for item in collection.items %}
+        {% if item.slug is not starting_with("certifications/") %}
+        <article class="trust-item">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if data.trust.subprocessors %}
+    <section class="trust-section">
+        <h2>{{ t.subprocessors }}</h2>
+        <div class="subprocessor-table-wrap">
+        <table class="subprocessor-table">
+            <thead><tr><th>{{ t.vendor }}</th><th>{{ t.purpose }}</th><th>{{ t.location }}</th><th>{{ t.dpa }}</th></tr></thead>
+            <tbody>
+            {% for sp in data.trust.subprocessors %}
+            <tr>
+                <td>{{ sp.name }}</td>
+                <td>{{ sp.purpose | default(value="") }}</td>
+                <td>{{ sp.location | default(value="") }}</td>
+                <td>{% if sp.dpa %}{{ t.yes }}{% else %}{{ t.no }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if data.trust.faq %}
+    <section class="trust-section faq-section">
+        <h2>{{ t.faq }}</h2>
+        {% for item in data.trust.faq %}
+        <details class="faq-item">
+            <summary>{{ item.question }}</summary>
+            <div class="faq-answer">{{ item.answer }}</div>
+        </details>
+        {% endfor %}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}"##;
+
 fn get_default_template(name: &str) -> Option<&'static str> {
     match name {
         "base.html" => Some(default_base()),
@@ -346,6 +454,8 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "post.html" => Some(DEFAULT_POST),
         "doc.html" => Some(DEFAULT_DOC),
         "page.html" => Some(DEFAULT_PAGE),
+        "trust-item.html" => Some(DEFAULT_TRUST_ITEM),
+        "trust-index.html" => Some(DEFAULT_TRUST_INDEX),
         "404.html" => Some(DEFAULT_404),
         "tags.html" => Some(DEFAULT_TAGS_INDEX),
         "tag.html" => Some(DEFAULT_TAG),
@@ -401,6 +511,13 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
         if tera.get_template(tmpl_name).is_err() {
             if let Some(content) = get_default_template(tmpl_name) {
                 tera.add_raw_template(tmpl_name, content)?;
+            }
+        }
+        // Also register collection-specific index templates (e.g., trust-index.html)
+        let index_tmpl = format!("{}-index.html", collection.name);
+        if tera.get_template(&index_tmpl).is_err() {
+            if let Some(content) = get_default_template(&index_tmpl) {
+                tera.add_raw_template(&index_tmpl, content)?;
             }
         }
     }

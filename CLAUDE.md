@@ -13,6 +13,7 @@ cargo build          # Build the binary
 cargo test           # Run all tests (103 unit + 138 integration)
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
+cargo run -- init trustsite --title "Acme" --collections posts,pages,trust --trust-company "Acme Corp" --trust-frameworks soc2,iso27001
 cargo run -- build   # Build site from page.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
@@ -90,7 +91,7 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
-  docs.rs              Embedded documentation pages (13 docs, include_str! pattern)
+  docs.rs              Embedded documentation pages (14 docs, include_str! pattern)
   docs/                Documentation markdown files embedded at compile time
   meta.rs              Project metadata (.page/config.json) — version tracking, upgrade detection
   mcp/
@@ -161,6 +162,7 @@ Five presets defined in `CollectionConfig::from_preset()`:
 | pages  | false    | false   | false  | false  | (empty)    | page.html |
 | changelog | true  | true    | true   | false  | /changelog | changelog-entry.html |
 | roadmap | false   | false   | true   | false  | /roadmap   | roadmap-item.html |
+| trust  | false    | false   | true   | true   | /trust     | trust-item.html |
 
 ### Output Pattern
 
@@ -241,6 +243,11 @@ quality = 80               # JPEG/WebP quality (1-100)
 lazy_loading = true        # add loading="lazy" to <img> tags
 webp = true                # generate WebP variants alongside originals
 
+# Optional: trust center (omit if not using compliance hub)
+[trust]
+company = "Acme Corp"                  # company name for trust center
+frameworks = ["soc2", "iso27001"]      # active compliance frameworks
+
 # Optional: analytics (omit for no analytics)
 [analytics]
 provider = "google"        # "google", "gtm", "plausible", "fathom", "umami"
@@ -313,10 +320,11 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 **Architecture:** Synchronous read loop on stdin, dispatches JSON-RPC methods, writes responses to stdout. All logging to stderr (never stdout — it corrupts the protocol). No async runtime needed.
 
 **Resources** (read-only data):
-- `page://docs` / `page://docs/{slug}` — 13 embedded documentation pages (compiled into binary via `include_str!`)
+- `page://docs` / `page://docs/{slug}` — 14 embedded documentation pages (compiled into binary via `include_str!`)
 - `page://config` — `page.toml` serialized as JSON
 - `page://content` / `page://content/{collection}` — content inventory with metadata
 - `page://themes` — bundled + installed themes
+- `page://trust` — trust center state (certifications, subprocessors, FAQs, content) — only when trust collection is configured
 - `page://mcp-config` — `.claude/settings.json`
 
 **Tools** (executable actions):
@@ -567,6 +575,24 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 
 ### Collection-Specific Index Templates
 The build pipeline checks for `{collection.name}-index.html` before falling back to `index.html`. This applies to both paginated and non-paginated collections. Changelog and roadmap ship dedicated index templates; any collection can override its index this way.
+
+### Trust Center
+
+The trust center is a collection preset (`trust`) that scaffolds a compliance hub with:
+- **Data files** (`data/trust/`) — `certifications.yaml`, `subprocessors.yaml`, `faq.yaml` driving the templates
+- **Content pages** (`content/trust/`) — markdown prose for security overview, vulnerability disclosure, per-framework details
+- **Templates** — `trust-index.html` (hub at `/trust/`) and `trust-item.html` (individual pages)
+- **Config** — `[trust]` section in `page.toml` with `company` and `frameworks` fields
+
+**Init flow:** When `trust` is included in `--collections`, interactive prompts ask for company name, frameworks (SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3), sections, and per-framework status. CLI flags `--trust-company`, `--trust-frameworks`, `--trust-sections` support non-interactive mode.
+
+**Build pipeline:** Step 4b2 renders non-paginated collection indexes — the trust collection gets `/trust/index.html` using `trust-index.html` template with `data.trust.*` context.
+
+**MCP:** `page://trust` resource returns trust center state (certifications, subprocessors, FAQs, content items).
+
+**Scaffolded CLAUDE.md:** When trust is present, the generated CLAUDE.md includes a comprehensive trust center section with data file formats, management workflows, and MCP integration docs.
+
+**Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (page://trust), `src/docs/trust-center.md`, `src/themes/*.tera` (CSS)
 
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "page" → "pages" so users can type either form.
