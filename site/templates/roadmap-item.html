@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — Roadmap — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+        --amber: #ffb224;
+        --purple: #8b5cf6;
+        --code-bg: #1a1e26;
+    }
+
+    @keyframes ri-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .ri-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: ri-fade-in 0.5s ease both;
+    }
+
+    .ri-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        margin-bottom: 2rem;
+        transition: color 0.12s;
+    }
+    .ri-back:hover { color: var(--green); text-decoration: none; }
+
+    .ri-page article > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.75rem;
+        line-height: 1.1;
+    }
+
+    /* Status badges */
+    .ri-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 1.5rem;
+    }
+    .ri-badge {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 0.2rem 0.7rem;
+        border-radius: 4px;
+    }
+    .ri-badge--planned {
+        background: rgba(139,92,246,0.08);
+        border: 1px solid rgba(139,92,246,0.2);
+        color: var(--purple);
+    }
+    .ri-badge--in-progress {
+        background: rgba(255,178,36,0.08);
+        border: 1px solid rgba(255,178,36,0.2);
+        color: var(--amber);
+    }
+    .ri-badge--done {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .ri-badge--cancelled {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .ri-summary {
+        font-size: 0.92rem;
+        color: var(--text-muted);
+        margin-bottom: 2.5rem;
+        line-height: 1.65;
+        max-width: 600px;
+    }
+
+    /* Content */
+    .ri-page .content h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 3rem 0 1rem;
+        letter-spacing: -0.025em;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+    .ri-page .content h2:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+    .ri-page .content h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--heading-sub);
+        margin: 2rem 0 0.65rem;
+    }
+    .ri-page .content p {
+        margin-bottom: 1.2rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+    .ri-page .content a { color: var(--green); }
+    .ri-page .content a:hover { text-decoration: underline; }
+    .ri-page .content strong { color: var(--strong); }
+
+    .ri-page .content code {
+        font-family: var(--geist);
+        font-size: 0.82em;
+        background: rgba(0,255,135,0.06);
+        border: 1px solid rgba(0,255,135,0.15);
+        padding: 0.12em 0.38em;
+        border-radius: 4px;
+        color: var(--green);
+    }
+    .ri-page .content pre {
+        background: var(--code-bg) !important;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+    }
+    .ri-page .content pre code {
+        background: none !important;
+        border: none;
+        padding: 0;
+        font-family: var(--geist);
+        font-size: 0.82rem;
+        color: var(--text);
+        line-height: 1.85;
+    }
+    .ri-page .content ul, .ri-page .content ol {
+        margin-bottom: 1.2rem;
+        padding-left: 1.5rem;
+    }
+    .ri-page .content li {
+        margin-bottom: 0.4rem;
+        line-height: 1.7;
+    }
+    .ri-page .content li code { font-size: 0.8em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ri-page">
+    <a href="/roadmap" class="ri-back">&larr; Roadmap</a>
+    <article>
+        <h1>{{ page.title }}</h1>
+        {% if page.tags | length > 0 %}
+        <div class="ri-badges">
+            {% for tag in page.tags %}<span class="ri-badge ri-badge--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if page.description %}<p class="ri-summary">{{ page.description }}</p>{% endif %}
+        <div class="content">{{ page.content | safe }}</div>
+    </article>
+</div>
+{% endblock %}

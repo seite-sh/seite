@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Roadmap — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+        --amber: #ffb224;
+        --purple: #8b5cf6;
+        --purple-dim: rgba(139,92,246,0.08);
+        --purple-border: rgba(139,92,246,0.2);
+    }
+
+    @keyframes rm-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .rm-page {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: rm-fade-in 0.5s ease both;
+    }
+
+    .rm-page > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.5rem;
+        line-height: 1.1;
+    }
+    .rm-subtitle {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 3rem;
+        line-height: 1.65;
+        max-width: 560px;
+    }
+
+    /* ── Status sections ── */
+    .rm-section {
+        margin-bottom: 3rem;
+    }
+    .rm-section:last-child { margin-bottom: 0; }
+
+    .rm-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .rm-status {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 0.2rem 0.7rem;
+        border-radius: 4px;
+    }
+    .rm-status--in-progress {
+        background: rgba(255,178,36,0.08);
+        border: 1px solid rgba(255,178,36,0.2);
+        color: var(--amber);
+    }
+    .rm-status--planned {
+        background: var(--purple-dim);
+        border: 1px solid var(--purple-border);
+        color: var(--purple);
+    }
+    .rm-status--done {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .rm-status--cancelled {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .rm-count {
+        font-family: var(--geist);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+    }
+
+    /* ── Cards grid ── */
+    .rm-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 1rem;
+    }
+
+    .rm-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.4rem 1.5rem;
+        transition: border-color 0.15s, background 0.15s, transform 0.15s;
+    }
+    .rm-card:hover {
+        border-color: var(--border-light);
+        background: var(--bg-card-hover);
+        transform: translateY(-1px);
+    }
+
+    .rm-card h3 {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--heading);
+        margin-bottom: 0.4rem;
+        line-height: 1.3;
+    }
+    .rm-card h3 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.12s;
+    }
+    .rm-card h3 a:hover { color: var(--green); text-decoration: none; }
+
+    .rm-card p, .rm-card .excerpt {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    @media (max-width: 600px) {
+        .rm-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rm-page">
+    <h1>Roadmap</h1>
+    <p class="rm-subtitle">What we're working on and what's coming next. Have a feature request? <a href="https://github.com/sanchezomar/page/issues">Open an issue</a>.</p>
+
+    {% set in_progress = [] %}
+    {% set planned = [] %}
+    {% set done = [] %}
+    {% set other = [] %}
+    {% for item in items %}
+        {% set status = item.tags | first | default(value="planned") %}
+        {% if status == "in-progress" %}
+            {% set_global in_progress = in_progress | concat(with=[item]) %}
+        {% elif status == "planned" %}
+            {% set_global planned = planned | concat(with=[item]) %}
+        {% elif status == "done" %}
+            {% set_global done = done | concat(with=[item]) %}
+        {% else %}
+            {% set_global other = other | concat(with=[item]) %}
+        {% endif %}
+    {% endfor %}
+
+    {% if in_progress | length > 0 %}
+    <section class="rm-section">
+        <div class="rm-section-header">
+            <span class="rm-status rm-status--in-progress">In Progress</span>
+            <span class="rm-count">{{ in_progress | length }} item{% if in_progress | length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="rm-grid">
+            {% for item in in_progress %}
+            <div class="rm-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if planned | length > 0 %}
+    <section class="rm-section">
+        <div class="rm-section-header">
+            <span class="rm-status rm-status--planned">Planned</span>
+            <span class="rm-count">{{ planned | length }} item{% if planned | length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="rm-grid">
+            {% for item in planned %}
+            <div class="rm-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if done | length > 0 %}
+    <section class="rm-section">
+        <div class="rm-section-header">
+            <span class="rm-status rm-status--done">Done</span>
+            <span class="rm-count">{{ done | length }} item{% if done | length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="rm-grid">
+            {% for item in done %}
+            <div class="rm-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if other | length > 0 %}
+    <section class="rm-section">
+        <div class="rm-section-header">
+            <span class="rm-status">Other</span>
+            <span class="rm-count">{{ other | length }} item{% if other | length != 1 %}s{% endif %}</span>
+        </div>
+        <div class="rm-grid">
+            {% for item in other %}
+            <div class="rm-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

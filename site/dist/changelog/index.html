@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/changelog/.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/changelog/index.md">
 
     <!-- hreflang -->
     
@@ -223,6 +223,16 @@
         .theme-toggle:hover { color: var(--text); border-color: var(--green-border); }
         [data-theme="dark"]  .icon-moon { display: none; }
         [data-theme="light"] .icon-sun  { display: none; }
+
+        .nav-github {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.15s;
+        }
+        .nav-github:hover { color: var(--text); }
 
         .nav-cta {
             font-family: var(--mono);
@@ -656,6 +666,193 @@
     </style>
 
     
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+    }
+
+    @keyframes cl-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cl-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: cl-fade-in 0.5s ease both;
+    }
+
+    .cl-page > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.5rem;
+        line-height: 1.1;
+    }
+    .cl-subtitle {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 3rem;
+        line-height: 1.65;
+    }
+    .cl-subtitle a { color: var(--green); }
+
+    /* ── Timeline ── */
+    .cl-timeline {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .cl-timeline::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0.5rem;
+        bottom: 0;
+        width: 1px;
+        background: var(--border);
+    }
+
+    .cl-entry {
+        position: relative;
+        margin-bottom: 2.5rem;
+        padding-bottom: 2.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+    .cl-entry:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    /* Dot on the timeline */
+    .cl-entry::before {
+        content: '';
+        position: absolute;
+        left: -2rem;
+        top: 0.5rem;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--green);
+        transform: translateX(-4px);
+        box-shadow: 0 0 8px rgba(0,255,135,0.3);
+    }
+
+    .cl-entry-header {
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+    }
+
+    .cl-entry h2 {
+        font-family: var(--geist);
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 0;
+        letter-spacing: -0.01em;
+    }
+    .cl-entry h2 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.12s;
+    }
+    .cl-entry h2 a:hover { color: var(--green); text-decoration: none; }
+
+    .cl-date {
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        color: var(--text-dim);
+    }
+
+    /* Tags */
+    .cl-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.75rem;
+    }
+    .cl-tag {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.6rem;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .cl-tag--new {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .cl-tag--fix {
+        background: rgba(59,130,246,0.08);
+        border: 1px solid rgba(59,130,246,0.2);
+        color: var(--blue);
+    }
+    .cl-tag--breaking {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        color: #ef4444;
+    }
+    .cl-tag--improvement {
+        background: rgba(139,92,246,0.08);
+        border: 1px solid rgba(139,92,246,0.2);
+        color: #8b5cf6;
+    }
+    .cl-tag--deprecated {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .cl-entry p, .cl-entry .excerpt {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0;
+    }
+
+    /* RSS link */
+    .cl-rss {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: var(--geist);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        padding: 0.3rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        transition: color 0.12s, border-color 0.12s;
+        margin-left: auto;
+    }
+    .cl-rss:hover {
+        color: var(--green);
+        border-color: var(--green-border);
+        text-decoration: none;
+    }
+
+    .cl-header-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        margin-bottom: 3rem;
+    }
+</style>
+
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -667,13 +864,20 @@
             <a href="/" class="nav-logo">
                 <span class="nav-logo-caret">▸</span>page
             </a>
+            
             <ul class="nav-links">
+                
                 <li><a href="/docs/getting-started">Docs</a></li>
+                
                 <li><a href="/changelog">Changelog</a></li>
+                
                 <li><a href="/roadmap">Roadmap</a></li>
-                <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+                
+                <li><a href="/about">About</a></li>
+                
                 
             </ul>
+            
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
                 <!-- Sun: shown in dark mode, click to go light -->
                 <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -692,6 +896,9 @@
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
             </button>
+            <a href="https://github.com/sanchezomar/page" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
             <a href="/docs/getting-started" class="nav-cta">Get started</a>
         </div>
     </nav>
@@ -699,24 +906,39 @@
 
     <main id="main">
         
-<h1>Changelog</h1>
-<div class="changelog-feed">
-    
-    <article class="changelog-item">
-        <div class="changelog-item-header">
-            <h2><a href="/changelog/v0-1-0">v0.1.0</a></h2>
-            <time datetime="2026-02-20">2026-02-20</time>
+<div class="cl-page">
+    <div class="cl-header-row">
+        <div>
+            <h1>Changelog</h1>
+            <p class="cl-subtitle">All notable changes to page. Subscribe via <a href="/feed.xml">RSS</a>.</p>
         </div>
+        <a href="/feed.xml" class="cl-rss" aria-label="RSS Feed">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
+            </svg>
+            RSS
+        </a>
+    </div>
+
+    <div class="cl-timeline">
         
-        <div class="changelog-tags">
-            <span class="changelog-tag changelog-tag--new">new</span>
-        </div>
+        <article class="cl-entry">
+            <div class="cl-entry-header">
+                <h2><a href="/changelog/v0-1-0">v0.1.0</a></h2>
+                <time class="cl-date" datetime="2026-02-20">2026-02-20</time>
+            </div>
+            
+            <div class="cl-tags">
+                <span class="cl-tag cl-tag--new">new</span>
+            </div>
+            
+            <p>Initial public release of page — the AI-native static site generator built in Rust.</p>
+        </article>
         
-        <p>Initial release of page — AI-native static site generator</p>
-    </article>
+    </div>
+
     
 </div>
-
 
     </main>
 
@@ -726,12 +948,19 @@
             <span class="footer-logo">
                 <span class="footer-logo-caret">▸</span>page
             </span>
+            
             <ul class="footer-links">
-                <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+                
+                <li><a href="https://github.com/sanchezomar/page" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                
                 <li><a href="/feed.xml">RSS</a></li>
+                
                 <li><a href="/llms.txt">llms.txt</a></li>
+                
                 <li><a href="/sitemap.xml">Sitemap</a></li>
+                
             </ul>
+            
         </div>
     </footer>
     

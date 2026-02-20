@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Changelog — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+    }
+
+    @keyframes cl-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cl-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: cl-fade-in 0.5s ease both;
+    }
+
+    .cl-page > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.5rem;
+        line-height: 1.1;
+    }
+    .cl-subtitle {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 3rem;
+        line-height: 1.65;
+    }
+    .cl-subtitle a { color: var(--green); }
+
+    /* ── Timeline ── */
+    .cl-timeline {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .cl-timeline::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0.5rem;
+        bottom: 0;
+        width: 1px;
+        background: var(--border);
+    }
+
+    .cl-entry {
+        position: relative;
+        margin-bottom: 2.5rem;
+        padding-bottom: 2.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+    .cl-entry:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    /* Dot on the timeline */
+    .cl-entry::before {
+        content: '';
+        position: absolute;
+        left: -2rem;
+        top: 0.5rem;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--green);
+        transform: translateX(-4px);
+        box-shadow: 0 0 8px rgba(0,255,135,0.3);
+    }
+
+    .cl-entry-header {
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+    }
+
+    .cl-entry h2 {
+        font-family: var(--geist);
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 0;
+        letter-spacing: -0.01em;
+    }
+    .cl-entry h2 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.12s;
+    }
+    .cl-entry h2 a:hover { color: var(--green); text-decoration: none; }
+
+    .cl-date {
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        color: var(--text-dim);
+    }
+
+    /* Tags */
+    .cl-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.75rem;
+    }
+    .cl-tag {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.6rem;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    .cl-tag--new {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .cl-tag--fix {
+        background: rgba(59,130,246,0.08);
+        border: 1px solid rgba(59,130,246,0.2);
+        color: var(--blue);
+    }
+    .cl-tag--breaking {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        color: #ef4444;
+    }
+    .cl-tag--improvement {
+        background: rgba(139,92,246,0.08);
+        border: 1px solid rgba(139,92,246,0.2);
+        color: #8b5cf6;
+    }
+    .cl-tag--deprecated {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .cl-entry p, .cl-entry .excerpt {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0;
+    }
+
+    /* RSS link */
+    .cl-rss {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: var(--geist);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        padding: 0.3rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        transition: color 0.12s, border-color 0.12s;
+        margin-left: auto;
+    }
+    .cl-rss:hover {
+        color: var(--green);
+        border-color: var(--green-border);
+        text-decoration: none;
+    }
+
+    .cl-header-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        margin-bottom: 3rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cl-page">
+    <div class="cl-header-row">
+        <div>
+            <h1>Changelog</h1>
+            <p class="cl-subtitle">All notable changes to page. Subscribe via <a href="/feed.xml">RSS</a>.</p>
+        </div>
+        <a href="/feed.xml" class="cl-rss" aria-label="RSS Feed">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
+            </svg>
+            RSS
+        </a>
+    </div>
+
+    <div class="cl-timeline">
+        {% for item in items %}
+        <article class="cl-entry">
+            <div class="cl-entry-header">
+                <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+                {% if item.date %}<time class="cl-date" datetime="{{ item.date }}">{{ item.date }}</time>{% endif %}
+            </div>
+            {% if item.tags | length > 0 %}
+            <div class="cl-tags">
+                {% for tag in item.tags %}<span class="cl-tag cl-tag--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+        </article>
+        {% endfor %}
+    </div>
+
+    {% if pagination %}
+    <nav class="pagination">
+        {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
+        <span class="page-info">Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
+        {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

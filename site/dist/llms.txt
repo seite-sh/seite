@@ -17,7 +17,6 @@
 - [MCP Server](https://pagecli.dev/docs/mcp-server.md): Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.
 - [Theme Gallery](https://pagecli.dev/docs/theme-gallery.md): Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
 - [CLI Reference](https://pagecli.dev/docs/cli-reference.md): Complete reference for all page CLI commands, flags, and options.
-- [Releases](https://pagecli.dev/docs/releases.md): Release history and changelog for page.
 
 ## Pages
 
@@ -25,7 +24,7 @@
 
 ## Changelog
 
-- [v0.1.0](https://pagecli.dev/changelog/v0-1-0.md): Initial release of page — AI-native static site generator
+- [v0.1.0](https://pagecli.dev/changelog/v0-1-0.md): Initial public release of page — the AI-native static site generator built in Rust.
 
 ## Roadmap
 
