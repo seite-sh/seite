@@ -94,6 +94,49 @@
         .callout-tip { background: #aaff00; }
         .callout p:last-child { margin-bottom: 0; }
         .gist-embed { margin: 2rem 0; }
+        .changelog-entry-header { margin-bottom: 1.5rem; }
+        .changelog-meta { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem; font-weight: 700; }
+        .changelog-summary { font-size: 1.05rem; margin-bottom: 1.5rem; }
+        .changelog-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .changelog-tag { display: inline-block; padding: 0.2rem 0.7rem; border: 2px solid #000; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+        .changelog-tag--new { background: #aaff00; }
+        .changelog-tag--fix { background: #00bfff; }
+        .changelog-tag--breaking { background: #ff4d00; color: #fff; }
+        .changelog-tag--improvement { background: #ffe600; }
+        .changelog-tag--deprecated { background: #e5e5e5; }
+        .changelog-feed { display: flex; flex-direction: column; gap: 2rem; }
+        .changelog-item { padding: 1rem 1.25rem; border: 3px solid #000; box-shadow: 4px 4px 0 #000; }
+        .changelog-item-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
+        .changelog-item-header h2 { margin: 0; font-size: 1.25rem; }
+        .changelog-item-header time { font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+        .changelog-item .changelog-tags { margin-top: 0.5rem; }
+        .changelog-item p, .changelog-item .excerpt { margin-top: 0.5rem; }
+        .roadmap-entry-header { margin-bottom: 1.5rem; }
+        .roadmap-summary { font-size: 1.05rem; margin-bottom: 1.5rem; }
+        .roadmap-status-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+        .roadmap-status { display: inline-block; padding: 0.2rem 0.7rem; border: 2px solid #000; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+        .roadmap-status--planned { background: #dbeafe; }
+        .roadmap-status--in-progress { background: #ffe600; }
+        .roadmap-status--done { background: #aaff00; }
+        .roadmap-status--cancelled { background: #e5e5e5; text-decoration: line-through; }
+        .roadmap-grouped { display: flex; flex-direction: column; gap: 2rem; }
+        .roadmap-section-header { font-size: 1.2rem; margin-bottom: 1rem; text-transform: uppercase; }
+        .roadmap-items { display: flex; flex-direction: column; gap: 1rem; }
+        .roadmap-card { padding: 1rem 1.25rem; border: 3px solid #000; box-shadow: 4px 4px 0 #000; }
+        .roadmap-card:hover { box-shadow: 2px 2px 0 #000; transform: translate(2px, 2px); }
+        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+        .roadmap-card p, .roadmap-card .excerpt { margin: 0; font-size: 0.9rem; }
+        .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        .roadmap-column-header { font-size: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; text-transform: uppercase; }
+        .roadmap-count { font-size: 0.8rem; font-weight: 400; }
+        .roadmap-timeline { position: relative; padding-left: 2rem; }
+        .roadmap-timeline::before { content: ''; position: absolute; left: 0.5rem; top: 0; bottom: 0; width: 3px; background: #000; }
+        .roadmap-milestone { position: relative; margin-bottom: 2rem; }
+        .roadmap-milestone-dot { position: absolute; left: -1.75rem; top: 0.3rem; width: 14px; height: 14px; border: 3px solid #000; background: #ffe600; }
+        .roadmap-milestone-dot .roadmap-status { display: none; }
+        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; }
+        .roadmap-milestone-content p { margin: 0.25rem 0 0; font-size: 0.9rem; }
+        @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 2px solid #000; padding: 0.5rem 0.75rem; text-align: left; }
         th { background: #000; color: #ffe600; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
