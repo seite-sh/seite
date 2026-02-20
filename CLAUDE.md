@@ -18,6 +18,8 @@ cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- new post "Mi Post" --lang es   # Create Spanish translation
 cargo run -- new doc "Getting Started"
+cargo run -- new changelog "v1.0.0" --tags new,improvement
+cargo run -- new roadmap "Dark Mode" --tags planned
 cargo run -- agent "create a blog post about Rust error handling"
 cargo run -- agent   # Interactive Claude Code session with site context
 cargo run -- theme list
@@ -149,13 +151,15 @@ tests/
 
 ### Collections System
 
-Three presets defined in `CollectionConfig::from_preset()`:
+Five presets defined in `CollectionConfig::from_preset()`:
 
 | Preset | has_date | has_rss | listed | nested | url_prefix | template |
 |--------|----------|---------|--------|--------|------------|----------|
 | posts  | true     | true    | true   | false  | /posts     | post.html |
 | docs   | false    | false   | true   | true   | /docs      | doc.html |
 | pages  | false    | false   | false  | false  | (empty)    | page.html |
+| changelog | true  | true    | true   | false  | /changelog | changelog-entry.html |
+| roadmap | false   | false   | true   | false  | /roadmap   | roadmap-item.html |
 
 ### Output Pattern
 
@@ -532,6 +536,23 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 8. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
 9. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
 
+### Changelog Collection
+- Date-based entries with RSS feed. Tags render as colored badges in all 6 themes
+- Tag conventions: `new` (green), `fix` (blue), `breaking` (red), `improvement` (purple), `deprecated` (gray)
+- Collection-specific index template (`changelog-index.html`) shows reverse-chronological feed
+- Create entries: `page new changelog "v1.0.0" --tags new,improvement`
+
+### Roadmap Collection
+- Weight-ordered items grouped by status tags. No dates, no RSS
+- Status tags: `planned`, `in-progress`, `done`, `cancelled`
+- Three index layouts: grouped list (default `roadmap-index.html`), kanban (`roadmap-kanban.html`), timeline (`roadmap-timeline.html`)
+- Users switch layouts by creating `templates/roadmap-index.html` extending the desired variant
+- All 6 themes include CSS for all 3 layouts (grouped, kanban, timeline) and status badges
+- Create items: `page new roadmap "Feature Name" --tags planned`
+
+### Collection-Specific Index Templates
+The build pipeline checks for `{collection.name}-index.html` before falling back to `index.html`. This applies to both paginated and non-paginated collections. Changelog and roadmap ship dedicated index templates; any collection can override its index this way.
+
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "page" → "pages" so users can type either form.
 
@@ -702,6 +723,8 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Self-update — `page self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
 - [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects.
 - [x] MCP server — `page mcp` runs a JSON-RPC server over stdio. Resources: `page://docs/*` (13 embedded doc pages), `page://config`, `page://content/*`, `page://themes`, `page://mcp-config`. Tools: `page_build`, `page_create_content`, `page_search`, `page_apply_theme`, `page_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
+- [x] Changelog collection — `changelog` preset with dated entries, RSS feed, and colored tag badges (new/fix/breaking/improvement/deprecated). Dedicated `changelog-entry.html` and `changelog-index.html` templates with CSS in all 6 themes. Collection-specific index template resolution in build pipeline.
+- [x] Roadmap collection — `roadmap` preset with weight-ordered items and status tags (planned/in-progress/done/cancelled). Three index layouts: grouped list (default), kanban (CSS grid 3-column), and timeline (vertical milestones). Dedicated templates and CSS in all 6 themes.
 
 ### Up Next
 

@@ -84,6 +84,49 @@
         .callout-tip { border-left-color: #22c55e; }
         .callout p:last-child { margin-bottom: 0; }
         .gist-embed { margin: 1.5rem 0; }
+        .changelog-entry-header { margin-bottom: 1.5rem; }
+        .changelog-meta { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; color: #888; font-size: 0.9rem; }
+        .changelog-summary { color: #aaa; font-size: 1.05rem; margin-bottom: 1.5rem; }
+        .changelog-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+        .changelog-tag { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+        .changelog-tag--new { background: #052e16; color: #4ade80; }
+        .changelog-tag--fix { background: #0c1a3d; color: #60a5fa; }
+        .changelog-tag--breaking { background: #3b0a0a; color: #f87171; }
+        .changelog-tag--improvement { background: #2e1065; color: #c084fc; }
+        .changelog-tag--deprecated { background: #1f2937; color: #9ca3af; }
+        .changelog-feed { display: flex; flex-direction: column; gap: 2rem; }
+        .changelog-item { padding-bottom: 2rem; border-bottom: 1px solid #1e1e1e; }
+        .changelog-item:last-child { border-bottom: none; }
+        .changelog-item-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
+        .changelog-item-header h2 { margin: 0; font-size: 1.25rem; }
+        .changelog-item-header time { color: #888; font-size: 0.85rem; white-space: nowrap; }
+        .changelog-item .changelog-tags { margin-top: 0.5rem; }
+        .changelog-item p, .changelog-item .excerpt { margin-top: 0.5rem; color: #aaa; }
+        .roadmap-entry-header { margin-bottom: 1.5rem; }
+        .roadmap-summary { color: #aaa; font-size: 1.05rem; margin-bottom: 1.5rem; }
+        .roadmap-status-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+        .roadmap-status { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+        .roadmap-status--planned { background: #0c1a3d; color: #60a5fa; }
+        .roadmap-status--in-progress { background: #422006; color: #fbbf24; }
+        .roadmap-status--done { background: #052e16; color: #4ade80; }
+        .roadmap-status--cancelled { background: #1f2937; color: #6b7280; text-decoration: line-through; }
+        .roadmap-grouped { display: flex; flex-direction: column; gap: 2rem; }
+        .roadmap-section-header { font-size: 1.1rem; margin-bottom: 1rem; }
+        .roadmap-items { display: flex; flex-direction: column; gap: 1rem; }
+        .roadmap-card { padding: 1rem 1.25rem; border: 1px solid #1e1e1e; border-radius: 8px; }
+        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+        .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: #aaa; font-size: 0.9rem; }
+        .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        .roadmap-column-header { font-size: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+        .roadmap-count { font-size: 0.8rem; color: #666; font-weight: 400; }
+        .roadmap-timeline { position: relative; padding-left: 2rem; }
+        .roadmap-timeline::before { content: ''; position: absolute; left: 0.5rem; top: 0; bottom: 0; width: 2px; background: #1e1e1e; }
+        .roadmap-milestone { position: relative; margin-bottom: 2rem; }
+        .roadmap-milestone-dot { position: absolute; left: -1.75rem; top: 0.3rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #8b5cf6; background: #0a0a0a; }
+        .roadmap-milestone-dot .roadmap-status { display: none; }
+        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; }
+        .roadmap-milestone-content p { margin: 0.25rem 0 0; color: #aaa; font-size: 0.9rem; }
+        @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid #1e1e1e; padding: 0.5rem 1rem; text-align: left; }
         th { background: #111111; }

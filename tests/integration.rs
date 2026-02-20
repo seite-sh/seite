@@ -4538,3 +4538,343 @@ fn test_build_with_umami_custom_script_url() {
     assert!(index.contains("stats.example.com/script.js"));
     assert!(index.contains("data-website-id=\"abc-def-123\""));
 }
+
+// --- changelog collection ---
+
+#[test]
+fn test_init_with_changelog_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Changelog Test", "posts,changelog,pages");
+
+    let root = tmp.path().join("site");
+    assert!(root.join("content/changelog").is_dir());
+    assert!(root.join("templates/changelog-entry.html").exists());
+
+    // Verify sample changelog entry exists
+    let entries: Vec<_> = fs::read_dir(root.join("content/changelog"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    assert_eq!(entries.len(), 1);
+    let content = fs::read_to_string(entries[0].path()).unwrap();
+    assert!(content.contains("title:"));
+    assert!(content.contains("tags:"));
+    assert!(content.contains("new"));
+
+    // Verify page.toml has changelog collection
+    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    assert!(config.contains("name = \"changelog\""));
+}
+
+#[test]
+fn test_build_changelog_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Changelog Build", "changelog");
+
+    let site_dir = tmp.path().join("site");
+
+    // Create a changelog entry
+    let entry = "---\ntitle: v1.0.0\ndate: 2025-06-01\ndescription: First stable release\ntags:\n  - new\n  - improvement\n---\n\nThis is the first stable release.\n";
+    fs::write(
+        site_dir.join("content/changelog/2025-06-01-v1-0-0.md"),
+        entry,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist");
+
+    // Verify changelog entry HTML + markdown output
+    assert!(dist.join("changelog/v1-0-0.html").exists());
+    assert!(dist.join("changelog/v1-0-0.md").exists());
+
+    // Verify changelog index page
+    assert!(dist.join("changelog/index.html").exists());
+
+    // Verify RSS feed includes changelog (has_rss: true)
+    let feed = fs::read_to_string(dist.join("feed.xml")).unwrap();
+    assert!(feed.contains("v1.0.0"));
+}
+
+#[test]
+fn test_changelog_tags_render() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Tag Render", "changelog");
+
+    let site_dir = tmp.path().join("site");
+
+    let entry = "---\ntitle: v2.0.0\ndate: 2025-07-01\ntags:\n  - breaking\n  - fix\n---\n\nBreaking changes and fixes.\n";
+    fs::write(
+        site_dir.join("content/changelog/2025-07-01-v2-0-0.md"),
+        entry,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/changelog/v2-0-0.html")).unwrap();
+    // Tag badges should appear in the HTML
+    assert!(html.contains("breaking"));
+    assert!(html.contains("fix"));
+    assert!(html.contains("changelog-tag"));
+}
+
+#[test]
+fn test_changelog_index_uses_collection_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CL Index", "changelog");
+
+    let site_dir = tmp.path().join("site");
+
+    // Add a second entry (init already created v0.1.0)
+    let entry = "---\ntitle: v0.2.0\ndate: 2025-06-01\ntags:\n  - improvement\n---\n\nSecond release.\n";
+    fs::write(
+        site_dir.join("content/changelog/2025-06-01-v0-2-0.md"),
+        entry,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/changelog/index.html")).unwrap();
+    // The changelog-specific index template should be used (has changelog-feed class)
+    assert!(index.contains("changelog-feed") || index.contains("changelog-item"));
+    assert!(index.contains("v0.2.0"));
+}
+
+#[test]
+fn test_new_changelog_entry() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "CL New", "changelog");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["new", "changelog", "v1.0.0", "--tags", "new,improvement"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    // Find the created file (should have date prefix since changelog has_date=true)
+    let entries: Vec<_> = fs::read_dir(site_dir.join("content/changelog"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .unwrap_or("")
+                .contains("v1-0-0")
+        })
+        .collect();
+    assert_eq!(entries.len(), 1);
+
+    let content = fs::read_to_string(entries[0].path()).unwrap();
+    assert!(content.contains("title: v1.0.0"));
+    assert!(content.contains("new"));
+    assert!(content.contains("improvement"));
+    // Changelog entries have dates
+    assert!(content.contains("date:"));
+}
+
+// --- roadmap collection ---
+
+#[test]
+fn test_init_with_roadmap_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Roadmap Test", "roadmap");
+
+    let root = tmp.path().join("site");
+    assert!(root.join("content/roadmap").is_dir());
+    assert!(root.join("templates/roadmap-item.html").exists());
+
+    // Verify sample roadmap items exist (3 items: dark-mode, api-v2, initial-release)
+    let items: Vec<_> = fs::read_dir(root.join("content/roadmap"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    assert_eq!(items.len(), 3);
+
+    // Verify page.toml has roadmap collection
+    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    assert!(config.contains("name = \"roadmap\""));
+}
+
+#[test]
+fn test_build_roadmap_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Roadmap Build", "roadmap");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist");
+
+    // Verify roadmap item pages
+    assert!(dist.join("roadmap/dark-mode.html").exists());
+    assert!(dist.join("roadmap/dark-mode.md").exists());
+    assert!(dist.join("roadmap/api-v2.html").exists());
+    assert!(dist.join("roadmap/initial-release.html").exists());
+
+    // Verify roadmap index page
+    assert!(dist.join("roadmap/index.html").exists());
+
+    // Roadmap has no RSS (has_rss: false)
+    let feed = fs::read_to_string(dist.join("feed.xml")).unwrap();
+    assert!(!feed.contains("Dark Mode"));
+}
+
+#[test]
+fn test_roadmap_grouped_by_status() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Roadmap Status", "roadmap");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/roadmap/index.html")).unwrap();
+    // Should contain status section headers
+    assert!(
+        index.contains("In Progress") || index.contains("in-progress"),
+        "Roadmap index should group by status"
+    );
+    assert!(
+        index.contains("Planned") || index.contains("planned"),
+        "Roadmap index should have planned section"
+    );
+    assert!(
+        index.contains("Done") || index.contains("done"),
+        "Roadmap index should have done section"
+    );
+}
+
+#[test]
+fn test_roadmap_weight_ordering() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Weight Order", "roadmap");
+
+    let site_dir = tmp.path().join("site");
+
+    // Remove sample items, create custom ones with explicit weights
+    for entry in fs::read_dir(site_dir.join("content/roadmap")).unwrap() {
+        let entry = entry.unwrap();
+        fs::remove_file(entry.path()).unwrap();
+    }
+
+    fs::write(
+        site_dir.join("content/roadmap/feature-c.md"),
+        "---\ntitle: Feature C\nweight: 3\ntags:\n  - planned\n---\n\nThird.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/roadmap/feature-a.md"),
+        "---\ntitle: Feature A\nweight: 1\ntags:\n  - planned\n---\n\nFirst.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/roadmap/feature-b.md"),
+        "---\ntitle: Feature B\nweight: 2\ntags:\n  - planned\n---\n\nSecond.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/roadmap/index.html")).unwrap();
+    let pos_a = index.find("Feature A").expect("Feature A should be in index");
+    let pos_b = index.find("Feature B").expect("Feature B should be in index");
+    let pos_c = index.find("Feature C").expect("Feature C should be in index");
+
+    assert!(
+        pos_a < pos_b && pos_b < pos_c,
+        "Roadmap items should be sorted by weight: A(1) < B(2) < C(3), got positions: {} {} {}",
+        pos_a, pos_b, pos_c
+    );
+}
+
+#[test]
+fn test_new_roadmap_item() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "RM New", "roadmap");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .args(["new", "roadmap", "Dark Mode", "--tags", "planned"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created"));
+
+    let item_file = site_dir.join("content/roadmap/dark-mode.md");
+    // Note: there may already be one from init, so check the freshly created one exists
+    assert!(item_file.exists());
+
+    let content = fs::read_to_string(item_file).unwrap();
+    assert!(content.contains("title: Dark Mode"));
+    assert!(content.contains("planned"));
+    // Roadmap items do NOT have dates (has_date: false)
+    assert!(!content.contains("date:"));
+}
+
+#[test]
+fn test_build_changelog_and_roadmap_together() {
+    let tmp = TempDir::new().unwrap();
+    init_site(
+        &tmp,
+        "site",
+        "Both Collections",
+        "posts,changelog,roadmap,pages",
+    );
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist");
+
+    // Both collection indexes should exist
+    assert!(dist.join("changelog/index.html").exists());
+    assert!(dist.join("roadmap/index.html").exists());
+
+    // Homepage should list both collections
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        index.contains("changelog") || index.contains("Changelog"),
+        "Homepage should reference changelog"
+    );
+    assert!(
+        index.contains("roadmap") || index.contains("Roadmap"),
+        "Homepage should reference roadmap"
+    );
+}
