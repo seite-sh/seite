@@ -93,6 +93,43 @@
         .callout-danger .callout-title { background: #fff; color: #ff4d00; }
         .callout-tip { background: #aaff00; }
         .callout p:last-child { margin-bottom: 0; }
+        .trust-hub { max-width: 780px; margin: 0 auto; }
+        .trust-hero { margin-bottom: 2rem; }
+        .trust-hero h1 { font-size: 2.5rem; font-weight: 900; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .trust-section { margin-bottom: 2.5rem; }
+        .trust-section h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 900; background: #000; color: #ffe600; display: inline-block; padding: 0.2rem 0.6rem; margin-bottom: 1rem; }
+        .trust-breadcrumb { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem; }
+        .trust-breadcrumb a { color: #000; text-decoration: none; }
+        .trust-breadcrumb a:hover { background: #ffe600; }
+        .trust-description { color: #000; margin-bottom: 1.5rem; line-height: 1.5; }
+        .cert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .cert-card { border: 3px solid #000; padding: 1.25rem; background: #fff; box-shadow: 5px 5px 0 #000; }
+        .cert-card:hover { box-shadow: 3px 3px 0 #000; transform: translate(2px, 2px); }
+        .cert-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+        .cert-card__title { font-weight: 900; font-size: 1rem; color: #000; text-transform: uppercase; }
+        .cert-card__desc { font-size: 0.85rem; color: #000; margin-bottom: 0.75rem; }
+        .cert-card__link { font-size: 0.8rem; color: #000; text-decoration: none; font-weight: 700; text-transform: uppercase; background: #ffe600; padding: 0.2rem 0.5rem; border: 2px solid #000; }
+        .cert-card__link:hover { background: #ffd000; box-shadow: 2px 2px 0 #000; }
+        .cert-status { display: inline-block; font-size: 0.7rem; font-weight: 900; padding: 0.15rem 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; border: 2px solid #000; }
+        .cert-status--active { background: #aaff00; color: #000; }
+        .cert-status--in_progress { background: #ffe600; color: #000; }
+        .cert-status--planned { background: #e5e5e5; color: #000; }
+        .cert-detail { margin-bottom: 2rem; padding: 1.25rem; border: 3px solid #000; background: #fffef0; box-shadow: 5px 5px 0 #000; }
+        .cert-meta { font-size: 0.85rem; color: #000; margin-bottom: 0.35rem; }
+        .cert-meta strong { font-weight: 900; }
+        .trust-item { padding: 0.75rem 0; border-top: 2px solid #000; }
+        .trust-item:last-child { border-bottom: 2px solid #000; }
+        .subprocessor-table-wrap { overflow-x: auto; margin: 2rem 0; }
+        .subprocessor-table { border-collapse: collapse; width: 100%; }
+        .subprocessor-table th, .subprocessor-table td { border: 2px solid #000; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.85rem; }
+        .subprocessor-table th { background: #000; color: #ffe600; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+        .faq-section { margin-top: 2rem; }
+        .faq-item { border-top: 2px solid #000; }
+        .faq-item:last-child { border-bottom: 2px solid #000; }
+        .faq-item summary { padding: 0.75rem 0; cursor: pointer; font-weight: 900; color: #000; text-transform: uppercase; font-size: 0.9rem; }
+        .faq-item summary:hover { background: #ffe600; }
+        .faq-answer { padding: 0 0 1rem; color: #000; line-height: 1.5; }
+        .trust-page { margin-bottom: 2rem; }
         .gist-embed { margin: 2rem 0; }
         .changelog-entry-header { margin-bottom: 1.5rem; }
         .changelog-meta { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; font-size: 0.9rem; font-weight: 700; }

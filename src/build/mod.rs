@@ -810,42 +810,42 @@ pub fn build_site(
     // at /{url_prefix}/ using the collection-specific index template (or index.html fallback).
     for lang in &config.all_languages() {
         let lang_site_ctx = SiteContext::for_lang(config, lang);
-        for c in config.collections.iter().filter(|c| c.listed && c.paginate.is_none()) {
+        for c in config.collections.iter().filter(|c| {
+            c.listed && c.paginate.is_none() && !c.url_prefix.is_empty()
+        }) {
             let url_prefix_trimmed = c.url_prefix.trim_start_matches('/');
-            if url_prefix_trimmed.is_empty() {
-                continue;
-            }
-            let all_items: Vec<&ContentItem> = all_collections
-                .get(&c.name)
-                .map(|v| v.iter().collect())
-                .unwrap_or_default();
-            let lang_items: Vec<ItemSummary> = all_items
-                .iter()
-                .filter(|item| item.lang == *lang)
-                .map(|item| ItemSummary {
-                    title: item.frontmatter.title.clone(),
-                    date: item.frontmatter.date.map(|d| d.to_string()),
-                    description: item.frontmatter.description.clone(),
-                    slug: item.slug.clone(),
-                    tags: item.frontmatter.tags.clone(),
-                    url: item.url.clone(),
-                    word_count: item.word_count,
-                    reading_time: item.reading_time,
-                    excerpt: item.excerpt_html.clone(),
-                })
-                .collect();
-
             let collection_url = if *lang == *default_lang {
                 format!("/{url_prefix_trimmed}/")
             } else {
                 format!("/{lang}/{url_prefix_trimmed}/")
             };
 
+            let lang_items: Vec<ItemSummary> = all_collections
+                .get(&c.name)
+                .map(|v| {
+                    v.iter()
+                        .filter(|item| item.lang == *lang)
+                        .map(|item| ItemSummary {
+                            title: item.frontmatter.title.clone(),
+                            date: item.frontmatter.date.map(|d| d.to_string()),
+                            description: item.frontmatter.description.clone(),
+                            slug: item.slug.clone(),
+                            tags: item.frontmatter.tags.clone(),
+                            url: item.url.clone(),
+                            word_count: item.word_count,
+                            reading_time: item.reading_time,
+                            excerpt: item.excerpt_html.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
             let collection_ctx = CollectionContext {
                 name: c.name.clone(),
                 label: c.label.clone(),
                 items: lang_items.clone(),
             };
+
             let mut ctx = tera::Context::new();
             ctx.insert("site", &lang_site_ctx);
             ctx.insert("data", &data);
@@ -855,16 +855,16 @@ pub fn build_site(
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
             ctx.insert("page", &PageContext {
-                title: String::new(),
+                title: c.label.clone(),
                 content: String::new(),
                 date: None,
                 updated: None,
                 description: None,
                 image: None,
-                slug: String::new(),
+                slug: url_prefix_trimmed.to_string(),
                 tags: Vec::new(),
                 url: collection_url.clone(),
-                collection: String::new(),
+                collection: c.name.clone(),
                 robots: None,
                 word_count: 0,
                 reading_time: 0,
@@ -1662,7 +1662,24 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "in_progress": "In Progress",
         "planned": "Planned",
         "done": "Done",
-        "other": "Other"
+        "other": "Other",
+        "trust_center": "Trust Center",
+        "trust_hero_subtitle": "Security, compliance, and data protection at {site}.",
+        "certifications_compliance": "Certifications & Compliance",
+        "active": "Active",
+        "learn_more": "Learn more",
+        "auditor": "Auditor",
+        "scope": "Scope",
+        "issued": "Issued",
+        "expires": "Expires",
+        "subprocessors": "Subprocessors",
+        "vendor": "Vendor",
+        "purpose": "Purpose",
+        "location": "Location",
+        "dpa": "DPA",
+        "yes": "Yes",
+        "no": "No",
+        "faq": "Frequently Asked Questions"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults

@@ -21,6 +21,8 @@ pub struct SiteConfig {
     pub images: Option<ImageSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analytics: Option<AnalyticsSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<TrustSection>,
 }
 
 /// Per-language overrides for site metadata.
@@ -129,6 +131,21 @@ impl CollectionConfig {
         }
     }
 
+    pub fn preset_trust() -> Self {
+        Self {
+            name: "trust".into(),
+            label: "Trust Center".into(),
+            directory: "trust".into(),
+            has_date: false,
+            has_rss: false,
+            listed: true,
+            url_prefix: "/trust".into(),
+            nested: true,
+            default_template: "trust-item.html".into(),
+            paginate: None,
+        }
+    }
+
     pub fn from_preset(name: &str) -> Option<Self> {
         match name {
             "posts" => Some(Self::preset_posts()),
@@ -136,6 +153,7 @@ impl CollectionConfig {
             "pages" => Some(Self::preset_pages()),
             "changelog" => Some(Self::preset_changelog()),
             "roadmap" => Some(Self::preset_roadmap()),
+            "trust" => Some(Self::preset_trust()),
             _ => None,
         }
     }
@@ -289,6 +307,16 @@ pub struct AnalyticsSection {
     pub script_url: Option<String>,
 }
 
+/// Trust center configuration for compliance hub features.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TrustSection {
+    /// Company name displayed on the trust center (defaults to site.title).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub company: Option<String>,
+    /// Active compliance frameworks (e.g., ["soc2", "iso27001"]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frameworks: Vec<String>,
+}
 
 /// Resolved absolute paths for the project directories.
 #[derive(Clone)]
