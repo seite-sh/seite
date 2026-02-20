@@ -14,17 +14,17 @@
         </script>
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Deployment — page docs</title>
+        <title>Deployment — seite docs</title>
         <meta name="description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
-        <link rel="canonical" href="https://pagecli.dev/docs/deployment">
+        <link rel="canonical" href="https://seite.sh/docs/deployment">
 
         <!-- Open Graph -->
         <meta property="og:type" content="article">
-        <meta property="og:url" content="https://pagecli.dev/docs/deployment">
+        <meta property="og:url" content="https://seite.sh/docs/deployment">
         <meta property="og:title" content="Deployment">
         <meta property="og:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
         
-        <meta property="og:site_name" content="page">
+        <meta property="og:site_name" content="seite">
         <meta property="og:locale" content="en">
 
         <!-- Twitter Card -->
@@ -36,10 +36,10 @@
         
 
         <!-- Discovery -->
-        <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
+        <link rel="alternate" type="application/rss+xml" title="seite" href="/feed.xml">
         <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
         
-        <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/deployment.md">
+        <link rel="alternate" type="text/markdown" href="https://seite.sh/docs/deployment.md">
 
         <!-- hreflang -->
         
@@ -47,7 +47,7 @@
         <!-- JSON-LD -->
         <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"Deployment","description":"Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/deployment"}
+    {"@context":"https://schema.org","@type":"Article","headline":"Deployment","description":"Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/deployment"}
     
     </script>
 
@@ -1691,7 +1691,7 @@
             <div class="container nav-inner">
                 <button class="menu-toggle" aria-label="Toggle sidebar" onclick="document.querySelector('.docs-sidebar').classList.toggle('open');document.querySelector('.sidebar-backdrop').classList.toggle('open');">&#9776;</button>
                 <a href="/" class="nav-logo">
-                    <span class="nav-logo-caret">▸</span>page
+                    <span class="nav-logo-caret">▸</span>seite
                 </a>
                 
                 <ul class="nav-links">
@@ -1725,7 +1725,7 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
                 </button>
-                <a href="https://github.com/page-cli/page-cli" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
+                <a href="https://github.com/seite-sh/seite" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                     </svg>
@@ -1785,7 +1785,7 @@
             <ul>
                 <li><a href="/changelog">Changelog</a></li>
                 <li><a href="/roadmap">Roadmap</a></li>
-                <li><a href="https://github.com/page-cli/page-cli" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/seite-sh/seite" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             </ul>
         </nav>
     </aside>
@@ -1807,44 +1807,44 @@
 <tr><th><strong>Cloudflare Pages</strong></th><th>Production sites</th><th>Fastest global CDN, custom domain API, preview deploys</th></tr>
 <tr><th><strong>Netlify</strong></th><th>Team workflows</th><th>Familiar DX, draft deploys, easy rollbacks</th></tr>
 </tbody></table>
-<p>All three are free for static sites. You can switch targets anytime by changing one line in <code>page.toml</code>.</p>
+<p>All three are free for static sites. You can switch targets anytime by changing one line in <code>seite.toml</code>.</p>
 <h2 id="configuration">Configuration</h2>
-<p>Set the deploy target in <code>page.toml</code>:</p>
+<p>Set the deploy target in <code>seite.toml</code>:</p>
 <pre><code>[deploy]
 target = &quot;github-pages&quot;
 </code></pre>
 <div class="callout callout-warning">
 <div class="callout-title">Warning</div>
-<p>Make sure <code>base_url</code> in <code>page.toml</code> is set to your real domain before deploying. The default <code>localhost</code> URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use <code>--base-url</code> to override at deploy time without modifying the config file.</p>
+<p>Make sure <code>base_url</code> in <code>seite.toml</code> is set to your real domain before deploying. The default <code>localhost</code> URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use <code>--base-url</code> to override at deploy time without modifying the config file.</p>
 </div>
 <div class="callout callout-info">
 <div class="callout-title">Info</div>
 <p><code>page</code> runs pre-flight checks before every deploy — verifying the output directory exists, <code>base_url</code> isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.</p>
 </div>
 <h2 id="auto-commit-and-push">Auto-Commit and Push</h2>
-<p>By default, <code>page deploy</code> automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.</p>
+<p>By default, <code>seite deploy</code> automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.</p>
 <p><strong>Branch-based preview:</strong> when you deploy from a branch other than <code>main</code> or <code>master</code>, <code>page</code> automatically deploys as a preview instead of production. No need to pass <code>--preview</code> manually.</p>
-<p>To disable auto-commit for a project, set <code>auto_commit = false</code> in <code>page.toml</code>:</p>
+<p>To disable auto-commit for a project, set <code>auto_commit = false</code> in <code>seite.toml</code>:</p>
 <pre><code>[deploy]
 target = &quot;github-pages&quot;
 auto_commit = false
 </code></pre>
 <p>Or skip it for a single deploy with <code>--no-commit</code>:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --no-commit
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --no-commit
 </span></pre>
 <h2 id="github-pages">GitHub Pages</h2>
-<p>The default deployment target. When you run <code>page init</code> with <code>--deploy-target github-pages</code>, a GitHub Actions workflow is generated at <code>.github/workflows/deploy.yml</code> that builds and deploys on every push to <code>main</code>.</p>
+<p>The default deployment target. When you run <code>seite init</code> with <code>--deploy-target github-pages</code>, a GitHub Actions workflow is generated at <code>.github/workflows/deploy.yml</code> that builds and deploys on every push to <code>main</code>.</p>
 <h3 id="manual-deployment">Manual deployment</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy
 </span></pre>
 <p>This pushes the <code>dist/</code> directory to the <code>gh-pages</code> branch.</p>
 <h3 id="dry-run">Dry run</h3>
 <p>Preview what would be deployed:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --dry-run
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --dry-run
 </span></pre>
 <div class="callout callout-tip">
 <div class="callout-title">Tip</div>
@@ -1869,12 +1869,12 @@ project = &quot;my-site&quot;
 <p>The project name is auto-detected from <code>wrangler.toml</code> if present.</p>
 <h3 id="deploy">Deploy</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy
 </span></pre>
 <h3 id="dry-run">Dry run</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare</span><span style="color:#bf616a;"> --dry-run
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare</span><span style="color:#bf616a;"> --dry-run
 </span></pre>
 <h2 id="netlify">Netlify</h2>
 <h3 id="setup">Setup</h3>
@@ -1888,27 +1888,27 @@ target = &quot;netlify&quot;
 </code></pre>
 <h3 id="deploy">Deploy</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy
 </span></pre>
 <h3 id="dry-run">Dry run</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify</span><span style="color:#bf616a;"> --dry-run
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify</span><span style="color:#bf616a;"> --dry-run
 </span></pre>
 <h2 id="custom-domains">Custom Domains</h2>
 <p>Set up a custom domain for any deploy target:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com
 </span></pre>
 <p>This will:</p>
 <ol>
 <li>Print DNS records to add at your registrar</li>
-<li>Update <code>base_url</code> and <code>deploy.domain</code> in <code>page.toml</code></li>
+<li>Update <code>base_url</code> and <code>deploy.domain</code> in <code>seite.toml</code></li>
 <li>For Cloudflare: offer to attach the domain to your Pages project via the API</li>
 <li>For Netlify: offer to add the domain via <code>netlify domains:add</code></li>
 <li>For GitHub Pages: auto-generate a <code>CNAME</code> file on the next deploy</li>
 </ol>
-<p>You can also set the domain directly in <code>page.toml</code>:</p>
+<p>You can also set the domain directly in <code>seite.toml</code>:</p>
 <pre><code>[deploy]
 target = &quot;cloudflare&quot;
 project = &quot;my-site&quot;
@@ -1918,11 +1918,11 @@ domain = &quot;example.com&quot;
 <h2 id="override-target">Override Target</h2>
 <p>Override the configured target on the command line:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify     </span><span style="color:#65737e;"># Deploy to Netlify regardless of page.toml
-</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare  </span><span style="color:#65737e;"># Deploy to Cloudflare
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify     </span><span style="color:#65737e;"># Deploy to Netlify regardless of seite.toml
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare  </span><span style="color:#65737e;"># Deploy to Cloudflare
 </span></pre>
 <h2 id="build-output">Build Output</h2>
-<p>After <code>page build</code>, the <code>dist/</code> directory contains everything needed:</p>
+<p>After <code>seite build</code>, the <code>dist/</code> directory contains everything needed:</p>
 <pre><code>dist/
 ├── index.html           # Homepage
 ├── index.md             # Homepage markdown
@@ -1945,8 +1945,8 @@ domain = &quot;example.com&quot;
 <p>All three platforms serve <code>404.html</code> automatically for missing routes.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
-<li><a href="/docs/configuration">Configuration</a> — all deploy-related settings in <code>page.toml</code></li>
-<li><a href="/docs/cli-reference">CLI Reference</a> — complete list of <code>page deploy</code> flags</li>
+<li><a href="/docs/configuration">Configuration</a> — all deploy-related settings in <code>seite.toml</code></li>
+<li><a href="/docs/cli-reference">CLI Reference</a> — complete list of <code>seite deploy</code> flags</li>
 </ul>
 </div>
         </article>
@@ -2111,12 +2111,12 @@ domain = &quot;example.com&quot;
         <footer class="site-footer">
             <div class="container footer-inner">
                 <span class="footer-logo">
-                    <span class="footer-logo-caret">▸</span>page
+                    <span class="footer-logo-caret">▸</span>seite
                 </span>
                 
                 <ul class="footer-links">
                     
-                    <li><a href="https://github.com/page-cli/page-cli" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    <li><a href="https://github.com/seite-sh/seite" target="_blank" rel="noopener noreferrer">GitHub</a></li>
                     
                     <li><a href="/feed.xml">RSS</a></li>
                     
@@ -2127,7 +2127,7 @@ domain = &quot;example.com&quot;
                 </ul>
                 
             </div>
-            <div class="footer-built">Built with <a href="https://pagecli.dev">page</a></div>
+            <div class="footer-built">Built with <a href="https://seite.sh">seite</a></div>
         </footer>
         
 

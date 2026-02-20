@@ -9,7 +9,7 @@ weight: 1
 ### Quick install (macOS and Linux)
 
 ```bash
-curl -fsSL https://pagecli.dev/install.sh | sh
+curl -fsSL https://seite.sh/install.sh | sh
 ```
 
 This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
@@ -17,13 +17,13 @@ This downloads a prebuilt binary for your platform and installs it to `~/.local/
 To install a specific version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh
+VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
 ### Quick install (Windows)
 
 ```powershell
-irm https://pagecli.dev/install.ps1 | iex
+irm https://seite.sh/install.ps1 | iex
 ```
 
 ### Install from source
@@ -59,12 +59,12 @@ Run `page --help` to see all available commands at a glance.
 Scaffold a new site with posts, docs, and pages collections:
 
 ```bash
-page init mysite --title "My Site" --description "A personal blog" --collections posts,docs,pages
+seite init mysite --title "My Site" --description "A personal blog" --collections posts,docs,pages
 cd mysite
 ```
 
 {{% callout(type="info") %}}
-All flags are optional. Run `page init mysite` and interactive prompts will guide you through each setting.
+All flags are optional. Run `seite init mysite` and interactive prompts will guide you through each setting.
 {{% end %}}
 
 This creates the following structure:
@@ -77,9 +77,9 @@ mysite/
 │   └── pages/     # Standalone pages (about, contact, etc.)
 ├── templates/     # Tera templates (override bundled themes)
 ├── static/        # Static assets (CSS, JS, images)
-├── page.toml      # Site configuration
+├── seite.toml      # Site configuration
 ├── .claude/       # Claude Code agent configuration (includes MCP server)
-└── .page/         # Project metadata (version tracking)
+└── .seite/         # Project metadata (version tracking)
 ```
 
 ## Create Content
@@ -87,7 +87,7 @@ mysite/
 Add a blog post:
 
 ```bash
-page new post "Hello World" --tags intro,welcome
+seite new post "Hello World" --tags intro,welcome
 ```
 
 This creates `content/posts/2026-02-18-hello-world.md` with frontmatter:
@@ -107,13 +107,13 @@ Your content here...
 Add a documentation page:
 
 ```bash
-page new doc "Getting Started"
+seite new doc "Getting Started"
 ```
 
 Add a standalone page:
 
 ```bash
-page new page "About"
+seite new page "About"
 ```
 
 ## Build Your Site
@@ -121,7 +121,7 @@ page new page "About"
 Build the site to the `dist/` directory:
 
 ```bash
-page build
+seite build
 ```
 
 The build generates:
@@ -137,17 +137,17 @@ The build generates:
 Start a dev server with live reload:
 
 ```bash
-page serve
+seite serve
 ```
 
 The server starts at `http://localhost:3000` (auto-increments if the port is taken) and watches for file changes. An interactive REPL lets you run commands without restarting:
 
 ```
-page> new post "Another Post"
-page> theme apply dark
-page> build
-page> status
-page> stop
+seite> new post "Another Post"
+seite> theme apply dark
+seite> build
+seite> status
+seite> stop
 ```
 
 {{% callout(type="tip") %}}
@@ -159,19 +159,19 @@ The REPL is the fastest way to iterate. Create content, switch themes, and rebui
 List available themes:
 
 ```bash
-page theme list
+seite theme list
 ```
 
 Apply a bundled theme:
 
 ```bash
-page theme apply dark
+seite theme apply dark
 ```
 
 Generate a custom theme with AI:
 
 ```bash
-page theme create "minimal serif with warm colors"
+seite theme create "minimal serif with warm colors"
 ```
 
 ## Updating
@@ -179,13 +179,13 @@ page theme create "minimal serif with warm colors"
 Update the binary itself:
 
 ```bash
-page self-update
+seite self-update
 ```
 
 After updating, bring your project's config files up to date:
 
 ```bash
-page upgrade
+seite upgrade
 ```
 
 This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive — your existing settings are preserved.
@@ -193,7 +193,7 @@ This adds any new configuration that shipped with the new version (e.g., MCP ser
 ## Next Steps
 
 - [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
-- [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
+- [Configuration](/docs/configuration) — the full `seite.toml` reference when you need to tune settings
 - [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
 - [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
 - [Workspaces](/docs/workspace) — manage multiple sites in a single repository

@@ -16,13 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get latest page binary
+      - name: Get latest seite binary
         run: |
-          curl -fsSL https://pagecli.dev/install.sh | INSTALL_DIR=/usr/local/bin sh
+          curl -fsSL https://seite.sh/install.sh | INSTALL_DIR=/usr/local/bin sh
 
       - name: Build docs site
         working-directory: site
-        run: page build
+        run: seite build
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

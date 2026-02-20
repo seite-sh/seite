@@ -1,20 +1,20 @@
 # install.ps1 — Install the page static site generator on Windows
 #
 # Usage:
-#   irm https://pagecli.dev/install.ps1 | iex
+#   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
 #   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
 #   $env:INSTALL_DIR    Override install location (default: ~\.local\bin)
-#   $env:DOWNLOAD_BASE  Override download base URL (default: https://pagecli.dev/download)
+#   $env:DOWNLOAD_BASE  Override download base URL (default: https://seite.sh/download)
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "sanchezomar/page"
-$Binary = "page.exe"
+$Repo = "seite-sh/seite"
+$Binary = "seite.exe"
 $DefaultInstallDir = Join-Path $HOME ".local\bin"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultInstallDir }
-$DownloadBase = if ($env:DOWNLOAD_BASE) { $env:DOWNLOAD_BASE } else { "https://pagecli.dev/download" }
+$DownloadBase = if ($env:DOWNLOAD_BASE) { $env:DOWNLOAD_BASE } else { "https://seite.sh/download" }
 
 function Write-Info($msg) { Write-Host "info  $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "warn  $msg" -ForegroundColor Yellow }
@@ -27,7 +27,7 @@ switch ($Arch) {
     "Arm64" { $Target = "aarch64-pc-windows-msvc" }
     default {
         Write-Err "Unsupported architecture: $Arch"
-        Write-Host "  Install from source instead: cargo install page"
+        Write-Host "  Install from source instead: cargo install seite"
         exit 1
     }
 }
@@ -41,7 +41,7 @@ if ($env:VERSION) {
 
     # Try domain version endpoint first
     try {
-        $VersionTxt = (Invoke-WebRequest -Uri "https://pagecli.dev/version.txt" -UseBasicParsing).Content.Trim()
+        $VersionTxt = (Invoke-WebRequest -Uri "https://seite.sh/version.txt" -UseBasicParsing).Content.Trim()
         if ($VersionTxt) {
             $Version = $VersionTxt
         }
@@ -68,11 +68,11 @@ if ($env:VERSION) {
     }
 }
 
-$Archive = "page-$Target.zip"
+$Archive = "seite-$Target.zip"
 $DownloadUrl = "$DownloadBase/$Version/$Archive"
 $ChecksumsUrl = "$DownloadBase/$Version/checksums-sha256.txt"
 
-Write-Info "Installing page $Version for $Target"
+Write-Info "Installing seite $Version for $Target"
 
 # --- Download ---
 $TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "page-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"

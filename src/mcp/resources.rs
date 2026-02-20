@@ -16,31 +16,31 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 
     // Documentation resources (always available — embedded in binary)
     resources.push(serde_json::json!({
-        "uri": "page://docs",
+        "uri": "seite://docs",
         "name": "Documentation Index",
         "description": "List of all page documentation pages",
         "mimeType": "application/json"
     }));
     for doc in crate::docs::all() {
         resources.push(serde_json::json!({
-            "uri": format!("page://docs/{}", doc.slug),
+            "uri": format!("seite://docs/{}", doc.slug),
             "name": doc.title,
             "description": doc.description,
             "mimeType": "text/markdown"
         }));
     }
 
-    // Site-specific resources (only when page.toml exists)
+    // Site-specific resources (only when seite.toml exists)
     if let Some(ref config) = state.config {
         resources.push(serde_json::json!({
-            "uri": "page://config",
+            "uri": "seite://config",
             "name": "Site Configuration",
-            "description": "Current page.toml configuration as JSON",
+            "description": "Current seite.toml configuration as JSON",
             "mimeType": "application/json"
         }));
 
         resources.push(serde_json::json!({
-            "uri": "page://content",
+            "uri": "seite://content",
             "name": "Content Overview",
             "description": "All collections with item counts",
             "mimeType": "application/json"
@@ -48,7 +48,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 
         for collection in &config.collections {
             resources.push(serde_json::json!({
-                "uri": format!("page://content/{}", collection.name),
+                "uri": format!("seite://content/{}", collection.name),
                 "name": format!("{} collection", collection.label),
                 "description": format!("Content items in the {} collection", collection.name),
                 "mimeType": "application/json"
@@ -56,7 +56,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         }
 
         resources.push(serde_json::json!({
-            "uri": "page://themes",
+            "uri": "seite://themes",
             "name": "Themes",
             "description": "Available bundled and installed themes",
             "mimeType": "application/json"
@@ -65,7 +65,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         // Trust center resource (only when trust collection is configured)
         if config.trust.is_some() || config.collections.iter().any(|c| c.name == "trust") {
             resources.push(serde_json::json!({
-                "uri": "page://trust",
+                "uri": "seite://trust",
                 "name": "Trust Center",
                 "description": "Trust center state: certifications, subprocessors, FAQs, and content",
                 "mimeType": "application/json"
@@ -76,7 +76,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         let mcp_config_path = state.cwd.join(".claude/settings.json");
         if mcp_config_path.exists() {
             resources.push(serde_json::json!({
-                "uri": "page://mcp-config",
+                "uri": "seite://mcp-config",
                 "name": "MCP Configuration",
                 "description": "Claude Code MCP server configuration (.claude/settings.json)",
                 "mimeType": "application/json"
@@ -98,28 +98,28 @@ pub fn read(
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'uri' parameter"))?;
 
     // Route based on URI
-    if uri == "page://docs" {
+    if uri == "seite://docs" {
         return read_docs_index();
     }
-    if let Some(slug) = uri.strip_prefix("page://docs/") {
+    if let Some(slug) = uri.strip_prefix("seite://docs/") {
         return read_doc(slug);
     }
-    if uri == "page://config" {
+    if uri == "seite://config" {
         return read_config(state);
     }
-    if uri == "page://content" {
+    if uri == "seite://content" {
         return read_content_overview(state);
     }
-    if let Some(collection) = uri.strip_prefix("page://content/") {
+    if let Some(collection) = uri.strip_prefix("seite://content/") {
         return read_collection(state, collection);
     }
-    if uri == "page://themes" {
+    if uri == "seite://themes" {
         return read_themes(state);
     }
-    if uri == "page://trust" {
+    if uri == "seite://trust" {
         return read_trust(state);
     }
-    if uri == "page://mcp-config" {
+    if uri == "seite://mcp-config" {
         return read_mcp_config(state);
     }
 
@@ -148,7 +148,7 @@ fn read_docs_index() -> Result<serde_json::Value, JsonRpcError> {
     let text = serde_json::to_string_pretty(&docs).unwrap_or_default();
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://docs",
+            "uri": "seite://docs",
             "mimeType": "application/json",
             "text": text
         }]
@@ -163,7 +163,7 @@ fn read_doc(slug: &str) -> Result<serde_json::Value, JsonRpcError> {
     let body = crate::docs::strip_frontmatter(doc.raw_content);
     Ok(serde_json::json!({
         "contents": [{
-            "uri": format!("page://docs/{slug}"),
+            "uri": format!("seite://docs/{slug}"),
             "mimeType": "text/markdown",
             "text": body
         }]
@@ -178,7 +178,7 @@ fn read_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project (no page.toml)"))?;
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project (no seite.toml)"))?;
 
     let value =
         serde_json::to_value(config).map_err(|e| JsonRpcError::internal(e.to_string()))?;
@@ -186,7 +186,7 @@ fn read_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://config",
+            "uri": "seite://config",
             "mimeType": "application/json",
             "text": text
         }]
@@ -230,7 +230,7 @@ fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonR
     let text = serde_json::to_string_pretty(&collections).unwrap_or_default();
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://content",
+            "uri": "seite://content",
             "mimeType": "application/json",
             "text": text
         }]
@@ -312,7 +312,7 @@ fn read_collection(
     let text = serde_json::to_string_pretty(&items).unwrap_or_default();
     Ok(serde_json::json!({
         "contents": [{
-            "uri": format!("page://content/{collection_name}"),
+            "uri": format!("seite://content/{collection_name}"),
             "mimeType": "application/json",
             "text": text
         }]
@@ -347,7 +347,7 @@ fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let text = serde_json::to_string_pretty(&themes).unwrap_or_default();
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://themes",
+            "uri": "seite://themes",
             "mimeType": "application/json",
             "text": text
         }]
@@ -367,7 +367,7 @@ fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 
     let mut result = serde_json::json!({});
 
-    // Trust config from page.toml
+    // Trust config from seite.toml
     if let Some(ref trust) = config.trust {
         result["config"] = serde_json::json!({
             "company": trust.company,
@@ -441,7 +441,7 @@ fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let text = serde_json::to_string_pretty(&result).unwrap_or_default();
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://trust",
+            "uri": "seite://trust",
             "mimeType": "application/json",
             "text": text
         }]
@@ -460,7 +460,7 @@ fn read_mcp_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcErro
 
     Ok(serde_json::json!({
         "contents": [{
-            "uri": "page://mcp-config",
+            "uri": "seite://mcp-config",
             "mimeType": "application/json",
             "text": content
         }]

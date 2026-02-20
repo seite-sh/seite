@@ -1,11 +1,11 @@
-//! `page upgrade` — bring project configuration up to date with the current binary.
+//! `seite upgrade` — bring project configuration up to date with the current binary.
 //!
 //! When a user upgrades the `page` binary, their existing project may lack new
 //! config entries (e.g., MCP server settings, new permission rules). This command
 //! detects what's outdated and applies additive, non-destructive upgrades.
 //!
 //! Each upgrade step is gated to the version that introduced it, so running
-//! `page upgrade` on an already-current project is a fast no-op.
+//! `seite upgrade` on an already-current project is a fast no-op.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,7 +75,7 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
     &[
         UpgradeStep {
             introduced_in: (0, 1, 0),
-            label: "Project metadata (.page/config.json)",
+            label: "Project metadata (.seite/config.json)",
             check: check_page_meta,
         },
         UpgradeStep {
@@ -95,9 +95,9 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
     let root = std::env::current_dir()?;
 
     // Verify this is a page project
-    if !root.join("page.toml").exists() {
+    if !root.join("seite.toml").exists() {
         anyhow::bail!(
-            "No page.toml found in current directory. Run this command from a page project root."
+            "No seite.toml found in current directory. Run this command from a seite project root."
         );
     }
 
@@ -142,7 +142,7 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
 
     // --check mode: just report and exit
     if args.check {
-        human::info("Run `page upgrade` to apply these changes.");
+        human::info("Run `seite upgrade` to apply these changes.");
         std::process::exit(1);
     }
 
@@ -214,7 +214,7 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
 // Upgrade step implementations
 // ---------------------------------------------------------------------------
 
-/// Ensure `.page/config.json` exists.
+/// Ensure `.seite/config.json` exists.
 fn check_page_meta(root: &Path) -> Vec<UpgradeAction> {
     let path = meta::meta_path(root);
     if path.exists() {
@@ -230,11 +230,11 @@ fn check_page_meta(root: &Path) -> Vec<UpgradeAction> {
     vec![UpgradeAction::Create {
         path,
         content,
-        description: ".page/config.json (project metadata)".into(),
+        description: ".seite/config.json (project metadata)".into(),
     }]
 }
 
-/// Ensure `.claude/settings.json` has the `mcpServers.page` block.
+/// Ensure `.claude/settings.json` has the `mcpServers.seite` block.
 fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     let path = root.join(".claude/settings.json");
 
@@ -253,11 +253,11 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
                     "Edit(content/**)",
                     "Edit(templates/**)",
                     "Edit(data/**)",
-                    "Bash(page build:*)",
-                    "Bash(page build)",
-                    "Bash(page new:*)",
-                    "Bash(page serve:*)",
-                    "Bash(page theme:*)",
+                    "Bash(seite build:*)",
+                    "Bash(seite build)",
+                    "Bash(seite new:*)",
+                    "Bash(seite serve:*)",
+                    "Bash(seite theme:*)",
                     "Glob",
                     "Grep",
                     "WebSearch"
@@ -277,7 +277,7 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
         }];
     }
 
-    // File exists — check if mcpServers.page is already there
+    // File exists — check if mcpServers.seite is already there
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return vec![],
@@ -287,9 +287,9 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
         Err(_) => return vec![], // malformed JSON, don't touch it
     };
 
-    // Check if mcpServers.page already exists
+    // Check if mcpServers.seite already exists
     if settings
-        .pointer("/mcpServers/page")
+        .pointer("/mcpServers/seite")
         .is_some()
     {
         return vec![];
@@ -301,19 +301,19 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     let mut additions = Vec::new();
 
     if let Some(existing_mcp) = settings.get_mut("mcpServers") {
-        // mcpServers exists but no "page" key — add it
+        // mcpServers exists but no "seite" key — add it
         if let Some(obj) = existing_mcp.as_object_mut() {
             obj.insert(
-                "page".to_string(),
-                mcp_block.get("page").cloned().unwrap_or_default(),
+                "seite".to_string(),
+                mcp_block.get("seite").cloned().unwrap_or_default(),
             );
-            additions.push("Added mcpServers.page to .claude/settings.json".into());
+            additions.push("Added mcpServers.seite to .claude/settings.json".into());
         }
     } else {
         // No mcpServers at all — add the whole block
         if let Some(obj) = settings.as_object_mut() {
             obj.insert("mcpServers".to_string(), mcp_block);
-            additions.push("Added mcpServers.page to .claude/settings.json".into());
+            additions.push("Added mcpServers.seite to .claude/settings.json".into());
         }
     }
 
@@ -355,12 +355,12 @@ access to site content, documentation, themes, and build tools.
 The server is configured in `.claude/settings.json` and starts automatically
 when Claude Code opens this project. No API keys or setup required.
 
-**Available tools:** `page_build`, `page_create_content`, `page_search`,
-`page_apply_theme`, `page_lookup_docs`
+**Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
+`seite_apply_theme`, `seite_lookup_docs`
 
-**Available resources:** `page://docs/*` (page documentation),
-`page://content/*` (site content), `page://themes` (themes),
-`page://config` (site configuration), `page://mcp-config` (MCP settings)
+**Available resources:** `seite://docs/*` (page documentation),
+`seite://content/*` (site content), `seite://themes` (themes),
+`seite://config` (site configuration), `seite://mcp-config` (MCP settings)
 
 The MCP server provides typed, structured access to your site — AI tools work
 with page concepts (collections, content items, themes) rather than parsing

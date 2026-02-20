@@ -24,7 +24,7 @@ pub struct AgentArgs {
 pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
     ensure_claude_installed()?;
 
-    let config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&std::env::current_dir()?);
     let system_prompt = build_system_prompt(&config, &paths);
 
@@ -315,7 +315,7 @@ pub fn build_system_prompt(config: &SiteConfig, paths: &ResolvedPaths) -> String
 
     // Site overview
     prompt.push_str(&format!(
-        r#"You are an AI assistant helping manage a static site built with the `page` CLI tool.
+        r#"You are an AI assistant helping manage a static site built with the `seite` CLI tool.
 
 ## Site Configuration
 - Title: {}
@@ -389,13 +389,13 @@ Markdown content here.
 - Pages: `content/pages/slug-here.md` (no date prefix)
 
 ## Available Commands
-- `page build` — Rebuild the site after making changes
-- `page build --drafts` — Build including draft content
-- `page new post "Title" --tags tag1,tag2` — Create a new post
-- `page new doc "Title"` — Create a new doc
-- `page new page "Title"` — Create a new page
-- `page theme list` — List available themes
-- `page theme apply <name>` — Apply a bundled theme
+- `seite build` — Rebuild the site after making changes
+- `seite build --drafts` — Build including draft content
+- `seite new post "Title" --tags tag1,tag2` — Create a new post
+- `seite new doc "Title"` — Create a new doc
+- `seite new page "Title"` — Create a new page
+- `seite theme list` — List available themes
+- `seite theme apply <name>` — Apply a bundled theme
 
 ## Shortcodes
 
@@ -414,7 +414,7 @@ Built-in shortcodes:
 Custom shortcodes: create Tera templates in `templates/shortcodes/name.html`.
 
 ## Important Notes
-- After creating or editing content files, run `page build` to regenerate the site.
+- After creating or editing content files, run `seite build` to regenerate the site.
 - Set `draft: true` in frontmatter to exclude content from the default build.
 - The site output goes to the `dist/` directory.
 - Templates use Tera (Jinja2-compatible) syntax and extend `base.html`.

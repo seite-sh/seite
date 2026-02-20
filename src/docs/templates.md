@@ -50,7 +50,7 @@ weight: 4
 | `{{ data }}` | Data files from `data/` directory |
 | `{{ lang }}` | Current language code |
 | `{{ translations }}` | Available translations |
-| `{{ default_language }}` | Default language code (from `page.toml`) |
+| `{{ default_language }}` | Default language code (from `seite.toml`) |
 | `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
 | `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 | `{{ pagination }}` | Pagination context |
@@ -260,9 +260,9 @@ Card grid layout. 1000px column, CSS grid with mixed card sizes, border-radius 2
 ## Applying Themes
 
 ```bash
-page theme list              # Show all bundled + installed themes
-page theme apply dark        # Apply a bundled theme
-page theme apply my-custom   # Apply an installed theme
+seite theme list              # Show all bundled + installed themes
+seite theme apply dark        # Apply a bundled theme
+seite theme apply my-custom   # Apply an installed theme
 ```
 
 See the [Theme Gallery](/docs/theme-gallery) for visual previews of all bundled themes.
@@ -272,25 +272,25 @@ See the [Theme Gallery](/docs/theme-gallery) for visual previews of all bundled 
 Download community themes from a URL, or export your own:
 
 ```bash
-page theme install https://example.com/themes/aurora.tera
-page theme install https://example.com/themes/aurora.tera --name my-aurora
-page theme export my-theme --description "Dark theme with green accents"
+seite theme install https://example.com/themes/aurora.tera
+seite theme install https://example.com/themes/aurora.tera --name my-aurora
+seite theme export my-theme --description "Dark theme with green accents"
 ```
 
-Installed themes are saved to `templates/themes/<name>.tera` and appear in `page theme list`.
+Installed themes are saved to `templates/themes/<name>.tera` and appear in `seite theme list`.
 
 ## Custom Themes with AI
 
 Generate a completely custom theme:
 
 ```bash
-page theme create "minimal serif with warm earth tones and generous whitespace"
+seite theme create "minimal serif with warm earth tones and generous whitespace"
 ```
 
 This uses Claude Code to generate a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
 
 ```bash
-page theme export earth-tones --description "Warm serif theme with earth tones"
+seite theme export earth-tones --description "Warm serif theme with earth tones"
 ```
 
 ## Table of Contents
@@ -313,4 +313,4 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 
 - [Theme Gallery](/docs/theme-gallery) — browse all six bundled themes with visual previews
 - [Shortcodes](/docs/shortcodes) — add videos, callouts, and figures to your content
-- [Configuration](/docs/configuration) — data file setup and all `page.toml` options
+- [Configuration](/docs/configuration) — data file setup and all `seite.toml` options

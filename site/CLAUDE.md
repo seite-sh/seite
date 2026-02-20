@@ -2,7 +2,7 @@
 
 AI-native static site generator for the modern web
 
-This is a static site built with the `page` CLI tool.
+This is a static site built with the `seite` CLI tool.
 
 ## SEO and GEO Requirements
 
@@ -42,27 +42,27 @@ This is a static site built with the `page` CLI tool.
 ## Commands
 
 ```bash
-page build                              # Build the site
-page build --drafts                     # Build including draft content
-page serve                              # Dev server with live reload + REPL
-page serve --port 8080                  # Use a specific port
-page new post "Title"                  # Create new post
-page new doc "Title"                  # Create new doc
-page new page "Title"                  # Create new page
-page new post "Title" --tags rust,web   # Create with tags
-page new post "Title" --draft           # Create as draft
-page new post "Title" --lang es         # Create translation (needs [languages.es] in config)
-page theme list                         # List available themes
-page theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)
-page theme create "coral brutalist"     # Generate a custom theme with AI (requires Claude Code)
-page agent                              # Interactive AI agent session
-page agent "write about Rust"           # One-shot AI agent prompt
-page deploy                             # Deploy to configured target
+seite build                              # Build the site
+seite build --drafts                     # Build including draft content
+seite serve                              # Dev server with live reload + REPL
+seite serve --port 8080                  # Use a specific port
+seite new post "Title"                  # Create new post
+seite new doc "Title"                  # Create new doc
+seite new page "Title"                  # Create new page
+seite new post "Title" --tags rust,web   # Create with tags
+seite new post "Title" --draft           # Create as draft
+seite new post "Title" --lang es         # Create translation (needs [languages.es] in config)
+seite theme list                         # List available themes
+seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)
+seite theme create "coral brutalist"     # Generate a custom theme with AI (requires Claude Code)
+seite agent                              # Interactive AI agent session
+seite agent "write about Rust"           # One-shot AI agent prompt
+seite deploy                             # Deploy to configured target
 ```
 
 ### Dev Server REPL
 
-`page serve` starts a dev server with live reload and an interactive REPL:
+`seite serve` starts a dev server with live reload and an interactive REPL:
 
 ```
 new <collection> <title> [--lang <code>]  Create new content
@@ -82,7 +82,7 @@ content/pages/    # Pages content (markdown + YAML frontmatter)
 templates/       # Tera (Jinja2-compatible) HTML templates
 static/          # Static assets (copied as-is to dist/)
 dist/            # Build output (generated, do not edit)
-page.toml        # Site configuration
+seite.toml        # Site configuration
 ```
 
 ## Collections
@@ -136,10 +136,10 @@ To add custom content to the homepage, create `content/pages/index.md`. Its rend
 
 ## Multi-language Support
 
-Add translations by configuring languages in `page.toml` and creating translated content files:
+Add translations by configuring languages in `seite.toml` and creating translated content files:
 
 ```toml
-# page.toml
+# seite.toml
 [languages.es]
 title = "Mi Sitio"              # optional title override
 description = "Un sitio web"     # optional description override
@@ -174,7 +174,7 @@ Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). 
 | `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |
 | `bento` | Card grid layout with rounded corners and soft shadows |
 
-Apply with `page theme apply <name>`. This overwrites `templates/base.html`.
+Apply with `seite theme apply <name>`. This overwrites `templates/base.html`.
 
 ### Template Variables
 
@@ -247,7 +247,7 @@ All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO R
 ## Features
 
 - **Syntax highlighting** — Fenced code blocks with language annotations are automatically highlighted
-- **Docs sidebar navigation** — Doc pages get a sidebar nav listing all docs, grouped by directory. Use the `docs` theme: `page theme apply docs`
+- **Docs sidebar navigation** — Doc pages get a sidebar nav listing all docs, grouped by directory. Use the `docs` theme: `seite theme apply docs`
 - **Homepage content** — Create `content/pages/index.md` for custom homepage hero/landing content above collection listings
 - **Multi-language** — Filename-based translations with per-language URLs, RSS, sitemap, and discovery files
 - **SEO+GEO optimized** — Every page gets canonical URL, Open Graph, Twitter Card, JSON-LD structured data (`BlogPosting`/`Article`/`WebSite`), and per-page robots meta. No plugins needed.
@@ -255,7 +255,7 @@ All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO R
 - **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)
 - **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates
 - **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.
-- **Asset pipeline** — Add `minify = true` and/or `fingerprint = true` to `[build]` in `page.toml` to minify CSS/JS and add content-hash suffixes (`main.a1b2c3d4.css`) with a `dist/asset-manifest.json`
+- **Asset pipeline** — Add `minify = true` and/or `fingerprint = true` to `[build]` in `seite.toml` to minify CSS/JS and add content-hash suffixes (`main.a1b2c3d4.css`) with a `dist/asset-manifest.json`
 - **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`
 - **Clean URLs** — `/posts/hello-world` (no `.html` extension)
 - **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)
@@ -263,7 +263,7 @@ All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO R
 ## Design Prompts
 
 When asked to redesign or create a theme, use one of these directions as a starting point.
-Edit `templates/base.html` directly — or apply a bundled theme first with `page theme apply <name>` then edit.
+Edit `templates/base.html` directly — or apply a bundled theme first with `seite theme apply <name>` then edit.
 
 **Minimal / Editorial** — Single column max 620px, Georgia serif body, geometric sans for UI elements.
 No decorative elements. Bottom-border-only search input. White/off-white (`#FAF9F6`) background,
@@ -291,16 +291,16 @@ information. Full `prefers-reduced-motion: reduce` support.
 
 ## Key Conventions
 
-- Run `page build` after creating or editing content to regenerate the site
+- Run `seite build` after creating or editing content to regenerate the site
 - URLs are clean (no extension): `/posts/hello-world` on disk is `dist/posts/hello-world.html`
 - Templates use Tera syntax and extend `base.html`
 - Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)
 - Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate
 - The `static/` directory is copied as-is to `dist/static/` during build
-- Pagination: add `paginate = 10` to a `[[collections]]` block in `page.toml` to generate `/posts/`, `/posts/page/2/`, etc.
+- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate `/posts/`, `/posts/page/2/`, etc.
   Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`
 - Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.
-- Asset pipeline: set `minify = true` and/or `fingerprint = true` under `[build]` in `page.toml`
+- Asset pipeline: set `minify = true` and/or `fingerprint = true` under `[build]` in `seite.toml`
   - `minify` strips CSS/JS comments and collapses whitespace
   - `fingerprint` writes `file.<hash8>.ext` copies of each static asset and a `dist/asset-manifest.json` mapping original names to fingerprinted names
-- Custom theme: `page theme create "your design description"` generates `templates/base.html` with Claude (requires Claude Code)
+- Custom theme: `seite theme create "your design description"` generates `templates/base.html` with Claude (requires Claude Code)

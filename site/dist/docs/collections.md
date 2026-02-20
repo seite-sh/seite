@@ -19,7 +19,7 @@ Collections are groups of related content. Each collection has its own directory
 
 ## Defining Collections
 
-Collections are configured in `page.toml`:
+Collections are configured in `seite.toml`:
 
 ```toml
 [[collections]]
@@ -70,7 +70,7 @@ content/posts/
 The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
 
 {{% callout(type="tip") %}}
-Use `page serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.
+Use `seite serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.
 {{% end %}}
 
 ## Docs
@@ -140,7 +140,7 @@ Use tags to categorize changes. Tags render as colored badges in the changelog t
 - `deprecated` — deprecations (gray)
 
 ```bash
-page new changelog "v1.0.0" --tags new,improvement
+seite new changelog "v1.0.0" --tags new,improvement
 ```
 
 ## Roadmap
@@ -181,7 +181,7 @@ Three index layouts are available. The default groups items by status. To switch
 ```
 
 ```bash
-page new roadmap "Feature Name" --tags planned
+seite new roadmap "Feature Name" --tags planned
 ```
 
 ## Pagination
@@ -210,7 +210,7 @@ Templates receive pagination context:
 
 ## Singular/Plural
 
-Both `page new post` and `page new posts` work — the CLI normalizes singular to plural automatically.
+Both `seite new post` and `seite new posts` work — the CLI normalizes singular to plural automatically.
 
 ## Tag Pages
 

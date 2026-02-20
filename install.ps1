@@ -1,7 +1,7 @@
-# install.ps1 — Install the page static site generator on Windows
+# install.ps1 — Install the seite static site generator on Windows
 #
 # Usage:
-#   irm https://pagecli.dev/install.ps1 | iex
+#   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
 #   $env:VERSION     Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
@@ -9,8 +9,8 @@
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "sanchezomar/page"
-$Binary = "page.exe"
+$Repo = "seite-sh/seite"
+$Binary = "seite.exe"
 $DefaultInstallDir = Join-Path $HOME ".local\bin"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultInstallDir }
 
@@ -25,7 +25,7 @@ switch ($Arch) {
     "Arm64" { $Target = "aarch64-pc-windows-msvc" }
     default {
         Write-Err "Unsupported architecture: $Arch"
-        Write-Host "  Install from source instead: cargo install page"
+        Write-Host "  Install from source instead: cargo install seite"
         exit 1
     }
 }
@@ -45,11 +45,11 @@ if ($env:VERSION) {
     }
 }
 
-$Archive = "page-$Target.zip"
+$Archive = "seite-$Target.zip"
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Archive"
 $ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/checksums-sha256.txt"
 
-Write-Info "Installing page $Version for $Target"
+Write-Info "Installing seite $Version for $Target"
 
 # --- Download ---
 $TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "page-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"
@@ -84,7 +84,7 @@ try {
     }
 
     Copy-Item (Join-Path $TmpDir $Binary) (Join-Path $InstallDir $Binary) -Force
-    Write-Info "Installed page to $(Join-Path $InstallDir $Binary)"
+    Write-Info "Installed seite to $(Join-Path $InstallDir $Binary)"
 
     # --- Check PATH ---
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")

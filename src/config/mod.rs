@@ -375,7 +375,7 @@ impl SiteConfig {
         }
     }
 
-    /// Load config from a `page.toml` file.
+    /// Load config from a `seite.toml` file.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Err(PageError::ConfigNotFound {

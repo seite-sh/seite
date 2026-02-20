@@ -59,7 +59,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     // Check for workspace context
     if let Some(ws_root) = crate::workspace::find_workspace_root(&cwd) {
         let ws_config =
-            crate::workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+            crate::workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
         let opts = crate::workspace::deploy::WorkspaceDeployOptions {
             site_filter: site_filter.map(String::from),
@@ -80,7 +80,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config_path = PathBuf::from("page.toml");
+    let config_path = PathBuf::from("seite.toml");
     let mut config = SiteConfig::load(&config_path)?;
     let mut paths = config.resolve_paths(&cwd);
 
@@ -293,7 +293,7 @@ fn run_domain_setup(
     let setup = deploy::domain_setup_instructions(clean_domain, &target, config);
     deploy::print_domain_setup(&setup);
 
-    // Update page.toml with base_url and deploy.domain
+    // Update seite.toml with base_url and deploy.domain
     let new_base_url = if domain.starts_with("http") {
         domain.to_string()
     } else {
@@ -304,7 +304,7 @@ fn run_domain_setup(
     updates.insert("base_url".to_string(), new_base_url.clone());
     updates.insert("domain".to_string(), clean_domain.to_string());
     deploy::update_deploy_config(config_path, &updates)?;
-    human::success(&format!("Updated base_url to '{new_base_url}' and deploy.domain to '{clean_domain}' in page.toml"));
+    human::success(&format!("Updated base_url to '{new_base_url}' and deploy.domain to '{clean_domain}' in seite.toml"));
 
     // Offer to attach the domain to the platform
     match target {
@@ -323,7 +323,7 @@ fn run_domain_setup(
                     }
                 }
             } else {
-                human::info("Set deploy.project in page.toml to enable automatic domain attachment");
+                human::info("Set deploy.project in seite.toml to enable automatic domain attachment");
             }
         }
         DeployTarget::Netlify => {
@@ -414,14 +414,14 @@ fn run_setup(
         }
     }
 
-    // Update page.toml
+    // Update seite.toml
     deploy::update_deploy_config(config_path, &config_updates)?;
-    human::success("Updated page.toml with deploy configuration");
+    human::success("Updated seite.toml with deploy configuration");
 
     println!();
     human::info("Setup complete. Next steps:");
-    human::info("  1. Set your production URL:  page deploy --domain example.com");
-    human::info("  2. Deploy:                   page deploy");
+    human::info("  1. Set your production URL:  seite deploy --domain example.com");
+    human::info("  2. Deploy:                   seite deploy");
 
     Ok(())
 }
@@ -465,7 +465,7 @@ fn run_dry_run(
                 .project
                 .as_deref()
                 .or(detected.as_deref())
-                .unwrap_or("(not configured — set deploy.project in page.toml)");
+                .unwrap_or("(not configured — set deploy.project in seite.toml)");
             human::info(&format!("  Project: {project}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
             if args.preview {
@@ -477,7 +477,7 @@ fn run_dry_run(
                 .deploy
                 .project
                 .as_deref()
-                .unwrap_or("(auto-detect or set deploy.project in page.toml)");
+                .unwrap_or("(auto-detect or set deploy.project in seite.toml)");
             human::info(&format!("  Site ID/name: {site_id}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
             if args.preview {
@@ -616,8 +616,8 @@ fn resolve_cloudflare_project(
         Some(p) => Ok(p.to_string()),
         None => deploy::detect_cloudflare_project(paths).ok_or_else(|| {
             PageError::Deploy(
-                "no project name configured. Set deploy.project in page.toml, \
-                 or run `page deploy --setup` to configure"
+                "no project name configured. Set deploy.project in seite.toml, \
+                 or run `seite deploy --setup` to configure"
                     .into(),
             )
             .into()

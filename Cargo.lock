@@ -1083,38 +1083,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "page"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "chrono",
- "clap",
- "console",
- "dialoguer",
- "fs_extra",
- "image",
- "notify",
- "predicates",
- "pulldown-cmark",
- "quick-xml 0.37.5",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "slug",
- "syntect",
- "tempfile",
- "tera",
- "thiserror 2.0.18",
- "tiny_http",
- "toml",
- "tracing",
- "tracing-subscriber",
- "ureq",
- "walkdir",
-]
-
-[[package]]
 name = "parse-zoneinfo"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1538,6 +1506,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "seite"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "console",
+ "dialoguer",
+ "fs_extra",
+ "image",
+ "notify",
+ "predicates",
+ "pulldown-cmark",
+ "quick-xml 0.37.5",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "slug",
+ "syntect",
+ "tempfile",
+ "tera",
+ "thiserror 2.0.18",
+ "tiny_http",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+ "walkdir",
 ]
 
 [[package]]

@@ -70,7 +70,7 @@ fn configuration() -> DocPage {
     DocPage {
         slug: "configuration",
         title: "Configuration",
-        description: "Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.",
+        description: "Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images.",
         weight: 2,
         raw_content: include_str!("docs/configuration.md"),
     }
@@ -180,7 +180,7 @@ fn cli_reference() -> DocPage {
     DocPage {
         slug: "cli-reference",
         title: "CLI Reference",
-        description: "Complete reference for all page CLI commands, flags, and options.",
+        description: "Complete reference for allseite CLI commands, flags, and options.",
         weight: 10,
         raw_content: include_str!("docs/cli-reference.md"),
     }
@@ -203,7 +203,11 @@ mod tests {
     #[test]
     fn test_all_returns_all_docs() {
         let docs = all();
-        assert!(docs.len() >= 13, "Expected at least 13 docs, got {}", docs.len());
+        assert!(
+            docs.len() >= 13,
+            "Expected at least 13 docs, got {}",
+            docs.len()
+        );
     }
 
     #[test]
@@ -250,7 +254,11 @@ mod tests {
     #[test]
     fn test_all_docs_have_content() {
         for doc in all() {
-            assert!(!doc.raw_content.is_empty(), "Doc {} has empty content", doc.slug);
+            assert!(
+                !doc.raw_content.is_empty(),
+                "Doc {} has empty content",
+                doc.slug
+            );
             assert!(
                 doc.raw_content.contains("---"),
                 "Doc {} is missing frontmatter",

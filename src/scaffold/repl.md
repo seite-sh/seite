@@ -1,6 +1,6 @@
 ### Dev Server REPL
 
-`page serve` starts a dev server with live reload and an interactive REPL:
+`seite serve` starts a dev server with live reload and an interactive REPL:
 
 ```
 new <collection> <title> [--lang <code>]  Create new content

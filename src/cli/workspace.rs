@@ -69,9 +69,9 @@ fn run_init(args: &WorkspaceInitArgs) -> anyhow::Result<()> {
             .interact_text()?,
     };
 
-    let ws_file = PathBuf::from("page-workspace.toml");
+    let ws_file = PathBuf::from("seite-workspace.toml");
     if ws_file.exists() {
-        anyhow::bail!("page-workspace.toml already exists in this directory");
+        anyhow::bail!("seite-workspace.toml already exists in this directory");
     }
 
     // Create workspace structure
@@ -90,7 +90,7 @@ name = "{name}"
 # shared_static = "static"
 # shared_templates = "templates"
 
-# Add sites below. Each site needs its own page.toml.
+# Add sites below. Each site needs its own seite.toml.
 # [[sites]]
 # name = "blog"
 # path = "sites/blog"
@@ -105,11 +105,11 @@ name = "{name}"
     fs::write(&ws_file, config_content)?;
 
     human::success(&format!("Initialized workspace '{name}'"));
-    human::info("  Created page-workspace.toml");
+    human::info("  Created seite-workspace.toml");
     human::info("  Created sites/, data/, static/, templates/ directories");
     human::info("");
     human::info("Next steps:");
-    human::info("  1. Add a site: page workspace add blog --collections posts,pages");
+    human::info("  1. Add a site: seite workspace add blog --collections posts,pages");
     human::info("  2. Or move existing sites into sites/");
 
     Ok(())
@@ -118,18 +118,18 @@ name = "{name}"
 fn run_list() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no page-workspace.toml found)")
+        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
     })?;
 
-    let ws_config = WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+    let ws_config = WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
     human::header(&format!("Workspace: {}", ws_config.workspace.name));
     for site in &ws_config.sites {
         let site_root = ws_root.join(&site.path);
-        let status = if site_root.join("page.toml").exists() {
+        let status = if site_root.join("seite.toml").exists() {
             console::style("ok").green().to_string()
         } else {
-            console::style("missing page.toml").red().to_string()
+            console::style("missing seite.toml").red().to_string()
         };
         human::info(&format!(
             "  {} ({}) [{}]",
@@ -148,7 +148,7 @@ fn run_list() -> anyhow::Result<()> {
 fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no page-workspace.toml found)")
+        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
     })?;
 
     let site_path = args
@@ -159,7 +159,7 @@ fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     let site_dir = ws_root.join(&site_path);
 
     // Check if site already exists in workspace config
-    let ws_config_path = ws_root.join("page-workspace.toml");
+    let ws_config_path = ws_root.join("seite-workspace.toml");
     let contents = fs::read_to_string(&ws_config_path)?;
     if contents.contains(&format!("name = \"{}\"", args.name)) {
         anyhow::bail!("site '{}' already exists in the workspace", args.name);
@@ -179,7 +179,7 @@ fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     fs::create_dir_all(site_dir.join("templates"))?;
     fs::create_dir_all(site_dir.join("static"))?;
 
-    // Generate page.toml for the site
+    // Generate seite.toml for the site
     let mut collections_toml = String::new();
     for col in &collections {
         let preset = match *col {
@@ -229,7 +229,7 @@ target = "github-pages"
         name = args.name,
     );
 
-    fs::write(site_dir.join("page.toml"), page_toml)?;
+    fs::write(site_dir.join("seite.toml"), page_toml)?;
 
     // Append site entry to workspace config
     let site_entry = format!(
@@ -246,7 +246,7 @@ path = "{}"
 
     human::success(&format!("Added site '{}' at {}", args.name, site_path));
     human::info(&format!("  Collections: {collections_str}"));
-    human::info(&format!("  Config: {}/page.toml", site_path));
+    human::info(&format!("  Config: {}/seite.toml", site_path));
 
     Ok(())
 }
@@ -254,10 +254,10 @@ path = "{}"
 fn run_status() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no page-workspace.toml found)")
+        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
     })?;
 
-    let ws_config = WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+    let ws_config = WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
     human::header(&format!("Workspace: {}", ws_config.workspace.name));
     human::info(&format!("  Root: {}", ws_root.display()));
@@ -276,7 +276,7 @@ fn run_status() -> anyhow::Result<()> {
     println!();
     for site in &ws_config.sites {
         let site_root = ws_root.join(&site.path);
-        let has_config = site_root.join("page.toml").exists();
+        let has_config = site_root.join("seite.toml").exists();
         let has_dist = site_root.join("dist").exists();
 
         let config_status = if has_config {
@@ -298,7 +298,7 @@ fn run_status() -> anyhow::Result<()> {
         ));
 
         if has_config {
-            if let Ok(config) = crate::config::SiteConfig::load(&site_root.join("page.toml")) {
+            if let Ok(config) = crate::config::SiteConfig::load(&site_root.join("seite.toml")) {
                 human::info(&format!("    title: {}", config.site.title));
                 human::info(&format!("    base_url: {}", config.site.base_url));
                 let collections: Vec<&str> =

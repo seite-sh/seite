@@ -2,23 +2,23 @@
 # install.sh — Install the page static site generator
 #
 # Usage:
-#   curl -fsSL https://pagecli.dev/install.sh | sh
+#   curl -fsSL https://seite.sh/install.sh | sh
 #
 # Works on macOS, Linux, and WSL (Windows Subsystem for Linux).
 # For native Windows, use install.ps1 instead:
-#   irm https://pagecli.dev/install.ps1 | iex
+#   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
 #   VERSION        Pin to a specific release (e.g., VERSION=v0.1.0)
 #   INSTALL_DIR    Override install location (default: ~/.local/bin)
-#   DOWNLOAD_BASE  Override download base URL (default: https://pagecli.dev/download)
+#   DOWNLOAD_BASE  Override download base URL (default: https://seite.sh/download)
 
 set -eu
 
-REPO="page-cli/page-cli"
-BINARY="page"
+REPO="seite-sh/seite"
+BINARY="seite"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://pagecli.dev/download}"
+DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://seite.sh/download}"
 
 # --- Colors (only when stdout is a terminal) ---
 
@@ -51,7 +51,7 @@ detect_platform() {
     Linux)  OS_TRIPLE="unknown-linux-gnu" ;;
     *)
       error "Unsupported operating system: $OS"
-      echo "  Install from source instead: cargo install page"
+      echo "  Install from source instead: cargo install seite"
       exit 1
       ;;
   esac
@@ -61,7 +61,7 @@ detect_platform() {
     aarch64|arm64)   ARCH_TRIPLE="aarch64" ;;
     *)
       error "Unsupported architecture: $ARCH"
-      echo "  Install from source instead: cargo install page"
+      echo "  Install from source instead: cargo install seite"
       exit 1
       ;;
   esac
@@ -116,7 +116,7 @@ resolve_version() {
 
   # Try domain version endpoint first
   TMPFILE=$(mktemp)
-  if download "https://pagecli.dev/version.txt" "$TMPFILE" 2>/dev/null; then
+  if download "https://seite.sh/version.txt" "$TMPFILE" 2>/dev/null; then
     TAG=$(tr -d '[:space:]' < "$TMPFILE")
     rm -f "$TMPFILE"
     if [ -n "$TAG" ]; then
@@ -149,11 +149,11 @@ main() {
   detect_platform
 
   VERSION_TAG=$(resolve_version)
-  ARCHIVE="page-${TARGET}.tar.gz"
+  ARCHIVE="seite-${TARGET}.tar.gz"
   DOWNLOAD_URL="${DOWNLOAD_BASE}/${VERSION_TAG}/${ARCHIVE}"
   CHECKSUMS_URL="${DOWNLOAD_BASE}/${VERSION_TAG}/checksums-sha256.txt"
 
-  info "Installing page ${VERSION_TAG} for ${TARGET}"
+  info "Installing seite ${VERSION_TAG} for ${TARGET}"
 
   # Create temp directory with cleanup trap
   TMPDIR=$(mktemp -d)

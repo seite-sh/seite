@@ -1,4 +1,4 @@
-//! `page mcp` — MCP (Model Context Protocol) server over stdio.
+//! `seite mcp` — MCP (Model Context Protocol) server over stdio.
 //!
 //! Implements JSON-RPC 2.0 over stdin/stdout for AI tool integration.
 //! Claude Code (and other MCP clients) connect to this server to get
@@ -93,7 +93,7 @@ pub struct ServerState {
 impl ServerState {
     /// Reload config from disk (for tools that mutate state, like build).
     pub fn reload_config(&mut self) {
-        let config_path = self.cwd.join("page.toml");
+        let config_path = self.cwd.join("seite.toml");
         self.config = crate::config::SiteConfig::load(&config_path).ok();
         self.paths = self.config.as_ref().map(|c| c.resolve_paths(&self.cwd));
     }
@@ -107,7 +107,7 @@ impl ServerState {
 /// dispatches to handlers, writes responses to stdout.
 pub fn serve() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
-    let config_path = cwd.join("page.toml");
+    let config_path = cwd.join("seite.toml");
     let config = crate::config::SiteConfig::load(&config_path).ok();
     let paths = config.as_ref().map(|c| c.resolve_paths(&cwd));
 
@@ -224,7 +224,7 @@ fn handle_initialize(
             "tools": {}
         },
         "serverInfo": {
-            "name": "page",
+            "name": "seite",
             "version": env!("CARGO_PKG_VERSION")
         }
     }))
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_handle_initialize() {
         let result = handle_initialize(&serde_json::json!({})).unwrap();
-        assert_eq!(result["serverInfo"]["name"], "page");
+        assert_eq!(result["serverInfo"]["name"], "seite");
         assert!(result["capabilities"]["resources"].is_object());
         assert!(result["capabilities"]["tools"].is_object());
     }

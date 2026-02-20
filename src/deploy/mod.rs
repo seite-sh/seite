@@ -67,7 +67,7 @@ fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
         return PreflightCheck {
             name: "Output directory".into(),
             passed: false,
-            message: format!("{} does not exist — run `page build` first", paths.output.display()),
+            message: format!("{} does not exist — run `seite build` first", paths.output.display()),
         };
     }
     // Check non-empty
@@ -78,7 +78,7 @@ fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
         return PreflightCheck {
             name: "Output directory".into(),
             passed: false,
-            message: format!("{} is empty — run `page build` first", paths.output.display()),
+            message: format!("{} is empty — run `seite build` first", paths.output.display()),
         };
     }
     PreflightCheck {
@@ -97,7 +97,7 @@ fn check_base_url(config: &SiteConfig) -> PreflightCheck {
             passed: false,
             message: format!(
                 "base_url is '{url}' — this will produce broken canonical/OG URLs in production. \
-                 Set site.base_url in page.toml to your production URL, or use `page deploy` with --base-url"
+                 Set site.base_url in seite.toml to your production URL, or use `seite deploy` with --base-url"
             ),
         }
     } else {
@@ -173,7 +173,7 @@ fn check_git_remote(paths: &ResolvedPaths, configured_repo: Option<&str>) -> Pre
         _ => PreflightCheck {
             name: "Git remote".into(),
             passed: false,
-            message: "no remote 'origin' — set deploy.repo in page.toml or run `git remote add origin <url>`".into(),
+            message: "no remote 'origin' — set deploy.repo in seite.toml or run `git remote add origin <url>`".into(),
         },
     }
 }
@@ -268,7 +268,7 @@ fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> Prefl
         None => PreflightCheck {
             name: "Cloudflare project".into(),
             passed: false,
-            message: "no project name — set deploy.project in page.toml".into(),
+            message: "no project name — set deploy.project in seite.toml".into(),
         },
     }
 }
@@ -382,7 +382,7 @@ fn check_cloudflare_domain(config: &SiteConfig) -> PreflightCheck {
         None => return PreflightCheck {
             name: "Cloudflare domain".into(),
             passed: false,
-            message: "domain set but no project — set deploy.project in page.toml".into(),
+            message: "domain set but no project — set deploy.project in seite.toml".into(),
         },
     };
 
@@ -497,12 +497,12 @@ pub fn try_fix_check(
     match check.name.as_str() {
         "Output directory" => Some(FixAction {
             prompt: "Build the site first?".into(),
-            manual_instructions: vec!["Run: page build".into()],
+            manual_instructions: vec!["Run: seite build".into()],
         }),
         "Base URL" => Some(FixAction {
-            prompt: "Update base_url in page.toml?".into(),
+            prompt: "Update base_url in seite.toml?".into(),
             manual_instructions: vec![
-                "Set site.base_url in page.toml to your production URL".into(),
+                "Set site.base_url in seite.toml to your production URL".into(),
                 "Or use --base-url <url> when deploying".into(),
             ],
         }),
@@ -602,7 +602,7 @@ pub fn try_fix_check(
                 prompt: format!("Create Cloudflare Pages project '{project_name}'?"),
                 manual_instructions: vec![
                     format!("Run: wrangler pages project create {project_name} --production-branch main"),
-                    "Or set deploy.project in page.toml".into(),
+                    "Or set deploy.project in seite.toml".into(),
                 ],
             })
         }
@@ -626,7 +626,7 @@ pub fn try_fix_check(
                 prompt: format!("Attach domain '{domain}' to Cloudflare Pages project?"),
                 manual_instructions: vec![
                     format!("Add the domain in the Cloudflare dashboard under Pages > your project > Custom domains"),
-                    format!("Or run: page deploy --domain {domain}"),
+                    format!("Or run: seite deploy --domain {domain}"),
                 ],
             })
         }
@@ -680,7 +680,7 @@ pub fn execute_fix(
             let mut updates = HashMap::new();
             updates.insert("base_url".into(), url.clone());
             update_deploy_config(config_path, &updates)?;
-            human::success(&format!("Updated base_url to '{url}' in page.toml"));
+            human::success(&format!("Updated base_url to '{url}' in seite.toml"));
             Ok(true)
         }
         "wrangler CLI" => run_install_command("npm", &["install", "-g", "wrangler"], "wrangler"),
@@ -757,11 +757,11 @@ pub fn execute_fix(
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
             if result.success() {
-                // Also update page.toml
+                // Also update seite.toml
                 let mut updates = HashMap::new();
                 updates.insert("project".into(), project_name.to_string());
                 update_deploy_config(config_path, &updates)?;
-                human::success(&format!("Created project '{project_name}' and updated page.toml"));
+                human::success(&format!("Created project '{project_name}' and updated seite.toml"));
                 Ok(true)
             } else {
                 human::warning("Could not create project — it may already exist (which is fine)");
@@ -852,7 +852,7 @@ pub fn execute_fix(
 }
 
 /// Re-run a single check by name (used after fixing).
-/// Re-reads config from disk for checks that depend on page.toml values,
+/// Re-reads config from disk for checks that depend on seite.toml values,
 /// since execute_fix may have updated the file.
 pub fn recheck(
     check_name: &str,
@@ -860,8 +860,8 @@ pub fn recheck(
     paths: &ResolvedPaths,
     _target: &str,
 ) -> PreflightCheck {
-    // Reload config from disk — fixes may have updated page.toml
-    let fresh_config = SiteConfig::load(std::path::Path::new("page.toml")).ok();
+    // Reload config from disk — fixes may have updated seite.toml
+    let fresh_config = SiteConfig::load(std::path::Path::new("seite.toml")).ok();
     let config = fresh_config.as_ref().unwrap_or(_config);
 
     match check_name {
@@ -1069,7 +1069,7 @@ pub fn deploy_github_pages(
             if !output.status.success() {
                 return Err(PageError::Deploy(
                     "no repo URL provided and could not detect git remote. \
-                     Set deploy.repo in page.toml"
+                     Set deploy.repo in seite.toml"
                         .into(),
                 ));
             }
@@ -1096,8 +1096,8 @@ pub fn deploy_github_pages(
     run(&["init"])?;
 
     // Set git identity so commits don't fail in fresh environments
-    run(&["config", "user.email", "page-deploy@localhost"])?;
-    run(&["config", "user.name", "page deploy"])?;
+    run(&["config", "user.email", "seite-deploy@localhost"])?;
+    run(&["config", "user.name", "seite deploy"])?;
 
     run(&["checkout", "-b", "gh-pages"])?;
     run(&["add", "-A"])?;
@@ -1249,7 +1249,7 @@ pub fn deploy_netlify(
 // base_url lifecycle management (Feature 3)
 // ---------------------------------------------------------------------------
 
-/// Build the site with a temporary base_url override without modifying page.toml.
+/// Build the site with a temporary base_url override without modifying seite.toml.
 /// Returns the base_url that was used.
 pub fn resolve_deploy_base_url(config: &SiteConfig, override_url: Option<&str>) -> String {
     if let Some(url) = override_url {
@@ -1514,11 +1514,11 @@ jobs:
             target/
           key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
 
-      - name: Install page
+      - name: Install seite
         run: cargo install --path .
 
       - name: Build site
-        run: page build
+        run: seite build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -1575,11 +1575,11 @@ jobs:
             target/
           key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
 
-      - name: Install page
+      - name: Install seite
         run: cargo install --path .
 
       - name: Build site
-        run: page build
+        run: seite build
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
@@ -1596,7 +1596,7 @@ pub fn generate_netlify_config(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
     format!(
         r#"[build]
-  command = "cargo install --path . && page build"
+  command = "cargo install --path . && seite build"
   publish = "{output_dir}"
 
 [[redirects]]
@@ -1638,11 +1638,11 @@ jobs:
             target/
           key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
 
-      - name: Install page
+      - name: Install seite
         run: cargo install --path .
 
       - name: Build site
-        run: page build
+        run: seite build
 
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3
@@ -1999,7 +1999,7 @@ fn verify_http(url: &str) -> VerifyResult {
                 Ok(mut stream) => {
                     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                     let request = format!(
-                        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: page-deploy-verify/1.0\r\n\r\n"
+                        "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: seite-deploy-verify/1.0\r\n\r\n"
                     );
                     if stream.write_all(request.as_bytes()).is_err() {
                         return VerifyResult {
@@ -2058,7 +2058,7 @@ fn verify_url_reachable(url: &str, label: &str) -> VerifyResult {
                     Ok(mut stream) => {
                         let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                         let request = format!(
-                            "HEAD {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: page-deploy-verify/1.0\r\n\r\n"
+                            "HEAD {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: seite-deploy-verify/1.0\r\n\r\n"
                         );
                         if stream.write_all(request.as_bytes()).is_err() {
                             return VerifyResult {
@@ -2132,7 +2132,7 @@ pub fn print_verification(results: &[VerifyResult]) {
 // Config update helpers
 // ---------------------------------------------------------------------------
 
-/// Update page.toml with deploy settings (target, project, domain).
+/// Update seite.toml with deploy settings (target, project, domain).
 pub fn update_deploy_config(
     config_path: &std::path::Path,
     updates: &HashMap<String, String>,

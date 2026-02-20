@@ -9,7 +9,7 @@ weight: 9
 Six production-ready themes ship with every `page` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
 
 ```bash
-page theme apply <name>
+seite theme apply <name>
 ```
 
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin: 32px 0;">
@@ -25,7 +25,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; border-radius: 50%; background: #0057b7; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #f8f8f8; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">page theme apply default</div>
+<div style="padding: 10px 20px; background: #f8f8f8; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">seite theme apply default</div>
 </div>
 
 <div style="border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden;">
@@ -39,7 +39,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; border-radius: 50%; background: #888888; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #f0eeeb; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">page theme apply minimal</div>
+<div style="padding: 10px 20px; background: #f0eeeb; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">seite theme apply minimal</div>
 </div>
 
 <div style="border: 1px solid #333; border-radius: 12px; overflow: hidden;">
@@ -53,7 +53,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; border-radius: 50%; background: #8b5cf6; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #111; border-top: 1px solid #333; font-size: 13px; font-family: monospace; color: #999;">page theme apply dark</div>
+<div style="padding: 10px 20px; background: #111; border-top: 1px solid #333; font-size: 13px; font-family: monospace; color: #999;">seite theme apply dark</div>
 </div>
 
 <div style="border: 1px solid #d0d7de; border-radius: 12px; overflow: hidden;">
@@ -67,7 +67,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; border-radius: 50%; background: #0969da; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 13px; font-family: monospace; color: #656d76;">page theme apply docs</div>
+<div style="padding: 10px 20px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 13px; font-family: monospace; color: #656d76;">seite theme apply docs</div>
 </div>
 
 <div style="border: 3px solid #000000; overflow: hidden;">
@@ -81,7 +81,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; background: #ffe600; border: 2px solid #000; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #ffe600; border-top: 3px solid #000; font-size: 13px; font-family: monospace; color: #000; font-weight: 700;">page theme apply brutalist</div>
+<div style="padding: 10px 20px; background: #ffe600; border-top: 3px solid #000; font-size: 13px; font-family: monospace; color: #000; font-weight: 700;">seite theme apply brutalist</div>
 </div>
 
 <div style="border: 1px solid #e8e4df; border-radius: 20px; overflow: hidden;">
@@ -95,7 +95,7 @@ page theme apply <name>
 <span style="width: 20px; height: 20px; border-radius: 50%; background: #5046e5; display: inline-block;"></span>
 </div>
 </div>
-<div style="padding: 10px 20px; background: #e8e4df; border-top: 1px solid #ddd; font-size: 13px; font-family: monospace; color: #555; border-radius: 0 0 20px 20px;">page theme apply bento</div>
+<div style="padding: 10px 20px; background: #e8e4df; border-top: 1px solid #ddd; font-size: 13px; font-family: monospace; color: #555; border-radius: 0 0 20px 20px;">seite theme apply bento</div>
 </div>
 
 </div>
@@ -110,16 +110,16 @@ Download and install themes shared by others:
 
 ```bash
 # Install from a URL
-page theme install https://example.com/themes/aurora.tera
+seite theme install https://example.com/themes/aurora.tera
 
 # Install with a custom name
-page theme install https://example.com/themes/aurora.tera --name my-aurora
+seite theme install https://example.com/themes/aurora.tera --name my-aurora
 ```
 
-Installed themes are saved to `templates/themes/<name>.tera` and appear in `page theme list`. Apply them like any bundled theme:
+Installed themes are saved to `templates/themes/<name>.tera` and appear in `seite theme list`. Apply them like any bundled theme:
 
 ```bash
-page theme apply aurora
+seite theme apply aurora
 ```
 
 ## Export & Share Your Theme
@@ -128,21 +128,21 @@ Package your current theme for others to install:
 
 ```bash
 # Export with a description
-page theme export my-theme --description "Dark theme with green accents"
+seite theme export my-theme --description "Dark theme with green accents"
 
 # The theme is saved to templates/themes/my-theme.tera
 ```
 
-Host the `.tera` file anywhere (GitHub, your own server, a Gist) and others can install it with `page theme install <url>`.
+Host the `.tera` file anywhere (GitHub, your own server, a Gist) and others can install it with `seite theme install <url>`.
 
 ## Generate Custom Themes with AI
 
 Instead of browsing themes, describe what you want and let AI build it:
 
 ```bash
-page theme create "minimal dark theme with cyan accents and generous whitespace"
-page theme create "warm editorial design with serif headings and earth tones"
-page theme create "neon cyberpunk with scanline effects and monospace everything"
+seite theme create "minimal dark theme with cyan accents and generous whitespace"
+seite theme create "warm editorial design with serif headings and earth tones"
+seite theme create "neon cyberpunk with scanline effects and monospace everything"
 ```
 
 This spawns Claude Code to generate a complete `templates/base.html` with all required blocks, SEO tags, search, pagination, and accessibility features. Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
@@ -154,7 +154,7 @@ AI-generated themes are production-ready — Claude includes all SEO meta tags, 
 After generating, export it to share:
 
 ```bash
-page theme export cyberpunk --description "Neon cyberpunk with scanlines"
+seite theme export cyberpunk --description "Neon cyberpunk with scanlines"
 # Share templates/themes/cyberpunk.tera with anyone
 ```
 
@@ -175,11 +175,11 @@ All inline CSS (no external stylesheets) so the theme is completely self-contain
 ## Managing Themes
 
 ```bash
-page theme list              # Show all bundled + installed themes
-page theme apply <name>      # Apply a theme (writes templates/base.html)
-page theme install <url>     # Download a theme from a URL
-page theme export <name>     # Export current theme as shareable .tera file
-page theme create "<prompt>" # Generate a custom theme with AI
+seite theme list              # Show all bundled + installed themes
+seite theme apply <name>      # Apply a theme (writes templates/base.html)
+seite theme install <url>     # Download a theme from a URL
+seite theme export <name>     # Export current theme as shareable .tera file
+seite theme create "<prompt>" # Generate a custom theme with AI
 ```
 
 In the dev server REPL, type `theme` to list themes or `theme <name>` to apply and auto-rebuild.
