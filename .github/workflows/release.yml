@@ -103,22 +103,22 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../page-${{ matrix.target }}.tar.gz page
+          tar czf ../../../seite-${{ matrix.target }}.tar.gz seite
           cd ../../..
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/page.exe" -DestinationPath "page-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/seite.exe" -DestinationPath "seite-${{ matrix.target }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: page-${{ matrix.target }}
+          name: seite-${{ matrix.target }}
           path: |
-            page-${{ matrix.target }}.tar.gz
-            page-${{ matrix.target }}.zip
+            seite-${{ matrix.target }}.tar.gz
+            seite-${{ matrix.target }}.zip
 
   release:
     name: Create release
@@ -144,7 +144,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum page-*.tar.gz page-*.zip 2>/dev/null > checksums-sha256.txt
+          sha256sum seite-*.tar.gz seite-*.zip 2>/dev/null > checksums-sha256.txt
           cat checksums-sha256.txt
 
       - name: Create GitHub release
@@ -153,8 +153,8 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/page-*.tar.gz
-            artifacts/page-*.zip
+            artifacts/seite-*.tar.gz
+            artifacts/seite-*.zip
             artifacts/checksums-sha256.txt
 
   # TODO: Enable SLSA provenance when repo is public
@@ -188,19 +188,19 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: page-x86_64-unknown-linux-gnu
+          name: seite-x86_64-unknown-linux-gnu
           path: artifacts
 
-      - name: Install page from release artifact
+      - name: Install seite from release artifact
         run: |
-          tar xzf artifacts/page-x86_64-unknown-linux-gnu.tar.gz -C artifacts
-          chmod +x artifacts/page
-          sudo mv artifacts/page /usr/local/bin/page
-          page --version
+          tar xzf artifacts/seite-x86_64-unknown-linux-gnu.tar.gz -C artifacts
+          chmod +x artifacts/seite
+          sudo mv artifacts/page /usr/local/bin/seite
+          seite --version
 
       - name: Build docs site
         working-directory: site
-        run: page build
+        run: seite build
 
       - name: Generate download routing files
         working-directory: site
@@ -213,8 +213,8 @@ jobs:
           # _redirects — route /download/ paths to GitHub Releases
           # First rule: /download/latest/* resolves to the current release
           # Second rule: /download/<version>/* passes through to any release
-          printf '/download/latest/* https://github.com/sanchezomar/page/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
-          printf '/download/* https://github.com/sanchezomar/page/releases/download/:splat 302\n' >> dist/_redirects
+          printf '/download/latest/* https://github.com/seite-sh/seite/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
+          printf '/download/* https://github.com/seite-sh/seite/releases/download/:splat 302\n' >> dist/_redirects
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

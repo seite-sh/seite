@@ -30,7 +30,7 @@ pub struct NewArgs {
 }
 
 pub fn run(args: &NewArgs) -> anyhow::Result<()> {
-    let site_config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let site_config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = site_config.resolve_paths(&std::env::current_dir()?);
 
     let collection = config::find_collection(&args.collection, &site_config.collections)

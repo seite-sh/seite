@@ -30,8 +30,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
     // Check for workspace context
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
-        let ws_config =
-            workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+        let ws_config = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
         // Build all sites first
         if args.build {
@@ -49,9 +48,9 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
         // If --site is specified, serve only that site in standalone mode
         if let Some(site_name) = site_filter {
-            let ws_site = ws_config.find_site(site_name).ok_or_else(|| {
-                anyhow::anyhow!("unknown site '{site_name}' in workspace")
-            })?;
+            let ws_site = ws_config
+                .find_site(site_name)
+                .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
             let (config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
             let handle = server::start(&config, &paths, port, true, auto_increment)?;
 
@@ -120,7 +119,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&cwd);
 
     if args.build {
@@ -181,7 +180,7 @@ fn run_repl(
 }
 
 fn print_prompt() {
-    print!("page> ");
+    print!("seite> ");
     let _ = io::stdout().flush();
 }
 
@@ -265,7 +264,11 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                     println!();
                     println!("  {}", console::style("Installed:").underlined());
                     for t in &installed {
-                        println!("  {} - {}", console::style(&t.name).bold().cyan(), t.description);
+                        println!(
+                            "  {} - {}",
+                            console::style(&t.name).bold().cyan(),
+                            t.description
+                        );
                     }
                 }
             } else {
@@ -275,8 +278,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                     .map(|t| t.base_html.to_string())
                     .or_else(|| {
                         let project_root = std::path::PathBuf::from(".");
-                        crate::themes::installed_by_name(&project_root, name)
-                            .map(|t| t.base_html)
+                        crate::themes::installed_by_name(&project_root, name).map(|t| t.base_html)
                     });
 
                 match template_content {
@@ -288,7 +290,9 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                                 human::success(&format!("Applied theme '{name}'"));
                                 // Rebuild site to reflect the new theme
                                 human::info("Rebuilding site...");
-                                let opts = BuildOptions { include_drafts: true };
+                                let opts = BuildOptions {
+                                    include_drafts: true,
+                                };
                                 match build::build_site(config, paths, &opts) {
                                     Ok(result) => human::success(&result.stats.human_display()),
                                     Err(e) => human::error(&format!("Rebuild failed: {e}")),
@@ -297,18 +301,30 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                             Err(e) => human::error(&format!("Failed to apply theme: {e}")),
                         }
                     }
-                    None => human::error(&format!("Unknown theme '{name}'. Type 'theme' to list available themes.")),
+                    None => human::error(&format!(
+                        "Unknown theme '{name}'. Type 'theme' to list available themes."
+                    )),
                 }
             }
         }
 
         "status" => {
             println!("  Site: {}", config.site.title);
-            println!("  Collections: {}", config.collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", "));
+            println!(
+                "  Collections: {}",
+                config
+                    .collections
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
 
         _ => {
-            human::error(&format!("Unknown command: {cmd}. Type \"help\" for available commands."));
+            human::error(&format!(
+                "Unknown command: {cmd}. Type \"help\" for available commands."
+            ));
         }
     }
 
@@ -328,7 +344,12 @@ fn cmd_new(
             human::error(&format!(
                 "Unknown collection '{}'. Available: {}",
                 collection_name,
-                config.collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
+                config
+                    .collections
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
             return;
         }
@@ -394,11 +415,7 @@ fn cmd_new(
     }
 }
 
-fn cmd_agent(
-    _config: &SiteConfig,
-    _paths: &crate::config::ResolvedPaths,
-    args: &[String],
-) {
+fn cmd_agent(_config: &SiteConfig, _paths: &crate::config::ResolvedPaths, args: &[String]) {
     let agent_args = agent::AgentArgs {
         prompt: if args.is_empty() {
             None

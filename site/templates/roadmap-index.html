@@ -33,7 +33,7 @@
         animation: rm-fade-in 0.5s ease both;
     }
 
-    .rm-page>h1 {
+    .rm-seite>h1 {
         font-family: var(--serif);
         font-size: clamp(2rem, 4.5vw, 2.8rem);
         font-weight: 400;
@@ -169,7 +169,7 @@
 {% block content %}
 <div class="rm-page">
     <h1>{{ t.roadmap }}</h1>
-    <p class="rm-subtitle">{{ t.roadmap_subtitle | default(value="What we're working on and what's coming next.") }} {{ t.have_a_feature_request | default(value="Have a feature request?") }} <a href="https://github.com/page-cli/page-cli/issues">{{ t.open_an_issue | default(value="Open an issue") }}</a>.</p>
+    <p class="rm-subtitle">{{ t.roadmap_subtitle | default(value="What we're working on and what's coming next.") }} {{ t.have_a_feature_request | default(value="Have a feature request?") }} <a href="https://github.com/seite-sh/seite/issues">{{ t.open_an_issue | default(value="Open an issue") }}</a>.</p>
 
     {% set in_progress = [] %}
     {% set planned = [] %}

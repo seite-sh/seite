@@ -34,13 +34,13 @@ pub fn run(args: &CollectionArgs) -> anyhow::Result<()> {
 }
 
 fn run_add(args: &AddArgs) -> anyhow::Result<()> {
-    let config_path = PathBuf::from("page.toml");
+    let config_path = PathBuf::from("seite.toml");
     let site_config = SiteConfig::load(&config_path)?;
 
     // Check if collection already exists
     if site_config.collections.iter().any(|c| c.name == args.name) {
         anyhow::bail!(
-            "collection '{}' already exists in page.toml",
+            "collection '{}' already exists in seite.toml",
             args.name
         );
     }
@@ -58,10 +58,10 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
     let content_dir = paths.content.join(&preset.directory);
     fs::create_dir_all(&content_dir)?;
 
-    // Append collection to page.toml using toml table manipulation
+    // Append collection to seite.toml using toml table manipulation
     let contents = fs::read_to_string(&config_path)?;
     let mut doc: toml::Table = contents.parse().map_err(|e: toml::de::Error| {
-        anyhow::anyhow!("failed to parse page.toml: {}", e)
+        anyhow::anyhow!("failed to parse seite.toml: {}", e)
     })?;
 
     // Get or create the collections array
@@ -78,7 +78,7 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
     fs::write(&config_path, new_contents)?;
 
     human::success(&format!(
-        "Added '{}' collection to page.toml",
+        "Added '{}' collection to seite.toml",
         args.name
     ));
     human::info(&format!(
@@ -86,7 +86,7 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
         content_dir.display()
     ));
     human::info(&format!(
-        "Create content with: page new {} \"My Title\"",
+        "Create content with: seite new {} \"My Title\"",
         args.name
     ));
 
@@ -94,7 +94,7 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
 }
 
 fn run_list() -> anyhow::Result<()> {
-    let config_path = PathBuf::from("page.toml");
+    let config_path = PathBuf::from("seite.toml");
     let site_config = SiteConfig::load(&config_path)?;
 
     if site_config.collections.is_empty() {

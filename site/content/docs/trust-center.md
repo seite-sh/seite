@@ -14,7 +14,7 @@ The trust center is a built-in collection preset that scaffolds a compliance hub
 ### Add during site creation
 
 ```bash
-page init mysite --collections posts,pages,trust
+seite init mysite --collections posts,pages,trust
 ```
 
 When `trust` is included, you'll be prompted to select:
@@ -26,7 +26,7 @@ When `trust` is included, you'll be prompted to select:
 ### Non-interactive (CI-friendly)
 
 ```bash
-page init mysite \
+seite init mysite \
   --collections posts,pages,trust \
   --trust-company "Acme Corp" \
   --trust-frameworks soc2,iso27001 \
@@ -138,7 +138,7 @@ All sections are conditional — if a data file is empty or missing, the section
 
 ## Configuration
 
-The `[trust]` section in `page.toml` stores trust center metadata:
+The `[trust]` section in `seite.toml` stores trust center metadata:
 
 ```toml
 [trust]
@@ -153,16 +153,16 @@ frameworks = ["soc2", "iso27001"]
 
 ```bash
 # Add a new certification
-page new trust "PCI DSS"
+seite new trust "PCI DSS"
 
 # Add a security update
-page new trust "Q1 2026 Security Update" --tags changelog
+seite new trust "Q1 2026 Security Update" --tags changelog
 
 # Create a translation
-page new trust "Security Overview" --lang es
+seite new trust "Security Overview" --lang es
 
 # Rebuild after editing data files
-page build
+seite build
 ```
 
 ## Multi-language Support
@@ -191,4 +191,4 @@ Override `templates/trust-index.html` or `templates/trust-item.html` to customiz
 
 ## MCP Integration
 
-The `page://trust` resource returns the full trust center state as JSON, including certifications, subprocessor count, FAQ count, and content items. Use `page_search` with `collection: "trust"` to find trust center content.
+The `seite://trust` resource returns the full trust center state as JSON, including certifications, subprocessor count, FAQ count, and content items. Use `seite_search` with `collection: "trust"` to find trust center content.

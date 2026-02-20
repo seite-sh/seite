@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "page",
+    name = "seite",
     about = "A static site generator with LLM integration",
     version,
     propagate_version = true
@@ -74,10 +74,10 @@ pub enum Command {
     /// Manage multi-site workspaces
     Workspace(workspace::WorkspaceArgs),
 
-    /// Upgrade project config to match the current page version
+    /// Upgrade project config to match the current seite version
     Upgrade(upgrade::UpgradeArgs),
 
-    /// Update the page binary to the latest release
+    /// Update the seite binary to the latest release
     SelfUpdate(self_update::SelfUpdateArgs),
 
     /// Start MCP server for AI tool integration (stdio JSON-RPC)

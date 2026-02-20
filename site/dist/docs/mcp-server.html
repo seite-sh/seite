@@ -14,17 +14,17 @@
         </script>
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MCP Server — page docs</title>
+        <title>MCP Server — seite docs</title>
         <meta name="description" content="Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.">
-        <link rel="canonical" href="https://pagecli.dev/docs/mcp-server">
+        <link rel="canonical" href="https://seite.sh/docs/mcp-server">
 
         <!-- Open Graph -->
         <meta property="og:type" content="article">
-        <meta property="og:url" content="https://pagecli.dev/docs/mcp-server">
+        <meta property="og:url" content="https://seite.sh/docs/mcp-server">
         <meta property="og:title" content="MCP Server">
         <meta property="og:description" content="Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.">
         
-        <meta property="og:site_name" content="page">
+        <meta property="og:site_name" content="seite">
         <meta property="og:locale" content="en">
 
         <!-- Twitter Card -->
@@ -36,10 +36,10 @@
         
 
         <!-- Discovery -->
-        <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
+        <link rel="alternate" type="application/rss+xml" title="seite" href="/feed.xml">
         <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
         
-        <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/mcp-server.md">
+        <link rel="alternate" type="text/markdown" href="https://seite.sh/docs/mcp-server.md">
 
         <!-- hreflang -->
         
@@ -47,7 +47,7 @@
         <!-- JSON-LD -->
         <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"MCP Server","description":"Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/mcp-server"}
+    {"@context":"https://schema.org","@type":"Article","headline":"MCP Server","description":"Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/mcp-server"}
     
     </script>
 
@@ -1691,7 +1691,7 @@
             <div class="container nav-inner">
                 <button class="menu-toggle" aria-label="Toggle sidebar" onclick="document.querySelector('.docs-sidebar').classList.toggle('open');document.querySelector('.sidebar-backdrop').classList.toggle('open');">&#9776;</button>
                 <a href="/" class="nav-logo">
-                    <span class="nav-logo-caret">▸</span>page
+                    <span class="nav-logo-caret">▸</span>seite
                 </a>
                 
                 <ul class="nav-links">
@@ -1725,7 +1725,7 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
                 </button>
-                <a href="https://github.com/page-cli/page-cli" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
+                <a href="https://github.com/seite-sh/seite" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                     </svg>
@@ -1785,7 +1785,7 @@
             <ul>
                 <li><a href="/changelog">Changelog</a></li>
                 <li><a href="/roadmap">Roadmap</a></li>
-                <li><a href="https://github.com/page-cli/page-cli" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/seite-sh/seite" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             </ul>
         </nav>
     </aside>
@@ -1798,7 +1798,7 @@
 <p><code>page</code> includes a built-in <a href="https://modelcontextprotocol.io/">MCP</a> (Model Context Protocol) server that gives AI tools structured access to your site. When you open a page project in Claude Code, the MCP server starts automatically — no API keys or setup required.</p>
 <p>The server exposes your site's documentation, configuration, content, and themes as <strong>resources</strong>, and provides <strong>tools</strong> for building, creating content, searching, and applying themes.</p>
 <h2 id="how-it-works">How It Works</h2>
-<p>The MCP server runs as a subprocess (<code>page mcp</code>) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in <code>.claude/settings.json</code>:</p>
+<p>The MCP server runs as a subprocess (<code>seite mcp</code>) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in <code>.claude/settings.json</code>:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#c0c5ce;">{
 </span><span style="color:#c0c5ce;">  &quot;</span><span style="color:#a3be8c;">mcpServers</span><span style="color:#c0c5ce;">&quot;: {
@@ -1809,28 +1809,28 @@
 </span><span style="color:#c0c5ce;">  }
 </span><span style="color:#c0c5ce;">}
 </span></pre>
-<p>This is scaffolded by <code>page init</code> and can be added to existing projects with <code>page upgrade</code>.</p>
+<p>This is scaffolded by <code>seite init</code> and can be added to existing projects with <code>seite upgrade</code>.</p>
 <h2 id="resources">Resources</h2>
 <p>Resources are read-only data that AI tools can query. Each resource has a URI.</p>
 <table><thead><tr><th>Resource</th><th>URI</th><th>Description</th></tr></thead><tbody>
-<tr><th>Documentation index</th><th><code>page://docs</code></th><th>List of all documentation pages with titles and descriptions</th></tr>
-<tr><th>Documentation page</th><th><code>page://docs/{slug}</code></th><th>Full markdown content of a specific doc page</th></tr>
-<tr><th>Site configuration</th><th><code>page://config</code></th><th>Current <code>page.toml</code> serialized as JSON</th></tr>
-<tr><th>Content overview</th><th><code>page://content</code></th><th>All collections with item counts</th></tr>
-<tr><th>Collection items</th><th><code>page://content/{collection}</code></th><th>Items in a collection with metadata (title, date, tags, slug, url, draft status)</th></tr>
-<tr><th>Themes</th><th><code>page://themes</code></th><th>Available bundled and installed themes</th></tr>
-<tr><th>MCP configuration</th><th><code>page://mcp-config</code></th><th>The <code>.claude/settings.json</code> MCP server configuration</th></tr>
+<tr><th>Documentation index</th><th><code>seite://docs</code></th><th>List of all documentation pages with titles and descriptions</th></tr>
+<tr><th>Documentation page</th><th><code>seite://docs/{slug}</code></th><th>Full markdown content of a specific doc page</th></tr>
+<tr><th>Site configuration</th><th><code>seite://config</code></th><th>Current <code>seite.toml</code> serialized as JSON</th></tr>
+<tr><th>Content overview</th><th><code>seite://content</code></th><th>All collections with item counts</th></tr>
+<tr><th>Collection items</th><th><code>seite://content/{collection}</code></th><th>Items in a collection with metadata (title, date, tags, slug, url, draft status)</th></tr>
+<tr><th>Themes</th><th><code>seite://themes</code></th><th>Available bundled and installed themes</th></tr>
+<tr><th>MCP configuration</th><th><code>seite://mcp-config</code></th><th>The <code>.claude/settings.json</code> MCP server configuration</th></tr>
 </tbody></table>
-<p>Documentation resources are always available (they're embedded in the binary). Site-specific resources (<code>page://config</code>, <code>page://content/*</code>, <code>page://themes</code>, <code>page://mcp-config</code>) are only available when running inside a page project directory.</p>
+<p>Documentation resources are always available (they're embedded in the binary). Site-specific resources (<code>seite://config</code>, <code>seite://content/*</code>, <code>seite://themes</code>, <code>seite://mcp-config</code>) are only available when running inside a page project directory.</p>
 <h2 id="tools">Tools</h2>
 <p>Tools are actions that AI tools can execute.</p>
-<h3 id="page-build">page_build</h3>
+<h3 id="seite-build">seite_build</h3>
 <p>Build the site to the output directory.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>drafts</code></th><th>boolean</th><th>No</th><th>Include draft content in the build (default: false)</th></tr>
 </tbody></table>
 <p>Returns build statistics including pages built per collection, timing, and any errors.</p>
-<h3 id="page-create-content">page_create_content</h3>
+<h3 id="seite-create-content">seite_create_content</h3>
 <p>Create a new content file with frontmatter.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>collection</code></th><th>string</th><th>Yes</th><th>Collection name (<code>posts</code>, <code>docs</code>, or <code>pages</code>)</th></tr>
@@ -1840,19 +1840,19 @@
 <tr><th><code>draft</code></th><th>boolean</th><th>No</th><th>Create as draft</th></tr>
 </tbody></table>
 <p>Returns the file path, URL, and slug of the created content.</p>
-<h3 id="page-search">page_search</h3>
+<h3 id="seite-search">seite_search</h3>
 <p>Search site content by keywords.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>query</code></th><th>string</th><th>Yes</th><th>Search keywords</th></tr>
 <tr><th><code>collection</code></th><th>string</th><th>No</th><th>Limit search to a specific collection</th></tr>
 </tbody></table>
 <p>Matches against titles, descriptions, and tags. Returns up to 20 results with metadata.</p>
-<h3 id="page-apply-theme">page_apply_theme</h3>
+<h3 id="seite-apply-theme">seite_apply_theme</h3>
 <p>Apply a bundled or installed theme to the site.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>name</code></th><th>string</th><th>Yes</th><th>Theme name (<code>default</code>, <code>minimal</code>, <code>dark</code>, <code>docs</code>, <code>brutalist</code>, <code>bento</code>, or an installed theme)</th></tr>
 </tbody></table>
-<h3 id="page-lookup-docs">page_lookup_docs</h3>
+<h3 id="seite-lookup-docs">seite_lookup_docs</h3>
 <p>Look up page documentation by topic or keyword.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>query</code></th><th>string</th><th>No</th><th>Search keywords to find in documentation</th></tr>
@@ -1862,17 +1862,17 @@
 <h2 id="manual-testing">Manual Testing</h2>
 <p>You can test the MCP server manually by sending JSON-RPC messages:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#96b5b4;">echo </span><span style="color:#c0c5ce;">&#39;</span><span style="color:#a3be8c;">{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{}}</span><span style="color:#c0c5ce;">&#39; | </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> mcp
+<span style="color:#96b5b4;">echo </span><span style="color:#c0c5ce;">&#39;</span><span style="color:#a3be8c;">{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{}}</span><span style="color:#c0c5ce;">&#39; | </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> mcp
 </span></pre>
 <p>A full session requires the initialization handshake first, then queries:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#96b5b4;">printf </span><span style="color:#c0c5ce;">&#39;</span><span style="color:#a3be8c;">{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{}}\n{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;notifications/initialized&quot;}\n{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;resources/list&quot;,&quot;params&quot;:{}}\n</span><span style="color:#c0c5ce;">&#39; | </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> mcp
+<span style="color:#96b5b4;">printf </span><span style="color:#c0c5ce;">&#39;</span><span style="color:#a3be8c;">{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{}}\n{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;notifications/initialized&quot;}\n{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;resources/list&quot;,&quot;params&quot;:{}}\n</span><span style="color:#c0c5ce;">&#39; | </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> mcp
 </span></pre>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
-<li><a href="/docs/agent">AI Agent</a> — interactive AI sessions with <code>page agent</code></li>
-<li><a href="/docs/cli-reference">CLI Reference</a> — the <code>page mcp</code> command reference</li>
-<li><a href="/docs/configuration">Configuration</a> — the full <code>page.toml</code> reference</li>
+<li><a href="/docs/agent">AI Agent</a> — interactive AI sessions with <code>seite agent</code></li>
+<li><a href="/docs/cli-reference">CLI Reference</a> — the <code>seite mcp</code> command reference</li>
+<li><a href="/docs/configuration">Configuration</a> — the full <code>seite.toml</code> reference</li>
 </ul>
 </div>
         </article>
@@ -2016,11 +2016,11 @@
                 <li class="toc-level-2"><a href="#how-it-works">How It Works</a></li>
                 <li class="toc-level-2"><a href="#resources">Resources</a></li>
                 <li class="toc-level-2"><a href="#tools">Tools</a></li>
-                <li class="toc-level-3"><a href="#page-build">page_build</a></li>
-                <li class="toc-level-3"><a href="#page-create-content">page_create_content</a></li>
-                <li class="toc-level-3"><a href="#page-search">page_search</a></li>
-                <li class="toc-level-3"><a href="#page-apply-theme">page_apply_theme</a></li>
-                <li class="toc-level-3"><a href="#page-lookup-docs">page_lookup_docs</a></li>
+                <li class="toc-level-3"><a href="#seite-build">seite_build</a></li>
+                <li class="toc-level-3"><a href="#seite-create-content">seite_create_content</a></li>
+                <li class="toc-level-3"><a href="#seite-search">seite_search</a></li>
+                <li class="toc-level-3"><a href="#seite-apply-theme">seite_apply_theme</a></li>
+                <li class="toc-level-3"><a href="#seite-lookup-docs">seite_lookup_docs</a></li>
                 <li class="toc-level-2"><a href="#manual-testing">Manual Testing</a></li>
                 <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
                 </ul>
@@ -2036,12 +2036,12 @@
         <footer class="site-footer">
             <div class="container footer-inner">
                 <span class="footer-logo">
-                    <span class="footer-logo-caret">▸</span>page
+                    <span class="footer-logo-caret">▸</span>seite
                 </span>
                 
                 <ul class="footer-links">
                     
-                    <li><a href="https://github.com/page-cli/page-cli" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    <li><a href="https://github.com/seite-sh/seite" target="_blank" rel="noopener noreferrer">GitHub</a></li>
                     
                     <li><a href="/feed.xml">RSS</a></li>
                     
@@ -2052,7 +2052,7 @@
                 </ul>
                 
             </div>
-            <div class="footer-built">Built with <a href="https://pagecli.dev">page</a></div>
+            <div class="footer-built">Built with <a href="https://seite.sh">seite</a></div>
         </footer>
         
 

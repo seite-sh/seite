@@ -1,12 +1,12 @@
 #!/bin/sh
-# install.sh — Install the page static site generator
+# install.sh — Install the seite static site generator
 #
 # Usage:
-#   curl -fsSL https://pagecli.dev/install.sh | sh
+#   curl -fsSL https://seite.sh/install.sh | sh
 #
 # Works on macOS, Linux, and WSL (Windows Subsystem for Linux).
 # For native Windows, use install.ps1 instead:
-#   irm https://pagecli.dev/install.ps1 | iex
+#   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
 #   VERSION     Pin to a specific release (e.g., VERSION=v0.1.0)
@@ -14,8 +14,8 @@
 
 set -eu
 
-REPO="sanchezomar/page"
-BINARY="page"
+REPO="seite-sh/seite"
+BINARY="seite"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # --- Colors (only when stdout is a terminal) ---
@@ -49,7 +49,7 @@ detect_platform() {
     Linux)  OS_TRIPLE="unknown-linux-gnu" ;;
     *)
       error "Unsupported operating system: $OS"
-      echo "  Install from source instead: cargo install page"
+      echo "  Install from source instead: cargo install seite"
       exit 1
       ;;
   esac
@@ -59,7 +59,7 @@ detect_platform() {
     aarch64|arm64)   ARCH_TRIPLE="aarch64" ;;
     *)
       error "Unsupported architecture: $ARCH"
-      echo "  Install from source instead: cargo install page"
+      echo "  Install from source instead: cargo install seite"
       exit 1
       ;;
   esac
@@ -133,11 +133,11 @@ main() {
   detect_platform
 
   VERSION_TAG=$(resolve_version)
-  ARCHIVE="page-${TARGET}.tar.gz"
+  ARCHIVE="seite-${TARGET}.tar.gz"
   DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION_TAG}/${ARCHIVE}"
   CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION_TAG}/checksums-sha256.txt"
 
-  info "Installing page ${VERSION_TAG} for ${TARGET}"
+  info "Installing seite ${VERSION_TAG} for ${TARGET}"
 
   # Create temp directory with cleanup trap
   TMPDIR=$(mktemp -d)
@@ -169,7 +169,7 @@ main() {
   mv "${TMPDIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
   chmod +x "${INSTALL_DIR}/${BINARY}"
 
-  info "Installed page to ${INSTALL_DIR}/${BINARY}"
+  info "Installed seite to ${INSTALL_DIR}/${BINARY}"
 
   # Check PATH
   case ":${PATH}:" in

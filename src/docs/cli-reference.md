@@ -1,6 +1,6 @@
 ---
 title: "CLI Reference"
-description: "Complete reference for all page CLI commands, flags, and options."
+description: "Complete reference for allseite CLI commands, flags, and options."
 weight: 10
 ---
 
@@ -38,12 +38,12 @@ These flags work with any command:
 | `--verbose` | Enable verbose logging |
 | `--json` | Output results as JSON |
 
-## page init
+## seite init
 
 Create a new site directory with scaffolded structure.
 
 ```bash
-page init <name> [options]
+seite init <name> [options]
 ```
 
 | Flag | Description |
@@ -53,22 +53,22 @@ page init <name> [options]
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 
-If flags are omitted, `page init` prompts interactively.
+If flags are omitted, `seite init` prompts interactively.
 
 ```bash
 # Non-interactive
-page init mysite --title "My Blog" --deploy-target github-pages --collections posts,pages
+seite init mysite --title "My Blog" --deploy-target github-pages --collections posts,pages
 
 # Interactive
-page init mysite
+seite init mysite
 ```
 
-## page build
+## seite build
 
-Build the site from `page.toml` in the current directory.
+Build the site from `seite.toml` in the current directory.
 
 ```bash
-page build [options]
+seite build [options]
 ```
 
 | Flag | Description |
@@ -78,14 +78,14 @@ page build [options]
 
 The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
 
-After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
+After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
 
-## page serve
+## seite serve
 
 Start a development server with live reload.
 
 ```bash
-page serve [options]
+seite serve [options]
 ```
 
 | Flag | Description |
@@ -102,12 +102,12 @@ The server injects a live-reload script that polls for changes. An interactive R
 - `status` — show server info
 - `stop` — stop the server
 
-## page new
+## seite new
 
 Create a new content file with frontmatter.
 
 ```bash
-page new <collection> "Title" [options]
+seite new <collection> "Title" [options]
 ```
 
 | Flag | Description |
@@ -116,55 +116,55 @@ page new <collection> "Title" [options]
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
 
 ```bash
-page new post "My Post" --tags rust,web
-page new doc "API Guide"
-page new page "About"
-page new post "Mi Post" --lang es    # Spanish translation
-page new changelog "v1.0.0" --tags new,improvement
-page new roadmap "Dark Mode" --tags planned
+seite new post "My Post" --tags rust,web
+seite new doc "API Guide"
+seite new page "About"
+seite new post "Mi Post" --lang es    # Spanish translation
+seite new changelog "v1.0.0" --tags new,improvement
+seite new roadmap "Dark Mode" --tags planned
 ```
 
-## page agent
+## seite agent
 
 Launch an AI assistant with full site context.
 
 ```bash
-page agent [prompt]
+seite agent [prompt]
 ```
 
 Two modes:
-- **Interactive**: `page agent` — opens a Claude Code session
-- **One-shot**: `page agent "write a blog post about Rust"` — runs and exits
+- **Interactive**: `seite agent` — opens a Claude Code session
+- **One-shot**: `seite agent "write a blog post about Rust"` — runs and exits
 
 The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
 
-## page collection
+## seite collection
 
 Manage site collections — add presets to an existing site or list current collections.
 
 ```bash
-page collection <subcommand>
+seite collection <subcommand>
 ```
 
 | Subcommand | Description |
 |------------|-------------|
-| `add <preset>` | Add a collection preset to the current site (updates `page.toml`, creates content directory) |
+| `add <preset>` | Add a collection preset to the current site (updates `seite.toml`, creates content directory) |
 | `list` | List all collections in the current site with their configuration |
 
 Available presets: `posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`.
 
 ```bash
-page collection add changelog    # Add changelog collection
-page collection add roadmap      # Add roadmap collection
-page collection list             # Show all configured collections
+seite collection add changelog    # Add changelog collection
+seite collection add roadmap      # Add roadmap collection
+seite collection list             # Show all configured collections
 ```
 
-## page theme
+## seite theme
 
 Manage site themes — list, apply, install, export, and generate.
 
 ```bash
-page theme <subcommand>
+seite theme <subcommand>
 ```
 
 | Subcommand | Description |
@@ -176,22 +176,22 @@ page theme <subcommand>
 | `export <name>` | Export the current theme as a shareable `.tera` file |
 
 ```bash
-page theme list
-page theme apply dark
-page theme create "brutalist with neon green accents"
-page theme install https://example.com/themes/aurora.tera
-page theme install https://example.com/themes/aurora.tera --name my-aurora
-page theme export my-theme --description "My custom dark theme"
+seite theme list
+seite theme apply dark
+seite theme create "brutalist with neon green accents"
+seite theme install https://example.com/themes/aurora.tera
+seite theme install https://example.com/themes/aurora.tera --name my-aurora
+seite theme export my-theme --description "My custom dark theme"
 ```
 
 Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
-## page deploy
+## seite deploy
 
 Deploy the built site.
 
 ```bash
-page deploy [options]
+seite deploy [options]
 ```
 
 | Flag | Description |
@@ -205,21 +205,21 @@ page deploy [options]
 | `--no-commit` | Skip auto-commit and push (overrides `deploy.auto_commit`) |
 
 ```bash
-page deploy                          # Commit, push, build, and deploy
-page deploy --no-commit              # Deploy without auto-commit/push
-page deploy --dry-run                # Preview changes
-page deploy --target netlify         # Override target
-page deploy --target cloudflare --dry-run
-page deploy --domain example.com     # Set up custom domain
-page deploy --setup                  # Guided setup wizard
+seite deploy                          # Commit, push, build, and deploy
+seite deploy --no-commit              # Deploy without auto-commit/push
+seite deploy --dry-run                # Preview changes
+seite deploy --target netlify         # Override target
+seite deploy --target cloudflare --dry-run
+seite deploy --domain example.com     # Set up custom domain
+seite deploy --setup                  # Guided setup wizard
 ```
 
-## page workspace
+## seite workspace
 
 Manage multi-site workspaces. See the [Workspaces](/docs/workspace) guide for full details.
 
 ```bash
-page workspace <subcommand>
+seite workspace <subcommand>
 ```
 
 | Subcommand | Description |
@@ -238,43 +238,43 @@ page workspace <subcommand>
 | `--collections` | Comma-separated collections (default: `posts,pages`) |
 
 ```bash
-page workspace init my-workspace
-page workspace add blog --collections posts,pages --title "Blog"
-page workspace add docs --collections docs --path sites/documentation
-page workspace list
-page workspace status
+seite workspace init my-workspace
+seite workspace add blog --collections posts,pages --title "Blog"
+seite workspace add docs --collections docs --path sites/documentation
+seite workspace list
+seite workspace status
 ```
 
 When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by default. Use `--site` to target one:
 
 ```bash
-page build --site blog               # Build only the blog
-page serve --site docs               # Serve only the docs
-page deploy --site blog --dry-run    # Preview blog deploy
+seite build --site blog               # Build only the blog
+seite serve --site docs               # Serve only the docs
+seite deploy --site blog --dry-run    # Preview blog deploy
 ```
 
-## page mcp
+## seite mcp
 
 Start the MCP (Model Context Protocol) server for AI tool integration. Communicates over stdio using JSON-RPC.
 
 ```bash
-page mcp
+seite mcp
 ```
 
-This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. It is configured in `.claude/settings.json` during `page init` and requires no manual invocation.
+This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. It is configured in `.claude/settings.json` during `seite init` and requires no manual invocation.
 
 The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, create content, search, apply theme, lookup docs). See the [MCP Server](/docs/mcp-server) guide for full details.
 
 {{% callout(type="info") %}}
-You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use `page upgrade` to add the MCP configuration to existing projects.
+You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use `seite upgrade` to add the MCP configuration to existing projects.
 {{% end %}}
 
-## page upgrade
+## seite upgrade
 
 Update project configuration files to match the current binary version. When you upgrade the `page` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
 
 ```bash
-page upgrade [options]
+seite upgrade [options]
 ```
 
 | Flag | Description |
@@ -283,27 +283,27 @@ page upgrade [options]
 | `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
 
 ```bash
-page upgrade                # Interactive: shows changes, asks for confirmation
-page upgrade --force        # Apply all changes without prompting
-page upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
+seite upgrade                # Interactive: shows changes, asks for confirmation
+seite upgrade --force        # Apply all changes without prompting
+seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 ```
 
 Upgrade is **additive and non-destructive**:
 - Merges into `.claude/settings.json` — adds new entries, never removes yours
 - Appends to `CLAUDE.md` — adds new sections, never modifies existing content
-- Creates `.page/config.json` if missing — tracks the project's config version
+- Creates `.seite/config.json` if missing — tracks the project's config version
 - Each upgrade step is version-gated, so running it on a current project is a fast no-op
 
 {{% callout(type="tip") %}}
-`page build` will nudge you with a one-liner when your project config is outdated: *"Run `page upgrade` for new features."* The build still succeeds — the nudge is informational only.
+`seite build` will nudge you with a one-liner when your project config is outdated: *"Run `seite upgrade` for new features."* The build still succeeds — the nudge is informational only.
 {{% end %}}
 
-## page self-update
+## seite self-update
 
 Update the `page` binary itself to the latest release (or a specific version).
 
 ```bash
-page self-update [options]
+seite self-update [options]
 ```
 
 | Flag | Description |
@@ -312,13 +312,13 @@ page self-update [options]
 | `--target-version` | Update to a specific version (e.g., `0.2.0` or `v0.2.0`) |
 
 ```bash
-page self-update                          # Update to latest release
-page self-update --check                  # Just check, don't install
-page self-update --target-version 0.2.0   # Pin a specific version
+seite self-update                          # Update to latest release
+seite self-update --check                  # Just check, don't install
+seite self-update --target-version 0.2.0   # Pin a specific version
 ```
 
 The command downloads the appropriate binary for your platform from GitHub Releases, verifies the SHA256 checksum, and replaces the running binary atomically.
 
 {{% callout(type="info") %}}
-After updating the binary, run `page upgrade` in each of your projects to bring their config files up to date.
+After updating the binary, run `seite upgrade` in each of your projects to bring their config files up to date.
 {{% end %}}

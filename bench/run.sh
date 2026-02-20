@@ -3,7 +3,7 @@
 # page SSG benchmark
 #
 # Methodology (follows lumeland/benchmark pattern):
-#   - Scaffold site with `page init`
+#   - Scaffold site with `seite init`
 #   - Generate N markdown files with realistic frontmatter + body
 #   - Run 10 cold builds (clean dist/ each time)
 #   - Report median, min, max, mean build time
@@ -119,7 +119,7 @@ MDEOF
   done
 }
 
-# Create a benchmark site using `page init` for scaffolding
+# Create a benchmark site using `seite init` for scaffolding
 create_bench_site() {
   local site_dir="$1"
   local count="$2"
@@ -131,7 +131,7 @@ create_bench_site() {
   rm -rf "$site_dir"
   mkdir -p "$parent_dir"
 
-  # Scaffold with page init
+  # Scaffold with seite init
   cd "$parent_dir"
   "$PAGE_BIN" init "$site_name" \
     --title "Benchmark Site" \
@@ -140,7 +140,7 @@ create_bench_site() {
     --collections posts >/dev/null 2>&1
   cd "$PROJECT_DIR"
 
-  # Remove the sample post that page init creates
+  # Remove the sample post that seite init creates
   rm -f "$site_dir"/content/posts/*.md
 
   # Generate benchmark content

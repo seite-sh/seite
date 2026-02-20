@@ -13,7 +13,7 @@ Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). 
 | `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |
 | `bento` | Card grid layout with rounded corners and soft shadows |
 
-Apply with `page theme apply <name>`. This overwrites `templates/base.html`.
+Apply with `seite theme apply <name>`. This overwrites `templates/base.html`.
 
 ### Template Variables
 
@@ -24,7 +24,7 @@ Available in all templates:
 | `site.title` | string | Site title (language-specific if multilingual) |
 | `site.description` | string | Site description |
 | `site.base_url` | string | Base URL (e.g., `https://example.com`) |
-| `site.language` | string | Default language code (configured in `page.toml`) |
+| `site.language` | string | Default language code (configured in `seite.toml`) |
 | `site.author` | string | Author name |
 | `lang` | string | Current page language code |
 | `default_language` | string | Default language code (same as `site.language`) |

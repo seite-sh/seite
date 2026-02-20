@@ -6,8 +6,8 @@ Tests that require a real browser or deployed environment and can't be covered b
 
 ### Google Analytics 4 (direct)
 
-- [ ] Add `[analytics]` with `provider = "google"` and a real `G-XXXXXXX` ID to `page.toml`
-- [ ] Run `page build && page serve`, open in browser
+- [ ] Add `[analytics]` with `provider = "google"` and a real `G-XXXXXXX` ID to `seite.toml`
+- [ ] Run `seite build && seite serve`, open in browser
 - [ ] Verify GA4 script tag appears in page source `<head>`
 - [ ] Verify real-time traffic shows up in Google Analytics dashboard
 - [ ] Verify no cookie consent banner is shown
@@ -15,7 +15,7 @@ Tests that require a real browser or deployed environment and can't be covered b
 ### Google Analytics 4 (with consent)
 
 - [ ] Set `cookie_consent = true` in `[analytics]`
-- [ ] Run `page build && page serve`, open in browser
+- [ ] Run `seite build && seite serve`, open in browser
 - [ ] Verify consent banner appears at bottom of page on first visit
 - [ ] Click "Decline" — banner disappears, no analytics script loaded
 - [ ] Refresh page — banner stays hidden (localStorage persists)
@@ -66,15 +66,15 @@ Tests that require a real browser or deployed environment and can't be covered b
 
 - [ ] Build with no `[analytics]` section — no scripts injected, no banner
 - [ ] Build with invalid provider name — config parse error (not a silent failure)
-- [ ] Multiple `page build` runs — analytics injected exactly once (not duplicated)
-- [ ] Works with `page serve` live reload (rebuilt pages still have analytics)
-- [ ] Works in workspace mode (`page build --site blog`)
+- [ ] Multiple `seite build` runs — analytics injected exactly once (not duplicated)
+- [ ] Works with `seite serve` live reload (rebuilt pages still have analytics)
+- [ ] Works in workspace mode (`seite build --site blog`)
 
 ## Trust Center / Compliance Hub
 
 ### Init scaffolding (interactive)
 
-- [ ] Run `page init trustsite --collections posts,pages,trust` — triggers trust prompts
+- [ ] Run `seite init trustsite --collections posts,pages,trust` — triggers trust prompts
 - [ ] Verify company name prompt appears and accepts input
 - [ ] Verify framework multi-select shows all 7 options (SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3)
 - [ ] Verify section multi-select shows all 7 options with sensible defaults
@@ -91,14 +91,14 @@ Tests that require a real browser or deployed environment and can't be covered b
 
 ### Init scaffolding (non-interactive / CI)
 
-- [ ] Run `page init site --collections posts,pages,trust --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,subprocessors,faq,disclosure` — no prompts
+- [ ] Run `seite init site --collections posts,pages,trust --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,subprocessors,faq,disclosure` — no prompts
 - [ ] Verify same directory structure as interactive mode
-- [ ] Verify `page.toml` has `[trust]` section with company and frameworks
+- [ ] Verify `seite.toml` has `[trust]` section with company and frameworks
 - [ ] Verify CLAUDE.md has `## Trust Center` section with correct company name
 
 ### Build and render
 
-- [ ] Run `page build` on a trust-enabled site — builds successfully
+- [ ] Run `seite build` on a trust-enabled site — builds successfully
 - [ ] Open `/trust/` in browser — hub page renders with:
   - Hero section with company name
   - Certification cards with status badges (green=active, yellow=in_progress, gray=planned)
@@ -132,58 +132,58 @@ Tests that require a real browser or deployed environment and can't be covered b
 ### Multi-language
 
 - [ ] Create `content/trust/security-overview.es.md` with Spanish content
-- [ ] Add `[languages.es]` to `page.toml`
+- [ ] Add `[languages.es]` to `seite.toml`
 - [ ] Build — verify `/es/trust/security-overview` exists with Spanish content
 - [ ] Trust center index at `/es/trust/` renders in Spanish context
 - [ ] Language switcher shows on trust pages when translations exist
 
 ### MCP integration
 
-- [ ] Start MCP server with `page mcp` on a trust-enabled project
-- [ ] Send `resources/list` — verify `page://trust` resource appears
-- [ ] Send `resources/read` with `uri: "page://trust"` — returns JSON with:
+- [ ] Start MCP server with `seite mcp` on a trust-enabled project
+- [ ] Send `resources/list` — verify `seite://trust` resource appears
+- [ ] Send `resources/read` with `uri: "seite://trust"` — returns JSON with:
   - `config` (company, frameworks)
   - `certifications` (from YAML)
   - `subprocessors` (count + items)
   - `faq` (count + items)
   - `content_items` (trust collection items)
-- [ ] Verify `page://config` includes `trust` section
-- [ ] `page_search` with `collection: "trust"` finds trust center content
+- [ ] Verify `seite://config` includes `trust` section
+- [ ] `seite_search` with `collection: "trust"` finds trust center content
 
 ### Edge cases
 
 - [ ] Init with `--collections trust` only (no posts/pages) — works correctly
-- [ ] Init without trust collection — no trust files, no `[trust]` in page.toml
+- [ ] Init without trust collection — no trust files, no `[trust]` in seite.toml
 - [ ] Build with empty trust content dir but valid data files — index renders data sections only
 - [ ] Build with content but no data files — renders content sections only
-- [ ] `page new trust "Privacy Policy"` creates correct content file
+- [ ] `seite new trust "Privacy Policy"` creates correct content file
 - [ ] Nested trust paths work: `content/trust/certifications/soc2.md` → `/trust/certifications/soc2`
 
-## Domain-Routed Downloads (pagecli.dev)
+## Domain-Routed Downloads (seite.sh)
 
 ### Install script routing
 
-- [ ] `curl -fsSL https://pagecli.dev/install.sh | sh` downloads and installs successfully
-- [ ] `irm https://pagecli.dev/install.ps1 | iex` works on Windows
-- [ ] `VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh` pins to a specific version
-- [ ] `https://pagecli.dev/version.txt` returns the latest release tag (e.g., `v0.2.0`)
+- [ ] `curl -fsSL https://seite.sh/install.sh | sh` downloads and installs successfully
+- [ ] `irm https://seite.sh/install.ps1 | iex` works on Windows
+- [ ] `VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh` pins to a specific version
+- [ ] `https://seite.sh/version.txt` returns the latest release tag (e.g., `v0.2.0`)
 
 ### Download redirects
 
-- [ ] `https://pagecli.dev/download/latest/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the current GitHub Release asset
-- [ ] `https://pagecli.dev/download/latest/checksums-sha256.txt` 302-redirects to the current checksums
-- [ ] `https://pagecli.dev/download/v0.1.0/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the specific version on GitHub Releases
+- [ ] `https://seite.sh/download/latest/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the current GitHub Release asset
+- [ ] `https://seite.sh/download/latest/checksums-sha256.txt` 302-redirects to the current checksums
+- [ ] `https://seite.sh/download/v0.1.0/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the specific version on GitHub Releases
 - [ ] Checksum verification passes end-to-end (download via domain, verify sha256)
 
 ### Self-update routing
 
-- [ ] `page self-update --check` resolves latest version via `pagecli.dev/version.txt`
-- [ ] `page self-update` downloads binary through `pagecli.dev/download/` and installs successfully
-- [ ] `page self-update --target-version v0.1.0` downloads the specific version through the domain
-- [ ] If `pagecli.dev` is unreachable, `self-update` falls back to GitHub API for version resolution
+- [ ] `seite self-update --check` resolves latest version via `seite.sh/version.txt`
+- [ ] `seite self-update` downloads binary through `seite.sh/download/` and installs successfully
+- [ ] `seite self-update --target-version v0.1.0` downloads the specific version through the domain
+- [ ] If `seite.sh` is unreachable, `self-update` falls back to GitHub API for version resolution
 
 ### Release workflow
 
-- [ ] After a release, `pagecli.dev/version.txt` reflects the new tag
-- [ ] After a release, `pagecli.dev/_redirects` maps `/download/latest/*` to the new release
+- [ ] After a release, `seite.sh/version.txt` reflects the new tag
+- [ ] After a release, `seite.sh/_redirects` maps `/download/latest/*` to the new release
 - [ ] Old version URLs (`/download/v0.1.0/*`) still work after a new release

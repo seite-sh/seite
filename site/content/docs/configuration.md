@@ -1,12 +1,12 @@
 ---
 title: "Configuration"
-description: "Complete page.toml reference — site settings, collections, build options, deployment, languages, and images."
+description: "Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images."
 weight: 2
 ---
 
 ## Overview
 
-All configuration lives in `page.toml` at the project root. Here's a complete example:
+All configuration lives in `seite.toml` at the project root. Here's a complete example:
 
 ```toml
 [site]
@@ -176,7 +176,7 @@ Each language can override `title` and `description`. See [Multi-language](/docs
 
 ## [images]
 
-Optional. When this section is present, `page` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `page init` include this section by default.
+Optional. When this section is present, `page` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `seite init` include this section by default.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -266,7 +266,7 @@ Analytics injection happens as a post-processing step after the main build. Ever
 - **Without consent:** the analytics `<script>` tag is injected before `</head>`. GTM also gets a `<noscript>` fallback after `<body>`.
 - **With consent:** a consent banner with Accept/Decline buttons is injected before `</body>`. Analytics scripts are loaded dynamically only after the user accepts.
 
-To remove analytics, delete the `[analytics]` section from `page.toml`.
+To remove analytics, delete the `[analytics]` section from `seite.toml`.
 
 ## Frontmatter
 
@@ -306,9 +306,9 @@ extra:
 | `robots` | string | No | Per-page robots directive |
 | `extra` | map | No | Arbitrary data for templates |
 
-## page-workspace.toml
+## seite-workspace.toml
 
-For multi-site setups, a `page-workspace.toml` at the workspace root configures all sites. Each site still has its own `page.toml`.
+For multi-site setups, a `seite-workspace.toml` at the workspace root configures all sites. Each site still has its own `seite.toml`.
 
 ```toml
 [workspace]

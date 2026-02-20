@@ -1,7 +1,7 @@
 //! MCP tool implementations — actions AI tools can execute.
 //!
 //! Tools are invoked via `tools/call` and return structured results.
-//! Each tool wraps existing page CLI functionality.
+//! Each tool wraps existing seite CLI functionality.
 
 use std::fs;
 
@@ -15,7 +15,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({
         "tools": [
             {
-                "name": "page_build",
+                "name": "seite_build",
                 "description": "Build the site to the output directory. Returns build statistics including pages built and timing.",
                 "inputSchema": {
                     "type": "object",
@@ -29,7 +29,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                 }
             },
             {
-                "name": "page_create_content",
+                "name": "seite_create_content",
                 "description": "Create a new content file with frontmatter in the specified collection.",
                 "inputSchema": {
                     "type": "object",
@@ -61,7 +61,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                 }
             },
             {
-                "name": "page_search",
+                "name": "seite_search",
                 "description": "Search site content by keywords. Matches against titles, descriptions, and tags.",
                 "inputSchema": {
                     "type": "object",
@@ -79,7 +79,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                 }
             },
             {
-                "name": "page_apply_theme",
+                "name": "seite_apply_theme",
                 "description": "Apply a bundled or installed theme to the site. Writes templates/base.html.",
                 "inputSchema": {
                     "type": "object",
@@ -93,7 +93,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                 }
             },
             {
-                "name": "page_lookup_docs",
+                "name": "seite_lookup_docs",
                 "description": "Look up page documentation by topic slug or search by keyword. Returns relevant documentation sections.",
                 "inputSchema": {
                     "type": "object",
@@ -129,11 +129,11 @@ pub fn call(
         .unwrap_or(serde_json::json!({}));
 
     let result = match name {
-        "page_build" => call_build(state, &arguments),
-        "page_create_content" => call_create_content(state, &arguments),
-        "page_search" => call_search(state, &arguments),
-        "page_apply_theme" => call_apply_theme(state, &arguments),
-        "page_lookup_docs" => call_lookup_docs(&arguments),
+        "seite_build" => call_build(state, &arguments),
+        "seite_create_content" => call_create_content(state, &arguments),
+        "seite_search" => call_search(state, &arguments),
+        "seite_apply_theme" => call_apply_theme(state, &arguments),
+        "seite_lookup_docs" => call_lookup_docs(&arguments),
         _ => {
             return Err(JsonRpcError::invalid_params(format!(
                 "Unknown tool: {name}"
@@ -151,7 +151,7 @@ pub fn call(
 }
 
 // ---------------------------------------------------------------------------
-// page_build
+// seite_build
 // ---------------------------------------------------------------------------
 
 fn call_build(
@@ -164,7 +164,7 @@ fn call_build(
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project (no page.toml)"))?;
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project (no seite.toml)"))?;
     let paths = state.paths.as_ref().unwrap();
 
     let include_drafts = arguments
@@ -199,7 +199,7 @@ fn call_build(
 }
 
 // ---------------------------------------------------------------------------
-// page_create_content
+// seite_create_content
 // ---------------------------------------------------------------------------
 
 fn call_create_content(
@@ -209,7 +209,7 @@ fn call_create_content(
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
     let paths = state.paths.as_ref().unwrap();
 
     let collection_name = arguments
@@ -291,7 +291,7 @@ fn call_create_content(
 }
 
 // ---------------------------------------------------------------------------
-// page_search
+// seite_search
 // ---------------------------------------------------------------------------
 
 fn call_search(
@@ -301,7 +301,7 @@ fn call_search(
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
     let paths = state.paths.as_ref().unwrap();
 
     let query = arguments
@@ -309,9 +309,7 @@ fn call_search(
         .and_then(|v| v.as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'query' parameter"))?;
 
-    let filter_collection = arguments
-        .get("collection")
-        .and_then(|v| v.as_str());
+    let filter_collection = arguments.get("collection").and_then(|v| v.as_str());
 
     let query_lower = query.to_lowercase();
     let mut results = Vec::new();
@@ -427,7 +425,7 @@ fn first_paragraph(body: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// page_apply_theme
+// seite_apply_theme
 // ---------------------------------------------------------------------------
 
 fn call_apply_theme(
@@ -479,12 +477,10 @@ fn call_apply_theme(
 }
 
 // ---------------------------------------------------------------------------
-// page_lookup_docs
+// seite_lookup_docs
 // ---------------------------------------------------------------------------
 
-fn call_lookup_docs(
-    arguments: &serde_json::Value,
-) -> Result<serde_json::Value, JsonRpcError> {
+fn call_lookup_docs(arguments: &serde_json::Value) -> Result<serde_json::Value, JsonRpcError> {
     let topic = arguments.get("topic").and_then(|v| v.as_str());
     let query = arguments.get("query").and_then(|v| v.as_str());
 
@@ -569,9 +565,7 @@ fn extract_matching_sections(body: &str, query_lower: &str) -> Vec<String> {
     for line in body.lines() {
         if line.starts_with("## ") {
             // Check if the previous section matched
-            if !current_section.is_empty()
-                && current_section.to_lowercase().contains(query_lower)
-            {
+            if !current_section.is_empty() && current_section.to_lowercase().contains(query_lower) {
                 let section = if current_heading.is_empty() {
                     current_section.trim().to_string()
                 } else {
@@ -620,15 +614,12 @@ mod tests {
         let result = list().unwrap();
         let tools = result["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 5);
-        let names: Vec<&str> = tools
-            .iter()
-            .map(|t| t["name"].as_str().unwrap())
-            .collect();
-        assert!(names.contains(&"page_build"));
-        assert!(names.contains(&"page_create_content"));
-        assert!(names.contains(&"page_search"));
-        assert!(names.contains(&"page_apply_theme"));
-        assert!(names.contains(&"page_lookup_docs"));
+        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"seite_build"));
+        assert!(names.contains(&"seite_create_content"));
+        assert!(names.contains(&"seite_search"));
+        assert!(names.contains(&"seite_apply_theme"));
+        assert!(names.contains(&"seite_lookup_docs"));
     }
 
     #[test]
@@ -637,7 +628,7 @@ mod tests {
         let result = call_lookup_docs(&args).unwrap();
         assert_eq!(result["found"], true);
         assert_eq!(result["title"], "Configuration");
-        assert!(result["content"].as_str().unwrap().contains("page.toml"));
+        assert!(result["content"].as_str().unwrap().contains("seite.toml"));
     }
 
     #[test]

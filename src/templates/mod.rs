@@ -40,7 +40,7 @@ pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
 </nav>
 {% endif %}
 {% if not page and collections | length == 0 %}
-<p>No content yet. Create some with <code>page new post "My First Post"</code></p>
+<p>No content yet. Create some with <code>seite new post "My First Post"</code></p>
 {% endif %}
 {% endblock %}"#;
 
@@ -485,7 +485,10 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
         let glob_pattern = format!("{}/**/*.html", template_dir.display());
         match tera::Tera::new(&glob_pattern) {
             Ok(t) => t,
-            Err(_) => tera::Tera::default(),
+            Err(e) => {
+                eprintln!("⚠ Warning: failed to parse user templates, using defaults: {e}");
+                tera::Tera::default()
+            }
         }
     } else {
         tera::Tera::default()

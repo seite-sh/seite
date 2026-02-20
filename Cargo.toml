@@ -1,18 +1,18 @@
 [package]
-name = "page"
+name = "seite"
 version = "0.1.0"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
-repository = "https://github.com/sanchezomar/page"
-homepage = "https://pagecli.dev"
+repository = "https://github.com/seite-sh/seite"
+homepage = "https://seite.sh"
 keywords = ["static-site-generator", "ssg", "markdown", "llm", "ai"]
 categories = ["command-line-utilities", "web-programming"]
 rust-version = "1.75"
 readme = "README.md"
 
 [[bin]]
-name = "page"
+name = "seite"
 path = "src/main.rs"
 
 [dependencies]

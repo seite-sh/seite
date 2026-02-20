@@ -1,6 +1,6 @@
 ---
 title: About
-description: Why page exists, how it's built, and what it's designed to do.
+description: Why seite exists, how it's built, and what it's designed to do.
 ---
 
 ## It started with frustration.
@@ -17,13 +17,13 @@ The question was simple: could I use the coding AI I was already paying for to s
 
 The answer was yes — but only if the structure was right. AI agents are powerful, but without defined content types, consistent schemas, and clear conventions, the output drifts. Fast to generate, painful to maintain.
 
-page is what came out of that experiment. It was built with Claude Code, iterated on with Claude Code, and is managed with Claude Code. This site — the docs, the changelog, the llms.txt — is produced by the same build pipeline you get when you run `page build` on your own project.
+seite is what came out of that experiment. It was built with Claude Code, iterated on with Claude Code, and is managed with Claude Code. This site — the docs, the changelog, the llms.txt — is produced by the same build pipeline you get when you run `seite build` on your own project.
 
 ## What it's designed to do
 
-**Replace the stack, not add to it.** Your landing page, docs, blog, changelog, and roadmap shouldn't each live in a separate tool. They're all structured content that renders as HTML. page handles all of them with collection presets — one repo, one CLI, one deploy command.
+**Replace the stack, not add to it.** Your landing page, docs, blog, changelog, and roadmap shouldn't each live in a separate tool. They're all structured content that renders as HTML. seite handles all of them with collection presets — one repo, one CLI, one deploy command.
 
-**Give your coding agent the right foundation.** Every `page init` generates a `.claude/CLAUDE.md` context file so Claude Code (and other agents) can orient themselves immediately. The agent reads your schema, your templates, and your existing content before it writes anything. The output is reviewable and maintainable because it follows your conventions, not ones it invented.
+**Give your coding agent the right foundation.** Every `seite init` generates a `.claude/CLAUDE.md` context file so Claude Code (and other agents) can orient themselves immediately. The agent reads your schema, your templates, and your existing content before it writes anything. The output is reviewable and maintainable because it follows your conventions, not ones it invented.
 
 **Make every page discoverable by people and models.** Every build generates clean semantic HTML for browsers, `llms.txt` and `llms-full.txt` for language models, and structured data for search engines. Traditional SEO and GEO handled in one pipeline, automatically.
 
@@ -31,7 +31,7 @@ page is what came out of that experiment. It was built with Claude Code, iterate
 
 ## How it's built
 
-page is written in Rust. The build pipeline compiles to a single static binary that ships with all six themes included — nothing to download, nothing to configure.
+seite is written in Rust. The build pipeline compiles to a single static binary that ships with all six themes included — nothing to download, nothing to configure.
 
 The stack underneath:
 
@@ -39,15 +39,15 @@ The stack underneath:
 - **pulldown-cmark** — CommonMark Markdown parsing
 - **syntect** — syntax highlighting
 - **image** — resizing and WebP conversion
-- **Claude Code** — agent integration for `page agent` and `page theme create`
+- **Claude Code** — agent integration for `seite agent` and `seite theme create`
 
 ## Open source
 
-page is MIT licensed. It started as an internal tool and is open source because the problem it solves isn't unique to our startup. If you're running multiple subscriptions to maintain a web presence that should be one repo, this was built for you.
+seite is MIT licensed. It started as an internal tool and is open source because the problem it solves isn't unique to our startup. If you're running multiple subscriptions to maintain a web presence that should be one repo, this was built for you.
 
 Contributions, issues, and feedback are welcome.
 
-[View on GitHub →](https://github.com/page-cli/page-cli)
+[View on GitHub →](https://github.com/seite-sh/seite)
 
 ---
 

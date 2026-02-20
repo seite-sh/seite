@@ -104,7 +104,7 @@ pub fn deploy_workspace(
             "cloudflare" => {
                 let project = config.deploy.project.as_deref().ok_or_else(|| {
                     PageError::Deploy(format!(
-                        "site '{}': no deploy.project configured in page.toml",
+                        "site '{}': no deploy.project configured in seite.toml",
                         ws_site.name
                     ))
                 })?;

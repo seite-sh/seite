@@ -1,10 +1,10 @@
-# page — Static Site Generator with LLM Integration
+# seite — Static Site Generator with LLM Integration
 
 ## What This Is
 
-`page` is a Rust CLI static site generator designed to be AI-native. Content and templates are structured for LLM generation and consumption. Sites ship with `llms.txt`, `llms-full.txt`, and markdown versions of every page alongside the HTML.
+`seite` is a Rust CLI static site generator designed to be AI-native. Content and templates are structured for LLM generation and consumption. Sites ship with `llms.txt`, `llms-full.txt`, and markdown versions of every page alongside the HTML.
 
-The `page agent` command spawns Claude Code as a subprocess with full site context — no API keys needed, uses the user's Claude Code subscription directly.
+The `seite agent` command spawns Claude Code as a subprocess with full site context — no API keys needed, uses the user's Claude Code subscription directly.
 
 ## Quick Commands
 
@@ -14,7 +14,7 @@ cargo test           # Run all tests (135 unit + 192 integration)
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- init trustsite --title "Acme" --collections posts,pages,trust --trust-company "Acme Corp" --trust-frameworks soc2,iso27001
-cargo run -- build   # Build site from page.toml in current dir
+cargo run -- build   # Build site from seite.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- new post "Mi Post" --lang es   # Create Spanish translation
@@ -50,13 +50,13 @@ cargo run -- serve --site docs                      # Serve one site in workspac
 cargo run -- upgrade                               # Upgrade project config to current binary version
 cargo run -- upgrade --check                       # Check if upgrade needed (exit 1 = outdated, for CI)
 cargo run -- upgrade --force                       # Upgrade without confirmation
-cargo run -- self-update                           # Update page binary to latest release
+cargo run -- self-update                           # Update seite binary to latest release
 cargo run -- self-update --check                   # Check for new version without installing
 cargo run -- self-update --target-version 0.2.0    # Pin a specific version
 
 # Install (end users)
-curl -fsSL https://pagecli.dev/install.sh | sh       # macOS/Linux
-irm https://pagecli.dev/install.ps1 | iex            # Windows
+curl -fsSL https://seite.sh/install.sh | sh       # macOS/Linux
+irm https://seite.sh/install.ps1 | iex            # Windows
 ```
 
 ## Architecture
@@ -97,14 +97,14 @@ src/
     images.rs          Image processing (resize, WebP, srcset)
   docs.rs              Embedded documentation pages (14 docs, include_str! pattern)
   docs/                Documentation markdown files embedded at compile time
-  meta.rs              Project metadata (.page/config.json) — version tracking, upgrade detection
+  meta.rs              Project metadata (.seite/config.json) — version tracking, upgrade detection
   mcp/
     mod.rs             MCP server core (JSON-RPC over stdio, method dispatch)
     resources.rs       MCP resource providers (docs, config, content, themes, mcp-config)
     tools.rs           MCP tool implementations (build, create_content, search, apply_theme, lookup_docs)
   cli/
     mod.rs             Cli struct + Command enum (12 subcommands)
-    init.rs            Interactive project scaffolding (creates .page/config.json + MCP config)
+    init.rs            Interactive project scaffolding (creates .seite/config.json + MCP config)
     new.rs             Create content files
     build.rs           Build command (workspace-aware, nudges on outdated project)
     serve.rs           Dev server + interactive REPL (workspace-aware)
@@ -218,7 +218,7 @@ struct ContentItem {
 }
 ```
 
-### Config (page.toml)
+### Config (seite.toml)
 
 ```toml
 [site]
@@ -310,51 +310,51 @@ copyright: "2026 My Company"
 **UI string translations:**
 `data/i18n/{lang}.yaml` files override UI strings for each language. The build pipeline merges them on top of English defaults and injects the result as `{{ t }}` in templates. Example: `data/i18n/es.yaml` with keys like `search_placeholder`, `skip_to_content`, `no_results`, `newer`, `older`, etc.
 
-**Configuration:** The `data_dir` field in `[build]` defaults to `"data"`. Change it via `data_dir = "my_data"` in `page.toml`.
+**Configuration:** The `data_dir` field in `[build]` defaults to `"data"`. Change it via `data_dir = "my_data"` in `seite.toml`.
 
 ### Agent System
 
-`page agent` spawns Claude Code (`claude` CLI) as a subprocess with a rich system prompt containing:
+`seite agent` spawns Claude Code (`claude` CLI) as a subprocess with a rich system prompt containing:
 - Site config (title, description, base_url, collections)
 - Content inventory (titles, dates, tags of existing content per collection)
 - Template list
 - Frontmatter format with examples
 - File naming conventions
-- Available `page` CLI commands
+- Available `seite` CLI commands
 
 Two modes:
-- `page agent "prompt"` — non-interactive, runs `claude -p` and exits
-- `page agent` — interactive Claude Code session with full site context
+- `seite agent "prompt"` — non-interactive, runs `claude -p` and exits
+- `seite agent` — interactive Claude Code session with full site context
 
 The agent has access to `Read`, `Write`, `Edit`, `Glob`, `Grep`, and `Bash` tools.
 Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ### MCP Server
 
-`page mcp` runs a JSON-RPC 2.0 server over stdio for AI tool integration (Model Context Protocol). It's spawned automatically by Claude Code via the `mcpServers.page` entry in `.claude/settings.json`.
+`seite mcp` runs a JSON-RPC 2.0 server over stdio for AI tool integration (Model Context Protocol). It's spawned automatically by Claude Code via the `mcpServers.seite` entry in `.claude/settings.json`.
 
 **Architecture:** Synchronous read loop on stdin, dispatches JSON-RPC methods, writes responses to stdout. All logging to stderr (never stdout — it corrupts the protocol). No async runtime needed.
 
 **Resources** (read-only data):
-- `page://docs` / `page://docs/{slug}` — 14 embedded documentation pages (compiled into binary via `include_str!`)
-- `page://config` — `page.toml` serialized as JSON
-- `page://content` / `page://content/{collection}` — content inventory with metadata
-- `page://themes` — bundled + installed themes
-- `page://trust` — trust center state (certifications, subprocessors, FAQs, content) — only when trust collection is configured
-- `page://mcp-config` — `.claude/settings.json`
+- `seite://docs` / `seite://docs/{slug}` — 14 embedded documentation pages (compiled into binary via `include_str!`)
+- `seite://config` — `seite.toml` serialized as JSON
+- `seite://content` / `seite://content/{collection}` — content inventory with metadata
+- `seite://themes` — bundled + installed themes
+- `seite://trust` — trust center state (certifications, subprocessors, FAQs, content) — only when trust collection is configured
+- `seite://mcp-config` — `.claude/settings.json`
 
 **Tools** (executable actions):
-- `page_build` — runs build pipeline, returns stats
-- `page_create_content` — creates content files with frontmatter
-- `page_search` — searches content by title/description/tags
-- `page_apply_theme` — applies bundled or installed theme
-- `page_lookup_docs` — searches embedded docs by topic or keyword
+- `seite_build` — runs build pipeline, returns stats
+- `seite_create_content` — creates content files with frontmatter
+- `seite_search` — searches content by title/description/tags
+- `seite_apply_theme` — applies bundled or installed theme
+- `seite_lookup_docs` — searches embedded docs by topic or keyword
 
 **Files:** `src/mcp/mod.rs` (protocol), `src/mcp/resources.rs`, `src/mcp/tools.rs`, `src/docs.rs` + `src/docs/` (embedded docs)
 
 ### Dev Server
 
-- `page serve` starts HTTP server + file watcher in background threads
+- `seite serve` starts HTTP server + file watcher in background threads
 - Returns `ServerHandle` (stop with `Drop` or `.stop()`)
 - Interactive REPL with commands: new, agent, theme, build, status, stop
 - Live reload via `/__livereload` polling endpoint + injected `<script>`
@@ -362,19 +362,19 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 
 ### Workspace System
 
-Multi-site workspaces let you manage multiple `page` sites from a single directory with a `page-workspace.toml` config.
+Multi-site workspaces let you manage multiple `seite` sites from a single directory with a `seite-workspace.toml` config.
 
-- **Detection**: `workspace::find_workspace_root()` walks up from cwd looking for `page-workspace.toml`
+- **Detection**: `workspace::find_workspace_root()` walks up from cwd looking for `seite-workspace.toml`
 - **Execution context**: `workspace::resolve_context()` returns either `Standalone` or `Workspace` — all commands check this
 - **Global `--site` flag**: filters operations to a single site within the workspace
 - **Workspace build** (`workspace::build`): iterates sites, builds each with its own config/paths, per-site link validation
 - **Workspace serve** (`workspace::server`): unified HTTP server routing `/<site-name>/...` to each site's output dir, per-site file watching with selective rebuilds, auto-generated workspace index at `/`
 - **Workspace deploy** (`workspace::deploy`): iterates sites, runs pre-flight checks + build + deploy per-site, each site can use a different deploy target
-- **Config overrides**: `page-workspace.toml` can override `base_url` and `output_dir` per-site without touching each site's `page.toml`
+- **Config overrides**: `seite-workspace.toml` can override `base_url` and `output_dir` per-site without touching each site's `seite.toml`
 
 ### Project Metadata & Upgrades
 
-`.page/config.json` stores tooling metadata — which version of `page` last scaffolded or upgraded the project. This is fully owned by the tool; users never edit it.
+`.seite/config.json` stores tooling metadata — which version of `seite` last scaffolded or upgraded the project. This is fully owned by the tool; users never edit it.
 
 ```json
 {
@@ -400,7 +400,7 @@ Multi-site workspaces let you manage multiple `page` sites from a single directo
 
 **Build nudge** (`src/cli/build.rs`): at the start of `run()`, checks `meta::needs_upgrade()` and prints a one-liner if outdated.
 
-**MCP server config**: `page init` writes `.claude/settings.json` with a `mcpServers.page` block. `page upgrade` merges this into existing settings without overwriting user entries.
+**MCP server config**: `seite init` writes `.claude/settings.json` with a `mcpServers.seite` block. `seite upgrade` merges this into existing settings without overwriting user entries.
 
 ### Release & Distribution
 
@@ -408,9 +408,9 @@ Multi-site workspaces let you manage multiple `page` sites from a single directo
 - **Auto-tag workflow** (`.github/workflows/release-tag.yml`): detects version changes on `main`, auto-creates `v{version}` git tag
 - **Release workflow** (`.github/workflows/release.yml`): triggers on `v*` tag push, runs 4 jobs:
   1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64, Windows x86_64
-  2. `release` — creates GitHub Release with `page-{target}.tar.gz` archives + `checksums-sha256.txt`
+  2. `release` — creates GitHub Release with `seite-{target}.tar.gz` archives + `checksums-sha256.txt`
   3. `provenance` — SLSA Level 3 attestations via `slsa-framework/slsa-github-generator`
-  4. `deploy-site` — builds and deploys `site/` to Cloudflare Pages (pagecli.dev)
+  4. `deploy-site` — builds and deploys `site/` to Cloudflare Pages (seite.sh)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
 - **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
 - **Release flow**: bump version in `Cargo.toml` + update `site/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
@@ -420,7 +420,7 @@ Multi-site workspaces let you manage multiple `page` sites from a single directo
 
 6 bundled themes compiled into the binary (no downloads). Each theme is a Tera template file in `src/themes/` embedded via `include_str!` — edit the `.tera` files directly, Cargo auto-recompiles. The `.tera` extension keeps editors from running HTML validators over the Jinja2 syntax.
 
-`page theme create "<description>"` generates a custom theme by spawning Claude with a rich prompt including all template variable docs, Tera block requirements, and the search/pagination patterns. Claude writes `templates/base.html` directly. Requires Claude Code.
+`seite theme create "<description>"` generates a custom theme by spawning Claude with a rich prompt including all template variable docs, Tera block requirements, and the search/pagination patterns. Claude writes `templates/base.html` directly. Requires Claude Code.
 
 - `default` — 720px centered column, system-ui font, blue links (`#0057b7`). Sensible baseline.
 - `minimal` — 600px column, Georgia serif, bottom-border-only search input. Literary/essay feel.
@@ -436,14 +436,14 @@ Each registers as `base.html` when applied; user `templates/base.html` overrides
 
 Themes can be installed from URLs and exported for sharing:
 
-- `page theme install <url>` — downloads a `.tera` file and saves to `templates/themes/<name>.tera`
-- `page theme install <url> --name <name>` — install with a custom name
-- `page theme export <name>` — packages `templates/base.html` as `templates/themes/<name>.tera` with metadata
-- `page theme export <name> --description "..."` — include a description in the exported theme
+- `seite theme install <url>` — downloads a `.tera` file and saves to `templates/themes/<name>.tera`
+- `seite theme install <url> --name <name>` — install with a custom name
+- `seite theme export <name>` — packages `templates/base.html` as `templates/themes/<name>.tera` with metadata
+- `seite theme export <name> --description "..."` — include a description in the exported theme
 
-Installed themes are stored in `templates/themes/` and discovered at runtime. `page theme list` shows both bundled and installed themes. `page theme apply` checks bundled first, then installed.
+Installed themes are stored in `templates/themes/` and discovered at runtime. `seite theme list` shows both bundled and installed themes. `seite theme apply` checks bundled first, then installed.
 
-Theme metadata format: `{#- theme-description: Description here -#}` as a Tera comment in the first 10 lines of the file. The REPL in `page serve` also supports installed themes via the `theme` command.
+Theme metadata format: `{#- theme-description: Description here -#}` as a Tera comment in the first 10 lines of the file. The REPL in `seite serve` also supports installed themes via the `theme` command.
 
 ## Patterns and Conventions
 
@@ -465,12 +465,12 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
 ### Documentation
-- The documentation site lives in `site/` and is built with `page` itself
+- The documentation site lives in `site/` and is built with `seite` itself
 - Docs are in `site/content/docs/` — one markdown file per topic
 - **When changing user-facing features (CLI flags, commands, config options, deploy behavior, build steps), update the corresponding docs:**
   - `site/content/docs/cli-reference.md` — all CLI commands and flags
   - `site/content/docs/deployment.md` — deploy targets, pre-flight checks, setup
-  - `site/content/docs/configuration.md` — `page.toml` options
+  - `site/content/docs/configuration.md` — `seite.toml` options
   - `site/content/docs/collections.md` — collection presets and config
   - `site/content/docs/templates.md` — template variables and blocks
   - `site/content/docs/i18n.md` — multi-language features
@@ -563,13 +563,13 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 1. **Config model** — add struct + field to `SiteConfig` in `src/config/mod.rs`
 2. **Build pipeline** — integrate the feature in `src/build/mod.rs` (add step to `build_site()`)
 3. **Init scaffolding** — set the default in the `SiteConfig` literal in `src/cli/init.rs`
-4. **Embedded docs** — update `src/docs/configuration.md` (or the relevant `src/docs/*.md` page). These are compiled into the binary and served via the MCP server's `page_lookup_docs` tool and `page://docs/*` resources
+4. **Embedded docs** — update `src/docs/configuration.md` (or the relevant `src/docs/*.md` page). These are compiled into the binary and served via the MCP server's `seite_lookup_docs` tool and `seite://docs/*` resources
 5. **Site docs** — mirror the same changes in `site/content/docs/` (the deployed documentation site)
 6. **MCP compliance** — verify the feature is visible through the MCP server:
-   - `page://config` auto-exposes any new `SiteConfig` fields (no code needed if serde works)
-   - `page_build` auto-includes new build steps (no code needed if added to `build_site()`)
-   - `page_lookup_docs` returns the updated embedded docs (no code needed if `src/docs/` is updated)
-   - Add an MCP integration test confirming the new config is visible via `page://config`
+   - `seite://config` auto-exposes any new `SiteConfig` fields (no code needed if serde works)
+   - `seite_build` auto-includes new build steps (no code needed if added to `build_site()`)
+   - `seite_lookup_docs` returns the updated embedded docs (no code needed if `src/docs/` is updated)
+   - Add an MCP integration test confirming the new config is visible via `seite://config`
 7. **CLAUDE.md** — update the module map, build pipeline step list, config example, and any relevant convention sections
 8. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
 9. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
@@ -579,7 +579,7 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 - Date-based entries with RSS feed. Tags render as colored badges in all 6 themes
 - Tag conventions: `new` (green), `fix` (blue), `breaking` (red), `improvement` (purple), `deprecated` (gray)
 - Collection-specific index template (`changelog-index.html`) shows reverse-chronological feed
-- Create entries: `page new changelog "v1.0.0" --tags new,improvement`
+- Create entries: `seite new changelog "v1.0.0" --tags new,improvement`
 
 ### Roadmap Collection
 - Weight-ordered items grouped by status tags. No dates, no RSS
@@ -587,7 +587,7 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 - Three index layouts: grouped list (default `roadmap-index.html`), kanban (`roadmap-kanban.html`), timeline (`roadmap-timeline.html`)
 - Users switch layouts by creating `templates/roadmap-index.html` extending the desired variant
 - All 6 themes include CSS for all 3 layouts (grouped, kanban, timeline) and status badges
-- Create items: `page new roadmap "Feature Name" --tags planned`
+- Create items: `seite new roadmap "Feature Name" --tags planned`
 
 ### Collection-Specific Index Templates
 The build pipeline checks for `{collection.name}-index.html` before falling back to `index.html`. This applies to both paginated and non-paginated collections. Changelog and roadmap ship dedicated index templates; any collection can override its index this way.
@@ -598,20 +598,20 @@ The trust center is a collection preset (`trust`) that scaffolds a compliance hu
 - **Data files** (`data/trust/`) — `certifications.yaml`, `subprocessors.yaml`, `faq.yaml` driving the templates
 - **Content pages** (`content/trust/`) — markdown prose for security overview, vulnerability disclosure, per-framework details
 - **Templates** — `trust-index.html` (hub at `/trust/`) and `trust-item.html` (individual pages)
-- **Config** — `[trust]` section in `page.toml` with `company` and `frameworks` fields
+- **Config** — `[trust]` section in `seite.toml` with `company` and `frameworks` fields
 
 **Init flow:** When `trust` is included in `--collections`, interactive prompts ask for company name, frameworks (SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3), sections, and per-framework status. CLI flags `--trust-company`, `--trust-frameworks`, `--trust-sections` support non-interactive mode.
 
 **Build pipeline:** Step 4b2 renders non-paginated collection indexes — the trust collection gets `/trust/index.html` using `trust-index.html` template with `data.trust.*` context.
 
-**MCP:** `page://trust` resource returns trust center state (certifications, subprocessors, FAQs, content items).
+**MCP:** `seite://trust` resource returns trust center state (certifications, subprocessors, FAQs, content items).
 
 **Scaffolded CLAUDE.md:** When trust is present, the generated CLAUDE.md includes a comprehensive trust center section with data file formats, management workflows, and MCP integration docs.
 
-**Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (page://trust), `src/docs/trust-center.md`, `src/themes/*.tera` (CSS)
+**Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (seite://trust), `src/docs/trust-center.md`, `src/themes/*.tera` (CSS)
 
 ### Singular→Plural Normalization
-`find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "page" → "pages" so users can type either form.
+`find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "seite" → "pages" so users can type either form.
 
 ### Multi-language (i18n) Support
 
@@ -626,7 +626,7 @@ Filename-based translation system. Fully backward compatible — single-language
 
 **Template context variables for i18n:**
 - `{{ lang }}` — current page language code (e.g. `"es"`)
-- `{{ site.language }}` — *configured default* language from `page.toml` (always the same, does not change per render)
+- `{{ site.language }}` — *configured default* language from `seite.toml` (always the same, does not change per render)
 - `{{ default_language }}` — same as `site.language` (explicit alias for clarity)
 - `{{ lang_prefix }}` — URL prefix: empty string for default language, `"/es"` for Spanish, etc.
 - `{{ t }}` — UI translation strings object with English defaults, overridable via `data/i18n/{lang}.yaml`
@@ -651,7 +651,7 @@ If `content/pages/index.md` exists, its rendered content is injected into the in
 
 ## Design Trends & Theme Direction (2026)
 
-Context for deciding which themes to ship and what design prompts to include in the agent scaffold CLAUDE.md generated by `page init`.
+Context for deciding which themes to ship and what design prompts to include in the agent scaffold CLAUDE.md generated by `seite init`.
 
 ### Trends worth building themes around
 
@@ -683,7 +683,7 @@ Context for deciding which themes to ship and what design prompts to include in 
 
 ### Agent scaffold design prompts
 
-When `page init` generates `.claude/CLAUDE.md` for a new site, include these prompts to guide the AI agent when asked to redesign or create themes:
+When `seite init` generates `.claude/CLAUDE.md` for a new site, include these prompts to guide the AI agent when asked to redesign or create themes:
 
 ```
 ## Design Prompts for Theme Work
@@ -740,7 +740,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 
 - [x] Collections system (posts, docs, pages with presets)
 - [x] Build pipeline with markdown output alongside HTML
-- [x] AI agent via Claude Code (`page agent` spawns `claude` subprocess with site context)
+- [x] AI agent via Claude Code (`seite agent` spawns `claude` subprocess with site context)
 - [x] Discovery files (robots.txt, llms.txt, llms-full.txt)
 - [x] Bundled themes (default, minimal, dark, docs, brutalist, bento)
 - [x] Interactive REPL in serve mode
@@ -752,7 +752,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Deploy to GitHub Pages + Cloudflare Pages + Netlify
 - [x] Syntax highlighting (syntect, inline styles, base16-ocean.dark theme)
 - [x] Docs sidebar navigation (auto-generated from collection items, grouped by directory)
-- [x] Claude Code scaffolding (`page init` creates `.claude/settings.json` + `CLAUDE.md`)
+- [x] Claude Code scaffolding (`seite init` creates `.claude/settings.json` + `CLAUDE.md`)
 - [x] Homepage as special page (`content/pages/index.md` → custom homepage content)
 - [x] Multi-language (i18n) support — filename-based translations, per-language URLs, hreflang tags, language switcher, per-language RSS/sitemap/discovery files
 - [x] Search — `search-index.json` generated per language, inline client-side JS in all 6 themes, lazy-loaded, filters by title/description/tags
@@ -773,30 +773,30 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Build timing — per-step timing in build stats output (12 instrumented steps)
 - [x] Deploy pre-flight checks — validates output dir, base_url (warns on localhost), CLI tools, git repo/remote, project config before deploying
 - [x] GitHub Pages deploy hardening — auto-generates `.nojekyll`, `CNAME` for custom domains, sets git user identity, timestamped commit messages
-- [x] base_url lifecycle management — `--base-url` flag overrides base_url at deploy time without modifying page.toml; pre-flight warns on localhost URLs
+- [x] base_url lifecycle management — `--base-url` flag overrides base_url at deploy time without modifying seite.toml; pre-flight warns on localhost URLs
 - [x] Preview/staging deploys — `--preview` flag creates non-production deploys on Cloudflare (branch deploy) and Netlify (draft deploy)
-- [x] Deploy guided setup — `--setup` flag runs interactive setup: creates repos/projects, configures auth, generates CI workflows, writes config to page.toml
-- [x] CI workflows for all targets — `page init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
-- [x] Custom domain management — `--domain` flag shows DNS records, updates base_url + `deploy.domain` in page.toml, attaches domain to Cloudflare Pages via API, runs `netlify domains:add` for Netlify, auto-generates CNAME for GitHub Pages. Preflight checks verify domain is attached.
+- [x] Deploy guided setup — `--setup` flag runs interactive setup: creates repos/projects, configures auth, generates CI workflows, writes config to seite.toml
+- [x] CI workflows for all targets — `seite init` now generates GitHub Actions workflow for all three targets (not just GitHub Pages); Netlify also gets `netlify.toml`
+- [x] Custom domain management — `--domain` flag shows DNS records, updates base_url + `deploy.domain` in seite.toml, attaches domain to Cloudflare Pages via API, runs `netlify domains:add` for Netlify, auto-generates CNAME for GitHub Pages. Preflight checks verify domain is attached.
 - [x] Post-deploy verification — auto-verifies homepage returns 200, checks robots.txt/sitemap.xml/llms.txt reachability after production deploys
 - [x] Interactive deploy recovery — failed pre-flight checks prompt to auto-fix (install CLIs, init git, create projects, login, fix base_url), with manual instructions as fallback. Cloudflare verifies project exists remotely; Netlify checks site is linked.
 - [x] Shell installer + release CI — `curl | sh` installer, GitHub Actions release workflow (4 platform binaries), SLSA Level 3 provenance, auto-tag from Cargo.toml version, auto-deploy docs site on release
 - [x] Data files — `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. All 6 bundled themes conditionally render `data.nav` and `data.footer`. Nested directories create nested keys. Conflict detection for duplicate stems and path collisions.
 - [x] Windows support — PowerShell installer (`install.ps1`), Windows x86_64 release binaries, platform helpers for `.cmd` shims and backslash path normalization
-- [x] Multi-site workspaces — `page workspace init/list/add/status` commands, `page-workspace.toml` config, global `--site` flag, workspace-aware build/serve/deploy, unified dev server with per-site routing and selective file watching, per-site deploy orchestration with independent targets
-- [x] Project metadata & upgrades — `.page/config.json` tracks binary version that last scaffolded the project. `page upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `page build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
-- [x] Self-update — `page self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
-- [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects.
-- [x] MCP server — `page mcp` runs a JSON-RPC server over stdio. Resources: `page://docs/*` (14 embedded doc pages), `page://config`, `page://content/*`, `page://themes`, `page://mcp-config`. Tools: `page_build`, `page_create_content`, `page_search`, `page_apply_theme`, `page_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
+- [x] Multi-site workspaces — `seite workspace init/list/add/status` commands, `seite-workspace.toml` config, global `--site` flag, workspace-aware build/serve/deploy, unified dev server with per-site routing and selective file watching, per-site deploy orchestration with independent targets
+- [x] Project metadata & upgrades — `.seite/config.json` tracks binary version that last scaffolded the project. `seite upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `seite build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
+- [x] Self-update — `seite self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
+- [x] MCP server scaffolding — `seite init` creates `.claude/settings.json` with `mcpServers.seite` block. `seite upgrade` merges MCP config into existing projects.
+- [x] MCP server — `seite mcp` runs a JSON-RPC server over stdio. Resources: `seite://docs/*` (14 embedded doc pages), `seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`. Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
 - [x] Changelog collection — `changelog` preset with dated entries, RSS feed, and colored tag badges (new/fix/breaking/improvement/deprecated). Dedicated `changelog-entry.html` and `changelog-index.html` templates with CSS in all 6 themes. Collection-specific index template resolution in build pipeline.
 - [x] Roadmap collection — `roadmap` preset with weight-ordered items and status tags (planned/in-progress/done/cancelled). Three index layouts: grouped list (default), kanban (CSS grid 3-column), and timeline (vertical milestones). Dedicated templates and CSS in all 6 themes.
-- [x] Trust Center collection — `trust` preset with data-driven compliance hub scaffolding. Certifications, subprocessors, and FAQ data files. Content pages for security overview, vulnerability disclosure, per-framework details. Interactive init flow with framework selection. Dedicated `trust-index.html` and `trust-item.html` templates with CSS in all 6 themes. `page://trust` MCP resource. 17 i18n UI string keys.
+- [x] Trust Center collection — `trust` preset with data-driven compliance hub scaffolding. Certifications, subprocessors, and FAQ data files. Content pages for security overview, vulnerability disclosure, per-framework details. Interactive init flow with framework selection. Dedicated `trust-index.html` and `trust-item.html` templates with CSS in all 6 themes. `seite://trust` MCP resource. 17 i18n UI string keys.
 - [x] Analytics & cookie consent — `[analytics]` config section with 5 providers (Google Analytics, GTM, Plausible, Fathom, Umami). Optional cookie consent banner with localStorage persistence. Injected into all HTML files at build step 13.
-- [x] Collection management — `page collection add <preset>` and `page collection list` commands for adding collections to existing sites.
+- [x] Collection management — `seite collection add <preset>` and `seite collection list` commands for adding collections to existing sites.
 
 ### Up Next
 
-See the public roadmap at https://pagecli.dev/roadmap for detailed planned features, and the changelog at https://pagecli.dev/changelog for release history.
+See the public roadmap at https://seite.sh/roadmap for detailed planned features, and the changelog at https://seite.sh/changelog for release history.
 
 **Priority areas:**
 - Multi-LLM agent support — Claude Code, OpenCode, Codex CLI, Gemini CLI as interchangeable backends

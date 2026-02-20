@@ -1,12 +1,12 @@
 ---
 title: AI Agent
-description: Use page agent to get AI assistance with content creation, site management, and theme generation.
+description: Use seite agent to get AI assistance with content creation, site management, and theme generation.
 weight: 8
 ---
 
 ## Overview
 
-`page` integrates directly with Claude Code. The `page agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
+`page` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
 
 No API keys needed. It uses your Claude Code subscription directly.
 
@@ -29,7 +29,7 @@ claude --version
 Launch an interactive session:
 
 ```bash
-page agent
+seite agent
 ```
 
 Claude receives a rich system prompt containing:
@@ -43,7 +43,7 @@ Claude receives a rich system prompt containing:
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 
 {{% callout(type="info") %}}
-The agent can run `page build` and `page serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
+The agent can run `seite build` and `seite serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
 {{% end %}}
 
 ## One-Shot Mode
@@ -51,9 +51,9 @@ The agent can run `page build` and `page serve` to verify its own changes. It wi
 Pass a prompt directly for non-interactive use:
 
 ```bash
-page agent "create a blog post about Rust error handling best practices"
-page agent "add a docs page explaining the deployment process"
-page agent "update the homepage to include a features section"
+seite agent "create a blog post about Rust error handling best practices"
+seite agent "add a docs page explaining the deployment process"
+seite agent "update the homepage to include a features section"
 ```
 
 Claude writes the files directly and exits.
@@ -65,32 +65,32 @@ Here are prompts that work well, grouped by use case:
 ### Content creation
 
 ```bash
-page agent "write a technical tutorial about async Rust, include code examples and a summary"
-page agent "create a blog post comparing static site generators, with a table of features"
-page agent "add an FAQ page with 10 common questions about our product"
+seite agent "write a technical tutorial about async Rust, include code examples and a summary"
+seite agent "create a blog post comparing static site generators, with a table of features"
+seite agent "add an FAQ page with 10 common questions about our product"
 ```
 
 ### Site management
 
 ```bash
-page agent "add the tag 'tutorial' to all posts that contain code blocks"
-page agent "create Spanish translations for all docs pages"
-page agent "reorganize the docs into guides/ and reference/ subdirectories"
+seite agent "add the tag 'tutorial' to all posts that contain code blocks"
+seite agent "create Spanish translations for all docs pages"
+seite agent "reorganize the docs into guides/ and reference/ subdirectories"
 ```
 
 ### Theme and design
 
 ```bash
-page agent "update the homepage to add a testimonials section with three cards"
-page agent "add a custom footer with social links and a newsletter signup"
+seite agent "update the homepage to add a testimonials section with three cards"
+seite agent "add a custom footer with social links and a newsletter signup"
 ```
 
 ### Debugging
 
 ```bash
-page agent "the build is failing on my Spanish translations, help me fix it"
-page agent "find and fix any broken internal links in my content"
-page agent "my RSS feed is missing some posts, diagnose the issue"
+seite agent "the build is failing on my Spanish translations, help me fix it"
+seite agent "find and fix any broken internal links in my content"
+seite agent "my RSS feed is missing some posts, diagnose the issue"
 ```
 
 ## Tips for Effective Prompts
@@ -108,7 +108,7 @@ The agent already knows your site structure, collections, existing content, and 
 Generate custom themes with AI:
 
 ```bash
-page theme create "dark mode with neon green accents and brutalist layout"
+seite theme create "dark mode with neon green accents and brutalist layout"
 ```
 
 Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly.
@@ -118,7 +118,7 @@ Claude receives detailed instructions about required template blocks, available 
 The dev server REPL also supports the agent:
 
 ```
-page> agent "write a post about our latest release"
+seite> agent "write a post about our latest release"
 ```
 
 This is useful for quick content creation while previewing your site.
@@ -135,10 +135,10 @@ The agent has access to these tools:
 
 ## Claude Code Scaffolding
 
-When you run `page init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
+When you run `seite init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
 
 ## Next Steps
 
 - [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
-- [CLI Reference](/docs/cli-reference) — all `page agent` flags and options
+- [CLI Reference](/docs/cli-reference) — all `seite agent` flags and options
 - [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet

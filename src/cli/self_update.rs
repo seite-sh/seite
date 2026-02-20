@@ -1,7 +1,7 @@
-//! `page self-update` — update the page binary to the latest release.
+//! `seite self-update` — update the seite binary to the latest release.
 //!
-//! Fetches the latest release version from pagecli.dev (falling back to the
-//! GitHub API), downloads the binary through pagecli.dev/download/ (which
+//! Fetches the latest release version from seite.sh (falling back to the
+//! GitHub API), downloads the binary through seite.sh/download/ (which
 //! 302-redirects to GitHub Releases), verifies the checksum, and replaces
 //! the running binary.
 
@@ -14,8 +14,8 @@ use clap::Args;
 
 use crate::output::human;
 
-const REPO: &str = "sanchezomar/page";
-const DOWNLOAD_BASE: &str = "https://pagecli.dev/download";
+const REPO: &str = "seite-sh/seite";
+const DOWNLOAD_BASE: &str = "https://seite.sh/download";
 
 #[derive(Args)]
 pub struct SelfUpdateArgs {
@@ -53,7 +53,7 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     // 2. Compare versions
     if target_version == current_version {
         human::success(&format!(
-            "Already up to date (page {current_version})."
+            "Already up to date (seite {current_version})."
         ));
         return Ok(());
     }
@@ -68,7 +68,7 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     if args.check {
         if is_upgrade {
             human::info(&format!(
-                "Run `page self-update` to install page {target_version}."
+                "Run `seite self-update` to install page {target_version}."
             ));
             std::process::exit(1); // exit 1 = update available (useful for CI)
         }
@@ -77,7 +77,7 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
 
     // 3. Detect platform
     let target_triple = detect_target_triple()?;
-    let archive_name = format!("page-{target_triple}.tar.gz");
+    let archive_name = format!("seite-{target_triple}.tar.gz");
     let download_url = format!("{DOWNLOAD_BASE}/{target_tag}/{archive_name}");
     let checksums_url = format!("{DOWNLOAD_BASE}/{target_tag}/checksums-sha256.txt");
 
@@ -104,18 +104,18 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     replace_binary(&binary_path, &current_exe)?;
 
     human::success(&format!(
-        "Updated page {current_version} → {target_version}"
+        "Updated seite {current_version} → {target_version}"
     ));
-    human::info("Run `page upgrade` in your projects to update their config files.");
+    human::info("Run `seite upgrade` in your projects to update their config files.");
 
     Ok(())
 }
 
-/// Fetch the latest release tag, trying pagecli.dev first then GitHub API.
+/// Fetch the latest release tag, trying seite.sh first then GitHub API.
 fn fetch_latest_tag() -> anyhow::Result<String> {
-    // Try pagecli.dev/version.txt first (fast, no API rate limits)
-    if let Ok(response) = ureq::get("https://pagecli.dev/version.txt")
-        .set("User-Agent", "page-self-update")
+    // Try seite.sh/version.txt first (fast, no API rate limits)
+    if let Ok(response) = ureq::get("https://seite.sh/version.txt")
+        .set("User-Agent", "seite-self-update")
         .call()
     {
         if let Ok(body) = response.into_string() {
@@ -131,7 +131,7 @@ fn fetch_latest_tag() -> anyhow::Result<String> {
 
     let response = ureq::get(&url)
         .set("Accept", "application/vnd.github+json")
-        .set("User-Agent", "page-self-update")
+        .set("User-Agent", "seite-self-update")
         .call()
         .map_err(|e| anyhow::anyhow!("Failed to check for updates: {e}"))?;
 
@@ -153,11 +153,11 @@ fn detect_target_triple() -> anyhow::Result<String> {
     } else if cfg!(target_os = "windows") {
         anyhow::bail!(
             "Self-update is not supported on Windows. Use the PowerShell installer:\n  \
-             irm https://pagecli.dev/install.ps1 | iex"
+             irm https://seite.sh/install.ps1 | iex"
         );
     } else {
         anyhow::bail!(
-            "Unsupported operating system. Install from source: cargo install page"
+            "Unsupported operating system. Install from source: cargo install seite"
         );
     };
 
@@ -167,7 +167,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
         "aarch64"
     } else {
         anyhow::bail!(
-            "Unsupported architecture. Install from source: cargo install page"
+            "Unsupported architecture. Install from source: cargo install seite"
         );
     };
 
@@ -177,7 +177,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
 /// Download a URL to a local file using ureq.
 fn download_file(url: &str, dest: &PathBuf) -> anyhow::Result<()> {
     let response = ureq::get(url)
-        .set("User-Agent", "page-self-update")
+        .set("User-Agent", "seite-self-update")
         .call()
         .map_err(|e| anyhow::anyhow!("Download failed ({url}): {e}"))?;
 
@@ -273,7 +273,7 @@ impl Sha256 {
     }
 }
 
-/// Extract the `page` binary from a tar.gz archive.
+/// Extract the `seite` binary from a tar.gz archive.
 fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Result<PathBuf> {
     let status = std::process::Command::new("tar")
         .args(["xzf"])
@@ -286,9 +286,9 @@ fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Resu
         anyhow::bail!("Failed to extract archive");
     }
 
-    let binary = dest_dir.join("page");
+    let binary = dest_dir.join("seite");
     if !binary.exists() {
-        anyhow::bail!("Binary 'page' not found in archive");
+        anyhow::bail!("Binary 'seite' not found in archive");
     }
 
     Ok(binary)
