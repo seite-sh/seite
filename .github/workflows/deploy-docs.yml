@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "site/**"
+      - "seite-sh/**"
       - "src/themes/**"
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
           curl -fsSL https://seite.sh/install.sh | INSTALL_DIR=/usr/local/bin sh
 
       - name: Build docs site
-        working-directory: site
+        working-directory: seite-sh
         run: seite build
 
       - name: Deploy to Cloudflare Pages
@@ -29,5 +29,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name site
-          workingDirectory: site
+          command: pages deploy dist --project-name seite-sh
+          workingDirectory: seite-sh

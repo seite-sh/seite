@@ -1,7 +1,7 @@
 //! Embedded documentation pages compiled into the binary.
 //!
 //! Follows the same `include_str!` pattern as `src/themes.rs`. The source files
-//! live in `src/docs/` and are copies of `site/content/docs/`. When updating
+//! live in `src/docs/` and are copies of `seite-sh/content/docs/`. When updating
 //! site docs, copy the changed files to `src/docs/` to keep them in sync.
 
 /// A documentation page embedded in the binary.
