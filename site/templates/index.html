@@ -1,37 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ site.title }} — AI-native static site generator{% endblock %}
 
-{% block header %}
-<nav class="site-nav" role="navigation" aria-label="Main navigation">
-    <div class="container nav-inner">
-        <a href="/" class="nav-logo">
-            <span class="nav-logo-caret">▸</span>{{ site.title }}
-        </a>
-        <ul class="nav-links">
-            <li><a href="#features">Features</a></li>
-            <li><a href="#quickstart">Quickstart</a></li>
-            <li><a href="/docs/getting-started">Docs</a></li>
-            <li><a href="/changelog">Changelog</a></li>
-            <li><a href="/roadmap">Roadmap</a></li>
-            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
-        </ul>
-        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
-            <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="5"/>
-                <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-            </svg>
-            <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-        </button>
-        <a href="/docs/getting-started" class="nav-cta">Get started</a>
-    </div>
-</nav>
-{% endblock %}
-
 {% block extra_css %}
 <style>
     /* ── Fonts ─────────────────────────────────────── */
@@ -830,20 +799,4 @@
     </div>
 </div>
 
-{% endblock %}
-
-{% block footer %}
-<footer class="site-footer">
-    <div class="container footer-inner">
-        <span class="footer-logo">
-            <span class="footer-logo-caret">▸</span>{{ site.title }}
-        </span>
-        <ul class="footer-links">
-            <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
-            <li><a href="/feed.xml">RSS</a></li>
-            <li><a href="/llms.txt">llms.txt</a></li>
-            <li><a href="/sitemap.xml">Sitemap</a></li>
-        </ul>
-    </div>
-</footer>
 {% endblock %}

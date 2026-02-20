@@ -14,14 +14,14 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>v0.1.0 — Changelog — page</title>
-    <meta name="description" content="Initial release of page — AI-native static site generator">
+    <meta name="description" content="Initial public release of page — the AI-native static site generator built in Rust.">
     <link rel="canonical" href="https://pagecli.dev/changelog/v0-1-0">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://pagecli.dev/changelog/v0-1-0">
     <meta property="og:title" content="v0.1.0">
-    <meta property="og:description" content="Initial release of page — AI-native static site generator">
+    <meta property="og:description" content="Initial public release of page — the AI-native static site generator built in Rust.">
     
     <meta property="og:site_name" content="page">
     <meta property="og:locale" content="en">
@@ -29,7 +29,7 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="v0.1.0">
-    <meta name="twitter:description" content="Initial release of page — AI-native static site generator">
+    <meta name="twitter:description" content="Initial public release of page — the AI-native static site generator built in Rust.">
     
 
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"v0.1.0","description":"Initial release of page — AI-native static site generator","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/changelog/v0-1-0"}
+    {"@context":"https://schema.org","@type":"Article","headline":"v0.1.0","description":"Initial public release of page — the AI-native static site generator built in Rust.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/changelog/v0-1-0"}
     
     </script>
 
@@ -223,6 +223,16 @@
         .theme-toggle:hover { color: var(--text); border-color: var(--green-border); }
         [data-theme="dark"]  .icon-moon { display: none; }
         [data-theme="light"] .icon-sun  { display: none; }
+
+        .nav-github {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.15s;
+        }
+        .nav-github:hover { color: var(--text); }
 
         .nav-cta {
             font-family: var(--mono);
@@ -656,6 +666,190 @@
     </style>
 
     
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+        --code-bg: #1a1e26;
+    }
+
+    @keyframes ce-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .ce-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: ce-fade-in 0.5s ease both;
+    }
+
+    /* ── Back link ── */
+    .ce-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        margin-bottom: 2rem;
+        transition: color 0.12s;
+    }
+    .ce-back:hover { color: var(--green); text-decoration: none; }
+
+    /* ── Header ── */
+    .ce-page article > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.75rem;
+        line-height: 1.1;
+    }
+
+    .ce-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+    }
+    .ce-date {
+        font-family: var(--geist);
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    /* Tags */
+    .ce-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 2rem;
+    }
+    .ce-tag {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.6rem;
+        border-radius: 4px;
+    }
+    .ce-tag--new {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .ce-tag--fix {
+        background: rgba(59,130,246,0.08);
+        border: 1px solid rgba(59,130,246,0.2);
+        color: var(--blue);
+    }
+    .ce-tag--breaking {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        color: #ef4444;
+    }
+    .ce-tag--improvement {
+        background: rgba(139,92,246,0.08);
+        border: 1px solid rgba(139,92,246,0.2);
+        color: #8b5cf6;
+    }
+    .ce-tag--deprecated {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .ce-summary {
+        font-size: 0.92rem;
+        color: var(--text-muted);
+        margin-bottom: 2.5rem;
+        line-height: 1.65;
+        max-width: 600px;
+    }
+
+    /* ── Content ── */
+    .ce-page .content h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 3rem 0 1rem;
+        letter-spacing: -0.025em;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+    .ce-page .content h2:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+    .ce-page .content h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--heading-sub);
+        margin: 2rem 0 0.65rem;
+    }
+    .ce-page .content p {
+        margin-bottom: 1.2rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+    .ce-page .content a { color: var(--green); }
+    .ce-page .content a:hover { text-decoration: underline; }
+    .ce-page .content strong { color: var(--strong); }
+
+    .ce-page .content code {
+        font-family: var(--geist);
+        font-size: 0.82em;
+        background: rgba(0,255,135,0.06);
+        border: 1px solid rgba(0,255,135,0.15);
+        padding: 0.12em 0.38em;
+        border-radius: 4px;
+        color: var(--green);
+    }
+    .ce-page .content pre {
+        background: var(--code-bg) !important;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+    }
+    .ce-page .content pre code {
+        background: none !important;
+        border: none;
+        padding: 0;
+        font-family: var(--geist);
+        font-size: 0.82rem;
+        color: var(--text);
+        line-height: 1.85;
+    }
+
+    .ce-page .content ul, .ce-page .content ol {
+        margin-bottom: 1.2rem;
+        padding-left: 1.5rem;
+    }
+    .ce-page .content li {
+        margin-bottom: 0.4rem;
+        line-height: 1.7;
+    }
+    .ce-page .content li code { font-size: 0.8em; }
+
+    .ce-page .content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2.5rem 0;
+    }
+</style>
+
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -667,13 +861,20 @@
             <a href="/" class="nav-logo">
                 <span class="nav-logo-caret">▸</span>page
             </a>
+            
             <ul class="nav-links">
+                
                 <li><a href="/docs/getting-started">Docs</a></li>
+                
                 <li><a href="/changelog">Changelog</a></li>
+                
                 <li><a href="/roadmap">Roadmap</a></li>
-                <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+                
+                <li><a href="/about">About</a></li>
+                
                 
             </ul>
+            
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode">
                 <!-- Sun: shown in dark mode, click to go light -->
                 <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -692,6 +893,9 @@
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
             </button>
+            <a href="https://github.com/sanchezomar/page" class="nav-github" rel="noopener noreferrer" aria-label="GitHub">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
             <a href="/docs/getting-started" class="nav-cta">Get started</a>
         </div>
     </nav>
@@ -699,63 +903,80 @@
 
     <main id="main">
         
-<article class="changelog-entry">
-    <header class="changelog-entry-header">
+<div class="ce-page">
+    <a href="/changelog" class="ce-back">&larr; All releases</a>
+    <article>
         <h1>v0.1.0</h1>
-        <div class="changelog-meta">
-            <time datetime="2026-02-20">2026-02-20</time>
-            
-            <div class="changelog-tags">
-                <span class="changelog-tag changelog-tag--new">new</span>
-            </div>
-            
+        <div class="ce-meta">
+            <time class="ce-date" datetime="2026-02-20">2026-02-20</time>
         </div>
-    </header>
-    <p class="changelog-summary">Initial release of page — AI-native static site generator</p>
-    <div class="content"><p>Initial public release.</p>
+        
+        <div class="ce-tags">
+            <span class="ce-tag ce-tag--new">new</span>
+        </div>
+        
+        <p class="ce-summary">Initial public release of page — the AI-native static site generator built in Rust.</p>
+        <div class="content"><p>Initial public release.</p>
 <h2 id="build-pipeline">Build Pipeline</h2>
 <ul>
 <li>13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files</li>
-<li>Image processing: auto-resize, WebP conversion, srcset, lazy loading</li>
-<li>Asset pipeline with CSS/JS minification and fingerprinted filenames</li>
-<li>Pagination, tag pages, table of contents, excerpts, reading time and word count</li>
+<li>Image processing: auto-resize to configured widths, WebP conversion, <code>srcset</code>/<code>&lt;picture&gt;</code> injection, <code>loading="lazy"</code></li>
+<li>Asset pipeline with CSS/JS minification (<code>build.minify</code>) and fingerprinted filenames (<code>build.fingerprint</code>)</li>
+<li>Pagination with configurable items per page, generates <code>/posts/</code>, <code>/posts/page/2/</code>, etc.</li>
+<li>Tag pages: auto-generated <code>/tags/</code> index and <code>/tags/{tag}/</code> archives</li>
+<li>Table of contents auto-generated from heading hierarchy with anchor IDs</li>
+<li>Excerpts via <code>&lt;!-- more --&gt;</code> marker or auto-extracted from first paragraph</li>
+<li>Reading time (238 WPM) and word count on every page</li>
 <li>Internal link validation at build time</li>
+<li>404 page auto-generated from <code>404.html</code> template</li>
 </ul>
 <h2 id="content">Content</h2>
 <ul>
 <li>6 collection presets: posts, docs, pages, changelog, roadmap, trust center</li>
-<li>5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes</li>
-<li>Data files (YAML/JSON/TOML) injected into templates</li>
-<li>Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags</li>
+<li>5 built-in shortcodes: <code>youtube</code>, <code>vimeo</code>, <code>gist</code>, <code>callout</code>, <code>figure</code> — plus user-defined shortcodes from <code>templates/shortcodes/</code></li>
+<li>Data files (YAML/JSON/TOML from <code>data/</code> directory) injected into template context as <code>{{ data.filename }}</code></li>
+<li>Multi-language (i18n) with filename-based translations, per-language URLs, RSS feeds, sitemaps, hreflang tags, and language switcher UI</li>
+<li><code>extra:</code> frontmatter field for arbitrary key-value data accessible in templates</li>
+<li>Draft exclusion with <code>--drafts</code> flag to include during development</li>
 </ul>
 <h2 id="themes">Themes</h2>
 <ul>
 <li>6 bundled themes: default, minimal, dark, docs, brutalist, bento</li>
-<li>AI-generated custom themes via <code>page theme create</code></li>
-<li>Theme install/export for community sharing</li>
+<li>AI-generated custom themes via <code>page theme create "&lt;description&gt;"</code> (requires Claude Code)</li>
+<li>Theme install from URL (<code>page theme install &lt;url&gt;</code>) and export for sharing (<code>page theme export &lt;name&gt;</code>)</li>
+<li>All themes include SEO meta tags, Open Graph, Twitter Cards, JSON-LD structured data, accessibility features, and i18n support</li>
 </ul>
 <h2 id="ai-integration">AI Integration</h2>
 <ul>
-<li><code>page agent</code> spawns Claude Code with full site context</li>
-<li>MCP server (<code>page mcp</code>) with 5 tools and 6+ resources for AI tool integration</li>
-<li>Every site ships with <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown</li>
+<li><code>page agent</code> spawns Claude Code with full site context — content inventory, frontmatter format, template list, available commands</li>
+<li><code>page agent "prompt"</code> for non-interactive one-shot content generation</li>
+<li>MCP server (<code>page mcp</code>) with 5 tools and 6+ resources for AI tool integration, auto-started by Claude Code</li>
+<li>Every site ships <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown alongside HTML</li>
+<li><code>page init</code> generates <code>.claude/CLAUDE.md</code> with comprehensive site context for AI agents</li>
 </ul>
 <h2 id="deploy">Deploy</h2>
 <ul>
-<li>GitHub Pages, Cloudflare Pages, and Netlify with guided setup</li>
-<li>Pre-flight checks, <code>--dry-run</code> preview, custom domain management</li>
-<li>Post-deploy verification, preview/staging deploys</li>
+<li>GitHub Pages, Cloudflare Pages, and Netlify — all built in</li>
+<li>Guided setup via <code>page deploy --setup</code> (creates repos/projects, configures auth, generates CI workflows)</li>
+<li>Pre-flight checks validate output dir, base_url, CLI tools, git state before deploying</li>
+<li><code>--dry-run</code> preview, <code>--preview</code> for staging/branch deploys</li>
+<li>Custom domain management with DNS record display and auto-attachment</li>
+<li>Post-deploy verification (homepage 200, robots.txt, sitemap.xml, llms.txt reachability)</li>
+<li>Auto-commit and push before deploy with <code>auto_commit = true</code></li>
 </ul>
 <h2 id="developer-experience">Developer Experience</h2>
 <ul>
-<li>Interactive dev server with REPL and live reload</li>
-<li>Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent</li>
-<li>Multi-site workspaces</li>
-<li>Self-update from GitHub Releases with checksum verification</li>
-<li>Shell installer for macOS/Linux, PowerShell installer for Windows</li>
+<li>Interactive dev server with REPL (new, agent, theme, build, status, stop) and live reload</li>
+<li>Analytics support: Google Analytics, GTM, Plausible, Fathom, Umami — with optional cookie consent banner</li>
+<li>Multi-site workspaces (<code>page-workspace.toml</code>) with unified dev server and per-site deploy</li>
+<li>Collection management: <code>page collection add &lt;preset&gt;</code> and <code>page collection list</code></li>
+<li>Project metadata and upgrades: <code>.page/config.json</code> tracks version, <code>page upgrade</code> applies version-gated changes</li>
+<li>Self-update from GitHub Releases with SHA256 checksum verification</li>
+<li>Shell installer for macOS/Linux (<code>curl | sh</code>), PowerShell installer for Windows</li>
 </ul>
 </div>
-</article>
+    </article>
+</div>
 
     </main>
 
@@ -765,12 +986,19 @@
             <span class="footer-logo">
                 <span class="footer-logo-caret">▸</span>page
             </span>
+            
             <ul class="footer-links">
-                <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
+                
+                <li><a href="https://github.com/sanchezomar/page" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                
                 <li><a href="/feed.xml">RSS</a></li>
+                
                 <li><a href="/llms.txt">llms.txt</a></li>
+                
                 <li><a href="/sitemap.xml">Sitemap</a></li>
+                
             </ul>
+            
         </div>
     </footer>
     

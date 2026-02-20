@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — Changelog — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+        --geist: 'Geist Mono', var(--mono);
+        --code-bg: #1a1e26;
+    }
+
+    @keyframes ce-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .ce-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: ce-fade-in 0.5s ease both;
+    }
+
+    /* ── Back link ── */
+    .ce-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-family: var(--geist);
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        margin-bottom: 2rem;
+        transition: color 0.12s;
+    }
+    .ce-back:hover { color: var(--green); text-decoration: none; }
+
+    /* ── Header ── */
+    .ce-page article > h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin-bottom: 0.75rem;
+        line-height: 1.1;
+    }
+
+    .ce-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+    }
+    .ce-date {
+        font-family: var(--geist);
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    /* Tags */
+    .ce-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 2rem;
+    }
+    .ce-tag {
+        font-family: var(--geist);
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.6rem;
+        border-radius: 4px;
+    }
+    .ce-tag--new {
+        background: rgba(0,255,135,0.08);
+        border: 1px solid rgba(0,255,135,0.2);
+        color: var(--green);
+    }
+    .ce-tag--fix {
+        background: rgba(59,130,246,0.08);
+        border: 1px solid rgba(59,130,246,0.2);
+        color: var(--blue);
+    }
+    .ce-tag--breaking {
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        color: #ef4444;
+    }
+    .ce-tag--improvement {
+        background: rgba(139,92,246,0.08);
+        border: 1px solid rgba(139,92,246,0.2);
+        color: #8b5cf6;
+    }
+    .ce-tag--deprecated {
+        background: rgba(107,114,128,0.08);
+        border: 1px solid rgba(107,114,128,0.2);
+        color: #6b7280;
+    }
+
+    .ce-summary {
+        font-size: 0.92rem;
+        color: var(--text-muted);
+        margin-bottom: 2.5rem;
+        line-height: 1.65;
+        max-width: 600px;
+    }
+
+    /* ── Content ── */
+    .ce-page .content h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 3rem 0 1rem;
+        letter-spacing: -0.025em;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+    .ce-page .content h2:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+    .ce-page .content h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--heading-sub);
+        margin: 2rem 0 0.65rem;
+    }
+    .ce-page .content p {
+        margin-bottom: 1.2rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+    .ce-page .content a { color: var(--green); }
+    .ce-page .content a:hover { text-decoration: underline; }
+    .ce-page .content strong { color: var(--strong); }
+
+    .ce-page .content code {
+        font-family: var(--geist);
+        font-size: 0.82em;
+        background: rgba(0,255,135,0.06);
+        border: 1px solid rgba(0,255,135,0.15);
+        padding: 0.12em 0.38em;
+        border-radius: 4px;
+        color: var(--green);
+    }
+    .ce-page .content pre {
+        background: var(--code-bg) !important;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        padding: 1.25rem 1.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+    }
+    .ce-page .content pre code {
+        background: none !important;
+        border: none;
+        padding: 0;
+        font-family: var(--geist);
+        font-size: 0.82rem;
+        color: var(--text);
+        line-height: 1.85;
+    }
+
+    .ce-page .content ul, .ce-page .content ol {
+        margin-bottom: 1.2rem;
+        padding-left: 1.5rem;
+    }
+    .ce-page .content li {
+        margin-bottom: 0.4rem;
+        line-height: 1.7;
+    }
+    .ce-page .content li code { font-size: 0.8em; }
+
+    .ce-page .content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2.5rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ce-page">
+    <a href="/changelog" class="ce-back">&larr; All releases</a>
+    <article>
+        <h1>{{ page.title }}</h1>
+        <div class="ce-meta">
+            {% if page.date %}<time class="ce-date" datetime="{{ page.date }}">{{ page.date }}</time>{% endif %}
+        </div>
+        {% if page.tags | length > 0 %}
+        <div class="ce-tags">
+            {% for tag in page.tags %}<span class="ce-tag ce-tag--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if page.description %}<p class="ce-summary">{{ page.description }}</p>{% endif %}
+        <div class="content">{{ page.content | safe }}</div>
+    </article>
+</div>
+{% endblock %}

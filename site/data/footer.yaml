@@ -1,0 +1,11 @@
+links:
+  - title: GitHub
+    url: https://github.com/sanchezomar/page
+    external: true
+  - title: RSS
+    url: /feed.xml
+  - title: llms.txt
+    url: /llms.txt
+  - title: Sitemap
+    url: /sitemap.xml
+copyright: "2026 Omar Sanchez"
