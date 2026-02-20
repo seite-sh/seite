@@ -177,6 +177,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v4
         with:
           name: page-x86_64-unknown-linux-gnu
@@ -192,6 +201,20 @@ jobs:
       - name: Build docs site
         working-directory: site
         run: page build
+
+      - name: Generate download routing files
+        working-directory: site
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          # version.txt — latest version pointer
+          echo "$TAG" > dist/version.txt
+
+          # _redirects — route /download/ paths to GitHub Releases
+          # First rule: /download/latest/* resolves to the current release
+          # Second rule: /download/<version>/* passes through to any release
+          printf '/download/latest/* https://github.com/sanchezomar/page/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
+          printf '/download/* https://github.com/sanchezomar/page/releases/download/:splat 302\n' >> dist/_redirects
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

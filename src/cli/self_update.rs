@@ -141,7 +141,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
     } else if cfg!(target_os = "windows") {
         anyhow::bail!(
             "Self-update is not supported on Windows. Use the PowerShell installer:\n  \
-             irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex"
+             irm https://pagecli.dev/install.ps1 | iex"
         );
     } else {
         anyhow::bail!(
