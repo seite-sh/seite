@@ -552,6 +552,18 @@ fn generate_claude_md(
     md.push_str("- **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)\n");
     md.push_str("- **Shortcodes** — Reusable content components in markdown. See syntax below.\n\n");
 
+    // MCP Server
+    md.push_str("## MCP Server\n\n");
+    md.push_str("This project includes a built-in MCP (Model Context Protocol) server that AI tools\n");
+    md.push_str("connect to for structured access to site content, documentation, themes, and build tools.\n\n");
+    md.push_str("The server is configured in `.claude/settings.json` and starts automatically\n");
+    md.push_str("when Claude Code opens this project. No API keys or setup required.\n\n");
+    md.push_str("**Available tools:** `page_build`, `page_create_content`, `page_search`,\n");
+    md.push_str("`page_apply_theme`, `page_lookup_docs`\n\n");
+    md.push_str("**Available resources:** `page://docs/*` (page documentation),\n");
+    md.push_str("`page://content/*` (site content), `page://themes` (themes),\n");
+    md.push_str("`page://config` (site configuration), `page://mcp-config` (MCP settings)\n\n");
+
     // Shortcodes
     md.push_str("## Shortcodes\n\n");
     md.push_str("Shortcodes are reusable content components you can use inside markdown files.\n\n");

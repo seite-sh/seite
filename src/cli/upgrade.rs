@@ -359,8 +359,8 @@ when Claude Code opens this project. No API keys or setup required.
 `page_apply_theme`, `page_lookup_docs`
 
 **Available resources:** `page://docs/*` (page documentation),
-`page://content/*` (site content), `page://themes/*` (themes),
-`page://config` (site configuration)
+`page://content/*` (site content), `page://themes` (themes),
+`page://config` (site configuration), `page://mcp-config` (MCP settings)
 
 The MCP server provides typed, structured access to your site — AI tools work
 with page concepts (collections, content items, themes) rather than parsing
