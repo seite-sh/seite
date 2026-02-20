@@ -138,6 +138,7 @@ tests/
 2b. Load shortcode registry (built-in + user-defined from `templates/shortcodes/`)
 2.5. Load data files (YAML/JSON/TOML from `data/` directory → `{{ data.filename }}` in templates)
 3. Process each collection: walk content dir, parse frontmatter, **expand shortcodes**, render markdown to HTML, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
+3b. Inject i18n context — compute `lang_prefix` (empty for default language, `"/{lang}"` for others), `default_language`, and `t` (UI strings merged from defaults + `data/i18n/{lang}.yaml`) into every template context
 4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`. Also renders: paginated collection indexes, 404 page, tag index + per-tag archive pages
 5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
 6. Generate sitemap — all items, with `xhtml:link` alternates for translations
@@ -264,20 +265,27 @@ The `data/` directory holds structured data files (YAML, JSON, TOML) that are lo
 - Unknown file extensions → skipped with warning
 
 **Theme integration:**
-All 6 bundled themes conditionally render `data.nav` (navigation links) and `data.footer` (footer links + copyright). Example `data/nav.yaml`:
+All 6 bundled themes conditionally render `data.nav` (navigation links) and `data.footer` (footer links + copyright). Internal links are auto-prefixed with `{{ lang_prefix }}` for i18n; external links (marked with `external: true`) get `target="_blank"`. Example `data/nav.yaml`:
 ```yaml
 - title: Blog
   url: /posts
 - title: About
   url: /about
+- title: GitHub
+  url: https://github.com/user/repo
+  external: true
 ```
 Example `data/footer.yaml`:
 ```yaml
 links:
   - title: GitHub
     url: https://github.com/user/repo
+    external: true
 copyright: "2026 My Company"
 ```
+
+**UI string translations:**
+`data/i18n/{lang}.yaml` files override UI strings for each language. The build pipeline merges them on top of English defaults and injects the result as `{{ t }}` in templates. Example: `data/i18n/es.yaml` with keys like `search_placeholder`, `skip_to_content`, `no_results`, `newer`, `older`, etc.
 
 **Configuration:** The `data_dir` field in `[build]` defaults to `"data"`. Change it via `data_dir = "my_data"` in `page.toml`.
 
@@ -452,13 +460,19 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 ### Templates
 - Tera (Jinja2-compatible) templates
 - All templates extend `base.html`
-- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
+- Template variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ collections }}`, `{{ lang }}`, `{{ default_language }}`, `{{ lang_prefix }}`, `{{ t }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
 - Additional page variables: `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
 - Embedded defaults in `src/templates/mod.rs`; user templates in `templates/` override them
 - All bundled themes include hreflang tags and language switcher UI when `translations` is non-empty
 - All bundled themes emit canonical URL, Open Graph, Twitter Card, JSON-LD structured data, `<meta name="robots">` (when set), markdown alternate link, and llms.txt link in `<head>`
 - All bundled themes provide overridable blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
 - All bundled themes include accessibility features: skip-to-main link, `role="search"`, `aria-label`, `aria-live="polite"` on search results, `prefers-reduced-motion: reduce`
+- **i18n conventions for themes:**
+  - Use `{{ lang }}` (not `{{ site.language }}`) for the current page language — `site.language` is always the *configured default* language
+  - Use `{{ lang_prefix }}` to prefix internal links (empty for default language, `"/es"` for Spanish, etc.)
+  - Use `{{ t.key }}` for all UI strings — never hardcode English text in themes
+  - Data file links: `{{ lang_prefix }}{{ item.url }}` for internal, plain `{{ item.url }}` for `item.external`
+  - `<html lang="{{ lang }}">` and `<meta property="og:locale" content="{{ lang }}">` — use `lang`, not `site.language`
 
 ### SEO and GEO (Generative Engine Optimization) Guardrails
 
@@ -535,6 +549,7 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 7. **CLAUDE.md** — update the module map, build pipeline step list, config example, and any relevant convention sections
 8. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
 9. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
+10. **i18n compliance** — if adding UI-visible text to themes or templates, use `{{ t.key }}` (never hardcode English); if adding internal links in themes, use `{{ lang_prefix }}{{ url }}`; add new `t` keys to `ui_strings_for_lang()` in `src/build/mod.rs`
 
 ### Changelog Collection
 - Date-based entries with RSS feed. Tags render as colored badges in all 6 themes
@@ -567,12 +582,20 @@ Filename-based translation system. Fully backward compatible — single-language
 - Non-default languages get `/{lang}/` URL prefix
 - Items with the same slug across languages are linked as translations
 
+**Template context variables for i18n:**
+- `{{ lang }}` — current page language code (e.g. `"es"`)
+- `{{ site.language }}` — *configured default* language from `page.toml` (always the same, does not change per render)
+- `{{ default_language }}` — same as `site.language` (explicit alias for clarity)
+- `{{ lang_prefix }}` — URL prefix: empty string for default language, `"/es"` for Spanish, etc.
+- `{{ t }}` — UI translation strings object with English defaults, overridable via `data/i18n/{lang}.yaml`
+- `{{ translations }}` — array of `{lang, url}` links for all language variants of the current page
+
 **Files involved:**
 - `src/config/mod.rs` — `LanguageConfig` struct, `languages` field, helper methods (`is_multilingual()`, `all_languages()`, `title_for_lang()`, etc.)
 - `src/content/mod.rs` — `extract_lang_from_filename()`, `strip_lang_suffix()`, `lang` field on `ContentItem`
-- `src/build/mod.rs` — `TranslationLink` struct, `resolve_slug_i18n()`, translation map, per-language rendering
+- `src/build/mod.rs` — `TranslationLink` struct, `resolve_slug_i18n()`, translation map, per-language rendering, `ui_strings_for_lang()`, `lang_prefix_for()`, `insert_i18n_context()`
 - `src/build/sitemap.rs` — `xhtml:link` alternates, per-language index URLs
-- `src/themes.rs` — hreflang `<link>` tags in `<head>`, language switcher nav
+- `src/themes/*.tera` — hreflang `<link>` tags in `<head>`, language switcher nav, `{{ t.xxx }}` UI strings, `{{ lang_prefix }}` on nav/footer links
 
 **Per-language outputs:**
 - `dist/index.html` (default lang), `dist/{lang}/index.html` (other langs)
