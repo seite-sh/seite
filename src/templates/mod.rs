@@ -340,10 +340,10 @@ pub const DEFAULT_ROADMAP_TIMELINE: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
-{% block title %}{{ page.title }} — Trust Center — {{ site.title }}{% endblock %}
+{% block title %}{{ page.title }} — {{ t.trust_center }} — {{ site.title }}{% endblock %}
 {% block content %}
 <article class="trust-page">
-    <nav class="trust-breadcrumb"><a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/trust/">Trust Center</a> &rsaquo; {{ page.title }}</nav>
+    <nav class="trust-breadcrumb"><a href="{{ lang_prefix }}/trust/">{{ t.trust_center }}</a> &rsaquo; {{ page.title }}</nav>
     <h1>{{ page.title }}</h1>
     {% if page.description %}<p class="trust-description">{{ page.description }}</p>{% endif %}
     {% if page.extra.type == "certification" and page.extra.framework %}
@@ -352,12 +352,12 @@ pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
     {% if cert.framework == page.extra.framework %}
     <div class="cert-detail">
         <span class="cert-status cert-status--{{ cert.status }}">
-            {% if cert.status == "active" %}Active{% elif cert.status == "in_progress" %}In Progress{% else %}Planned{% endif %}
+            {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
         </span>
-        {% if cert.auditor %}<div class="cert-meta"><strong>Auditor:</strong> {{ cert.auditor }}</div>{% endif %}
-        {% if cert.scope %}<div class="cert-meta"><strong>Scope:</strong> {{ cert.scope }}</div>{% endif %}
-        {% if cert.issued %}<div class="cert-meta"><strong>Issued:</strong> {{ cert.issued }}</div>{% endif %}
-        {% if cert.expires %}<div class="cert-meta"><strong>Expires:</strong> {{ cert.expires }}</div>{% endif %}
+        {% if cert.auditor %}<div class="cert-meta"><strong>{{ t.auditor }}:</strong> {{ cert.auditor }}</div>{% endif %}
+        {% if cert.scope %}<div class="cert-meta"><strong>{{ t.scope }}:</strong> {{ cert.scope }}</div>{% endif %}
+        {% if cert.issued %}<div class="cert-meta"><strong>{{ t.issued }}:</strong> {{ cert.issued }}</div>{% endif %}
+        {% if cert.expires %}<div class="cert-meta"><strong>{{ t.expires }}:</strong> {{ cert.expires }}</div>{% endif %}
     </div>
     {% endif %}
     {% endfor %}
@@ -368,28 +368,28 @@ pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
 {% endblock %}"##;
 
 pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
-{% block title %}Trust Center — {{ site.title }}{% endblock %}
+{% block title %}{{ t.trust_center }} — {{ site.title }}{% endblock %}
 {% block content %}
 <div class="trust-hub">
     <div class="trust-hero">
-        <h1>Trust Center</h1>
-        <p>Security, compliance, and data protection at {{ site.title }}.</p>
+        <h1>{{ t.trust_center }}</h1>
+        <p>{{ t.trust_hero_subtitle | replace(from="{site}", to=site.title) }}</p>
     </div>
 
     {% if data.trust.certifications %}
     <section class="trust-section">
-        <h2>Certifications &amp; Compliance</h2>
+        <h2>{{ t.certifications_compliance }}</h2>
         <div class="cert-grid">
             {% for cert in data.trust.certifications %}
             <div class="cert-card">
                 <div class="cert-card__header">
                     <span class="cert-status cert-status--{{ cert.status }}">
-                        {% if cert.status == "active" %}Active{% elif cert.status == "in_progress" %}In Progress{% else %}Planned{% endif %}
+                        {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
                     </span>
                 </div>
                 <h3 class="cert-card__title">{{ cert.name }}</h3>
                 {% if cert.description %}<p class="cert-card__desc">{{ cert.description }}</p>{% endif %}
-                {% if cert.slug %}<a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/trust/certifications/{{ cert.slug }}" class="cert-card__link">Learn more &rarr;</a>{% endif %}
+                {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link">{{ t.learn_more }} &rarr;</a>{% endif %}
             </div>
             {% endfor %}
         </div>
@@ -414,17 +414,17 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
 
     {% if data.trust.subprocessors %}
     <section class="trust-section">
-        <h2>Subprocessors</h2>
+        <h2>{{ t.subprocessors }}</h2>
         <div class="subprocessor-table-wrap">
         <table class="subprocessor-table">
-            <thead><tr><th>Vendor</th><th>Purpose</th><th>Location</th><th>DPA</th></tr></thead>
+            <thead><tr><th>{{ t.vendor }}</th><th>{{ t.purpose }}</th><th>{{ t.location }}</th><th>{{ t.dpa }}</th></tr></thead>
             <tbody>
             {% for sp in data.trust.subprocessors %}
             <tr>
                 <td>{{ sp.name }}</td>
                 <td>{{ sp.purpose | default(value="") }}</td>
                 <td>{{ sp.location | default(value="") }}</td>
-                <td>{% if sp.dpa %}Yes{% else %}No{% endif %}</td>
+                <td>{% if sp.dpa %}{{ t.yes }}{% else %}{{ t.no }}{% endif %}</td>
             </tr>
             {% endfor %}
             </tbody>
@@ -435,7 +435,7 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
 
     {% if data.trust.faq %}
     <section class="trust-section faq-section">
-        <h2>Frequently Asked Questions</h2>
+        <h2>{{ t.faq }}</h2>
         {% for item in data.trust.faq %}
         <details class="faq-item">
             <summary>{{ item.question }}</summary>
