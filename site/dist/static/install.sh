@@ -15,7 +15,7 @@
 
 set -eu
 
-REPO="sanchezomar/page"
+REPO="page-cli/page-cli"
 BINARY="page"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://pagecli.dev/download}"
