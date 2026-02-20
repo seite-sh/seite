@@ -69,3 +69,32 @@ Tests that require a real browser or deployed environment and can't be covered b
 - [ ] Multiple `page build` runs — analytics injected exactly once (not duplicated)
 - [ ] Works with `page serve` live reload (rebuilt pages still have analytics)
 - [ ] Works in workspace mode (`page build --site blog`)
+
+## Domain-Routed Downloads (pagecli.dev)
+
+### Install script routing
+
+- [ ] `curl -fsSL https://pagecli.dev/install.sh | sh` downloads and installs successfully
+- [ ] `irm https://pagecli.dev/install.ps1 | iex` works on Windows
+- [ ] `VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh` pins to a specific version
+- [ ] `https://pagecli.dev/version.txt` returns the latest release tag (e.g., `v0.2.0`)
+
+### Download redirects
+
+- [ ] `https://pagecli.dev/download/latest/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the current GitHub Release asset
+- [ ] `https://pagecli.dev/download/latest/checksums-sha256.txt` 302-redirects to the current checksums
+- [ ] `https://pagecli.dev/download/v0.1.0/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the specific version on GitHub Releases
+- [ ] Checksum verification passes end-to-end (download via domain, verify sha256)
+
+### Self-update routing
+
+- [ ] `page self-update --check` resolves latest version via `pagecli.dev/version.txt`
+- [ ] `page self-update` downloads binary through `pagecli.dev/download/` and installs successfully
+- [ ] `page self-update --target-version v0.1.0` downloads the specific version through the domain
+- [ ] If `pagecli.dev` is unreachable, `self-update` falls back to GitHub API for version resolution
+
+### Release workflow
+
+- [ ] After a release, `pagecli.dev/version.txt` reflects the new tag
+- [ ] After a release, `pagecli.dev/_redirects` maps `/download/latest/*` to the new release
+- [ ] Old version URLs (`/download/v0.1.0/*`) still work after a new release
