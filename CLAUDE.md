@@ -410,10 +410,10 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
   1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64, Windows x86_64
   2. `release` — creates GitHub Release with `seite-{target}.tar.gz` archives + `checksums-sha256.txt`
   3. `provenance` — SLSA Level 3 attestations via `slsa-framework/slsa-github-generator`
-  4. `deploy-site` — builds and deploys `site/` to Cloudflare Pages (seite.sh)
+  4. `deploy-site` — builds and deploys `seite-sh/` to Cloudflare Pages (seite.sh)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
 - **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
-- **Release flow**: bump version in `Cargo.toml` + update `site/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
+- **Release flow**: bump version in `Cargo.toml` + update `seite-sh/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
 - **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 
 ### Themes
@@ -465,15 +465,15 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
 ### Documentation
-- The documentation site lives in `site/` and is built with `seite` itself
-- Docs are in `site/content/docs/` — one markdown file per topic
+- The documentation site lives in `seite-sh/` and is built with `seite` itself
+- Docs are in `seite-sh/content/docs/` — one markdown file per topic
 - **When changing user-facing features (CLI flags, commands, config options, deploy behavior, build steps), update the corresponding docs:**
-  - `site/content/docs/cli-reference.md` — all CLI commands and flags
-  - `site/content/docs/deployment.md` — deploy targets, pre-flight checks, setup
-  - `site/content/docs/configuration.md` — `seite.toml` options
-  - `site/content/docs/collections.md` — collection presets and config
-  - `site/content/docs/templates.md` — template variables and blocks
-  - `site/content/docs/i18n.md` — multi-language features
+  - `seite-sh/content/docs/cli-reference.md` — all CLI commands and flags
+  - `seite-sh/content/docs/deployment.md` — deploy targets, pre-flight checks, setup
+  - `seite-sh/content/docs/configuration.md` — `seite.toml` options
+  - `seite-sh/content/docs/collections.md` — collection presets and config
+  - `seite-sh/content/docs/templates.md` — template variables and blocks
+  - `seite-sh/content/docs/i18n.md` — multi-language features
 - Also update `CLAUDE.md` itself when adding new patterns, conventions, or architecture
 
 ### CLI
@@ -564,7 +564,7 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 2. **Build pipeline** — integrate the feature in `src/build/mod.rs` (add step to `build_site()`)
 3. **Init scaffolding** — set the default in the `SiteConfig` literal in `src/cli/init.rs`
 4. **Embedded docs** — update `src/docs/configuration.md` (or the relevant `src/docs/*.md` page). These are compiled into the binary and served via the MCP server's `seite_lookup_docs` tool and `seite://docs/*` resources
-5. **Site docs** — mirror the same changes in `site/content/docs/` (the deployed documentation site)
+5. **Site docs** — mirror the same changes in `seite-sh/content/docs/` (the deployed documentation site)
 6. **MCP compliance** — verify the feature is visible through the MCP server:
    - `seite://config` auto-exposes any new `SiteConfig` fields (no code needed if serde works)
    - `seite_build` auto-includes new build steps (no code needed if added to `build_site()`)
