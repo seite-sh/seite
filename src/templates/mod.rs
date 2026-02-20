@@ -123,6 +123,222 @@ pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
 <p><a href="{{ tags_url }}">&larr; All tags</a></p>
 {% endblock %}"##;
 
+pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} — Changelog — {{ site.title }}{% endblock %}
+{% block content %}
+<article class="changelog-entry">
+    <header class="changelog-entry-header">
+        <h1>{{ page.title }}</h1>
+        <div class="changelog-meta">
+            {% if page.date %}<time datetime="{{ page.date }}">{{ page.date }}</time>{% endif %}
+            {% if page.tags | length > 0 %}
+            <div class="changelog-tags">
+                {% for tag in page.tags %}<span class="changelog-tag changelog-tag--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </header>
+    {% if page.description %}<p class="changelog-summary">{{ page.description }}</p>{% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"#;
+
+pub const DEFAULT_CHANGELOG_INDEX: &str = r#"{% extends "base.html" %}
+{% block title %}{% if pagination and pagination.current_page > 1 %}Changelog — Page {{ pagination.current_page }} — {% endif %}Changelog — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Changelog</h1>
+<div class="changelog-feed">
+    {% for item in items %}
+    <article class="changelog-item">
+        <div class="changelog-item-header">
+            <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+            {% if item.date %}<time datetime="{{ item.date }}">{{ item.date }}</time>{% endif %}
+        </div>
+        {% if item.tags | length > 0 %}
+        <div class="changelog-tags">
+            {% for tag in item.tags %}<span class="changelog-tag changelog-tag--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% if pagination %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
+    <span>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}"#;
+
+pub const DEFAULT_ROADMAP_ITEM: &str = r#"{% extends "base.html" %}
+{% block title %}{{ page.title }} — Roadmap — {{ site.title }}{% endblock %}
+{% block content %}
+<article class="roadmap-entry">
+    <header class="roadmap-entry-header">
+        <h1>{{ page.title }}</h1>
+        {% if page.tags | length > 0 %}
+        <div class="roadmap-status-badges">
+            {% for tag in page.tags %}<span class="roadmap-status roadmap-status--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
+    </header>
+    {% if page.description %}<p class="roadmap-summary">{{ page.description }}</p>{% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% endblock %}"#;
+
+pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
+{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Roadmap</h1>
+<div class="roadmap-grouped">
+    {% set in_progress = [] %}
+    {% set planned = [] %}
+    {% set done = [] %}
+    {% set other = [] %}
+    {% for item in items %}
+        {% set status = item.tags | first | default(value="planned") %}
+        {% if status == "in-progress" %}
+            {% set_global in_progress = in_progress | concat(with=[item]) %}
+        {% elif status == "planned" %}
+            {% set_global planned = planned | concat(with=[item]) %}
+        {% elif status == "done" %}
+            {% set_global done = done | concat(with=[item]) %}
+        {% else %}
+            {% set_global other = other | concat(with=[item]) %}
+        {% endif %}
+    {% endfor %}
+    {% if in_progress | length > 0 %}
+    <section class="roadmap-section">
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--in-progress">In Progress</span></h2>
+        <div class="roadmap-items">
+            {% for item in in_progress %}
+            <div class="roadmap-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    {% if planned | length > 0 %}
+    <section class="roadmap-section">
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--planned">Planned</span></h2>
+        <div class="roadmap-items">
+            {% for item in planned %}
+            <div class="roadmap-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    {% if done | length > 0 %}
+    <section class="roadmap-section">
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--done">Done</span></h2>
+        <div class="roadmap-items">
+            {% for item in done %}
+            <div class="roadmap-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    {% if other | length > 0 %}
+    <section class="roadmap-section">
+        <h2 class="roadmap-section-header">Other</h2>
+        <div class="roadmap-items">
+            {% for item in other %}
+            <div class="roadmap-card">
+                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                {% if item.tags | length > 0 %}<div class="roadmap-status-badges">{% for tag in item.tags %}<span class="roadmap-status roadmap-status--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}</div>{% endif %}
+                {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}"#;
+
+pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
+{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Roadmap</h1>
+<div class="roadmap-kanban">
+    {% set in_progress = [] %}
+    {% set planned = [] %}
+    {% set done = [] %}
+    {% for item in items %}
+        {% set status = item.tags | first | default(value="planned") %}
+        {% if status == "in-progress" %}
+            {% set_global in_progress = in_progress | concat(with=[item]) %}
+        {% elif status == "done" %}
+            {% set_global done = done | concat(with=[item]) %}
+        {% else %}
+            {% set_global planned = planned | concat(with=[item]) %}
+        {% endif %}
+    {% endfor %}
+    <div class="roadmap-column">
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--planned">Planned</span> <span class="roadmap-count">{{ planned | length }}</span></h2>
+        {% for item in planned %}
+        <div class="roadmap-card">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="roadmap-column">
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--in-progress">In Progress</span> <span class="roadmap-count">{{ in_progress | length }}</span></h2>
+        {% for item in in_progress %}
+        <div class="roadmap-card">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="roadmap-column">
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--done">Done</span> <span class="roadmap-count">{{ done | length }}</span></h2>
+        {% for item in done %}
+        <div class="roadmap-card">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}"#;
+
+pub const DEFAULT_ROADMAP_TIMELINE: &str = r#"{% extends "base.html" %}
+{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>Roadmap</h1>
+<div class="roadmap-timeline">
+    {% for item in items %}
+    <div class="roadmap-milestone {% if loop.index is odd %}roadmap-milestone--left{% else %}roadmap-milestone--right{% endif %}">
+        <div class="roadmap-milestone-dot">
+            {% set status = item.tags | first | default(value="planned") %}
+            <span class="roadmap-status roadmap-status--{{ status | slugify }}"></span>
+        </div>
+        <div class="roadmap-milestone-content">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.tags | length > 0 %}
+            <div class="roadmap-status-badges">
+                {% for tag in item.tags %}<span class="roadmap-status roadmap-status--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}"#;
+
 fn get_default_template(name: &str) -> Option<&'static str> {
     match name {
         "base.html" => Some(default_base()),
@@ -133,6 +349,12 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "404.html" => Some(DEFAULT_404),
         "tags.html" => Some(DEFAULT_TAGS_INDEX),
         "tag.html" => Some(DEFAULT_TAG),
+        "changelog-entry.html" => Some(DEFAULT_CHANGELOG_ENTRY),
+        "changelog-index.html" => Some(DEFAULT_CHANGELOG_INDEX),
+        "roadmap-item.html" => Some(DEFAULT_ROADMAP_ITEM),
+        "roadmap-index.html" => Some(DEFAULT_ROADMAP_INDEX),
+        "roadmap-kanban.html" => Some(DEFAULT_ROADMAP_KANBAN),
+        "roadmap-timeline.html" => Some(DEFAULT_ROADMAP_TIMELINE),
         _ => None,
     }
 }
@@ -152,7 +374,15 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
     };
 
     // Always ensure essential templates exist
-    for name in ["base.html", "index.html", "404.html", "tags.html", "tag.html"] {
+    for name in [
+        "base.html",
+        "index.html",
+        "404.html",
+        "tags.html",
+        "tag.html",
+        "roadmap-kanban.html",
+        "roadmap-timeline.html",
+    ] {
         if tera.get_template(name).is_err() {
             if let Some(content) = get_default_template(name) {
                 tera.add_raw_template(name, content)?;

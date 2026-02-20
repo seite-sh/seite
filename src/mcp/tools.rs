@@ -36,7 +36,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                     "properties": {
                         "collection": {
                             "type": "string",
-                            "description": "Collection name: posts, docs, or pages"
+                            "description": "Collection name (e.g., posts, docs, pages, changelog, roadmap)"
                         },
                         "title": {
                             "type": "string",
@@ -45,7 +45,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                         "tags": {
                             "type": "array",
                             "items": { "type": "string" },
-                            "description": "Tags for the content (posts only)"
+                            "description": "Tags for the content"
                         },
                         "body": {
                             "type": "string",
@@ -222,18 +222,7 @@ fn call_create_content(
         .and_then(|v| v.as_str())
         .ok_or_else(|| JsonRpcError::invalid_params("Missing 'title' parameter"))?;
 
-    // Normalize collection name (post → posts, doc → docs, page → pages)
-    let normalized = match collection_name {
-        "post" => "posts",
-        "doc" => "docs",
-        "page" => "pages",
-        other => other,
-    };
-
-    let collection = config
-        .collections
-        .iter()
-        .find(|c| c.name == normalized)
+    let collection = crate::config::find_collection(collection_name, &config.collections)
         .ok_or_else(|| {
             JsonRpcError::invalid_params(format!("Collection not found: {collection_name}"))
         })?;

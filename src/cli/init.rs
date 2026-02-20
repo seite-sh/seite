@@ -76,8 +76,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             .filter_map(|name| CollectionConfig::from_preset(name.trim()))
             .collect(),
         None => {
-            let preset_names = ["posts", "docs", "pages"];
-            let defaults = &[true, false, true]; // posts + pages on by default
+            let preset_names = ["posts", "docs", "pages", "changelog", "roadmap"];
+            let defaults = &[true, false, true, false, false]; // posts + pages on by default
             let selections = dialoguer::MultiSelect::new()
                 .with_prompt("Collections to include")
                 .items(&preset_names)
@@ -148,6 +148,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             "post.html" => templates::DEFAULT_POST,
             "doc.html" => templates::DEFAULT_DOC,
             "page.html" => templates::DEFAULT_PAGE,
+            "changelog-entry.html" => templates::DEFAULT_CHANGELOG_ENTRY,
+            "roadmap-item.html" => templates::DEFAULT_ROADMAP_ITEM,
             _ => continue,
         };
         fs::write(root.join("templates").join(tmpl_name), content)?;
@@ -172,6 +174,55 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             root.join(format!("content/posts/{today}-hello-world.md")),
             post_content,
         )?;
+    }
+
+    // Create sample changelog entry if changelog collection is included
+    if collections.iter().any(|c| c.name == "changelog") {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let fm = content::Frontmatter {
+            title: "v0.1.0".into(),
+            date: Some(chrono::Local::now().date_naive()),
+            description: Some("Initial release".into()),
+            tags: vec!["new".into()],
+            draft: false,
+            ..Default::default()
+        };
+        let frontmatter_str = content::generate_frontmatter(&fm);
+        let changelog_content = format!(
+            "{frontmatter_str}\n\nFirst release of the project.\n\n## What's New\n\n- Initial feature set\n- Project scaffolding\n"
+        );
+        fs::write(
+            root.join(format!("content/changelog/{today}-v0-1-0.md")),
+            changelog_content,
+        )?;
+    }
+
+    // Create sample roadmap items if roadmap collection is included
+    if collections.iter().any(|c| c.name == "roadmap") {
+        let items = [
+            ("Dark Mode", "planned", 1, "Add dark mode support to the application."),
+            ("API v2", "in-progress", 2, "Redesign the API with improved authentication and rate limiting."),
+            ("Initial Release", "done", 3, "Ship the first public version."),
+        ];
+        for (title, status, weight, description) in &items {
+            let slug = content::slug_from_title(title);
+            let fm = content::Frontmatter {
+                title: title.to_string(),
+                description: Some(description.to_string()),
+                tags: vec![status.to_string()],
+                weight: Some(*weight),
+                draft: false,
+                ..Default::default()
+            };
+            let frontmatter_str = content::generate_frontmatter(&fm);
+            let roadmap_content = format!(
+                "{frontmatter_str}\n\n{description}\n"
+            );
+            fs::write(
+                root.join(format!("content/roadmap/{slug}.md")),
+                roadmap_content,
+            )?;
+        }
     }
 
     // Generate CI workflow and config files based on deploy target
@@ -397,6 +448,20 @@ fn generate_claude_md(
         }
         if c.has_rss {
             md.push_str("- Included in RSS feed (`/feed.xml`)\n");
+        }
+        // Changelog-specific guidance
+        if c.name == "changelog" {
+            md.push_str("- Tag conventions: `new` (features), `fix` (bug fixes), `breaking` (breaking changes), `improvement` (enhancements), `deprecated` (deprecations)\n");
+            md.push_str("- Tags render as colored badges in the changelog template\n");
+            md.push_str("- Create entries: `page new changelog \"v1.0.0\" --tags new,improvement`\n");
+        }
+        // Roadmap-specific guidance
+        if c.name == "roadmap" {
+            md.push_str("- Status tags: `planned`, `in-progress`, `done`, `cancelled`\n");
+            md.push_str("- Use `weight:` in frontmatter to control ordering (lower = higher priority)\n");
+            md.push_str("- Default index groups items by status tag\n");
+            md.push_str("- Alternative layouts: copy `roadmap-kanban.html` or `roadmap-timeline.html` to `templates/roadmap-index.html`\n");
+            md.push_str("- Create items: `page new roadmap \"Feature Name\" --tags planned`\n");
         }
         md.push('\n');
     }

@@ -51,7 +51,7 @@ page init <name> [options]
 | `--title` | Site title |
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
-| `--collections` | Comma-separated list: `posts,docs,pages` |
+| `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 
 If flags are omitted, `page init` prompts interactively.
 
@@ -112,7 +112,7 @@ page new <collection> "Title" [options]
 
 | Flag | Description |
 |------|-------------|
-| `--tags` | Comma-separated tags (posts only) |
+| `--tags` | Comma-separated tags |
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
 
 ```bash
@@ -120,6 +120,8 @@ page new post "My Post" --tags rust,web
 page new doc "API Guide"
 page new page "About"
 page new post "Mi Post" --lang es    # Spanish translation
+page new changelog "v1.0.0" --tags new,improvement
+page new roadmap "Dark Mode" --tags planned
 ```
 
 ## page agent

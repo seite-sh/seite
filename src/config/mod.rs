@@ -99,11 +99,43 @@ impl CollectionConfig {
         }
     }
 
+    pub fn preset_changelog() -> Self {
+        Self {
+            name: "changelog".into(),
+            label: "Changelog".into(),
+            directory: "changelog".into(),
+            has_date: true,
+            has_rss: true,
+            listed: true,
+            url_prefix: "/changelog".into(),
+            nested: false,
+            default_template: "changelog-entry.html".into(),
+            paginate: None,
+        }
+    }
+
+    pub fn preset_roadmap() -> Self {
+        Self {
+            name: "roadmap".into(),
+            label: "Roadmap".into(),
+            directory: "roadmap".into(),
+            has_date: false,
+            has_rss: false,
+            listed: true,
+            url_prefix: "/roadmap".into(),
+            nested: false,
+            default_template: "roadmap-item.html".into(),
+            paginate: None,
+        }
+    }
+
     pub fn from_preset(name: &str) -> Option<Self> {
         match name {
             "posts" => Some(Self::preset_posts()),
             "docs" => Some(Self::preset_docs()),
             "pages" => Some(Self::preset_pages()),
+            "changelog" => Some(Self::preset_changelog()),
+            "roadmap" => Some(Self::preset_roadmap()),
             _ => None,
         }
     }
