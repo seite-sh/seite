@@ -87,9 +87,15 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
+  docs.rs              Embedded documentation pages (13 docs, include_str! pattern)
+  docs/                Documentation markdown files embedded at compile time
   meta.rs              Project metadata (.page/config.json) — version tracking, upgrade detection
+  mcp/
+    mod.rs             MCP server core (JSON-RPC over stdio, method dispatch)
+    resources.rs       MCP resource providers (docs, config, content, themes, mcp-config)
+    tools.rs           MCP tool implementations (build, create_content, search, apply_theme, lookup_docs)
   cli/
-    mod.rs             Cli struct + Command enum (10 subcommands)
+    mod.rs             Cli struct + Command enum (11 subcommands)
     init.rs            Interactive project scaffolding (creates .page/config.json + MCP config)
     new.rs             Create content files
     build.rs           Build command (workspace-aware, nudges on outdated project)
@@ -97,6 +103,7 @@ src/
     deploy.rs          Deploy command (workspace-aware)
     agent.rs           AI agent (spawns Claude Code with site context)
     theme.rs           Theme management
+    mcp.rs             MCP server entry point (launches stdio JSON-RPC server)
     workspace.rs       Workspace CLI (init, list, add, status)
     upgrade.rs         Upgrade project config to current binary (version-gated steps)
     self_update.rs     Self-update binary from GitHub Releases
@@ -277,6 +284,28 @@ Two modes:
 
 The agent has access to `Read`, `Write`, `Edit`, `Glob`, `Grep`, and `Bash` tools.
 Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
+
+### MCP Server
+
+`page mcp` runs a JSON-RPC 2.0 server over stdio for AI tool integration (Model Context Protocol). It's spawned automatically by Claude Code via the `mcpServers.page` entry in `.claude/settings.json`.
+
+**Architecture:** Synchronous read loop on stdin, dispatches JSON-RPC methods, writes responses to stdout. All logging to stderr (never stdout — it corrupts the protocol). No async runtime needed.
+
+**Resources** (read-only data):
+- `page://docs` / `page://docs/{slug}` — 13 embedded documentation pages (compiled into binary via `include_str!`)
+- `page://config` — `page.toml` serialized as JSON
+- `page://content` / `page://content/{collection}` — content inventory with metadata
+- `page://themes` — bundled + installed themes
+- `page://mcp-config` — `.claude/settings.json`
+
+**Tools** (executable actions):
+- `page_build` — runs build pipeline, returns stats
+- `page_create_content` — creates content files with frontmatter
+- `page_search` — searches content by title/description/tags
+- `page_apply_theme` — applies bundled or installed theme
+- `page_lookup_docs` — searches embedded docs by topic or keyword
+
+**Files:** `src/mcp/mod.rs` (protocol), `src/mcp/resources.rs`, `src/mcp/tools.rs`, `src/docs.rs` + `src/docs/` (embedded docs)
 
 ### Dev Server
 
@@ -644,7 +673,8 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Multi-site workspaces — `page workspace init/list/add/status` commands, `page-workspace.toml` config, global `--site` flag, workspace-aware build/serve/deploy, unified dev server with per-site routing and selective file watching, per-site deploy orchestration with independent targets
 - [x] Project metadata & upgrades — `.page/config.json` tracks binary version that last scaffolded the project. `page upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `page build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
 - [x] Self-update — `page self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
-- [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects. Prepares for `page mcp` command (MCP server implementation is next).
+- [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects.
+- [x] MCP server — `page mcp` runs a JSON-RPC server over stdio. Resources: `page://docs/*` (13 embedded doc pages), `page://config`, `page://content/*`, `page://themes`, `page://mcp-config`. Tools: `page_build`, `page_create_content`, `page_search`, `page_apply_theme`, `page_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
 
 ### Up Next
 

@@ -31,6 +31,7 @@ fn main() -> Result<()> {
         Command::Workspace(args) => page::cli::workspace::run(args)?,
         Command::Upgrade(args) => page::cli::upgrade::run(args)?,
         Command::SelfUpdate(args) => page::cli::self_update::run(args)?,
+        Command::Mcp(args) => page::cli::mcp::run(args)?,
     }
 
     Ok(())
