@@ -195,15 +195,15 @@ jobs:
         run: |
           tar xzf artifacts/seite-x86_64-unknown-linux-gnu.tar.gz -C artifacts
           chmod +x artifacts/seite
-          sudo mv artifacts/page /usr/local/bin/seite
+          sudo mv artifacts/seite /usr/local/bin/seite
           seite --version
 
       - name: Build docs site
-        working-directory: site
+        working-directory: seite-sh
         run: seite build
 
       - name: Generate download routing files
-        working-directory: site
+        working-directory: seite-sh
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
 
@@ -221,5 +221,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name site
-          workingDirectory: site
+          command: pages deploy dist --project-name seite-sh
+          workingDirectory: seite-sh

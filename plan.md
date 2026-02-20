@@ -400,7 +400,7 @@ Create embedded doc covering:
 
 Add `trust_center()` function returning a `DocPage` with weight 7 (after deployment, before agent).
 
-### 6.3 Mirror to `site/content/docs/trust-center.md`
+### 6.3 Mirror to `seite-sh/content/docs/trust-center.md`
 
 Copy the same content for the deployed documentation site.
 
@@ -488,7 +488,7 @@ Each framework gets pre-written FAQ questions and a content page template.
 
 **New files:**
 - `src/docs/trust-center.md`
-- `site/content/docs/trust-center.md`
+- `seite-sh/content/docs/trust-center.md`
 
 **Modified files:**
 - `src/config/mod.rs` — `TrustSection`, `preset_trust()`, `from_preset()`
