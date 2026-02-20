@@ -2306,6 +2306,7 @@ mod tests {
             languages: Default::default(),
             images: Default::default(),
             analytics: None,
+            trust: None,
         };
 
         // Override takes precedence
@@ -2337,6 +2338,7 @@ mod tests {
             languages: Default::default(),
             images: Default::default(),
             analytics: None,
+            trust: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2358,6 +2360,7 @@ mod tests {
             languages: Default::default(),
             images: Default::default(),
             analytics: None,
+            trust: None,
         };
         let check = check_base_url(&config);
         assert!(check.passed);

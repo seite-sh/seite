@@ -4580,7 +4580,6 @@ fn test_build_changelog_collection() {
         entry,
     )
     .unwrap();
-
     page_cmd()
         .arg("build")
         .current_dir(&site_dir)
@@ -5183,4 +5182,213 @@ fn test_build_default_language_in_context() {
         es_html.contains(r#"og:locale" content="es"#),
         "Spanish page og:locale should be 'es'"
     );
+}
+
+// --- Trust Center ---
+
+#[test]
+fn test_init_with_trust_collection() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "trustsite",
+            "--title",
+            "Acme Corp",
+            "--description",
+            "Security first",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,pages,trust",
+            "--trust-company",
+            "Acme Corp",
+            "--trust-frameworks",
+            "soc2,iso27001",
+            "--trust-sections",
+            "overview,certifications,subprocessors,faq,disclosure",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let root = tmp.path().join("trustsite");
+
+    // Verify directory structure
+    assert!(root.join("content/trust").is_dir());
+    assert!(root.join("content/trust/certifications").is_dir());
+    assert!(root.join("data/trust").is_dir());
+
+    // Verify data files
+    assert!(root.join("data/trust/certifications.yaml").exists());
+    assert!(root.join("data/trust/subprocessors.yaml").exists());
+    assert!(root.join("data/trust/faq.yaml").exists());
+
+    // Verify content files
+    assert!(root.join("content/trust/security-overview.md").exists());
+    assert!(root.join("content/trust/vulnerability-disclosure.md").exists());
+    assert!(root.join("content/trust/certifications/soc2.md").exists());
+    assert!(root.join("content/trust/certifications/iso27001.md").exists());
+
+    // Verify templates
+    assert!(root.join("templates/trust-item.html").exists());
+    assert!(root.join("templates/trust-index.html").exists());
+
+    // Verify page.toml has trust config
+    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    assert!(config.contains("[trust]"));
+    assert!(config.contains("company = \"Acme Corp\""));
+    assert!(config.contains("soc2"));
+    assert!(config.contains("iso27001"));
+
+    // Verify CLAUDE.md has trust section
+    let claude_md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+    assert!(claude_md.contains("## Trust Center"));
+    assert!(claude_md.contains("Acme Corp"));
+    assert!(claude_md.contains("Managing Certifications"));
+    assert!(claude_md.contains("Managing Subprocessors"));
+    assert!(claude_md.contains("Managing FAQs"));
+    assert!(claude_md.contains("page://trust"));
+}
+
+#[test]
+fn test_build_trust_center() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "Trust Test",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "pages,trust",
+            "--trust-company",
+            "TestCo",
+            "--trust-frameworks",
+            "soc2",
+            "--trust-sections",
+            "overview,certifications,subprocessors,faq",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Trust center index page should exist
+    assert!(site_dir.join("dist/trust/index.html").exists());
+
+    // Individual trust pages should exist
+    assert!(site_dir.join("dist/trust/security-overview.html").exists());
+    assert!(
+        site_dir
+            .join("dist/trust/certifications/soc2.html")
+            .exists()
+    );
+
+    // Markdown versions should exist
+    assert!(site_dir.join("dist/trust/security-overview.md").exists());
+
+    // Trust center index should contain certification data
+    let index = fs::read_to_string(site_dir.join("dist/trust/index.html")).unwrap();
+    assert!(index.contains("Trust Center"));
+    assert!(index.contains("SOC 2 Type II"));
+}
+
+#[test]
+fn test_trust_center_no_sections() {
+    // Test with minimal trust config — no optional sections
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "Minimal Trust",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "trust",
+            "--trust-company",
+            "MinCo",
+            "--trust-frameworks",
+            "soc2",
+            "--trust-sections",
+            "certifications",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let site_dir = tmp.path().join("site");
+
+    // Certifications data and content should exist
+    assert!(site_dir.join("data/trust/certifications.yaml").exists());
+    assert!(
+        site_dir
+            .join("content/trust/certifications/soc2.md")
+            .exists()
+    );
+
+    // Optional sections should NOT exist
+    assert!(!site_dir.join("content/trust/security-overview.md").exists());
+    assert!(!site_dir.join("data/trust/subprocessors.yaml").exists());
+    assert!(!site_dir.join("data/trust/faq.yaml").exists());
+
+    // Should still build successfully
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_trust_preset_config() {
+    let preset = page::config::CollectionConfig::preset_trust();
+    assert_eq!(preset.name, "trust");
+    assert_eq!(preset.label, "Trust Center");
+    assert_eq!(preset.url_prefix, "/trust");
+    assert!(preset.nested);
+    assert!(!preset.has_date);
+    assert!(!preset.has_rss);
+    assert!(preset.listed);
+    assert_eq!(preset.default_template, "trust-item.html");
+}
+
+#[test]
+fn test_trust_from_preset() {
+    assert!(page::config::CollectionConfig::from_preset("trust").is_some());
+}
+
+#[test]
+fn test_trust_embedded_doc_exists() {
+    let doc = page::docs::by_slug("trust-center");
+    assert!(doc.is_some());
+    let doc = doc.unwrap();
+    assert_eq!(doc.title, "Trust Center");
+    assert!(doc.raw_content.contains("certifications"));
+}
+
+#[test]
+fn test_init_without_trust_has_no_trust_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Trust", "posts,pages");
+
+    let config = fs::read_to_string(tmp.path().join("site/page.toml")).unwrap();
+    assert!(!config.contains("[trust]"));
+
+    let claude_md = fs::read_to_string(tmp.path().join("site/CLAUDE.md")).unwrap();
+    assert!(!claude_md.contains("## Trust Center"));
 }
