@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Changelog — {{ site.title }}{% endblock %}
+{% block title %}{{ t.changelog }} — {{ site.title }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -194,10 +194,10 @@
 <div class="cl-page">
     <div class="cl-header-row">
         <div>
-            <h1>Changelog</h1>
-            <p class="cl-subtitle">All notable changes to page. Subscribe via <a href="/feed.xml">RSS</a>.</p>
+            <h1>{{ t.changelog }}</h1>
+            <p class="cl-subtitle">All notable changes to page. Subscribe via <a href="{{ lang_prefix }}/feed.xml">RSS</a>.</p>
         </div>
-        <a href="/feed.xml" class="cl-rss" aria-label="RSS Feed">
+        <a href="{{ lang_prefix }}/feed.xml" class="cl-rss" aria-label="RSS Feed">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
             </svg>
@@ -224,9 +224,9 @@
 
     {% if pagination %}
     <nav class="pagination">
-        {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
-        <span class="page-info">Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
-        {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+        {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+        <span class="page-info">{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+        {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
     </nav>
     {% endif %}
 </div>

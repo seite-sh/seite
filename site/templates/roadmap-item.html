@@ -164,7 +164,7 @@
 
 {% block content %}
 <div class="ri-page">
-    <a href="/roadmap" class="ri-back">&larr; Roadmap</a>
+    <a href="{{ lang_prefix }}/roadmap/" class="ri-back">&larr; {{ t.roadmap }}</a>
     <article>
         <h1>{{ page.title }}</h1>
         {% if page.tags | length > 0 %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block title %}{{ t.roadmap }} — {{ site.title }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -144,7 +144,7 @@
 
 {% block content %}
 <div class="rm-page">
-    <h1>Roadmap</h1>
+    <h1>{{ t.roadmap }}</h1>
     <p class="rm-subtitle">What we're working on and what's coming next. Have a feature request? <a href="https://github.com/sanchezomar/page/issues">Open an issue</a>.</p>
 
     {% set in_progress = [] %}
@@ -167,7 +167,7 @@
     {% if in_progress | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--in-progress">In Progress</span>
+            <span class="rm-status rm-status--in-progress">{{ t.in_progress }}</span>
             <span class="rm-count">{{ in_progress | length }} item{% if in_progress | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -184,7 +184,7 @@
     {% if planned | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--planned">Planned</span>
+            <span class="rm-status rm-status--planned">{{ t.planned }}</span>
             <span class="rm-count">{{ planned | length }} item{% if planned | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -201,7 +201,7 @@
     {% if done | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--done">Done</span>
+            <span class="rm-status rm-status--done">{{ t.done }}</span>
             <span class="rm-count">{{ done | length }} item{% if done | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -218,7 +218,7 @@
     {% if other | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status">Other</span>
+            <span class="rm-status">{{ t.other }}</span>
             <span class="rm-count">{{ other | length }} item{% if other | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
