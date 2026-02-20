@@ -802,6 +802,15 @@ pub fn build_site(
                 fs::create_dir_all(&out_dir)?;
                 fs::write(out_dir.join("index.html"), html)?;
             }
+
+            // Write markdown index (all items, not just one page) alongside page 1
+            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            let md_dir = if *lang == *default_lang {
+                paths.output.join(url_prefix_trimmed)
+            } else {
+                paths.output.join(lang).join(url_prefix_trimmed)
+            };
+            fs::write(md_dir.join("index.md"), md_content)?;
         }
     }
 
@@ -890,6 +899,10 @@ pub fn build_site(
             };
             fs::create_dir_all(&out_dir)?;
             fs::write(out_dir.join("index.html"), html)?;
+
+            // Write markdown index alongside HTML
+            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            fs::write(out_dir.join("index.md"), md_content)?;
         }
     }
 
@@ -1597,6 +1610,24 @@ fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
 fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     let clean = url.trim_matches('/');
     output_dir.join(format!("{clean}.md"))
+}
+
+/// Generate a markdown listing for a collection index page.
+fn generate_collection_index_md(label: &str, items: &[ItemSummary]) -> String {
+    let mut md = format!("# {label}\n\n");
+    for item in items {
+        md.push_str(&format!("- [{}]({})", item.title, item.url));
+        if let Some(date) = &item.date {
+            md.push_str(&format!(" ({date})"));
+        }
+        md.push('\n');
+        if let Some(desc) = &item.description {
+            if !desc.is_empty() {
+                md.push_str(&format!("  {desc}\n"));
+            }
+        }
+    }
+    md
 }
 
 fn build_page_context(site: &SiteContext, item: &ContentItem, data: &serde_json::Value) -> tera::Context {
