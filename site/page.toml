@@ -27,6 +27,28 @@ url_prefix = ""
 nested = false
 default_template = "page.html"
 
+[[collections]]
+name = "changelog"
+label = "Changelog"
+directory = "changelog"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/changelog"
+nested = false
+default_template = "changelog-entry.html"
+
+[[collections]]
+name = "roadmap"
+label = "Roadmap"
+directory = "roadmap"
+has_date = false
+has_rss = false
+listed = true
+url_prefix = "/roadmap"
+nested = false
+default_template = "roadmap-item.html"
+
 [build]
 output_dir = "dist"
 content_dir = "content"

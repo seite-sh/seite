@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deployment — page docs</title>
     <meta name="description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
+    <link rel="canonical" href="https://pagecli.dev/docs/deployment">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment">
+    <meta property="og:url" content="https://pagecli.dev/docs/deployment">
     <meta property="og:title" content="Deployment">
     <meta property="og:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/deployment.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Deployment&quot;,"description":&quot;Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;deployment&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Deployment","description":"Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/deployment"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;deployment" aria-current="page">Deployment</a></li>
+                    <li class="active"><a href="/docs/deployment" aria-current="page">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1181,6 +1189,18 @@ target = &quot;github-pages&quot;
 <div class="callout-title">Info</div>
 <p><code>page</code> runs pre-flight checks before every deploy — verifying the output directory exists, <code>base_url</code> isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.</p>
 </div>
+<h2 id="auto-commit-and-push">Auto-Commit and Push</h2>
+<p>By default, <code>page deploy</code> automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.</p>
+<p><strong>Branch-based preview:</strong> when you deploy from a branch other than <code>main</code> or <code>master</code>, <code>page</code> automatically deploys as a preview instead of production. No need to pass <code>--preview</code> manually.</p>
+<p>To disable auto-commit for a project, set <code>auto_commit = false</code> in <code>page.toml</code>:</p>
+<pre><code>[deploy]
+target = &quot;github-pages&quot;
+auto_commit = false
+</code></pre>
+<p>Or skip it for a single deploy with <code>--no-commit</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --no-commit
+</span></pre>
 <h2 id="github-pages">GitHub Pages</h2>
 <p>The default deployment target. When you run <code>page init</code> with <code>--deploy-target github-pages</code>, a GitHub Actions workflow is generated at <code>.github/workflows/deploy.yml</code> that builds and deploys on every push to <code>main</code>.</p>
 <h3 id="manual-deployment">Manual deployment</h3>
@@ -1326,6 +1346,12 @@ domain = &quot;example.com&quot;
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1375,6 +1401,18 @@ domain = &quot;example.com&quot;
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1394,15 +1432,15 @@ domain = &quot;example.com&quot;
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;i18n">
+            <a href="/docs/i18n">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Multi-Language</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;agent" class="doc-nav-next">
+            <a href="/docs/trust-center" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
-                <span class="doc-nav-title">AI Agent</span>
+                <span class="doc-nav-title">Trust Center</span>
             </a>
             
         </nav>
@@ -1417,6 +1455,7 @@ domain = &quot;example.com&quot;
             <li class="toc-level-2"><a href="#overview">Overview</a></li>
             <li class="toc-level-2"><a href="#which-target-should-i-choose">Which Target Should I Choose?</a></li>
             <li class="toc-level-2"><a href="#configuration">Configuration</a></li>
+            <li class="toc-level-2"><a href="#auto-commit-and-push">Auto-Commit and Push</a></li>
             <li class="toc-level-2"><a href="#github-pages">GitHub Pages</a></li>
             <li class="toc-level-3"><a href="#manual-deployment">Manual deployment</a></li>
             <li class="toc-level-3"><a href="#dry-run">Dry run</a></li>

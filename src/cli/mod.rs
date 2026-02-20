@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod build;
+pub mod collection;
 pub mod deploy;
 pub mod init;
 pub mod mcp;
@@ -63,6 +64,9 @@ pub enum Command {
 
     /// Start an AI agent session with full site context
     Agent(agent::AgentArgs),
+
+    /// Manage collections
+    Collection(collection::CollectionArgs),
 
     /// Manage themes
     Theme(theme::ThemeArgs),

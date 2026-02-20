@@ -15,7 +15,7 @@
 ### Quick install (macOS and Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+curl -fsSL https://pagecli.dev/install.sh | sh
 ```
 
 This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
@@ -23,12 +23,18 @@ This downloads a prebuilt binary for your platform and installs it to `~/.local/
 To install a specific version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh
+```
+
+### Quick install (Windows)
+
+```powershell
+irm https://pagecli.dev/install.ps1 | iex
 ```
 
 ### Install from source
 
-If you have the Rust toolchain installed:
+If you have the Rust toolchain installed (all platforms):
 
 ```bash
 cargo install page
@@ -42,7 +48,7 @@ cargo install page
 | macOS | Intel x86_64 | Shell installer or cargo |
 | Linux | x86_64 | Shell installer or cargo |
 | Linux | aarch64/arm64 | Shell installer or cargo |
-| Windows | x86_64 | `cargo install page` |
+| Windows | x86_64 | PowerShell installer or cargo |
 
 ### Verify
 
@@ -78,7 +84,8 @@ mysite/
 ├── templates/     # Tera templates (override bundled themes)
 ├── static/        # Static assets (CSS, JS, images)
 ├── page.toml      # Site configuration
-└── .claude/       # Claude Code agent configuration
+├── .claude/       # Claude Code agent configuration (includes MCP server)
+└── .page/         # Project metadata (version tracking)
 ```
 
 ## Create Content
@@ -173,13 +180,31 @@ Generate a custom theme with AI:
 page theme create "minimal serif with warm colors"
 ```
 
+## Updating
+
+Update the binary itself:
+
+```bash
+page self-update
+```
+
+After updating, bring your project's config files up to date:
+
+```bash
+page upgrade
+```
+
+This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive — your existing settings are preserved.
+
 ## Next Steps
 
 - [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
 - [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
 - [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
 - [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
 - [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you
+- [MCP Server](/docs/mcp-server) — structured AI access to your site via the Model Context Protocol
 
 
 ---
@@ -227,6 +252,11 @@ widths = [480, 800, 1200]
 quality = 80
 webp = true
 lazy_loading = true
+
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+cookie_consent = true
 ```
 
 ## [site]
@@ -336,6 +366,7 @@ The build will error if two data files share the same stem (e.g., `authors.yaml`
 | `target` | string | `"github-pages"` | Deploy target: `github-pages`, `cloudflare`, `netlify` |
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
+| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
 
 ## [languages.*]
 
@@ -364,6 +395,87 @@ Optional. When this section is present, `page` automatically processes images in
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
 When configured, images in `static/` are resized to each width, optionally converted to WebP, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. To disable image processing, remove the `[images]` section entirely.
+
+## [analytics]
+
+Optional. When present, analytics scripts are automatically injected into every HTML page during build. Supports Google Analytics 4, Google Tag Manager, Plausible, Fathom, and Umami.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | string | required | Analytics provider: `google`, `gtm`, `plausible`, `fathom`, `umami` |
+| `id` | string | required | Measurement/tracking ID (e.g., `G-XXXXXXX`, `GTM-XXXXX`, domain, or site ID) |
+| `cookie_consent` | bool | `false` | Show a cookie consent banner and gate analytics on user acceptance |
+| `script_url` | string | varies | Custom script URL (required for self-hosted Umami, optional for others) |
+
+### Examples
+
+**Google Analytics 4 (direct):**
+
+```toml
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+```
+
+**Google Analytics 4 with cookie consent banner:**
+
+```toml
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+cookie_consent = true
+```
+
+**Google Tag Manager:**
+
+```toml
+[analytics]
+provider = "gtm"
+id = "GTM-XXXXXXX"
+cookie_consent = true
+```
+
+**Plausible Analytics (privacy-friendly, no cookies):**
+
+```toml
+[analytics]
+provider = "plausible"
+id = "example.com"
+```
+
+**Fathom Analytics:**
+
+```toml
+[analytics]
+provider = "fathom"
+id = "ABCDEF"
+```
+
+**Self-hosted Umami:**
+
+```toml
+[analytics]
+provider = "umami"
+id = "abc-def-123"
+script_url = "https://stats.example.com/script.js"
+```
+
+{{% callout(type="tip") %}}
+Privacy-respecting analytics like Plausible, Fathom, and Umami don't use cookies. You can typically use them without a consent banner (`cookie_consent = false`). Google Analytics and GTM set cookies and may require consent under GDPR/ePrivacy — set `cookie_consent = true` for those.
+{{% end %}}
+
+### Cookie consent banner
+
+When `cookie_consent = true`, a fixed-position banner appears at the bottom of the page on the visitor's first visit. Analytics scripts only load after the visitor clicks "Accept". The choice is stored in `localStorage` so it persists across visits. The banner is fully accessible with `role="dialog"`, keyboard-navigable buttons, and responsive design.
+
+### How it works
+
+Analytics injection happens as a post-processing step after the main build. Every `.html` file in the output directory is rewritten:
+
+- **Without consent:** the analytics `<script>` tag is injected before `</head>`. GTM also gets a `<noscript>` fallback after `<body>`.
+- **With consent:** a consent banner with Accept/Decline buttons is injected before `</body>`. Analytics scripts are loaded dynamically only after the user accepts.
+
+To remove analytics, delete the `[analytics]` section from `page.toml`.
 
 ## Frontmatter
 
@@ -403,28 +515,61 @@ extra:
 | `robots` | string | No | Per-page robots directive |
 | `extra` | map | No | Arbitrary data for templates |
 
+## page-workspace.toml
+
+For multi-site setups, a `page-workspace.toml` at the workspace root configures all sites. Each site still has its own `page.toml`.
+
+```toml
+[workspace]
+name = "my-workspace"
+shared_data = "data"           # Shared data directory (optional)
+shared_static = "static"       # Shared static assets (optional)
+shared_templates = "templates" # Shared templates (optional)
+
+[[sites]]
+name = "blog"
+path = "sites/blog"
+# base_url = "https://blog.example.com"  # Override site base_url
+# output_dir = "dist/blog"               # Override output location
+
+[[sites]]
+name = "docs"
+path = "sites/docs"
+
+[cross_site]
+unified_sitemap = false    # Combine all sites into one sitemap
+cross_site_links = false   # Validate links across sites
+unified_search = false     # Combined search index
+```
+
+See [Workspaces](/docs/workspace) for the full guide.
+
 ## Next Steps
 
 - [Collections](/docs/collections) — configure how posts, docs, and pages behave
 - [Templates & Themes](/docs/templates) — use config values and data files in your templates
 - [Deployment](/docs/deployment) — deploy with the settings you've configured
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
 
 
 ---
 
 ### Collections
 
-*Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.*
+*Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.*
 
 ## Overview
 
-Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Three presets are available:
+Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Five presets are available:
 
 | Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
 |--------|-----------|-------|-----|--------|--------|-------------|
 | posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
 | docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
 | pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
+| changelog | `content/changelog/` | Yes | Yes | Yes | No | `/changelog/slug` |
+| roadmap | `content/roadmap/` | No | No | Yes | No | `/roadmap/slug` |
+| trust  | `content/trust/`   | No | No | Yes | Yes | `/trust/slug` |
 
 ## Defining Collections
 
@@ -529,6 +674,70 @@ content/pages/
 
 The special file `content/pages/index.md` injects its content into the homepage template as `{{ page.content }}`.
 
+## Changelog
+
+The changelog collection is for release notes and version history. Entries are date-based with RSS support, so users can subscribe to updates.
+
+```
+content/changelog/
+├── 2026-01-15-v0-1-0.md
+├── 2026-02-01-v0-2-0.md
+└── 2026-02-18-v1-0-0.md
+```
+
+Use tags to categorize changes. Tags render as colored badges in the changelog templates:
+
+- `new` — new features (green)
+- `fix` — bug fixes (blue)
+- `breaking` — breaking changes (red)
+- `improvement` — enhancements (purple)
+- `deprecated` — deprecations (gray)
+
+```bash
+page new changelog "v1.0.0" --tags new,improvement
+```
+
+## Roadmap
+
+The roadmap collection is for sharing your project's public roadmap. Items are ordered by `weight` (not date) and grouped by status tags.
+
+```
+content/roadmap/
+├── dark-mode.md
+├── api-v2.md
+└── initial-release.md
+```
+
+Use tags for status and `weight` for priority ordering within each group:
+
+- `planned` — upcoming work
+- `in-progress` — actively being worked on
+- `done` — completed
+- `cancelled` — no longer planned
+
+```yaml
+---
+title: "Dark Mode"
+tags:
+  - planned
+weight: 1
+---
+```
+
+Three index layouts are available. The default groups items by status. To switch layouts, create `templates/roadmap-index.html`:
+
+```html
+{# Kanban board (3-column CSS grid): #}
+{% extends "roadmap-kanban.html" %}
+
+{# Or timeline (vertical milestones): #}
+{% extends "roadmap-timeline.html" %}
+```
+
+```bash
+page new roadmap "Feature Name" --tags planned
+```
+
 ## Pagination
 
 Enable pagination on any listed collection:
@@ -625,6 +834,9 @@ Tag pages are i18n-aware and included in the sitemap.
 | `{{ data }}` | Data files from `data/` directory |
 | `{{ lang }}` | Current language code |
 | `{{ translations }}` | Available translations |
+| `{{ default_language }}` | Default language code (from `page.toml`) |
+| `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
+| `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 | `{{ pagination }}` | Pagination context |
 
 ## Overridable Blocks
@@ -836,6 +1048,49 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
   {% endfor %}
 </nav>
 {% endif %}
+```
+
+## Translatable UI Strings
+
+All bundled themes and default templates use the `{{ t }}` object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.
+
+### Default Keys
+
+| Key | Default (English) |
+|-----|-------------------|
+| `t.search_placeholder` | Search… |
+| `t.skip_to_content` | Skip to main content |
+| `t.no_results` | No results |
+| `t.newer` | Newer |
+| `t.older` | Older |
+| `t.page_n_of_total` | Page {n} of {total} |
+| `t.search_label` | Search site content |
+| `t.min_read` | min read |
+| `t.contents` | Contents |
+| `t.tags` | Tags |
+| `t.all_tags` | All tags |
+| `t.tagged` | Tagged |
+| `t.changelog` | Changelog |
+| `t.roadmap` | Roadmap |
+| `t.not_found_title` | Page Not Found |
+| `t.not_found_message` | The page you requested could not be found. |
+| `t.go_home` | Go to the homepage |
+| `t.in_progress` | In Progress |
+| `t.planned` | Planned |
+| `t.done` | Done |
+| `t.other` | Other |
+
+### Overriding Strings
+
+Create `data/i18n/{lang}.yaml` to override any key for a specific language:
+
+```yaml
+# data/i18n/es.yaml
+search_placeholder: "Buscar…"
+skip_to_content: "Ir al contenido principal"
+no_results: "Sin resultados"
+newer: "Más recientes"
+older: "Más antiguos"
 ```
 
 ## Next Steps
@@ -1154,7 +1409,10 @@ Bundled themes include a language switcher UI when `translations` is non-empty. 
 |----------|-------------|
 | `{{ lang }}` | Current page language code |
 | `{{ translations }}` | Array of `{lang, url}` for available translations |
-| `{{ site.language }}` | Default site language |
+| `{{ site.language }}` | Configured default language |
+| `{{ default_language }}` | Default language code (from `page.toml`) |
+| `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
+| `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 
 Use in templates:
 
@@ -1171,6 +1429,71 @@ Use in templates:
 </nav>
 {% endif %}
 ```
+
+## Navigation and Footer Links
+
+Data file links in `data/nav.yaml` and `data/footer.yaml` can use the `external: true` flag to distinguish external URLs from internal ones. This lets themes apply the `{{ lang_prefix }}` only to internal links, so navigation works correctly across languages:
+
+```yaml
+# data/nav.yaml
+- title: Blog
+  url: /posts
+- title: About
+  url: /about
+- title: GitHub
+  url: https://github.com/user/repo
+  external: true
+```
+
+In templates, check for `external` to decide whether to prepend the language prefix:
+
+```html
+{% for item in data.nav %}
+  {% if item.external %}
+    <a href="{{ item.url }}">{{ item.title }}</a>
+  {% else %}
+    <a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>
+  {% endif %}
+{% endfor %}
+```
+
+All bundled themes handle this automatically when `data.nav` or `data.footer` are present.
+
+## UI String Translations
+
+Bundled themes use the `{{ t }}` object for all user-facing UI text (buttons, labels, placeholders). This means you can translate the interface without overriding entire theme templates.
+
+### How it works
+
+1. The build pipeline provides English defaults for all UI strings
+2. To override strings for a specific language, create `data/i18n/{lang}.yaml`
+3. Only the keys you define are overridden — everything else falls back to English
+
+### Example
+
+```yaml
+# data/i18n/es.yaml
+search_placeholder: "Buscar…"
+skip_to_content: "Ir al contenido principal"
+no_results: "Sin resultados"
+newer: "Más recientes"
+older: "Más antiguos"
+tags: "Etiquetas"
+min_read: "min de lectura"
+```
+
+```yaml
+# data/i18n/fr.yaml
+search_placeholder: "Rechercher…"
+skip_to_content: "Aller au contenu principal"
+no_results: "Aucun résultat"
+newer: "Plus récent"
+older: "Plus ancien"
+tags: "Mots-clés"
+min_read: "min de lecture"
+```
+
+See [Templates & Themes](/docs/templates#translatable-ui-strings) for the full list of available keys and their English defaults.
 
 ## Next Steps
 
@@ -1219,6 +1542,26 @@ Make sure `base_url` in `page.toml` is set to your real domain before deploying.
 {{% callout(type="info") %}}
 `page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
 {{% end %}}
+
+## Auto-Commit and Push
+
+By default, `page deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
+
+**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `page` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+
+To disable auto-commit for a project, set `auto_commit = false` in `page.toml`:
+
+```toml
+[deploy]
+target = "github-pages"
+auto_commit = false
+```
+
+Or skip it for a single deploy with `--no-commit`:
+
+```bash
+page deploy --no-commit
+```
 
 ## GitHub Pages
 
@@ -1378,6 +1721,201 @@ All three platforms serve `404.html` automatically for missing routes.
 
 ---
 
+### Trust Center
+
+*Build a compliance hub with certifications, subprocessors, FAQs, and security policies*
+
+# Trust Center
+
+The trust center is a built-in collection preset that scaffolds a compliance hub for your site. It generates data-driven pages for certifications, subprocessor lists, security FAQs, and policy documents.
+
+## Getting Started
+
+### Add during site creation
+
+```bash
+page init mysite --collections posts,pages,trust
+```
+
+When `trust` is included, you'll be prompted to select:
+- **Company name** — displayed on the trust center
+- **Compliance frameworks** — SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3
+- **Sections** — Security Overview, Certifications, Subprocessors, FAQ, Vulnerability Disclosure, DPA, Changelog
+- **Per-framework status** — Active, In Progress, or Planned
+
+### Non-interactive (CI-friendly)
+
+```bash
+page init mysite \
+  --collections posts,pages,trust \
+  --trust-company "Acme Corp" \
+  --trust-frameworks soc2,iso27001 \
+  --trust-sections overview,certifications,subprocessors,faq,disclosure
+```
+
+## Architecture
+
+The trust center has three layers:
+
+1. **Data files** (`data/trust/`) — structured YAML that drives the templates
+2. **Content pages** (`content/trust/`) — markdown prose for each section
+3. **Templates** — `trust-index.html` (hub page at `/trust/`) and `trust-item.html` (individual pages)
+
+### Scaffolded File Structure
+
+```
+data/trust/
+├── certifications.yaml    # framework entries with status, dates, auditor
+├── subprocessors.yaml     # vendor table with name, purpose, location, DPA
+└── faq.yaml               # security Q&A grouped by category
+
+content/trust/
+├── security-overview.md           # main security narrative (weight: 1)
+├── vulnerability-disclosure.md    # responsible disclosure program (weight: 5)
+├── data-processing.md             # DPA / data processing terms (weight: 6)
+└── certifications/
+    ├── soc2.md                    # per-framework detail pages (weight: 2)
+    └── iso27001.md
+```
+
+## Data Files
+
+### Certifications (`data/trust/certifications.yaml`)
+
+```yaml
+- name: SOC 2 Type II
+  slug: soc2
+  status: active           # active | in_progress | planned
+  framework: soc2
+  description: >
+    Annual audit covering Security and Availability trust service criteria
+  issued: 2025-11-15       # date cert was issued
+  expires: 2026-11-15      # expiration date
+  auditor: "Deloitte"
+  scope: "Security, Availability"
+  report_url: "mailto:security@example.com"
+```
+
+Status values control the badge display:
+- `active` — green badge, shows issued/expires dates
+- `in_progress` — yellow badge, shows target date
+- `planned` — gray badge, shown on roadmap
+
+### Subprocessors (`data/trust/subprocessors.yaml`)
+
+```yaml
+- name: "AWS"
+  purpose: "Cloud infrastructure and hosting"
+  data_types: ["Customer data", "Application logs"]
+  location: "United States"
+  dpa: true
+```
+
+Fields: `name` (required), `purpose`, `data_types` (array), `location`, `dpa` (boolean).
+
+### FAQ (`data/trust/faq.yaml`)
+
+```yaml
+- question: "Do you encrypt data at rest?"
+  answer: "Yes. All customer data is encrypted at rest using AES-256 encryption."
+  category: encryption
+```
+
+Categories group FAQs in the UI: `encryption`, `access`, `data-residency`, `incident-response`, `compliance`, `general`.
+
+## Content Pages
+
+Trust center content files use the standard markdown + YAML frontmatter format. Key frontmatter fields:
+
+```yaml
+---
+title: "Security Overview"
+description: "How Acme Corp protects your data"
+weight: 1                    # controls section ordering (lower = first)
+extra:
+  type: overview             # overview | certification | policy | changelog
+  framework: soc2            # links to data/trust/certifications.yaml entry
+---
+```
+
+The `extra.type` field categorizes the page:
+- `overview` — main security narrative
+- `certification` — framework detail page (paired with `extra.framework`)
+- `policy` — vulnerability disclosure, DPA, etc.
+- `changelog` — security updates and changes
+
+## Trust Center Index
+
+The hub page at `/trust/` is rendered using `trust-index.html` and displays:
+
+1. **Hero section** — company name and headline
+2. **Certification grid** — cards from `data.trust.certifications` with status badges
+3. **Content sections** — trust collection items ordered by weight
+4. **Subprocessor table** — from `data.trust.subprocessors`
+5. **FAQ accordion** — from `data.trust.faq`
+
+All sections are conditional — if a data file is empty or missing, the section doesn't render.
+
+## Configuration
+
+The `[trust]` section in `page.toml` stores trust center metadata:
+
+```toml
+[trust]
+company = "Acme Corp"
+frameworks = ["soc2", "iso27001"]
+```
+
+- `company` — displayed on the trust center (defaults to `site.title`)
+- `frameworks` — list of active framework slugs
+
+## Common Tasks
+
+```bash
+# Add a new certification
+page new trust "PCI DSS"
+
+# Add a security update
+page new trust "Q1 2026 Security Update" --tags changelog
+
+# Create a translation
+page new trust "Security Overview" --lang es
+
+# Rebuild after editing data files
+page build
+```
+
+## Multi-language Support
+
+Data files (`data/trust/*.yaml`) are language-neutral — structured data like dates, statuses, and vendor names don't change per language.
+
+Content pages get translated using the standard i18n filename convention:
+
+```
+content/trust/security-overview.md       # English → /trust/security-overview
+content/trust/security-overview.es.md    # Spanish → /es/trust/security-overview
+```
+
+The trust center index is rendered per-language automatically.
+
+## Template Customization
+
+Override `templates/trust-index.html` or `templates/trust-item.html` to customize the layout. Template variables available:
+
+- `data.trust.certifications` — array of certification objects
+- `data.trust.subprocessors` — array of vendor objects
+- `data.trust.faq` — array of Q&A objects
+- `collections` — trust collection items (on index page)
+- `page.extra.type` — content type (on item pages)
+- `page.extra.framework` — framework slug for certification pages
+
+## MCP Integration
+
+The `page://trust` resource returns the full trust center state as JSON, including certifications, subprocessor count, FAQ count, and content items. Use `page_search` with `collection: "trust"` to find trust center content.
+
+
+---
+
 ### AI Agent
 
 *Use page agent to get AI assistance with content creation, site management, and theme generation.*
@@ -1520,6 +2058,342 @@ When you run `page init`, it creates `.claude/settings.json` with pre-configured
 - [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
 - [CLI Reference](/docs/cli-reference) — all `page agent` flags and options
 - [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet
+
+
+---
+
+### Workspaces
+
+*Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.*
+
+## Overview
+
+A workspace lets you manage multiple `page` sites from a single directory. Each site has its own `page.toml`, content, and templates, but they share a root and can share data, static files, and templates.
+
+Use cases:
+- **Company site + blog + docs** as separate sites in one repo
+- **Multi-brand** sites that share templates or data
+- **Monorepo** with a marketing site and product documentation
+
+## Quick Start
+
+```bash
+# Initialize a workspace
+page workspace init my-workspace
+
+# Add sites
+page workspace add blog --collections posts,pages --title "Blog"
+page workspace add docs --collections docs --title "Documentation"
+
+# Build all sites
+page build
+
+# Serve all sites with unified dev server
+page serve
+
+# Build/serve a specific site
+page build --site blog
+page serve --site docs
+```
+
+## Creating a Workspace
+
+```bash
+page workspace init [name]
+```
+
+This creates:
+
+```
+my-workspace/
+├── page-workspace.toml   # Workspace configuration
+├── sites/                # Default directory for sites
+├── data/                 # Shared data files
+├── static/               # Shared static assets
+└── templates/            # Shared templates
+```
+
+If you omit the name, an interactive prompt asks for it.
+
+## Adding Sites
+
+```bash
+page workspace add <name> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Directory for the site (default: `sites/<name>`) |
+| `--title` | Site title |
+| `--collections` | Comma-separated collections (default: `posts,pages`) |
+
+This creates a full site scaffold inside the workspace and registers it in `page-workspace.toml`:
+
+```bash
+page workspace add blog --collections posts,pages --title "My Blog"
+page workspace add docs --collections docs --title "Documentation" --path sites/documentation
+```
+
+## Configuration
+
+The workspace is configured through `page-workspace.toml` at the workspace root:
+
+```toml
+[workspace]
+name = "my-workspace"
+
+# Shared resources available to all sites (optional)
+# shared_data = "data"
+# shared_static = "static"
+# shared_templates = "templates"
+
+[[sites]]
+name = "blog"
+path = "sites/blog"
+# base_url = "https://blog.example.com"   # Override site's base_url
+# output_dir = "dist/blog"                # Override output location
+
+[[sites]]
+name = "docs"
+path = "sites/docs"
+
+# Cross-site features (optional)
+# [cross_site]
+# unified_sitemap = true
+# cross_site_links = true
+# unified_search = false
+```
+
+### Workspace Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workspace.name` | string | Workspace name |
+| `workspace.shared_data` | string | Path to shared data directory |
+| `workspace.shared_static` | string | Path to shared static assets |
+| `workspace.shared_templates` | string | Path to shared templates |
+
+### Site Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Site identifier (used in `--site` flag and URL routing) |
+| `path` | string | Path to the site directory (relative to workspace root) |
+| `base_url` | string | Override the site's `base_url` from its `page.toml` |
+| `output_dir` | string | Override output directory (relative to workspace root) |
+
+Each site must have its own `page.toml` inside its directory.
+
+## The --site Flag
+
+When inside a workspace, `build`, `serve`, and `deploy` operate on **all sites** by default. Use the global `--site` flag to target a specific site:
+
+```bash
+page build --site blog       # Build only the blog
+page deploy --site docs      # Deploy only the docs
+page serve --site blog       # Serve only the blog
+```
+
+The `--site` flag is available on all commands when a `page-workspace.toml` is detected.
+
+## Building
+
+```bash
+page build                   # Build all sites
+page build --site blog       # Build one site
+page build --strict          # Treat broken links as errors (per-site)
+```
+
+Each site is built independently with its own config and templates. Build output shows per-site progress:
+
+```
+[1/2] Building site 'blog'
+✓ 12 posts, 3 pages (0.45s)
+[2/2] Building site 'docs'
+✓ 8 docs (0.32s)
+── Workspace build complete ──
+✓ blog: 12 posts, 3 pages | docs: 8 docs
+```
+
+Internal link validation runs per-site after each build.
+
+## Development Server
+
+```bash
+page serve                   # Serve all sites
+page serve --site blog       # Serve one site
+```
+
+The workspace dev server routes requests by site name:
+
+- `http://localhost:3000/` — workspace index listing all sites
+- `http://localhost:3000/blog/` — blog site
+- `http://localhost:3000/docs/` — docs site
+
+File watching is per-site — when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
+
+## Deploying
+
+```bash
+page deploy                  # Deploy all sites
+page deploy --site blog      # Deploy one site
+page deploy --dry-run        # Preview all deploys
+```
+
+Each site deploys according to its own `page.toml` deploy config. Sites can use different deploy targets — one on GitHub Pages, another on Cloudflare.
+
+{{% callout(type="tip") %}}
+Use `page deploy --site blog --dry-run` to preview a single site's deploy before pushing to production.
+{{% end %}}
+
+## Checking Status
+
+```bash
+page workspace list          # List all sites with config status
+page workspace status        # Detailed workspace status (config, build state, titles)
+```
+
+## Workspace Detection
+
+`page` automatically detects workspaces by walking up the directory tree looking for `page-workspace.toml`. This means you can run commands from anywhere inside the workspace:
+
+```bash
+cd my-workspace/sites/blog
+page build                   # Detects workspace, builds all sites
+page build --site blog       # Builds just the blog
+```
+
+If no `page-workspace.toml` is found, `page` operates in standalone mode using the local `page.toml`.
+
+## Next Steps
+
+- [Configuration](/docs/configuration) — site-level `page.toml` settings that each workspace site uses
+- [Deployment](/docs/deployment) — deploy targets and options for each site
+- [CLI Reference](/docs/cli-reference) — complete list of commands and flags
+
+
+---
+
+### MCP Server
+
+*Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.*
+
+## Overview
+
+`page` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a page project in Claude Code, the MCP server starts automatically — no API keys or setup required.
+
+The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
+
+## How It Works
+
+The MCP server runs as a subprocess (`page mcp`) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "page": {
+      "command": "page",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+This is scaffolded by `page init` and can be added to existing projects with `page upgrade`.
+
+## Resources
+
+Resources are read-only data that AI tools can query. Each resource has a URI.
+
+| Resource | URI | Description |
+|----------|-----|-------------|
+| Documentation index | `page://docs` | List of all documentation pages with titles and descriptions |
+| Documentation page | `page://docs/{slug}` | Full markdown content of a specific doc page |
+| Site configuration | `page://config` | Current `page.toml` serialized as JSON |
+| Content overview | `page://content` | All collections with item counts |
+| Collection items | `page://content/{collection}` | Items in a collection with metadata (title, date, tags, slug, url, draft status) |
+| Themes | `page://themes` | Available bundled and installed themes |
+| MCP configuration | `page://mcp-config` | The `.claude/settings.json` MCP server configuration |
+
+Documentation resources are always available (they're embedded in the binary). Site-specific resources (`page://config`, `page://content/*`, `page://themes`, `page://mcp-config`) are only available when running inside a page project directory.
+
+## Tools
+
+Tools are actions that AI tools can execute.
+
+### page_build
+
+Build the site to the output directory.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `drafts` | boolean | No | Include draft content in the build (default: false) |
+
+Returns build statistics including pages built per collection, timing, and any errors.
+
+### page_create_content
+
+Create a new content file with frontmatter.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `collection` | string | Yes | Collection name (`posts`, `docs`, or `pages`) |
+| `title` | string | Yes | Title of the content |
+| `tags` | string[] | No | Tags for the content |
+| `body` | string | No | Markdown body content |
+| `draft` | boolean | No | Create as draft |
+
+Returns the file path, URL, and slug of the created content.
+
+### page_search
+
+Search site content by keywords.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Search keywords |
+| `collection` | string | No | Limit search to a specific collection |
+
+Matches against titles, descriptions, and tags. Returns up to 20 results with metadata.
+
+### page_apply_theme
+
+Apply a bundled or installed theme to the site.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, or an installed theme) |
+
+### page_lookup_docs
+
+Look up page documentation by topic or keyword.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | No | Search keywords to find in documentation |
+| `topic` | string | No | Specific doc topic slug (e.g., `configuration`, `templates`, `deployment`) |
+
+When `topic` matches a doc slug, returns the full page. When `query` is provided, searches across all documentation and returns matching sections with context.
+
+## Manual Testing
+
+You can test the MCP server manually by sending JSON-RPC messages:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | page mcp
+```
+
+A full session requires the initialization handshake first, then queries:
+
+```bash
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}\n' | page mcp
+```
+
+## Next Steps
+
+- [AI Agent](/docs/agent) — interactive AI sessions with `page agent`
+- [CLI Reference](/docs/cli-reference) — the `page mcp` command reference
+- [Configuration](/docs/configuration) — the full `page.toml` reference
 
 
 ---
@@ -1726,7 +2600,7 @@ Run `page <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`page` has seven subcommands:
+`page` has eleven subcommands:
 
 | Command | Description |
 |---------|-------------|
@@ -1737,6 +2611,22 @@ Run `page <command> --help` for quick inline help on any command.
 | `agent` | AI assistant with site context |
 | `theme` | Manage themes |
 | `deploy`| Deploy to hosting platforms |
+| `workspace` | Manage multi-site workspaces |
+| `mcp`   | MCP server for AI tool integration |
+| `upgrade` | Update project config to match current binary |
+| `self-update` | Update the page binary to the latest release |
+
+### Global Flags
+
+These flags work with any command:
+
+| Flag | Description |
+|------|-------------|
+| `--site <name>` | Target a specific site in a workspace |
+| `--config <path>` | Path to config file |
+| `--dir <path>` | Project directory |
+| `--verbose` | Enable verbose logging |
+| `--json` | Output results as JSON |
 
 ## page init
 
@@ -1751,7 +2641,7 @@ page init <name> [options]
 | `--title` | Site title |
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
-| `--collections` | Comma-separated list: `posts,docs,pages` |
+| `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 
 If flags are omitted, `page init` prompts interactively.
 
@@ -1778,7 +2668,7 @@ page build [options]
 
 The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
 
-After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., `<a href="/posts/nonexistent">`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
+After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
 
 ## page serve
 
@@ -1812,7 +2702,7 @@ page new <collection> "Title" [options]
 
 | Flag | Description |
 |------|-------------|
-| `--tags` | Comma-separated tags (posts only) |
+| `--tags` | Comma-separated tags |
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
 
 ```bash
@@ -1820,6 +2710,8 @@ page new post "My Post" --tags rust,web
 page new doc "API Guide"
 page new page "About"
 page new post "Mi Post" --lang es    # Spanish translation
+page new changelog "v1.0.0" --tags new,improvement
+page new roadmap "Dark Mode" --tags planned
 ```
 
 ## page agent
@@ -1835,6 +2727,27 @@ Two modes:
 - **One-shot**: `page agent "write a blog post about Rust"` — runs and exits
 
 The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
+
+## page collection
+
+Manage site collections — add presets to an existing site or list current collections.
+
+```bash
+page collection <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add <preset>` | Add a collection preset to the current site (updates `page.toml`, creates content directory) |
+| `list` | List all collections in the current site with their configuration |
+
+Available presets: `posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`.
+
+```bash
+page collection add changelog    # Add changelog collection
+page collection add roadmap      # Add roadmap collection
+page collection list             # Show all configured collections
+```
 
 ## page theme
 
@@ -1879,15 +2792,126 @@ page deploy [options]
 | `--setup` | Run guided deploy setup |
 | `--skip-checks` | Skip pre-flight checks |
 | `--base-url` | Override base URL for this deploy |
+| `--no-commit` | Skip auto-commit and push (overrides `deploy.auto_commit`) |
 
 ```bash
-page deploy                          # Use target from page.toml
+page deploy                          # Commit, push, build, and deploy
+page deploy --no-commit              # Deploy without auto-commit/push
 page deploy --dry-run                # Preview changes
 page deploy --target netlify         # Override target
 page deploy --target cloudflare --dry-run
 page deploy --domain example.com     # Set up custom domain
 page deploy --setup                  # Guided setup wizard
 ```
+
+## page workspace
+
+Manage multi-site workspaces. See the [Workspaces](/docs/workspace) guide for full details.
+
+```bash
+page workspace <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `init [name]` | Initialize a new workspace in the current directory |
+| `list` | List all sites in the workspace |
+| `add <name>` | Add a new site to the workspace |
+| `status` | Show detailed workspace status |
+
+### workspace add flags
+
+| Flag | Description |
+|------|-------------|
+| `--path` | Site directory path (default: `sites/<name>`) |
+| `--title` | Site title |
+| `--collections` | Comma-separated collections (default: `posts,pages`) |
+
+```bash
+page workspace init my-workspace
+page workspace add blog --collections posts,pages --title "Blog"
+page workspace add docs --collections docs --path sites/documentation
+page workspace list
+page workspace status
+```
+
+When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by default. Use `--site` to target one:
+
+```bash
+page build --site blog               # Build only the blog
+page serve --site docs               # Serve only the docs
+page deploy --site blog --dry-run    # Preview blog deploy
+```
+
+## page mcp
+
+Start the MCP (Model Context Protocol) server for AI tool integration. Communicates over stdio using JSON-RPC.
+
+```bash
+page mcp
+```
+
+This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. It is configured in `.claude/settings.json` during `page init` and requires no manual invocation.
+
+The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, create content, search, apply theme, lookup docs). See the [MCP Server](/docs/mcp-server) guide for full details.
+
+{{% callout(type="info") %}}
+You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use `page upgrade` to add the MCP configuration to existing projects.
+{{% end %}}
+
+## page upgrade
+
+Update project configuration files to match the current binary version. When you upgrade the `page` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
+
+```bash
+page upgrade [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Apply all upgrades without confirmation |
+| `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
+
+```bash
+page upgrade                # Interactive: shows changes, asks for confirmation
+page upgrade --force        # Apply all changes without prompting
+page upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
+```
+
+Upgrade is **additive and non-destructive**:
+- Merges into `.claude/settings.json` — adds new entries, never removes yours
+- Appends to `CLAUDE.md` — adds new sections, never modifies existing content
+- Creates `.page/config.json` if missing — tracks the project's config version
+- Each upgrade step is version-gated, so running it on a current project is a fast no-op
+
+{{% callout(type="tip") %}}
+`page build` will nudge you with a one-liner when your project config is outdated: *"Run `page upgrade` for new features."* The build still succeeds — the nudge is informational only.
+{{% end %}}
+
+## page self-update
+
+Update the `page` binary itself to the latest release (or a specific version).
+
+```bash
+page self-update [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Check for updates without installing |
+| `--target-version` | Update to a specific version (e.g., `0.2.0` or `v0.2.0`) |
+
+```bash
+page self-update                          # Update to latest release
+page self-update --check                  # Just check, don't install
+page self-update --target-version 0.2.0   # Pin a specific version
+```
+
+The command downloads the appropriate binary for your platform from GitHub Releases, verifies the SHA256 checksum, and replaces the running binary atomically.
+
+{{% callout(type="info") %}}
+After updating the binary, run `page upgrade` in each of your projects to bring their config files up to date.
+{{% end %}}
 
 
 ---
@@ -1900,16 +2924,41 @@ page deploy --setup                  # Guided setup wizard
 
 Initial release.
 
-- 12-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
-- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
-- AI agent via Claude Code — `page agent` spawns Claude with full site context
-- Multi-language (i18n) support with per-language URLs, RSS feeds, sitemaps, and hreflang tags
-- Deploy to GitHub Pages, Cloudflare Pages, and Netlify with guided setup and pre-flight checks
+**Build pipeline:**
+- 13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
 - Image processing: auto-resize, WebP conversion, srcset, lazy loading
-- Pagination, tag pages, table of contents, excerpts, reading time
-- Custom domain management for all deploy targets
+- Asset pipeline with CSS/JS minification and fingerprinted filenames
+- Internal link validation at build time
+
+**Content:**
+- 6 collection presets: posts, docs, pages, changelog, roadmap, trust center
+- 5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes
+- Data files (YAML/JSON/TOML) injected into template context
+- Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags
+- Pagination, tag pages, table of contents, excerpts, reading time and word count
+
+**Themes:**
+- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
+- AI-generated custom themes via `page theme create`
+- Theme install/export for community sharing
+
+**AI integration:**
+- `page agent` spawns Claude Code with full site context
+- MCP server (`page mcp`) with 5 tools and 6+ resources for AI tool integration
+- Every site ships with `llms.txt`, `llms-full.txt`, and raw markdown
+
+**Deploy:**
+- GitHub Pages, Cloudflare Pages, and Netlify with guided setup
+- Pre-flight checks, `--dry-run` preview, custom domain management
+- Post-deploy verification, preview/staging deploys
+
+**Developer experience:**
 - Interactive dev server with REPL and live reload
-- Shell installer for macOS and Linux
+- Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent
+- Multi-site workspaces
+- `page collection add` for adding collections to existing sites
+- Self-update from GitHub Releases with checksum verification
+- Shell installer for macOS/Linux, PowerShell installer for Windows
 
 
 ---
@@ -1948,6 +2997,183 @@ Initial release.
 page is open source. Contributions, issues, and feedback are welcome.
 
 [View on GitHub](https://github.com/sanchezomar/page)
+
+
+---
+
+## Changelog
+
+### v0.1.0
+
+*Initial release of page — AI-native static site generator*
+
+Initial public release.
+
+## Build Pipeline
+
+- 13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
+- Image processing: auto-resize, WebP conversion, srcset, lazy loading
+- Asset pipeline with CSS/JS minification and fingerprinted filenames
+- Pagination, tag pages, table of contents, excerpts, reading time and word count
+- Internal link validation at build time
+
+## Content
+
+- 6 collection presets: posts, docs, pages, changelog, roadmap, trust center
+- 5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes
+- Data files (YAML/JSON/TOML) injected into templates
+- Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags
+
+## Themes
+
+- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
+- AI-generated custom themes via `page theme create`
+- Theme install/export for community sharing
+
+## AI Integration
+
+- `page agent` spawns Claude Code with full site context
+- MCP server (`page mcp`) with 5 tools and 6+ resources for AI tool integration
+- Every site ships with `llms.txt`, `llms-full.txt`, and raw markdown
+
+## Deploy
+
+- GitHub Pages, Cloudflare Pages, and Netlify with guided setup
+- Pre-flight checks, `--dry-run` preview, custom domain management
+- Post-deploy verification, preview/staging deploys
+
+## Developer Experience
+
+- Interactive dev server with REPL and live reload
+- Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent
+- Multi-site workspaces
+- Self-update from GitHub Releases with checksum verification
+- Shell installer for macOS/Linux, PowerShell installer for Windows
+
+
+---
+
+## Roadmap
+
+### Multi-LLM Agent Integration
+
+*Support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends*
+
+Support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends. Currently `page agent` only works with Claude Code.
+
+## Key Components
+
+- **Provider abstraction** — `AgentProvider` trait with per-provider implementations for command construction, tool name mapping, streaming JSON parsing, and MCP config generation
+- **`[agent]` config section** — provider selection and optional model override in `page.toml`
+- **`AGENTS.md` migration** — migrate from `.claude/CLAUDE.md` to the cross-tool `AGENTS.md` standard
+- **MCP config generation** — write provider-specific MCP config for all detected tools
+- **CLI detection** — auto-detect installed agent tools during `page init`
+- **`page agent switch`** — change default provider
+- **`page agent doctor`** — health check for agent configuration
+- **`page agent --provider`** — one-off provider override
+- **Stream event parsers** — normalize provider-specific JSONL events to a common format
+
+
+---
+
+### Incremental Builds
+
+*Only rebuild changed pages in dev mode for faster iteration on large sites*
+
+Only rebuild changed pages in dev mode. Track content file mtimes, template dependencies, and config changes to determine the minimum rebuild set. Critical for sites with 100+ pages where full rebuilds slow down the dev loop.
+
+
+---
+
+### External Data Sources
+
+*Fetch JSON/YAML from URLs at build time and inject into template context*
+
+Fetch JSON/YAML from URLs at build time and inject into template context. A `[data_sources]` section in `page.toml` with `name`, `url`, and `format` fields. Fetch at build step 3, merge with filesystem content. Enables pulling content from any CMS, API, or database.
+
+
+---
+
+### Math and LaTeX Rendering
+
+*Server-side KaTeX rendering for inline and display math blocks in markdown*
+
+Server-side KaTeX or MathJax rendering in markdown. Render `$inline$` and `$$display$$` math blocks to HTML during markdown processing. Important for technical and academic sites.
+
+
+---
+
+### AVIF Image Format
+
+*Generate AVIF variants alongside WebP in the image pipeline*
+
+Generate AVIF variants alongside WebP in the image pipeline. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute.
+
+
+---
+
+### Related Posts
+
+*Auto-suggest related content based on shared tags and keywords*
+
+Auto-suggest related content based on shared tags and keywords, available as `{{ page.related }}` in templates. Use tag overlap and TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page.
+
+
+---
+
+### Theme Community Ecosystem
+
+*Curated theme registry, browse command, validation, and contributor guide*
+
+Build discoverability and a contributor on-ramp for community themes.
+
+- **Curated theme registry** — `themes.json` listing community themes with name, description, author, install URL, and preview
+- **`page theme browse`** — fetch and display available community themes with filtering
+- **`page theme validate`** — check a `.tera` file for required blocks, SEO meta, accessibility, and search JS before publishing
+- **GitHub discovery** — `page-theme` topic, template repo, naming conventions
+- **Community showcase** — gallery on pagecli.dev with live previews and one-click install
+- **Contributor guide** — docs page explaining how to create, test, validate, and submit themes
+
+
+---
+
+### Deploy History and Rollback
+
+*Track deploy history with content hashing, diff previews, and one-command rollback*
+
+Track deploy history and enable rollback.
+
+- **Deploy log** — `.deploy-log.json` with timestamp, target, commit hash, build duration, and content hash
+- **Deploy diff** — `page deploy --dry-run` shows new/modified/deleted files compared to last deploy
+- **Rollback** — `page deploy rollback` restores previous deploy using Netlify/Cloudflare APIs or git history
+- **Atomic deploys** — skip deploy if content hash unchanged since last deploy
+
+
+---
+
+### Environment-Aware Builds
+
+*Auto-detect CI environments and support multi-environment config sections*
+
+Detect CI environment variables (`GITHUB_ACTIONS`, `NETLIFY`, `CF_PAGES`) and auto-configure behavior — skip prompts, use env secrets for base_url. Support `[deploy.production]` and `[deploy.staging]` config sections with different base_url, targets, and settings.
+
+
+---
+
+### S3 Hosting Target
+
+*AWS S3 + CloudFront deploy support*
+
+AWS S3 + CloudFront support via `aws s3 sync` wrapper. Post-deploy webhook support (Slack, Discord, email) for team workflows.
+
+
+---
+
+### Subdomain Deploys
+
+*Per-collection subdomain support for deploying collections to separate domains*
+
+Per-collection subdomain support (`subdomain = "docs"` on a collection maps to `docs.example.com`). Three phases: per-collection output directory override, per-collection base_url for URL resolution, and multi-deploy orchestration looping over subdomain configs.
 
 
 ---

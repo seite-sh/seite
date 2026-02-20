@@ -9,7 +9,7 @@ weight: 1
 ### Quick install (macOS and Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+curl -fsSL https://pagecli.dev/install.sh | sh
 ```
 
 This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
@@ -17,12 +17,18 @@ This downloads a prebuilt binary for your platform and installs it to `~/.local/
 To install a specific version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh
+```
+
+### Quick install (Windows)
+
+```powershell
+irm https://pagecli.dev/install.ps1 | iex
 ```
 
 ### Install from source
 
-If you have the Rust toolchain installed:
+If you have the Rust toolchain installed (all platforms):
 
 ```bash
 cargo install page
@@ -36,7 +42,7 @@ cargo install page
 | macOS | Intel x86_64 | Shell installer or cargo |
 | Linux | x86_64 | Shell installer or cargo |
 | Linux | aarch64/arm64 | Shell installer or cargo |
-| Windows | x86_64 | `cargo install page` |
+| Windows | x86_64 | PowerShell installer or cargo |
 
 ### Verify
 
@@ -72,7 +78,8 @@ mysite/
 ├── templates/     # Tera templates (override bundled themes)
 ├── static/        # Static assets (CSS, JS, images)
 ├── page.toml      # Site configuration
-└── .claude/       # Claude Code agent configuration
+├── .claude/       # Claude Code agent configuration (includes MCP server)
+└── .page/         # Project metadata (version tracking)
 ```
 
 ## Create Content
@@ -167,10 +174,28 @@ Generate a custom theme with AI:
 page theme create "minimal serif with warm colors"
 ```
 
+## Updating
+
+Update the binary itself:
+
+```bash
+page self-update
+```
+
+After updating, bring your project's config files up to date:
+
+```bash
+page upgrade
+```
+
+This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive — your existing settings are preserved.
+
 ## Next Steps
 
 - [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
 - [Configuration](/docs/configuration) — the full `page.toml` reference when you need to tune settings
 - [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
 - [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
 - [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you
+- [MCP Server](/docs/mcp-server) — structured AI access to your site via the Model Context Protocol

@@ -14,14 +14,14 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collections — page docs</title>
-    <meta name="description" content="Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections">
+    <meta name="description" content="Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.">
+    <link rel="canonical" href="https://pagecli.dev/docs/collections">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections">
+    <meta property="og:url" content="https://pagecli.dev/docs/collections">
     <meta property="og:title" content="Collections">
-    <meta property="og:description" content="Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.">
+    <meta property="og:description" content="Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.">
     
     <meta property="og:site_name" content="page">
     <meta property="og:locale" content="en">
@@ -29,7 +29,7 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Collections">
-    <meta name="twitter:description" content="Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.">
+    <meta name="twitter:description" content="Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.">
     
 
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/collections.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Collections&quot;,"description":&quot;Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;collections&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Collections","description":"Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/collections"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;collections" aria-current="page">Collections</a></li>
+                    <li class="active"><a href="/docs/collections" aria-current="page">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1153,13 +1161,16 @@
     <div class="docs-main">
         <article>
             <h1>Collections</h1>
-            <p class="doc-description">Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.</p>
+            <p class="doc-description">Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.</p>
             <div class="content"><h2 id="overview">Overview</h2>
-<p>Collections are groups of related content. Each collection has its own directory under <code>content/</code>, URL prefix, and template. Three presets are available:</p>
+<p>Collections are groups of related content. Each collection has its own directory under <code>content/</code>, URL prefix, and template. Five presets are available:</p>
 <table><thead><tr><th>Preset</th><th>Directory</th><th>Dated</th><th>RSS</th><th>Listed</th><th>Nested</th><th>URL Pattern</th></tr></thead><tbody>
 <tr><th>posts</th><th><code>content/posts/</code></th><th>Yes</th><th>Yes</th><th>Yes</th><th>No</th><th><code>/posts/slug</code></th></tr>
 <tr><th>docs</th><th><code>content/docs/</code></th><th>No</th><th>No</th><th>Yes</th><th>Yes</th><th><code>/docs/slug</code></th></tr>
 <tr><th>pages</th><th><code>content/pages/</code></th><th>No</th><th>No</th><th>No</th><th>No</th><th><code>/slug</code></th></tr>
+<tr><th>changelog</th><th><code>content/changelog/</code></th><th>Yes</th><th>Yes</th><th>Yes</th><th>No</th><th><code>/changelog/slug</code></th></tr>
+<tr><th>roadmap</th><th><code>content/roadmap/</code></th><th>No</th><th>No</th><th>Yes</th><th>No</th><th><code>/roadmap/slug</code></th></tr>
+<tr><th>trust</th><th><code>content/trust/</code></th><th>No</th><th>No</th><th>Yes</th><th>Yes</th><th><code>/trust/slug</code></th></tr>
 </tbody></table>
 <h2 id="defining-collections">Defining Collections</h2>
 <p>Collections are configured in <code>page.toml</code>:</p>
@@ -1236,6 +1247,57 @@ paginate = 10
 └── index.md        → / (homepage content)
 </code></pre>
 <p>The special file <code>content/pages/index.md</code> injects its content into the homepage template as <code>{{ page.content }}</code>.</p>
+<h2 id="changelog">Changelog</h2>
+<p>The changelog collection is for release notes and version history. Entries are date-based with RSS support, so users can subscribe to updates.</p>
+<pre><code>content/changelog/
+├── 2026-01-15-v0-1-0.md
+├── 2026-02-01-v0-2-0.md
+└── 2026-02-18-v1-0-0.md
+</code></pre>
+<p>Use tags to categorize changes. Tags render as colored badges in the changelog templates:</p>
+<ul>
+<li><code>new</code> — new features (green)</li>
+<li><code>fix</code> — bug fixes (blue)</li>
+<li><code>breaking</code> — breaking changes (red)</li>
+<li><code>improvement</code> — enhancements (purple)</li>
+<li><code>deprecated</code> — deprecations (gray)</li>
+</ul>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new changelog &quot;</span><span style="color:#a3be8c;">v1.0.0</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> new,improvement
+</span></pre>
+<h2 id="roadmap">Roadmap</h2>
+<p>The roadmap collection is for sharing your project's public roadmap. Items are ordered by <code>weight</code> (not date) and grouped by status tags.</p>
+<pre><code>content/roadmap/
+├── dark-mode.md
+├── api-v2.md
+└── initial-release.md
+</code></pre>
+<p>Use tags for status and <code>weight</code> for priority ordering within each group:</p>
+<ul>
+<li><code>planned</code> — upcoming work</li>
+<li><code>in-progress</code> — actively being worked on</li>
+<li><code>done</code> — completed</li>
+<li><code>cancelled</code> — no longer planned</li>
+</ul>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">---
+</span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Dark Mode</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">tags</span><span style="color:#c0c5ce;">:
+</span><span style="color:#c0c5ce;">  - </span><span style="color:#a3be8c;">planned
+</span><span style="color:#bf616a;">weight</span><span style="color:#c0c5ce;">: </span><span style="color:#d08770;">1
+</span><span style="color:#c0c5ce;">---
+</span></pre>
+<p>Three index layouts are available. The default groups items by status. To switch layouts, create <code>templates/roadmap-index.html</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">{# Kanban board (3-column CSS grid): #}
+</span><span style="color:#c0c5ce;">{% extends &quot;roadmap-kanban.html&quot; %}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">{# Or timeline (vertical milestones): #}
+</span><span style="color:#c0c5ce;">{% extends &quot;roadmap-timeline.html&quot; %}
+</span></pre>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new roadmap &quot;</span><span style="color:#a3be8c;">Feature Name</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> planned
+</span></pre>
 <h2 id="pagination">Pagination</h2>
 <p>Enable pagination on any listed collection:</p>
 <pre><code>[[collections]]
@@ -1299,6 +1361,12 @@ paginate = 10
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1324,6 +1392,18 @@ paginate = 10
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1359,15 +1439,15 @@ paginate = 10
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;configuration">
+            <a href="/docs/configuration">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Configuration</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;templates" class="doc-nav-next">
+            <a href="/docs/templates" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
-                <span class="doc-nav-title">Templates &amp; Themes</span>
+                <span class="doc-nav-title">Templates & Themes</span>
             </a>
             
         </nav>
@@ -1386,8 +1466,10 @@ paginate = 10
             <li class="toc-level-2"><a href="#docs">Docs</a></li>
             <li class="toc-level-3"><a href="#sidebar-ordering">Sidebar Ordering</a></li>
             <li class="toc-level-2"><a href="#pages">Pages</a></li>
+            <li class="toc-level-2"><a href="#changelog">Changelog</a></li>
+            <li class="toc-level-2"><a href="#roadmap">Roadmap</a></li>
             <li class="toc-level-2"><a href="#pagination">Pagination</a></li>
-            <li class="toc-level-2"><a href="#singular-plural">Singular&#x2F;Plural</a></li>
+            <li class="toc-level-2"><a href="#singular-plural">Singular/Plural</a></li>
             <li class="toc-level-2"><a href="#tag-pages">Tag Pages</a></li>
             <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
             </ul>
