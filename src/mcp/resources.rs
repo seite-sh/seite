@@ -62,6 +62,16 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
             "mimeType": "application/json"
         }));
 
+        // Trust center resource (only when trust collection is configured)
+        if config.trust.is_some() || config.collections.iter().any(|c| c.name == "trust") {
+            resources.push(serde_json::json!({
+                "uri": "page://trust",
+                "name": "Trust Center",
+                "description": "Trust center state: certifications, subprocessors, FAQs, and content",
+                "mimeType": "application/json"
+            }));
+        }
+
         // MCP configuration
         let mcp_config_path = state.cwd.join(".claude/settings.json");
         if mcp_config_path.exists() {
@@ -105,6 +115,9 @@ pub fn read(
     }
     if uri == "page://themes" {
         return read_themes(state);
+    }
+    if uri == "page://trust" {
+        return read_trust(state);
     }
     if uri == "page://mcp-config" {
         return read_mcp_config(state);
@@ -335,6 +348,100 @@ fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({
         "contents": [{
             "uri": "page://themes",
+            "mimeType": "application/json",
+            "text": text
+        }]
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Trust center resource
+// ---------------------------------------------------------------------------
+
+fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
+    let config = state
+        .config
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
+    let paths = state.paths.as_ref().unwrap();
+
+    let mut result = serde_json::json!({});
+
+    // Trust config from page.toml
+    if let Some(ref trust) = config.trust {
+        result["config"] = serde_json::json!({
+            "company": trust.company,
+            "frameworks": trust.frameworks,
+        });
+    }
+
+    // Load trust data files
+    let data_dir = paths.data_dir.join("trust");
+    if data_dir.exists() {
+        if let Ok(certs) = fs::read_to_string(data_dir.join("certifications.yaml")) {
+            if let Ok(val) = serde_yaml_ng::from_str::<serde_json::Value>(&certs) {
+                result["certifications"] = val;
+            }
+        }
+        if let Ok(subs) = fs::read_to_string(data_dir.join("subprocessors.yaml")) {
+            if let Ok(val) = serde_yaml_ng::from_str::<serde_json::Value>(&subs) {
+                let count = val.as_array().map(|a| a.len()).unwrap_or(0);
+                result["subprocessors"] = serde_json::json!({ "count": count, "items": val });
+            }
+        }
+        if let Ok(faq) = fs::read_to_string(data_dir.join("faq.yaml")) {
+            if let Ok(val) = serde_yaml_ng::from_str::<serde_json::Value>(&faq) {
+                let count = val.as_array().map(|a| a.len()).unwrap_or(0);
+                result["faq"] = serde_json::json!({ "count": count, "items": val });
+            }
+        }
+    }
+
+    // Trust content items
+    let trust_dir = paths.content.join("trust");
+    if trust_dir.exists() {
+        let mut items = Vec::new();
+        for entry in WalkDir::new(&trust_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+        {
+            if let Ok((fm, _body)) = content::parse_content_file(entry.path()) {
+                let rel = entry
+                    .path()
+                    .strip_prefix(&trust_dir)
+                    .unwrap_or(entry.path());
+                let stem = rel
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("untitled");
+                let slug = if let Some(parent) = rel.parent() {
+                    let p = parent.to_string_lossy();
+                    if p.is_empty() {
+                        stem.to_string()
+                    } else {
+                        format!("{}/{stem}", p.replace('\\', "/"))
+                    }
+                } else {
+                    stem.to_string()
+                };
+                items.push(serde_json::json!({
+                    "title": fm.title,
+                    "slug": slug,
+                    "url": format!("/trust/{slug}"),
+                    "description": fm.description,
+                    "weight": fm.weight,
+                    "extra": fm.extra,
+                }));
+            }
+        }
+        result["content_items"] = serde_json::json!(items);
+    }
+
+    let text = serde_json::to_string_pretty(&result).unwrap_or_default();
+    Ok(serde_json::json!({
+        "contents": [{
+            "uri": "page://trust",
             "mimeType": "application/json",
             "text": text
         }]
