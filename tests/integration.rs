@@ -4878,3 +4878,309 @@ fn test_build_changelog_and_roadmap_together() {
         "Homepage should reference roadmap"
     );
 }
+
+// --- i18n template context tests ---
+
+#[test]
+fn test_build_html_lang_uses_current_language() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "langsite", "Lang Site", "posts");
+    let site_dir = tmp.path().join("langsite");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Sitio\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // English post
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\n---\nHello.",
+    )
+    .unwrap();
+    // Spanish post
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\n---\nHola.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English page should have <html lang="en">
+    let en_html = fs::read_to_string(site_dir.join("dist/posts/hello.html")).unwrap();
+    assert!(
+        en_html.contains(r#"<html lang="en">"#),
+        "English page should have <html lang=\"en\">"
+    );
+
+    // Spanish page should have <html lang="es">
+    let es_html = fs::read_to_string(site_dir.join("dist/es/posts/hello.html")).unwrap();
+    assert!(
+        es_html.contains(r#"<html lang="es">"#),
+        "Spanish page should have <html lang=\"es\">"
+    );
+
+    // English index should have <html lang="en">
+    let en_index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        en_index.contains(r#"<html lang="en">"#),
+        "English index should have <html lang=\"en\">"
+    );
+
+    // Spanish index should have <html lang="es">
+    let es_index = fs::read_to_string(site_dir.join("dist/es/index.html")).unwrap();
+    assert!(
+        es_index.contains(r#"<html lang="es">"#),
+        "Spanish index should have <html lang=\"es\">"
+    );
+}
+
+#[test]
+fn test_build_lang_prefix_in_context() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "lpsite", "LP Site", "posts");
+    let site_dir = tmp.path().join("lpsite");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"LP ES\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // English post with tag
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\ntags:\n  - greetings\n---\nHello.",
+    )
+    .unwrap();
+    // Spanish post with tag
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\ntags:\n  - saludos\n---\nHola.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English post tag links should NOT have lang prefix
+    let en_html = fs::read_to_string(site_dir.join("dist/posts/hello.html")).unwrap();
+    assert!(
+        en_html.contains(r#"href="/tags/greetings/"#),
+        "English tag link should not have lang prefix"
+    );
+
+    // Spanish post tag links SHOULD have /es prefix
+    let es_html = fs::read_to_string(site_dir.join("dist/es/posts/hello.html")).unwrap();
+    assert!(
+        es_html.contains(r#"href="/es/tags/saludos/"#),
+        "Spanish tag link should have /es lang prefix"
+    );
+}
+
+#[test]
+fn test_build_ui_strings_default() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tsite", "T Site", "posts");
+    let site_dir = tmp.path().join("tsite");
+
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\n---\nHello.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Index page should use t.search_placeholder (default: "Search…")
+    let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        html.contains("Search\u{2026}") || html.contains("Search..."),
+        "Default search placeholder should be rendered"
+    );
+    // Skip to main content should be rendered
+    assert!(
+        html.contains("Skip to main content"),
+        "Skip to content link should use default t.skip_to_content"
+    );
+}
+
+#[test]
+fn test_build_ui_strings_override() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "toverride", "T Override", "posts");
+    let site_dir = tmp.path().join("toverride");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Sitio\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // Create i18n override file
+    let i18n_dir = site_dir.join("data/i18n");
+    fs::create_dir_all(&i18n_dir).unwrap();
+    fs::write(
+        i18n_dir.join("es.yaml"),
+        "search_placeholder: \"Buscar\\u2026\"\nskip_to_content: \"Ir al contenido\"",
+    )
+    .unwrap();
+
+    // English post
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\n---\nHello.",
+    )
+    .unwrap();
+    // Spanish post
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\n---\nHola.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Spanish index should use translated search placeholder
+    let es_html = fs::read_to_string(site_dir.join("dist/es/index.html")).unwrap();
+    assert!(
+        es_html.contains("Buscar"),
+        "Spanish page should use translated search placeholder from data/i18n/es.yaml"
+    );
+    assert!(
+        es_html.contains("Ir al contenido"),
+        "Spanish page should use translated skip-to-content from data/i18n/es.yaml"
+    );
+
+    // English page should still use defaults
+    let en_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        en_html.contains("Skip to main content"),
+        "English page should still use default English strings"
+    );
+}
+
+#[test]
+fn test_build_nav_links_with_lang_prefix() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "navlang", "Nav Lang", "posts,pages");
+    let site_dir = tmp.path().join("navlang");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Nav ES\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // Create nav data with internal and external links
+    let data_dir = site_dir.join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+    fs::write(
+        data_dir.join("nav.yaml"),
+        "- title: Blog\n  url: /posts\n- title: GitHub\n  url: https://github.com\n  external: true",
+    )
+    .unwrap();
+
+    // Content
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\n---\nHello.",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\n---\nHola.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English page: nav should have /posts (no lang prefix)
+    let en_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        en_html.contains(r#"href="/posts""#),
+        "English nav should link to /posts without prefix"
+    );
+    // External link should NOT have lang prefix
+    assert!(
+        en_html.contains(r#"href="https://github.com""#),
+        "External link should stay unchanged"
+    );
+
+    // Spanish page: nav should have /es/posts
+    let es_html = fs::read_to_string(site_dir.join("dist/es/index.html")).unwrap();
+    assert!(
+        es_html.contains(r#"href="/es/posts""#),
+        "Spanish nav should link to /es/posts with lang prefix"
+    );
+    // External link should NOT have lang prefix
+    assert!(
+        es_html.contains(r#"href="https://github.com""#),
+        "External link should stay unchanged on Spanish page"
+    );
+    // External link should have target="_blank"
+    assert!(
+        es_html.contains(r#"target="_blank""#),
+        "External link should have target=_blank"
+    );
+}
+
+#[test]
+fn test_build_default_language_in_context() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "dlsite", "DL Site", "posts");
+    let site_dir = tmp.path().join("dlsite");
+
+    // Add Spanish language
+    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"DL ES\"\n");
+    fs::write(site_dir.join("page.toml"), config).unwrap();
+
+    // English + Spanish posts
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.md"),
+        "---\ntitle: Hello\ndate: 2025-01-15\n---\nHello.",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-hello.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-15\n---\nHola.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Both pages should have og:locale matching their language
+    let en_html = fs::read_to_string(site_dir.join("dist/posts/hello.html")).unwrap();
+    assert!(
+        en_html.contains(r#"og:locale" content="en"#),
+        "English page og:locale should be 'en'"
+    );
+
+    let es_html = fs::read_to_string(site_dir.join("dist/es/posts/hello.html")).unwrap();
+    assert!(
+        es_html.contains(r#"og:locale" content="es"#),
+        "Spanish page og:locale should be 'es'"
+    );
+}

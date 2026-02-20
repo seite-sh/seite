@@ -522,6 +522,32 @@ fn generate_claude_md(
     md.push_str("- Items with the same slug across languages are automatically linked as translations\n");
     md.push_str("- Per-language RSS feeds, sitemaps with hreflang alternates, and discovery files are generated automatically\n");
     md.push_str("- Without `[languages.*]` config, the site is single-language and works as normal\n\n");
+    md.push_str("### i18n Template Helpers\n\n");
+    md.push_str("Use `{{ lang_prefix }}` to prefix internal links for the current language (empty for default, `\"/es\"` for Spanish, etc.):\n\n");
+    md.push_str("```html\n");
+    md.push_str("<a href=\"{{ lang_prefix }}/about\">About</a>\n");
+    md.push_str("```\n\n");
+    md.push_str("In `data/nav.yaml` and `data/footer.yaml`, mark external links with `external: true`:\n\n");
+    md.push_str("```yaml\n");
+    md.push_str("- title: Blog\n");
+    md.push_str("  url: /posts\n");
+    md.push_str("- title: GitHub\n");
+    md.push_str("  url: https://github.com/user/repo\n");
+    md.push_str("  external: true\n");
+    md.push_str("```\n\n");
+    md.push_str("All bundled themes automatically apply `lang_prefix` to internal data file links and open external links in new tabs.\n\n");
+    md.push_str("### Translating UI Strings\n\n");
+    md.push_str("All UI text in themes uses the `{{ t.key }}` object (search placeholder, pagination, 404 text, etc.). ");
+    md.push_str("Override defaults by creating `data/i18n/{lang}.yaml`:\n\n");
+    md.push_str("```yaml\n");
+    md.push_str("# data/i18n/es.yaml\n");
+    md.push_str("search_placeholder: \"Buscar\\u{2026}\"\n");
+    md.push_str("skip_to_content: \"Ir al contenido principal\"\n");
+    md.push_str("no_results: \"Sin resultados\"\n");
+    md.push_str("newer: \"M\\u{00e1}s recientes\"\n");
+    md.push_str("older: \"M\\u{00e1}s antiguos\"\n");
+    md.push_str("```\n\n");
+    md.push_str("Available keys: `search_placeholder`, `skip_to_content`, `no_results`, `newer`, `older`, `page_n_of_total`, `search_label`, `min_read`, `contents`, `tags`, `all_tags`, `tagged`, `changelog`, `roadmap`, `not_found_title`, `not_found_message`, `go_home`, `in_progress`, `planned`, `done`, `other`.\n\n");
 
     // Templates and themes
     md.push_str("## Templates and Themes\n\n");
@@ -544,9 +570,12 @@ fn generate_claude_md(
     md.push_str("| `site.title` | string | Site title (language-specific if multilingual) |\n");
     md.push_str("| `site.description` | string | Site description |\n");
     md.push_str("| `site.base_url` | string | Base URL (e.g., `https://example.com`) |\n");
-    md.push_str("| `site.language` | string | Language code (e.g., `en`) |\n");
+    md.push_str("| `site.language` | string | Default language code (configured in `page.toml`) |\n");
     md.push_str("| `site.author` | string | Author name |\n");
     md.push_str("| `lang` | string | Current page language code |\n");
+    md.push_str("| `default_language` | string | Default language code (same as `site.language`) |\n");
+    md.push_str("| `lang_prefix` | string | URL prefix for current language (empty for default, `\"/es\"` for Spanish, etc.) |\n");
+    md.push_str("| `t` | object | UI translation strings (override via `data/i18n/{lang}.yaml`) |\n");
     md.push_str("| `translations` | array | Translation links `[{lang, url}]` (empty if no translations) |\n");
     md.push_str("| `page.title` | string | Page title |\n");
     md.push_str("| `page.content` | string | Rendered HTML (use `{{ page.content \\| safe }}`) |\n");
@@ -571,7 +600,7 @@ fn generate_claude_md(
     md.push_str("- Content goes in `{% block content %}...{% endblock %}`\n");
     md.push_str("- Title goes in `{% block title %}...{% endblock %}`\n");
     md.push_str("- When editing `base.html`, preserve these for full functionality:\n");
-    md.push_str("  - `<html lang=\"{{ site.language }}\">` — language attribute\n");
+    md.push_str("  - `<html lang=\"{{ lang }}\">` — language attribute\n");
     md.push_str("  - `<link rel=\"canonical\">` — canonical URL (required for SEO)\n");
     md.push_str("  - Open Graph tags: `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`\n");
     md.push_str("  - Twitter Card tags: `twitter:card`, `twitter:title`, `twitter:description`\n");

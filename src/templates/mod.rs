@@ -34,9 +34,9 @@ pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
 {% endfor %}
 {% if pagination %}
 <nav class="pagination">
-    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
-    <span>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
-    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
 </nav>
 {% endif %}
 {% if not page and collections | length == 0 %}
@@ -50,10 +50,10 @@ pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
 <article>
     <h1>{{ page.title }}</h1>
     {% if page.date %}<time>{{ page.date }}</time>{% endif %}
-    {% if page.reading_time %}<span class="reading-time">{{ page.reading_time }} min read</span>{% endif %}
+    {% if page.reading_time %}<span class="reading-time">{{ page.reading_time }} {{ t.min_read }}</span>{% endif %}
     {% if page.tags | length > 0 %}
     <div class="tags">
-        {% for tag in page.tags %}<a href="{% if lang and lang != site.language %}/{{ lang }}{% endif %}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
+        {% for tag in page.tags %}<a href="{{ lang_prefix }}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
     </div>
     {% endif %}
     <div class="content">{{ page.content | safe }}</div>
@@ -67,7 +67,7 @@ pub const DEFAULT_DOC: &str = r##"{% extends "base.html" %}
     <h1>{{ page.title }}</h1>
     {% if page.toc | length > 1 %}
     <nav class="toc">
-        <h4>Contents</h4>
+        <h4>{{ t.contents }}</h4>
         <ul>
         {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
         {% endfor %}</ul>
@@ -87,18 +87,18 @@ pub const DEFAULT_PAGE: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_404: &str = r#"{% extends "base.html" %}
-{% block title %}Page Not Found — {{ site.title }}{% endblock %}
+{% block title %}{{ t.not_found_title }} — {{ site.title }}{% endblock %}
 {% block content %}
 <article>
-    <h1>404 — Page Not Found</h1>
-    <p>The page you requested could not be found. <a href="/">Go to the homepage</a>.</p>
+    <h1>404 — {{ t.not_found_title }}</h1>
+    <p>{{ t.not_found_message }} <a href="{{ lang_prefix }}/">{{ t.go_home }}</a>.</p>
 </article>
 {% endblock %}"#;
 
 pub const DEFAULT_TAGS_INDEX: &str = r#"{% extends "base.html" %}
-{% block title %}Tags — {{ site.title }}{% endblock %}
+{% block title %}{{ t.tags }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Tags</h1>
+<h1>{{ t.tags }}</h1>
 <div class="tags-index">
     {% for tag in tags %}
     <a href="{{ tag.url }}" class="tag-link">{{ tag.name }} <span class="tag-count">({{ tag.count }})</span></a>
@@ -109,18 +109,18 @@ pub const DEFAULT_TAGS_INDEX: &str = r#"{% extends "base.html" %}
 pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
 {% block title %}Tag: {{ tag_name }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Tagged "{{ tag_name }}"</h1>
+<h1>{{ t.tagged }} "{{ tag_name }}"</h1>
 <div class="tag-items">
     {% for item in items %}
     <article>
         <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
         {% if item.date %}<time>{{ item.date }}</time>{% endif %}
-        {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} min read</span>{% endif %}
+        {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} {{ t.min_read }}</span>{% endif %}
         {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
     </article>
     {% endfor %}
 </div>
-<p><a href="{{ tags_url }}">&larr; All tags</a></p>
+<p><a href="{{ tags_url }}">&larr; {{ t.all_tags }}</a></p>
 {% endblock %}"##;
 
 pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
@@ -144,9 +144,9 @@ pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_CHANGELOG_INDEX: &str = r#"{% extends "base.html" %}
-{% block title %}{% if pagination and pagination.current_page > 1 %}Changelog — Page {{ pagination.current_page }} — {% endif %}Changelog — {{ site.title }}{% endblock %}
+{% block title %}{% if pagination and pagination.current_page > 1 %}{{ t.changelog }} — {{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }} — {% endif %}{{ t.changelog }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Changelog</h1>
+<h1>{{ t.changelog }}</h1>
 <div class="changelog-feed">
     {% for item in items %}
     <article class="changelog-item">
@@ -165,9 +165,9 @@ pub const DEFAULT_CHANGELOG_INDEX: &str = r#"{% extends "base.html" %}
 </div>
 {% if pagination %}
 <nav class="pagination">
-    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; Newer</a>{% endif %}
-    <span>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</span>
-    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">Older &rarr;</a>{% endif %}
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}"#;
@@ -190,9 +190,9 @@ pub const DEFAULT_ROADMAP_ITEM: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
-{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block title %}{{ t.roadmap }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Roadmap</h1>
+<h1>{{ t.roadmap }}</h1>
 <div class="roadmap-grouped">
     {% set in_progress = [] %}
     {% set planned = [] %}
@@ -212,7 +212,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endfor %}
     {% if in_progress | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--in-progress">In Progress</span></h2>
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--in-progress">{{ t.in_progress }}</span></h2>
         <div class="roadmap-items">
             {% for item in in_progress %}
             <div class="roadmap-card">
@@ -225,7 +225,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if planned | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--planned">Planned</span></h2>
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--planned">{{ t.planned }}</span></h2>
         <div class="roadmap-items">
             {% for item in planned %}
             <div class="roadmap-card">
@@ -238,7 +238,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if done | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--done">Done</span></h2>
+        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--done">{{ t.done }}</span></h2>
         <div class="roadmap-items">
             {% for item in done %}
             <div class="roadmap-card">
@@ -251,7 +251,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if other | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header">Other</h2>
+        <h2 class="roadmap-section-header">{{ t.other }}</h2>
         <div class="roadmap-items">
             {% for item in other %}
             <div class="roadmap-card">
@@ -267,9 +267,9 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
-{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block title %}{{ t.roadmap }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Roadmap</h1>
+<h1>{{ t.roadmap }}</h1>
 <div class="roadmap-kanban">
     {% set in_progress = [] %}
     {% set planned = [] %}
@@ -285,7 +285,7 @@ pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
         {% endif %}
     {% endfor %}
     <div class="roadmap-column">
-        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--planned">Planned</span> <span class="roadmap-count">{{ planned | length }}</span></h2>
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--planned">{{ t.planned }}</span> <span class="roadmap-count">{{ planned | length }}</span></h2>
         {% for item in planned %}
         <div class="roadmap-card">
             <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
@@ -294,7 +294,7 @@ pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
         {% endfor %}
     </div>
     <div class="roadmap-column">
-        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--in-progress">In Progress</span> <span class="roadmap-count">{{ in_progress | length }}</span></h2>
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--in-progress">{{ t.in_progress }}</span> <span class="roadmap-count">{{ in_progress | length }}</span></h2>
         {% for item in in_progress %}
         <div class="roadmap-card">
             <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
@@ -303,7 +303,7 @@ pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
         {% endfor %}
     </div>
     <div class="roadmap-column">
-        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--done">Done</span> <span class="roadmap-count">{{ done | length }}</span></h2>
+        <h2 class="roadmap-column-header"><span class="roadmap-status roadmap-status--done">{{ t.done }}</span> <span class="roadmap-count">{{ done | length }}</span></h2>
         {% for item in done %}
         <div class="roadmap-card">
             <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
@@ -315,9 +315,9 @@ pub const DEFAULT_ROADMAP_KANBAN: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_ROADMAP_TIMELINE: &str = r#"{% extends "base.html" %}
-{% block title %}Roadmap — {{ site.title }}{% endblock %}
+{% block title %}{{ t.roadmap }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>Roadmap</h1>
+<h1>{{ t.roadmap }}</h1>
 <div class="roadmap-timeline">
     {% for item in items %}
     <div class="roadmap-milestone {% if loop.index is odd %}roadmap-milestone--left{% else %}roadmap-milestone--right{% endif %}">
@@ -372,6 +372,11 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
     } else {
         tera::Tera::default()
     };
+
+    // Disable auto-escaping: our templates control all output, and user content
+    // already uses `| safe`. Auto-escaping causes URLs to be mangled with &#x2F;
+    // in href attributes (e.g. `href="&#x2F;posts"` instead of `href="/posts"`).
+    tera.autoescape_on(vec![]);
 
     // Always ensure essential templates exist
     for name in [

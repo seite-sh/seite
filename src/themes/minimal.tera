@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ site.language }}">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,7 @@
     <meta property="og:description" content="{{ page.description | default(value=site.description) }}">
     {% if page.image %}<meta property="og:image" content="{{ page.image }}">{% endif %}
     <meta property="og:site_name" content="{{ site.title }}">
-    <meta property="og:locale" content="{{ site.language }}">
+    <meta property="og:locale" content="{{ lang }}">
     <meta name="twitter:card" content="{% if page.image %}summary_large_image{% else %}summary{% endif %}">
     <meta name="twitter:title" content="{{ page.title | default(value=site.title) }}">
     <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
@@ -134,14 +134,14 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-    <a href="#main" class="skip-link">Skip to main content</a>
+    <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
     <header>
     {% block header %}
         <h1><a href="/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if data.nav %}
         <nav class="site-nav" aria-label="Main navigation">
-            {% for item in data.nav %}<a href="{{ item.url }}">{{ item.title }}</a>{% endfor %}
+            {% for item in data.nav %}{% if item.external %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>{% endif %}{% endfor %}
         </nav>
         {% endif %}
         {% if translations | length > 1 %}
@@ -149,8 +149,8 @@
             {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
         </nav>
         {% endif %}
-        <form class="search-form" role="search" aria-label="Site search" onsubmit="return false">
-            <input type="search" id="search-input" placeholder="Search..." autocomplete="off" aria-label="Search site content">
+        <form class="search-form" role="search" aria-label="{{ t.search_label }}" onsubmit="return false">
+            <input type="search" id="search-input" placeholder="{{ t.search_placeholder }}" autocomplete="off" aria-label="{{ t.search_label }}">
         </form>
         <div id="search-results" aria-live="polite"></div>
     {% endblock %}
@@ -161,7 +161,7 @@
     <footer>
         {% if data.footer %}{% if data.footer.links %}
         <nav aria-label="Footer navigation">
-            {% for link in data.footer.links %}<a href="{{ link.url }}">{{ link.title }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+            {% for link in data.footer.links %}{% if link.external %}<a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ link.url }}">{{ link.title }}</a>{% endif %}{% if not loop.last %} &middot; {% endif %}{% endfor %}
         </nav>
         {% endif %}{% endif %}
         <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
@@ -171,7 +171,7 @@
         var index = null;
         var input = document.getElementById('search-input');
         var results = document.getElementById('search-results');
-        var indexUrl = {% if lang and lang != site.language %}'/' + {{ lang | json_encode() }} + '/search-index.json'{% else %}'/search-index.json'{% endif %};
+        var indexUrl = {% if lang != default_language %}'/' + {{ lang | json_encode() }} + '/search-index.json'{% else %}'/search-index.json'{% endif %};
         function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
         function search(q) {
             q = q.toLowerCase().trim();
@@ -179,7 +179,7 @@
             var hits = index.filter(function(e){
                 return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
             }).slice(0, 8);
-            if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
+            if (!hits.length) { results.innerHTML = '<div class="no-results">{{ t.no_results }}</div>'; return; }
             results.innerHTML = hits.map(function(e){
                 var meta = [e.collection, e.date].filter(Boolean).join(' · ');
                 return '<a href="' + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
