@@ -22,6 +22,7 @@ pub fn all() -> Vec<DocPage> {
         templates(),
         shortcodes(),
         i18n(),
+        trust_center(),
         deployment(),
         agent(),
         workspace(),
@@ -115,6 +116,16 @@ fn i18n() -> DocPage {
     }
 }
 
+fn trust_center() -> DocPage {
+    DocPage {
+        slug: "trust-center",
+        title: "Trust Center",
+        description: "Build a compliance hub with certifications, subprocessors, FAQs, and security policies.",
+        weight: 7,
+        raw_content: include_str!("docs/trust-center.md"),
+    }
+}
+
 fn deployment() -> DocPage {
     DocPage {
         slug: "deployment",
@@ -192,7 +203,7 @@ mod tests {
     #[test]
     fn test_all_returns_all_docs() {
         let docs = all();
-        assert!(docs.len() >= 12, "Expected at least 12 docs, got {}", docs.len());
+        assert!(docs.len() >= 13, "Expected at least 13 docs, got {}", docs.len());
     }
 
     #[test]
