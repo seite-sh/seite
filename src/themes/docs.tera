@@ -18,8 +18,8 @@
     <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
     {% if page.image %}<meta name="twitter:image" content="{{ page.image }}">{% endif %}
     {% if page.robots %}<meta name="robots" content="{{ page.robots }}">{% endif %}
-    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
-    <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
+    <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
     {% if page.url %}<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
@@ -27,7 +27,7 @@
     <script type="application/ld+json">
     {% set _ld_url = page.url | default(value='/') %}{% set _ld_href = site.base_url ~ _ld_url %}{% set _ld_title = page.title | default(value=site.title) %}{% set _ld_desc = page.description | default(value=site.description) %}
     {% if page.collection == 'posts' %}{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"datePublished":{{ page.date | default(value='') | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
-    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
+    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
     {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_encode() }},"description":{{ site.description | json_encode() }},"url":{{ site.base_url | json_encode() }}}
     {% endif %}
     </script>
@@ -72,6 +72,7 @@
         article h1 { font-size: 2rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.3rem; }
         article h2 { font-size: 1.5rem; margin-top: 2rem; border-bottom: 1px solid #eaecef; padding-bottom: 0.3rem; }
         time { color: #666; font-size: 0.9rem; }
+        .reading-time { color: #666; font-size: 0.85rem; }
         .tags a, .tags span { background: #e1e4e8; padding: 0.1rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.85rem; text-decoration: none; color: #24292e; }
         .tags a:hover { background: #d1d5db; }
         pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; overflow-x: auto; border: 1px solid #e1e4e8; }
@@ -90,6 +91,7 @@
         .callout-warning { border-left-color: #d29922; background: #fffdef; }
         .callout-danger { border-left-color: #cb2431; background: #ffeef0; }
         .callout-tip { border-left-color: #28a745; background: #dcffe4; }
+        .callout-note { border-left-color: #6b7280; background: #f9fafb; }
         .callout p:last-child { margin-bottom: 0; }
         .trust-hub { max-width: 800px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2rem; }
@@ -174,6 +176,16 @@
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid #e1e4e8; padding: 0.5rem 1rem; text-align: left; }
         th { background: #f6f8fa; }
+        .toc { margin: 1.5rem 0; padding: 1rem 1.25rem; border: 1px solid #e1e4e8; border-radius: 6px; background: #f6f8fa; }
+        .toc > ul { margin: 0; padding-left: 1.25rem; }
+        .toc ul ul { padding-left: 1rem; }
+        .toc li { margin: 0.25rem 0; }
+        .toc a { text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; }
+        .pagination a { text-decoration: none; }
+        .pagination a:hover { text-decoration: underline; }
+        .pagination span { color: #666; font-size: 0.9rem; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; color: #666; font-size: 0.85rem; }
         @media (max-width: 768px) {
             .sidebar { position: static; width: 100%; border-right: none; border-bottom: 1px solid #e1e4e8; }
@@ -191,7 +203,7 @@
     <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
     <div class="sidebar">
     {% block header %}
-        <h1><a href="/">{{ site.title }}</a></h1>
+        <h1><a href="{{ lang_prefix }}/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if translations | length > 1 %}
         <div class="lang-switcher">
@@ -208,9 +220,9 @@
         </nav>
         {% endif %}
         {% if nav %}
-        <nav>
+        <nav aria-label="Documentation">
             {% for section in nav %}
-                {% if section.name %}<h3>{{ section.label }}</h3>{% endif %}
+                {% if section.label %}<h3>{{ section.label }}</h3>{% endif %}
                 <ul>
                 {% for item in section.items %}
                     <li{% if item.active %} class="active"{% endif %}><a href="{{ item.url }}">{{ item.title }}</a></li>

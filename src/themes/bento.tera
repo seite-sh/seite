@@ -18,8 +18,8 @@
     <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
     {% if page.image %}<meta name="twitter:image" content="{{ page.image }}">{% endif %}
     {% if page.robots %}<meta name="robots" content="{{ page.robots }}">{% endif %}
-    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
-    <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
+    <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
     {% if page.url %}<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
@@ -27,7 +27,7 @@
     <script type="application/ld+json">
     {% set _ld_url = page.url | default(value='/') %}{% set _ld_href = site.base_url ~ _ld_url %}{% set _ld_title = page.title | default(value=site.title) %}{% set _ld_desc = page.description | default(value=site.description) %}
     {% if page.collection == 'posts' %}{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"datePublished":{{ page.date | default(value='') | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
-    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
+    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
     {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_encode() }},"description":{{ site.description | json_encode() }},"url":{{ site.base_url | json_encode() }}}
     {% endif %}
     </script>
@@ -93,6 +93,7 @@
         article h3 a { color: inherit; }
         article h3 a:hover { text-decoration: underline; }
         time { font-size: 0.8rem; color: #9ca3af; display: block; margin-bottom: 0.4rem; }
+        .reading-time { color: #9ca3af; font-size: 0.85rem; }
         .tags a, .tags span { background: #ede9fe; color: #5046e5; border: 1px solid #ddd6fe; padding: 0.1rem 0.5rem; border-radius: 20px; margin-right: 0.3rem; font-size: 0.75rem; font-weight: 600; text-decoration: none; }
         .tags a:hover { background: #ddd6fe; }
         pre { background: #f8f8f8; padding: 1rem; border-radius: 12px; overflow-x: auto; border: 1px solid #e5e7eb; }
@@ -111,6 +112,7 @@
         .callout-warning { border-left-color: #d97706; background: #fffbeb; }
         .callout-danger { border-left-color: #dc2626; background: #fef2f2; }
         .callout-tip { border-left-color: #16a34a; background: #f0fdf4; }
+        .callout-note { border-left-color: #6b7280; background: #f9fafb; }
         .callout p:last-child { margin-bottom: 0; }
         .trust-hub { max-width: 1000px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2.5rem; }
@@ -196,6 +198,16 @@
         th, td { border: 1px solid #e5e7eb; padding: 0.5rem 1rem; text-align: left; }
         th { background: #f9fafb; font-weight: 700; }
         hr { border: none; border-top: 1px solid #e5e7eb; margin: 2rem 0; }
+        .toc { margin: 1.5rem 0; padding: 1.25rem; border-radius: 12px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+        .toc > ul { margin: 0; padding-left: 1.25rem; }
+        .toc ul ul { padding-left: 1rem; }
+        .toc li { margin: 0.25rem 0; }
+        .toc a { text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding: 1rem 1.25rem; border-radius: 12px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+        .pagination a { text-decoration: none; }
+        .pagination a:hover { text-decoration: underline; }
+        .pagination span { color: #9ca3af; font-size: 0.9rem; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.85rem; }
         :focus-visible { outline: 2px solid #5046e5; outline-offset: 2px; border-radius: 4px; }
         @media (max-width: 600px) {
@@ -203,7 +215,7 @@
         }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #5046e5; color: #fff; z-index: 100; text-decoration: none; border-radius: 0 0 8px 0; }
         .skip-link:focus { top: 0; }
-        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } article:hover, .cert-card:hover { transform: none !important; } }
     </style>
     {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
@@ -213,7 +225,7 @@
     <header>
     {% block header %}
         <div class="header-top">
-            <h1><a href="/">{{ site.title }}</a></h1>
+            <h1><a href="{{ lang_prefix }}/">{{ site.title }}</a></h1>
             {% if translations | length > 1 %}
             <nav class="lang-switcher">
                 {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
