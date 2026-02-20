@@ -1662,7 +1662,24 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "in_progress": "In Progress",
         "planned": "Planned",
         "done": "Done",
-        "other": "Other"
+        "other": "Other",
+        "trust_center": "Trust Center",
+        "trust_hero_subtitle": "Security, compliance, and data protection at {site}.",
+        "certifications_compliance": "Certifications & Compliance",
+        "active": "Active",
+        "learn_more": "Learn more",
+        "auditor": "Auditor",
+        "scope": "Scope",
+        "issued": "Issued",
+        "expires": "Expires",
+        "subprocessors": "Subprocessors",
+        "vendor": "Vendor",
+        "purpose": "Purpose",
+        "location": "Location",
+        "dpa": "DPA",
+        "yes": "Yes",
+        "no": "No",
+        "faq": "Frequently Asked Questions"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults

@@ -882,7 +882,7 @@ fn generate_claude_md(
     md.push_str("newer: \"M\\u{00e1}s recientes\"\n");
     md.push_str("older: \"M\\u{00e1}s antiguos\"\n");
     md.push_str("```\n\n");
-    md.push_str("Available keys: `search_placeholder`, `skip_to_content`, `no_results`, `newer`, `older`, `page_n_of_total`, `search_label`, `min_read`, `contents`, `tags`, `all_tags`, `tagged`, `changelog`, `roadmap`, `not_found_title`, `not_found_message`, `go_home`, `in_progress`, `planned`, `done`, `other`.\n\n");
+    md.push_str("Available keys: `search_placeholder`, `skip_to_content`, `no_results`, `newer`, `older`, `page_n_of_total`, `search_label`, `min_read`, `contents`, `tags`, `all_tags`, `tagged`, `changelog`, `roadmap`, `not_found_title`, `not_found_message`, `go_home`, `in_progress`, `planned`, `done`, `other`, `trust_center`, `trust_hero_subtitle`, `certifications_compliance`, `active`, `learn_more`, `auditor`, `scope`, `issued`, `expires`, `subprocessors`, `vendor`, `purpose`, `location`, `dpa`, `yes`, `no`, `faq`.\n\n");
 
     // Templates and themes
     md.push_str("## Templates and Themes\n\n");
