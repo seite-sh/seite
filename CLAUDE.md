@@ -514,6 +514,24 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 4. Update `init.rs` template writing match
 5. Add integration tests
 
+### Adding a User-Facing Feature (Checklist)
+
+When adding a new config section, CLI command, or build behavior, ensure all of these are updated:
+
+1. **Config model** — add struct + field to `SiteConfig` in `src/config/mod.rs`
+2. **Build pipeline** — integrate the feature in `src/build/mod.rs` (add step to `build_site()`)
+3. **Init scaffolding** — set the default in the `SiteConfig` literal in `src/cli/init.rs`
+4. **Embedded docs** — update `src/docs/configuration.md` (or the relevant `src/docs/*.md` page). These are compiled into the binary and served via the MCP server's `page_lookup_docs` tool and `page://docs/*` resources
+5. **Site docs** — mirror the same changes in `site/content/docs/` (the deployed documentation site)
+6. **MCP compliance** — verify the feature is visible through the MCP server:
+   - `page://config` auto-exposes any new `SiteConfig` fields (no code needed if serde works)
+   - `page_build` auto-includes new build steps (no code needed if added to `build_site()`)
+   - `page_lookup_docs` returns the updated embedded docs (no code needed if `src/docs/` is updated)
+   - Add an MCP integration test confirming the new config is visible via `page://config`
+7. **CLAUDE.md** — update the module map, build pipeline step list, config example, and any relevant convention sections
+8. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
+9. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
+
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "page" → "pages" so users can type either form.
 
