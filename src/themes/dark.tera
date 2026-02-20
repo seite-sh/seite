@@ -133,14 +133,28 @@
         .changelog-tag--breaking { background: #3b0a0a; color: #f87171; }
         .changelog-tag--improvement { background: #2e1065; color: #c084fc; }
         .changelog-tag--deprecated { background: #1f2937; color: #9ca3af; }
-        .changelog-feed { display: flex; flex-direction: column; gap: 2rem; }
-        .changelog-item { padding-bottom: 2rem; border-bottom: 1px solid #1e1e1e; }
+        .changelog-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
+        .changelog-header h1 { margin-bottom: 0; }
+        .changelog-rss { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #888; text-decoration: none; padding: 0.3rem 0.7rem; border: 1px solid #333; border-radius: 5px; }
+        .changelog-rss:hover { color: #8b5cf6; border-color: #8b5cf6; }
+        .changelog-back { margin-bottom: 1.5rem; }
+        .changelog-back a { color: #888; text-decoration: none; font-size: 0.9rem; }
+        .changelog-back a:hover { color: #8b5cf6; }
+        .changelog-timeline { position: relative; padding-left: 2rem; }
+        .changelog-timeline::before { content: ''; position: absolute; left: 0; top: 0.5rem; bottom: 0; width: 2px; background: #1e1e1e; }
+        .changelog-item { position: relative; padding-bottom: 2rem; border-bottom: 1px solid #1e1e1e; margin-bottom: 0; }
+        .changelog-item::before { content: ''; position: absolute; left: -2rem; top: 0.5rem; width: 10px; height: 10px; border-radius: 50%; background: #8b5cf6; transform: translateX(-4px); box-shadow: 0 0 8px rgba(139,92,246,0.3); }
         .changelog-item:last-child { border-bottom: none; }
         .changelog-item-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
         .changelog-item-header h2 { margin: 0; font-size: 1.25rem; }
         .changelog-item-header time { color: #888; font-size: 0.85rem; white-space: nowrap; }
         .changelog-item .changelog-tags { margin-top: 0.5rem; }
         .changelog-item p, .changelog-item .excerpt { margin-top: 0.5rem; color: #aaa; }
+        .changelog-feed .changelog-item::before { display: none; }
+        .changelog-feed { display: flex; flex-direction: column; gap: 2rem; }
+        .roadmap-back { margin-bottom: 1.5rem; }
+        .roadmap-back a { color: #888; text-decoration: none; font-size: 0.9rem; }
+        .roadmap-back a:hover { color: #8b5cf6; }
         .roadmap-entry-header { margin-bottom: 1.5rem; }
         .roadmap-summary { color: #aaa; font-size: 1.05rem; margin-bottom: 1.5rem; }
         .roadmap-status-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
@@ -150,9 +164,10 @@
         .roadmap-status--done { background: #052e16; color: #4ade80; }
         .roadmap-status--cancelled { background: #1f2937; color: #6b7280; text-decoration: line-through; }
         .roadmap-grouped { display: flex; flex-direction: column; gap: 2rem; }
-        .roadmap-section-header { font-size: 1.1rem; margin-bottom: 1rem; }
-        .roadmap-items { display: flex; flex-direction: column; gap: 1rem; }
-        .roadmap-card { padding: 1rem 1.25rem; border: 1px solid #1e1e1e; border-radius: 8px; }
+        .roadmap-section-header { display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem; margin-bottom: 1rem; }
+        .roadmap-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+        .roadmap-card { padding: 1rem 1.25rem; border: 1px solid #1e1e1e; border-radius: 8px; transition: border-color 0.15s; }
+        .roadmap-card:hover { border-color: #8b5cf6; }
         .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
         .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: #aaa; font-size: 0.9rem; }
         .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }

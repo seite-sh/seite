@@ -1686,6 +1686,7 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "all_tags": "All tags",
         "tagged": "Tagged",
         "changelog": "Changelog",
+        "all_releases": "All releases",
         "roadmap": "Roadmap",
         "not_found_title": "Page Not Found",
         "not_found_message": "The page you requested could not be found.",
