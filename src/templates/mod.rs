@@ -124,8 +124,9 @@ pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
 {% endblock %}"##;
 
 pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
-{% block title %}{{ page.title }} — Changelog — {{ site.title }}{% endblock %}
+{% block title %}{{ page.title }} — {{ t.changelog }} — {{ site.title }}{% endblock %}
 {% block content %}
+<nav class="changelog-back"><a href="{{ lang_prefix }}/changelog/">&larr; {{ t.all_releases }}</a></nav>
 <article class="changelog-entry">
     <header class="changelog-entry-header">
         <h1>{{ page.title }}</h1>
@@ -146,8 +147,14 @@ pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
 pub const DEFAULT_CHANGELOG_INDEX: &str = r#"{% extends "base.html" %}
 {% block title %}{% if pagination and pagination.current_page > 1 %}{{ t.changelog }} — {{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }} — {% endif %}{{ t.changelog }} — {{ site.title }}{% endblock %}
 {% block content %}
-<h1>{{ t.changelog }}</h1>
-<div class="changelog-feed">
+<div class="changelog-header">
+    <h1>{{ t.changelog }}</h1>
+    <a href="{{ lang_prefix }}/feed.xml" class="changelog-rss" aria-label="RSS Feed">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+        RSS
+    </a>
+</div>
+<div class="changelog-timeline">
     {% for item in items %}
     <article class="changelog-item">
         <div class="changelog-item-header">
@@ -173,8 +180,9 @@ pub const DEFAULT_CHANGELOG_INDEX: &str = r#"{% extends "base.html" %}
 {% endblock %}"#;
 
 pub const DEFAULT_ROADMAP_ITEM: &str = r#"{% extends "base.html" %}
-{% block title %}{{ page.title }} — Roadmap — {{ site.title }}{% endblock %}
+{% block title %}{{ page.title }} — {{ t.roadmap }} — {{ site.title }}{% endblock %}
 {% block content %}
+<nav class="roadmap-back"><a href="{{ lang_prefix }}/roadmap/">&larr; {{ t.roadmap }}</a></nav>
 <article class="roadmap-entry">
     <header class="roadmap-entry-header">
         <h1>{{ page.title }}</h1>
@@ -212,7 +220,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endfor %}
     {% if in_progress | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--in-progress">{{ t.in_progress }}</span></h2>
+        <div class="roadmap-section-header"><span class="roadmap-status roadmap-status--in-progress">{{ t.in_progress }}</span> <span class="roadmap-count">{{ in_progress | length }}</span></div>
         <div class="roadmap-items">
             {% for item in in_progress %}
             <div class="roadmap-card">
@@ -225,7 +233,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if planned | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--planned">{{ t.planned }}</span></h2>
+        <div class="roadmap-section-header"><span class="roadmap-status roadmap-status--planned">{{ t.planned }}</span> <span class="roadmap-count">{{ planned | length }}</span></div>
         <div class="roadmap-items">
             {% for item in planned %}
             <div class="roadmap-card">
@@ -238,7 +246,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if done | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header"><span class="roadmap-status roadmap-status--done">{{ t.done }}</span></h2>
+        <div class="roadmap-section-header"><span class="roadmap-status roadmap-status--done">{{ t.done }}</span> <span class="roadmap-count">{{ done | length }}</span></div>
         <div class="roadmap-items">
             {% for item in done %}
             <div class="roadmap-card">
@@ -251,7 +259,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
     {% endif %}
     {% if other | length > 0 %}
     <section class="roadmap-section">
-        <h2 class="roadmap-section-header">{{ t.other }}</h2>
+        <div class="roadmap-section-header"><span class="roadmap-status">{{ t.other }}</span> <span class="roadmap-count">{{ other | length }}</span></div>
         <div class="roadmap-items">
             {% for item in other %}
             <div class="roadmap-card">
