@@ -1,8 +1,9 @@
 //! `page self-update` — update the page binary to the latest release.
 //!
-//! Fetches the latest release from GitHub, downloads the appropriate binary
-//! for the current platform, verifies the checksum, and replaces the running
-//! binary. Uses the same release infrastructure as install.sh.
+//! Fetches the latest release version from pagecli.dev (falling back to the
+//! GitHub API), downloads the binary through pagecli.dev/download/ (which
+//! 302-redirects to GitHub Releases), verifies the checksum, and replaces
+//! the running binary.
 
 use std::env;
 use std::fs;
@@ -14,6 +15,7 @@ use clap::Args;
 use crate::output::human;
 
 const REPO: &str = "sanchezomar/page";
+const DOWNLOAD_BASE: &str = "https://pagecli.dev/download";
 
 #[derive(Args)]
 pub struct SelfUpdateArgs {
@@ -76,12 +78,8 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     // 3. Detect platform
     let target_triple = detect_target_triple()?;
     let archive_name = format!("page-{target_triple}.tar.gz");
-    let download_url = format!(
-        "https://github.com/{REPO}/releases/download/{target_tag}/{archive_name}"
-    );
-    let checksums_url = format!(
-        "https://github.com/{REPO}/releases/download/{target_tag}/checksums-sha256.txt"
-    );
+    let download_url = format!("{DOWNLOAD_BASE}/{target_tag}/{archive_name}");
+    let checksums_url = format!("{DOWNLOAD_BASE}/{target_tag}/checksums-sha256.txt");
 
     // 4. Download to a temp directory
     human::info(&format!("Downloading {archive_name}..."));
@@ -113,8 +111,22 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Fetch the latest release tag from GitHub.
+/// Fetch the latest release tag, trying pagecli.dev first then GitHub API.
 fn fetch_latest_tag() -> anyhow::Result<String> {
+    // Try pagecli.dev/version.txt first (fast, no API rate limits)
+    if let Ok(response) = ureq::get("https://pagecli.dev/version.txt")
+        .set("User-Agent", "page-self-update")
+        .call()
+    {
+        if let Ok(body) = response.into_string() {
+            let tag = body.trim().to_string();
+            if !tag.is_empty() {
+                return Ok(tag);
+            }
+        }
+    }
+
+    // Fallback to GitHub API
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
 
     let response = ureq::get(&url)
@@ -141,7 +153,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
     } else if cfg!(target_os = "windows") {
         anyhow::bail!(
             "Self-update is not supported on Windows. Use the PowerShell installer:\n  \
-             irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex"
+             irm https://pagecli.dev/install.ps1 | iex"
         );
     } else {
         anyhow::bail!(

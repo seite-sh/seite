@@ -48,8 +48,8 @@ cargo run -- self-update --check                   # Check for new version witho
 cargo run -- self-update --target-version 0.2.0    # Pin a specific version
 
 # Install (end users)
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh       # macOS/Linux
-irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex            # Windows
+curl -fsSL https://pagecli.dev/install.sh | sh       # macOS/Linux
+irm https://pagecli.dev/install.ps1 | iex            # Windows
 ```
 
 ## Architecture
