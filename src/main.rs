@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         Command::Serve(args) => page::cli::serve::run(args, cli.site.as_deref())?,
         Command::Deploy(args) => page::cli::deploy::run(args, cli.site.as_deref())?,
         Command::Agent(args) => page::cli::agent::run(args)?,
+        Command::Collection(args) => page::cli::collection::run(args)?,
         Command::Theme(args) => page::cli::theme::run(args)?,
         Command::Workspace(args) => page::cli::workspace::run(args)?,
         Command::Upgrade(args) => page::cli::upgrade::run(args)?,

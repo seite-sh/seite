@@ -10,7 +10,7 @@ The `page agent` command spawns Claude Code as a subprocess with full site conte
 
 ```bash
 cargo build          # Build the binary
-cargo test           # Run all tests (103 unit + 138 integration)
+cargo test           # Run all tests (135 unit + 192 integration)
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- init trustsite --title "Acme" --collections posts,pages,trust --trust-company "Acme Corp" --trust-frameworks soc2,iso27001
@@ -33,6 +33,10 @@ cargo run -- deploy --no-commit                     # Deploy without auto-commit
 cargo run -- deploy --dry-run                       # Preview what deploy would do
 cargo run -- deploy --target netlify                 # Deploy to Netlify
 cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
+
+# Collection management
+cargo run -- collection list                         # List site collections
+cargo run -- collection add changelog                # Add a preset collection
 
 # Workspace commands
 cargo run -- workspace init my-workspace           # Initialize workspace
@@ -99,7 +103,7 @@ src/
     resources.rs       MCP resource providers (docs, config, content, themes, mcp-config)
     tools.rs           MCP tool implementations (build, create_content, search, apply_theme, lookup_docs)
   cli/
-    mod.rs             Cli struct + Command enum (11 subcommands)
+    mod.rs             Cli struct + Command enum (12 subcommands)
     init.rs            Interactive project scaffolding (creates .page/config.json + MCP config)
     new.rs             Create content files
     build.rs           Build command (workspace-aware, nudges on outdated project)
@@ -110,7 +114,19 @@ src/
     mcp.rs             MCP server entry point (launches stdio JSON-RPC server)
     workspace.rs       Workspace CLI (init, list, add, status)
     upgrade.rs         Upgrade project config to current binary (version-gated steps)
+    collection.rs      Collection management (add, list)
     self_update.rs     Self-update binary from GitHub Releases
+  scaffold/            Static markdown sections for generated CLAUDE.md (include_str! at compile time)
+    seo-requirements.md  SEO/GEO requirements section
+    repl.md            Dev server REPL commands
+    i18n.md            Multi-language support guide
+    data-files.md      Data files system guide
+    templates.md       Templates, themes, variables, blocks, SEO guardrails
+    features.md        Feature list
+    config-reference.md  Optional config sections (images, analytics)
+    mcp.md             MCP server + state-awareness guidance
+    shortcodes.md      Shortcode syntax and reference
+    design-prompts.md  Theme design directions
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
@@ -129,7 +145,7 @@ src/
   server/mod.rs        tiny_http dev server, file watcher, live reload
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
-  integration.rs       138 integration tests using assert_cmd + tempfile
+  integration.rs       192 integration tests using assert_cmd + tempfile
 ```
 
 ### Build Pipeline (13 steps)
@@ -153,7 +169,7 @@ tests/
 
 ### Collections System
 
-Five presets defined in `CollectionConfig::from_preset()`:
+Six presets defined in `CollectionConfig::from_preset()`:
 
 | Preset | has_date | has_rss | listed | nested | url_prefix | template |
 |--------|----------|---------|--------|--------|------------|----------|
@@ -771,68 +787,24 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Project metadata & upgrades — `.page/config.json` tracks binary version that last scaffolded the project. `page upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `page build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
 - [x] Self-update — `page self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
 - [x] MCP server scaffolding — `page init` creates `.claude/settings.json` with `mcpServers.page` block. `page upgrade` merges MCP config into existing projects.
-- [x] MCP server — `page mcp` runs a JSON-RPC server over stdio. Resources: `page://docs/*` (13 embedded doc pages), `page://config`, `page://content/*`, `page://themes`, `page://mcp-config`. Tools: `page_build`, `page_create_content`, `page_search`, `page_apply_theme`, `page_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
+- [x] MCP server — `page mcp` runs a JSON-RPC server over stdio. Resources: `page://docs/*` (14 embedded doc pages), `page://config`, `page://content/*`, `page://themes`, `page://mcp-config`. Tools: `page_build`, `page_create_content`, `page_search`, `page_apply_theme`, `page_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
 - [x] Changelog collection — `changelog` preset with dated entries, RSS feed, and colored tag badges (new/fix/breaking/improvement/deprecated). Dedicated `changelog-entry.html` and `changelog-index.html` templates with CSS in all 6 themes. Collection-specific index template resolution in build pipeline.
 - [x] Roadmap collection — `roadmap` preset with weight-ordered items and status tags (planned/in-progress/done/cancelled). Three index layouts: grouped list (default), kanban (CSS grid 3-column), and timeline (vertical milestones). Dedicated templates and CSS in all 6 themes.
+- [x] Trust Center collection — `trust` preset with data-driven compliance hub scaffolding. Certifications, subprocessors, and FAQ data files. Content pages for security overview, vulnerability disclosure, per-framework details. Interactive init flow with framework selection. Dedicated `trust-index.html` and `trust-item.html` templates with CSS in all 6 themes. `page://trust` MCP resource. 17 i18n UI string keys.
+- [x] Analytics & cookie consent — `[analytics]` config section with 5 providers (Google Analytics, GTM, Plausible, Fathom, Umami). Optional cookie consent banner with localStorage persistence. Injected into all HTML files at build step 13.
+- [x] Collection management — `page collection add <preset>` and `page collection list` commands for adding collections to existing sites.
 
 ### Up Next
 
-#### Competitive gaps (from 2026 SSG competitive analysis vs Hugo, Astro, Zola, Eleventy, Next.js)
+See the public roadmap at https://pagecli.dev/roadmap for detailed planned features, and the changelog at https://pagecli.dev/changelog for release history.
 
-**Priority 1 — Close critical content authoring gaps (these block adoption):**
-
-- [x] Shortcodes — reusable content components in markdown. Hugo-style dual syntax: `{{< name(args) >}}` for inline HTML, `{{% name(args) %}} body {{% end %}}` for markdown-processed bodies. 5 built-in shortcodes (youtube, vimeo, gist, callout, figure) + user-defined from `templates/shortcodes/`. Character-level parser with code block protection. All 6 themes include shortcode CSS.
-- [x] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
-- [x] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
-
-**Priority 2 — Multi-LLM agent support:**
-
-- [ ] Multi-LLM integration — support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends. Currently `page agent` only works with Claude Code. This is a large change touching config, init, upgrade, agent, theme, and serve modules. Key components:
-  - [ ] Provider abstraction — `AgentProvider` trait in `src/cli/agent.rs` with per-provider implementations for command construction, tool name mapping, streaming JSON parsing, session resume, system prompt delivery, and MCP config generation. Each provider has different tool names (Claude: `Read`/`Write`/`Edit`/`Bash`/`Glob`/`Grep`, OpenCode: `read`/`write`/`edit`/`bash`/`glob`/`grep`, Codex: `read_file`/`apply_patch`/`shell`/`glob_file_search`, Gemini: `read_file`/`write_file`/`replace`/`run_shell_command`/`glob`/`search_file_content`), different streaming event schemas, different auto-approve behavior (`-p` auto-approves on Claude/OpenCode; Codex needs `--full-auto`; Gemini needs `--yolo`), and different session resume flags (`--resume <id>`, `--continue`, `codex exec resume`, `--resume <uuid>`)
-  - [ ] `[agent]` config section — add `AgentSection` to `SiteConfig` in `src/config/mod.rs` with `provider` (enum: `claude`/`opencode`/`codex`/`gemini`, default `claude`) and optional `model` (provider-specific model override, e.g. `ollama/qwen3-coder` for OpenCode). Also support in `page-workspace.toml` for workspace-level default with per-site override
-  - [ ] `AGENTS.md` migration — rename `generate_claude_md()` in `src/cli/init.rs` to `generate_agents_md()`, write to `AGENTS.md` (the emerging cross-tool standard read by Claude Code, OpenCode, and Codex). Keep `.claude/CLAUDE.md` as a slim file with MCP notes only. `page upgrade` migrates existing projects: copies content to `AGENTS.md`, slims down `CLAUDE.md`
-  - [ ] MCP config generation for all providers — `page init` and `page agent config` write provider-specific MCP config: `.claude/settings.json` (JSON, `mcpServers.page`), `opencode.json` (JSON, `mcp.page` with `type: "local"`, command-as-array), `.codex/config.toml` (TOML, `[mcp_servers.page]`), `.gemini/settings.json` (JSON, `mcpServers.page`). Only generate files for detected/chosen providers
-  - [ ] CLI detection in `page init` — run `claude --version`, `opencode --version`, `codex --version`, `gemini --version` at init time, display detected tools with versions, prompt user to choose default provider. Store choice in `page.toml` `[agent]` section
-  - [ ] `page agent switch` command — detect installed tools, prompt to choose, update `page.toml` `[agent]` provider, generate any missing MCP config files
-  - [ ] `page agent doctor` command — health check: verify CLI installed, MCP config valid, `AGENTS.md` present, test one-shot mode with echo, report status of all detected tools
-  - [ ] `page agent --provider <name>` flag — one-off provider override without changing `page.toml`
-  - [ ] `page theme create` multi-provider — `src/cli/theme.rs` also spawns Claude Code; needs same provider abstraction with restricted tool sets per provider
-  - [ ] Stream event parsers — provider-specific JSONL parsers normalizing to a common `StreamEvent` enum. Claude: `{"type":"assistant",...}`, OpenCode: `{"type":"message.part.updated",...}`, Codex: `{"type":"turn.started",...}`/`{"type":"item.completed",...}`, Gemini: similar to Claude but different content structure
-  - [ ] Dynamic system prompt strategy — Claude uses `--append-system-prompt` (direct injection). Other providers rely on `AGENTS.md` (static) + MCP server (live context). The MCP server provides dynamic content inventory, so `AGENTS.md` only needs stable instructions (commands, conventions, SEO rules)
-  - [ ] Graceful degradation — if configured provider not installed, error with install instructions + list other detected tools + suggest `page agent switch` or `--provider` override. Never silently fall back
-  - [ ] Provider maturity tiers — Claude Code and OpenCode are stable (full feature parity). Codex is supported (different tool model, no grep tool). Gemini is experimental (non-interactive `--allowed-tools` has multiple P1 bugs as of early 2026)
-  - [ ] Testing — mock tool detection, test config generation as pure functions, JSONL fixture files per provider for stream parser unit tests, `#[ignore]` on integration tests that require specific CLIs
-
-**Priority 3 — Improve build pipeline and content model:**
-
-- [ ] Incremental builds — only rebuild changed pages in dev mode. Hugo does partial rebuilds; Astro uses Vite HMR. Track content file mtimes, template dependencies, and config changes to determine minimum rebuild set. Critical for sites with 100+ pages where full rebuilds slow down the dev loop
-- [ ] Content from external sources — fetch JSON/YAML from URLs at build time and inject into template context. Astro's Content Layer API can pull from any CMS/API/database. Start simple: `[data_sources]` section in page.toml with `name = "posts"`, `url = "https://api.example.com/posts"`, `format = "json"`. Fetch at build step 3, merge with filesystem content
-- [ ] Math/LaTeX rendering — server-side KaTeX or MathJax rendering in markdown. Hugo added this in 2024. Render `$inline$` and `$$display$$` math blocks to HTML during markdown processing. Use `katex` crate or shell out to katex CLI. Important for technical/academic sites
-
-**Priority 4 — Polish and ecosystem:**
-
-- [ ] AVIF image format — generate AVIF variants alongside WebP in the image pipeline. Eleventy Image v6.0 supports AVIF. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute
-- [x] Theme gallery/sharing — documentation page showcasing all bundled themes with HTML preview cards, `page theme install <url>` to download community themes, `page theme export <name>` to share custom/AI-generated themes, installed themes stored in `templates/themes/` and managed alongside bundled themes
-- [ ] Related posts — auto-suggest related content based on shared tags/keywords, available as `{{ page.related }}`. Use tag overlap + TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page
-- [ ] Theme community ecosystem — build discoverability and a contributor on-ramp for community themes:
-  - [ ] Curated theme registry — `themes.json` in the repo (served on pagecli.dev) listing community themes with name, description, author, install URL, preview URL, and tags. Seed with the 6 bundled themes
-  - [ ] `page theme browse` command — fetches the registry and displays available community themes with descriptions; `page theme browse --tags dark` to filter; install directly from browse results
-  - [ ] GitHub discovery conventions — `page-theme` GitHub topic, `page-theme-template` template repo with correct structure/metadata/required blocks, naming convention `page-theme-{name}` with `theme.tera` at root
-  - [ ] `page theme validate` command — checks a `.tera` file for all required pieces (HTML structure, SEO meta tags, template blocks, search JS, pagination, accessibility features) before publishing; outputs pass/fail with specific missing items
-  - [ ] Community showcase on pagecli.dev — extend the gallery docs page to include community themes with live preview links and one-click install commands
-  - [ ] Theme contributor guide — docs page explaining how to create, test, validate, and submit a theme to the registry
-
-**Priority 5 — Deploy improvements (existing roadmap items):**
-
-- [ ] Deploy history + diff — write `.deploy-log.json` with timestamp, target, commit hash, build duration, content hash; `--dry-run` shows what changed since last deploy
-- [ ] Rollback — `page deploy rollback` restores previous deploy; keep last N commits on GitHub Pages instead of orphan force-push; use Netlify/Cloudflare rollback APIs
-- [ ] Deploy diff — `page deploy --dry-run` shows new/modified/deleted files compared to last deploy via content hash comparison
-- [ ] Environment-aware builds — detect CI environment variables (`GITHUB_ACTIONS`, `NETLIFY`, `CF_PAGES`) and auto-configure behavior (skip prompts, use env secrets for base_url)
-- [ ] Multi-environment config — support `[deploy.production]` and `[deploy.staging]` sections with different base_url, targets, and settings
-- [ ] Atomic deploys with content hashing — skip deploy if content hash unchanged since last deploy; useful in CI to avoid empty deploys
-- [ ] S3/generic hosting target — AWS S3 + CloudFront support via `aws s3 sync` wrapper
-- [ ] Webhook/notification support — post-deploy webhook (Slack, Discord, email) for team workflows
-- [ ] Subdomain deploys — per-collection subdomain support (`subdomain = "docs"` on a collection → `docs.example.com`). Three phases: (1) per-collection `output_dir` override to build collections into separate directories, (2) per-collection `base_url` to make URL resolution, sitemap, RSS, and discovery files subdomain-aware, (3) multi-deploy orchestration so `page deploy` loops over subdomain configs and deploys each one. Config: `subdomain` field on `CollectionConfig`, per-collection domain in `DeploySection`. Affects every layer: config model, build pipeline, URL resolution, sitemap/RSS/discovery generation, and deploy orchestration
+**Priority areas:**
+- Multi-LLM agent support — Claude Code, OpenCode, Codex CLI, Gemini CLI as interchangeable backends
+- Incremental builds — only rebuild changed pages in dev mode
+- External data sources — fetch JSON/YAML from URLs at build time
+- Math/LaTeX rendering — server-side KaTeX for technical/academic sites
+- Theme community ecosystem — registry, browse, validate, contributor guide
+- Deploy improvements — history/rollback, environment-aware builds, S3 target, subdomain deploys
 
 #### What NOT to build (deliberate non-goals based on competitive analysis)
 

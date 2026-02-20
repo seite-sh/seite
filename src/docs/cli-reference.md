@@ -51,7 +51,7 @@ page init <name> [options]
 | `--title` | Site title |
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
-| `--collections` | Comma-separated list: `posts,docs,pages` |
+| `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 
 If flags are omitted, `page init` prompts interactively.
 
@@ -78,7 +78,7 @@ page build [options]
 
 The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
 
-After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., `<a href="/posts/nonexistent">`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
+After building, `page build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
 
 ## page serve
 
@@ -112,7 +112,7 @@ page new <collection> "Title" [options]
 
 | Flag | Description |
 |------|-------------|
-| `--tags` | Comma-separated tags (posts only) |
+| `--tags` | Comma-separated tags |
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
 
 ```bash
@@ -120,6 +120,8 @@ page new post "My Post" --tags rust,web
 page new doc "API Guide"
 page new page "About"
 page new post "Mi Post" --lang es    # Spanish translation
+page new changelog "v1.0.0" --tags new,improvement
+page new roadmap "Dark Mode" --tags planned
 ```
 
 ## page agent
@@ -135,6 +137,27 @@ Two modes:
 - **One-shot**: `page agent "write a blog post about Rust"` — runs and exits
 
 The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
+
+## page collection
+
+Manage site collections — add presets to an existing site or list current collections.
+
+```bash
+page collection <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add <preset>` | Add a collection preset to the current site (updates `page.toml`, creates content directory) |
+| `list` | List all collections in the current site with their configuration |
+
+Available presets: `posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`.
+
+```bash
+page collection add changelog    # Add changelog collection
+page collection add roadmap      # Add roadmap collection
+page collection list             # Show all configured collections
+```
 
 ## page theme
 

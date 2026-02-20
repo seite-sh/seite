@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CLI Reference — page docs</title>
     <meta name="description" content="Complete reference for all page CLI commands, flags, and options.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;cli-reference">
+    <link rel="canonical" href="https://pagecli.dev/docs/cli-reference">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;cli-reference">
+    <meta property="og:url" content="https://pagecli.dev/docs/cli-reference">
     <meta property="og:title" content="CLI Reference">
     <meta property="og:description" content="Complete reference for all page CLI commands, flags, and options.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;cli-reference.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/cli-reference.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;CLI Reference&quot;,"description":&quot;Complete reference for all page CLI commands, flags, and options.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;cli-reference&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"CLI Reference","description":"Complete reference for all page CLI commands, flags, and options.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/cli-reference"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;cli-reference" aria-current="page">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li class="active"><a href="/docs/cli-reference" aria-current="page">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1159,7 +1167,7 @@
 <p>Run <code>page &lt;command&gt; --help</code> for quick inline help on any command.</p>
 </div>
 <h2 id="overview">Overview</h2>
-<p><code>page</code> has seven subcommands:</p>
+<p><code>page</code> has eleven subcommands:</p>
 <table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>init</code></th><th>Create a new site</th></tr>
 <tr><th><code>build</code></th><th>Build the site</th></tr>
@@ -1168,6 +1176,19 @@
 <tr><th><code>agent</code></th><th>AI assistant with site context</th></tr>
 <tr><th><code>theme</code></th><th>Manage themes</th></tr>
 <tr><th><code>deploy</code></th><th>Deploy to hosting platforms</th></tr>
+<tr><th><code>workspace</code></th><th>Manage multi-site workspaces</th></tr>
+<tr><th><code>mcp</code></th><th>MCP server for AI tool integration</th></tr>
+<tr><th><code>upgrade</code></th><th>Update project config to match current binary</th></tr>
+<tr><th><code>self-update</code></th><th>Update the page binary to the latest release</th></tr>
+</tbody></table>
+<h3 id="global-flags">Global Flags</h3>
+<p>These flags work with any command:</p>
+<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>--site &lt;name&gt;</code></th><th>Target a specific site in a workspace</th></tr>
+<tr><th><code>--config &lt;path&gt;</code></th><th>Path to config file</th></tr>
+<tr><th><code>--dir &lt;path&gt;</code></th><th>Project directory</th></tr>
+<tr><th><code>--verbose</code></th><th>Enable verbose logging</th></tr>
+<tr><th><code>--json</code></th><th>Output results as JSON</th></tr>
 </tbody></table>
 <h2 id="page-init">page init</h2>
 <p>Create a new site directory with scaffolded structure.</p>
@@ -1178,7 +1199,7 @@
 <tr><th><code>--title</code></th><th>Site title</th></tr>
 <tr><th><code>--description</code></th><th>Site description</th></tr>
 <tr><th><code>--deploy-target</code></th><th><code>github-pages</code>, <code>cloudflare</code>, or <code>netlify</code></th></tr>
-<tr><th><code>--collections</code></th><th>Comma-separated list: <code>posts,docs,pages</code></th></tr>
+<tr><th><code>--collections</code></th><th>Comma-separated list: <code>posts,docs,pages,changelog,roadmap</code></th></tr>
 </tbody></table>
 <p>If flags are omitted, <code>page init</code> prompts interactively.</p>
 <pre style="background-color:#2b303b;">
@@ -1198,7 +1219,7 @@
 <tr><th><code>--strict</code></th><th>Treat broken internal links as build errors</th></tr>
 </tbody></table>
 <p>The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.</p>
-<p>After building, <code>page build</code> validates all internal links in the generated HTML. Broken links (e.g., <code>&lt;a href="/posts/nonexistent"&gt;</code>) are reported as warnings by default. Use <code>--strict</code> to fail the build when broken links are found — useful in CI pipelines.</p>
+<p>After building, <code>page build</code> validates all internal links in the generated HTML. Broken links (e.g., links pointing to <code>/posts/missing-slug</code>) are reported as warnings by default. Use <code>--strict</code> to fail the build when broken links are found — useful in CI pipelines.</p>
 <h2 id="page-serve">page serve</h2>
 <p>Start a development server with live reload.</p>
 <pre style="background-color:#2b303b;">
@@ -1223,7 +1244,7 @@
 <span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new &lt;collection&gt; &quot;</span><span style="color:#a3be8c;">Title</span><span style="color:#c0c5ce;">&quot; </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--tags</code></th><th>Comma-separated tags (posts only)</th></tr>
+<tr><th><code>--tags</code></th><th>Comma-separated tags</th></tr>
 <tr><th><code>--lang</code></th><th>Language code for translations (e.g., <code>es</code>, <code>fr</code>)</th></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
@@ -1231,6 +1252,8 @@
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new doc &quot;</span><span style="color:#a3be8c;">API Guide</span><span style="color:#c0c5ce;">&quot;
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new page &quot;</span><span style="color:#a3be8c;">About</span><span style="color:#c0c5ce;">&quot;
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new post &quot;</span><span style="color:#a3be8c;">Mi Post</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --lang</span><span style="color:#c0c5ce;"> es    </span><span style="color:#65737e;"># Spanish translation
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new changelog &quot;</span><span style="color:#a3be8c;">v1.0.0</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> new,improvement
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> new roadmap &quot;</span><span style="color:#a3be8c;">Dark Mode</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> planned
 </span></pre>
 <h2 id="page-agent">page agent</h2>
 <p>Launch an AI assistant with full site context.</p>
@@ -1243,6 +1266,21 @@
 <li><strong>One-shot</strong>: <code>page agent "write a blog post about Rust"</code> — runs and exits</li>
 </ul>
 <p>The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: <code>npm install -g @anthropic-ai/claude-code</code>.</p>
+<h2 id="page-collection">page collection</h2>
+<p>Manage site collections — add presets to an existing site or list current collections.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> collection &lt;subcommand&gt;
+</span></pre>
+<table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>add &lt;preset&gt;</code></th><th>Add a collection preset to the current site (updates <code>page.toml</code>, creates content directory)</th></tr>
+<tr><th><code>list</code></th><th>List all collections in the current site with their configuration</th></tr>
+</tbody></table>
+<p>Available presets: <code>posts</code>, <code>docs</code>, <code>pages</code>, <code>changelog</code>, <code>roadmap</code>, <code>trust</code>.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> collection add changelog    </span><span style="color:#65737e;"># Add changelog collection
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> collection add roadmap      </span><span style="color:#65737e;"># Add roadmap collection
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> collection list             </span><span style="color:#65737e;"># Show all configured collections
+</span></pre>
 <h2 id="page-theme">page theme</h2>
 <p>Manage site themes — list, apply, install, export, and generate.</p>
 <pre style="background-color:#2b303b;">
@@ -1276,15 +1314,102 @@
 <tr><th><code>--setup</code></th><th>Run guided deploy setup</th></tr>
 <tr><th><code>--skip-checks</code></th><th>Skip pre-flight checks</th></tr>
 <tr><th><code>--base-url</code></th><th>Override base URL for this deploy</th></tr>
+<tr><th><code>--no-commit</code></th><th>Skip auto-commit and push (overrides <code>deploy.auto_commit</code>)</th></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy                          </span><span style="color:#65737e;"># Use target from page.toml
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy                          </span><span style="color:#65737e;"># Commit, push, build, and deploy
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --no-commit              </span><span style="color:#65737e;"># Deploy without auto-commit/push
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --dry-run                </span><span style="color:#65737e;"># Preview changes
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> netlify         </span><span style="color:#65737e;"># Override target
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --target</span><span style="color:#c0c5ce;"> cloudflare</span><span style="color:#bf616a;"> --dry-run
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com     </span><span style="color:#65737e;"># Set up custom domain
 </span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --setup                  </span><span style="color:#65737e;"># Guided setup wizard
 </span></pre>
+<h2 id="page-workspace">page workspace</h2>
+<p>Manage multi-site workspaces. See the <a href="/docs/workspace">Workspaces</a> guide for full details.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace &lt;subcommand&gt;
+</span></pre>
+<table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>init [name]</code></th><th>Initialize a new workspace in the current directory</th></tr>
+<tr><th><code>list</code></th><th>List all sites in the workspace</th></tr>
+<tr><th><code>add &lt;name&gt;</code></th><th>Add a new site to the workspace</th></tr>
+<tr><th><code>status</code></th><th>Show detailed workspace status</th></tr>
+</tbody></table>
+<h3 id="workspace-add-flags">workspace add flags</h3>
+<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>--path</code></th><th>Site directory path (default: <code>sites/&lt;name&gt;</code>)</th></tr>
+<tr><th><code>--title</code></th><th>Site title</th></tr>
+<tr><th><code>--collections</code></th><th>Comma-separated collections (default: <code>posts,pages</code>)</th></tr>
+</tbody></table>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace init my-workspace
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Blog</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --path</span><span style="color:#c0c5ce;"> sites/documentation
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace list
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> workspace status
+</span></pre>
+<p>When inside a workspace, <code>build</code>, <code>serve</code>, and <code>deploy</code> operate on all sites by default. Use <code>--site</code> to target one:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> build</span><span style="color:#bf616a;"> --site</span><span style="color:#c0c5ce;"> blog               </span><span style="color:#65737e;"># Build only the blog
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> serve</span><span style="color:#bf616a;"> --site</span><span style="color:#c0c5ce;"> docs               </span><span style="color:#65737e;"># Serve only the docs
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --site</span><span style="color:#c0c5ce;"> blog</span><span style="color:#bf616a;"> --dry-run    </span><span style="color:#65737e;"># Preview blog deploy
+</span></pre>
+<h2 id="page-mcp">page mcp</h2>
+<p>Start the MCP (Model Context Protocol) server for AI tool integration. Communicates over stdio using JSON-RPC.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> mcp
+</span></pre>
+<p>This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. It is configured in <code>.claude/settings.json</code> during <code>page init</code> and requires no manual invocation.</p>
+<p>The server exposes <strong>resources</strong> (documentation, site config, content, themes) and <strong>tools</strong> (build, create content, search, apply theme, lookup docs). See the <a href="/docs/mcp-server">MCP Server</a> guide for full details.</p>
+<div class="callout callout-info">
+<div class="callout-title">Info</div>
+<p>You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use <code>page upgrade</code> to add the MCP configuration to existing projects.</p>
+</div>
+<h2 id="page-upgrade">page upgrade</h2>
+<p>Update project configuration files to match the current binary version. When you upgrade the <code>page</code> binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> upgrade </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
+</span></pre>
+<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>--force</code></th><th>Apply all upgrades without confirmation</th></tr>
+<tr><th><code>--check</code></th><th>Check for needed upgrades without applying (exits with code 1 if outdated)</th></tr>
+</tbody></table>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> upgrade                </span><span style="color:#65737e;"># Interactive: shows changes, asks for confirmation
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> upgrade</span><span style="color:#bf616a;"> --force        </span><span style="color:#65737e;"># Apply all changes without prompting
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> upgrade</span><span style="color:#bf616a;"> --check        </span><span style="color:#65737e;"># CI mode: exit 1 if upgrades needed, 0 if current
+</span></pre>
+<p>Upgrade is <strong>additive and non-destructive</strong>:</p>
+<ul>
+<li>Merges into <code>.claude/settings.json</code> — adds new entries, never removes yours</li>
+<li>Appends to <code>CLAUDE.md</code> — adds new sections, never modifies existing content</li>
+<li>Creates <code>.page/config.json</code> if missing — tracks the project's config version</li>
+<li>Each upgrade step is version-gated, so running it on a current project is a fast no-op</li>
+</ul>
+<div class="callout callout-tip">
+<div class="callout-title">Tip</div>
+<p><code>page build</code> will nudge you with a one-liner when your project config is outdated: <em>"Run <code>page upgrade</code> for new features."</em> The build still succeeds — the nudge is informational only.</p>
+</div>
+<h2 id="page-self-update">page self-update</h2>
+<p>Update the <code>page</code> binary itself to the latest release (or a specific version).</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> self-update </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
+</span></pre>
+<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>--check</code></th><th>Check for updates without installing</th></tr>
+<tr><th><code>--target-version</code></th><th>Update to a specific version (e.g., <code>0.2.0</code> or <code>v0.2.0</code>)</th></tr>
+</tbody></table>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> self-update                          </span><span style="color:#65737e;"># Update to latest release
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> self-update</span><span style="color:#bf616a;"> --check                  </span><span style="color:#65737e;"># Just check, don&#39;t install
+</span><span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> self-update</span><span style="color:#bf616a;"> --target-version</span><span style="color:#c0c5ce;"> 0.2.0   </span><span style="color:#65737e;"># Pin a specific version
+</span></pre>
+<p>The command downloads the appropriate binary for your platform from GitHub Releases, verifies the SHA256 checksum, and replaces the running binary atomically.</p>
+<div class="callout callout-info">
+<div class="callout-title">Info</div>
+<p>After updating the binary, run <code>page upgrade</code> in each of your projects to bring their config files up to date.</p>
+</div>
 </div>
         </article>
 
@@ -1315,10 +1440,34 @@
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
         
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
         
             
             
@@ -1389,13 +1538,13 @@
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;theme-gallery">
+            <a href="/docs/theme-gallery">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Theme Gallery</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;releases" class="doc-nav-next">
+            <a href="/docs/releases" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">Releases</span>
             </a>
@@ -1410,13 +1559,20 @@
             <h4>On this page</h4>
             <ul>
             <li class="toc-level-2"><a href="#overview">Overview</a></li>
+            <li class="toc-level-3"><a href="#global-flags">Global Flags</a></li>
             <li class="toc-level-2"><a href="#page-init">page init</a></li>
             <li class="toc-level-2"><a href="#page-build">page build</a></li>
             <li class="toc-level-2"><a href="#page-serve">page serve</a></li>
             <li class="toc-level-2"><a href="#page-new">page new</a></li>
             <li class="toc-level-2"><a href="#page-agent">page agent</a></li>
+            <li class="toc-level-2"><a href="#page-collection">page collection</a></li>
             <li class="toc-level-2"><a href="#page-theme">page theme</a></li>
             <li class="toc-level-2"><a href="#page-deploy">page deploy</a></li>
+            <li class="toc-level-2"><a href="#page-workspace">page workspace</a></li>
+            <li class="toc-level-3"><a href="#workspace-add-flags">workspace add flags</a></li>
+            <li class="toc-level-2"><a href="#page-mcp">page mcp</a></li>
+            <li class="toc-level-2"><a href="#page-upgrade">page upgrade</a></li>
+            <li class="toc-level-2"><a href="#page-self-update">page self-update</a></li>
             </ul>
         </nav>
     </aside>

@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-Language — page docs</title>
     <meta name="description" content="Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;i18n">
+    <link rel="canonical" href="https://pagecli.dev/docs/i18n">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;i18n">
+    <meta property="og:url" content="https://pagecli.dev/docs/i18n">
     <meta property="og:title" content="Multi-Language">
     <meta property="og:description" content="Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;i18n.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/i18n.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Multi-Language&quot;,"description":&quot;Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;i18n&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Multi-Language","description":"Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/i18n"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;i18n" aria-current="page">Multi-Language</a></li>
+                    <li class="active"><a href="/docs/i18n" aria-current="page">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1224,7 +1232,10 @@ about.xx.md   → Ignored (xx not configured)
 <table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>{{ lang }}</code></th><th>Current page language code</th></tr>
 <tr><th><code>{{ translations }}</code></th><th>Array of <code>{lang, url}</code> for available translations</th></tr>
-<tr><th><code>{{ site.language }}</code></th><th>Default site language</th></tr>
+<tr><th><code>{{ site.language }}</code></th><th>Configured default language</th></tr>
+<tr><th><code>{{ default_language }}</code></th><th>Default language code (from <code>page.toml</code>)</th></tr>
+<tr><th><code>{{ lang_prefix }}</code></th><th>URL prefix for current language (empty for default, <code>"/es"</code> for others)</th></tr>
+<tr><th><code>{{ t }}</code></th><th>UI translation strings object (override via <code>data/i18n/{lang}.yaml</code>)</th></tr>
 </tbody></table>
 <p>Use in templates:</p>
 <pre style="background-color:#2b303b;">
@@ -1240,6 +1251,59 @@ about.xx.md   → Ignored (xx not configured)
 </span><span style="color:#c0c5ce;">&lt;/</span><span style="color:#bf616a;">nav</span><span style="color:#c0c5ce;">&gt;
 </span><span style="color:#c0c5ce;">{% endif %}
 </span></pre>
+<h2 id="navigation-and-footer-links">Navigation and Footer Links</h2>
+<p>Data file links in <code>data/nav.yaml</code> and <code>data/footer.yaml</code> can use the <code>external: true</code> flag to distinguish external URLs from internal ones. This lets themes apply the <code>{{ lang_prefix }}</code> only to internal links, so navigation works correctly across languages:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># data/nav.yaml
+</span><span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">Blog
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">/posts
+</span><span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">About
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">/about
+</span><span style="color:#c0c5ce;">- </span><span style="color:#bf616a;">title</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">GitHub
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">url</span><span style="color:#c0c5ce;">: </span><span style="color:#a3be8c;">https://github.com/user/repo
+</span><span style="color:#c0c5ce;">  </span><span style="color:#bf616a;">external</span><span style="color:#c0c5ce;">: </span><span style="color:#d08770;">true
+</span></pre>
+<p>In templates, check for <code>external</code> to decide whether to prepend the language prefix:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">{% for item in data.nav %}
+</span><span style="color:#c0c5ce;">  {% if item.external %}
+</span><span style="color:#c0c5ce;">    &lt;</span><span style="color:#bf616a;">a </span><span style="color:#d08770;">href</span><span style="color:#c0c5ce;">=&quot;</span><span style="color:#a3be8c;">{{ item.url }}</span><span style="color:#c0c5ce;">&quot;&gt;{{ item.title }}&lt;/</span><span style="color:#bf616a;">a</span><span style="color:#c0c5ce;">&gt;
+</span><span style="color:#c0c5ce;">  {% else %}
+</span><span style="color:#c0c5ce;">    &lt;</span><span style="color:#bf616a;">a </span><span style="color:#d08770;">href</span><span style="color:#c0c5ce;">=&quot;</span><span style="color:#a3be8c;">{{ lang_prefix }}{{ item.url }}</span><span style="color:#c0c5ce;">&quot;&gt;{{ item.title }}&lt;/</span><span style="color:#bf616a;">a</span><span style="color:#c0c5ce;">&gt;
+</span><span style="color:#c0c5ce;">  {% endif %}
+</span><span style="color:#c0c5ce;">{% endfor %}
+</span></pre>
+<p>All bundled themes handle this automatically when <code>data.nav</code> or <code>data.footer</code> are present.</p>
+<h2 id="ui-string-translations">UI String Translations</h2>
+<p>Bundled themes use the <code>{{ t }}</code> object for all user-facing UI text (buttons, labels, placeholders). This means you can translate the interface without overriding entire theme templates.</p>
+<h3 id="how-it-works">How it works</h3>
+<ol>
+<li>The build pipeline provides English defaults for all UI strings</li>
+<li>To override strings for a specific language, create <code>data/i18n/{lang}.yaml</code></li>
+<li>Only the keys you define are overridden — everything else falls back to English</li>
+</ol>
+<h3 id="example">Example</h3>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># data/i18n/es.yaml
+</span><span style="color:#bf616a;">search_placeholder</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Buscar…</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">skip_to_content</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Ir al contenido principal</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">no_results</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Sin resultados</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">newer</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más recientes</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">older</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más antiguos</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">tags</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Etiquetas</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">min_read</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">min de lectura</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># data/i18n/fr.yaml
+</span><span style="color:#bf616a;">search_placeholder</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Rechercher…</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">skip_to_content</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Aller au contenu principal</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">no_results</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Aucun résultat</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">newer</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Plus récent</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">older</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Plus ancien</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">tags</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Mots-clés</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">min_read</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">min de lecture</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
+<p>See <a href="/docs/templates#translatable-ui-strings">Templates &amp; Themes</a> for the full list of available keys and their English defaults.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/collections">Collections</a> — how translations work across posts, docs, and pages</li>
@@ -1276,6 +1340,12 @@ about.xx.md   → Ignored (xx not configured)
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1319,6 +1389,18 @@ about.xx.md   → Ignored (xx not configured)
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1342,13 +1424,13 @@ about.xx.md   → Ignored (xx not configured)
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;shortcodes">
+            <a href="/docs/shortcodes">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Shortcodes</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;deployment" class="doc-nav-next">
+            <a href="/docs/deployment" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">Deployment</span>
             </a>
@@ -1371,6 +1453,10 @@ about.xx.md   → Ignored (xx not configured)
             <li class="toc-level-2"><a href="#hreflang-tags">hreflang Tags</a></li>
             <li class="toc-level-2"><a href="#language-switcher">Language Switcher</a></li>
             <li class="toc-level-2"><a href="#template-variables">Template Variables</a></li>
+            <li class="toc-level-2"><a href="#navigation-and-footer-links">Navigation and Footer Links</a></li>
+            <li class="toc-level-2"><a href="#ui-string-translations">UI String Translations</a></li>
+            <li class="toc-level-3"><a href="#how-it-works">How it works</a></li>
+            <li class="toc-level-3"><a href="#example">Example</a></li>
             <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
             </ul>
         </nav>

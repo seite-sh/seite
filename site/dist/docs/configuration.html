@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configuration — page docs</title>
     <meta name="description" content="Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;configuration">
+    <link rel="canonical" href="https://pagecli.dev/docs/configuration">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;configuration">
+    <meta property="og:url" content="https://pagecli.dev/docs/configuration">
     <meta property="og:title" content="Configuration">
     <meta property="og:description" content="Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;configuration.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/configuration.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Configuration&quot;,"description":&quot;Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;configuration&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Configuration","description":"Complete page.toml reference — site settings, collections, build options, deployment, languages, and images.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/configuration"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;configuration" aria-current="page">Configuration</a></li>
+                    <li class="active"><a href="/docs/configuration" aria-current="page">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1190,6 +1198,11 @@ widths = [480, 800, 1200]
 quality = 80
 webp = true
 lazy_loading = true
+
+[analytics]
+provider = &quot;google&quot;
+id = &quot;G-XXXXXXXXXX&quot;
+cookie_consent = true
 </code></pre>
 <h2 id="site">[site]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
@@ -1272,6 +1285,7 @@ paginate = 10
 <tr><th><code>target</code></th><th>string</th><th><code>"github-pages"</code></th><th>Deploy target: <code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code></th></tr>
 <tr><th><code>repo</code></th><th>string</th><th>auto-detected</th><th>Git repository URL (GitHub Pages)</th></tr>
 <tr><th><code>project</code></th><th>string</th><th>auto-detected</th><th>Project name (Cloudflare Pages)</th></tr>
+<tr><th><code>auto_commit</code></th><th>bool</th><th><code>true</code></th><th>Auto-commit and push before deploying. On non-main branches, auto-uses preview mode</th></tr>
 </tbody></table>
 <h2 id="languages">[languages.*]</h2>
 <p>Optional. Add language sections to enable multi-language support:</p>
@@ -1292,6 +1306,61 @@ title = &quot;Mon Site&quot;
 <tr><th><code>lazy_loading</code></th><th>bool</th><th><code>true</code></th><th>Add <code>loading="lazy"</code> to <code>&lt;img&gt;</code> tags</th></tr>
 </tbody></table>
 <p>When configured, images in <code>static/</code> are resized to each width, optionally converted to WebP, and <code>&lt;img&gt;</code> tags in HTML are rewritten with <code>srcset</code> and <code>&lt;picture&gt;</code> elements. To disable image processing, remove the <code>[images]</code> section entirely.</p>
+<h2 id="analytics">[analytics]</h2>
+<p>Optional. When present, analytics scripts are automatically injected into every HTML page during build. Supports Google Analytics 4, Google Tag Manager, Plausible, Fathom, and Umami.</p>
+<table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><th><code>provider</code></th><th>string</th><th>required</th><th>Analytics provider: <code>google</code>, <code>gtm</code>, <code>plausible</code>, <code>fathom</code>, <code>umami</code></th></tr>
+<tr><th><code>id</code></th><th>string</th><th>required</th><th>Measurement/tracking ID (e.g., <code>G-XXXXXXX</code>, <code>GTM-XXXXX</code>, domain, or site ID)</th></tr>
+<tr><th><code>cookie_consent</code></th><th>bool</th><th><code>false</code></th><th>Show a cookie consent banner and gate analytics on user acceptance</th></tr>
+<tr><th><code>script_url</code></th><th>string</th><th>varies</th><th>Custom script URL (required for self-hosted Umami, optional for others)</th></tr>
+</tbody></table>
+<h3 id="examples">Examples</h3>
+<p><strong>Google Analytics 4 (direct):</strong></p>
+<pre><code>[analytics]
+provider = &quot;google&quot;
+id = &quot;G-XXXXXXXXXX&quot;
+</code></pre>
+<p><strong>Google Analytics 4 with cookie consent banner:</strong></p>
+<pre><code>[analytics]
+provider = &quot;google&quot;
+id = &quot;G-XXXXXXXXXX&quot;
+cookie_consent = true
+</code></pre>
+<p><strong>Google Tag Manager:</strong></p>
+<pre><code>[analytics]
+provider = &quot;gtm&quot;
+id = &quot;GTM-XXXXXXX&quot;
+cookie_consent = true
+</code></pre>
+<p><strong>Plausible Analytics (privacy-friendly, no cookies):</strong></p>
+<pre><code>[analytics]
+provider = &quot;plausible&quot;
+id = &quot;example.com&quot;
+</code></pre>
+<p><strong>Fathom Analytics:</strong></p>
+<pre><code>[analytics]
+provider = &quot;fathom&quot;
+id = &quot;ABCDEF&quot;
+</code></pre>
+<p><strong>Self-hosted Umami:</strong></p>
+<pre><code>[analytics]
+provider = &quot;umami&quot;
+id = &quot;abc-def-123&quot;
+script_url = &quot;https://stats.example.com/script.js&quot;
+</code></pre>
+<div class="callout callout-tip">
+<div class="callout-title">Tip</div>
+<p>Privacy-respecting analytics like Plausible, Fathom, and Umami don't use cookies. You can typically use them without a consent banner (<code>cookie_consent = false</code>). Google Analytics and GTM set cookies and may require consent under GDPR/ePrivacy — set <code>cookie_consent = true</code> for those.</p>
+</div>
+<h3 id="cookie-consent-banner">Cookie consent banner</h3>
+<p>When <code>cookie_consent = true</code>, a fixed-position banner appears at the bottom of the page on the visitor's first visit. Analytics scripts only load after the visitor clicks "Accept". The choice is stored in <code>localStorage</code> so it persists across visits. The banner is fully accessible with <code>role="dialog"</code>, keyboard-navigable buttons, and responsive design.</p>
+<h3 id="how-it-works">How it works</h3>
+<p>Analytics injection happens as a post-processing step after the main build. Every <code>.html</code> file in the output directory is rewritten:</p>
+<ul>
+<li><strong>Without consent:</strong> the analytics <code>&lt;script&gt;</code> tag is injected before <code>&lt;/head&gt;</code>. GTM also gets a <code>&lt;noscript&gt;</code> fallback after <code>&lt;body&gt;</code>.</li>
+<li><strong>With consent:</strong> a consent banner with Accept/Decline buttons is injected before <code>&lt;/body&gt;</code>. Analytics scripts are loaded dynamically only after the user accepts.</li>
+</ul>
+<p>To remove analytics, delete the <code>[analytics]</code> section from <code>page.toml</code>.</p>
 <h2 id="frontmatter">Frontmatter</h2>
 <p>Content files use YAML frontmatter between <code>---</code> delimiters:</p>
 <pre style="background-color:#2b303b;">
@@ -1326,11 +1395,36 @@ title = &quot;Mon Site&quot;
 <tr><th><code>robots</code></th><th>string</th><th>No</th><th>Per-page robots directive</th></tr>
 <tr><th><code>extra</code></th><th>map</th><th>No</th><th>Arbitrary data for templates</th></tr>
 </tbody></table>
+<h2 id="page-workspace-toml">page-workspace.toml</h2>
+<p>For multi-site setups, a <code>page-workspace.toml</code> at the workspace root configures all sites. Each site still has its own <code>page.toml</code>.</p>
+<pre><code>[workspace]
+name = &quot;my-workspace&quot;
+shared_data = &quot;data&quot;           # Shared data directory (optional)
+shared_static = &quot;static&quot;       # Shared static assets (optional)
+shared_templates = &quot;templates&quot; # Shared templates (optional)
+
+[[sites]]
+name = &quot;blog&quot;
+path = &quot;sites/blog&quot;
+# base_url = &quot;https://blog.example.com&quot;  # Override site base_url
+# output_dir = &quot;dist/blog&quot;               # Override output location
+
+[[sites]]
+name = &quot;docs&quot;
+path = &quot;sites/docs&quot;
+
+[cross_site]
+unified_sitemap = false    # Combine all sites into one sitemap
+cross_site_links = false   # Validate links across sites
+unified_search = false     # Combined search index
+</code></pre>
+<p>See <a href="/docs/workspace">Workspaces</a> for the full guide.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/collections">Collections</a> — configure how posts, docs, and pages behave</li>
 <li><a href="/docs/templates">Templates &amp; Themes</a> — use config values and data files in your templates</li>
 <li><a href="/docs/deployment">Deployment</a> — deploy with the settings you've configured</li>
+<li><a href="/docs/workspace">Workspaces</a> — manage multiple sites in a single repository</li>
 </ul>
 </div>
         </article>
@@ -1362,6 +1456,12 @@ title = &quot;Mon Site&quot;
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1381,6 +1481,18 @@ title = &quot;Mon Site&quot;
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1420,13 +1532,13 @@ title = &quot;Mon Site&quot;
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;getting-started">
+            <a href="/docs/getting-started">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Getting Started</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;collections" class="doc-nav-next">
+            <a href="/docs/collections" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">Collections</span>
             </a>
@@ -1452,7 +1564,12 @@ title = &quot;Mon Site&quot;
             <li class="toc-level-2"><a href="#deploy">[deploy]</a></li>
             <li class="toc-level-2"><a href="#languages">[languages.*]</a></li>
             <li class="toc-level-2"><a href="#images">[images]</a></li>
+            <li class="toc-level-2"><a href="#analytics">[analytics]</a></li>
+            <li class="toc-level-3"><a href="#examples">Examples</a></li>
+            <li class="toc-level-3"><a href="#cookie-consent-banner">Cookie consent banner</a></li>
+            <li class="toc-level-3"><a href="#how-it-works">How it works</a></li>
             <li class="toc-level-2"><a href="#frontmatter">Frontmatter</a></li>
+            <li class="toc-level-2"><a href="#page-workspace-toml">page-workspace.toml</a></li>
             <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
             </ul>
         </nav>
