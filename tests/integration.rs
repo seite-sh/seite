@@ -4283,3 +4283,258 @@ fn test_mcp_parse_error() {
     assert!(response["error"].is_object());
     assert_eq!(response["error"]["code"], -32700); // PARSE_ERROR
 }
+
+#[test]
+fn test_mcp_config_exposes_analytics() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpanalytics", "Analytics MCP", "posts");
+    let site_dir = tmp.path().join("mcpanalytics");
+
+    // Add analytics config
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[analytics]\nprovider = \"plausible\"\nid = \"example.com\"\ncookie_consent = true\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://config" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let config_json: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(config_json["analytics"]["provider"], "plausible");
+    assert_eq!(config_json["analytics"]["id"], "example.com");
+    assert_eq!(config_json["analytics"]["cookie_consent"], true);
+}
+
+#[test]
+fn test_mcp_docs_include_analytics() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_lookup_docs",
+                "arguments": { "topic": "configuration" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["found"], true);
+    let doc_content = result["content"].as_str().unwrap();
+    assert!(
+        doc_content.contains("[analytics]"),
+        "Configuration docs should include the [analytics] section"
+    );
+    assert!(
+        doc_content.contains("cookie_consent"),
+        "Configuration docs should document cookie_consent field"
+    );
+}
+
+// ── analytics ───────────────────────────────────────────────────────
+
+#[test]
+fn test_build_with_google_analytics_direct() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Analytics Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Add [analytics] to page.toml
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[analytics]\nprovider = \"google\"\nid = \"G-TEST12345\"\n");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Check that analytics script is injected into HTML
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("googletagmanager.com/gtag/js?id=G-TEST12345"),
+        "index.html should contain GA4 script"
+    );
+    assert!(
+        index.contains("gtag('config','G-TEST12345')"),
+        "index.html should contain gtag config call"
+    );
+    // Should NOT have consent banner
+    assert!(
+        !index.contains("page-cookie-banner"),
+        "should not have consent banner when cookie_consent is false"
+    );
+
+    // Check post HTML too
+    let post = fs::read_to_string(site_dir.join("dist/posts/hello-world.html")).unwrap();
+    assert!(post.contains("G-TEST12345"));
+}
+
+#[test]
+fn test_build_with_analytics_cookie_consent() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Consent Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    // Add [analytics] with cookie_consent = true
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[analytics]\nprovider = \"google\"\nid = \"G-CONSENT1\"\ncookie_consent = true\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+
+    // Should have consent banner
+    assert!(
+        index.contains("page-cookie-banner"),
+        "should have cookie consent banner"
+    );
+    assert!(
+        index.contains("page-cookie-accept"),
+        "should have accept button"
+    );
+    assert!(
+        index.contains("page-cookie-decline"),
+        "should have decline button"
+    );
+    assert!(
+        index.contains("page_analytics_consent"),
+        "should use localStorage key"
+    );
+
+    // Analytics script should NOT be in <head> directly
+    let head_end = index.find("</head>").unwrap();
+    let head_section = &index[..head_end];
+    assert!(
+        !head_section.contains("googletagmanager.com/gtag/js"),
+        "GA script should not be directly in <head> when consent is required"
+    );
+}
+
+#[test]
+fn test_build_with_plausible_analytics() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Plausible Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[analytics]\nprovider = \"plausible\"\nid = \"example.com\"\n");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index.contains("plausible.io/js/script.js"));
+    assert!(index.contains("data-domain=\"example.com\""));
+}
+
+#[test]
+fn test_build_with_gtm_has_noscript() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "GTM Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[analytics]\nprovider = \"gtm\"\nid = \"GTM-ABC123\"\n");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("GTM-ABC123"),
+        "should contain GTM ID"
+    );
+    assert!(
+        index.contains("<noscript><iframe"),
+        "GTM should include noscript fallback"
+    );
+}
+
+#[test]
+fn test_build_without_analytics_no_injection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Analytics", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(!index.contains("googletagmanager"));
+    assert!(!index.contains("plausible"));
+    assert!(!index.contains("page-cookie-banner"));
+    assert!(!index.contains("usefathom"));
+}
+
+#[test]
+fn test_build_with_umami_custom_script_url() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Umami Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[analytics]\nprovider = \"umami\"\nid = \"abc-def-123\"\nscript_url = \"https://stats.example.com/script.js\"\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index.contains("stats.example.com/script.js"));
+    assert!(index.contains("data-website-id=\"abc-def-123\""));
+}
