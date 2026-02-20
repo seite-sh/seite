@@ -1,4 +1,6 @@
 use std::fs;
+use std::io::Write;
+use std::process::Stdio;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -3449,20 +3451,23 @@ fn test_upgrade_appends_mcp_section_to_claude_md() {
     init_site(&tmp, "site", "CLAUDE.md Upgrade", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Remove version stamp to trigger upgrade
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
-
-    // Verify CLAUDE.md doesn't have MCP section yet (init doesn't add it)
+    // init now includes MCP section, so verify it's there
     let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
     assert!(
-        !claude_md.contains("## MCP Server"),
-        "init-generated CLAUDE.md should not have MCP section"
+        claude_md.contains("## MCP Server"),
+        "init-generated CLAUDE.md should include MCP section"
     );
-    // Remember some original content to verify it's preserved
     assert!(
         claude_md.contains("## Commands"),
         "CLAUDE.md should have Commands section from init"
     );
+
+    // Simulate an older CLAUDE.md that doesn't have the MCP section
+    let older_md = "# My Site\n\n## Commands\n\n```bash\npage build\n```\n";
+    fs::write(site_dir.join("CLAUDE.md"), older_md).unwrap();
+
+    // Remove version stamp to trigger upgrade
+    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
 
     page_cmd()
         .args(["upgrade", "--force"])
@@ -3641,4 +3646,640 @@ fn test_self_update_check_when_current() {
         .assert()
         .success()
         .stdout(predicate::str::contains("up to date"));
+}
+
+// ── MCP server ────────────────────────────────────────────────────────
+
+/// Helper: send a single JSON-RPC message to `page mcp` and return the response.
+fn mcp_request(dir: &std::path::Path, messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let bin = assert_cmd::cargo::cargo_bin("page");
+    let mut child = std::process::Command::new(bin)
+        .arg("mcp")
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn page mcp");
+
+    // Write all messages to stdin, then close it
+    {
+        let stdin = child.stdin.as_mut().expect("failed to open stdin");
+        for msg in messages {
+            let line = serde_json::to_string(msg).unwrap();
+            writeln!(stdin, "{}", line).unwrap();
+        }
+    }
+    // stdin drops here, closing the pipe → server exits after processing
+
+    let output = child.wait_with_output().expect("failed to wait on child");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("invalid JSON from MCP server"))
+        .collect()
+}
+
+#[test]
+fn test_mcp_initialize() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let resp = &responses[0];
+    assert_eq!(resp["id"], 1);
+    assert!(resp["error"].is_null());
+    let result = &resp["result"];
+    assert_eq!(result["serverInfo"]["name"], "page");
+    assert!(result["capabilities"]["resources"].is_object());
+    assert!(result["capabilities"]["tools"].is_object());
+    assert_eq!(result["protocolVersion"], "2024-11-05");
+}
+
+#[test]
+fn test_mcp_ping() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "ping",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0]["id"], 42);
+    assert!(responses[0]["error"].is_null());
+}
+
+#[test]
+fn test_mcp_unknown_method() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "bogus/method",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert_eq!(responses[0]["error"]["code"], -32601); // METHOD_NOT_FOUND
+}
+
+#[test]
+fn test_mcp_tools_list() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let tools = responses[0]["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 5);
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"page_build"));
+    assert!(names.contains(&"page_create_content"));
+    assert!(names.contains(&"page_search"));
+    assert!(names.contains(&"page_apply_theme"));
+    assert!(names.contains(&"page_lookup_docs"));
+}
+
+#[test]
+fn test_mcp_resources_list_without_project() {
+    // Outside a page project, only docs resources should be listed
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/list",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let resources = responses[0]["result"]["resources"].as_array().unwrap();
+    // Should have docs index + individual doc pages, but no config/content/themes
+    assert!(resources.iter().any(|r| r["uri"] == "page://docs"));
+    assert!(!resources.iter().any(|r| r["uri"] == "page://config"));
+    assert!(!resources.iter().any(|r| r["uri"] == "page://themes"));
+}
+
+#[test]
+fn test_mcp_resources_list_with_project() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpsite", "MCP Test", "posts,docs,pages");
+    let site_dir = tmp.path().join("mcpsite");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/list",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let resources = responses[0]["result"]["resources"].as_array().unwrap();
+    // Should have docs + site-specific resources
+    assert!(resources.iter().any(|r| r["uri"] == "page://docs"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://config"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://content"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://themes"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://mcp-config"));
+    // Per-collection resources
+    assert!(resources.iter().any(|r| r["uri"] == "page://content/posts"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://content/docs"));
+    assert!(resources.iter().any(|r| r["uri"] == "page://content/pages"));
+}
+
+#[test]
+fn test_mcp_read_docs_index() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://docs" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    assert_eq!(contents.len(), 1);
+    assert_eq!(contents[0]["uri"], "page://docs");
+    // Parse the text — should be a JSON array of docs
+    let text = contents[0]["text"].as_str().unwrap();
+    let docs: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    assert!(docs.len() >= 10); // We have 13 embedded docs
+    assert!(docs.iter().any(|d| d["slug"] == "configuration"));
+}
+
+#[test]
+fn test_mcp_read_doc_page() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://docs/configuration" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    // Should be markdown content without the leading frontmatter
+    assert!(text.contains("page.toml"));
+    // Body should not start with frontmatter delimiters
+    assert!(!text.starts_with("---\n"), "doc body should not start with frontmatter");
+}
+
+#[test]
+fn test_mcp_read_unknown_resource() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://nonexistent" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert_eq!(responses[0]["error"]["code"], -32602); // INVALID_PARAMS
+}
+
+#[test]
+fn test_mcp_read_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpconf", "Config Test", "posts");
+    let site_dir = tmp.path().join("mcpconf");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://config" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let config: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(config["site"]["title"], "Config Test");
+}
+
+#[test]
+fn test_mcp_read_content_overview() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpcontent", "Content Test", "posts,docs");
+    let site_dir = tmp.path().join("mcpcontent");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://content" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let collections: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    assert!(collections.iter().any(|c| c["name"] == "posts"));
+    assert!(collections.iter().any(|c| c["name"] == "docs"));
+}
+
+#[test]
+fn test_mcp_read_themes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpthemes", "Theme Test", "posts");
+    let site_dir = tmp.path().join("mcpthemes");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://themes" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let themes: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    assert!(themes.len() >= 6); // 6 bundled themes
+    assert!(themes.iter().any(|t| t["name"] == "default"));
+    assert!(themes.iter().any(|t| t["name"] == "dark"));
+}
+
+#[test]
+fn test_mcp_read_mcp_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpmcp", "MCP Config Test", "posts");
+    let site_dir = tmp.path().join("mcpmcp");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://mcp-config" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    assert!(text.contains("mcpServers"));
+    assert!(text.contains("page"));
+}
+
+#[test]
+fn test_mcp_tool_lookup_docs() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_lookup_docs",
+                "arguments": { "topic": "configuration" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["found"], true);
+    assert_eq!(result["title"], "Configuration");
+}
+
+#[test]
+fn test_mcp_tool_lookup_docs_search() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_lookup_docs",
+                "arguments": { "query": "deploy" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert!(result["count"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn test_mcp_tool_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpbuild", "Build Test", "posts");
+    let site_dir = tmp.path().join("mcpbuild");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_build",
+                "arguments": {}
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["success"], true);
+    // Verify the site was actually built
+    assert!(site_dir.join("dist/index.html").exists());
+}
+
+#[test]
+fn test_mcp_tool_create_content() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpnew", "Create Test", "posts,docs");
+    let site_dir = tmp.path().join("mcpnew");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_create_content",
+                "arguments": {
+                    "collection": "docs",
+                    "title": "MCP Test Doc",
+                    "body": "This is test content."
+                }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["collection"], "docs");
+    assert_eq!(result["slug"], "mcp-test-doc");
+    assert_eq!(result["url"], "/docs/mcp-test-doc");
+    // Verify file was created
+    assert!(site_dir.join("content/docs/mcp-test-doc.md").exists());
+    let file_content = fs::read_to_string(site_dir.join("content/docs/mcp-test-doc.md")).unwrap();
+    assert!(file_content.contains("title: MCP Test Doc"));
+    assert!(file_content.contains("This is test content."));
+}
+
+#[test]
+fn test_mcp_tool_search() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpsearch", "Search Test", "posts");
+    let site_dir = tmp.path().join("mcpsearch");
+
+    // Create a post with searchable content
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-rust-guide.md"),
+        "---\ntitle: \"Rust Programming Guide\"\ntags:\n  - rust\n  - tutorial\n---\n\nLearn Rust from scratch.\n",
+    ).unwrap();
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_search",
+                "arguments": { "query": "rust" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert!(result["count"].as_u64().unwrap() >= 1);
+    let results = result["results"].as_array().unwrap();
+    assert!(results.iter().any(|r| r["title"] == "Rust Programming Guide"));
+}
+
+#[test]
+fn test_mcp_tool_apply_theme() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcptheme", "Theme Test", "posts");
+    let site_dir = tmp.path().join("mcptheme");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_apply_theme",
+                "arguments": { "name": "dark" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["applied"], true);
+    assert_eq!(result["theme"], "dark");
+    assert_eq!(result["source"], "bundled");
+    // Verify theme file was written
+    assert!(site_dir.join("templates/base.html").exists());
+}
+
+#[test]
+fn test_mcp_tool_unknown_tool() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "nonexistent_tool",
+                "arguments": {}
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert_eq!(responses[0]["error"]["code"], -32602);
+}
+
+#[test]
+fn test_mcp_full_session() {
+    // Simulate a realistic MCP session: initialize → tools/list → resources/list → lookup docs
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpfull", "Full Session", "posts,docs");
+    let site_dir = tmp.path().join("mcpfull");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "resources/list",
+                "params": {}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "page_lookup_docs",
+                    "arguments": { "topic": "templates" }
+                }
+            }),
+        ],
+    );
+
+    // Notifications don't get responses, so we should have 4 responses
+    assert_eq!(responses.len(), 4);
+
+    // initialize
+    assert_eq!(responses[0]["id"], 1);
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "page");
+
+    // tools/list
+    assert_eq!(responses[1]["id"], 2);
+    assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 5);
+
+    // resources/list
+    assert_eq!(responses[2]["id"], 3);
+    let resources = responses[2]["result"]["resources"].as_array().unwrap();
+    assert!(resources.iter().any(|r| r["uri"] == "page://config"));
+
+    // tools/call (lookup docs)
+    assert_eq!(responses[3]["id"], 4);
+    let content = responses[3]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["found"], true);
+    assert_eq!(result["title"], "Templates & Themes");
+}
+
+#[test]
+fn test_mcp_parse_error() {
+    // Send invalid JSON and verify we get a parse error response
+    let tmp = TempDir::new().unwrap();
+    let bin = assert_cmd::cargo::cargo_bin("page");
+    let mut child = std::process::Command::new(bin)
+        .arg("mcp")
+        .current_dir(tmp.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn page mcp");
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(stdin, "this is not valid json").unwrap();
+    }
+
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let response: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    assert!(response["error"].is_object());
+    assert_eq!(response["error"]["code"], -32700); // PARSE_ERROR
 }

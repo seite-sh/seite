@@ -2,6 +2,7 @@ pub mod agent;
 pub mod build;
 pub mod deploy;
 pub mod init;
+pub mod mcp;
 pub mod new;
 pub mod self_update;
 pub mod serve;
@@ -74,4 +75,7 @@ pub enum Command {
 
     /// Update the page binary to the latest release
     SelfUpdate(self_update::SelfUpdateArgs),
+
+    /// Start MCP server for AI tool integration (stdio JSON-RPC)
+    Mcp(mcp::McpArgs),
 }
