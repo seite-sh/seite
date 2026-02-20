@@ -4,8 +4,9 @@
 #   irm https://pagecli.dev/install.ps1 | iex
 #
 # Options (via environment variables):
-#   $env:VERSION     Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
-#   $env:INSTALL_DIR Override install location (default: ~\.local\bin)
+#   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
+#   $env:INSTALL_DIR    Override install location (default: ~\.local\bin)
+#   $env:DOWNLOAD_BASE  Override download base URL (default: https://pagecli.dev/download)
 
 $ErrorActionPreference = "Stop"
 
@@ -13,6 +14,7 @@ $Repo = "sanchezomar/page"
 $Binary = "page.exe"
 $DefaultInstallDir = Join-Path $HOME ".local\bin"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultInstallDir }
+$DownloadBase = if ($env:DOWNLOAD_BASE) { $env:DOWNLOAD_BASE } else { "https://pagecli.dev/download" }
 
 function Write-Info($msg) { Write-Host "info  $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "warn  $msg" -ForegroundColor Yellow }
@@ -36,8 +38,29 @@ if ($env:VERSION) {
     if (-not $Version.StartsWith("v")) { $Version = "v$Version" }
 } else {
     Write-Info "Fetching latest release..."
-    $Release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
-    $Version = $Release.tag_name
+
+    # Try domain version endpoint first
+    try {
+        $VersionTxt = (Invoke-WebRequest -Uri "https://pagecli.dev/version.txt" -UseBasicParsing).Content.Trim()
+        if ($VersionTxt) {
+            $Version = $VersionTxt
+        }
+    } catch {
+        $Version = $null
+    }
+
+    # Fallback to GitHub API
+    if (-not $Version) {
+        try {
+            $Release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
+            $Version = $Release.tag_name
+        } catch {
+            Write-Err "Could not determine latest release version."
+            Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
+            exit 1
+        }
+    }
+
     if (-not $Version) {
         Write-Err "Could not determine latest release version."
         Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
@@ -46,8 +69,8 @@ if ($env:VERSION) {
 }
 
 $Archive = "page-$Target.zip"
-$DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Archive"
-$ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/checksums-sha256.txt"
+$DownloadUrl = "$DownloadBase/$Version/$Archive"
+$ChecksumsUrl = "$DownloadBase/$Version/checksums-sha256.txt"
 
 Write-Info "Installing page $Version for $Target"
 
