@@ -195,13 +195,13 @@
     <div class="cl-header-row">
         <div>
             <h1>{{ t.changelog }}</h1>
-            <p class="cl-subtitle">All notable changes to page. Subscribe via <a href="{{ lang_prefix }}/feed.xml">RSS</a>.</p>
+            <p class="cl-subtitle">{{ t.changelog_subtitle | default(value="All notable changes. Subscribe via") }} <a href="{{ lang_prefix }}/feed.xml">{{ t.rss | default(value="RSS") }}</a>.</p>
         </div>
         <a href="{{ lang_prefix }}/feed.xml" class="cl-rss" aria-label="RSS Feed">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
             </svg>
-            RSS
+            {{ t.rss | default(value="RSS") }}
         </a>
     </div>
 

@@ -10,8 +10,8 @@
         --serif: 'Instrument Serif', 'Georgia', serif;
         --geist: 'Geist Mono', var(--mono);
         --amber: #ffb224;
-        --amber-dim: rgba(255,178,36,0.08);
-        --amber-border: rgba(255,178,36,0.2);
+        --amber-dim: rgba(255, 178, 36, 0.08);
+        --amber-border: rgba(255, 178, 36, 0.2);
         --code-bg: #1a1e26;
         --sidebar-w: 250px;
         --toc-w: 200px;
@@ -19,8 +19,15 @@
 
     /* ── Entrance animation ── */
     @keyframes doc-fade-in {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     /* ── Sidebar enhancements ── */
@@ -28,6 +35,7 @@
         width: var(--sidebar-w);
         padding: 1.75rem 1.25rem 2rem 0;
     }
+
     .docs-sidebar nav h3 {
         font-family: var(--geist);
         font-size: 0.62rem;
@@ -38,7 +46,11 @@
         margin: 1.5rem 0 0.5rem;
         padding-left: 0.6rem;
     }
-    .docs-sidebar nav h3:first-child { margin-top: 0; }
+
+    .docs-sidebar nav h3:first-child {
+        margin-top: 0;
+    }
+
     .docs-sidebar nav a {
         font-family: var(--geist);
         font-size: 0.78rem;
@@ -50,16 +62,19 @@
         transition: color 0.12s, background 0.12s;
         position: relative;
     }
+
     .docs-sidebar nav a:hover {
         color: var(--text);
         background: var(--bg-raised);
         text-decoration: none;
     }
+
     .docs-sidebar nav .active a {
         color: var(--green);
         font-weight: 600;
         background: var(--green-dim);
     }
+
     .docs-sidebar nav .active a::before {
         content: '';
         position: absolute;
@@ -76,6 +91,7 @@
         position: relative;
         margin-bottom: 1.25rem;
     }
+
     .sidebar-search-icon {
         position: absolute;
         left: 0.6rem;
@@ -86,6 +102,7 @@
         color: var(--text-dim);
         pointer-events: none;
     }
+
     .sidebar-search input {
         width: 100%;
         background: var(--bg-raised);
@@ -98,8 +115,15 @@
         outline: none;
         transition: border-color 0.15s;
     }
-    .sidebar-search input::placeholder { color: var(--text-dim); }
-    .sidebar-search input:focus { border-color: var(--green-border); }
+
+    .sidebar-search input::placeholder {
+        color: var(--text-dim);
+    }
+
+    .sidebar-search input:focus {
+        border-color: var(--green-border);
+    }
+
     .sidebar-search .sidebar-results {
         position: absolute;
         top: 100%;
@@ -111,8 +135,9 @@
         border-radius: 8px;
         overflow: hidden;
         z-index: 50;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     }
+
     .sidebar-search .sidebar-results a {
         display: block;
         padding: 0.5rem 0.6rem;
@@ -121,8 +146,15 @@
         border-bottom: 1px solid var(--border);
         background: none;
     }
-    .sidebar-search .sidebar-results a:last-child { border-bottom: none; }
-    .sidebar-search .sidebar-results a:hover { background: var(--bg-card-hover); }
+
+    .sidebar-search .sidebar-results a:last-child {
+        border-bottom: none;
+    }
+
+    .sidebar-search .sidebar-results a:hover {
+        background: var(--bg-card-hover);
+    }
+
     .sidebar-search .sidebar-results .no-results {
         padding: 0.5rem 0.6rem;
         color: var(--text-dim);
@@ -138,7 +170,7 @@
     }
 
     /* ── Page title ── */
-    .docs-main article > h1 {
+    .docs-main article>h1 {
         font-family: var(--serif);
         font-size: clamp(2rem, 4.5vw, 2.8rem);
         font-weight: 400;
@@ -167,6 +199,7 @@
         padding: 0 0 0 1rem;
         margin-bottom: 2.5rem;
     }
+
     .toc h4 {
         font-family: var(--geist);
         font-size: 0.62rem;
@@ -176,8 +209,15 @@
         margin-bottom: 0.65rem;
         font-weight: 600;
     }
-    .toc ul { list-style: none; }
-    .toc li { margin-bottom: 0.15rem; }
+
+    .toc ul {
+        list-style: none;
+    }
+
+    .toc li {
+        margin-bottom: 0.15rem;
+    }
+
     .toc a {
         font-family: var(--geist);
         color: var(--text-dim);
@@ -188,9 +228,19 @@
         transition: color 0.12s;
         line-height: 1.4;
     }
-    .toc a:hover { color: var(--green); text-decoration: none; }
-    .toc .toc-level-3 { padding-left: 0.9rem; }
-    .toc .toc-level-4 { padding-left: 1.8rem; }
+
+    .toc a:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    .toc .toc-level-3 {
+        padding-left: 0.9rem;
+    }
+
+    .toc .toc-level-4 {
+        padding-left: 1.8rem;
+    }
 
     /* ── Content typography ── */
     .docs-main .content h2 {
@@ -202,25 +252,37 @@
         padding-top: 1.5rem;
         border-top: 1px solid var(--border);
     }
+
     .docs-main .content h2:first-child {
         border-top: none;
         padding-top: 0;
         margin-top: 0;
     }
+
     .docs-main .content h3 {
         font-size: 1rem;
         font-weight: 600;
         color: var(--heading-sub);
         margin: 2rem 0 0.65rem;
     }
+
     .docs-main .content p {
         margin-bottom: 1.2rem;
         color: var(--text);
         line-height: 1.75;
     }
-    .docs-main .content a { color: var(--green); }
-    .docs-main .content a:hover { text-decoration: underline; }
-    .docs-main .content strong { color: var(--strong); }
+
+    .docs-main .content a {
+        color: var(--green);
+    }
+
+    .docs-main .content a:hover {
+        text-decoration: underline;
+    }
+
+    .docs-main .content strong {
+        color: var(--strong);
+    }
 
     /* Inline code */
     .docs-main .content code {
@@ -236,13 +298,14 @@
     /* Code blocks — harmonize with syntect ocean-dark */
     .docs-main .content pre {
         background: var(--code-bg) !important;
-        border: 1px solid rgba(255,255,255,0.06);
+        border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 10px;
         padding: 1.25rem 1.5rem;
         overflow-x: auto;
         margin-bottom: 1.5rem;
         position: relative;
     }
+
     .docs-main .content pre code {
         background: none !important;
         border: none;
@@ -254,14 +317,17 @@
     }
 
     /* Lists */
-    .docs-main .content ul, .docs-main .content ol {
+    .docs-main .content ul,
+    .docs-main .content ol {
         margin-bottom: 1.2rem;
         padding-left: 1.5rem;
     }
+
     .docs-main .content li {
         margin-bottom: 0.4rem;
         line-height: 1.7;
     }
+
     .docs-main .content li code {
         font-size: 0.8em;
     }
@@ -276,7 +342,10 @@
         margin: 1.5rem 0;
         font-style: normal;
     }
-    .docs-main .content blockquote p { margin-bottom: 0; }
+
+    .docs-main .content blockquote p {
+        margin-bottom: 0;
+    }
 
     /* Tables */
     .docs-main .content table {
@@ -285,6 +354,7 @@
         margin-bottom: 1.5rem;
         font-size: 0.85rem;
     }
+
     .docs-main .content th {
         background: var(--bg-raised);
         font-family: var(--geist);
@@ -297,11 +367,13 @@
         padding: 0.6rem 1rem;
         text-align: left;
     }
+
     .docs-main .content td {
         border: 1px solid var(--border);
         padding: 0.55rem 1rem;
         color: var(--text);
     }
+
     .docs-main .content td code {
         font-size: 0.82em;
     }
@@ -329,6 +401,7 @@
         padding-top: 2rem;
         border-top: 1px solid var(--border);
     }
+
     .doc-nav a {
         display: flex;
         flex-direction: column;
@@ -340,11 +413,13 @@
         text-decoration: none;
         transition: border-color 0.15s, background 0.15s;
     }
+
     .doc-nav a:hover {
         border-color: var(--green-border);
         background: var(--bg-card);
         text-decoration: none;
     }
+
     .doc-nav-label {
         font-family: var(--geist);
         font-size: 0.62rem;
@@ -352,16 +427,26 @@
         letter-spacing: 0.12em;
         color: var(--text-dim);
     }
+
     .doc-nav-title {
         font-size: 0.88rem;
         font-weight: 600;
         color: var(--green);
     }
-    .doc-nav-next { text-align: right; }
-    .doc-nav-placeholder { visibility: hidden; }
+
+    .doc-nav-next {
+        text-align: right;
+    }
+
+    .doc-nav-placeholder {
+        visibility: hidden;
+    }
 
     /* ── Right-column TOC ── */
-    .docs-layout { max-width: 1280px; }
+    .docs-layout {
+        max-width: 1280px;
+    }
+
     .docs-toc {
         width: var(--toc-w);
         flex-shrink: 0;
@@ -371,9 +456,20 @@
         height: calc(100vh - 56px);
         overflow-y: auto;
     }
-    .docs-toc::-webkit-scrollbar { width: 3px; }
-    .docs-toc::-webkit-scrollbar-track { background: transparent; }
-    .docs-toc::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+
+    .docs-toc::-webkit-scrollbar {
+        width: 3px;
+    }
+
+    .docs-toc::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .docs-toc::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 2px;
+    }
+
     .docs-toc h4 {
         font-family: var(--geist);
         font-size: 0.62rem;
@@ -383,8 +479,15 @@
         margin-bottom: 0.65rem;
         font-weight: 600;
     }
-    .docs-toc ul { list-style: none; }
-    .docs-toc li { margin-bottom: 0.15rem; }
+
+    .docs-toc ul {
+        list-style: none;
+    }
+
+    .docs-toc li {
+        margin-bottom: 0.15rem;
+    }
+
     .docs-toc a {
         font-family: var(--geist);
         color: var(--text-dim);
@@ -395,21 +498,45 @@
         transition: color 0.12s;
         line-height: 1.4;
     }
-    .docs-toc a:hover { color: var(--green); text-decoration: none; }
-    .docs-toc a.toc-active { color: var(--green); }
-    .docs-toc .toc-level-3 { padding-left: 0.9rem; }
-    .docs-toc .toc-level-4 { padding-left: 1.8rem; }
+
+    .docs-toc a:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    .docs-toc a.toc-active {
+        color: var(--green);
+    }
+
+    .docs-toc .toc-level-3 {
+        padding-left: 0.9rem;
+    }
+
+    .docs-toc .toc-level-4 {
+        padding-left: 1.8rem;
+    }
 
     /* ── Responsive ── */
     @media (max-width: 1200px) {
-        .docs-toc { display: none; }
+        .docs-toc {
+            display: none;
+        }
     }
+
     @media (max-width: 900px) {
-        .docs-sidebar { width: 260px; }
-        .docs-main { padding-left: 1rem; }
+        .docs-sidebar {
+            width: 260px;
+        }
+
+        .docs-main {
+            padding-left: 1rem;
+        }
     }
+
     @media (max-width: 640px) {
-        .doc-nav { grid-template-columns: 1fr; }
+        .doc-nav {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 {% endblock %}
@@ -418,27 +545,28 @@
 {% if nav %}
 <div class="docs-layout">
     <aside class="docs-sidebar" aria-label="Documentation navigation">
-        <div class="sidebar-search" role="search" aria-label="Search documentation">
+        <div class="sidebar-search" role="search" aria-label="{{ t.search_documentation | default(value='Search documentation') }}">
             <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
             </svg>
-            <input type="search" id="doc-search-input" placeholder="Search docs…" autocomplete="off" aria-label="Search documentation">
+            <input type="search" id="doc-search-input" placeholder="{{ t.search_docs | default(value='Search docs…') }}" autocomplete="off" aria-label="{{ t.search_documentation | default(value='Search documentation') }}">
             <div id="doc-search-results" class="sidebar-results" style="display:none" aria-live="polite"></div>
         </div>
         <nav>
             {% for section in nav %}
-                {% if section.name %}<h3>{{ section.label }}</h3>{% endif %}
-                <ul>
-                {% for item in section.items %}
-                    <li{% if item.active %} class="active"{% endif %}><a href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
-                {% endfor %}
-                </ul>
-            {% endfor %}
-            <h3>Resources</h3>
+            {% if section.name %}<h3>{{ section.label }}</h3>{% endif %}
             <ul>
-                <li><a href="{{ lang_prefix }}/changelog">Changelog</a></li>
-                <li><a href="{{ lang_prefix }}/roadmap">Roadmap</a></li>
-                <li><a href="https://github.com/sanchezomar/page" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                {% for item in section.items %}
+                <li{% if item.active %} class="active" {% endif %}><a href="{{ item.url }}" {% if item.active %} aria-current="page" {% endif %}>{{ item.title }}</a></li>
+                    {% endfor %}
+            </ul>
+            {% endfor %}
+            <h3>{{ t.resources | default(value="Resources") }}</h3>
+            <ul>
+                <li><a href="{{ lang_prefix }}/changelog">{{ t.changelog | default(value="Changelog") }}</a></li>
+                <li><a href="{{ lang_prefix }}/roadmap">{{ t.roadmap | default(value="Roadmap") }}</a></li>
+                <li><a href="https://github.com/page-cli/page-cli" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             </ul>
         </nav>
     </aside>
@@ -454,29 +582,29 @@
         {% if nav %}
         {% set all_docs = [] %}
         {% for section in nav %}
-            {% for item in section.items %}
-                {% set_global all_docs = all_docs | concat(with=[item]) %}
-            {% endfor %}
+        {% for item in section.items %}
+        {% set_global all_docs = all_docs | concat(with=[item]) %}
+        {% endfor %}
         {% endfor %}
         {% set prev_doc = false %}
         {% set next_doc = false %}
         {% set found_current = false %}
         {% for item in all_docs %}
-            {% if found_current and not next_doc %}
-                {% set_global next_doc = item %}
-            {% endif %}
-            {% if item.active %}
-                {% set_global found_current = true %}
-            {% endif %}
-            {% if not found_current %}
-                {% set_global prev_doc = item %}
-            {% endif %}
+        {% if found_current and not next_doc %}
+        {% set_global next_doc = item %}
+        {% endif %}
+        {% if item.active %}
+        {% set_global found_current = true %}
+        {% endif %}
+        {% if not found_current %}
+        {% set_global prev_doc = item %}
+        {% endif %}
         {% endfor %}
         {% if prev_doc or next_doc %}
         <nav class="doc-nav" aria-label="Documentation pagination">
             {% if prev_doc %}
             <a href="{{ prev_doc.url }}">
-                <span class="doc-nav-label">← Previous</span>
+                <span class="doc-nav-label">← {{ t.previous | default(value="Previous") }}</span>
                 <span class="doc-nav-title">{{ prev_doc.title }}</span>
             </a>
             {% else %}
@@ -484,7 +612,7 @@
             {% endif %}
             {% if next_doc %}
             <a href="{{ next_doc.url }}" class="doc-nav-next">
-                <span class="doc-nav-label">Next →</span>
+                <span class="doc-nav-label">{{ t.next | default(value="Next") }} →</span>
                 <span class="doc-nav-title">{{ next_doc.title }}</span>
             </a>
             {% else %}
@@ -495,12 +623,12 @@
         {% endif %}
     </div>
     {% if page.toc | length > 1 %}
-    <aside class="docs-toc" aria-label="On this page">
+    <aside class="docs-toc" aria-label="{{ t.on_this_page | default(value='On this page') }}">
         <nav>
-            <h4>On this page</h4>
+            <h4>{{ t.on_this_page | default(value="On this page") }}</h4>
             <ul>
-            {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
-            {% endfor %}</ul>
+                {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+                {% endfor %}</ul>
         </nav>
     </aside>
     {% endif %}
@@ -511,10 +639,10 @@
         <h1>{{ page.title }}</h1>
         {% if page.toc | length > 1 %}
         <nav class="toc" aria-label="Table of contents">
-            <h4>On this page</h4>
+            <h4>{{ t.on_this_page | default(value="On this page") }}</h4>
             <ul>
-            {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
-            {% endfor %}</ul>
+                {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+                {% endfor %}</ul>
         </nav>
         {% endif %}
         <div class="content">{{ page.content | safe }}</div>
@@ -525,59 +653,59 @@
 
 {% block extra_js %}
 <script>
-(function(){
-    var input = document.getElementById('doc-search-input');
-    var results = document.getElementById('doc-search-results');
-    if (!input || !results) return;
-    var index = null;
-    var indexUrl = '/search-index.json';
-    function load(cb) {
-        if (index) { cb(); return; }
-        fetch(indexUrl).then(function(r){return r.json();}).then(function(d){
-            index = d.filter(function(e){ return e.collection === 'docs'; });
-            cb();
-        }).catch(function(){ index = []; });
-    }
-    function search(q) {
-        q = q.toLowerCase().trim();
-        if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
-        var hits = index.filter(function(e){
-            return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q);
-        }).slice(0, 6);
-        results.style.display = 'block';
-        if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
-        results.innerHTML = hits.map(function(e){
-            return '<a href="' + e.url + '">' + e.title + '</a>';
-        }).join('');
-    }
-    input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
-    input.addEventListener('focus', function(){ if (input.value) load(function(){ search(input.value); }); });
-    document.addEventListener('click', function(e) {
-        if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
-    });
-})();
-
-// ── TOC scroll spy ──
-(function(){
-    var toc = document.querySelector('.docs-toc nav');
-    if (!toc) return;
-    var links = Array.from(toc.querySelectorAll('a[href^="#"]'));
-    if (!links.length) return;
-    var headings = links.map(function(a){
-        return document.getElementById(a.getAttribute('href').slice(1));
-    }).filter(Boolean);
-    function activate() {
-        var scrollY = window.scrollY + 80;
-        var active = headings[0];
-        for (var i = 0; i < headings.length; i++) {
-            if (headings[i].offsetTop <= scrollY) active = headings[i];
+    (function () {
+        var input = document.getElementById('doc-search-input');
+        var results = document.getElementById('doc-search-results');
+        if (!input || !results) return;
+        var index = null;
+        var indexUrl = '/search-index.json';
+        function load(cb) {
+            if (index) { cb(); return; }
+            fetch(indexUrl).then(function (r) { return r.json(); }).then(function (d) {
+                index = d.filter(function (e) { return e.collection === 'docs'; });
+                cb();
+            }).catch(function () { index = []; });
         }
-        links.forEach(function(a){ a.classList.remove('toc-active'); });
-        var hit = toc.querySelector('a[href="#' + active.id + '"]');
-        if (hit) hit.classList.add('toc-active');
-    }
-    window.addEventListener('scroll', activate, { passive: true });
-    activate();
-})();
+        function search(q) {
+            q = q.toLowerCase().trim();
+            if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
+            var hits = index.filter(function (e) {
+                return (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q);
+            }).slice(0, 6);
+            results.style.display = 'block';
+            if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
+            results.innerHTML = hits.map(function (e) {
+                return '<a href="' + e.url + '">' + e.title + '</a>';
+            }).join('');
+        }
+        input.addEventListener('input', function () { load(function () { search(input.value); }); });
+        input.addEventListener('focus', function () { if (input.value) load(function () { search(input.value); }); });
+        document.addEventListener('click', function (e) {
+            if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
+        });
+    })();
+
+    // ── TOC scroll spy ──
+    (function () {
+        var toc = document.querySelector('.docs-toc nav');
+        if (!toc) return;
+        var links = Array.from(toc.querySelectorAll('a[href^="#"]'));
+        if (!links.length) return;
+        var headings = links.map(function (a) {
+            return document.getElementById(a.getAttribute('href').slice(1));
+        }).filter(Boolean);
+        function activate() {
+            var scrollY = window.scrollY + 80;
+            var active = headings[0];
+            for (var i = 0; i < headings.length; i++) {
+                if (headings[i].offsetTop <= scrollY) active = headings[i];
+            }
+            links.forEach(function (a) { a.classList.remove('toc-active'); });
+            var hit = toc.querySelector('a[href="#' + active.id + '"]');
+            if (hit) hit.classList.add('toc-active');
+        }
+        window.addEventListener('scroll', activate, { passive: true });
+        activate();
+    })();
 </script>
 {% endblock %}

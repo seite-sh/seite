@@ -1711,7 +1711,23 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "dpa": "DPA",
         "yes": "Yes",
         "no": "No",
-        "faq": "Frequently Asked Questions"
+        "faq": "Frequently Asked Questions",
+        "resources": "Resources",
+        "previous": "Previous",
+        "next": "Next",
+        "on_this_page": "On this page",
+        "search_docs": "Search docs\u{2026}",
+        "search_documentation": "Search documentation",
+        "toggle_theme": "Toggle light/dark mode",
+        "toggle_sidebar": "Toggle sidebar",
+        "built_with": "Built with",
+        "get_started": "Get started",
+        "view_on_github": "View on GitHub",
+        "rss": "RSS",
+        "changelog_subtitle": "All notable changes. Subscribe via",
+        "roadmap_subtitle": "What we're working on and what's coming next.",
+        "open_an_issue": "Open an issue",
+        "have_a_feature_request": "Have a feature request?"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults

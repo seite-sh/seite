@@ -20,7 +20,7 @@
 
 ## Pages
 
-- [About](https://pagecli.dev/about.md): page is an AI-native static site generator built with Rust. Zero runtime JavaScript, six bundled themes, single binary.
+- [About](https://pagecli.dev/about.md): Why page exists, how it's built, and what it's designed to do.
 
 ## Changelog
 
