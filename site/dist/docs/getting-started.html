@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Getting Started — page docs</title>
     <meta name="description" content="Install page and build your first static site in under a minute.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;getting-started">
+    <link rel="canonical" href="https://pagecli.dev/docs/getting-started">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;getting-started">
+    <meta property="og:url" content="https://pagecli.dev/docs/getting-started">
     <meta property="og:title" content="Getting Started">
     <meta property="og:description" content="Install page and build your first static site in under a minute.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;getting-started.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/getting-started.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Getting Started&quot;,"description":&quot;Install page and build your first static site in under a minute.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;getting-started&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Getting Started","description":"Install page and build your first static site in under a minute.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/getting-started"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;getting-started" aria-current="page">Getting Started</a></li>
+                    <li class="active"><a href="/docs/getting-started" aria-current="page">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1157,15 +1165,18 @@
             <div class="content"><h2 id="installation">Installation</h2>
 <h3 id="quick-install-macos-and-linux">Quick install (macOS and Linux)</h3>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | </span><span style="color:#8fa1b3;">sh
+<span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://pagecli.dev/install.sh | </span><span style="color:#8fa1b3;">sh
 </span></pre>
 <p>This downloads a prebuilt binary for your platform and installs it to <code>~/.local/bin</code>.</p>
 <p>To install a specific version:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#bf616a;">VERSION</span><span style="color:#c0c5ce;">=</span><span style="color:#a3be8c;">v0.1.0 </span><span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | </span><span style="color:#8fa1b3;">sh
+<span style="color:#bf616a;">VERSION</span><span style="color:#c0c5ce;">=</span><span style="color:#a3be8c;">v0.1.0 </span><span style="color:#8fa1b3;">curl</span><span style="color:#bf616a;"> -fsSL</span><span style="color:#c0c5ce;"> https://pagecli.dev/install.sh | </span><span style="color:#8fa1b3;">sh
 </span></pre>
+<h3 id="quick-install-windows">Quick install (Windows)</h3>
+<pre><code>irm https://pagecli.dev/install.ps1 | iex
+</code></pre>
 <h3 id="install-from-source">Install from source</h3>
-<p>If you have the Rust toolchain installed:</p>
+<p>If you have the Rust toolchain installed (all platforms):</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">cargo</span><span style="color:#c0c5ce;"> install page
 </span></pre>
@@ -1175,7 +1186,7 @@
 <tr><th>macOS</th><th>Intel x86_64</th><th>Shell installer or cargo</th></tr>
 <tr><th>Linux</th><th>x86_64</th><th>Shell installer or cargo</th></tr>
 <tr><th>Linux</th><th>aarch64/arm64</th><th>Shell installer or cargo</th></tr>
-<tr><th>Windows</th><th>x86_64</th><th><code>cargo install page</code></th></tr>
+<tr><th>Windows</th><th>x86_64</th><th>PowerShell installer or cargo</th></tr>
 </tbody></table>
 <h3 id="verify">Verify</h3>
 <pre style="background-color:#2b303b;">
@@ -1204,7 +1215,8 @@
 ├── templates/     # Tera templates (override bundled themes)
 ├── static/        # Static assets (CSS, JS, images)
 ├── page.toml      # Site configuration
-└── .claude/       # Claude Code agent configuration
+├── .claude/       # Claude Code agent configuration (includes MCP server)
+└── .page/         # Project metadata (version tracking)
 </code></pre>
 <h2 id="create-content">Create Content</h2>
 <p>Add a blog post:</p>
@@ -1274,13 +1286,25 @@ page&gt; stop
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">minimal serif with warm colors</span><span style="color:#c0c5ce;">&quot;
 </span></pre>
+<h2 id="updating">Updating</h2>
+<p>Update the binary itself:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> self-update
+</span></pre>
+<p>After updating, bring your project's config files up to date:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#8fa1b3;">page</span><span style="color:#c0c5ce;"> upgrade
+</span></pre>
+<p>This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive — your existing settings are preserved.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/collections">Collections</a> — understand how posts, docs, and pages work and how to customize them</li>
 <li><a href="/docs/configuration">Configuration</a> — the full <code>page.toml</code> reference when you need to tune settings</li>
 <li><a href="/docs/templates">Templates &amp; Themes</a> — customize the look, override blocks, and browse the 6 bundled themes</li>
 <li><a href="/docs/deployment">Deployment</a> — ship your site to GitHub Pages, Cloudflare, or Netlify</li>
+<li><a href="/docs/workspace">Workspaces</a> — manage multiple sites in a single repository</li>
 <li><a href="/docs/agent">AI Agent</a> — let Claude write content, debug builds, and generate themes for you</li>
+<li><a href="/docs/mcp-server">MCP Server</a> — structured AI access to your site via the Model Context Protocol</li>
 </ul>
 </div>
         </article>
@@ -1312,6 +1336,12 @@ page&gt; stop
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1325,6 +1355,18 @@ page&gt; stop
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1371,7 +1413,7 @@ page&gt; stop
             <span class="doc-nav-placeholder"></span>
             
             
-            <a href="&#x2F;docs&#x2F;configuration" class="doc-nav-next">
+            <a href="/docs/configuration" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">Configuration</span>
             </a>
@@ -1387,6 +1429,7 @@ page&gt; stop
             <ul>
             <li class="toc-level-2"><a href="#installation">Installation</a></li>
             <li class="toc-level-3"><a href="#quick-install-macos-and-linux">Quick install (macOS and Linux)</a></li>
+            <li class="toc-level-3"><a href="#quick-install-windows">Quick install (Windows)</a></li>
             <li class="toc-level-3"><a href="#install-from-source">Install from source</a></li>
             <li class="toc-level-3"><a href="#platform-support">Platform support</a></li>
             <li class="toc-level-3"><a href="#verify">Verify</a></li>
@@ -1395,6 +1438,7 @@ page&gt; stop
             <li class="toc-level-2"><a href="#build-your-site">Build Your Site</a></li>
             <li class="toc-level-2"><a href="#development-server">Development Server</a></li>
             <li class="toc-level-2"><a href="#themes">Themes</a></li>
+            <li class="toc-level-2"><a href="#updating">Updating</a></li>
             <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
             </ul>
         </nav>

@@ -39,6 +39,26 @@ Make sure `base_url` in `page.toml` is set to your real domain before deploying.
 `page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
 {{% end %}}
 
+## Auto-Commit and Push
+
+By default, `page deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
+
+**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `page` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+
+To disable auto-commit for a project, set `auto_commit = false` in `page.toml`:
+
+```toml
+[deploy]
+target = "github-pages"
+auto_commit = false
+```
+
+Or skip it for a single deploy with `--no-commit`:
+
+```bash
+page deploy --no-commit
+```
+
 ## GitHub Pages
 
 The default deployment target. When you run `page init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.

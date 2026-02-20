@@ -43,6 +43,11 @@ widths = [480, 800, 1200]
 quality = 80
 webp = true
 lazy_loading = true
+
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+cookie_consent = true
 ```
 
 ## [site]
@@ -152,6 +157,7 @@ The build will error if two data files share the same stem (e.g., `authors.yaml`
 | `target` | string | `"github-pages"` | Deploy target: `github-pages`, `cloudflare`, `netlify` |
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
+| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
 
 ## [languages.*]
 
@@ -180,6 +186,87 @@ Optional. When this section is present, `page` automatically processes images in
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
 When configured, images in `static/` are resized to each width, optionally converted to WebP, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. To disable image processing, remove the `[images]` section entirely.
+
+## [analytics]
+
+Optional. When present, analytics scripts are automatically injected into every HTML page during build. Supports Google Analytics 4, Google Tag Manager, Plausible, Fathom, and Umami.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | string | required | Analytics provider: `google`, `gtm`, `plausible`, `fathom`, `umami` |
+| `id` | string | required | Measurement/tracking ID (e.g., `G-XXXXXXX`, `GTM-XXXXX`, domain, or site ID) |
+| `cookie_consent` | bool | `false` | Show a cookie consent banner and gate analytics on user acceptance |
+| `script_url` | string | varies | Custom script URL (required for self-hosted Umami, optional for others) |
+
+### Examples
+
+**Google Analytics 4 (direct):**
+
+```toml
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+```
+
+**Google Analytics 4 with cookie consent banner:**
+
+```toml
+[analytics]
+provider = "google"
+id = "G-XXXXXXXXXX"
+cookie_consent = true
+```
+
+**Google Tag Manager:**
+
+```toml
+[analytics]
+provider = "gtm"
+id = "GTM-XXXXXXX"
+cookie_consent = true
+```
+
+**Plausible Analytics (privacy-friendly, no cookies):**
+
+```toml
+[analytics]
+provider = "plausible"
+id = "example.com"
+```
+
+**Fathom Analytics:**
+
+```toml
+[analytics]
+provider = "fathom"
+id = "ABCDEF"
+```
+
+**Self-hosted Umami:**
+
+```toml
+[analytics]
+provider = "umami"
+id = "abc-def-123"
+script_url = "https://stats.example.com/script.js"
+```
+
+{{% callout(type="tip") %}}
+Privacy-respecting analytics like Plausible, Fathom, and Umami don't use cookies. You can typically use them without a consent banner (`cookie_consent = false`). Google Analytics and GTM set cookies and may require consent under GDPR/ePrivacy — set `cookie_consent = true` for those.
+{{% end %}}
+
+### Cookie consent banner
+
+When `cookie_consent = true`, a fixed-position banner appears at the bottom of the page on the visitor's first visit. Analytics scripts only load after the visitor clicks "Accept". The choice is stored in `localStorage` so it persists across visits. The banner is fully accessible with `role="dialog"`, keyboard-navigable buttons, and responsive design.
+
+### How it works
+
+Analytics injection happens as a post-processing step after the main build. Every `.html` file in the output directory is rewritten:
+
+- **Without consent:** the analytics `<script>` tag is injected before `</head>`. GTM also gets a `<noscript>` fallback after `<body>`.
+- **With consent:** a consent banner with Accept/Decline buttons is injected before `</body>`. Analytics scripts are loaded dynamically only after the user accepts.
+
+To remove analytics, delete the `[analytics]` section from `page.toml`.
 
 ## Frontmatter
 
@@ -219,8 +306,38 @@ extra:
 | `robots` | string | No | Per-page robots directive |
 | `extra` | map | No | Arbitrary data for templates |
 
+## page-workspace.toml
+
+For multi-site setups, a `page-workspace.toml` at the workspace root configures all sites. Each site still has its own `page.toml`.
+
+```toml
+[workspace]
+name = "my-workspace"
+shared_data = "data"           # Shared data directory (optional)
+shared_static = "static"       # Shared static assets (optional)
+shared_templates = "templates" # Shared templates (optional)
+
+[[sites]]
+name = "blog"
+path = "sites/blog"
+# base_url = "https://blog.example.com"  # Override site base_url
+# output_dir = "dist/blog"               # Override output location
+
+[[sites]]
+name = "docs"
+path = "sites/docs"
+
+[cross_site]
+unified_sitemap = false    # Combine all sites into one sitemap
+cross_site_links = false   # Validate links across sites
+unified_search = false     # Combined search index
+```
+
+See [Workspaces](/docs/workspace) for the full guide.
+
 ## Next Steps
 
 - [Collections](/docs/collections) — configure how posts, docs, and pages behave
 - [Templates & Themes](/docs/templates) — use config values and data files in your templates
 - [Deployment](/docs/deployment) — deploy with the settings you've configured
+- [Workspaces](/docs/workspace) — manage multiple sites in a single repository

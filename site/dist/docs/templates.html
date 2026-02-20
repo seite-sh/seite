@@ -13,14 +13,14 @@
     </script>
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Templates &amp; Themes — page docs</title>
+    <title>Templates & Themes — page docs</title>
     <meta name="description" content="Customize your site with Tera templates, overridable blocks, and six bundled themes.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;templates">
+    <link rel="canonical" href="https://pagecli.dev/docs/templates">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;templates">
-    <meta property="og:title" content="Templates &amp; Themes">
+    <meta property="og:url" content="https://pagecli.dev/docs/templates">
+    <meta property="og:title" content="Templates & Themes">
     <meta property="og:description" content="Customize your site with Tera templates, overridable blocks, and six bundled themes.">
     
     <meta property="og:site_name" content="page">
@@ -28,7 +28,7 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Templates &amp; Themes">
+    <meta name="twitter:title" content="Templates & Themes">
     <meta name="twitter:description" content="Customize your site with Tera templates, overridable blocks, and six bundled themes.">
     
 
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;templates.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/templates.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Templates &amp; Themes&quot;,"description":&quot;Customize your site with Tera templates, overridable blocks, and six bundled themes.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;templates&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Templates & Themes","description":"Customize your site with Tera templates, overridable blocks, and six bundled themes.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/templates"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;templates" aria-current="page">Templates &amp; Themes</a></li>
+                    <li class="active"><a href="/docs/templates" aria-current="page">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;releases">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li><a href="/docs/releases">Releases</a></li>
                 
                 </ul>
             
@@ -1152,7 +1160,7 @@
     <div class="sidebar-backdrop" onclick="document.querySelector('.docs-sidebar').classList.remove('open');this.classList.remove('open');"></div>
     <div class="docs-main">
         <article>
-            <h1>Templates &amp; Themes</h1>
+            <h1>Templates & Themes</h1>
             <p class="doc-description">Customize your site with Tera templates, overridable blocks, and six bundled themes.</p>
             <div class="content"><h2 id="template-engine">Template Engine</h2>
 <p><code>page</code> uses Tera, a Jinja2-compatible template engine. All templates extend <code>base.html</code>. User templates in <code>templates/</code> override bundled defaults.</p>
@@ -1191,6 +1199,9 @@
 <tr><th><code>{{ data }}</code></th><th>Data files from <code>data/</code> directory</th></tr>
 <tr><th><code>{{ lang }}</code></th><th>Current language code</th></tr>
 <tr><th><code>{{ translations }}</code></th><th>Available translations</th></tr>
+<tr><th><code>{{ default_language }}</code></th><th>Default language code (from <code>page.toml</code>)</th></tr>
+<tr><th><code>{{ lang_prefix }}</code></th><th>URL prefix for current language (empty for default, <code>"/es"</code> for others)</th></tr>
+<tr><th><code>{{ t }}</code></th><th>UI translation strings object (override via <code>data/i18n/{lang}.yaml</code>)</th></tr>
 <tr><th><code>{{ pagination }}</code></th><th>Pagination context</th></tr>
 </tbody></table>
 <h2 id="overridable-blocks">Overridable Blocks</h2>
@@ -1356,6 +1367,42 @@
 </span><span style="color:#c0c5ce;">&lt;/</span><span style="color:#bf616a;">nav</span><span style="color:#c0c5ce;">&gt;
 </span><span style="color:#c0c5ce;">{% endif %}
 </span></pre>
+<h2 id="translatable-ui-strings">Translatable UI Strings</h2>
+<p>All bundled themes and default templates use the <code>{{ t }}</code> object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.</p>
+<h3 id="default-keys">Default Keys</h3>
+<table><thead><tr><th>Key</th><th>Default (English)</th></tr></thead><tbody>
+<tr><th><code>t.search_placeholder</code></th><th>Search…</th></tr>
+<tr><th><code>t.skip_to_content</code></th><th>Skip to main content</th></tr>
+<tr><th><code>t.no_results</code></th><th>No results</th></tr>
+<tr><th><code>t.newer</code></th><th>Newer</th></tr>
+<tr><th><code>t.older</code></th><th>Older</th></tr>
+<tr><th><code>t.page_n_of_total</code></th><th>Page {n} of {total}</th></tr>
+<tr><th><code>t.search_label</code></th><th>Search site content</th></tr>
+<tr><th><code>t.min_read</code></th><th>min read</th></tr>
+<tr><th><code>t.contents</code></th><th>Contents</th></tr>
+<tr><th><code>t.tags</code></th><th>Tags</th></tr>
+<tr><th><code>t.all_tags</code></th><th>All tags</th></tr>
+<tr><th><code>t.tagged</code></th><th>Tagged</th></tr>
+<tr><th><code>t.changelog</code></th><th>Changelog</th></tr>
+<tr><th><code>t.roadmap</code></th><th>Roadmap</th></tr>
+<tr><th><code>t.not_found_title</code></th><th>Page Not Found</th></tr>
+<tr><th><code>t.not_found_message</code></th><th>The page you requested could not be found.</th></tr>
+<tr><th><code>t.go_home</code></th><th>Go to the homepage</th></tr>
+<tr><th><code>t.in_progress</code></th><th>In Progress</th></tr>
+<tr><th><code>t.planned</code></th><th>Planned</th></tr>
+<tr><th><code>t.done</code></th><th>Done</th></tr>
+<tr><th><code>t.other</code></th><th>Other</th></tr>
+</tbody></table>
+<h3 id="overriding-strings">Overriding Strings</h3>
+<p>Create <code>data/i18n/{lang}.yaml</code> to override any key for a specific language:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># data/i18n/es.yaml
+</span><span style="color:#bf616a;">search_placeholder</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Buscar…</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">skip_to_content</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Ir al contenido principal</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">no_results</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Sin resultados</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">newer</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más recientes</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">older</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más antiguos</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/theme-gallery">Theme Gallery</a> — browse all six bundled themes with visual previews</li>
@@ -1392,6 +1439,12 @@
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
@@ -1423,6 +1476,18 @@
         
             
                 
+            
+            
+            
+        
+            
+            
+            
+        
+            
+            
+            
+        
             
             
             
@@ -1454,13 +1519,13 @@
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;collections">
+            <a href="/docs/collections">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">Collections</span>
             </a>
             
             
-            <a href="&#x2F;docs&#x2F;shortcodes" class="doc-nav-next">
+            <a href="/docs/shortcodes" class="doc-nav-next">
                 <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">Shortcodes</span>
             </a>
@@ -1492,9 +1557,12 @@
             <li class="toc-level-3"><a href="#brutalist">brutalist</a></li>
             <li class="toc-level-3"><a href="#bento">bento</a></li>
             <li class="toc-level-2"><a href="#applying-themes">Applying Themes</a></li>
-            <li class="toc-level-2"><a href="#installing-sharing-themes">Installing &amp; Sharing Themes</a></li>
+            <li class="toc-level-2"><a href="#installing-sharing-themes">Installing & Sharing Themes</a></li>
             <li class="toc-level-2"><a href="#custom-themes-with-ai">Custom Themes with AI</a></li>
             <li class="toc-level-2"><a href="#table-of-contents">Table of Contents</a></li>
+            <li class="toc-level-2"><a href="#translatable-ui-strings">Translatable UI Strings</a></li>
+            <li class="toc-level-3"><a href="#default-keys">Default Keys</a></li>
+            <li class="toc-level-3"><a href="#overriding-strings">Overriding Strings</a></li>
             <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
             </ul>
         </nav>

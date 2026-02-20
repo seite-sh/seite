@@ -1,18 +1,21 @@
 ---
 title: Collections
-description: Configure content collections — posts, docs, and pages — with pagination, date handling, and RSS.
+description: Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.
 weight: 3
 ---
 
 ## Overview
 
-Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Three presets are available:
+Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Five presets are available:
 
 | Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
 |--------|-----------|-------|-----|--------|--------|-------------|
 | posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
 | docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
 | pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
+| changelog | `content/changelog/` | Yes | Yes | Yes | No | `/changelog/slug` |
+| roadmap | `content/roadmap/` | No | No | Yes | No | `/roadmap/slug` |
+| trust  | `content/trust/`   | No | No | Yes | Yes | `/trust/slug` |
 
 ## Defining Collections
 
@@ -116,6 +119,70 @@ content/pages/
 ```
 
 The special file `content/pages/index.md` injects its content into the homepage template as `{{ page.content }}`.
+
+## Changelog
+
+The changelog collection is for release notes and version history. Entries are date-based with RSS support, so users can subscribe to updates.
+
+```
+content/changelog/
+├── 2026-01-15-v0-1-0.md
+├── 2026-02-01-v0-2-0.md
+└── 2026-02-18-v1-0-0.md
+```
+
+Use tags to categorize changes. Tags render as colored badges in the changelog templates:
+
+- `new` — new features (green)
+- `fix` — bug fixes (blue)
+- `breaking` — breaking changes (red)
+- `improvement` — enhancements (purple)
+- `deprecated` — deprecations (gray)
+
+```bash
+page new changelog "v1.0.0" --tags new,improvement
+```
+
+## Roadmap
+
+The roadmap collection is for sharing your project's public roadmap. Items are ordered by `weight` (not date) and grouped by status tags.
+
+```
+content/roadmap/
+├── dark-mode.md
+├── api-v2.md
+└── initial-release.md
+```
+
+Use tags for status and `weight` for priority ordering within each group:
+
+- `planned` — upcoming work
+- `in-progress` — actively being worked on
+- `done` — completed
+- `cancelled` — no longer planned
+
+```yaml
+---
+title: "Dark Mode"
+tags:
+  - planned
+weight: 1
+---
+```
+
+Three index layouts are available. The default groups items by status. To switch layouts, create `templates/roadmap-index.html`:
+
+```html
+{# Kanban board (3-column CSS grid): #}
+{% extends "roadmap-kanban.html" %}
+
+{# Or timeline (vertical milestones): #}
+{% extends "roadmap-timeline.html" %}
+```
+
+```bash
+page new roadmap "Feature Name" --tags planned
+```
 
 ## Pagination
 

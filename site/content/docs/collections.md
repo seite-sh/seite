@@ -1,6 +1,6 @@
 ---
 title: "Collections"
-description: "Configure content collections — posts, docs, pages, changelog, and roadmap — with pagination, date handling, and RSS."
+description: "Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS."
 weight: 3
 ---
 
@@ -15,6 +15,7 @@ Collections are groups of related content. Each collection has its own directory
 | pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
 | changelog | `content/changelog/` | Yes | Yes | Yes | No | `/changelog/slug` |
 | roadmap | `content/roadmap/` | No | No | Yes | No | `/roadmap/slug` |
+| trust  | `content/trust/`   | No | No | Yes | Yes | `/trust/slug` |
 
 ## Defining Collections
 

@@ -15,11 +15,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Releases — page docs</title>
     <meta name="description" content="Release history and changelog for page.">
-    <link rel="canonical" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases">
+    <link rel="canonical" href="https://pagecli.dev/docs/releases">
 
     <!-- Open Graph -->
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases">
+    <meta property="og:url" content="https://pagecli.dev/docs/releases">
     <meta property="og:title" content="Releases">
     <meta property="og:description" content="Release history and changelog for page.">
     
@@ -37,7 +37,7 @@
     <!-- Discovery -->
     <link rel="alternate" type="application/rss+xml" title="page" href="/feed.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
-    <link rel="alternate" type="text/markdown" href="https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases.md">
+    <link rel="alternate" type="text/markdown" href="https://pagecli.dev/docs/releases.md">
 
     <!-- hreflang -->
     
@@ -45,7 +45,7 @@
     <!-- JSON-LD -->
     <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":&quot;Releases&quot;,"description":&quot;Release history and changelog for page.&quot;,"author":{"@type":"Person","name":&quot;&quot;},"publisher":{"@type":"Organization","name":&quot;page&quot;},"url":&quot;https:&#x2F;&#x2F;pagecli.dev&#x2F;docs&#x2F;releases&quot;}
+    {"@context":"https://schema.org","@type":"Article","headline":"Releases","description":"Release history and changelog for page.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"page"},"url":"https://pagecli.dev/docs/releases"}
     
     </script>
 
@@ -1080,6 +1080,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/docs/getting-started">Docs</a></li>
+                <li><a href="/changelog">Changelog</a></li>
+                <li><a href="/roadmap">Roadmap</a></li>
                 <li><a href="https://github.com/sanchezomar/page" rel="noopener noreferrer">GitHub</a></li>
                 
             </ul>
@@ -1123,27 +1125,33 @@
                 
                 <ul>
                 
-                    <li><a href="&#x2F;docs&#x2F;getting-started">Getting Started</a></li>
+                    <li><a href="/docs/getting-started">Getting Started</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;configuration">Configuration</a></li>
+                    <li><a href="/docs/configuration">Configuration</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;collections">Collections</a></li>
+                    <li><a href="/docs/collections">Collections</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;templates">Templates &amp; Themes</a></li>
+                    <li><a href="/docs/templates">Templates & Themes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;shortcodes">Shortcodes</a></li>
+                    <li><a href="/docs/shortcodes">Shortcodes</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;i18n">Multi-Language</a></li>
+                    <li><a href="/docs/i18n">Multi-Language</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;deployment">Deployment</a></li>
+                    <li><a href="/docs/deployment">Deployment</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;agent">AI Agent</a></li>
+                    <li><a href="/docs/trust-center">Trust Center</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;theme-gallery">Theme Gallery</a></li>
+                    <li><a href="/docs/agent">AI Agent</a></li>
                 
-                    <li><a href="&#x2F;docs&#x2F;cli-reference">CLI Reference</a></li>
+                    <li><a href="/docs/workspace">Workspaces</a></li>
                 
-                    <li class="active"><a href="&#x2F;docs&#x2F;releases" aria-current="page">Releases</a></li>
+                    <li><a href="/docs/mcp-server">MCP Server</a></li>
+                
+                    <li><a href="/docs/theme-gallery">Theme Gallery</a></li>
+                
+                    <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                
+                    <li class="active"><a href="/docs/releases" aria-current="page">Releases</a></li>
                 
                 </ul>
             
@@ -1156,17 +1164,47 @@
             <p class="doc-description">Release history and changelog for page.</p>
             <div class="content"><h2 id="v0-1-0">v0.1.0</h2>
 <p>Initial release.</p>
+<p><strong>Build pipeline:</strong></p>
 <ul>
-<li>12-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files</li>
-<li>6 bundled themes: default, minimal, dark, docs, brutalist, bento</li>
-<li>AI agent via Claude Code — <code>page agent</code> spawns Claude with full site context</li>
-<li>Multi-language (i18n) support with per-language URLs, RSS feeds, sitemaps, and hreflang tags</li>
-<li>Deploy to GitHub Pages, Cloudflare Pages, and Netlify with guided setup and pre-flight checks</li>
+<li>13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files</li>
 <li>Image processing: auto-resize, WebP conversion, srcset, lazy loading</li>
-<li>Pagination, tag pages, table of contents, excerpts, reading time</li>
-<li>Custom domain management for all deploy targets</li>
+<li>Asset pipeline with CSS/JS minification and fingerprinted filenames</li>
+<li>Internal link validation at build time</li>
+</ul>
+<p><strong>Content:</strong></p>
+<ul>
+<li>6 collection presets: posts, docs, pages, changelog, roadmap, trust center</li>
+<li>5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes</li>
+<li>Data files (YAML/JSON/TOML) injected into template context</li>
+<li>Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags</li>
+<li>Pagination, tag pages, table of contents, excerpts, reading time and word count</li>
+</ul>
+<p><strong>Themes:</strong></p>
+<ul>
+<li>6 bundled themes: default, minimal, dark, docs, brutalist, bento</li>
+<li>AI-generated custom themes via <code>page theme create</code></li>
+<li>Theme install/export for community sharing</li>
+</ul>
+<p><strong>AI integration:</strong></p>
+<ul>
+<li><code>page agent</code> spawns Claude Code with full site context</li>
+<li>MCP server (<code>page mcp</code>) with 5 tools and 6+ resources for AI tool integration</li>
+<li>Every site ships with <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown</li>
+</ul>
+<p><strong>Deploy:</strong></p>
+<ul>
+<li>GitHub Pages, Cloudflare Pages, and Netlify with guided setup</li>
+<li>Pre-flight checks, <code>--dry-run</code> preview, custom domain management</li>
+<li>Post-deploy verification, preview/staging deploys</li>
+</ul>
+<p><strong>Developer experience:</strong></p>
+<ul>
 <li>Interactive dev server with REPL and live reload</li>
-<li>Shell installer for macOS and Linux</li>
+<li>Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent</li>
+<li>Multi-site workspaces</li>
+<li><code>page collection add</code> for adding collections to existing sites</li>
+<li>Self-update from GitHub Releases with checksum verification</li>
+<li>Shell installer for macOS/Linux, PowerShell installer for Windows</li>
 </ul>
 </div>
         </article>
@@ -1198,10 +1236,34 @@
             
                 
             
+                
+            
+                
+            
+                
+            
         
         
         
         
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
+        
+            
+            
+            
+                
+            
         
             
             
@@ -1272,7 +1334,7 @@
         
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="&#x2F;docs&#x2F;cli-reference">
+            <a href="/docs/cli-reference">
                 <span class="doc-nav-label">← Previous</span>
                 <span class="doc-nav-title">CLI Reference</span>
             </a>
