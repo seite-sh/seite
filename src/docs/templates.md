@@ -50,7 +50,53 @@ weight: 4
 | `{{ data }}` | Data files from `data/` directory |
 | `{{ lang }}` | Current language code |
 | `{{ translations }}` | Available translations |
+| `{{ default_language }}` | Default language code (from `page.toml`) |
+| `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
+| `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 | `{{ pagination }}` | Pagination context |
+
+## Translatable UI Strings
+
+All bundled themes and default templates use the `{{ t }}` object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.
+
+### Default Keys
+
+| Key | Default (English) |
+|-----|-------------------|
+| `t.search_placeholder` | Search… |
+| `t.skip_to_content` | Skip to main content |
+| `t.no_results` | No results |
+| `t.newer` | Newer |
+| `t.older` | Older |
+| `t.page_n_of_total` | Page {n} of {total} |
+| `t.search_label` | Search site content |
+| `t.min_read` | min read |
+| `t.contents` | Contents |
+| `t.tags` | Tags |
+| `t.all_tags` | All tags |
+| `t.tagged` | Tagged |
+| `t.changelog` | Changelog |
+| `t.roadmap` | Roadmap |
+| `t.not_found_title` | Page Not Found |
+| `t.not_found_message` | The page you requested could not be found. |
+| `t.go_home` | Go to the homepage |
+| `t.in_progress` | In Progress |
+| `t.planned` | Planned |
+| `t.done` | Done |
+| `t.other` | Other |
+
+### Overriding Strings
+
+Create `data/i18n/{lang}.yaml` to override any key:
+
+```yaml
+# data/i18n/es.yaml
+search_placeholder: "Buscar…"
+skip_to_content: "Ir al contenido principal"
+no_results: "Sin resultados"
+newer: "Más recientes"
+older: "Más antiguos"
+```
 
 ## Overridable Blocks
 

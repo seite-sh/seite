@@ -188,7 +188,7 @@ impl SiteContext {
             title: config.title_for_lang(lang).to_string(),
             description: config.description_for_lang(lang).to_string(),
             base_url: config.site.base_url.clone(),
-            language: lang.to_string(),
+            language: config.site.language.clone(),
             author: config.site.author.clone(),
         }
     }
@@ -494,6 +494,7 @@ pub fn build_site(
                     ctx.insert("nav", &empty_nav_value);
                 }
                 ctx.insert("lang", &item.lang);
+                insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
 
                 // Always provide translations (may be empty vec)
                 let empty_translations: Vec<TranslationLink> = Vec::new();
@@ -550,6 +551,7 @@ pub fn build_site(
         index_ctx.insert("site", &lang_site_ctx);
         index_ctx.insert("data", &data);
         index_ctx.insert("lang", lang);
+        insert_i18n_context(&mut index_ctx, lang, default_lang, &data);
 
         // Filter collections for this language
         let collections_ctx: Vec<CollectionContext> = config
@@ -750,6 +752,7 @@ pub fn build_site(
                 ctx.insert("site", &lang_site_ctx);
                 ctx.insert("data", &data);
                 ctx.insert("lang", lang);
+                insert_i18n_context(&mut ctx, lang, default_lang, &data);
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
@@ -847,6 +850,7 @@ pub fn build_site(
             ctx.insert("site", &lang_site_ctx);
             ctx.insert("data", &data);
             ctx.insert("lang", lang);
+            insert_i18n_context(&mut ctx, lang, default_lang, &data);
             ctx.insert("collections", &[collection_ctx]);
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
@@ -911,6 +915,7 @@ pub fn build_site(
         ctx_404.insert("site", &SiteContext::from_config(config));
         ctx_404.insert("data", &data);
         ctx_404.insert("lang", default_lang);
+        insert_i18n_context(&mut ctx_404, default_lang, default_lang, &data);
         ctx_404.insert("translations", &Vec::<TranslationLink>::new());
         ctx_404.insert("collections", &Vec::<CollectionContext>::new());
         ctx_404.insert("page", &PageContext {
@@ -1008,6 +1013,7 @@ pub fn build_site(
             tags_ctx.insert("site", &lang_site_ctx);
             tags_ctx.insert("data", &data);
             tags_ctx.insert("lang", lang);
+            insert_i18n_context(&mut tags_ctx, lang, default_lang, &data);
             tags_ctx.insert("tags", &tag_entries);
             tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
             tags_ctx.insert("page", &PageContext {
@@ -1044,6 +1050,7 @@ pub fn build_site(
                 tag_ctx.insert("site", &lang_site_ctx);
                 tag_ctx.insert("data", &data);
                 tag_ctx.insert("lang", lang);
+                insert_i18n_context(&mut tag_ctx, lang, default_lang, &data);
                 tag_ctx.insert("tag_name", tag);
                 tag_ctx.insert("items", items);
                 tag_ctx.insert("tags_url", &format!("{tags_base_url}/"));
@@ -1618,6 +1625,72 @@ fn build_page_context(site: &SiteContext, item: &ContentItem, data: &serde_json:
         },
     );
     ctx
+}
+
+/// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.
+fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
+    if lang == default_lang {
+        String::new()
+    } else {
+        format!("/{lang}")
+    }
+}
+
+/// Return a JSON object of common UI strings for a given language.
+///
+/// Starts with English defaults, then merges any overrides from
+/// `data.i18n.{lang}` (i.e. `data/i18n/{lang}.yaml`).
+fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Value {
+    let defaults = serde_json::json!({
+        "search_placeholder": "Search\u{2026}",
+        "skip_to_content": "Skip to main content",
+        "no_results": "No results",
+        "newer": "Newer",
+        "older": "Older",
+        "page_n_of_total": "Page {n} of {total}",
+        "search_label": "Search site content",
+        "min_read": "min read",
+        "contents": "Contents",
+        "tags": "Tags",
+        "all_tags": "All tags",
+        "tagged": "Tagged",
+        "changelog": "Changelog",
+        "roadmap": "Roadmap",
+        "not_found_title": "Page Not Found",
+        "not_found_message": "The page you requested could not be found.",
+        "go_home": "Go to the homepage",
+        "in_progress": "In Progress",
+        "planned": "Planned",
+        "done": "Done",
+        "other": "Other"
+    });
+
+    // Check data.i18n.{lang} for overrides, merge on top of defaults
+    if let Some(i18n) = data
+        .get("i18n")
+        .and_then(|i| i.get(lang))
+        .and_then(|v| v.as_object())
+    {
+        let mut merged = defaults.as_object().unwrap().clone();
+        for (k, v) in i18n {
+            merged.insert(k.clone(), v.clone());
+        }
+        serde_json::Value::Object(merged)
+    } else {
+        defaults
+    }
+}
+
+/// Insert `lang_prefix`, `default_language`, and `t` into a Tera context.
+fn insert_i18n_context(
+    ctx: &mut tera::Context,
+    lang: &str,
+    default_lang: &str,
+    data: &serde_json::Value,
+) {
+    ctx.insert("lang_prefix", &lang_prefix_for(lang, default_lang));
+    ctx.insert("default_language", default_lang);
+    ctx.insert("t", &ui_strings_for_lang(lang, data));
 }
 
 /// Build a JSON search index from a slice of content items.
