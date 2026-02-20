@@ -656,13 +656,31 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Internal link checking — validate all internal links at build time; broken links become build errors. Zola has this built-in. After rendering all content, scan HTML for `<a href="/...">` and verify each target URL exists in the output set. Warn on broken links, error with `--strict` flag
 - [x] Data files — support a `data/` directory with YAML/JSON/TOML files injected into template context as `{{ data.filename }}`. Enables navigation menus, author profiles, site-wide config without frontmatter. Hugo and Eleventy both have this. Load at build time alongside templates
 
-**Priority 2 — Improve build pipeline and content model:**
+**Priority 2 — Multi-LLM agent support:**
+
+- [ ] Multi-LLM integration — support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends. Currently `page agent` only works with Claude Code. This is a large change touching config, init, upgrade, agent, theme, and serve modules. Key components:
+  - [ ] Provider abstraction — `AgentProvider` trait in `src/cli/agent.rs` with per-provider implementations for command construction, tool name mapping, streaming JSON parsing, session resume, system prompt delivery, and MCP config generation. Each provider has different tool names (Claude: `Read`/`Write`/`Edit`/`Bash`/`Glob`/`Grep`, OpenCode: `read`/`write`/`edit`/`bash`/`glob`/`grep`, Codex: `read_file`/`apply_patch`/`shell`/`glob_file_search`, Gemini: `read_file`/`write_file`/`replace`/`run_shell_command`/`glob`/`search_file_content`), different streaming event schemas, different auto-approve behavior (`-p` auto-approves on Claude/OpenCode; Codex needs `--full-auto`; Gemini needs `--yolo`), and different session resume flags (`--resume <id>`, `--continue`, `codex exec resume`, `--resume <uuid>`)
+  - [ ] `[agent]` config section — add `AgentSection` to `SiteConfig` in `src/config/mod.rs` with `provider` (enum: `claude`/`opencode`/`codex`/`gemini`, default `claude`) and optional `model` (provider-specific model override, e.g. `ollama/qwen3-coder` for OpenCode). Also support in `page-workspace.toml` for workspace-level default with per-site override
+  - [ ] `AGENTS.md` migration — rename `generate_claude_md()` in `src/cli/init.rs` to `generate_agents_md()`, write to `AGENTS.md` (the emerging cross-tool standard read by Claude Code, OpenCode, and Codex). Keep `.claude/CLAUDE.md` as a slim file with MCP notes only. `page upgrade` migrates existing projects: copies content to `AGENTS.md`, slims down `CLAUDE.md`
+  - [ ] MCP config generation for all providers — `page init` and `page agent config` write provider-specific MCP config: `.claude/settings.json` (JSON, `mcpServers.page`), `opencode.json` (JSON, `mcp.page` with `type: "local"`, command-as-array), `.codex/config.toml` (TOML, `[mcp_servers.page]`), `.gemini/settings.json` (JSON, `mcpServers.page`). Only generate files for detected/chosen providers
+  - [ ] CLI detection in `page init` — run `claude --version`, `opencode --version`, `codex --version`, `gemini --version` at init time, display detected tools with versions, prompt user to choose default provider. Store choice in `page.toml` `[agent]` section
+  - [ ] `page agent switch` command — detect installed tools, prompt to choose, update `page.toml` `[agent]` provider, generate any missing MCP config files
+  - [ ] `page agent doctor` command — health check: verify CLI installed, MCP config valid, `AGENTS.md` present, test one-shot mode with echo, report status of all detected tools
+  - [ ] `page agent --provider <name>` flag — one-off provider override without changing `page.toml`
+  - [ ] `page theme create` multi-provider — `src/cli/theme.rs` also spawns Claude Code; needs same provider abstraction with restricted tool sets per provider
+  - [ ] Stream event parsers — provider-specific JSONL parsers normalizing to a common `StreamEvent` enum. Claude: `{"type":"assistant",...}`, OpenCode: `{"type":"message.part.updated",...}`, Codex: `{"type":"turn.started",...}`/`{"type":"item.completed",...}`, Gemini: similar to Claude but different content structure
+  - [ ] Dynamic system prompt strategy — Claude uses `--append-system-prompt` (direct injection). Other providers rely on `AGENTS.md` (static) + MCP server (live context). The MCP server provides dynamic content inventory, so `AGENTS.md` only needs stable instructions (commands, conventions, SEO rules)
+  - [ ] Graceful degradation — if configured provider not installed, error with install instructions + list other detected tools + suggest `page agent switch` or `--provider` override. Never silently fall back
+  - [ ] Provider maturity tiers — Claude Code and OpenCode are stable (full feature parity). Codex is supported (different tool model, no grep tool). Gemini is experimental (non-interactive `--allowed-tools` has multiple P1 bugs as of early 2026)
+  - [ ] Testing — mock tool detection, test config generation as pure functions, JSONL fixture files per provider for stream parser unit tests, `#[ignore]` on integration tests that require specific CLIs
+
+**Priority 3 — Improve build pipeline and content model:**
 
 - [ ] Incremental builds — only rebuild changed pages in dev mode. Hugo does partial rebuilds; Astro uses Vite HMR. Track content file mtimes, template dependencies, and config changes to determine minimum rebuild set. Critical for sites with 100+ pages where full rebuilds slow down the dev loop
 - [ ] Content from external sources — fetch JSON/YAML from URLs at build time and inject into template context. Astro's Content Layer API can pull from any CMS/API/database. Start simple: `[data_sources]` section in page.toml with `name = "posts"`, `url = "https://api.example.com/posts"`, `format = "json"`. Fetch at build step 3, merge with filesystem content
 - [ ] Math/LaTeX rendering — server-side KaTeX or MathJax rendering in markdown. Hugo added this in 2024. Render `$inline$` and `$$display$$` math blocks to HTML during markdown processing. Use `katex` crate or shell out to katex CLI. Important for technical/academic sites
 
-**Priority 3 — Polish and ecosystem:**
+**Priority 4 — Polish and ecosystem:**
 
 - [ ] AVIF image format — generate AVIF variants alongside WebP in the image pipeline. Eleventy Image v6.0 supports AVIF. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute
 - [x] Theme gallery/sharing — documentation page showcasing all bundled themes with HTML preview cards, `page theme install <url>` to download community themes, `page theme export <name>` to share custom/AI-generated themes, installed themes stored in `templates/themes/` and managed alongside bundled themes
@@ -675,7 +693,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
   - [ ] Community showcase on pagecli.dev — extend the gallery docs page to include community themes with live preview links and one-click install commands
   - [ ] Theme contributor guide — docs page explaining how to create, test, validate, and submit a theme to the registry
 
-**Priority 4 — Deploy improvements (existing roadmap items):**
+**Priority 5 — Deploy improvements (existing roadmap items):**
 
 - [ ] Deploy history + diff — write `.deploy-log.json` with timestamp, target, commit hash, build duration, content hash; `--dry-run` shows what changed since last deploy
 - [ ] Rollback — `page deploy rollback` restores previous deploy; keep last N commits on GitHub Pages instead of orphan force-push; use Netlify/Cloudflare rollback APIs
