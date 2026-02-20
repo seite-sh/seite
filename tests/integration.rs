@@ -4284,6 +4284,72 @@ fn test_mcp_parse_error() {
     assert_eq!(response["error"]["code"], -32700); // PARSE_ERROR
 }
 
+#[test]
+fn test_mcp_config_exposes_analytics() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpanalytics", "Analytics MCP", "posts");
+    let site_dir = tmp.path().join("mcpanalytics");
+
+    // Add analytics config
+    let config_path = site_dir.join("page.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[analytics]\nprovider = \"plausible\"\nid = \"example.com\"\ncookie_consent = true\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "page://config" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let config_json: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(config_json["analytics"]["provider"], "plausible");
+    assert_eq!(config_json["analytics"]["id"], "example.com");
+    assert_eq!(config_json["analytics"]["cookie_consent"], true);
+}
+
+#[test]
+fn test_mcp_docs_include_analytics() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "page_lookup_docs",
+                "arguments": { "topic": "configuration" }
+            }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let content = responses[0]["result"]["content"].as_array().unwrap();
+    let text = content[0]["text"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(result["found"], true);
+    let doc_content = result["content"].as_str().unwrap();
+    assert!(
+        doc_content.contains("[analytics]"),
+        "Configuration docs should include the [analytics] section"
+    );
+    assert!(
+        doc_content.contains("cookie_consent"),
+        "Configuration docs should document cookie_consent field"
+    );
+}
+
 // ── analytics ───────────────────────────────────────────────────────
 
 #[test]
