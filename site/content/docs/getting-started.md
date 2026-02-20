@@ -9,7 +9,7 @@ weight: 1
 ### Quick install (macOS and Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+curl -fsSL https://pagecli.dev/install.sh | sh
 ```
 
 This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
@@ -17,13 +17,13 @@ This downloads a prebuilt binary for your platform and installs it to `~/.local/
 To install a specific version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/sanchezomar/page/main/install.sh | sh
+VERSION=v0.1.0 curl -fsSL https://pagecli.dev/install.sh | sh
 ```
 
 ### Quick install (Windows)
 
 ```powershell
-irm https://raw.githubusercontent.com/sanchezomar/page/main/install.ps1 | iex
+irm https://pagecli.dev/install.ps1 | iex
 ```
 
 ### Install from source
