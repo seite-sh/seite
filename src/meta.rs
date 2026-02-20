@@ -1,8 +1,8 @@
-//! Project metadata stored in `.page/config.json`.
+//! Project metadata stored in `.seite/config.json`.
 //!
 //! Tracks which version of `page` last scaffolded or upgraded the project.
-//! Used by `page upgrade` to determine which upgrade steps to apply, and
-//! by `page build` to nudge users when new features are available.
+//! Used by `seite upgrade` to determine which upgrade steps to apply, and
+//! by `seite build` to nudge users when new features are available.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,14 +10,14 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// The directory where page stores its internal project metadata.
-const META_DIR: &str = ".page";
+const META_DIR: &str = ".seite";
 
-/// The metadata file within the `.page/` directory.
+/// The metadata file within the `.seite/` directory.
 const META_FILE: &str = "config.json";
 
 /// Project metadata managed by `page`.
 ///
-/// This is stored in `.page/config.json` and is fully owned by the tool —
+/// This is stored in `.seite/config.json` and is fully owned by the tool —
 /// users should not need to edit it manually.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PageMeta {
@@ -47,17 +47,17 @@ impl PageMeta {
     }
 }
 
-/// The path to `.page/config.json` relative to a project root.
+/// The path to `.seite/config.json` relative to a project root.
 pub fn meta_path(project_root: &Path) -> PathBuf {
     project_root.join(META_DIR).join(META_FILE)
 }
 
-/// The path to the `.page/` directory relative to a project root.
+/// The path to the `.seite/` directory relative to a project root.
 pub fn meta_dir(project_root: &Path) -> PathBuf {
     project_root.join(META_DIR)
 }
 
-/// Load project metadata from `.page/config.json`.
+/// Load project metadata from `.seite/config.json`.
 ///
 /// Returns `None` if the file doesn't exist (pre-upgrade project).
 pub fn load(project_root: &Path) -> Option<PageMeta> {
@@ -66,7 +66,7 @@ pub fn load(project_root: &Path) -> Option<PageMeta> {
     serde_json::from_str(&content).ok()
 }
 
-/// Write project metadata to `.page/config.json`.
+/// Write project metadata to `.seite/config.json`.
 pub fn write(project_root: &Path, meta: &PageMeta) -> std::io::Result<()> {
     let dir = meta_dir(project_root);
     fs::create_dir_all(&dir)?;

@@ -102,7 +102,7 @@ fn run_list() -> anyhow::Result<()> {
 
 fn run_apply(name: &str) -> anyhow::Result<()> {
     // Ensure we're in a page project
-    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
 
     let template_dir = PathBuf::from("templates");
     std::fs::create_dir_all(&template_dir)?;
@@ -111,7 +111,7 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     if let Some(theme) = themes::by_name(name) {
         std::fs::write(template_dir.join("base.html"), theme.base_html)?;
         human::success(&format!("Applied bundled theme '{}'", name));
-        human::info("Run 'page build' or the watcher will pick it up automatically.");
+        human::info("Run 'seite build' or the watcher will pick it up automatically.");
         return Ok(());
     }
 
@@ -120,12 +120,12 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     if let Some(theme) = themes::installed_by_name(&project_root, name) {
         std::fs::write(template_dir.join("base.html"), &theme.base_html)?;
         human::success(&format!("Applied installed theme '{}'", name));
-        human::info("Run 'page build' or the watcher will pick it up automatically.");
+        human::info("Run 'seite build' or the watcher will pick it up automatically.");
         return Ok(());
     }
 
     Err(anyhow::anyhow!(
-        "unknown theme '{}'. Run 'page theme list' to see available themes",
+        "unknown theme '{}'. Run 'seite theme list' to see available themes",
         name
     ))
 }
@@ -139,7 +139,7 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
         ).into()),
     }
 
-    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
 
     // Ensure templates/ dir exists so Claude can write into it
     std::fs::create_dir_all("templates")?;
@@ -160,12 +160,12 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     }
 
     human::success("Theme written to templates/base.html");
-    human::info("Run 'page build' to apply, or 'page serve' to preview live.");
+    human::info("Run 'seite build' to apply, or 'seite serve' to preview live.");
     Ok(())
 }
 
 fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
-    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
 
     // Derive theme name from URL filename or use override
     let theme_name = match name_override {
@@ -220,7 +220,7 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
         dest.display()
     ));
     human::info(&format!(
-        "Apply it with: page theme apply {}",
+        "Apply it with: seite theme apply {}",
         theme_name
     ));
 
@@ -228,7 +228,7 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
-    let _config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
 
     let base_path = PathBuf::from("templates").join("base.html");
     if !base_path.exists() {
@@ -266,7 +266,7 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
     std::fs::write(&dest, exported)?;
 
     human::success(&format!("Exported theme '{}' to {}", name, dest.display()));
-    human::info("Share this .tera file — others can install it with: page theme install <url>");
+    human::info("Share this .tera file — others can install it with: seite theme install <url>");
 
     Ok(())
 }

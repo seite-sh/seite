@@ -1,6 +1,6 @@
 ## Optional Configuration
 
-These sections in `page.toml` enable additional features. Omit them entirely to disable.
+These sections in `seite.toml` enable additional features. Omit them entirely to disable.
 
 ### Image Processing
 

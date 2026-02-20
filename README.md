@@ -1,6 +1,6 @@
-# page
+# seite
 
-[![CI](https://github.com/sanchezomar/page/actions/workflows/rust.yml/badge.svg)](https://github.com/sanchezomar/page/actions/workflows/rust.yml)
+[![CI](https://github.com/seite-sh/seite/actions/workflows/rust.yml/badge.svg)](https://github.com/seite-sh/seite/actions/workflows/rust.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **AI-native static site generator** — every page ships as HTML for browsers, markdown for LLMs, and structured data for search engines. Single binary. Zero config. Built with Rust.
@@ -10,35 +10,35 @@
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://pagecli.dev/install.sh | sh
+curl -fsSL https://seite.sh/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://pagecli.dev/install.ps1 | iex
+irm https://seite.sh/install.ps1 | iex
 ```
 
 **From source:**
 
 ```bash
-cargo install page
+cargo install seite
 ```
 
 ## Quickstart
 
 ```bash
-page init mysite --title "My Site" --collections posts,docs,pages
+seite init mysite --title "My Site" --collections posts,docs,pages
 cd mysite
-page build
-page serve
+seite build
+seite serve
 ```
 
 Open `http://localhost:3000`. Edit content in `content/`, templates in `templates/`. The dev server live-reloads on changes.
 
 ## What it does
 
-`page build` runs a 13-step pipeline that produces:
+`seite build` runs a 13-step pipeline that produces:
 
 - **HTML** pages with SEO metadata, Open Graph, Twitter Cards, and JSON-LD structured data
 - **Markdown** copies of every page (for LLM consumption)
@@ -52,9 +52,9 @@ All from markdown + YAML frontmatter. No JavaScript runtime. No build dependenci
 
 ## Features
 
-- **6 bundled themes** — default, minimal, dark, docs, brutalist, bento. Or generate a custom one: `page theme create "coral brutalist with lime accents"`
-- **AI agent** — `page agent` spawns Claude Code with full site context. Create posts, apply themes, and manage content conversationally
-- **MCP server** — `page mcp` exposes site data to AI tools via the Model Context Protocol
+- **6 bundled themes** — default, minimal, dark, docs, brutalist, bento. Or generate a custom one: `seite theme create "coral brutalist with lime accents"`
+- **AI agent** — `seite agent` spawns Claude Code with full site context. Create posts, apply themes, and manage content conversationally
+- **MCP server** — `seite mcp` exposes site data to AI tools via the Model Context Protocol
 - **Multi-language (i18n)** — filename-based translations, per-language URLs, RSS, sitemaps, and hreflang tags
 - **6 collection presets** — posts, docs, pages, changelog, roadmap, trust center
 - **Shortcodes** — `youtube`, `vimeo`, `gist`, `callout`, `figure` built-in, plus user-defined
@@ -62,17 +62,17 @@ All from markdown + YAML frontmatter. No JavaScript runtime. No build dependenci
 - **Image pipeline** — auto-resize, WebP conversion, srcset/`<picture>`, configurable quality
 - **Analytics** — Google Analytics, GTM, Plausible, Fathom, Umami with optional cookie consent banner
 - **Multi-site workspaces** — manage multiple sites from one directory
-- **Self-update** — `page self-update` fetches the latest release with checksum verification
+- **Self-update** — `seite self-update` fetches the latest release with checksum verification
 
 ## Deploy
 
 ```bash
-page deploy              # Commit, push, build, deploy
-page deploy --dry-run    # Preview what would happen
-page deploy --setup      # Guided first-time setup
+seite deploy              # Commit, push, build, deploy
+seite deploy --dry-run    # Preview what would happen
+seite deploy --setup      # Guided first-time setup
 ```
 
-Supports GitHub Pages, Cloudflare Pages, and Netlify. Configure in `page.toml`:
+Supports GitHub Pages, Cloudflare Pages, and Netlify. Configure in `seite.toml`:
 
 ```toml
 [deploy]
@@ -81,16 +81,16 @@ target = "cloudflare"    # or "github-pages" or "netlify"
 
 ## Documentation
 
-Full docs at **[pagecli.dev/docs](https://pagecli.dev/docs/getting-started)**
+Full docs at **[seite.sh/docs](https://seite.sh/docs/getting-started)**
 
-- [Getting Started](https://pagecli.dev/docs/getting-started)
-- [Configuration](https://pagecli.dev/docs/configuration)
-- [Collections](https://pagecli.dev/docs/collections)
-- [Templates](https://pagecli.dev/docs/templates)
-- [Shortcodes](https://pagecli.dev/docs/shortcodes)
-- [i18n](https://pagecli.dev/docs/i18n)
-- [Deployment](https://pagecli.dev/docs/deployment)
-- [CLI Reference](https://pagecli.dev/docs/cli-reference)
+- [Getting Started](https://seite.sh/docs/getting-started)
+- [Configuration](https://seite.sh/docs/configuration)
+- [Collections](https://seite.sh/docs/collections)
+- [Templates](https://seite.sh/docs/templates)
+- [Shortcodes](https://seite.sh/docs/shortcodes)
+- [i18n](https://seite.sh/docs/i18n)
+- [Deployment](https://seite.sh/docs/deployment)
+- [CLI Reference](https://seite.sh/docs/cli-reference)
 
 ## License
 

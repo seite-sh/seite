@@ -23,12 +23,12 @@ Initial release.
 
 **Themes:**
 - 6 bundled themes: default, minimal, dark, docs, brutalist, bento
-- AI-generated custom themes via `page theme create`
+- AI-generated custom themes via `seite theme create`
 - Theme install/export for community sharing
 
 **AI integration:**
-- `page agent` spawns Claude Code with full site context
-- MCP server (`page mcp`) with 5 tools and 6+ resources for AI tool integration
+- `seite agent` spawns Claude Code with full site context
+- MCP server (`seite mcp`) with 5 tools and 6+ resources for AI tool integration
 - Every site ships with `llms.txt`, `llms-full.txt`, and raw markdown
 
 **Deploy:**
@@ -40,6 +40,6 @@ Initial release.
 - Interactive dev server with REPL and live reload
 - Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent
 - Multi-site workspaces
-- `page collection add` for adding collections to existing sites
+- `seite collection add` for adding collections to existing sites
 - Self-update from GitHub Releases with checksum verification
 - Shell installer for macOS/Linux, PowerShell installer for Windows

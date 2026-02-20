@@ -1,4 +1,4 @@
-//! `page mcp` — start the MCP server over stdio.
+//! `seite mcp` — start the MCP server over stdio.
 //!
 //! This command is designed to be spawned by Claude Code (or other MCP clients)
 //! as a subprocess. It communicates via JSON-RPC over stdin/stdout.

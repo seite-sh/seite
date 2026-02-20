@@ -1,7 +1,7 @@
 ## Design Prompts
 
 When asked to redesign or create a theme, use one of these directions as a starting point.
-Edit `templates/base.html` directly — or apply a bundled theme first with `page theme apply <name>` then edit.
+Edit `templates/base.html` directly — or apply a bundled theme first with `seite theme apply <name>` then edit.
 
 **Minimal / Editorial** — Single column max 620px, Georgia serif body, geometric sans for UI elements.
 No decorative elements. Bottom-border-only search input. White/off-white (`#FAF9F6`) background,

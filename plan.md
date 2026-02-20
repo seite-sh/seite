@@ -271,11 +271,11 @@ Status values and their display:
 To add a new certification:
 1. Add entry to `data/trust/certifications.yaml`
 2. Create `content/trust/certifications/{slug}.md` with details
-3. Run `page build`
+3. Run `seite build`
 
 To create a translated certification page:
 ```bash
-page new trust "SOC 2 Type II" --lang es
+seite new trust "SOC 2 Type II" --lang es
 # Then edit content/trust/certifications/soc-2-type-ii.es.md
 ```
 
@@ -343,16 +343,16 @@ All sections are conditional — if a data file is empty/missing, the section hi
 
 ```bash
 # Add a new certification
-page new trust "PCI DSS" --tags certification
+seite new trust "PCI DSS" --tags certification
 
 # Add a security update / changelog entry
-page new trust "Q1 2026 Security Update" --tags changelog
+seite new trust "Q1 2026 Security Update" --tags changelog
 
 # Create a translated trust page
-page new trust "Security Overview" --lang es
+seite new trust "Security Overview" --lang es
 
 # Rebuild after editing data files
-page build
+seite build
 ```
 
 ### Multi-language Trust Center
@@ -434,7 +434,7 @@ This follows the same pattern as the existing paginated collection index renderi
 
 ### 8.2 Integration tests (`tests/integration.rs`)
 
-- `test_init_with_trust_collection` — `page init mysite --collections trust,pages --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,faq` creates all expected files
+- `test_init_with_trust_collection` — `seite init mysite --collections trust,pages --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,faq` creates all expected files
 - `test_build_trust_center` — build succeeds with scaffolded trust center
 - `test_trust_center_index_rendered` — `/trust/` index page exists in output
 - `test_trust_certification_pages` — individual cert pages render

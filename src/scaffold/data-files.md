@@ -39,7 +39,7 @@ Internal links are auto-prefixed with `{{ lang_prefix }}` for i18n; external lin
 
 ### Configuration
 
-The data directory defaults to `data/`. Change it with `data_dir = "my_data"` under `[build]` in `page.toml`.
+The data directory defaults to `data/`. Change it with `data_dir = "my_data"` under `[build]` in `seite.toml`.
 
 ### Conflict detection
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# local-install.sh — Build and install page from source
+# local-install.sh — Build and install seite from source
 #
 # Usage:
 #   ./local-install.sh

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-use page::cli::{Cli, Command};
+use seite::cli::{Cli, Command};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -21,18 +21,18 @@ fn main() -> Result<()> {
     }
 
     match &cli.command {
-        Command::Init(args) => page::cli::init::run(args)?,
-        Command::New(args) => page::cli::new::run(args)?,
-        Command::Build(args) => page::cli::build::run(args, cli.site.as_deref())?,
-        Command::Serve(args) => page::cli::serve::run(args, cli.site.as_deref())?,
-        Command::Deploy(args) => page::cli::deploy::run(args, cli.site.as_deref())?,
-        Command::Agent(args) => page::cli::agent::run(args)?,
-        Command::Collection(args) => page::cli::collection::run(args)?,
-        Command::Theme(args) => page::cli::theme::run(args)?,
-        Command::Workspace(args) => page::cli::workspace::run(args)?,
-        Command::Upgrade(args) => page::cli::upgrade::run(args)?,
-        Command::SelfUpdate(args) => page::cli::self_update::run(args)?,
-        Command::Mcp(args) => page::cli::mcp::run(args)?,
+        Command::Init(args) => seite::cli::init::run(args)?,
+        Command::New(args) => seite::cli::new::run(args)?,
+        Command::Build(args) => seite::cli::build::run(args, cli.site.as_deref())?,
+        Command::Serve(args) => seite::cli::serve::run(args, cli.site.as_deref())?,
+        Command::Deploy(args) => seite::cli::deploy::run(args, cli.site.as_deref())?,
+        Command::Agent(args) => seite::cli::agent::run(args)?,
+        Command::Collection(args) => seite::cli::collection::run(args)?,
+        Command::Theme(args) => seite::cli::theme::run(args)?,
+        Command::Workspace(args) => seite::cli::workspace::run(args)?,
+        Command::Upgrade(args) => seite::cli::upgrade::run(args)?,
+        Command::SelfUpdate(args) => seite::cli::self_update::run(args)?,
+        Command::Mcp(args) => seite::cli::mcp::run(args)?,
     }
 
     Ok(())

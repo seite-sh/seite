@@ -20,11 +20,11 @@ weight: 7
 | **Cloudflare Pages** | Production sites | Fastest global CDN, custom domain API, preview deploys |
 | **Netlify** | Team workflows | Familiar DX, draft deploys, easy rollbacks |
 
-All three are free for static sites. You can switch targets anytime by changing one line in `page.toml`.
+All three are free for static sites. You can switch targets anytime by changing one line in `seite.toml`.
 
 ## Configuration
 
-Set the deploy target in `page.toml`:
+Set the deploy target in `seite.toml`:
 
 ```toml
 [deploy]
@@ -32,7 +32,7 @@ target = "github-pages"
 ```
 
 {{% callout(type="warning") %}}
-Make sure `base_url` in `page.toml` is set to your real domain before deploying. The default `localhost` URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use `--base-url` to override at deploy time without modifying the config file.
+Make sure `base_url` in `seite.toml` is set to your real domain before deploying. The default `localhost` URL will produce incorrect canonical links, sitemaps, and RSS feeds. Use `--base-url` to override at deploy time without modifying the config file.
 {{% end %}}
 
 {{% callout(type="info") %}}
@@ -41,11 +41,11 @@ Make sure `base_url` in `page.toml` is set to your real domain before deploying.
 
 ## Auto-Commit and Push
 
-By default, `page deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
+By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
 **Branch-based preview:** when you deploy from a branch other than `main` or `master`, `page` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
 
-To disable auto-commit for a project, set `auto_commit = false` in `page.toml`:
+To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 
 ```toml
 [deploy]
@@ -56,18 +56,18 @@ auto_commit = false
 Or skip it for a single deploy with `--no-commit`:
 
 ```bash
-page deploy --no-commit
+seite deploy --no-commit
 ```
 
 ## GitHub Pages
 
-The default deployment target. When you run `page init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
+The default deployment target. When you run `seite init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
 
 ### Manual deployment
 
 ```bash
-page build
-page deploy
+seite build
+seite deploy
 ```
 
 This pushes the `dist/` directory to the `gh-pages` branch.
@@ -77,7 +77,7 @@ This pushes the `dist/` directory to the `gh-pages` branch.
 Preview what would be deployed:
 
 ```bash
-page deploy --dry-run
+seite deploy --dry-run
 ```
 
 {{% callout(type="tip") %}}
@@ -111,14 +111,14 @@ The project name is auto-detected from `wrangler.toml` if present.
 ### Deploy
 
 ```bash
-page build
-page deploy
+seite build
+seite deploy
 ```
 
 ### Dry run
 
 ```bash
-page deploy --target cloudflare --dry-run
+seite deploy --target cloudflare --dry-run
 ```
 
 ## Netlify
@@ -137,14 +137,14 @@ target = "netlify"
 ### Deploy
 
 ```bash
-page build
-page deploy
+seite build
+seite deploy
 ```
 
 ### Dry run
 
 ```bash
-page deploy --target netlify --dry-run
+seite deploy --target netlify --dry-run
 ```
 
 ## Custom Domains
@@ -152,17 +152,17 @@ page deploy --target netlify --dry-run
 Set up a custom domain for any deploy target:
 
 ```bash
-page deploy --domain example.com
+seite deploy --domain example.com
 ```
 
 This will:
 1. Print DNS records to add at your registrar
-2. Update `base_url` and `deploy.domain` in `page.toml`
+2. Update `base_url` and `deploy.domain` in `seite.toml`
 3. For Cloudflare: offer to attach the domain to your Pages project via the API
 4. For Netlify: offer to add the domain via `netlify domains:add`
 5. For GitHub Pages: auto-generate a `CNAME` file on the next deploy
 
-You can also set the domain directly in `page.toml`:
+You can also set the domain directly in `seite.toml`:
 
 ```toml
 [deploy]
@@ -178,13 +178,13 @@ When `deploy.domain` is set, pre-flight checks will verify the domain is attache
 Override the configured target on the command line:
 
 ```bash
-page deploy --target netlify     # Deploy to Netlify regardless of page.toml
-page deploy --target cloudflare  # Deploy to Cloudflare
+seite deploy --target netlify     # Deploy to Netlify regardless of seite.toml
+seite deploy --target cloudflare  # Deploy to Cloudflare
 ```
 
 ## Build Output
 
-After `page build`, the `dist/` directory contains everything needed:
+After `seite build`, the `dist/` directory contains everything needed:
 
 ```
 dist/
@@ -211,5 +211,5 @@ All three platforms serve `404.html` automatically for missing routes.
 
 ## Next Steps
 
-- [Configuration](/docs/configuration) — all deploy-related settings in `page.toml`
-- [CLI Reference](/docs/cli-reference) — complete list of `page deploy` flags
+- [Configuration](/docs/configuration) — all deploy-related settings in `seite.toml`
+- [CLI Reference](/docs/cli-reference) — complete list of `seite deploy` flags

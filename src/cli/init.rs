@@ -119,9 +119,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join("static"))?;
     fs::create_dir_all(root.join("data"))?;
     fs::create_dir_all(root.join(".claude"))?;
-    fs::create_dir_all(root.join(".page"))?;
+    fs::create_dir_all(root.join(".seite"))?;
 
-    // Generate page.toml
+    // Generate seite.toml
     let target = match deploy_target.as_str() {
         "cloudflare" => DeployTarget::Cloudflare,
         "netlify" => DeployTarget::Netlify,
@@ -164,7 +164,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     };
 
     let toml_str = toml::to_string_pretty(&config)?;
-    fs::write(root.join("page.toml"), toml_str)?;
+    fs::write(root.join("seite.toml"), toml_str)?;
 
     // Write default templates
     fs::write(root.join("templates/base.html"), templates::default_base())?;
@@ -203,7 +203,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         };
         let frontmatter_str = content::generate_frontmatter(&fm);
         let post_content = format!(
-            "{frontmatter_str}\n\nWelcome to your new site built with **page**.\n\nEdit this post or create new ones with `page new post \"My Post\"`.\n"
+            "{frontmatter_str}\n\nWelcome to your new site built with **seite**.\n\nEdit this post or create new ones with `seite new post \"My Post\"`.\n"
         );
         fs::write(
             root.join(format!("content/posts/{today}-hello-world.md")),
@@ -291,7 +291,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         scaffold_trust_center(&root, opts)?;
     }
 
-    // Write project metadata (.page/config.json)
+    // Write project metadata (.seite/config.json)
     meta::write(&root, &meta::PageMeta::current())?;
 
     // Write Claude Code settings (.claude/settings.json)
@@ -309,8 +309,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     human::success(&format!("Created new site in '{name}'"));
     human::info("Next steps:");
     println!("  cd {name}");
-    println!("  page build");
-    println!("  page serve");
+    println!("  seite build");
+    println!("  seite serve");
 
     Ok(())
 }
@@ -623,11 +623,11 @@ fn generate_claude_settings() -> String {
       "Edit(content/**)",
       "Edit(templates/**)",
       "Edit(data/**)",
-      "Bash(page build:*)",
-      "Bash(page build)",
-      "Bash(page new:*)",
-      "Bash(page serve:*)",
-      "Bash(page theme:*)",
+      "Bash(seite build:*)",
+      "Bash(seite build)",
+      "Bash(seite new:*)",
+      "Bash(seite serve:*)",
+      "Bash(seite theme:*)",
       "Glob",
       "Grep",
       "WebSearch"
@@ -638,8 +638,8 @@ fn generate_claude_settings() -> String {
     ]
   },
   "mcpServers": {
-    "page": {
-      "command": "page",
+    "seite": {
+      "command": "seite",
       "args": ["mcp"]
     }
   }
@@ -652,8 +652,8 @@ fn generate_claude_settings() -> String {
 /// Used by upgrade to merge into existing settings.
 pub fn mcp_server_block() -> serde_json::Value {
     serde_json::json!({
-        "page": {
-            "command": "page",
+        "seite": {
+            "command": "seite",
             "args": ["mcp"]
         }
     })
@@ -673,7 +673,7 @@ fn generate_claude_md(
     if !description.is_empty() {
         md.push_str(&format!("{description}\n\n"));
     }
-    md.push_str("This is a static site built with the `page` CLI tool.\n\n");
+    md.push_str("This is a static site built with the `seite` CLI tool.\n\n");
 
     // SEO and GEO requirements (static)
     md.push_str(include_str!("../scaffold/seo-requirements.md"));
@@ -681,30 +681,30 @@ fn generate_claude_md(
     // Commands (dynamic — iterates collections)
     md.push_str("## Commands\n\n");
     md.push_str("```bash\n");
-    md.push_str("page build                              # Build the site\n");
-    md.push_str("page build --drafts                     # Build including draft content\n");
-    md.push_str("page serve                              # Dev server with live reload + REPL\n");
-    md.push_str("page serve --port 8080                  # Use a specific port\n");
+    md.push_str("seite build                              # Build the site\n");
+    md.push_str("seite build --drafts                     # Build including draft content\n");
+    md.push_str("seite serve                              # Dev server with live reload + REPL\n");
+    md.push_str("seite serve --port 8080                  # Use a specific port\n");
     for c in collections {
         let singular = singularize(&c.name);
         md.push_str(&format!(
-            "page new {singular} \"Title\"                  # Create new {singular}\n",
+            "seite new {singular} \"Title\"                  # Create new {singular}\n",
         ));
     }
-    md.push_str("page new post \"Title\" --tags rust,web   # Create with tags\n");
-    md.push_str("page new post \"Title\" --draft           # Create as draft\n");
-    md.push_str("page new post \"Title\" --lang es         # Create translation (needs [languages.es] in config)\n");
-    md.push_str("page collection list                    # List site collections\n");
-    md.push_str("page collection add <preset>            # Add a preset collection (posts, docs, pages, changelog, roadmap, trust)\n");
-    md.push_str("page theme list                         # List available themes\n");
-    md.push_str("page theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)\n");
-    md.push_str("page theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
-    md.push_str("page theme install <url>                # Install theme from URL\n");
-    md.push_str("page theme export <name>                # Export current theme for sharing\n");
-    md.push_str("page agent                              # Interactive AI agent session\n");
-    md.push_str("page agent \"write about Rust\"           # One-shot AI agent prompt\n");
-    md.push_str("page deploy                             # Commit, push, build, and deploy\n");
-    md.push_str("page deploy --no-commit                 # Deploy without auto-commit/push\n");
+    md.push_str("seite new post \"Title\" --tags rust,web   # Create with tags\n");
+    md.push_str("seite new post \"Title\" --draft           # Create as draft\n");
+    md.push_str("seite new post \"Title\" --lang es         # Create translation (needs [languages.es] in config)\n");
+    md.push_str("seite collection list                    # List site collections\n");
+    md.push_str("seite collection add <preset>            # Add a preset collection (posts, docs, pages, changelog, roadmap, trust)\n");
+    md.push_str("seite theme list                         # List available themes\n");
+    md.push_str("seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)\n");
+    md.push_str("seite theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
+    md.push_str("seite theme install <url>                # Install theme from URL\n");
+    md.push_str("seite theme export <name>                # Export current theme for sharing\n");
+    md.push_str("seite agent                              # Interactive AI agent session\n");
+    md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
+    md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
+    md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
     md.push_str("```\n\n");
 
     // Dev server REPL (static)
@@ -723,7 +723,7 @@ fn generate_claude_md(
     md.push_str("static/          # Static assets (copied as-is to dist/)\n");
     md.push_str("data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n");
     md.push_str("dist/            # Build output (generated, do not edit)\n");
-    md.push_str("page.toml        # Site configuration\n");
+    md.push_str("seite.toml        # Site configuration\n");
     md.push_str("```\n\n");
 
     // Collections (dynamic — iterates collections with conditional sections)
@@ -756,14 +756,14 @@ fn generate_claude_md(
         if c.name == "changelog" {
             md.push_str("- Tag conventions: `new` (features), `fix` (bug fixes), `breaking` (breaking changes), `improvement` (enhancements), `deprecated` (deprecations)\n");
             md.push_str("- Tags render as colored badges in the changelog template\n");
-            md.push_str("- Create entries: `page new changelog \"v1.0.0\" --tags new,improvement`\n");
+            md.push_str("- Create entries: `seite new changelog \"v1.0.0\" --tags new,improvement`\n");
         }
         if c.name == "roadmap" {
             md.push_str("- Status tags: `planned`, `in-progress`, `done`, `cancelled`\n");
             md.push_str("- Use `weight:` in frontmatter to control ordering (lower = higher priority)\n");
             md.push_str("- Default index groups items by status tag\n");
             md.push_str("- Alternative layouts: copy `roadmap-kanban.html` or `roadmap-timeline.html` to `templates/roadmap-index.html`\n");
-            md.push_str("- Create items: `page new roadmap \"Feature Name\" --tags planned`\n");
+            md.push_str("- Create items: `seite new roadmap \"Feature Name\" --tags planned`\n");
         }
         md.push('\n');
     }
@@ -868,7 +868,7 @@ fn generate_claude_md(
         md.push_str("To add a new certification:\n");
         md.push_str("1. Add entry to `data/trust/certifications.yaml`\n");
         md.push_str("2. Create `content/trust/certifications/{slug}.md` with framework details\n");
-        md.push_str("3. Run `page build`\n\n");
+        md.push_str("3. Run `seite build`\n\n");
 
         md.push_str("### Managing Subprocessors\n\n");
         md.push_str("Edit `data/trust/subprocessors.yaml`:\n\n");
@@ -903,10 +903,10 @@ fn generate_claude_md(
 
         md.push_str("### Common Trust Center Tasks\n\n");
         md.push_str("```bash\n");
-        md.push_str("page new trust \"PCI DSS\"                    # Add a new certification page\n");
-        md.push_str("page new trust \"Q1 2026 Security Update\"    # Add a changelog entry\n");
-        md.push_str("page new trust \"Security Overview\" --lang es # Create a translation\n");
-        md.push_str("page build                                   # Rebuild after editing data files\n");
+        md.push_str("seite new trust \"PCI DSS\"                    # Add a new certification page\n");
+        md.push_str("seite new trust \"Q1 2026 Security Update\"    # Add a changelog entry\n");
+        md.push_str("seite new trust \"Security Overview\" --lang es # Create a translation\n");
+        md.push_str("seite build                                   # Rebuild after editing data files\n");
         md.push_str("```\n\n");
 
         md.push_str("### Multi-language Trust Center\n\n");
@@ -918,9 +918,9 @@ fn generate_claude_md(
         md.push_str("The trust center index at `/trust/` is rendered per-language automatically.\n\n");
 
         md.push_str("### MCP Integration\n\n");
-        md.push_str("`page://trust` returns the full trust center state (certifications, subprocessors, FAQs, content items).\n");
-        md.push_str("Use `page_search` with `collection: \"trust\"` to find trust center content.\n");
-        md.push_str("Use `page_create_content` with `collection: \"trust\"` and `extra: {\"type\": \"certification\", \"framework\": \"soc2\"}` to create trust center pages.\n\n");
+        md.push_str("`seite://trust` returns the full trust center state (certifications, subprocessors, FAQs, content items).\n");
+        md.push_str("Use `seite_search` with `collection: \"trust\"` to find trust center content.\n");
+        md.push_str("Use `seite_create_content` with `collection: \"trust\"` and `extra: {\"type\": \"certification\", \"framework\": \"soc2\"}` to create trust center pages.\n\n");
     }
 
     // Shortcodes (static)
@@ -931,27 +931,27 @@ fn generate_claude_md(
 
     // Key conventions (short, mixed static/dynamic — keep inline)
     md.push_str("## Key Conventions\n\n");
-    md.push_str("- Run `page build` after creating or editing content to regenerate the site\n");
+    md.push_str("- Run `seite build` after creating or editing content to regenerate the site\n");
     md.push_str("- URLs are clean (no extension): `/posts/hello-world` on disk is `dist/posts/hello-world.html`\n");
     md.push_str("- Templates use Tera syntax and extend `base.html`\n");
     md.push_str("- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)\n");
     md.push_str("- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate\n");
     md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
-    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `page.toml` to generate `/posts/`, `/posts/page/2/`, etc.\n");
+    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate `/posts/`, `/posts/page/2/`, etc.\n");
     md.push_str("  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`\n");
     md.push_str("- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.\n");
-    md.push_str("- Custom theme: `page theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
+    md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
     md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
 
     // Documentation links
     md.push_str("## Documentation\n\n");
-    md.push_str("Full documentation: <https://pagecli.dev/docs/getting-started>\n\n");
-    md.push_str("- [Getting Started](https://pagecli.dev/docs/getting-started) — install and create your first site\n");
-    md.push_str("- [Configuration](https://pagecli.dev/docs/configuration) — full `page.toml` reference\n");
-    md.push_str("- [Templates & Themes](https://pagecli.dev/docs/templates) — customize templates and themes\n");
-    md.push_str("- [Shortcodes](https://pagecli.dev/docs/shortcodes) — reusable content components\n");
-    md.push_str("- [CLI Reference](https://pagecli.dev/docs/cli-reference) — all commands and flags\n");
-    md.push_str("- [AI Agent](https://pagecli.dev/docs/agent) — using the AI assistant\n");
+    md.push_str("Full documentation: <https://seite.sh/docs/getting-started>\n\n");
+    md.push_str("- [Getting Started](https://seite.sh/docs/getting-started) — install and create your first site\n");
+    md.push_str("- [Configuration](https://seite.sh/docs/configuration) — full `seite.toml` reference\n");
+    md.push_str("- [Templates & Themes](https://seite.sh/docs/templates) — customize templates and themes\n");
+    md.push_str("- [Shortcodes](https://seite.sh/docs/shortcodes) — reusable content components\n");
+    md.push_str("- [CLI Reference](https://seite.sh/docs/cli-reference) — all commands and flags\n");
+    md.push_str("- [AI Agent](https://seite.sh/docs/agent) — using the AI assistant\n");
 
     md
 }

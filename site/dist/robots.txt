@@ -1,8 +1,8 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://pagecli.dev/sitemap.xml
+Sitemap: https://seite.sh/sitemap.xml
 
 # AI / LLM crawlers
-# LLMs-txt: https://pagecli.dev/llms.txt
-# LLMs-full-txt: https://pagecli.dev/llms-full.txt
+# LLMs-txt: https://seite.sh/llms.txt
+# LLMs-full-txt: https://seite.sh/llms-full.txt

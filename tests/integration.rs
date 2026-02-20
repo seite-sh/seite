@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn page_cmd() -> Command {
-    Command::cargo_bin("page").unwrap()
+    Command::cargo_bin("seite").unwrap()
 }
 
 /// Helper to init a site with given collections
@@ -54,7 +54,7 @@ fn test_init_creates_project_structure() {
         .stdout(predicate::str::contains("Created new site in 'mysite'"));
 
     let root = tmp.path().join("mysite");
-    assert!(root.join("page.toml").exists());
+    assert!(root.join("seite.toml").exists());
     assert!(root.join("content/posts").is_dir());
     assert!(root.join("content/pages").is_dir());
     assert!(root.join("templates/base.html").exists());
@@ -63,8 +63,8 @@ fn test_init_creates_project_structure() {
     assert!(root.join("templates/page.html").exists());
     assert!(root.join("static").is_dir());
 
-    // Verify page.toml content
-    let config_content = fs::read_to_string(root.join("page.toml")).unwrap();
+    // Verify seite.toml content
+    let config_content = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config_content.contains("title = \"My Site\""));
     assert!(config_content.contains("[[collections]]"));
 
@@ -87,7 +87,7 @@ fn test_init_with_docs() {
     assert!(root.join("content/docs").is_dir());
     assert!(root.join("templates/doc.html").exists());
 
-    let config_content = fs::read_to_string(root.join("page.toml")).unwrap();
+    let config_content = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config_content.contains("name = \"docs\""));
 }
 
@@ -149,7 +149,7 @@ fn test_build_produces_output() {
     // Verify post HTML
     let post = fs::read_to_string(dist.join("posts/hello-world.html")).unwrap();
     assert!(post.contains("Hello World"));
-    assert!(post.contains("page")); // from the body text
+    assert!(post.contains("seite")); // from the body text
 }
 
 #[test]
@@ -175,9 +175,7 @@ fn test_build_excludes_drafts_by_default() {
         .assert()
         .success();
 
-    assert!(!site_dir
-        .join("dist/posts/secret-draft.html")
-        .exists());
+    assert!(!site_dir.join("dist/posts/secret-draft.html").exists());
 
     // Build with --drafts
     page_cmd()
@@ -186,9 +184,7 @@ fn test_build_excludes_drafts_by_default() {
         .assert()
         .success();
 
-    assert!(site_dir
-        .join("dist/posts/secret-draft.html")
-        .exists());
+    assert!(site_dir.join("dist/posts/secret-draft.html").exists());
 }
 
 #[test]
@@ -200,11 +196,7 @@ fn test_build_with_docs() {
 
     // Create a doc
     let doc = "---\ntitle: Getting Started\n---\n\nWelcome to the docs.\n";
-    fs::write(
-        site_dir.join("content/docs/getting-started.md"),
-        doc,
-    )
-    .unwrap();
+    fs::write(site_dir.join("content/docs/getting-started.md"), doc).unwrap();
 
     page_cmd()
         .arg("build")
@@ -212,9 +204,7 @@ fn test_build_with_docs() {
         .assert()
         .success();
 
-    assert!(site_dir
-        .join("dist/docs/getting-started.html")
-        .exists());
+    assert!(site_dir.join("dist/docs/getting-started.html").exists());
 }
 
 #[test]
@@ -235,9 +225,7 @@ fn test_nested_docs() {
         .assert()
         .success();
 
-    assert!(site_dir
-        .join("dist/docs/guides/setup.html")
-        .exists());
+    assert!(site_dir.join("dist/docs/guides/setup.html").exists());
 }
 
 // --- new command ---
@@ -473,13 +461,11 @@ fn test_build_homepage_without_index_page() {
 
 // --- multi-language (i18n) ---
 
-/// Helper: add `[languages.es]` to a site's page.toml
+/// Helper: add `[languages.es]` to a site's seite.toml
 fn add_language(site_dir: &std::path::Path, lang: &str, title: &str) {
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&toml_path).unwrap();
-    config.push_str(&format!(
-        "\n[languages.{lang}]\ntitle = \"{title}\"\n"
-    ));
+    config.push_str(&format!("\n[languages.{lang}]\ntitle = \"{title}\"\n"));
     fs::write(&toml_path, config).unwrap();
 }
 
@@ -722,8 +708,14 @@ fn test_theme_apply_brutalist() {
         .assert()
         .success();
     let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
-    assert!(base.contains("fffef0"), "brutalist theme should have cream background");
-    assert!(base.contains("ffe600"), "brutalist theme should have yellow accent");
+    assert!(
+        base.contains("fffef0"),
+        "brutalist theme should have cream background"
+    );
+    assert!(
+        base.contains("ffe600"),
+        "brutalist theme should have yellow accent"
+    );
 }
 
 #[test]
@@ -737,8 +729,14 @@ fn test_theme_apply_bento() {
         .assert()
         .success();
     let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
-    assert!(base.contains("border-radius: 20px"), "bento theme should have rounded cards");
-    assert!(base.contains("5046e5"), "bento theme should have indigo accent");
+    assert!(
+        base.contains("border-radius: 20px"),
+        "bento theme should have rounded cards"
+    );
+    assert!(
+        base.contains("5046e5"),
+        "bento theme should have indigo accent"
+    );
 }
 
 #[test]
@@ -752,13 +750,19 @@ fn test_theme_apply_dark_revised() {
         .assert()
         .success();
     let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
-    assert!(base.contains("0a0a0a"), "dark theme should use true black background");
-    assert!(base.contains("8b5cf6"), "dark theme should use violet accent");
+    assert!(
+        base.contains("0a0a0a"),
+        "dark theme should use true black background"
+    );
+    assert!(
+        base.contains("8b5cf6"),
+        "dark theme should use violet accent"
+    );
 }
 
 #[test]
 fn test_theme_create_requires_page_toml() {
-    // `page theme create` without a page.toml in the directory should fail gracefully
+    // `seite theme create` without a seite.toml in the directory should fail gracefully
     let tmp = TempDir::new().unwrap();
     page_cmd()
         .args(["theme", "create", "dark glassmorphism"])
@@ -806,7 +810,10 @@ fn test_theme_apply_installed() {
 
     // Verify base.html was updated
     let base = std::fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
-    assert!(base.contains("custom-test-marker"), "installed theme should be applied");
+    assert!(
+        base.contains("custom-test-marker"),
+        "installed theme should be applied"
+    );
 }
 
 #[test]
@@ -837,18 +844,28 @@ fn test_theme_export() {
 
     // Export it
     page_cmd()
-        .args(["theme", "export", "my-dark", "--description", "My custom dark theme"])
+        .args([
+            "theme",
+            "export",
+            "my-dark",
+            "--description",
+            "My custom dark theme",
+        ])
         .current_dir(&site_dir)
         .assert()
         .success()
         .stdout(predicate::str::contains("Exported theme 'my-dark'"));
 
     // Verify the exported file exists and has metadata
-    let exported = std::fs::read_to_string(
-        site_dir.join("templates/themes/my-dark.tera"),
-    ).unwrap();
-    assert!(exported.contains("theme-description: My custom dark theme"), "exported theme should have description");
-    assert!(exported.contains("0a0a0a"), "exported theme should contain dark theme content");
+    let exported = std::fs::read_to_string(site_dir.join("templates/themes/my-dark.tera")).unwrap();
+    assert!(
+        exported.contains("theme-description: My custom dark theme"),
+        "exported theme should have description"
+    );
+    assert!(
+        exported.contains("0a0a0a"),
+        "exported theme should contain dark theme content"
+    );
 }
 
 #[test]
@@ -919,7 +936,8 @@ fn test_theme_list_shows_installed() {
     std::fs::write(
         themes_dir.join("my-custom.tera"),
         "{#- theme-description: A custom community theme -#}\n<!DOCTYPE html><html></html>",
-    ).unwrap();
+    )
+    .unwrap();
 
     page_cmd()
         .args(["theme", "list"])
@@ -960,7 +978,10 @@ fn test_build_generates_search_index() {
         .iter()
         .map(|e| e["title"].as_str().unwrap_or(""))
         .collect();
-    assert!(titles.contains(&"Hello World"), "expected Hello World in search index");
+    assert!(
+        titles.contains(&"Hello World"),
+        "expected Hello World in search index"
+    );
 }
 
 #[test]
@@ -996,13 +1017,8 @@ fn test_build_search_index_excludes_drafts() {
     let site_dir = tmp.path().join("site");
 
     // Create a draft post
-    let draft =
-        "---\ntitle: Secret Draft\ndate: 2025-01-01\ndraft: true\n---\n\nNot published.\n";
-    fs::write(
-        site_dir.join("content/posts/2025-01-01-secret.md"),
-        draft,
-    )
-    .unwrap();
+    let draft = "---\ntitle: Secret Draft\ndate: 2025-01-01\ndraft: true\n---\n\nNot published.\n";
+    fs::write(site_dir.join("content/posts/2025-01-01-secret.md"), draft).unwrap();
 
     page_cmd()
         .arg("build")
@@ -1055,9 +1071,9 @@ fn test_build_search_index_multilingual() {
 
 // --- pagination ---
 
-/// Helper: add `paginate = N` to the [[collections]] entry for `collection_name` in page.toml.
+/// Helper: add `paginate = N` to the [[collections]] entry for `collection_name` in seite.toml.
 fn add_pagination(site_dir: &std::path::Path, collection_name: &str, page_size: usize) {
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     // Append paginate to the matching collection block by rewriting the file.
     // Simple approach: find the collection section and append paginate after its last field.
@@ -1070,9 +1086,7 @@ fn add_pagination(site_dir: &std::path::Path, collection_name: &str, page_size: 
 
 /// Helper: create a dated post file in a site's posts directory.
 fn create_post(site_dir: &std::path::Path, date: &str, slug: &str, title: &str) {
-    let content = format!(
-        "---\ntitle: \"{title}\"\ndate: {date}\n---\n\nContent of {title}.\n"
-    );
+    let content = format!("---\ntitle: \"{title}\"\ndate: {date}\n---\n\nContent of {title}.\n");
     fs::write(
         site_dir.join(format!("content/posts/{date}-{slug}.md")),
         content,
@@ -1088,7 +1102,12 @@ fn test_build_pagination_generates_pages() {
 
     // Create 5 posts with paginate = 2 → 3 pages (2, 2, 1 items)
     for i in 1..=5 {
-        create_post(&site_dir, &format!("2025-01-{:02}", i), &format!("post-{i}"), &format!("Post {i}"));
+        create_post(
+            &site_dir,
+            &format!("2025-01-{:02}", i),
+            &format!("post-{i}"),
+            &format!("Post {i}"),
+        );
     }
     add_pagination(&site_dir, "posts", 2);
 
@@ -1115,7 +1134,12 @@ fn test_build_pagination_context_in_html() {
     let site_dir = tmp.path().join("site");
 
     for i in 1..=4 {
-        create_post(&site_dir, &format!("2025-02-{:02}", i), &format!("post-{i}"), &format!("Post {i}"));
+        create_post(
+            &site_dir,
+            &format!("2025-02-{:02}", i),
+            &format!("post-{i}"),
+            &format!("Post {i}"),
+        );
     }
     add_pagination(&site_dir, "posts", 2);
 
@@ -1132,9 +1156,15 @@ fn test_build_pagination_context_in_html() {
         page2.contains("&#x2F;posts&#x2F;") || page2.contains("/posts/"),
         "page 2 should link back to page 1"
     );
-    assert!(page2.contains("Page 2 of"), "page 2 should show page count in pagination nav");
+    assert!(
+        page2.contains("Page 2 of"),
+        "page 2 should show page count in pagination nav"
+    );
     // Page 2 is not the last page (init creates a hello-world post, so 5 total → 3 pages)
-    assert!(page2.contains("class=\"pagination\""), "page 2 should have pagination nav");
+    assert!(
+        page2.contains("class=\"pagination\""),
+        "page 2 should have pagination nav"
+    );
 }
 
 #[test]
@@ -1144,7 +1174,12 @@ fn test_build_no_pagination_without_config() {
     let site_dir = tmp.path().join("site");
 
     for i in 1..=5 {
-        create_post(&site_dir, &format!("2025-03-{:02}", i), &format!("post-{i}"), &format!("Post {i}"));
+        create_post(
+            &site_dir,
+            &format!("2025-03-{:02}", i),
+            &format!("post-{i}"),
+            &format!("Post {i}"),
+        );
     }
     // No add_pagination call
 
@@ -1166,14 +1201,11 @@ fn write_static_css(site_dir: &std::path::Path, name: &str, content: &str) {
     fs::write(site_dir.join("static").join(name), content).unwrap();
 }
 
-/// Helper: append lines to page.toml [build] section.
+/// Helper: append lines to seite.toml [build] section.
 fn set_build_option(site_dir: &std::path::Path, key: &str, value: &str) {
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&toml_path).unwrap();
-    config = config.replace(
-        "[build]",
-        &format!("[build]\n{key} = {value}"),
-    );
+    config = config.replace("[build]", &format!("[build]\n{key} = {value}"));
     fs::write(&toml_path, config).unwrap();
 }
 
@@ -1197,9 +1229,18 @@ fn test_build_minify_css() {
         .success();
 
     let css = fs::read_to_string(site_dir.join("dist/static/style.css")).unwrap();
-    assert!(!css.contains("/* header"), "minified CSS should not contain comments");
-    assert!(!css.contains("    "), "minified CSS should not have indentation");
-    assert!(css.contains("color:red"), "minified CSS should collapse whitespace around colon");
+    assert!(
+        !css.contains("/* header"),
+        "minified CSS should not contain comments"
+    );
+    assert!(
+        !css.contains("    "),
+        "minified CSS should not have indentation"
+    );
+    assert!(
+        css.contains("color:red"),
+        "minified CSS should collapse whitespace around colon"
+    );
 }
 
 #[test]
@@ -1219,20 +1260,27 @@ fn test_build_fingerprint_writes_manifest() {
 
     // Manifest must exist
     let manifest_path = site_dir.join("dist/asset-manifest.json");
-    assert!(manifest_path.exists(), "asset-manifest.json should be generated");
+    assert!(
+        manifest_path.exists(),
+        "asset-manifest.json should be generated"
+    );
     let manifest = fs::read_to_string(&manifest_path).unwrap();
-    assert!(manifest.contains("/static/main.css"), "manifest should map original path");
+    assert!(
+        manifest.contains("/static/main.css"),
+        "manifest should map original path"
+    );
     // Fingerprinted file should exist alongside original
     let dist_static = site_dir.join("dist/static");
-    let has_fingerprinted = fs::read_dir(&dist_static)
-        .unwrap()
-        .any(|e| {
-            e.ok()
-                .and_then(|e| e.file_name().into_string().ok())
-                .map(|n| n.starts_with("main.") && n.ends_with(".css") && n != "main.css")
-                .unwrap_or(false)
-        });
-    assert!(has_fingerprinted, "fingerprinted CSS file should exist in dist/static");
+    let has_fingerprinted = fs::read_dir(&dist_static).unwrap().any(|e| {
+        e.ok()
+            .and_then(|e| e.file_name().into_string().ok())
+            .map(|n| n.starts_with("main.") && n.ends_with(".css") && n != "main.css")
+            .unwrap_or(false)
+    });
+    assert!(
+        has_fingerprinted,
+        "fingerprinted CSS file should exist in dist/static"
+    );
 }
 
 #[test]
@@ -1252,7 +1300,10 @@ fn test_build_no_minify_by_default() {
         .success();
 
     let css = fs::read_to_string(site_dir.join("dist/static/style.css")).unwrap();
-    assert!(css.contains("/* keep"), "CSS should be unmodified when minify is false");
+    assert!(
+        css.contains("/* keep"),
+        "CSS should be unmodified when minify is false"
+    );
 }
 
 // --- deploy improvements ---
@@ -1338,12 +1389,15 @@ fn test_init_github_pages_creates_workflow() {
         .success();
 
     let workflow = tmp.path().join("mysite/.github/workflows/deploy.yml");
-    assert!(workflow.exists(), "GitHub Actions workflow should be created");
+    assert!(
+        workflow.exists(),
+        "GitHub Actions workflow should be created"
+    );
 
     let content = fs::read_to_string(&workflow).unwrap();
     assert!(content.contains("Deploy to GitHub Pages"));
     assert!(content.contains("deploy-pages"));
-    assert!(content.contains("page build"));
+    assert!(content.contains("seite build"));
 }
 
 #[test]
@@ -1394,15 +1448,18 @@ fn test_init_netlify_target() {
         .assert()
         .success();
 
-    let config = fs::read_to_string(tmp.path().join("mysite/page.toml")).unwrap();
-    assert!(config.contains("netlify"), "config should contain netlify deploy target");
+    let config = fs::read_to_string(tmp.path().join("mysite/seite.toml")).unwrap();
+    assert!(
+        config.contains("netlify"),
+        "config should contain netlify deploy target"
+    );
 
     // Should generate netlify.toml
     let netlify_toml = tmp.path().join("mysite/netlify.toml");
     assert!(netlify_toml.exists());
     let content = fs::read_to_string(&netlify_toml).unwrap();
     assert!(content.contains("[build]"));
-    assert!(content.contains("page build"));
+    assert!(content.contains("seite build"));
 
     // Should also generate GitHub Actions workflow
     let workflow_path = tmp.path().join("mysite/.github/workflows/deploy.yml");
@@ -1455,7 +1512,9 @@ fn test_deploy_dry_run_with_base_url_override() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Base URL override: https://example.com"));
+        .stdout(predicate::str::contains(
+            "Base URL override: https://example.com",
+        ));
 }
 
 #[test]
@@ -1480,7 +1539,7 @@ fn test_deploy_dry_run_github_pages_shows_nojekyll() {
     let site_dir = tmp.path().join("site");
 
     // Update base_url to a custom domain
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&config_path).unwrap();
     let config = config.replace("http://localhost:3000", "https://myblog.com");
     fs::write(&config_path, config).unwrap();
@@ -1510,8 +1569,8 @@ fn test_deploy_domain_updates_base_url() {
         .stdout(predicate::str::contains("Updated base_url"))
         .stdout(predicate::str::contains("myblog.com"));
 
-    // Verify page.toml was updated
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    // Verify seite.toml was updated
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     assert!(config.contains("https://myblog.com"));
 }
 
@@ -1553,7 +1612,7 @@ fn test_deploy_dry_run_cloudflare_shows_auth_check() {
     let site_dir = tmp.path().join("site");
 
     // Update config to target cloudflare
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     let config = config.replace(
         "target = \"github-pages\"",
@@ -1576,7 +1635,7 @@ fn test_deploy_dry_run_netlify_shows_auth_check() {
     let site_dir = tmp.path().join("site");
 
     // Update config to target netlify
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
     fs::write(&toml_path, config).unwrap();
@@ -1595,7 +1654,7 @@ fn test_deploy_dry_run_netlify_shows_site_check() {
     init_site(&tmp, "site", "Netlify Site Test", "posts");
     let site_dir = tmp.path().join("site");
 
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
     fs::write(&toml_path, config).unwrap();
@@ -1615,7 +1674,7 @@ fn test_deploy_dry_run_cloudflare_shows_project_check() {
     init_site(&tmp, "site", "CF Project Test", "posts");
     let site_dir = tmp.path().join("site");
 
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     let config = config.replace(
         "target = \"github-pages\"",
@@ -1643,9 +1702,9 @@ fn write_test_image(site_dir: &std::path::Path, name: &str) {
     img.save(img_dir.join(name)).unwrap();
 }
 
-/// Helper: set [images] section in page.toml (replaces existing if present).
+/// Helper: set [images] section in seite.toml (replaces existing if present).
 fn set_images_config(site_dir: &std::path::Path, widths: &str) {
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&toml_path).unwrap();
     // Remove existing [images] section if present
     if let Some(pos) = config.find("\n[images]") {
@@ -1769,10 +1828,7 @@ fn test_build_image_picture_element_webp() {
         html.contains("<picture>"),
         "should wrap in <picture> element for WebP"
     );
-    assert!(
-        html.contains("image/webp"),
-        "should have WebP source type"
-    );
+    assert!(html.contains("image/webp"), "should have WebP source type");
     assert!(
         html.contains("</picture>"),
         "should close <picture> element"
@@ -1810,7 +1866,7 @@ fn test_build_no_image_processing_without_config() {
     let site_dir = tmp.path().join("site");
 
     // Remove the [images] section so image processing is truly disabled
-    let toml_path = site_dir.join("page.toml");
+    let toml_path = site_dir.join("seite.toml");
     let config = fs::read_to_string(&toml_path).unwrap();
     if let Some(pos) = config.find("\n[images]") {
         fs::write(&toml_path, &config[..pos]).unwrap();
@@ -1841,10 +1897,7 @@ fn test_build_reading_time_in_html() {
 
     // Write a post with a known word count (~300 words → 2 min read at 238 WPM)
     let words: String = (0..300).map(|i| format!("word{i} ")).collect();
-    let content = format!(
-        "---\ntitle: Reading Test\ndate: 2025-01-15\n---\n{}",
-        words
-    );
+    let content = format!("---\ntitle: Reading Test\ndate: 2025-01-15\n---\n{}", words);
     fs::write(
         site_dir.join("content/posts/2025-01-15-reading-test.md"),
         content,
@@ -1872,10 +1925,7 @@ fn test_build_reading_time_in_index() {
     let site_dir = tmp.path().join("rtidx");
 
     let words: String = (0..500).map(|i| format!("word{i} ")).collect();
-    let content = format!(
-        "---\ntitle: Long Post\ndate: 2025-01-15\n---\n{}",
-        words
-    );
+    let content = format!("---\ntitle: Long Post\ndate: 2025-01-15\n---\n{}", words);
     fs::write(
         site_dir.join("content/posts/2025-01-15-long-post.md"),
         content,
@@ -1919,7 +1969,10 @@ fn test_build_excerpt_more_marker() {
 
     let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
     // Index should show the excerpt (intro before <!-- more -->)
-    assert!(index.contains("This is the intro."), "excerpt should appear in index");
+    assert!(
+        index.contains("This is the intro."),
+        "excerpt should appear in index"
+    );
     assert!(
         !index.contains("This is after the fold."),
         "content after more marker should not be in excerpt"
@@ -2017,11 +2070,7 @@ fn test_build_toc_headings_have_ids() {
     let site_dir = tmp.path().join("tocsite1");
 
     let content = "---\ntitle: My Doc\n---\n## Introduction\n\nSome text.\n\n### Details\n\nMore text.\n\n## Conclusion\n\nEnd.";
-    fs::write(
-        site_dir.join("content/docs/my-doc.md"),
-        content,
-    )
-    .unwrap();
+    fs::write(site_dir.join("content/docs/my-doc.md"), content).unwrap();
 
     page_cmd()
         .args(["build"])
@@ -2043,11 +2092,7 @@ fn test_build_toc_in_doc_template() {
 
     // Doc with multiple headings should get a ToC nav
     let content = "---\ntitle: Guide\n---\n## Step 1\n\nDo this.\n\n## Step 2\n\nDo that.\n\n## Step 3\n\nDone.";
-    fs::write(
-        site_dir.join("content/docs/guide.md"),
-        content,
-    )
-    .unwrap();
+    fs::write(site_dir.join("content/docs/guide.md"), content).unwrap();
 
     page_cmd()
         .args(["build"])
@@ -2058,7 +2103,10 @@ fn test_build_toc_in_doc_template() {
     let html = fs::read_to_string(site_dir.join("dist/docs/guide.html")).unwrap();
     // Default doc template should show ToC when > 1 heading
     assert!(html.contains("toc"), "doc should contain toc class");
-    assert!(html.contains("Contents"), "doc should contain Contents heading");
+    assert!(
+        html.contains("Contents"),
+        "doc should contain Contents heading"
+    );
     assert!(html.contains("step-1"), "toc should link to step-1");
     assert!(html.contains("step-2"), "toc should link to step-2");
     assert!(html.contains("step-3"), "toc should link to step-3");
@@ -2102,14 +2150,26 @@ fn test_build_generates_tag_pages() {
     let rust_tag = site_dir.join("dist/tags/rust/index.html");
     assert!(rust_tag.exists(), "rust tag page should exist");
     let rust_html = fs::read_to_string(&rust_tag).unwrap();
-    assert!(rust_html.contains("Alpha Post"), "rust tag should list Alpha Post");
-    assert!(rust_html.contains("Beta Post"), "rust tag should list Beta Post");
+    assert!(
+        rust_html.contains("Alpha Post"),
+        "rust tag should list Alpha Post"
+    );
+    assert!(
+        rust_html.contains("Beta Post"),
+        "rust tag should list Beta Post"
+    );
 
     let web_tag = site_dir.join("dist/tags/web/index.html");
     assert!(web_tag.exists(), "web tag page should exist");
     let web_html = fs::read_to_string(&web_tag).unwrap();
-    assert!(web_html.contains("Alpha Post"), "web tag should list Alpha Post");
-    assert!(!web_html.contains("Beta Post"), "web tag should NOT list Beta Post");
+    assert!(
+        web_html.contains("Alpha Post"),
+        "web tag should list Alpha Post"
+    );
+    assert!(
+        !web_html.contains("Beta Post"),
+        "web tag should NOT list Beta Post"
+    );
 
     let cli_tag = site_dir.join("dist/tags/cli/index.html");
     assert!(cli_tag.exists(), "cli tag page should exist");
@@ -2137,12 +2197,21 @@ fn test_build_tag_index_page() {
     // Should show tag counts
     assert!(tags_html.contains("(1)"), "tag count should be shown");
     // Should link to tag pages (Tera auto-escapes / as &#x2F;)
-    assert!(tags_html.contains("tags") && tags_html.contains("alpha"), "should link to alpha tag page");
-    assert!(tags_html.contains("tags") && tags_html.contains("beta"), "should link to beta tag page");
+    assert!(
+        tags_html.contains("tags") && tags_html.contains("alpha"),
+        "should link to alpha tag page"
+    );
+    assert!(
+        tags_html.contains("tags") && tags_html.contains("beta"),
+        "should link to beta tag page"
+    );
 
     // Sitemap should include tag URLs
     let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
-    assert!(sitemap.contains("/tags/"), "sitemap should include tag page URLs");
+    assert!(
+        sitemap.contains("/tags/"),
+        "sitemap should include tag page URLs"
+    );
 }
 
 #[test]
@@ -2152,9 +2221,9 @@ fn test_build_tag_pages_multilingual() {
     let site_dir = tmp.path().join("taglang");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"Tag Lang ES\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // English post with tag
     fs::write(
@@ -2192,8 +2261,14 @@ fn test_build_tag_pages_multilingual() {
     );
     // English tag should NOT contain Spanish items
     let en_html = fs::read_to_string(site_dir.join("dist/tags/greetings/index.html")).unwrap();
-    assert!(en_html.contains("Hello"), "English tag page should have English post");
-    assert!(!en_html.contains("Hola"), "English tag page should NOT have Spanish post");
+    assert!(
+        en_html.contains("Hello"),
+        "English tag page should have English post"
+    );
+    assert!(
+        !en_html.contains("Hola"),
+        "English tag page should NOT have Spanish post"
+    );
 }
 
 // --- custom templates and extra frontmatter ---
@@ -2236,9 +2311,15 @@ fn test_build_extra_frontmatter_in_template() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/posts/custom.html")).unwrap();
-    assert!(html.contains("hero"), "should render hero div from extra.hero_color");
+    assert!(
+        html.contains("hero"),
+        "should render hero div from extra.hero_color"
+    );
     assert!(html.contains("#ff6600"), "should include hero_color value");
-    assert!(html.contains("featured-badge"), "should render featured badge from extra.featured");
+    assert!(
+        html.contains("featured-badge"),
+        "should render featured badge from extra.featured"
+    );
 }
 
 #[test]
@@ -2277,9 +2358,15 @@ fn test_build_custom_template_with_blocks() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/posts/block-test.html")).unwrap();
-    assert!(html.contains("custom-style"), "should include extra_css block");
+    assert!(
+        html.contains("custom-style"),
+        "should include extra_css block"
+    );
     assert!(html.contains("custom-meta"), "should include head block");
-    assert!(html.contains("custom-footer"), "should include footer block");
+    assert!(
+        html.contains("custom-footer"),
+        "should include footer block"
+    );
     assert!(html.contains("custom js"), "should include extra_js block");
 }
 
@@ -2349,8 +2436,14 @@ fn test_build_accessibility_skip_link() {
 
     let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
     assert!(html.contains("skip-link"), "should have skip link class");
-    assert!(html.contains("Skip to main content"), "should have skip link text");
-    assert!(html.contains("id=\"main\""), "main element should have id=\"main\"");
+    assert!(
+        html.contains("Skip to main content"),
+        "should have skip link text"
+    );
+    assert!(
+        html.contains("id=\"main\""),
+        "main element should have id=\"main\""
+    );
 }
 
 #[test]
@@ -2366,9 +2459,18 @@ fn test_build_accessibility_aria_search() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(html.contains("role=\"search\""), "search form should have role=search");
-    assert!(html.contains("aria-label"), "search input should have aria-label");
-    assert!(html.contains("aria-live=\"polite\""), "search results should have aria-live");
+    assert!(
+        html.contains("role=\"search\""),
+        "search form should have role=search"
+    );
+    assert!(
+        html.contains("aria-label"),
+        "search input should have aria-label"
+    );
+    assert!(
+        html.contains("aria-live=\"polite\""),
+        "search results should have aria-live"
+    );
 }
 
 // --- edge case tests ---
@@ -2413,7 +2515,10 @@ fn test_build_empty_content_body() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/posts/empty.html")).unwrap();
-    assert!(html.contains("Empty Body Post"), "should render title even with empty body");
+    assert!(
+        html.contains("Empty Body Post"),
+        "should render title even with empty body"
+    );
 }
 
 #[test]
@@ -2464,8 +2569,14 @@ fn test_build_custom_template_override() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(html.contains("custom-index"), "should use custom index template");
-    assert!(html.contains("Custom index content"), "should render custom template content");
+    assert!(
+        html.contains("custom-index"),
+        "should use custom index template"
+    );
+    assert!(
+        html.contains("Custom index content"),
+        "should render custom template content"
+    );
 }
 
 #[test]
@@ -2489,8 +2600,14 @@ fn test_build_markdown_output_matches_source() {
 
     // The .md output should contain the original markdown body
     let md_output = fs::read_to_string(site_dir.join("dist/posts/source.md")).unwrap();
-    assert!(md_output.contains("**original** markdown content"), "md output should preserve original markdown");
-    assert!(md_output.contains("- Item 1"), "md output should preserve list items");
+    assert!(
+        md_output.contains("**original** markdown content"),
+        "md output should preserve original markdown"
+    );
+    assert!(
+        md_output.contains("- Item 1"),
+        "md output should preserve list items"
+    );
 }
 
 #[test]
@@ -2919,8 +3036,14 @@ fn test_build_with_yaml_data_file() {
         .stdout(predicate::str::contains("data files loaded"));
 
     let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(index_html.contains("Alice"), "YAML data should be rendered in template");
-    assert!(index_html.contains("Bob"), "YAML data should be rendered in template");
+    assert!(
+        index_html.contains("Alice"),
+        "YAML data should be rendered in template"
+    );
+    assert!(
+        index_html.contains("Bob"),
+        "YAML data should be rendered in template"
+    );
 }
 
 #[test]
@@ -2952,7 +3075,10 @@ fn test_build_with_json_data_file() {
         .success();
 
     let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(index_html.contains("GitHub"), "JSON data should be rendered in template");
+    assert!(
+        index_html.contains("GitHub"),
+        "JSON data should be rendered in template"
+    );
 }
 
 #[test]
@@ -3019,8 +3145,14 @@ fn test_build_with_nested_data_files() {
         .success();
 
     let index_html = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(index_html.contains("Home"), "Nested data.menus.main should work");
-    assert!(index_html.contains("About"), "Nested data.menus.main should work");
+    assert!(
+        index_html.contains("Home"),
+        "Nested data.menus.main should work"
+    );
+    assert!(
+        index_html.contains("About"),
+        "Nested data.menus.main should work"
+    );
 }
 
 #[test]
@@ -3031,11 +3163,7 @@ fn test_build_data_conflict_errors() {
 
     fs::create_dir_all(site_dir.join("data")).unwrap();
     fs::write(site_dir.join("data/authors.yaml"), "- name: Alice\n").unwrap();
-    fs::write(
-        site_dir.join("data/authors.json"),
-        r#"[{"name": "Bob"}]"#,
-    )
-    .unwrap();
+    fs::write(site_dir.join("data/authors.json"), r#"[{"name": "Bob"}]"#).unwrap();
 
     page_cmd()
         .arg("build")
@@ -3143,7 +3271,10 @@ fn test_init_creates_data_directory() {
     init_site(&tmp, "site", "Init Data Dir", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    assert!(site_dir.join("data").exists(), "init should create data/ directory");
+    assert!(
+        site_dir.join("data").exists(),
+        "init should create data/ directory"
+    );
     assert!(site_dir.join("data").is_dir());
 }
 
@@ -3177,7 +3308,10 @@ fn test_build_data_nav_in_theme() {
         index_html.contains("/posts") || index_html.contains("&#x2F;posts"),
         "Nav should contain link URLs"
     );
-    assert!(index_html.contains("Blog"), "Nav should contain link titles");
+    assert!(
+        index_html.contains("Blog"),
+        "Nav should contain link titles"
+    );
 }
 
 #[test]
@@ -3205,7 +3339,10 @@ fn test_build_data_footer_in_theme() {
         index_html.contains("Footer navigation"),
         "Theme should render data.footer with aria-label"
     );
-    assert!(index_html.contains("GitHub"), "Footer should contain link title");
+    assert!(
+        index_html.contains("GitHub"),
+        "Footer should contain link title"
+    );
     assert!(
         index_html.contains("2026 Test Corp"),
         "Footer should use custom copyright"
@@ -3258,7 +3395,9 @@ fn test_build_docs_sorted_by_weight() {
     assert!(
         pos_zebra < pos_middle && pos_middle < pos_alpha,
         "Docs should be sorted by weight: Zebra(1) < Middle(2) < Alpha(3), got positions: {} {} {}",
-        pos_zebra, pos_middle, pos_alpha
+        pos_zebra,
+        pos_middle,
+        pos_alpha
     );
 }
 
@@ -3307,14 +3446,19 @@ fn test_build_docs_weight_mixed_with_unweighted() {
     let html = fs::read_to_string(site_dir.join("dist/docs/first.html")).unwrap();
     let pos_first = html.find(">First<").expect("First should be in sidebar");
     let pos_second = html.find(">Second<").expect("Second should be in sidebar");
-    let pos_alpha = html.find(">Alpha Unweighted<").expect("Alpha Unweighted should be in sidebar");
+    let pos_alpha = html
+        .find(">Alpha Unweighted<")
+        .expect("Alpha Unweighted should be in sidebar");
     let pos_bravo = html.find(">Bravo<").expect("Bravo should be in sidebar");
 
     // Weighted items first (by weight), then unweighted (alphabetically)
     assert!(
         pos_first < pos_second && pos_second < pos_alpha && pos_alpha < pos_bravo,
         "Expected: First(w1) < Second(w2) < Alpha Unweighted(none) < Bravo(none), got: {} {} {} {}",
-        pos_first, pos_second, pos_alpha, pos_bravo
+        pos_first,
+        pos_second,
+        pos_alpha,
+        pos_bravo
     );
 }
 
@@ -3326,9 +3470,12 @@ fn test_init_creates_page_meta() {
     init_site(&tmp, "site", "Meta Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // .page/config.json should exist
-    let meta_path = site_dir.join(".page/config.json");
-    assert!(meta_path.exists(), ".page/config.json should be created by init");
+    // .seite/config.json should exist
+    let meta_path = site_dir.join(".seite/config.json");
+    assert!(
+        meta_path.exists(),
+        ".seite/config.json should be created by init"
+    );
 
     let content = fs::read_to_string(&meta_path).unwrap();
     let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -3355,19 +3502,21 @@ fn test_init_creates_mcp_server_config() {
     let content = fs::read_to_string(&settings_path).unwrap();
     let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
 
-    // Should have mcpServers.page
+    // Should have mcpServers.seite
     assert!(
-        settings.pointer("/mcpServers/page").is_some(),
-        "settings should include mcpServers.page"
-    );
-    assert_eq!(
-        settings.pointer("/mcpServers/page/command").and_then(|v| v.as_str()),
-        Some("page"),
-        "MCP command should be 'page'"
+        settings.pointer("/mcpServers/seite").is_some(),
+        "settings should include mcpServers.seite"
     );
     assert_eq!(
         settings
-            .pointer("/mcpServers/page/args")
+            .pointer("/mcpServers/seite/command")
+            .and_then(|v| v.as_str()),
+        Some("seite"),
+        "MCP command should be 'seite'"
+    );
+    assert_eq!(
+        settings
+            .pointer("/mcpServers/seite/args")
             .and_then(|v| v.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
         Some(vec!["mcp"]),
@@ -3397,7 +3546,7 @@ fn test_upgrade_adds_mcp_to_existing_project() {
     let site_dir = tmp.path().join("site");
 
     // Simulate a pre-MCP project by removing the MCP config and version stamp
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     // Write a .claude/settings.json WITHOUT mcpServers
     fs::write(
@@ -3424,8 +3573,8 @@ fn test_upgrade_adds_mcp_to_existing_project() {
     let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
     let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
     assert!(
-        settings.pointer("/mcpServers/page").is_some(),
-        "upgrade should add mcpServers.page"
+        settings.pointer("/mcpServers/seite").is_some(),
+        "upgrade should add mcpServers.seite"
     );
 
     // Verify existing permissions were preserved
@@ -3438,10 +3587,10 @@ fn test_upgrade_adds_mcp_to_existing_project() {
         "upgrade should preserve existing permissions"
     );
 
-    // Verify .page/config.json was created
+    // Verify .seite/config.json was created
     assert!(
-        site_dir.join(".page/config.json").exists(),
-        "upgrade should create .page/config.json"
+        site_dir.join(".seite/config.json").exists(),
+        "upgrade should create .seite/config.json"
     );
 }
 
@@ -3463,11 +3612,11 @@ fn test_upgrade_appends_mcp_section_to_claude_md() {
     );
 
     // Simulate an older CLAUDE.md that doesn't have the MCP section
-    let older_md = "# My Site\n\n## Commands\n\n```bash\npage build\n```\n";
+    let older_md = "# My Site\n\n## Commands\n\n```bash\nseite build\n```\n";
     fs::write(site_dir.join("CLAUDE.md"), older_md).unwrap();
 
     // Remove version stamp to trigger upgrade
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     page_cmd()
         .args(["upgrade", "--force"])
@@ -3494,7 +3643,7 @@ fn test_upgrade_check_mode_exits_nonzero() {
     let site_dir = tmp.path().join("site");
 
     // Remove version stamp to make it look outdated
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     page_cmd()
         .args(["upgrade", "--check"])
@@ -3524,7 +3673,7 @@ fn test_upgrade_preserves_existing_mcp_servers() {
     let site_dir = tmp.path().join("site");
 
     // Remove version stamp to trigger upgrade
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     // Write settings with a DIFFERENT MCP server (e.g., user has their own)
     fs::write(
@@ -3553,8 +3702,8 @@ fn test_upgrade_preserves_existing_mcp_servers() {
 
     // Both MCP servers should exist
     assert!(
-        settings.pointer("/mcpServers/page").is_some(),
-        "upgrade should add page MCP server"
+        settings.pointer("/mcpServers/seite").is_some(),
+        "upgrade should add seite MCP server"
     );
     assert!(
         settings.pointer("/mcpServers/custom-server").is_some(),
@@ -3571,7 +3720,7 @@ fn test_upgrade_outside_project_fails() {
         .current_dir(tmp.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No page.toml"));
+        .stderr(predicate::str::contains("No seite.toml"));
 }
 
 #[test]
@@ -3580,15 +3729,15 @@ fn test_build_nudges_when_outdated() {
     init_site(&tmp, "site", "Nudge Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Remove .page/config.json to simulate pre-tracking project
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    // Remove .seite/config.json to simulate pre-tracking project
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     page_cmd()
         .args(["build"])
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("page upgrade"));
+        .stdout(predicate::str::contains("seite upgrade"));
 }
 
 #[test]
@@ -3603,7 +3752,7 @@ fn test_build_no_nudge_when_current() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("page upgrade").not());
+        .stdout(predicate::str::contains("seite upgrade").not());
 }
 
 #[test]
@@ -3613,7 +3762,7 @@ fn test_upgrade_idempotent() {
     let site_dir = tmp.path().join("site");
 
     // Remove version stamp so first upgrade does work
-    fs::remove_file(site_dir.join(".page/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
 
     // First upgrade
     page_cmd()
@@ -3652,7 +3801,7 @@ fn test_self_update_check_when_current() {
 
 /// Helper: send a single JSON-RPC message to `page mcp` and return the response.
 fn mcp_request(dir: &std::path::Path, messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
-    let bin = assert_cmd::cargo::cargo_bin("page");
+    let bin = assert_cmd::cargo::cargo_bin("seite");
     let mut child = std::process::Command::new(bin)
         .arg("mcp")
         .current_dir(dir)
@@ -3700,7 +3849,7 @@ fn test_mcp_initialize() {
     assert_eq!(resp["id"], 1);
     assert!(resp["error"].is_null());
     let result = &resp["result"];
-    assert_eq!(result["serverInfo"]["name"], "page");
+    assert_eq!(result["serverInfo"]["name"], "seite");
     assert!(result["capabilities"]["resources"].is_object());
     assert!(result["capabilities"]["tools"].is_object());
     assert_eq!(result["protocolVersion"], "2024-11-05");
@@ -3758,15 +3907,12 @@ fn test_mcp_tools_list() {
     assert_eq!(responses.len(), 1);
     let tools = responses[0]["result"]["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 5);
-    let names: Vec<&str> = tools
-        .iter()
-        .map(|t| t["name"].as_str().unwrap())
-        .collect();
-    assert!(names.contains(&"page_build"));
-    assert!(names.contains(&"page_create_content"));
-    assert!(names.contains(&"page_search"));
-    assert!(names.contains(&"page_apply_theme"));
-    assert!(names.contains(&"page_lookup_docs"));
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"seite_build"));
+    assert!(names.contains(&"seite_create_content"));
+    assert!(names.contains(&"seite_search"));
+    assert!(names.contains(&"seite_apply_theme"));
+    assert!(names.contains(&"seite_lookup_docs"));
 }
 
 #[test]
@@ -3786,9 +3932,9 @@ fn test_mcp_resources_list_without_project() {
     assert_eq!(responses.len(), 1);
     let resources = responses[0]["result"]["resources"].as_array().unwrap();
     // Should have docs index + individual doc pages, but no config/content/themes
-    assert!(resources.iter().any(|r| r["uri"] == "page://docs"));
-    assert!(!resources.iter().any(|r| r["uri"] == "page://config"));
-    assert!(!resources.iter().any(|r| r["uri"] == "page://themes"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://docs"));
+    assert!(!resources.iter().any(|r| r["uri"] == "seite://config"));
+    assert!(!resources.iter().any(|r| r["uri"] == "seite://themes"));
 }
 
 #[test]
@@ -3810,15 +3956,15 @@ fn test_mcp_resources_list_with_project() {
     assert_eq!(responses.len(), 1);
     let resources = responses[0]["result"]["resources"].as_array().unwrap();
     // Should have docs + site-specific resources
-    assert!(resources.iter().any(|r| r["uri"] == "page://docs"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://config"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://content"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://themes"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://mcp-config"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://docs"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://config"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://content"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://themes"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
     // Per-collection resources
-    assert!(resources.iter().any(|r| r["uri"] == "page://content/posts"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://content/docs"));
-    assert!(resources.iter().any(|r| r["uri"] == "page://content/pages"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://content/posts"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://content/docs"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://content/pages"));
 }
 
 #[test]
@@ -3830,7 +3976,7 @@ fn test_mcp_read_docs_index() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://docs" }
+            "params": { "uri": "seite://docs" }
         })],
     );
 
@@ -3838,7 +3984,7 @@ fn test_mcp_read_docs_index() {
     assert!(responses[0]["error"].is_null());
     let contents = responses[0]["result"]["contents"].as_array().unwrap();
     assert_eq!(contents.len(), 1);
-    assert_eq!(contents[0]["uri"], "page://docs");
+    assert_eq!(contents[0]["uri"], "seite://docs");
     // Parse the text — should be a JSON array of docs
     let text = contents[0]["text"].as_str().unwrap();
     let docs: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
@@ -3855,7 +4001,7 @@ fn test_mcp_read_doc_page() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://docs/configuration" }
+            "params": { "uri": "seite://docs/configuration" }
         })],
     );
 
@@ -3864,9 +4010,12 @@ fn test_mcp_read_doc_page() {
     let contents = responses[0]["result"]["contents"].as_array().unwrap();
     let text = contents[0]["text"].as_str().unwrap();
     // Should be markdown content without the leading frontmatter
-    assert!(text.contains("page.toml"));
+    assert!(text.contains("seite.toml"));
     // Body should not start with frontmatter delimiters
-    assert!(!text.starts_with("---\n"), "doc body should not start with frontmatter");
+    assert!(
+        !text.starts_with("---\n"),
+        "doc body should not start with frontmatter"
+    );
 }
 
 #[test]
@@ -3878,7 +4027,7 @@ fn test_mcp_read_unknown_resource() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://nonexistent" }
+            "params": { "uri": "seite://nonexistent" }
         })],
     );
 
@@ -3899,7 +4048,7 @@ fn test_mcp_read_config() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://config" }
+            "params": { "uri": "seite://config" }
         })],
     );
 
@@ -3923,7 +4072,7 @@ fn test_mcp_read_content_overview() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://content" }
+            "params": { "uri": "seite://content" }
         })],
     );
 
@@ -3948,7 +4097,7 @@ fn test_mcp_read_themes() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://themes" }
+            "params": { "uri": "seite://themes" }
         })],
     );
 
@@ -3974,7 +4123,7 @@ fn test_mcp_read_mcp_config() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://mcp-config" }
+            "params": { "uri": "seite://mcp-config" }
         })],
     );
 
@@ -3983,7 +4132,7 @@ fn test_mcp_read_mcp_config() {
     let contents = responses[0]["result"]["contents"].as_array().unwrap();
     let text = contents[0]["text"].as_str().unwrap();
     assert!(text.contains("mcpServers"));
-    assert!(text.contains("page"));
+    assert!(text.contains("seite"));
 }
 
 #[test]
@@ -3996,7 +4145,7 @@ fn test_mcp_tool_lookup_docs() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_lookup_docs",
+                "name": "seite_lookup_docs",
                 "arguments": { "topic": "configuration" }
             }
         })],
@@ -4021,7 +4170,7 @@ fn test_mcp_tool_lookup_docs_search() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_lookup_docs",
+                "name": "seite_lookup_docs",
                 "arguments": { "query": "deploy" }
             }
         })],
@@ -4048,7 +4197,7 @@ fn test_mcp_tool_build() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_build",
+                "name": "seite_build",
                 "arguments": {}
             }
         })],
@@ -4077,7 +4226,7 @@ fn test_mcp_tool_create_content() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_create_content",
+                "name": "seite_create_content",
                 "arguments": {
                     "collection": "docs",
                     "title": "MCP Test Doc",
@@ -4121,7 +4270,7 @@ fn test_mcp_tool_search() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_search",
+                "name": "seite_search",
                 "arguments": { "query": "rust" }
             }
         })],
@@ -4134,7 +4283,9 @@ fn test_mcp_tool_search() {
     let result: serde_json::Value = serde_json::from_str(text).unwrap();
     assert!(result["count"].as_u64().unwrap() >= 1);
     let results = result["results"].as_array().unwrap();
-    assert!(results.iter().any(|r| r["title"] == "Rust Programming Guide"));
+    assert!(results
+        .iter()
+        .any(|r| r["title"] == "Rust Programming Guide"));
 }
 
 #[test]
@@ -4150,7 +4301,7 @@ fn test_mcp_tool_apply_theme() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_apply_theme",
+                "name": "seite_apply_theme",
                 "arguments": { "name": "dark" }
             }
         })],
@@ -4226,7 +4377,7 @@ fn test_mcp_full_session() {
                 "id": 4,
                 "method": "tools/call",
                 "params": {
-                    "name": "page_lookup_docs",
+                    "name": "seite_lookup_docs",
                     "arguments": { "topic": "templates" }
                 }
             }),
@@ -4238,7 +4389,7 @@ fn test_mcp_full_session() {
 
     // initialize
     assert_eq!(responses[0]["id"], 1);
-    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "page");
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "seite");
 
     // tools/list
     assert_eq!(responses[1]["id"], 2);
@@ -4247,7 +4398,7 @@ fn test_mcp_full_session() {
     // resources/list
     assert_eq!(responses[2]["id"], 3);
     let resources = responses[2]["result"]["resources"].as_array().unwrap();
-    assert!(resources.iter().any(|r| r["uri"] == "page://config"));
+    assert!(resources.iter().any(|r| r["uri"] == "seite://config"));
 
     // tools/call (lookup docs)
     assert_eq!(responses[3]["id"], 4);
@@ -4262,7 +4413,7 @@ fn test_mcp_full_session() {
 fn test_mcp_parse_error() {
     // Send invalid JSON and verify we get a parse error response
     let tmp = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin("page");
+    let bin = assert_cmd::cargo::cargo_bin("seite");
     let mut child = std::process::Command::new(bin)
         .arg("mcp")
         .current_dir(tmp.path())
@@ -4291,7 +4442,7 @@ fn test_mcp_config_exposes_analytics() {
     let site_dir = tmp.path().join("mcpanalytics");
 
     // Add analytics config
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str(
         "\n[analytics]\nprovider = \"plausible\"\nid = \"example.com\"\ncookie_consent = true\n",
@@ -4304,7 +4455,7 @@ fn test_mcp_config_exposes_analytics() {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "resources/read",
-            "params": { "uri": "page://config" }
+            "params": { "uri": "seite://config" }
         })],
     );
 
@@ -4328,7 +4479,7 @@ fn test_mcp_docs_include_analytics() {
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "page_lookup_docs",
+                "name": "seite_lookup_docs",
                 "arguments": { "topic": "configuration" }
             }
         })],
@@ -4359,8 +4510,8 @@ fn test_build_with_google_analytics_direct() {
 
     let site_dir = tmp.path().join("site");
 
-    // Add [analytics] to page.toml
-    let config_path = site_dir.join("page.toml");
+    // Add [analytics] to seite.toml
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str("\n[analytics]\nprovider = \"google\"\nid = \"G-TEST12345\"\n");
     fs::write(&config_path, config).unwrap();
@@ -4400,7 +4551,7 @@ fn test_build_with_analytics_cookie_consent() {
     let site_dir = tmp.path().join("site");
 
     // Add [analytics] with cookie_consent = true
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str(
         "\n[analytics]\nprovider = \"google\"\nid = \"G-CONSENT1\"\ncookie_consent = true\n",
@@ -4449,7 +4600,7 @@ fn test_build_with_plausible_analytics() {
 
     let site_dir = tmp.path().join("site");
 
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str("\n[analytics]\nprovider = \"plausible\"\nid = \"example.com\"\n");
     fs::write(&config_path, config).unwrap();
@@ -4472,7 +4623,7 @@ fn test_build_with_gtm_has_noscript() {
 
     let site_dir = tmp.path().join("site");
 
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str("\n[analytics]\nprovider = \"gtm\"\nid = \"GTM-ABC123\"\n");
     fs::write(&config_path, config).unwrap();
@@ -4484,10 +4635,7 @@ fn test_build_with_gtm_has_noscript() {
         .success();
 
     let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
-    assert!(
-        index.contains("GTM-ABC123"),
-        "should contain GTM ID"
-    );
+    assert!(index.contains("GTM-ABC123"), "should contain GTM ID");
     assert!(
         index.contains("<noscript><iframe"),
         "GTM should include noscript fallback"
@@ -4521,7 +4669,7 @@ fn test_build_with_umami_custom_script_url() {
 
     let site_dir = tmp.path().join("site");
 
-    let config_path = site_dir.join("page.toml");
+    let config_path = site_dir.join("seite.toml");
     let mut config = fs::read_to_string(&config_path).unwrap();
     config.push_str(
         "\n[analytics]\nprovider = \"umami\"\nid = \"abc-def-123\"\nscript_url = \"https://stats.example.com/script.js\"\n",
@@ -4561,8 +4709,8 @@ fn test_init_with_changelog_collection() {
     assert!(content.contains("tags:"));
     assert!(content.contains("new"));
 
-    // Verify page.toml has changelog collection
-    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    // Verify seite.toml has changelog collection
+    let config = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config.contains("name = \"changelog\""));
 }
 
@@ -4635,7 +4783,8 @@ fn test_changelog_index_uses_collection_template() {
     let site_dir = tmp.path().join("site");
 
     // Add a second entry (init already created v0.1.0)
-    let entry = "---\ntitle: v0.2.0\ndate: 2025-06-01\ntags:\n  - improvement\n---\n\nSecond release.\n";
+    let entry =
+        "---\ntitle: v0.2.0\ndate: 2025-06-01\ntags:\n  - improvement\n---\n\nSecond release.\n";
     fs::write(
         site_dir.join("content/changelog/2025-06-01-v0-2-0.md"),
         entry,
@@ -4672,12 +4821,7 @@ fn test_new_changelog_entry() {
     let entries: Vec<_> = fs::read_dir(site_dir.join("content/changelog"))
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_str()
-                .unwrap_or("")
-                .contains("v1-0-0")
-        })
+        .filter(|e| e.file_name().to_str().unwrap_or("").contains("v1-0-0"))
         .collect();
     assert_eq!(entries.len(), 1);
 
@@ -4707,8 +4851,8 @@ fn test_init_with_roadmap_collection() {
         .collect();
     assert_eq!(items.len(), 3);
 
-    // Verify page.toml has roadmap collection
-    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    // Verify seite.toml has roadmap collection
+    let config = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config.contains("name = \"roadmap\""));
 }
 
@@ -4806,14 +4950,22 @@ fn test_roadmap_weight_ordering() {
         .success();
 
     let index = fs::read_to_string(site_dir.join("dist/roadmap/index.html")).unwrap();
-    let pos_a = index.find("Feature A").expect("Feature A should be in index");
-    let pos_b = index.find("Feature B").expect("Feature B should be in index");
-    let pos_c = index.find("Feature C").expect("Feature C should be in index");
+    let pos_a = index
+        .find("Feature A")
+        .expect("Feature A should be in index");
+    let pos_b = index
+        .find("Feature B")
+        .expect("Feature B should be in index");
+    let pos_c = index
+        .find("Feature C")
+        .expect("Feature C should be in index");
 
     assert!(
         pos_a < pos_b && pos_b < pos_c,
         "Roadmap items should be sorted by weight: A(1) < B(2) < C(3), got positions: {} {} {}",
-        pos_a, pos_b, pos_c
+        pos_a,
+        pos_b,
+        pos_c
     );
 }
 
@@ -4887,9 +5039,9 @@ fn test_build_html_lang_uses_current_language() {
     let site_dir = tmp.path().join("langsite");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"Sitio\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // English post
     fs::write(
@@ -4946,9 +5098,9 @@ fn test_build_lang_prefix_in_context() {
     let site_dir = tmp.path().join("lpsite");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"LP ES\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // English post with tag
     fs::write(
@@ -5022,9 +5174,9 @@ fn test_build_ui_strings_override() {
     let site_dir = tmp.path().join("toverride");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"Sitio\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // Create i18n override file
     let i18n_dir = site_dir.join("data/i18n");
@@ -5080,9 +5232,9 @@ fn test_build_nav_links_with_lang_prefix() {
     let site_dir = tmp.path().join("navlang");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"Nav ES\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // Create nav data with internal and external links
     let data_dir = site_dir.join("data");
@@ -5148,9 +5300,9 @@ fn test_build_default_language_in_context() {
     let site_dir = tmp.path().join("dlsite");
 
     // Add Spanish language
-    let config = fs::read_to_string(site_dir.join("page.toml")).unwrap();
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     let config = format!("{config}\n[languages.es]\ntitle = \"DL ES\"\n");
-    fs::write(site_dir.join("page.toml"), config).unwrap();
+    fs::write(site_dir.join("seite.toml"), config).unwrap();
 
     // English + Spanish posts
     fs::write(
@@ -5226,16 +5378,20 @@ fn test_init_with_trust_collection() {
 
     // Verify content files
     assert!(root.join("content/trust/security-overview.md").exists());
-    assert!(root.join("content/trust/vulnerability-disclosure.md").exists());
+    assert!(root
+        .join("content/trust/vulnerability-disclosure.md")
+        .exists());
     assert!(root.join("content/trust/certifications/soc2.md").exists());
-    assert!(root.join("content/trust/certifications/iso27001.md").exists());
+    assert!(root
+        .join("content/trust/certifications/iso27001.md")
+        .exists());
 
     // Verify templates
     assert!(root.join("templates/trust-item.html").exists());
     assert!(root.join("templates/trust-index.html").exists());
 
-    // Verify page.toml has trust config
-    let config = fs::read_to_string(root.join("page.toml")).unwrap();
+    // Verify seite.toml has trust config
+    let config = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config.contains("[trust]"));
     assert!(config.contains("company = \"Acme Corp\""));
     assert!(config.contains("soc2"));
@@ -5248,7 +5404,7 @@ fn test_init_with_trust_collection() {
     assert!(claude_md.contains("Managing Certifications"));
     assert!(claude_md.contains("Managing Subprocessors"));
     assert!(claude_md.contains("Managing FAQs"));
-    assert!(claude_md.contains("page://trust"));
+    assert!(claude_md.contains("seite://trust"));
 }
 
 #[test]
@@ -5289,11 +5445,9 @@ fn test_build_trust_center() {
 
     // Individual trust pages should exist
     assert!(site_dir.join("dist/trust/security-overview.html").exists());
-    assert!(
-        site_dir
-            .join("dist/trust/certifications/soc2.html")
-            .exists()
-    );
+    assert!(site_dir
+        .join("dist/trust/certifications/soc2.html")
+        .exists());
 
     // Markdown versions should exist
     assert!(site_dir.join("dist/trust/security-overview.md").exists());
@@ -5335,11 +5489,9 @@ fn test_trust_center_no_sections() {
 
     // Certifications data and content should exist
     assert!(site_dir.join("data/trust/certifications.yaml").exists());
-    assert!(
-        site_dir
-            .join("content/trust/certifications/soc2.md")
-            .exists()
-    );
+    assert!(site_dir
+        .join("content/trust/certifications/soc2.md")
+        .exists());
 
     // Optional sections should NOT exist
     assert!(!site_dir.join("content/trust/security-overview.md").exists());
@@ -5356,7 +5508,7 @@ fn test_trust_center_no_sections() {
 
 #[test]
 fn test_trust_preset_config() {
-    let preset = page::config::CollectionConfig::preset_trust();
+    let preset = seite::config::CollectionConfig::preset_trust();
     assert_eq!(preset.name, "trust");
     assert_eq!(preset.label, "Trust Center");
     assert_eq!(preset.url_prefix, "/trust");
@@ -5369,12 +5521,12 @@ fn test_trust_preset_config() {
 
 #[test]
 fn test_trust_from_preset() {
-    assert!(page::config::CollectionConfig::from_preset("trust").is_some());
+    assert!(seite::config::CollectionConfig::from_preset("trust").is_some());
 }
 
 #[test]
 fn test_trust_embedded_doc_exists() {
-    let doc = page::docs::by_slug("trust-center");
+    let doc = seite::docs::by_slug("trust-center");
     assert!(doc.is_some());
     let doc = doc.unwrap();
     assert_eq!(doc.title, "Trust Center");
@@ -5386,7 +5538,7 @@ fn test_init_without_trust_has_no_trust_config() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "No Trust", "posts,pages");
 
-    let config = fs::read_to_string(tmp.path().join("site/page.toml")).unwrap();
+    let config = fs::read_to_string(tmp.path().join("site/seite.toml")).unwrap();
     assert!(!config.contains("[trust]"));
 
     let claude_md = fs::read_to_string(tmp.path().join("site/CLAUDE.md")).unwrap();

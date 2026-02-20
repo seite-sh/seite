@@ -24,7 +24,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
 
     // Nudge if project config is outdated
-    if cwd.join("page.toml").exists() && meta::needs_upgrade(&cwd) {
+    if cwd.join("seite.toml").exists() && meta::needs_upgrade(&cwd) {
         let project_ver = meta::project_version(&cwd);
         let label = if project_ver == (0, 0, 0) {
             "pre-tracking".to_string()
@@ -32,14 +32,14 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             meta::format_version(project_ver)
         };
         human::info(&format!(
-            "Project config is from page {label}. Run `page upgrade` for new features."
+            "Project config is from seite {label}. Run `seite upgrade` for new features."
         ));
     }
 
     // Check for workspace context
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
         let ws_config =
-            workspace::WorkspaceConfig::load(&ws_root.join("page-workspace.toml"))?;
+            workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
         let opts = workspace::build::WorkspaceBuildOptions {
             include_drafts: args.drafts,
@@ -56,7 +56,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("page.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&cwd);
 
     let opts = BuildOptions {

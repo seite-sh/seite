@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{ResolvedPaths, SiteConfig};
 use crate::error::{PageError, Result};
 
-/// Workspace configuration loaded from `page-workspace.toml`.
+/// Workspace configuration loaded from `seite-workspace.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceConfig {
     pub workspace: WorkspaceSection,
@@ -34,7 +34,7 @@ pub struct WorkspaceSection {
 pub struct WorkspaceSite {
     pub name: String,
     pub path: String,
-    /// Override the site's page.toml base_url.
+    /// Override the site's seite.toml base_url.
     #[serde(default)]
     pub base_url: Option<String>,
     /// Override the site's output directory (relative to workspace root).
@@ -65,10 +65,10 @@ pub enum ExecutionContext {
     },
 }
 
-const WORKSPACE_FILE: &str = "page-workspace.toml";
+const WORKSPACE_FILE: &str = "seite-workspace.toml";
 
 impl WorkspaceConfig {
-    /// Load workspace config from a `page-workspace.toml` file.
+    /// Load workspace config from a `seite-workspace.toml` file.
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Err(PageError::Workspace(format!(
@@ -102,12 +102,12 @@ impl WorkspaceConfig {
             }
         }
 
-        // Check that each site directory has a page.toml
+        // Check that each site directory has a seite.toml
         for site in &self.sites {
-            let site_toml = ws_root.join(&site.path).join("page.toml");
+            let site_toml = ws_root.join(&site.path).join("seite.toml");
             if !site_toml.exists() {
                 return Err(PageError::Workspace(format!(
-                    "site '{}' has no page.toml at {}",
+                    "site '{}' has no seite.toml at {}",
                     site.name,
                     site_toml.display()
                 )));
@@ -141,7 +141,7 @@ impl WorkspaceConfig {
     }
 }
 
-/// Walk up from a starting directory to find `page-workspace.toml`.
+/// Walk up from a starting directory to find `seite-workspace.toml`.
 /// Returns the workspace root directory if found.
 pub fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
@@ -175,7 +175,7 @@ pub fn resolve_context(
     // Standalone mode
     let config_file = config_path
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("page.toml"));
+        .unwrap_or_else(|| PathBuf::from("seite.toml"));
     let config = SiteConfig::load(&config_file)?;
     let paths = config.resolve_paths(&cwd);
     Ok(ExecutionContext::Standalone { config: Box::new(config), paths })
@@ -187,7 +187,7 @@ pub fn load_site_in_workspace(
     ws_site: &WorkspaceSite,
 ) -> Result<(SiteConfig, ResolvedPaths)> {
     let site_root = ws_root.join(&ws_site.path);
-    let mut config = SiteConfig::load(&site_root.join("page.toml"))?;
+    let mut config = SiteConfig::load(&site_root.join("seite.toml"))?;
 
     // Apply workspace-level overrides
     if let Some(ref base_url) = ws_site.base_url {

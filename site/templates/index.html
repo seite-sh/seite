@@ -957,7 +957,7 @@
 
         <div class="hero-actions anim-rise" style="animation-delay:0.45s">
             <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary">{{ t.get_started | default(value="Get started") }} →</a>
-            <a href="{{ page.extra.github_url | default(value='https://github.com/page-cli/page-cli') }}" class="btn-secondary" rel="noopener noreferrer">
+            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary" rel="noopener noreferrer">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                 </svg>
@@ -966,7 +966,7 @@
         </div>
 
         <!-- Terminal demo -->
-        <div class="terminal-wrap anim-rise" style="animation-delay:0.55s" role="img" aria-label="page CLI demonstration">
+        <div class="terminal-wrap anim-rise" style="animation-delay:0.55s" role="img" aria-label="seite CLI demonstration">
             <div class="terminal-bar" aria-hidden="true">
                 <span class="t-dot t-dot-red"></span>
                 <span class="t-dot t-dot-amber"></span>
@@ -976,21 +976,21 @@
             <div class="terminal-body">
                 <div class="t-line">
                     <span class="t-prompt">$</span>
-                    <span class="t-cmd">page init myblog <span class="t-flag">--title "My Blog" --collections posts,docs</span></span>
+                    <span class="t-cmd">seite init myblog <span class="t-flag">--title "My Blog" --collections posts,docs</span></span>
                 </div>
                 <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
                 <div class="t-line"><span class="t-ok">✓ Scaffolded templates + .claude/CLAUDE.md</span></div>
                 <div class="t-gap"></div>
                 <div class="t-line">
                     <span class="t-prompt">$</span>
-                    <span class="t-cmd">page agent <span class="t-flag">"write a post about our v1.2 release — here are the notes: ..."</span></span>
+                    <span class="t-cmd">seite agent <span class="t-flag">"write a post about our v1.2 release — here are the notes: ..."</span></span>
                 </div>
                 <div class="t-line"><span class="t-dim">spawning Claude Code with site context…</span></div>
                 <div class="t-line"><span class="t-ok">✓ Written to content/posts/2026-02-18-v1-2-release.md</span></div>
                 <div class="t-gap"></div>
                 <div class="t-line">
                     <span class="t-prompt">$</span>
-                    <span class="t-cmd">page deploy <span class="t-flag">--target github-pages</span></span>
+                    <span class="t-cmd">seite deploy <span class="t-flag">--target github-pages</span></span>
                 </div>
                 <div class="t-line"><span class="t-dim">pre-flight checks passed · building…</span></div>
                 <div class="t-line"><span class="t-ok">✓ Deployed in 3.2s → https://myblog.github.io</span></div>
@@ -1003,7 +1003,7 @@
 <div class="ribbon">
     <div class="container">
         <div class="ribbon-inner">
-            <span>{{ page.extra.ribbon_1 | default(value='<span class="ribbon-highlight">curl -fsSL</span> pagecli.dev/install.sh | sh') | safe }}</span>
+            <span>{{ page.extra.ribbon_1 | default(value='<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh') | safe }}</span>
             <span class="ribbon-sep">·</span>
             <span>{{ page.extra.ribbon_2 | default(value='ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>') | safe }}</span>
             <span class="ribbon-sep">·</span>
@@ -1142,18 +1142,18 @@
             <div class="code-block">
                 <div class="code-block-header">
                     <span class="code-block-title">install + init</span>
-                    <button class="copy-btn" aria-label="Copy install commands" onclick="var t='curl -fsSL https://pagecli.dev/install.sh | sh\npage init mysite --title &quot;My Site&quot;\ncd mysite\npage serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';}.bind(this)).catch(function(){});">copy</button>
+                    <button class="copy-btn" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';}.bind(this)).catch(function(){});">copy</button>
                 </div>
                 <div class="code-block-body">
                     <div><span class="c-comment"># install (macOS / Linux)</span></div>
-                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> <span class="c-arg">https://pagecli.dev/install.sh</span> | <span class="c-cmd">sh</span></div>
+                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> <span class="c-arg">https://seite.sh/install.sh</span> | <span class="c-cmd">sh</span></div>
                     <div class="c-blank"></div>
                     <div><span class="c-comment"># scaffold a new site</span></div>
-                    <div><span class="c-cmd">page</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
+                    <div><span class="c-cmd">seite</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
                     <div><span class="c-cmd">cd</span> <span class="c-arg">mysite</span></div>
                     <div class="c-blank"></div>
                     <div><span class="c-comment"># start dev server with live reload</span></div>
-                    <div><span class="c-cmd">page</span> <span class="c-arg">serve</span></div>
+                    <div><span class="c-cmd">seite</span> <span class="c-arg">serve</span></div>
                 </div>
             </div>
 
@@ -1162,29 +1162,29 @@
                 <li class="step-item">
                     <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
-                        <strong>{{ page.extra.step_1_title | default(value="Install page") }}</strong>
-                        <span>{{ page.extra.step_1_body | default(value="<code>curl -fsSL pagecli.dev/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.") | safe }}</span>
+                        <strong>{{ page.extra.step_1_title | default(value="Install seite") }}</strong>
+                        <span>{{ page.extra.step_1_body | default(value="<code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
                     <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_2_title | default(value="Scaffold your site") }}</strong>
-                        <span>{{ page.extra.step_2_body | default(value="<code>page init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
+                        <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
                     <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_3_title | default(value="Create content with your agent") }}</strong>
-                        <span>{{ page.extra.step_3_body | default(value="<code>page agent</code> with your prompt. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.") | safe }}</span>
+                        <span>{{ page.extra.step_3_body | default(value="<code>seite agent</code> with your prompt. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
                     <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_4_title | default(value="Deploy anywhere") }}</strong>
-                        <span>{{ page.extra.step_4_body | default(value="<code>page deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>page deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.") | safe }}</span>
+                        <span>{{ page.extra.step_4_body | default(value="<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.") | safe }}</span>
                     </div>
                 </li>
             </ol>
@@ -1195,12 +1195,12 @@
 <!-- ─── CTA ────────────────────────────────────────── -->
 <div class="cta-section">
     <div class="container">
-        <p class="dogfood-line">{{ page.extra.dogfood_line | default(value="This site is built with page — the docs, the changelog, the llms.txt. All of it.") }}</p>
+        <p class="dogfood-line">{{ page.extra.dogfood_line | default(value="This site is built with seite — the docs, the changelog, the llms.txt. All of it.") }}</p>
         <h2>{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
         <p>{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
         <div class="hero-actions">
             <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary">{{ t.get_started | default(value="Get started") }} →</a>
-            <a href="{{ page.extra.github_url | default(value='https://github.com/page-cli/page-cli') }}" class="btn-secondary" rel="noopener noreferrer">
+            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary" rel="noopener noreferrer">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                 </svg>
