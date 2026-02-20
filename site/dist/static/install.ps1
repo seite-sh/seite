@@ -10,7 +10,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "sanchezomar/page"
+$Repo = "page-cli/page-cli"
 $Binary = "page.exe"
 $DefaultInstallDir = Join-Path $HOME ".local\bin"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultInstallDir }
