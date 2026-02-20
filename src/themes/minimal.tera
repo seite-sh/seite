@@ -18,8 +18,8 @@
     <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
     {% if page.image %}<meta name="twitter:image" content="{{ page.image }}">{% endif %}
     {% if page.robots %}<meta name="robots" content="{{ page.robots }}">{% endif %}
-    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
-    <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
+    <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
     {% if page.url %}<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
@@ -27,7 +27,7 @@
     <script type="application/ld+json">
     {% set _ld_url = page.url | default(value='/') %}{% set _ld_href = site.base_url ~ _ld_url %}{% set _ld_title = page.title | default(value=site.title) %}{% set _ld_desc = page.description | default(value=site.description) %}
     {% if page.collection == 'posts' %}{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"datePublished":{{ page.date | default(value='') | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
-    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
+    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
     {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_encode() }},"description":{{ site.description | json_encode() }},"url":{{ site.base_url | json_encode() }}}
     {% endif %}
     </script>
@@ -62,6 +62,7 @@
         article h3 a { text-decoration: none; color: inherit; }
         article h3 a:hover { text-decoration: underline; }
         time { color: #999; font-size: 0.85rem; font-style: italic; }
+        .reading-time { color: #666; font-size: 0.85rem; }
         .tags a, .tags span { font-size: 0.8rem; color: #888; margin-right: 0.5rem; font-style: italic; text-decoration: none; }
         .tags a:hover { color: #555; }
         pre { background: #fafafa; padding: 1rem; border-left: 2px solid #ddd; overflow-x: auto; }
@@ -79,6 +80,7 @@
         .callout-warning { border-left-color: #d97706; }
         .callout-danger { border-left-color: #dc2626; }
         .callout-tip { border-left-color: #16a34a; }
+        .callout-note { border-left-color: #6b7280; background: #f9fafb; }
         .callout p:last-child { margin-bottom: 0; }
         .trust-hub { max-width: 600px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2.5rem; }
@@ -160,6 +162,16 @@
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: #666; font-size: 0.9rem; }
         @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
         hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+        .toc { margin: 1.5rem 0; padding: 1rem 1.25rem; border: 1px solid #eee; border-radius: 4px; }
+        .toc > ul { margin: 0; padding-left: 1.25rem; }
+        .toc ul ul { padding-left: 1rem; }
+        .toc li { margin: 0.25rem 0; }
+        .toc a { text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; }
+        .pagination a { text-decoration: none; }
+        .pagination a:hover { text-decoration: underline; }
+        .pagination span { color: #999; font-size: 0.9rem; }
         footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #333; color: #fff; z-index: 100; text-decoration: none; font-family: system-ui, sans-serif; }
         .skip-link:focus { top: 0; }
@@ -172,7 +184,7 @@
     <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
     <header>
     {% block header %}
-        <h1><a href="/">{{ site.title }}</a></h1>
+        <h1><a href="{{ lang_prefix }}/">{{ site.title }}</a></h1>
         {% if site.description %}<p>{{ site.description }}</p>{% endif %}
         {% if data.nav %}
         <nav class="site-nav" aria-label="Main navigation">
