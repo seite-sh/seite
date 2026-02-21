@@ -128,6 +128,8 @@ jobs:
     name: Create release
     needs: [build, build-windows]
     runs-on: ubuntu-latest
+    outputs:
+      digests: ${{ steps.hash.outputs.digests }}
     steps:
       - uses: actions/checkout@v4
 
@@ -146,10 +148,12 @@ jobs:
           merge-multiple: true
 
       - name: Generate checksums
+        id: hash
         run: |
           cd artifacts
           sha256sum seite-*.tar.gz seite-*.zip 2>/dev/null > checksums-sha256.txt
           cat checksums-sha256.txt
+          echo "digests=$(cat checksums-sha256.txt | base64 -w0)" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -161,18 +165,17 @@ jobs:
             artifacts/seite-*.zip
             artifacts/checksums-sha256.txt
 
-  # TODO: Enable SLSA provenance when repo is public
-  # provenance:
-  #   name: SLSA provenance
-  #   needs: release
-  #   permissions:
-  #     actions: read
-  #     id-token: write
-  #     contents: write
-  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-  #   with:
-  #     base64-subjects: "${{ needs.release.outputs.digests }}"
-  #     upload-assets: true
+  provenance:
+    name: SLSA provenance
+    needs: release
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.release.outputs.digests }}"
+      upload-assets: true
 
   publish-crate:
     name: Publish to crates.io
