@@ -165,7 +165,10 @@ fn call_build(
         .config
         .as_ref()
         .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project (no seite.toml)"))?;
-    let paths = state.paths.as_ref().unwrap();
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let include_drafts = arguments
         .get("drafts")
@@ -210,7 +213,10 @@ fn call_create_content(
         .config
         .as_ref()
         .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
-    let paths = state.paths.as_ref().unwrap();
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let collection_name = arguments
         .get("collection")
@@ -302,7 +308,10 @@ fn call_search(
         .config
         .as_ref()
         .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
-    let paths = state.paths.as_ref().unwrap();
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let query = arguments
         .get("query")

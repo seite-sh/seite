@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn page_cmd() -> Command {
-    Command::cargo_bin("seite").unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("seite")
 }
 
 /// Helper to init a site with given collections
@@ -3799,9 +3799,9 @@ fn test_self_update_check_when_current() {
 
 // ── MCP server ────────────────────────────────────────────────────────
 
-/// Helper: send a single JSON-RPC message to `page mcp` and return the response.
+/// Helper: send a single JSON-RPC message to `seite mcp` and return the response.
 fn mcp_request(dir: &std::path::Path, messages: &[serde_json::Value]) -> Vec<serde_json::Value> {
-    let bin = assert_cmd::cargo::cargo_bin("seite");
+    let bin = assert_cmd::cargo::cargo_bin!("seite");
     let mut child = std::process::Command::new(bin)
         .arg("mcp")
         .current_dir(dir)
@@ -4413,7 +4413,7 @@ fn test_mcp_full_session() {
 fn test_mcp_parse_error() {
     // Send invalid JSON and verify we get a parse error response
     let tmp = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin("seite");
+    let bin = assert_cmd::cargo::cargo_bin!("seite");
     let mut child = std::process::Command::new(bin)
         .arg("mcp")
         .current_dir(tmp.path())

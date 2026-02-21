@@ -166,7 +166,7 @@ fn run_serve_loop(
                 if url_path == "/__livereload" {
                     let version = build_version.load(Ordering::Relaxed).to_string();
                     let header =
-                        Header::from_bytes("Content-Type", "text/plain").unwrap();
+                        Header::from_bytes("Content-Type", "text/plain").expect("valid header");
                     let _ = request
                         .respond(Response::from_string(version).with_header(header));
                     continue;
@@ -184,7 +184,7 @@ fn run_serve_loop(
                             content
                         };
 
-                        let header = Header::from_bytes("Content-Type", mime).unwrap();
+                        let header = Header::from_bytes("Content-Type", mime).expect("valid header");
                         let _ = request
                             .respond(Response::from_data(content).with_header(header));
                         continue;
@@ -196,7 +196,7 @@ fn run_serve_loop(
                     let index_html = generate_workspace_index(sites);
                     let content = inject_livereload(index_html.as_bytes());
                     let header =
-                        Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
+                        Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("valid header");
                     let _ = request
                         .respond(Response::from_data(content).with_header(header));
                     continue;
@@ -424,7 +424,7 @@ fn watch_and_rebuild_workspace(
 
 fn port_is_available(port: u16) -> bool {
     TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}").parse().unwrap(),
+        &format!("127.0.0.1:{port}").parse().expect("valid socket address"),
         Duration::from_millis(100),
     )
     .is_err()

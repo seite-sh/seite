@@ -201,8 +201,11 @@ fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonR
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
-    let paths = state.paths.as_ref().unwrap();
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let mut collections = Vec::new();
     for coll in &config.collections {
@@ -244,8 +247,11 @@ fn read_collection(
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
-    let paths = state.paths.as_ref().unwrap();
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let collection = config
         .collections
@@ -362,8 +368,11 @@ fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a page project"))?;
-    let paths = state.paths.as_ref().unwrap();
+        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
+    let paths = state
+        .paths
+        .as_ref()
+        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
 
     let mut result = serde_json::json!({});
 
