@@ -4,10 +4,9 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-  workflow_call:
     inputs:
       tag:
-        description: "Release tag (e.g., v0.1.0)"
+        description: "Release tag (e.g., v0.1.0) — required for manual dispatch"
         required: true
         type: string
 
@@ -43,12 +42,6 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            use_cross: false
-          - target: aarch64-pc-windows-msvc
-            os: windows-latest
-            use_cross: false
     steps:
       - uses: actions/checkout@v4
 
@@ -56,28 +49,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache build artifacts
-        if: ${{ !matrix.use_cross }}
-        uses: actions/cache@v4
-        with:
-          path: target/
-          key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.target }}
 
       - name: Cache cross binary
         if: matrix.use_cross
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cross
-          key: ${{ runner.os }}-cross-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cross-0.2
 
       - name: Install cross
         if: matrix.use_cross
@@ -86,8 +67,7 @@ jobs:
             cargo install cross --locked
           fi
 
-      - name: Build (Unix)
-        if: runner.os != 'Windows'
+      - name: Build
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --locked --target ${{ matrix.target }}
@@ -95,34 +75,64 @@ jobs:
             cargo build --release --locked --target ${{ matrix.target }}
           fi
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
+      - name: Package
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../seite-${{ matrix.target }}.tar.gz seite
           cd ../../..
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/seite.exe" -DestinationPath "seite-${{ matrix.target }}.zip"
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: seite-${{ matrix.target }}
-          path: |
-            seite-${{ matrix.target }}.tar.gz
-            seite-${{ matrix.target }}.zip
+          path: seite-${{ matrix.target }}.tar.gz
+
+  build-windows:
+    name: Build Windows (x86_64 + aarch64)
+    needs: ci
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+
+      - name: Build x86_64
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Build aarch64
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+
+      - name: Package x86_64
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-x86_64-pc-windows-msvc.zip"
+
+      - name: Package aarch64
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
+
+      - name: Upload x86_64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seite-x86_64-pc-windows-msvc
+          path: seite-x86_64-pc-windows-msvc.zip
+
+      - name: Upload aarch64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seite-aarch64-pc-windows-msvc
+          path: seite-aarch64-pc-windows-msvc.zip
 
   release:
     name: Create release
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -172,7 +182,7 @@ jobs:
 
   deploy-site:
     name: Deploy docs site
-    needs: [build, release]
+    needs: [build, build-windows, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -202,17 +212,19 @@ jobs:
         working-directory: seite-sh
         run: seite build
 
-      - name: Generate download routing files
+      - name: Generate routing and download files
         working-directory: seite-sh
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
+
+          # Install scripts at site root
+          cp static/install.sh dist/install.sh
+          cp static/install.ps1 dist/install.ps1
 
           # version.txt — latest version pointer
           echo "$TAG" > dist/version.txt
 
           # _redirects — route /download/ paths to GitHub Releases
-          # First rule: /download/latest/* resolves to the current release
-          # Second rule: /download/<version>/* passes through to any release
           printf '/download/latest/* https://github.com/seite-sh/seite/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
           printf '/download/* https://github.com/seite-sh/seite/releases/download/:splat 302\n' >> dist/_redirects
 
