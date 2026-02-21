@@ -90,7 +90,7 @@ src/
     mod.rs             13-step build pipeline
     analytics.rs       Analytics injection + cookie consent banner
     links.rs           Post-build internal link validation
-    markdown.rs        pulldown-cmark wrapper
+    markdown.rs        pulldown-cmark wrapper (CommonMark + GFM: tables, strikethrough, footnotes, task lists) + syntax highlighting (syntect)
     feed.rs            RSS generation
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt

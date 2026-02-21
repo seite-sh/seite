@@ -52,7 +52,7 @@ $ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/checksums-s
 Write-Info "Installing seite $Version for $Target"
 
 # --- Download ---
-$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "page-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "seite-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
@@ -100,13 +100,13 @@ try {
     }
 
     # --- Verify ---
-    $PageExe = Join-Path $InstallDir $Binary
-    if (Test-Path $PageExe) {
-        $InstalledVersion = & $PageExe --version 2>$null
+    $SeiteExe = Join-Path $InstallDir $Binary
+    if (Test-Path $SeiteExe) {
+        $InstalledVersion = & $SeiteExe --version 2>$null
         if ($InstalledVersion) {
             Write-Info "Done! $InstalledVersion"
         } else {
-            Write-Info "Done! Run 'page --version' to verify."
+            Write-Info "Done! Run 'seite --version' to verify."
         }
     }
 } finally {
