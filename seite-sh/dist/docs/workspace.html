@@ -1779,6 +1779,8 @@
                     
                 <li><a href="/docs/cli-reference" >CLI Reference</a></li>
                     
+                <li><a href="/docs/releases" >Releases</a></li>
+                    
             </ul>
             
             <h3>Resources</h3>
@@ -1808,8 +1810,8 @@
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init my-workspace
 </span><span style="color:#c0c5ce;">
 </span><span style="color:#65737e;"># Add sites
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Blog</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Documentation</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Blog</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Documentation</span><span style="color:#c0c5ce;">&quot;
 </span><span style="color:#c0c5ce;">
 </span><span style="color:#65737e;"># Build all sites
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build
@@ -1836,7 +1838,7 @@
 <p>If you omit the name, an interactive prompt asks for it.</p>
 <h2 id="adding-sites">Adding Sites</h2>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add &lt;name&gt; </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add &lt;name&gt; </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>--path</code></th><th>Directory for the site (default: <code>sites/&lt;name&gt;</code>)</th></tr>
@@ -1845,8 +1847,8 @@
 </tbody></table>
 <p>This creates a full site scaffold inside the workspace and registers it in <code>seite-workspace.toml</code>:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">My Blog</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Documentation</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --path</span><span style="color:#c0c5ce;"> sites/documentation
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">My Blog</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Documentation</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --path</span><span style="color:#c0c5ce;"> sites/documentation
 </span></pre>
 <h2 id="configuration">Configuration</h2>
 <p>The workspace is configured through <code>seite-workspace.toml</code> at the workspace root:</p>
@@ -1937,8 +1939,8 @@ path = &quot;sites/docs&quot;
 </div>
 <h2 id="checking-status">Checking Status</h2>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init list          </span><span style="color:#65737e;"># List all sites with config status
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init status        </span><span style="color:#65737e;"># Detailed workspace status (config, build state, titles)
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace list          </span><span style="color:#65737e;"># List all sites with config status
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace status        </span><span style="color:#65737e;"># Detailed workspace status (config, build state, titles)
 </span></pre>
 <h2 id="workspace-detection">Workspace Detection</h2>
 <p><code>page</code> automatically detects workspaces by walking up the directory tree looking for <code>seite-workspace.toml</code>. This means you can run commands from anywhere inside the workspace:</p>
@@ -1957,6 +1959,12 @@ path = &quot;sites/docs&quot;
 </div>
         </article>
 
+        
+        
+        
+        
+        
+        
         
         
         

@@ -1779,6 +1779,8 @@
                     
                 <li><a href="/docs/cli-reference" >CLI Reference</a></li>
                     
+                <li><a href="/docs/releases" >Releases</a></li>
+                    
             </ul>
             
             <h3>Resources</h3>
@@ -1836,6 +1838,42 @@
 <tr><th><code>{{ t }}</code></th><th>UI translation strings object (override via <code>data/i18n/{lang}.yaml</code>)</th></tr>
 <tr><th><code>{{ pagination }}</code></th><th>Pagination context</th></tr>
 </tbody></table>
+<h2 id="translatable-ui-strings">Translatable UI Strings</h2>
+<p>All bundled themes and default templates use the <code>{{ t }}</code> object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.</p>
+<h3 id="default-keys">Default Keys</h3>
+<table><thead><tr><th>Key</th><th>Default (English)</th></tr></thead><tbody>
+<tr><th><code>t.search_placeholder</code></th><th>Search…</th></tr>
+<tr><th><code>t.skip_to_content</code></th><th>Skip to main content</th></tr>
+<tr><th><code>t.no_results</code></th><th>No results</th></tr>
+<tr><th><code>t.newer</code></th><th>Newer</th></tr>
+<tr><th><code>t.older</code></th><th>Older</th></tr>
+<tr><th><code>t.page_n_of_total</code></th><th>Page {n} of {total}</th></tr>
+<tr><th><code>t.search_label</code></th><th>Search site content</th></tr>
+<tr><th><code>t.min_read</code></th><th>min read</th></tr>
+<tr><th><code>t.contents</code></th><th>Contents</th></tr>
+<tr><th><code>t.tags</code></th><th>Tags</th></tr>
+<tr><th><code>t.all_tags</code></th><th>All tags</th></tr>
+<tr><th><code>t.tagged</code></th><th>Tagged</th></tr>
+<tr><th><code>t.changelog</code></th><th>Changelog</th></tr>
+<tr><th><code>t.roadmap</code></th><th>Roadmap</th></tr>
+<tr><th><code>t.not_found_title</code></th><th>Page Not Found</th></tr>
+<tr><th><code>t.not_found_message</code></th><th>The page you requested could not be found.</th></tr>
+<tr><th><code>t.go_home</code></th><th>Go to the homepage</th></tr>
+<tr><th><code>t.in_progress</code></th><th>In Progress</th></tr>
+<tr><th><code>t.planned</code></th><th>Planned</th></tr>
+<tr><th><code>t.done</code></th><th>Done</th></tr>
+<tr><th><code>t.other</code></th><th>Other</th></tr>
+</tbody></table>
+<h3 id="overriding-strings">Overriding Strings</h3>
+<p>Create <code>data/i18n/{lang}.yaml</code> to override any key:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;"># data/i18n/es.yaml
+</span><span style="color:#bf616a;">search_placeholder</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Buscar…</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">skip_to_content</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Ir al contenido principal</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">no_results</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Sin resultados</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">newer</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más recientes</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#bf616a;">older</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más antiguos</span><span style="color:#c0c5ce;">&quot;
+</span></pre>
 <h2 id="overridable-blocks">Overridable Blocks</h2>
 <p>All bundled themes provide these blocks for customization:</p>
 <pre style="background-color:#2b303b;">
@@ -1999,42 +2037,6 @@
 </span><span style="color:#c0c5ce;">&lt;/</span><span style="color:#bf616a;">nav</span><span style="color:#c0c5ce;">&gt;
 </span><span style="color:#c0c5ce;">{% endif %}
 </span></pre>
-<h2 id="translatable-ui-strings">Translatable UI Strings</h2>
-<p>All bundled themes and default templates use the <code>{{ t }}</code> object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.</p>
-<h3 id="default-keys">Default Keys</h3>
-<table><thead><tr><th>Key</th><th>Default (English)</th></tr></thead><tbody>
-<tr><th><code>t.search_placeholder</code></th><th>Search…</th></tr>
-<tr><th><code>t.skip_to_content</code></th><th>Skip to main content</th></tr>
-<tr><th><code>t.no_results</code></th><th>No results</th></tr>
-<tr><th><code>t.newer</code></th><th>Newer</th></tr>
-<tr><th><code>t.older</code></th><th>Older</th></tr>
-<tr><th><code>t.page_n_of_total</code></th><th>Page {n} of {total}</th></tr>
-<tr><th><code>t.search_label</code></th><th>Search site content</th></tr>
-<tr><th><code>t.min_read</code></th><th>min read</th></tr>
-<tr><th><code>t.contents</code></th><th>Contents</th></tr>
-<tr><th><code>t.tags</code></th><th>Tags</th></tr>
-<tr><th><code>t.all_tags</code></th><th>All tags</th></tr>
-<tr><th><code>t.tagged</code></th><th>Tagged</th></tr>
-<tr><th><code>t.changelog</code></th><th>Changelog</th></tr>
-<tr><th><code>t.roadmap</code></th><th>Roadmap</th></tr>
-<tr><th><code>t.not_found_title</code></th><th>Page Not Found</th></tr>
-<tr><th><code>t.not_found_message</code></th><th>The page you requested could not be found.</th></tr>
-<tr><th><code>t.go_home</code></th><th>Go to the homepage</th></tr>
-<tr><th><code>t.in_progress</code></th><th>In Progress</th></tr>
-<tr><th><code>t.planned</code></th><th>Planned</th></tr>
-<tr><th><code>t.done</code></th><th>Done</th></tr>
-<tr><th><code>t.other</code></th><th>Other</th></tr>
-</tbody></table>
-<h3 id="overriding-strings">Overriding Strings</h3>
-<p>Create <code>data/i18n/{lang}.yaml</code> to override any key for a specific language:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#65737e;"># data/i18n/es.yaml
-</span><span style="color:#bf616a;">search_placeholder</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Buscar…</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#bf616a;">skip_to_content</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Ir al contenido principal</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#bf616a;">no_results</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Sin resultados</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#bf616a;">newer</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más recientes</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#bf616a;">older</span><span style="color:#c0c5ce;">: &quot;</span><span style="color:#a3be8c;">Más antiguos</span><span style="color:#c0c5ce;">&quot;
-</span></pre>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/theme-gallery">Theme Gallery</a> — browse all six bundled themes with visual previews</li>
@@ -2044,6 +2046,12 @@
 </div>
         </article>
 
+        
+        
+        
+        
+        
+        
         
         
         
@@ -2170,6 +2178,9 @@
                 <li class="toc-level-3"><a href="#site-variables">Site variables</a></li>
                 <li class="toc-level-3"><a href="#page-variables">Page variables</a></li>
                 <li class="toc-level-3"><a href="#context-variables">Context variables</a></li>
+                <li class="toc-level-2"><a href="#translatable-ui-strings">Translatable UI Strings</a></li>
+                <li class="toc-level-3"><a href="#default-keys">Default Keys</a></li>
+                <li class="toc-level-3"><a href="#overriding-strings">Overriding Strings</a></li>
                 <li class="toc-level-2"><a href="#overridable-blocks">Overridable Blocks</a></li>
                 <li class="toc-level-2"><a href="#extra-frontmatter">Extra Frontmatter</a></li>
                 <li class="toc-level-2"><a href="#data-files-in-templates">Data Files in Templates</a></li>
@@ -2186,9 +2197,6 @@
                 <li class="toc-level-2"><a href="#installing-sharing-themes">Installing & Sharing Themes</a></li>
                 <li class="toc-level-2"><a href="#custom-themes-with-ai">Custom Themes with AI</a></li>
                 <li class="toc-level-2"><a href="#table-of-contents">Table of Contents</a></li>
-                <li class="toc-level-2"><a href="#translatable-ui-strings">Translatable UI Strings</a></li>
-                <li class="toc-level-3"><a href="#default-keys">Default Keys</a></li>
-                <li class="toc-level-3"><a href="#overriding-strings">Overriding Strings</a></li>
                 <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
                 </ul>
         </nav>

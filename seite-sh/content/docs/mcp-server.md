@@ -6,7 +6,7 @@ weight: 9
 
 ## Overview
 
-`page` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a page project in Claude Code, the MCP server starts automatically — no API keys or setup required.
+`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically — no API keys or setup required.
 
 The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
 
@@ -17,8 +17,8 @@ The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using
 ```json
 {
   "mcpServers": {
-    "page": {
-      "command": "page",
+    "seite": {
+      "command": "seite",
       "args": ["mcp"]
     }
   }
