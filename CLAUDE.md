@@ -11,6 +11,7 @@ The `seite agent` command spawns Claude Code as a subprocess with full site cont
 ```bash
 cargo build          # Build the binary
 cargo test           # Run all tests (135 unit + 192 integration)
+cargo fmt --all      # Format — CI enforces `cargo fmt --all -- --check`
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- init trustsite --title "Acme" --collections posts,pages,trust --trust-company "Acme Corp" --trust-frameworks soc2,iso27001
@@ -468,8 +469,9 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Integration tests use `assert_cmd::Command` + `tempfile::TempDir`
 - Helper: `init_site(tmp, name, title, collections)` scaffolds a site in a temp dir
 - Test naming: `test_{command}_{behavior}` (e.g., `test_build_excludes_drafts_by_default`)
-- **Before committing, always run both:** `cargo test` and `cargo clippy`
-- All tests must pass and clippy must produce zero warnings before any commit
+- **Before committing, always run:** `cargo fmt --all`, `cargo clippy`, and `cargo test`
+- All tests must pass, clippy must produce zero warnings, and code must be formatted before any commit
+- CI also runs: `cargo-deny` (license/vulnerability audit), `cargo doc` (no warnings), MSRV check (1.75), `cargo-semver-checks` (on PRs), ShellCheck (shell scripts)
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
 ### Documentation

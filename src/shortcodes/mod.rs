@@ -1,5 +1,5 @@
 pub mod builtins;
-mod parser;
+pub mod parser;
 
 pub use parser::{ShortcodeCall, ShortcodeKind, ShortcodeValue};
 
