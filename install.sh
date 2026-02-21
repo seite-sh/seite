@@ -203,4 +203,7 @@ main() {
   fi
 }
 
-main
+# Allow sourcing without executing main (for testing)
+if [ -z "${INSTALL_SH_SKIP_MAIN:-}" ]; then
+  main
+fi

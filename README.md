@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/seite-sh/seite/actions/workflows/rust.yml"><img src="https://github.com/seite-sh/seite/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/seite-sh/seite"><img src="https://codecov.io/gh/seite-sh/seite/branch/main/graph/badge.svg" alt="Coverage"></a>
   <a href="https://crates.io/crates/seite"><img src="https://img.shields.io/crates/v/seite.svg" alt="Crates.io"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
 </p>
