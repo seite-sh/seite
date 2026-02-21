@@ -176,6 +176,15 @@
         .roadmap-milestone-content h3 { margin: 0 0 0.25rem; }
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: #555; font-size: 0.9rem; }
         @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
+        table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }
+        th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+        th { background: #f6f6f6; font-weight: 600; }
+        ul.contains-task-list, ol.contains-task-list { list-style: none; padding-left: 0; }
+        li.task-list-item { display: flex; align-items: baseline; gap: 0.5rem; }
+        li.task-list-item input[type="checkbox"] { margin: 0; pointer-events: none; }
+        .footnote-definition { font-size: 0.85rem; color: #555; border-top: 1px solid #eee; margin-top: 2rem; padding-top: 0.75rem; }
+        .footnote-definition p { display: inline; }
+        sup.footnote-reference a { text-decoration: none; color: #0057b7; font-weight: 600; }
         .toc { margin: 1.5rem 0; padding: 1rem 1.25rem; border: 1px solid #eee; border-radius: 4px; }
         .toc > ul { margin: 0; padding-left: 1.25rem; }
         .toc ul ul { padding-left: 1rem; }

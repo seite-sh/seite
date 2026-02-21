@@ -1801,68 +1801,68 @@
 <h2 id="template-variables">Template Variables</h2>
 <h3 id="site-variables">Site variables</h3>
 <table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>{{ site.title }}</code></th><th>Site title</th></tr>
-<tr><th><code>{{ site.description }}</code></th><th>Site description</th></tr>
-<tr><th><code>{{ site.base_url }}</code></th><th>Base URL (e.g., <code>https://example.com</code>)</th></tr>
-<tr><th><code>{{ site.language }}</code></th><th>Default language code</th></tr>
-<tr><th><code>{{ site.author }}</code></th><th>Site author</th></tr>
+<tr><td><code>{{ site.title }}</code></td><td>Site title</td></tr>
+<tr><td><code>{{ site.description }}</code></td><td>Site description</td></tr>
+<tr><td><code>{{ site.base_url }}</code></td><td>Base URL (e.g., <code>https://example.com</code>)</td></tr>
+<tr><td><code>{{ site.language }}</code></td><td>Default language code</td></tr>
+<tr><td><code>{{ site.author }}</code></td><td>Site author</td></tr>
 </tbody></table>
 <h3 id="page-variables">Page variables</h3>
 <table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>{{ page.title }}</code></th><th>Page title</th></tr>
-<tr><th><code>{{ page.content }}</code></th><th>Rendered HTML content (use with <code>| safe</code>)</th></tr>
-<tr><th><code>{{ page.date }}</code></th><th>Publication date (posts)</th></tr>
-<tr><th><code>{{ page.updated }}</code></th><th>Last modified date</th></tr>
-<tr><th><code>{{ page.description }}</code></th><th>Page description</th></tr>
-<tr><th><code>{{ page.image }}</code></th><th>Social preview image URL</th></tr>
-<tr><th><code>{{ page.slug }}</code></th><th>URL slug</th></tr>
-<tr><th><code>{{ page.tags }}</code></th><th>List of tags</th></tr>
-<tr><th><code>{{ page.url }}</code></th><th>Page URL path</th></tr>
-<tr><th><code>{{ page.collection }}</code></th><th>Collection name</th></tr>
-<tr><th><code>{{ page.robots }}</code></th><th>Robots meta directive</th></tr>
-<tr><th><code>{{ page.word_count }}</code></th><th>Word count</th></tr>
-<tr><th><code>{{ page.reading_time }}</code></th><th>Reading time in minutes</th></tr>
-<tr><th><code>{{ page.excerpt }}</code></th><th>Auto-extracted excerpt (HTML)</th></tr>
-<tr><th><code>{{ page.toc }}</code></th><th>Table of contents entries</th></tr>
-<tr><th><code>{{ page.extra }}</code></th><th>Custom frontmatter data</th></tr>
+<tr><td><code>{{ page.title }}</code></td><td>Page title</td></tr>
+<tr><td><code>{{ page.content }}</code></td><td>Rendered HTML content (use with <code>| safe</code>)</td></tr>
+<tr><td><code>{{ page.date }}</code></td><td>Publication date (posts)</td></tr>
+<tr><td><code>{{ page.updated }}</code></td><td>Last modified date</td></tr>
+<tr><td><code>{{ page.description }}</code></td><td>Page description</td></tr>
+<tr><td><code>{{ page.image }}</code></td><td>Social preview image URL</td></tr>
+<tr><td><code>{{ page.slug }}</code></td><td>URL slug</td></tr>
+<tr><td><code>{{ page.tags }}</code></td><td>List of tags</td></tr>
+<tr><td><code>{{ page.url }}</code></td><td>Page URL path</td></tr>
+<tr><td><code>{{ page.collection }}</code></td><td>Collection name</td></tr>
+<tr><td><code>{{ page.robots }}</code></td><td>Robots meta directive</td></tr>
+<tr><td><code>{{ page.word_count }}</code></td><td>Word count</td></tr>
+<tr><td><code>{{ page.reading_time }}</code></td><td>Reading time in minutes</td></tr>
+<tr><td><code>{{ page.excerpt }}</code></td><td>Auto-extracted excerpt (HTML)</td></tr>
+<tr><td><code>{{ page.toc }}</code></td><td>Table of contents entries</td></tr>
+<tr><td><code>{{ page.extra }}</code></td><td>Custom frontmatter data</td></tr>
 </tbody></table>
 <h3 id="context-variables">Context variables</h3>
 <table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>{{ collections }}</code></th><th>List of collections (index pages)</th></tr>
-<tr><th><code>{{ nav }}</code></th><th>Navigation sections (doc pages)</th></tr>
-<tr><th><code>{{ data }}</code></th><th>Data files from <code>data/</code> directory</th></tr>
-<tr><th><code>{{ lang }}</code></th><th>Current language code</th></tr>
-<tr><th><code>{{ translations }}</code></th><th>Available translations</th></tr>
-<tr><th><code>{{ default_language }}</code></th><th>Default language code (from <code>seite.toml</code>)</th></tr>
-<tr><th><code>{{ lang_prefix }}</code></th><th>URL prefix for current language (empty for default, <code>"/es"</code> for others)</th></tr>
-<tr><th><code>{{ t }}</code></th><th>UI translation strings object (override via <code>data/i18n/{lang}.yaml</code>)</th></tr>
-<tr><th><code>{{ pagination }}</code></th><th>Pagination context</th></tr>
+<tr><td><code>{{ collections }}</code></td><td>List of collections (index pages)</td></tr>
+<tr><td><code>{{ nav }}</code></td><td>Navigation sections (doc pages)</td></tr>
+<tr><td><code>{{ data }}</code></td><td>Data files from <code>data/</code> directory</td></tr>
+<tr><td><code>{{ lang }}</code></td><td>Current language code</td></tr>
+<tr><td><code>{{ translations }}</code></td><td>Available translations</td></tr>
+<tr><td><code>{{ default_language }}</code></td><td>Default language code (from <code>seite.toml</code>)</td></tr>
+<tr><td><code>{{ lang_prefix }}</code></td><td>URL prefix for current language (empty for default, <code>"/es"</code> for others)</td></tr>
+<tr><td><code>{{ t }}</code></td><td>UI translation strings object (override via <code>data/i18n/{lang}.yaml</code>)</td></tr>
+<tr><td><code>{{ pagination }}</code></td><td>Pagination context</td></tr>
 </tbody></table>
 <h2 id="translatable-ui-strings">Translatable UI Strings</h2>
 <p>All bundled themes and default templates use the <code>{{ t }}</code> object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.</p>
 <h3 id="default-keys">Default Keys</h3>
 <table><thead><tr><th>Key</th><th>Default (English)</th></tr></thead><tbody>
-<tr><th><code>t.search_placeholder</code></th><th>Search…</th></tr>
-<tr><th><code>t.skip_to_content</code></th><th>Skip to main content</th></tr>
-<tr><th><code>t.no_results</code></th><th>No results</th></tr>
-<tr><th><code>t.newer</code></th><th>Newer</th></tr>
-<tr><th><code>t.older</code></th><th>Older</th></tr>
-<tr><th><code>t.page_n_of_total</code></th><th>Page {n} of {total}</th></tr>
-<tr><th><code>t.search_label</code></th><th>Search site content</th></tr>
-<tr><th><code>t.min_read</code></th><th>min read</th></tr>
-<tr><th><code>t.contents</code></th><th>Contents</th></tr>
-<tr><th><code>t.tags</code></th><th>Tags</th></tr>
-<tr><th><code>t.all_tags</code></th><th>All tags</th></tr>
-<tr><th><code>t.tagged</code></th><th>Tagged</th></tr>
-<tr><th><code>t.changelog</code></th><th>Changelog</th></tr>
-<tr><th><code>t.roadmap</code></th><th>Roadmap</th></tr>
-<tr><th><code>t.not_found_title</code></th><th>Page Not Found</th></tr>
-<tr><th><code>t.not_found_message</code></th><th>The page you requested could not be found.</th></tr>
-<tr><th><code>t.go_home</code></th><th>Go to the homepage</th></tr>
-<tr><th><code>t.in_progress</code></th><th>In Progress</th></tr>
-<tr><th><code>t.planned</code></th><th>Planned</th></tr>
-<tr><th><code>t.done</code></th><th>Done</th></tr>
-<tr><th><code>t.other</code></th><th>Other</th></tr>
+<tr><td><code>t.search_placeholder</code></td><td>Search…</td></tr>
+<tr><td><code>t.skip_to_content</code></td><td>Skip to main content</td></tr>
+<tr><td><code>t.no_results</code></td><td>No results</td></tr>
+<tr><td><code>t.newer</code></td><td>Newer</td></tr>
+<tr><td><code>t.older</code></td><td>Older</td></tr>
+<tr><td><code>t.page_n_of_total</code></td><td>Page {n} of {total}</td></tr>
+<tr><td><code>t.search_label</code></td><td>Search site content</td></tr>
+<tr><td><code>t.min_read</code></td><td>min read</td></tr>
+<tr><td><code>t.contents</code></td><td>Contents</td></tr>
+<tr><td><code>t.tags</code></td><td>Tags</td></tr>
+<tr><td><code>t.all_tags</code></td><td>All tags</td></tr>
+<tr><td><code>t.tagged</code></td><td>Tagged</td></tr>
+<tr><td><code>t.changelog</code></td><td>Changelog</td></tr>
+<tr><td><code>t.roadmap</code></td><td>Roadmap</td></tr>
+<tr><td><code>t.not_found_title</code></td><td>Page Not Found</td></tr>
+<tr><td><code>t.not_found_message</code></td><td>The page you requested could not be found.</td></tr>
+<tr><td><code>t.go_home</code></td><td>Go to the homepage</td></tr>
+<tr><td><code>t.in_progress</code></td><td>In Progress</td></tr>
+<tr><td><code>t.planned</code></td><td>Planned</td></tr>
+<tr><td><code>t.done</code></td><td>Done</td></tr>
+<tr><td><code>t.other</code></td><td>Other</td></tr>
 </tbody></table>
 <h3 id="overriding-strings">Overriding Strings</h3>
 <p>Create <code>data/i18n/{lang}.yaml</code> to override any key:</p>

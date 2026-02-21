@@ -1815,13 +1815,13 @@
 <h2 id="resources">Resources</h2>
 <p>Resources are read-only data that AI tools can query. Each resource has a URI.</p>
 <table><thead><tr><th>Resource</th><th>URI</th><th>Description</th></tr></thead><tbody>
-<tr><th>Documentation index</th><th><code>seite://docs</code></th><th>List of all documentation pages with titles and descriptions</th></tr>
-<tr><th>Documentation page</th><th><code>seite://docs/{slug}</code></th><th>Full markdown content of a specific doc page</th></tr>
-<tr><th>Site configuration</th><th><code>seite://config</code></th><th>Current <code>seite.toml</code> serialized as JSON</th></tr>
-<tr><th>Content overview</th><th><code>seite://content</code></th><th>All collections with item counts</th></tr>
-<tr><th>Collection items</th><th><code>seite://content/{collection}</code></th><th>Items in a collection with metadata (title, date, tags, slug, url, draft status)</th></tr>
-<tr><th>Themes</th><th><code>seite://themes</code></th><th>Available bundled and installed themes</th></tr>
-<tr><th>MCP configuration</th><th><code>seite://mcp-config</code></th><th>The <code>.claude/settings.json</code> MCP server configuration</th></tr>
+<tr><td>Documentation index</td><td><code>seite://docs</code></td><td>List of all documentation pages with titles and descriptions</td></tr>
+<tr><td>Documentation page</td><td><code>seite://docs/{slug}</code></td><td>Full markdown content of a specific doc page</td></tr>
+<tr><td>Site configuration</td><td><code>seite://config</code></td><td>Current <code>seite.toml</code> serialized as JSON</td></tr>
+<tr><td>Content overview</td><td><code>seite://content</code></td><td>All collections with item counts</td></tr>
+<tr><td>Collection items</td><td><code>seite://content/{collection}</code></td><td>Items in a collection with metadata (title, date, tags, slug, url, draft status)</td></tr>
+<tr><td>Themes</td><td><code>seite://themes</code></td><td>Available bundled and installed themes</td></tr>
+<tr><td>MCP configuration</td><td><code>seite://mcp-config</code></td><td>The <code>.claude/settings.json</code> MCP server configuration</td></tr>
 </tbody></table>
 <p>Documentation resources are always available (they're embedded in the binary). Site-specific resources (<code>seite://config</code>, <code>seite://content/*</code>, <code>seite://themes</code>, <code>seite://mcp-config</code>) are only available when running inside a page project directory.</p>
 <h2 id="tools">Tools</h2>
@@ -1829,36 +1829,36 @@
 <h3 id="seite-build">seite_build</h3>
 <p>Build the site to the output directory.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>drafts</code></th><th>boolean</th><th>No</th><th>Include draft content in the build (default: false)</th></tr>
+<tr><td><code>drafts</code></td><td>boolean</td><td>No</td><td>Include draft content in the build (default: false)</td></tr>
 </tbody></table>
 <p>Returns build statistics including pages built per collection, timing, and any errors.</p>
 <h3 id="seite-create-content">seite_create_content</h3>
 <p>Create a new content file with frontmatter.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>collection</code></th><th>string</th><th>Yes</th><th>Collection name (<code>posts</code>, <code>docs</code>, or <code>pages</code>)</th></tr>
-<tr><th><code>title</code></th><th>string</th><th>Yes</th><th>Title of the content</th></tr>
-<tr><th><code>tags</code></th><th>string[]</th><th>No</th><th>Tags for the content</th></tr>
-<tr><th><code>body</code></th><th>string</th><th>No</th><th>Markdown body content</th></tr>
-<tr><th><code>draft</code></th><th>boolean</th><th>No</th><th>Create as draft</th></tr>
+<tr><td><code>collection</code></td><td>string</td><td>Yes</td><td>Collection name (<code>posts</code>, <code>docs</code>, or <code>pages</code>)</td></tr>
+<tr><td><code>title</code></td><td>string</td><td>Yes</td><td>Title of the content</td></tr>
+<tr><td><code>tags</code></td><td>string[]</td><td>No</td><td>Tags for the content</td></tr>
+<tr><td><code>body</code></td><td>string</td><td>No</td><td>Markdown body content</td></tr>
+<tr><td><code>draft</code></td><td>boolean</td><td>No</td><td>Create as draft</td></tr>
 </tbody></table>
 <p>Returns the file path, URL, and slug of the created content.</p>
 <h3 id="seite-search">seite_search</h3>
 <p>Search site content by keywords.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>query</code></th><th>string</th><th>Yes</th><th>Search keywords</th></tr>
-<tr><th><code>collection</code></th><th>string</th><th>No</th><th>Limit search to a specific collection</th></tr>
+<tr><td><code>query</code></td><td>string</td><td>Yes</td><td>Search keywords</td></tr>
+<tr><td><code>collection</code></td><td>string</td><td>No</td><td>Limit search to a specific collection</td></tr>
 </tbody></table>
 <p>Matches against titles, descriptions, and tags. Returns up to 20 results with metadata.</p>
 <h3 id="seite-apply-theme">seite_apply_theme</h3>
 <p>Apply a bundled or installed theme to the site.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>name</code></th><th>string</th><th>Yes</th><th>Theme name (<code>default</code>, <code>minimal</code>, <code>dark</code>, <code>docs</code>, <code>brutalist</code>, <code>bento</code>, or an installed theme)</th></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Theme name (<code>default</code>, <code>minimal</code>, <code>dark</code>, <code>docs</code>, <code>brutalist</code>, <code>bento</code>, or an installed theme)</td></tr>
 </tbody></table>
 <h3 id="seite-lookup-docs">seite_lookup_docs</h3>
 <p>Look up page documentation by topic or keyword.</p>
 <table><thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>query</code></th><th>string</th><th>No</th><th>Search keywords to find in documentation</th></tr>
-<tr><th><code>topic</code></th><th>string</th><th>No</th><th>Specific doc topic slug (e.g., <code>configuration</code>, <code>templates</code>, <code>deployment</code>)</th></tr>
+<tr><td><code>query</code></td><td>string</td><td>No</td><td>Search keywords to find in documentation</td></tr>
+<tr><td><code>topic</code></td><td>string</td><td>No</td><td>Specific doc topic slug (e.g., <code>configuration</code>, <code>templates</code>, <code>deployment</code>)</td></tr>
 </tbody></table>
 <p>When <code>topic</code> matches a doc slug, returns the full page. When <code>query</code> is provided, searches across all documentation and returns matching sections with context.</p>
 <h2 id="manual-testing">Manual Testing</h2>
