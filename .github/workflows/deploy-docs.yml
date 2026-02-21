@@ -27,6 +27,13 @@ jobs:
         working-directory: seite-sh
         run: seite build
 
+      - name: Generate routing files
+        working-directory: seite-sh
+        run: |
+          # Rewrite /install.sh to /static/install.sh (200 = serve content at path)
+          printf '/install.sh /static/install.sh 200\n' > dist/_redirects
+          printf '/install.ps1 /static/install.ps1 200\n' >> dist/_redirects
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
