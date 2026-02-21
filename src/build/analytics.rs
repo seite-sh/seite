@@ -123,29 +123,29 @@ fn gtm_noscript(config: &AnalyticsSection) -> Option<String> {
     }
 }
 
-const CONSENT_BANNER_CSS: &str = r#"#page-cookie-banner{position:fixed;bottom:0;left:0;right:0;background:#1a1a1a;color:#f5f5f5;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;z-index:9999;font-family:system-ui,-apple-system,sans-serif;font-size:0.9rem;box-shadow:0 -2px 10px rgba(0,0,0,0.15)}#page-cookie-banner p{margin:0;flex:1}#page-cookie-banner .page-cb-buttons{display:flex;gap:0.5rem;flex-shrink:0}#page-cookie-banner button{padding:0.45rem 1rem;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;font-family:inherit}#page-cookie-accept{background:#2563eb;color:#fff}#page-cookie-accept:hover{background:#1d4ed8}#page-cookie-accept:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}#page-cookie-decline{background:transparent;color:#d4d4d4;border:1px solid #555}#page-cookie-decline:hover{background:#333}#page-cookie-decline:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}@media(max-width:600px){#page-cookie-banner{flex-direction:column;text-align:center}}"#;
+const CONSENT_BANNER_CSS: &str = r#"#seite-cookie-banner{position:fixed;bottom:0;left:0;right:0;background:#1a1a1a;color:#f5f5f5;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;z-index:9999;font-family:system-ui,-apple-system,sans-serif;font-size:0.9rem;box-shadow:0 -2px 10px rgba(0,0,0,0.15)}#seite-cookie-banner p{margin:0;flex:1}#seite-cookie-banner .seite-cb-buttons{display:flex;gap:0.5rem;flex-shrink:0}#seite-cookie-banner button{padding:0.45rem 1rem;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;font-family:inherit}#seite-cookie-accept{background:#2563eb;color:#fff}#seite-cookie-accept:hover{background:#1d4ed8}#seite-cookie-accept:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}#seite-cookie-decline{background:transparent;color:#d4d4d4;border:1px solid #555}#seite-cookie-decline:hover{background:#333}#seite-cookie-decline:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}@media(max-width:600px){#seite-cookie-banner{flex-direction:column;text-align:center}}"#;
 
 /// Build the full consent banner HTML + JS that gates analytics on user action.
 fn consent_banner_html(config: &AnalyticsSection) -> String {
     let loader_js = analytics_loader_js(config);
     format!(
         r#"<style>{css}</style>
-<div id="page-cookie-banner" role="dialog" aria-label="Cookie consent">
+<div id="seite-cookie-banner" role="dialog" aria-label="Cookie consent">
 <p>This site uses cookies and analytics to improve your experience.</p>
-<div class="page-cb-buttons">
-<button id="page-cookie-accept">Accept</button>
-<button id="page-cookie-decline">Decline</button>
+<div class="seite-cb-buttons">
+<button id="seite-cookie-accept">Accept</button>
+<button id="seite-cookie-decline">Decline</button>
 </div>
 </div>
 <script>
 (function(){{
-var c=localStorage.getItem('page_analytics_consent');
-var b=document.getElementById('page-cookie-banner');
+var c=localStorage.getItem('seite_analytics_consent');
+var b=document.getElementById('seite-cookie-banner');
 function load(){{{loader_js}}}
 if(c==='accepted'){{load();b.style.display='none'}}
 else if(c==='declined'){{b.style.display='none'}}
-document.getElementById('page-cookie-accept').addEventListener('click',function(){{localStorage.setItem('page_analytics_consent','accepted');b.style.display='none';load()}});
-document.getElementById('page-cookie-decline').addEventListener('click',function(){{localStorage.setItem('page_analytics_consent','declined');b.style.display='none'}});
+document.getElementById('seite-cookie-accept').addEventListener('click',function(){{localStorage.setItem('seite_analytics_consent','accepted');b.style.display='none';load()}});
+document.getElementById('seite-cookie-decline').addEventListener('click',function(){{localStorage.setItem('seite_analytics_consent','declined');b.style.display='none'}});
 }})();
 </script>"#,
         css = CONSENT_BANNER_CSS,
@@ -291,13 +291,13 @@ mod tests {
     fn test_ga4_consent_banner() {
         let result = inject_analytics(SIMPLE_HTML, &ga4_config(true));
         // Should have the consent banner
-        assert!(result.contains("page-cookie-banner"));
-        assert!(result.contains("page-cookie-accept"));
-        assert!(result.contains("page-cookie-decline"));
-        assert!(result.contains("page_analytics_consent"));
+        assert!(result.contains("seite-cookie-banner"));
+        assert!(result.contains("seite-cookie-accept"));
+        assert!(result.contains("seite-cookie-decline"));
+        assert!(result.contains("seite_analytics_consent"));
         // Banner should be before </body>
         let body_end = result.find("</body>").unwrap();
-        let banner_pos = result.find("page-cookie-banner").unwrap();
+        let banner_pos = result.find("seite-cookie-banner").unwrap();
         assert!(banner_pos < body_end);
         // Should NOT have direct script in <head>
         let head_section = &result[..result.find("</head>").unwrap()];
@@ -319,7 +319,7 @@ mod tests {
         let result = inject_analytics(SIMPLE_HTML, &gtm_config(true));
         // With consent mode, no noscript tag (it would load without consent)
         assert!(!result.contains("<noscript>"));
-        assert!(result.contains("page-cookie-banner"));
+        assert!(result.contains("seite-cookie-banner"));
     }
 
     #[test]

@@ -512,7 +512,16 @@ pub fn build_site(
                     .unwrap_or(&collection.default_template);
                 let html = tera
                     .render(template_name, &ctx)
-                    .map_err(|e| PageError::Build(format!("rendering '{}': {e}", item.slug)))?;
+                    .map_err(|e| {
+                        use std::error::Error as _;
+                        let mut source_chain = String::new();
+                        let mut source: Option<&dyn std::error::Error> = e.source();
+                        while let Some(s) = source {
+                            source_chain.push_str(&format!("\n  Caused by: {s}"));
+                            source = s.source();
+                        }
+                        PageError::Build(format!("rendering '{}': {e}{source_chain}", item.slug))
+                    })?;
 
                 let output_path = url_to_output_path(&paths.output, &item.url);
                 if let Some(parent) = output_path.parent() {
