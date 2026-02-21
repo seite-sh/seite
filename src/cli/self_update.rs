@@ -112,11 +112,11 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
 /// Fetch the latest release tag, trying seite.sh first then GitHub API.
 fn fetch_latest_tag() -> anyhow::Result<String> {
     // Try seite.sh/version.txt first (fast, no API rate limits)
-    if let Ok(response) = ureq::get("https://seite.sh/version.txt")
-        .set("User-Agent", "seite-self-update")
+    if let Ok(mut response) = ureq::get("https://seite.sh/version.txt")
+        .header("User-Agent", "seite-self-update")
         .call()
     {
-        if let Ok(body) = response.into_string() {
+        if let Ok(body) = response.body_mut().read_to_string() {
             let tag = body.trim().to_string();
             if !tag.is_empty() {
                 return Ok(tag);
@@ -127,13 +127,13 @@ fn fetch_latest_tag() -> anyhow::Result<String> {
     // Fallback to GitHub API
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
 
-    let response = ureq::get(&url)
-        .set("Accept", "application/vnd.github+json")
-        .set("User-Agent", "seite-self-update")
+    let mut response = ureq::get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "seite-self-update")
         .call()
         .map_err(|e| anyhow::anyhow!("Failed to check for updates: {e}"))?;
 
-    let body: serde_json::Value = response.into_json()?;
+    let body: serde_json::Value = response.body_mut().read_json()?;
     let tag = body
         .get("tag_name")
         .and_then(|v| v.as_str())
@@ -171,11 +171,11 @@ fn detect_target_triple() -> anyhow::Result<String> {
 /// Download a URL to a local file using ureq.
 fn download_file(url: &str, dest: &PathBuf) -> anyhow::Result<()> {
     let response = ureq::get(url)
-        .set("User-Agent", "seite-self-update")
+        .header("User-Agent", "seite-self-update")
         .call()
         .map_err(|e| anyhow::anyhow!("Download failed ({url}): {e}"))?;
 
-    let mut reader = response.into_reader();
+    let mut reader = response.into_body().into_reader();
     let mut file = fs::File::create(dest)?;
     std::io::copy(&mut reader, &mut file)?;
     file.flush()?;

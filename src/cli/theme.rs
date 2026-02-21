@@ -198,7 +198,8 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
     let body = ureq::get(url)
         .call()
         .map_err(|e| anyhow::anyhow!("failed to download theme: {e}"))?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| anyhow::anyhow!("failed to read theme response: {e}"))?;
 
     // Basic validation: should look like a Tera template
