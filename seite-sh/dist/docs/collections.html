@@ -1799,12 +1799,12 @@
             <div class="content"><h2 id="overview">Overview</h2>
 <p>Collections are groups of related content. Each collection has its own directory under <code>content/</code>, URL prefix, and template. Five presets are available:</p>
 <table><thead><tr><th>Preset</th><th>Directory</th><th>Dated</th><th>RSS</th><th>Listed</th><th>Nested</th><th>URL Pattern</th></tr></thead><tbody>
-<tr><th>posts</th><th><code>content/posts/</code></th><th>Yes</th><th>Yes</th><th>Yes</th><th>No</th><th><code>/posts/slug</code></th></tr>
-<tr><th>docs</th><th><code>content/docs/</code></th><th>No</th><th>No</th><th>Yes</th><th>Yes</th><th><code>/docs/slug</code></th></tr>
-<tr><th>pages</th><th><code>content/pages/</code></th><th>No</th><th>No</th><th>No</th><th>No</th><th><code>/slug</code></th></tr>
-<tr><th>changelog</th><th><code>content/changelog/</code></th><th>Yes</th><th>Yes</th><th>Yes</th><th>No</th><th><code>/changelog/slug</code></th></tr>
-<tr><th>roadmap</th><th><code>content/roadmap/</code></th><th>No</th><th>No</th><th>Yes</th><th>No</th><th><code>/roadmap/slug</code></th></tr>
-<tr><th>trust</th><th><code>content/trust/</code></th><th>No</th><th>No</th><th>Yes</th><th>Yes</th><th><code>/trust/slug</code></th></tr>
+<tr><td>posts</td><td><code>content/posts/</code></td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td><code>/posts/slug</code></td></tr>
+<tr><td>docs</td><td><code>content/docs/</code></td><td>No</td><td>No</td><td>Yes</td><td>Yes</td><td><code>/docs/slug</code></td></tr>
+<tr><td>pages</td><td><code>content/pages/</code></td><td>No</td><td>No</td><td>No</td><td>No</td><td><code>/slug</code></td></tr>
+<tr><td>changelog</td><td><code>content/changelog/</code></td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td><code>/changelog/slug</code></td></tr>
+<tr><td>roadmap</td><td><code>content/roadmap/</code></td><td>No</td><td>No</td><td>Yes</td><td>No</td><td><code>/roadmap/slug</code></td></tr>
+<tr><td>trust</td><td><code>content/trust/</code></td><td>No</td><td>No</td><td>Yes</td><td>Yes</td><td><code>/trust/slug</code></td></tr>
 </tbody></table>
 <h2 id="defining-collections">Defining Collections</h2>
 <p>Collections are configured in <code>seite.toml</code>:</p>
@@ -1825,16 +1825,16 @@ paginate = 10
 </code></pre>
 <h2 id="collection-fields">Collection Fields</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>name</code></th><th>string</th><th>required</th><th>Collection identifier</th></tr>
-<tr><th><code>label</code></th><th>string</th><th>capitalized name</th><th>Display name in templates</th></tr>
-<tr><th><code>directory</code></th><th>string</th><th>name</th><th>Content directory under <code>content/</code></th></tr>
-<tr><th><code>url_prefix</code></th><th>string</th><th><code>/name</code></th><th>URL prefix for items</th></tr>
-<tr><th><code>default_template</code></th><th>string</th><th>preset-based</th><th>Template file for rendering</th></tr>
-<tr><th><code>has_date</code></th><th>bool</th><th>preset-based</th><th>Items have dates</th></tr>
-<tr><th><code>has_rss</code></th><th>bool</th><th>preset-based</th><th>Include in RSS feed</th></tr>
-<tr><th><code>listed</code></th><th>bool</th><th>preset-based</th><th>Show on index page</th></tr>
-<tr><th><code>nested</code></th><th>bool</th><th>preset-based</th><th>Support subdirectories as groups</th></tr>
-<tr><th><code>paginate</code></th><th>int</th><th>none</th><th>Items per page (enables pagination)</th></tr>
+<tr><td><code>name</code></td><td>string</td><td>required</td><td>Collection identifier</td></tr>
+<tr><td><code>label</code></td><td>string</td><td>capitalized name</td><td>Display name in templates</td></tr>
+<tr><td><code>directory</code></td><td>string</td><td>name</td><td>Content directory under <code>content/</code></td></tr>
+<tr><td><code>url_prefix</code></td><td>string</td><td><code>/name</code></td><td>URL prefix for items</td></tr>
+<tr><td><code>default_template</code></td><td>string</td><td>preset-based</td><td>Template file for rendering</td></tr>
+<tr><td><code>has_date</code></td><td>bool</td><td>preset-based</td><td>Items have dates</td></tr>
+<tr><td><code>has_rss</code></td><td>bool</td><td>preset-based</td><td>Include in RSS feed</td></tr>
+<tr><td><code>listed</code></td><td>bool</td><td>preset-based</td><td>Show on index page</td></tr>
+<tr><td><code>nested</code></td><td>bool</td><td>preset-based</td><td>Support subdirectories as groups</td></tr>
+<tr><td><code>paginate</code></td><td>int</td><td>none</td><td>Items per page (enables pagination)</td></tr>
 </tbody></table>
 <h2 id="posts">Posts</h2>
 <p>Posts are date-based content. Filenames should include the date:</p>

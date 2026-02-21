@@ -1803,26 +1803,26 @@
 <h2 id="overview">Overview</h2>
 <p><code>seite</code> has eleven subcommands:</p>
 <table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>init</code></th><th>Create a new site</th></tr>
-<tr><th><code>build</code></th><th>Build the site</th></tr>
-<tr><th><code>serve</code></th><th>Development server with live reload</th></tr>
-<tr><th><code>new</code></th><th>Create content files</th></tr>
-<tr><th><code>agent</code></th><th>AI assistant with site context</th></tr>
-<tr><th><code>theme</code></th><th>Manage themes</th></tr>
-<tr><th><code>deploy</code></th><th>Deploy to hosting platforms</th></tr>
-<tr><th><code>workspace</code></th><th>Manage multi-site workspaces</th></tr>
-<tr><th><code>mcp</code></th><th>MCP server for AI tool integration</th></tr>
-<tr><th><code>upgrade</code></th><th>Update project config to match current binary</th></tr>
-<tr><th><code>self-update</code></th><th>Update the seite binary to the latest release</th></tr>
+<tr><td><code>init</code></td><td>Create a new site</td></tr>
+<tr><td><code>build</code></td><td>Build the site</td></tr>
+<tr><td><code>serve</code></td><td>Development server with live reload</td></tr>
+<tr><td><code>new</code></td><td>Create content files</td></tr>
+<tr><td><code>agent</code></td><td>AI assistant with site context</td></tr>
+<tr><td><code>theme</code></td><td>Manage themes</td></tr>
+<tr><td><code>deploy</code></td><td>Deploy to hosting platforms</td></tr>
+<tr><td><code>workspace</code></td><td>Manage multi-site workspaces</td></tr>
+<tr><td><code>mcp</code></td><td>MCP server for AI tool integration</td></tr>
+<tr><td><code>upgrade</code></td><td>Update project config to match current binary</td></tr>
+<tr><td><code>self-update</code></td><td>Update the seite binary to the latest release</td></tr>
 </tbody></table>
 <h3 id="global-flags">Global Flags</h3>
 <p>These flags work with any command:</p>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--site &lt;name&gt;</code></th><th>Target a specific site in a workspace</th></tr>
-<tr><th><code>--config &lt;path&gt;</code></th><th>Path to config file</th></tr>
-<tr><th><code>--dir &lt;path&gt;</code></th><th>Project directory</th></tr>
-<tr><th><code>--verbose</code></th><th>Enable verbose logging</th></tr>
-<tr><th><code>--json</code></th><th>Output results as JSON</th></tr>
+<tr><td><code>--site &lt;name&gt;</code></td><td>Target a specific site in a workspace</td></tr>
+<tr><td><code>--config &lt;path&gt;</code></td><td>Path to config file</td></tr>
+<tr><td><code>--dir &lt;path&gt;</code></td><td>Project directory</td></tr>
+<tr><td><code>--verbose</code></td><td>Enable verbose logging</td></tr>
+<tr><td><code>--json</code></td><td>Output results as JSON</td></tr>
 </tbody></table>
 <h2 id="seite-init">seite init</h2>
 <p>Create a new site directory with scaffolded structure.</p>
@@ -1830,10 +1830,10 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> init &lt;name&gt; </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--title</code></th><th>Site title</th></tr>
-<tr><th><code>--description</code></th><th>Site description</th></tr>
-<tr><th><code>--deploy-target</code></th><th><code>github-pages</code>, <code>cloudflare</code>, or <code>netlify</code></th></tr>
-<tr><th><code>--collections</code></th><th>Comma-separated list: <code>posts,docs,pages,changelog,roadmap</code></th></tr>
+<tr><td><code>--title</code></td><td>Site title</td></tr>
+<tr><td><code>--description</code></td><td>Site description</td></tr>
+<tr><td><code>--deploy-target</code></td><td><code>github-pages</code>, <code>cloudflare</code>, or <code>netlify</code></td></tr>
+<tr><td><code>--collections</code></td><td>Comma-separated list: <code>posts,docs,pages,changelog,roadmap</code></td></tr>
 </tbody></table>
 <p>If flags are omitted, <code>seite init</code> prompts interactively.</p>
 <pre style="background-color:#2b303b;">
@@ -1849,8 +1849,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--drafts</code></th><th>Include draft content in the build</th></tr>
-<tr><th><code>--strict</code></th><th>Treat broken internal links as build errors</th></tr>
+<tr><td><code>--drafts</code></td><td>Include draft content in the build</td></tr>
+<tr><td><code>--strict</code></td><td>Treat broken internal links as build errors</td></tr>
 </tbody></table>
 <p>The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.</p>
 <p>After building, <code>seite build</code> validates all internal links in the generated HTML. Broken links (e.g., links pointing to <code>/posts/missing-slug</code>) are reported as warnings by default. Use <code>--strict</code> to fail the build when broken links are found — useful in CI pipelines.</p>
@@ -1860,8 +1860,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> serve </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--port</code></th><th>Starting port (default: 3000, auto-increments if taken)</th></tr>
-<tr><th><code>--drafts</code></th><th>Include drafts</th></tr>
+<tr><td><code>--port</code></td><td>Starting port (default: 3000, auto-increments if taken)</td></tr>
+<tr><td><code>--drafts</code></td><td>Include drafts</td></tr>
 </tbody></table>
 <p>The server injects a live-reload script that polls for changes. An interactive REPL accepts commands:</p>
 <ul>
@@ -1878,8 +1878,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> new &lt;collection&gt; &quot;</span><span style="color:#a3be8c;">Title</span><span style="color:#c0c5ce;">&quot; </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--tags</code></th><th>Comma-separated tags</th></tr>
-<tr><th><code>--lang</code></th><th>Language code for translations (e.g., <code>es</code>, <code>fr</code>)</th></tr>
+<tr><td><code>--tags</code></td><td>Comma-separated tags</td></tr>
+<tr><td><code>--lang</code></td><td>Language code for translations (e.g., <code>es</code>, <code>fr</code>)</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> new post &quot;</span><span style="color:#a3be8c;">My Post</span><span style="color:#c0c5ce;">&quot;</span><span style="color:#bf616a;"> --tags</span><span style="color:#c0c5ce;"> rust,web
@@ -1906,8 +1906,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> collection &lt;subcommand&gt;
 </span></pre>
 <table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>add &lt;preset&gt;</code></th><th>Add a collection preset to the current site (updates <code>seite.toml</code>, creates content directory)</th></tr>
-<tr><th><code>list</code></th><th>List all collections in the current site with their configuration</th></tr>
+<tr><td><code>add &lt;preset&gt;</code></td><td>Add a collection preset to the current site (updates <code>seite.toml</code>, creates content directory)</td></tr>
+<tr><td><code>list</code></td><td>List all collections in the current site with their configuration</td></tr>
 </tbody></table>
 <p>Available presets: <code>posts</code>, <code>docs</code>, <code>pages</code>, <code>changelog</code>, <code>roadmap</code>, <code>trust</code>.</p>
 <pre style="background-color:#2b303b;">
@@ -1921,11 +1921,11 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme &lt;subcommand&gt;
 </span></pre>
 <table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>list</code></th><th>Show all available themes (bundled + installed)</th></tr>
-<tr><th><code>apply &lt;name&gt;</code></th><th>Apply a bundled or installed theme</th></tr>
-<tr><th><code>create "&lt;description&gt;"</code></th><th>Generate a custom theme with AI</th></tr>
-<tr><th><code>install &lt;url&gt;</code></th><th>Download and install a theme from a URL</th></tr>
-<tr><th><code>export &lt;name&gt;</code></th><th>Export the current theme as a shareable <code>.tera</code> file</th></tr>
+<tr><td><code>list</code></td><td>Show all available themes (bundled + installed)</td></tr>
+<tr><td><code>apply &lt;name&gt;</code></td><td>Apply a bundled or installed theme</td></tr>
+<tr><td><code>create "&lt;description&gt;"</code></td><td>Generate a custom theme with AI</td></tr>
+<tr><td><code>install &lt;url&gt;</code></td><td>Download and install a theme from a URL</td></tr>
+<tr><td><code>export &lt;name&gt;</code></td><td>Export the current theme as a shareable <code>.tera</code> file</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme list
@@ -1942,13 +1942,13 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--target</code></th><th>Override deploy target (<code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code>)</th></tr>
-<tr><th><code>--dry-run</code></th><th>Preview what would be deployed without deploying</th></tr>
-<tr><th><code>--domain</code></th><th>Set up a custom domain (prints DNS records, updates config, attaches to platform)</th></tr>
-<tr><th><code>--setup</code></th><th>Run guided deploy setup</th></tr>
-<tr><th><code>--skip-checks</code></th><th>Skip pre-flight checks</th></tr>
-<tr><th><code>--base-url</code></th><th>Override base URL for this deploy</th></tr>
-<tr><th><code>--no-commit</code></th><th>Skip auto-commit and push (overrides <code>deploy.auto_commit</code>)</th></tr>
+<tr><td><code>--target</code></td><td>Override deploy target (<code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code>)</td></tr>
+<tr><td><code>--dry-run</code></td><td>Preview what would be deployed without deploying</td></tr>
+<tr><td><code>--domain</code></td><td>Set up a custom domain (prints DNS records, updates config, attaches to platform)</td></tr>
+<tr><td><code>--setup</code></td><td>Run guided deploy setup</td></tr>
+<tr><td><code>--skip-checks</code></td><td>Skip pre-flight checks</td></tr>
+<tr><td><code>--base-url</code></td><td>Override base URL for this deploy</td></tr>
+<tr><td><code>--no-commit</code></td><td>Skip auto-commit and push (overrides <code>deploy.auto_commit</code>)</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy                          </span><span style="color:#65737e;"># Commit, push, build, and deploy
@@ -1965,16 +1965,16 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace &lt;subcommand&gt;
 </span></pre>
 <table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>init [name]</code></th><th>Initialize a new workspace in the current directory</th></tr>
-<tr><th><code>list</code></th><th>List all sites in the workspace</th></tr>
-<tr><th><code>add &lt;name&gt;</code></th><th>Add a new site to the workspace</th></tr>
-<tr><th><code>status</code></th><th>Show detailed workspace status</th></tr>
+<tr><td><code>init [name]</code></td><td>Initialize a new workspace in the current directory</td></tr>
+<tr><td><code>list</code></td><td>List all sites in the workspace</td></tr>
+<tr><td><code>add &lt;name&gt;</code></td><td>Add a new site to the workspace</td></tr>
+<tr><td><code>status</code></td><td>Show detailed workspace status</td></tr>
 </tbody></table>
 <h3 id="workspace-add-flags">workspace add flags</h3>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--path</code></th><th>Site directory path (default: <code>sites/&lt;name&gt;</code>)</th></tr>
-<tr><th><code>--title</code></th><th>Site title</th></tr>
-<tr><th><code>--collections</code></th><th>Comma-separated collections (default: <code>posts,pages</code>)</th></tr>
+<tr><td><code>--path</code></td><td>Site directory path (default: <code>sites/&lt;name&gt;</code>)</td></tr>
+<tr><td><code>--title</code></td><td>Site title</td></tr>
+<tr><td><code>--collections</code></td><td>Comma-separated collections (default: <code>posts,pages</code>)</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init my-workspace
@@ -2006,8 +2006,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> upgrade </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--force</code></th><th>Apply all upgrades without confirmation</th></tr>
-<tr><th><code>--check</code></th><th>Check for needed upgrades without applying (exits with code 1 if outdated)</th></tr>
+<tr><td><code>--force</code></td><td>Apply all upgrades without confirmation</td></tr>
+<tr><td><code>--check</code></td><td>Check for needed upgrades without applying (exits with code 1 if outdated)</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> upgrade                </span><span style="color:#65737e;"># Interactive: shows changes, asks for confirmation
@@ -2031,8 +2031,8 @@
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> self-update </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
 <table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>--check</code></th><th>Check for updates without installing</th></tr>
-<tr><th><code>--target-version</code></th><th>Update to a specific version (e.g., <code>0.2.0</code> or <code>v0.2.0</code>)</th></tr>
+<tr><td><code>--check</code></td><td>Check for updates without installing</td></tr>
+<tr><td><code>--target-version</code></td><td>Update to a specific version (e.g., <code>0.2.0</code> or <code>v0.2.0</code>)</td></tr>
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> self-update                          </span><span style="color:#65737e;"># Update to latest release
