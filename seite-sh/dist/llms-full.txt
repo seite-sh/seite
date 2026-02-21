@@ -8,7 +8,7 @@
 
 ### Getting Started
 
-*Install page and build your first static site in under a minute.*
+*Install seite and build your first static site in under a minute.*
 
 ## Installation
 
@@ -37,7 +37,7 @@ irm https://seite.sh/install.ps1 | iex
 If you have the Rust toolchain installed (all platforms):
 
 ```bash
-cargo install page
+cargo install seite
 ```
 
 ### Platform support
@@ -53,11 +53,11 @@ cargo install page
 ### Verify
 
 ```bash
-page --version
+seite --version
 ```
 
 {{% callout(type="tip") %}}
-Run `page --help` to see all available commands at a glance.
+Run `seite --help` to see all available commands at a glance.
 {{% end %}}
 
 ## Create Your First Site
@@ -385,7 +385,7 @@ Each language can override `title` and `description`. See [Multi-language](/docs
 
 ## [images]
 
-Optional. When this section is present, `page` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `seite init` include this section by default.
+Optional. When this section is present, `seite` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `seite init` include this section by default.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -790,7 +790,7 @@ Tag pages are i18n-aware and included in the sitemap.
 
 ## Template Engine
 
-`page` uses Tera, a Jinja2-compatible template engine. All templates extend `base.html`. User templates in `templates/` override bundled defaults.
+`seite` uses Tera, a Jinja2-compatible template engine. All templates extend `base.html`. User templates in `templates/` override bundled defaults.
 
 ## Template Variables
 
@@ -1307,7 +1307,7 @@ All error messages include the source file path and line number for quick debugg
 
 ## Overview
 
-`page` uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.
+`seite` uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.
 
 {{% callout(type="info") %}}
 Single-language sites need zero i18n config. Everything works identically whether or not you add `[languages.*]` sections. i18n is purely additive.
@@ -1375,7 +1375,7 @@ Files with a `.xx.md` suffix are safely ignored if `xx` isn't a configured langu
 
 ## Per-Language Output
 
-When multi-language is enabled, `page` generates per-language versions of:
+When multi-language is enabled, `seite` generates per-language versions of:
 
 | Output | Default language | Other languages |
 |--------|-----------------|-----------------|
@@ -1471,11 +1471,11 @@ See [Templates & Themes](/docs/templates) for the full list of available keys.
 
 ### Deployment
 
-*Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.*
+*Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.*
 
 ## Overview
 
-`page` supports three deployment targets out of the box:
+`seite` supports three deployment targets out of the box:
 
 - **GitHub Pages** — git-based deployment with auto-generated GitHub Actions
 - **Cloudflare Pages** — wrangler-based deployment
@@ -1505,14 +1505,14 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 {{% end %}}
 
 {{% callout(type="info") %}}
-`page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
+`seite` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
 {{% end %}}
 
 ## Auto-Commit and Push
 
 By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
-**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `page` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
 
 To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 
@@ -1887,7 +1887,7 @@ The `seite://trust` resource returns the full trust center state as JSON, includ
 
 ## Overview
 
-`page` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
+`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
 
 No API keys needed. It uses your Claude Code subscription directly.
 
@@ -1919,7 +1919,7 @@ Claude receives a rich system prompt containing:
 - Available templates
 - Frontmatter format with examples
 - File naming conventions
-- All `page` CLI commands
+- All `seite` CLI commands
 
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 
@@ -2029,11 +2029,11 @@ When you run `seite init`, it creates `.claude/settings.json` with pre-configure
 
 ### Workspaces
 
-*Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.*
+*Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.*
 
 ## Overview
 
-A workspace lets you manage multiple `page` sites from a single directory. Each site has its own `seite.toml`, content, and templates, but they share a root and can share data, static files, and templates.
+A workspace lets you manage multiple `seite` sites from a single directory. Each site has its own `seite.toml`, content, and templates, but they share a root and can share data, static files, and templates.
 
 Use cases:
 - **Company site + blog + docs** as separate sites in one repo
@@ -2220,7 +2220,7 @@ seite workspace status        # Detailed workspace status (config, build state, 
 
 ## Workspace Detection
 
-`page` automatically detects workspaces by walking up the directory tree looking for `seite-workspace.toml`. This means you can run commands from anywhere inside the workspace:
+`seite` automatically detects workspaces by walking up the directory tree looking for `seite-workspace.toml`. This means you can run commands from anywhere inside the workspace:
 
 ```bash
 cd my-workspace/sites/blog
@@ -2228,7 +2228,7 @@ seite build                   # Detects workspace, builds all sites
 seite build --site blog       # Builds just the blog
 ```
 
-If no `seite-workspace.toml` is found, `page` operates in standalone mode using the local `seite.toml`.
+If no `seite-workspace.toml` is found, `seite` operates in standalone mode using the local `seite.toml`.
 
 ## Next Steps
 
@@ -2369,7 +2369,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"
 
 ## Bundled Themes
 
-Six production-ready themes ship with every `page` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
+Six production-ready themes ship with every `seite` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
 
 ```bash
 seite theme apply <name>
@@ -2560,12 +2560,12 @@ In the dev server REPL, type `theme` to list themes or `theme <name>` to apply a
 *Complete reference for all seite CLI commands, flags, and options.*
 
 {{% callout(type="tip") %}}
-Run `page <command> --help` for quick inline help on any command.
+Run `seite <command> --help` for quick inline help on any command.
 {{% end %}}
 
 ## Overview
 
-`page` has eleven subcommands:
+`seite` has eleven subcommands:
 
 | Command | Description |
 |---------|-------------|
@@ -2579,7 +2579,7 @@ Run `page <command> --help` for quick inline help on any command.
 | `workspace` | Manage multi-site workspaces |
 | `mcp`   | MCP server for AI tool integration |
 | `upgrade` | Update project config to match current binary |
-| `self-update` | Update the page binary to the latest release |
+| `self-update` | Update the seite binary to the latest release |
 
 ### Global Flags
 
@@ -2826,7 +2826,7 @@ You don't need to run this command manually. Claude Code starts it automatically
 
 ## seite upgrade
 
-Update project configuration files to match the current binary version. When you upgrade the `page` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
+Update project configuration files to match the current binary version. When you upgrade the `seite` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
 
 ```bash
 seite upgrade [options]
@@ -2855,7 +2855,7 @@ Upgrade is **additive and non-destructive**:
 
 ## seite self-update
 
-Update the `page` binary itself to the latest release (or a specific version).
+Update the `seite` binary itself to the latest release (or a specific version).
 
 ```bash
 seite self-update [options]

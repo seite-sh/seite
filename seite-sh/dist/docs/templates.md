@@ -6,7 +6,7 @@ weight: 4
 
 ## Template Engine
 
-`page` uses Tera, a Jinja2-compatible template engine. All templates extend `base.html`. User templates in `templates/` override bundled defaults.
+`seite` uses Tera, a Jinja2-compatible template engine. All templates extend `base.html`. User templates in `templates/` override bundled defaults.
 
 ## Template Variables
 

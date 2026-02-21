@@ -6,7 +6,7 @@ weight: 9
 
 ## Bundled Themes
 
-Six production-ready themes ship with every `page` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
+Six production-ready themes ship with every `seite` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
 
 ```bash
 seite theme apply <name>

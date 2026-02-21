@@ -2,59 +2,59 @@
 title: seite
 description: seite is an AI-native static site generator for startup teams tired of managing too many tools for something that should be simple. Every page ships as HTML for browsers, Markdown for LLMs, and structured data for search engines. Use the Claude Code or Codex subscription you already have. Single binary. Zero dependencies.
 extra:
-  compare_4_need: Changelog
-  compare_5_how: roadmap collection preset
-  compare_1_how: content/index.md + template
-  ribbon_1: <span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh
-  feature_5_title: One command. Three targets. Auto-generated CI.
-  feature_3_title: Ship in every language your customers speak.
-  hero_accent: in an afternoon.
-  compare_2_how: docs collection preset
-  comparison_sub: No new subscriptions. Just the coding agent you already have.
-  features_sub: A 13-step build pipeline that outputs HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files. All from a single Rust binary with no runtime dependencies.
-  feature_2_body: Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) can orient themselves immediately. Run <code>seite agent "..."</code> and it reads your schema, your templates, your content — before it touches anything.
-  hero_line_2: Not a sprint.
-  feature_4_title: Found by people. Found by models.
-  hero_line_1: Ship a landing page, docs site, or blog
-  compare_4_how: changelog collection preset
-  step_2_title: Scaffold your site
-  step_3_title: Create content with your agent
-  quickstart_eyebrow: // quickstart
-  features_eyebrow: // features
-  step_3_body: <code>seite agent "write about X"</code>. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.
-  feature_3_body: Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites — it's just there when you need it.
-  step_4_title: Deploy anywhere
-  ribbon_3: <span class="ribbon-highlight">6</span> bundled themes
-  feature_1_title: Sub-second builds. Always.
-  feature_6_title: Six themes. Generate your own with a sentence.
-  compare_col_2: How
-  dogfood_line: This site is built with seite — the docs, the changelog, the llms.txt. All of it.
-  ribbon_4: <span class="ribbon-highlight">zero</span> runtime deps
-  hero_badge: Built in Rust · AI-native · Open source
-  step_4_body: <code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.
-  cta_headline: Your coding agent can handle your website.
-  hero_sub: One repo. One CLI. Your whole web presence — built with the coding agent you already use.
-  github_url: https://github.com/seite-sh/seite
-  compare_col_1: What you need
-  origin_line: Started as an experiment. Built with Claude Code. Used on our own startup's site.
-  cta_sub: Give it the right structure and it will. One repo. One CLI. Your whole web presence.
-  step_2_body: <code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented.
-  step_1_title: Install seite
-  feature_2_title: Your agent already knows how to use this.
-  compare_2_need: Documentation
-  compare_5_need: Roadmap
-  features_headline_2: Nothing you don't.
-  feature_4_body: Canonical URLs, Open Graph, JSON-LD structured data, XML sitemap, and per-page robots directives — generated automatically. Plus <code>llms.txt</code> and <code>llms-full.txt</code> for LLM discovery. Traditional SEO and generative engine optimization handled in one build.
-  compare_1_need: Landing page
-  comparison_headline: One tool. Everything your site needs.
-  compare_3_need: Blog
   feature_1_body: 13-step build pipeline compiled to a single static binary. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team.
-  compare_3_how: posts collection preset
-  ribbon_2: ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>
+  features_eyebrow: // features
+  compare_2_need: Documentation
+  features_sub: A 13-step build pipeline that outputs HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files. All from a single Rust binary with no runtime dependencies.
+  feature_3_title: Ship in every language your customers speak.
+  step_3_title: Create content with your agent
+  cta_sub: Give it the right structure and it will. One repo. One CLI. Your whole web presence.
+  github_url: https://github.com/seite-sh/seite
+  step_4_body: <code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.
+  compare_2_how: docs collection preset
+  hero_accent: in an afternoon.
+  feature_3_body: Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites — it's just there when you need it.
+  comparison_sub: No new subscriptions. Just the coding agent you already have.
+  step_2_body: <code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented.
+  ribbon_4: <span class="ribbon-highlight">zero</span> runtime deps
+  compare_5_need: Roadmap
   quickstart_title_1: Up and running in thirty seconds.
+  compare_3_how: posts collection preset
+  step_4_title: Deploy anywhere
+  cta_headline: Your coding agent can handle your website.
+  hero_badge: Built in Rust · AI-native · Open source
+  step_2_title: Scaffold your site
+  compare_4_how: changelog collection preset
   step_1_body: <code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.
+  compare_3_need: Blog
+  dogfood_line: This site is built with seite — the docs, the changelog, the llms.txt. All of it.
+  compare_col_1: What you need
+  compare_col_2: How
+  feature_4_title: Found by people. Found by models.
+  feature_5_title: One command. Three targets. Auto-generated CI.
+  feature_6_title: Six themes. Generate your own with a sentence.
+  comparison_headline: One tool. Everything your site needs.
+  ribbon_3: <span class="ribbon-highlight">6</span> bundled themes
+  origin_line: Started as an experiment. Built with Claude Code. Used on our own startup's site.
   features_headline_1: Everything you need.
+  ribbon_2: ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>
+  hero_line_2: Not a sprint.
   feature_5_body: GitHub Pages, Cloudflare Pages, and Netlify — all built in. Pre-flight checks, <code>--dry-run</code> preview, and auto-generated GitHub Actions workflows so your site builds on every push.
+  compare_1_need: Landing page
+  compare_5_how: roadmap collection preset
+  feature_2_title: Your agent already knows how to use this.
+  features_headline_2: Nothing you don't.
+  compare_4_need: Changelog
+  quickstart_eyebrow: // quickstart
+  step_1_title: Install seite
   feature_6_body: 'Default, dark, minimal, docs, brutalist, and bento. Or: <code>seite theme create "coral brutalist with lime accents"</code>. The agent generates the CSS. You review it. Ship it.'
+  compare_1_how: content/index.md + template
+  step_3_body: <code>seite agent "write about X"</code>. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.
+  feature_1_title: Sub-second builds. Always.
+  feature_4_body: Canonical URLs, Open Graph, JSON-LD structured data, XML sitemap, and per-page robots directives — generated automatically. Plus <code>llms.txt</code> and <code>llms-full.txt</code> for LLM discovery. Traditional SEO and generative engine optimization handled in one build.
+  ribbon_1: <span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh
+  hero_sub: One repo. One CLI. Your whole web presence — built with the coding agent you already use.
+  feature_2_body: Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) can orient themselves immediately. Run <code>seite agent "..."</code> and it reads your schema, your templates, your content — before it touches anything.
+  hero_line_1: Ship a landing page, docs site, or blog
 ---
 

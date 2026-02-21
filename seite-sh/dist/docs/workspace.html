@@ -15,14 +15,14 @@
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Workspaces — seite docs</title>
-        <meta name="description" content="Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
+        <meta name="description" content="Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
         <link rel="canonical" href="https://seite.sh/docs/workspace">
 
         <!-- Open Graph -->
         <meta property="og:type" content="article">
         <meta property="og:url" content="https://seite.sh/docs/workspace">
         <meta property="og:title" content="Workspaces">
-        <meta property="og:description" content="Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
+        <meta property="og:description" content="Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
         
         <meta property="og:site_name" content="seite">
         <meta property="og:locale" content="en">
@@ -30,7 +30,7 @@
         <!-- Twitter Card -->
         <meta name="twitter:card" content="summary">
         <meta name="twitter:title" content="Workspaces">
-        <meta name="twitter:description" content="Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
+        <meta name="twitter:description" content="Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.">
         
 
         
@@ -47,7 +47,7 @@
         <!-- JSON-LD -->
         <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"Workspaces","description":"Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/workspace"}
+    {"@context":"https://schema.org","@type":"Article","headline":"Workspaces","description":"Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/workspace"}
     
     </script>
 
@@ -1795,9 +1795,9 @@
     <div class="docs-main">
         <article>
             <h1>Workspaces</h1>
-            <p class="doc-description">Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.</p>
+            <p class="doc-description">Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.</p>
             <div class="content"><h2 id="overview">Overview</h2>
-<p>A workspace lets you manage multiple <code>page</code> sites from a single directory. Each site has its own <code>seite.toml</code>, content, and templates, but they share a root and can share data, static files, and templates.</p>
+<p>A workspace lets you manage multiple <code>seite</code> sites from a single directory. Each site has its own <code>seite.toml</code>, content, and templates, but they share a root and can share data, static files, and templates.</p>
 <p>Use cases:</p>
 <ul>
 <li><strong>Company site + blog + docs</strong> as separate sites in one repo</li>
@@ -1943,13 +1943,13 @@ path = &quot;sites/docs&quot;
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace status        </span><span style="color:#65737e;"># Detailed workspace status (config, build state, titles)
 </span></pre>
 <h2 id="workspace-detection">Workspace Detection</h2>
-<p><code>page</code> automatically detects workspaces by walking up the directory tree looking for <code>seite-workspace.toml</code>. This means you can run commands from anywhere inside the workspace:</p>
+<p><code>seite</code> automatically detects workspaces by walking up the directory tree looking for <code>seite-workspace.toml</code>. This means you can run commands from anywhere inside the workspace:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#96b5b4;">cd</span><span style="color:#c0c5ce;"> my-workspace/sites/blog
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build                   </span><span style="color:#65737e;"># Detects workspace, builds all sites
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> build</span><span style="color:#bf616a;"> --site</span><span style="color:#c0c5ce;"> blog       </span><span style="color:#65737e;"># Builds just the blog
 </span></pre>
-<p>If no <code>seite-workspace.toml</code> is found, <code>page</code> operates in standalone mode using the local <code>seite.toml</code>.</p>
+<p>If no <code>seite-workspace.toml</code> is found, <code>seite</code> operates in standalone mode using the local <code>seite.toml</code>.</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li><a href="/docs/configuration">Configuration</a> — site-level <code>seite.toml</code> settings that each workspace site uses</li>

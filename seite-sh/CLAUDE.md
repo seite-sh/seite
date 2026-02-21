@@ -1,4 +1,4 @@
-# page
+# seite
 
 AI-native static site generator for the modern web
 
