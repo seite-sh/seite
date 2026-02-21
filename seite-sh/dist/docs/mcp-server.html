@@ -1779,6 +1779,8 @@
                     
                 <li><a href="/docs/cli-reference" >CLI Reference</a></li>
                     
+                <li><a href="/docs/releases" >Releases</a></li>
+                    
             </ul>
             
             <h3>Resources</h3>
@@ -1795,15 +1797,15 @@
             <h1>MCP Server</h1>
             <p class="doc-description">Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.</p>
             <div class="content"><h2 id="overview">Overview</h2>
-<p><code>page</code> includes a built-in <a href="https://modelcontextprotocol.io/">MCP</a> (Model Context Protocol) server that gives AI tools structured access to your site. When you open a page project in Claude Code, the MCP server starts automatically — no API keys or setup required.</p>
+<p><code>seite</code> includes a built-in <a href="https://modelcontextprotocol.io/">MCP</a> (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically — no API keys or setup required.</p>
 <p>The server exposes your site's documentation, configuration, content, and themes as <strong>resources</strong>, and provides <strong>tools</strong> for building, creating content, searching, and applying themes.</p>
 <h2 id="how-it-works">How It Works</h2>
 <p>The MCP server runs as a subprocess (<code>seite mcp</code>) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in <code>.claude/settings.json</code>:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#c0c5ce;">{
 </span><span style="color:#c0c5ce;">  &quot;</span><span style="color:#a3be8c;">mcpServers</span><span style="color:#c0c5ce;">&quot;: {
-</span><span style="color:#c0c5ce;">    &quot;</span><span style="color:#a3be8c;">page</span><span style="color:#c0c5ce;">&quot;: {
-</span><span style="color:#c0c5ce;">      &quot;</span><span style="color:#a3be8c;">command</span><span style="color:#c0c5ce;">&quot;: &quot;</span><span style="color:#a3be8c;">page</span><span style="color:#c0c5ce;">&quot;,
+</span><span style="color:#c0c5ce;">    &quot;</span><span style="color:#a3be8c;">seite</span><span style="color:#c0c5ce;">&quot;: {
+</span><span style="color:#c0c5ce;">      &quot;</span><span style="color:#a3be8c;">command</span><span style="color:#c0c5ce;">&quot;: &quot;</span><span style="color:#a3be8c;">seite</span><span style="color:#c0c5ce;">&quot;,
 </span><span style="color:#c0c5ce;">      &quot;</span><span style="color:#a3be8c;">args</span><span style="color:#c0c5ce;">&quot;: [&quot;</span><span style="color:#a3be8c;">mcp</span><span style="color:#c0c5ce;">&quot;]
 </span><span style="color:#c0c5ce;">    }
 </span><span style="color:#c0c5ce;">  }
@@ -1877,6 +1879,12 @@
 </div>
         </article>
 
+        
+        
+        
+        
+        
+        
         
         
         

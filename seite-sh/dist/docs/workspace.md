@@ -20,8 +20,8 @@ Use cases:
 seite workspace init my-workspace
 
 # Add sites
-seite workspace init add blog --collections posts,pages --title "Blog"
-seite workspace init add docs --collections docs --title "Documentation"
+seite workspace add blog --collections posts,pages --title "Blog"
+seite workspace add docs --collections docs --title "Documentation"
 
 # Build all sites
 seite build
@@ -56,7 +56,7 @@ If you omit the name, an interactive prompt asks for it.
 ## Adding Sites
 
 ```bash
-seite workspace init add <name> [options]
+seite workspace add <name> [options]
 ```
 
 | Flag | Description |
@@ -68,8 +68,8 @@ seite workspace init add <name> [options]
 This creates a full site scaffold inside the workspace and registers it in `seite-workspace.toml`:
 
 ```bash
-seite workspace init add blog --collections posts,pages --title "My Blog"
-seite workspace init add docs --collections docs --title "Documentation" --path sites/documentation
+seite workspace add blog --collections posts,pages --title "My Blog"
+seite workspace add docs --collections docs --title "Documentation" --path sites/documentation
 ```
 
 ## Configuration
@@ -187,8 +187,8 @@ Use `seite deploy --site blog --dry-run` to preview a single site's deploy befor
 ## Checking Status
 
 ```bash
-seite workspace init list          # List all sites with config status
-seite workspace init status        # Detailed workspace status (config, build state, titles)
+seite workspace list          # List all sites with config status
+seite workspace status        # Detailed workspace status (config, build state, titles)
 ```
 
 ## Workspace Detection

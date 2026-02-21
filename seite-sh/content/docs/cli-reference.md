@@ -214,12 +214,12 @@ seite deploy --domain example.com     # Set up custom domain
 seite deploy --setup                  # Guided setup wizard
 ```
 
-## seite workspace init
+## seite workspace
 
 Manage multi-site workspaces. See the [Workspaces](/docs/workspace) guide for full details.
 
 ```bash
-seite workspace init <subcommand>
+seite workspace <subcommand>
 ```
 
 | Subcommand | Description |
@@ -239,10 +239,10 @@ seite workspace init <subcommand>
 
 ```bash
 seite workspace init my-workspace
-seite workspace init add blog --collections posts,pages --title "Blog"
-seite workspace init add docs --collections docs --path sites/documentation
-seite workspace init list
-seite workspace init status
+seite workspace add blog --collections posts,pages --title "Blog"
+seite workspace add docs --collections docs --path sites/documentation
+seite workspace list
+seite workspace status
 ```
 
 When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by default. Use `--site` to target one:

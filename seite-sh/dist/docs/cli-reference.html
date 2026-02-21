@@ -1779,6 +1779,8 @@
                     
                 <li class="active" ><a href="/docs/cli-reference"  aria-current="page" >CLI Reference</a></li>
                     
+                <li><a href="/docs/releases" >Releases</a></li>
+                    
             </ul>
             
             <h3>Resources</h3>
@@ -1957,10 +1959,10 @@
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --domain</span><span style="color:#c0c5ce;"> example.com     </span><span style="color:#65737e;"># Set up custom domain
 </span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> deploy</span><span style="color:#bf616a;"> --setup                  </span><span style="color:#65737e;"># Guided setup wizard
 </span></pre>
-<h2 id="seite-workspace-init">seite workspace init</h2>
+<h2 id="seite-workspace">seite workspace</h2>
 <p>Manage multi-site workspaces. See the <a href="/docs/workspace">Workspaces</a> guide for full details.</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init &lt;subcommand&gt;
+<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace &lt;subcommand&gt;
 </span></pre>
 <table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>init [name]</code></th><th>Initialize a new workspace in the current directory</th></tr>
@@ -1976,10 +1978,10 @@
 </tbody></table>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init my-workspace
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Blog</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --path</span><span style="color:#c0c5ce;"> sites/documentation
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init list
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace init status
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add blog</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> posts,pages</span><span style="color:#bf616a;"> --title </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Blog</span><span style="color:#c0c5ce;">&quot;
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace add docs</span><span style="color:#bf616a;"> --collections</span><span style="color:#c0c5ce;"> docs</span><span style="color:#bf616a;"> --path</span><span style="color:#c0c5ce;"> sites/documentation
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace list
+</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> workspace status
 </span></pre>
 <p>When inside a workspace, <code>build</code>, <code>serve</code>, and <code>deploy</code> operate on all sites by default. Use <code>--site</code> to target one:</p>
 <pre style="background-color:#2b303b;">
@@ -2160,6 +2162,14 @@
         
         
         
+        
+        
+        
+        
+        
+        
+        
+        
         <nav class="doc-nav" aria-label="Documentation pagination">
             
             <a href="/docs/theme-gallery">
@@ -2168,7 +2178,10 @@
             </a>
             
             
-            <span class="doc-nav-placeholder"></span>
+            <a href="/docs/releases" class="doc-nav-next">
+                <span class="doc-nav-label">Next →</span>
+                <span class="doc-nav-title">Releases</span>
+            </a>
             
         </nav>
         
@@ -2189,7 +2202,7 @@
                 <li class="toc-level-2"><a href="#seite-collection">seite collection</a></li>
                 <li class="toc-level-2"><a href="#seite-theme">seite theme</a></li>
                 <li class="toc-level-2"><a href="#seite-deploy">seite deploy</a></li>
-                <li class="toc-level-2"><a href="#seite-workspace-init">seite workspace init</a></li>
+                <li class="toc-level-2"><a href="#seite-workspace">seite workspace</a></li>
                 <li class="toc-level-3"><a href="#workspace-add-flags">workspace add flags</a></li>
                 <li class="toc-level-2"><a href="#seite-mcp">seite mcp</a></li>
                 <li class="toc-level-2"><a href="#seite-upgrade">seite upgrade</a></li>
