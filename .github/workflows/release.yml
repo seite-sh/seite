@@ -18,13 +18,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
-    name: CI check
-    uses: ./.github/workflows/rust.yml
-
   build:
     name: Build ${{ matrix.target }}
-    needs: ci
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -89,7 +84,6 @@ jobs:
 
   build-windows:
     name: Build Windows (x86_64 + aarch64)
-    needs: ci
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +176,7 @@ jobs:
 
   deploy-site:
     name: Deploy docs site
-    needs: [build, build-windows, release]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
