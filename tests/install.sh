@@ -18,17 +18,13 @@ FAILED=0
 pass() { PASSED=$((PASSED + 1)); echo "  PASS: $1"; }
 fail() { FAILED=$((FAILED + 1)); echo "  FAIL: $1 — $2"; }
 
-# Source functions from install.sh without executing main()
-# We extract and eval individual functions
-eval "$(sed -n '/^detect_platform()/,/^}/p' "$INSTALL_SCRIPT")"
-eval "$(sed -n '/^compute_sha256()/,/^}/p' "$INSTALL_SCRIPT")"
-eval "$(sed -n '/^resolve_version()/,/^}/p' "$INSTALL_SCRIPT")"
-eval "$(sed -n '/^download()/,/^}/p' "$INSTALL_SCRIPT")"
-# Source color vars and helpers
-eval "$(sed -n '/^info()/p' "$INSTALL_SCRIPT")"
-eval "$(sed -n '/^warn()/p' "$INSTALL_SCRIPT")"
-eval "$(sed -n '/^error()/p' "$INSTALL_SCRIPT")"
-BOLD='' GREEN='' YELLOW='' RED='' RESET=''
+# Source install.sh without executing main()
+export INSTALL_SH_SKIP_MAIN=1
+# shellcheck source=../install.sh
+. "$INSTALL_SCRIPT"
+
+# Disable color output in tests (used by sourced install.sh functions)
+export BOLD='' GREEN='' YELLOW='' RED='' RESET=''
 
 echo "=== install.sh tests ==="
 echo ""
@@ -77,13 +73,13 @@ echo "Checksum verification:"
 
 TMPFILE=$(mktemp)
 echo "hello world" > "$TMPFILE"
-EXPECTED_HASH="a948904f2f0f479b8f8564e9d7a7b4585e3b3e4e0e3e3b3e3e3b3e3e3b3e3b3e"
+EXPECTED_HASH="a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"
 ACTUAL_HASH=$(compute_sha256 "$TMPFILE")
 
-if [ -n "$ACTUAL_HASH" ]; then
-  pass "SHA256 computes a hash: ${ACTUAL_HASH:0:16}..."
+if [ "$ACTUAL_HASH" = "$EXPECTED_HASH" ]; then
+  pass "SHA256 matches expected hash"
 else
-  fail "SHA256" "returned empty hash"
+  fail "SHA256" "expected $EXPECTED_HASH, got $ACTUAL_HASH"
 fi
 
 # Verify same file gives same hash
@@ -110,8 +106,8 @@ echo ""
 # --- Version resolution ---
 echo "Version resolution:"
 
-# Pinned version with v prefix
-VERSION="v1.2.3"
+# Pinned version with v prefix (VERSION is read by resolve_version from install.sh)
+export VERSION="v1.2.3"
 RESOLVED=$(resolve_version 2>/dev/null)
 if [ "$RESOLVED" = "v1.2.3" ]; then
   pass "Pinned version with v prefix: $RESOLVED"
@@ -120,7 +116,7 @@ else
 fi
 
 # Pinned version without v prefix
-VERSION="1.2.3"
+export VERSION="1.2.3"
 RESOLVED=$(resolve_version 2>/dev/null)
 if [ "$RESOLVED" = "v1.2.3" ]; then
   pass "Pinned version adds v prefix: $RESOLVED"

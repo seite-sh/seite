@@ -36,6 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck
-        run: shellcheck install.sh local-install.sh bench/run.sh
+        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh
       - name: Test install.sh
         run: bash tests/install.sh
