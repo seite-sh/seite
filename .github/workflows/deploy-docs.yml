@@ -60,11 +60,23 @@ jobs:
         working-directory: seite-sh
         run: seite build
 
-      - name: Copy install scripts to dist root
+      - name: Generate routing and download files
         working-directory: seite-sh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name)
+
+          # Install scripts at site root
           cp static/install.sh dist/install.sh
           cp static/install.ps1 dist/install.ps1
+
+          # version.txt — latest version pointer
+          echo "$TAG" > dist/version.txt
+
+          # _redirects — route /download/ paths to GitHub Releases
+          printf '/download/latest/* https://github.com/seite-sh/seite/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
+          printf '/download/* https://github.com/seite-sh/seite/releases/download/:splat 302\n' >> dist/_redirects
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
