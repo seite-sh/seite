@@ -400,7 +400,11 @@ fn cmd_new(
     };
 
     let filepath = paths.content.join(&collection.directory).join(&filename);
-    if let Err(e) = std::fs::create_dir_all(filepath.parent().unwrap()) {
+    if let Err(e) = std::fs::create_dir_all(
+        filepath
+            .parent()
+            .expect("content file must have a parent directory"),
+    ) {
         human::error(&format!("Failed to create directory: {e}"));
         return;
     }
