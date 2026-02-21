@@ -67,6 +67,7 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(markdown, options);
 
     let mut html_output = String::new();
@@ -80,10 +81,24 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
     let mut heading_level: u8 = 0;
     let mut heading_text = String::new();
 
+    // Collect events, intercepting headings (for ToC + id attributes) and
+    // code blocks (for syntax highlighting). Everything else is passed through
+    // to push_html in batches so that stateful renderers (e.g. tables) work
+    // correctly.
+    let mut pending: Vec<Event> = Vec::new();
+
+    /// Flush pending events through pulldown-cmark's HTML renderer.
+    fn flush_pending<'a>(pending: &mut Vec<Event<'a>>, html_output: &mut String) {
+        if !pending.is_empty() {
+            html::push_html(html_output, pending.drain(..));
+        }
+    }
+
     for event in parser {
         match event {
             // ── Heading events ──
             Event::Start(Tag::Heading { level, .. }) => {
+                flush_pending(&mut pending, &mut html_output);
                 in_heading = true;
                 heading_level = heading_level_to_u8(level);
                 heading_text.clear();
@@ -111,6 +126,7 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
 
             // ── Code block events ──
             Event::Start(Tag::CodeBlock(kind)) => {
+                flush_pending(&mut pending, &mut html_output);
                 in_code_block = true;
                 code_buf.clear();
                 code_lang = match kind {
@@ -151,10 +167,12 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
             }
             _ if in_code_block => { /* skip non-text events inside code blocks */ }
             other => {
-                html::push_html(&mut html_output, std::iter::once(other));
+                pending.push(other);
             }
         }
     }
+
+    flush_pending(&mut pending, &mut html_output);
 
     (html_output, toc)
 }
@@ -251,5 +269,50 @@ mod tests {
         let md = "Just a paragraph.\n\nAnother one.";
         let (_, toc) = markdown_to_html(md);
         assert!(toc.is_empty());
+    }
+
+    #[test]
+    fn test_task_list() {
+        let md = "- [x] Done\n- [ ] Pending\n- Regular item";
+        let (html, _) = markdown_to_html(md);
+        assert!(
+            html.contains(r#"type="checkbox""#),
+            "should render checkboxes"
+        );
+        assert!(
+            html.contains("checked"),
+            "checked item should have checked attribute"
+        );
+        assert!(html.contains("Done"), "should contain task text");
+        assert!(html.contains("Pending"), "should contain pending task text");
+    }
+
+    #[test]
+    fn test_strikethrough() {
+        let md = "This is ~~deleted~~ text.";
+        let (html, _) = markdown_to_html(md);
+        assert!(
+            html.contains("<del>deleted</del>"),
+            "should render strikethrough"
+        );
+    }
+
+    #[test]
+    fn test_table() {
+        let md = "| Name | Value |\n|------|-------|\n| a    | 1     |\n| b    | 2     |";
+        let (html, _) = markdown_to_html(md);
+        assert!(html.contains("<table"), "should render table");
+        assert!(html.contains("<th"), "should render header cells");
+        assert!(html.contains("<td"), "should render data cells");
+    }
+
+    #[test]
+    fn test_footnotes() {
+        let md = "Text with a footnote[^1].\n\n[^1]: This is the footnote.";
+        let (html, _) = markdown_to_html(md);
+        assert!(
+            html.contains("footnote"),
+            "should render footnote references"
+        );
     }
 }

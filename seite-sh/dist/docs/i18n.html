@@ -1846,11 +1846,11 @@ about.xx.md   → Ignored (xx not configured)
 <h2 id="per-language-output">Per-Language Output</h2>
 <p>When multi-language is enabled, <code>seite</code> generates per-language versions of:</p>
 <table><thead><tr><th>Output</th><th>Default language</th><th>Other languages</th></tr></thead><tbody>
-<tr><th>Index page</th><th><code>dist/index.html</code></th><th><code>dist/{lang}/index.html</code></th></tr>
-<tr><th>RSS feed</th><th><code>dist/feed.xml</code></th><th><code>dist/{lang}/feed.xml</code></th></tr>
-<tr><th>LLM discovery</th><th><code>dist/llms.txt</code></th><th><code>dist/{lang}/llms.txt</code></th></tr>
-<tr><th>Search index</th><th><code>dist/search-index.json</code></th><th><code>dist/{lang}/search-index.json</code></th></tr>
-<tr><th>Sitemap</th><th><code>dist/sitemap.xml</code> (all languages, with alternates)</th><th></th></tr>
+<tr><td>Index page</td><td><code>dist/index.html</code></td><td><code>dist/{lang}/index.html</code></td></tr>
+<tr><td>RSS feed</td><td><code>dist/feed.xml</code></td><td><code>dist/{lang}/feed.xml</code></td></tr>
+<tr><td>LLM discovery</td><td><code>dist/llms.txt</code></td><td><code>dist/{lang}/llms.txt</code></td></tr>
+<tr><td>Search index</td><td><code>dist/search-index.json</code></td><td><code>dist/{lang}/search-index.json</code></td></tr>
+<tr><td>Sitemap</td><td><code>dist/sitemap.xml</code> (all languages, with alternates)</td><td></td></tr>
 </tbody></table>
 <h2 id="url-structure">URL Structure</h2>
 <p>Non-default languages get a <code>/{lang}/</code> prefix:</p>
@@ -1864,12 +1864,12 @@ about.xx.md   → Ignored (xx not configured)
 <p>Bundled themes include a language switcher UI when <code>translations</code> is non-empty. It shows links to all available translations of the current page.</p>
 <h2 id="template-variables">Template Variables</h2>
 <table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>{{ lang }}</code></th><th>Current page language code</th></tr>
-<tr><th><code>{{ translations }}</code></th><th>Array of <code>{lang, url}</code> for available translations</th></tr>
-<tr><th><code>{{ site.language }}</code></th><th>Configured default language (from <code>seite.toml</code>)</th></tr>
-<tr><th><code>{{ default_language }}</code></th><th>Configured default language code</th></tr>
-<tr><th><code>{{ lang_prefix }}</code></th><th>URL prefix for current language (empty for default, <code>"/es"</code> for others)</th></tr>
-<tr><th><code>{{ t }}</code></th><th>UI translation strings (see Templates &amp; Themes docs)</th></tr>
+<tr><td><code>{{ lang }}</code></td><td>Current page language code</td></tr>
+<tr><td><code>{{ translations }}</code></td><td>Array of <code>{lang, url}</code> for available translations</td></tr>
+<tr><td><code>{{ site.language }}</code></td><td>Configured default language (from <code>seite.toml</code>)</td></tr>
+<tr><td><code>{{ default_language }}</code></td><td>Configured default language code</td></tr>
+<tr><td><code>{{ lang_prefix }}</code></td><td>URL prefix for current language (empty for default, <code>"/es"</code> for others)</td></tr>
+<tr><td><code>{{ t }}</code></td><td>UI translation strings (see Templates &amp; Themes docs)</td></tr>
 </tbody></table>
 <p>Use in templates:</p>
 <pre style="background-color:#2b303b;">

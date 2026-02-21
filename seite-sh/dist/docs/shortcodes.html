@@ -1827,37 +1827,37 @@ This is **bold** markdown inside the callout.
 <pre><code>{{&lt; youtube(id=&quot;dQw4w9WgXcQ&quot;) &gt;}}
 </code></pre>
 <table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>id</code></th><th>yes</th><th>YouTube video ID</th></tr>
-<tr><th><code>start</code></th><th>no</th><th>Start time in seconds</th></tr>
-<tr><th><code>title</code></th><th>no</th><th>Accessible title (default: "YouTube video")</th></tr>
+<tr><td><code>id</code></td><td>yes</td><td>YouTube video ID</td></tr>
+<tr><td><code>start</code></td><td>no</td><td>Start time in seconds</td></tr>
+<tr><td><code>title</code></td><td>no</td><td>Accessible title (default: "YouTube video")</td></tr>
 </tbody></table>
 <h3 id="vimeo">vimeo</h3>
 <p>Embeds a responsive Vimeo video player.</p>
 <pre><code>{{&lt; vimeo(id=&quot;123456&quot;) &gt;}}
 </code></pre>
 <table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>id</code></th><th>yes</th><th>Vimeo video ID</th></tr>
-<tr><th><code>title</code></th><th>no</th><th>Accessible title (default: "Vimeo video")</th></tr>
+<tr><td><code>id</code></td><td>yes</td><td>Vimeo video ID</td></tr>
+<tr><td><code>title</code></td><td>no</td><td>Accessible title (default: "Vimeo video")</td></tr>
 </tbody></table>
 <h3 id="gist">gist</h3>
 <p>Embeds a GitHub Gist.</p>
 <pre><code>{{&lt; gist(user=&quot;octocat&quot;, id=&quot;abc123&quot;) &gt;}}
 </code></pre>
 <table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>user</code></th><th>yes</th><th>GitHub username</th></tr>
-<tr><th><code>id</code></th><th>yes</th><th>Gist ID</th></tr>
+<tr><td><code>user</code></td><td>yes</td><td>GitHub username</td></tr>
+<tr><td><code>id</code></td><td>yes</td><td>Gist ID</td></tr>
 </tbody></table>
 <h3 id="figure">figure</h3>
 <p>Renders a semantic <code>&lt;figure&gt;</code> element with optional caption.</p>
 <pre><code>{{&lt; figure(src=&quot;/static/photo.jpg&quot;, caption=&quot;Sunset over the bay&quot;, alt=&quot;Orange sunset&quot;) &gt;}}
 </code></pre>
 <table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>src</code></th><th>yes</th><th>Image path or URL</th></tr>
-<tr><th><code>alt</code></th><th>no</th><th>Alt text for accessibility</th></tr>
-<tr><th><code>caption</code></th><th>no</th><th>Caption displayed below the image</th></tr>
-<tr><th><code>width</code></th><th>no</th><th>Image width attribute</th></tr>
-<tr><th><code>height</code></th><th>no</th><th>Image height attribute</th></tr>
-<tr><th><code>class</code></th><th>no</th><th>CSS class on the figure element</th></tr>
+<tr><td><code>src</code></td><td>yes</td><td>Image path or URL</td></tr>
+<tr><td><code>alt</code></td><td>no</td><td>Alt text for accessibility</td></tr>
+<tr><td><code>caption</code></td><td>no</td><td>Caption displayed below the image</td></tr>
+<tr><td><code>width</code></td><td>no</td><td>Image width attribute</td></tr>
+<tr><td><code>height</code></td><td>no</td><td>Image height attribute</td></tr>
+<tr><td><code>class</code></td><td>no</td><td>CSS class on the figure element</td></tr>
 </tbody></table>
 <h3 id="callout">callout</h3>
 <p>Renders an admonition/callout box. This is a <strong>body shortcode</strong> — the content between the tags is processed as markdown.</p>
@@ -1866,7 +1866,7 @@ Be careful with this operation. It **cannot be undone**.
 {{% end %}}
 </code></pre>
 <table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>type</code></th><th>no</th><th>Box style: <code>info</code> (default), <code>warning</code>, <code>danger</code>, <code>tip</code></th></tr>
+<tr><td><code>type</code></td><td>no</td><td>Box style: <code>info</code> (default), <code>warning</code>, <code>danger</code>, <code>tip</code></td></tr>
 </tbody></table>
 <p>All six bundled themes include styled callout boxes with appropriate colors for each type.</p>
 <h2 id="custom-shortcodes">Custom shortcodes</h2>

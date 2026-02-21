@@ -1840,11 +1840,11 @@ cookie_consent = true
 </code></pre>
 <h2 id="site">[site]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>title</code></th><th>string</th><th>required</th><th>Site title, used in templates and meta tags</th></tr>
-<tr><th><code>description</code></th><th>string</th><th><code>""</code></th><th>Site description for SEO</th></tr>
-<tr><th><code>base_url</code></th><th>string</th><th><code>"http://localhost:3000"</code></th><th>Full base URL for canonical links, sitemap, RSS</th></tr>
-<tr><th><code>language</code></th><th>string</th><th><code>"en"</code></th><th>Default language code</th></tr>
-<tr><th><code>author</code></th><th>string</th><th><code>""</code></th><th>Author name for JSON-LD and RSS</th></tr>
+<tr><td><code>title</code></td><td>string</td><td>required</td><td>Site title, used in templates and meta tags</td></tr>
+<tr><td><code>description</code></td><td>string</td><td><code>""</code></td><td>Site description for SEO</td></tr>
+<tr><td><code>base_url</code></td><td>string</td><td><code>"http://localhost:3000"</code></td><td>Full base URL for canonical links, sitemap, RSS</td></tr>
+<tr><td><code>language</code></td><td>string</td><td><code>"en"</code></td><td>Default language code</td></tr>
+<tr><td><code>author</code></td><td>string</td><td><code>""</code></td><td>Author name for JSON-LD and RSS</td></tr>
 </tbody></table>
 <div class="callout callout-warning">
 <div class="callout-title">Warning</div>
@@ -1866,10 +1866,10 @@ paginate = 10
 </code></pre>
 <h2 id="build">[build]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>output_dir</code></th><th>string</th><th><code>"dist"</code></th><th>Build output directory</th></tr>
-<tr><th><code>data_dir</code></th><th>string</th><th><code>"data"</code></th><th>Directory for data files (YAML/JSON/TOML)</th></tr>
-<tr><th><code>minify</code></th><th>bool</th><th><code>false</code></th><th>Strip CSS/JS comments and collapse whitespace</th></tr>
-<tr><th><code>fingerprint</code></th><th>bool</th><th><code>false</code></th><th>Add content hash to asset filenames for cache busting</th></tr>
+<tr><td><code>output_dir</code></td><td>string</td><td><code>"dist"</code></td><td>Build output directory</td></tr>
+<tr><td><code>data_dir</code></td><td>string</td><td><code>"data"</code></td><td>Directory for data files (YAML/JSON/TOML)</td></tr>
+<tr><td><code>minify</code></td><td>bool</td><td><code>false</code></td><td>Strip CSS/JS comments and collapse whitespace</td></tr>
+<tr><td><code>fingerprint</code></td><td>bool</td><td><code>false</code></td><td>Add content hash to asset filenames for cache busting</td></tr>
 </tbody></table>
 <div class="callout callout-tip">
 <div class="callout-title">Tip</div>
@@ -1880,9 +1880,9 @@ paginate = 10
 <p>Place YAML, JSON, or TOML files in the <code>data/</code> directory to make structured data available in all templates as <code>{{ data.filename }}</code>.</p>
 <h3 id="supported-formats">Supported formats</h3>
 <table><thead><tr><th>Extension</th><th>Format</th></tr></thead><tbody>
-<tr><th><code>.yaml</code>, <code>.yml</code></th><th>YAML</th></tr>
-<tr><th><code>.json</code></th><th>JSON</th></tr>
-<tr><th><code>.toml</code></th><th>TOML</th></tr>
+<tr><td><code>.yaml</code>, <code>.yml</code></td><td>YAML</td></tr>
+<tr><td><code>.json</code></td><td>JSON</td></tr>
+<tr><td><code>.toml</code></td><td>TOML</td></tr>
 </tbody></table>
 <h3 id="nested-directories">Nested directories</h3>
 <p>Subdirectories create nested keys:</p>
@@ -1916,10 +1916,10 @@ paginate = 10
 <p>The build will error if two data files share the same stem (e.g., <code>authors.yaml</code> and <code>authors.json</code>) or if a file and directory conflict (e.g., <code>nav.yaml</code> and <code>nav/main.yaml</code>). Unknown file extensions are skipped with a warning.</p>
 <h2 id="deploy">[deploy]</h2>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>target</code></th><th>string</th><th><code>"github-pages"</code></th><th>Deploy target: <code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code></th></tr>
-<tr><th><code>repo</code></th><th>string</th><th>auto-detected</th><th>Git repository URL (GitHub Pages)</th></tr>
-<tr><th><code>project</code></th><th>string</th><th>auto-detected</th><th>Project name (Cloudflare Pages)</th></tr>
-<tr><th><code>auto_commit</code></th><th>bool</th><th><code>true</code></th><th>Auto-commit and push before deploying. On non-main branches, auto-uses preview mode</th></tr>
+<tr><td><code>target</code></td><td>string</td><td><code>"github-pages"</code></td><td>Deploy target: <code>github-pages</code>, <code>cloudflare</code>, <code>netlify</code></td></tr>
+<tr><td><code>repo</code></td><td>string</td><td>auto-detected</td><td>Git repository URL (GitHub Pages)</td></tr>
+<tr><td><code>project</code></td><td>string</td><td>auto-detected</td><td>Project name (Cloudflare Pages)</td></tr>
+<tr><td><code>auto_commit</code></td><td>bool</td><td><code>true</code></td><td>Auto-commit and push before deploying. On non-main branches, auto-uses preview mode</td></tr>
 </tbody></table>
 <h2 id="languages">[languages.*]</h2>
 <p>Optional. Add language sections to enable multi-language support:</p>
@@ -1934,19 +1934,19 @@ title = &quot;Mon Site&quot;
 <h2 id="images">[images]</h2>
 <p>Optional. When this section is present, <code>seite</code> automatically processes images in <code>static/</code>. When omitted, images are copied as-is with no resizing or rewriting. New projects created with <code>seite init</code> include this section by default.</p>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>widths</code></th><th>array</th><th><code>[480, 800, 1200]</code></th><th>Target widths in pixels for resized copies</th></tr>
-<tr><th><code>quality</code></th><th>int</th><th><code>80</code></th><th>JPEG/WebP quality (1-100)</th></tr>
-<tr><th><code>webp</code></th><th>bool</th><th><code>true</code></th><th>Generate WebP variants</th></tr>
-<tr><th><code>lazy_loading</code></th><th>bool</th><th><code>true</code></th><th>Add <code>loading="lazy"</code> to <code>&lt;img&gt;</code> tags</th></tr>
+<tr><td><code>widths</code></td><td>array</td><td><code>[480, 800, 1200]</code></td><td>Target widths in pixels for resized copies</td></tr>
+<tr><td><code>quality</code></td><td>int</td><td><code>80</code></td><td>JPEG/WebP quality (1-100)</td></tr>
+<tr><td><code>webp</code></td><td>bool</td><td><code>true</code></td><td>Generate WebP variants</td></tr>
+<tr><td><code>lazy_loading</code></td><td>bool</td><td><code>true</code></td><td>Add <code>loading="lazy"</code> to <code>&lt;img&gt;</code> tags</td></tr>
 </tbody></table>
 <p>When configured, images in <code>static/</code> are resized to each width, optionally converted to WebP, and <code>&lt;img&gt;</code> tags in HTML are rewritten with <code>srcset</code> and <code>&lt;picture&gt;</code> elements. To disable image processing, remove the <code>[images]</code> section entirely.</p>
 <h2 id="analytics">[analytics]</h2>
 <p>Optional. When present, analytics scripts are automatically injected into every HTML page during build. Supports Google Analytics 4, Google Tag Manager, Plausible, Fathom, and Umami.</p>
 <table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>provider</code></th><th>string</th><th>required</th><th>Analytics provider: <code>google</code>, <code>gtm</code>, <code>plausible</code>, <code>fathom</code>, <code>umami</code></th></tr>
-<tr><th><code>id</code></th><th>string</th><th>required</th><th>Measurement/tracking ID (e.g., <code>G-XXXXXXX</code>, <code>GTM-XXXXX</code>, domain, or site ID)</th></tr>
-<tr><th><code>cookie_consent</code></th><th>bool</th><th><code>false</code></th><th>Show a cookie consent banner and gate analytics on user acceptance</th></tr>
-<tr><th><code>script_url</code></th><th>string</th><th>varies</th><th>Custom script URL (required for self-hosted Umami, optional for others)</th></tr>
+<tr><td><code>provider</code></td><td>string</td><td>required</td><td>Analytics provider: <code>google</code>, <code>gtm</code>, <code>plausible</code>, <code>fathom</code>, <code>umami</code></td></tr>
+<tr><td><code>id</code></td><td>string</td><td>required</td><td>Measurement/tracking ID (e.g., <code>G-XXXXXXX</code>, <code>GTM-XXXXX</code>, domain, or site ID)</td></tr>
+<tr><td><code>cookie_consent</code></td><td>bool</td><td><code>false</code></td><td>Show a cookie consent banner and gate analytics on user acceptance</td></tr>
+<tr><td><code>script_url</code></td><td>string</td><td>varies</td><td>Custom script URL (required for self-hosted Umami, optional for others)</td></tr>
 </tbody></table>
 <h3 id="examples">Examples</h3>
 <p><strong>Google Analytics 4 (direct):</strong></p>
@@ -2017,17 +2017,17 @@ script_url = &quot;https://stats.example.com/script.js&quot;
 </span><span style="color:#c0c5ce;">---
 </span></pre>
 <table><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>
-<tr><th><code>title</code></th><th>string</th><th>Yes</th><th>Page title</th></tr>
-<tr><th><code>date</code></th><th>date</th><th>Posts only</th><th>Publication date (YYYY-MM-DD)</th></tr>
-<tr><th><code>updated</code></th><th>date</th><th>No</th><th>Last modified date</th></tr>
-<tr><th><code>description</code></th><th>string</th><th>No</th><th>SEO description</th></tr>
-<tr><th><code>image</code></th><th>string</th><th>No</th><th>Social preview image</th></tr>
-<tr><th><code>slug</code></th><th>string</th><th>No</th><th>Override auto-generated slug</th></tr>
-<tr><th><code>tags</code></th><th>list</th><th>No</th><th>Content tags</th></tr>
-<tr><th><code>draft</code></th><th>bool</th><th>No</th><th>Exclude from build unless <code>--drafts</code></th></tr>
-<tr><th><code>template</code></th><th>string</th><th>No</th><th>Override default template</th></tr>
-<tr><th><code>robots</code></th><th>string</th><th>No</th><th>Per-page robots directive</th></tr>
-<tr><th><code>extra</code></th><th>map</th><th>No</th><th>Arbitrary data for templates</th></tr>
+<tr><td><code>title</code></td><td>string</td><td>Yes</td><td>Page title</td></tr>
+<tr><td><code>date</code></td><td>date</td><td>Posts only</td><td>Publication date (YYYY-MM-DD)</td></tr>
+<tr><td><code>updated</code></td><td>date</td><td>No</td><td>Last modified date</td></tr>
+<tr><td><code>description</code></td><td>string</td><td>No</td><td>SEO description</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>No</td><td>Social preview image</td></tr>
+<tr><td><code>slug</code></td><td>string</td><td>No</td><td>Override auto-generated slug</td></tr>
+<tr><td><code>tags</code></td><td>list</td><td>No</td><td>Content tags</td></tr>
+<tr><td><code>draft</code></td><td>bool</td><td>No</td><td>Exclude from build unless <code>--drafts</code></td></tr>
+<tr><td><code>template</code></td><td>string</td><td>No</td><td>Override default template</td></tr>
+<tr><td><code>robots</code></td><td>string</td><td>No</td><td>Per-page robots directive</td></tr>
+<tr><td><code>extra</code></td><td>map</td><td>No</td><td>Arbitrary data for templates</td></tr>
 </tbody></table>
 <h2 id="seite-workspace-toml">seite-workspace.toml</h2>
 <p>For multi-site setups, a <code>seite-workspace.toml</code> at the workspace root configures all sites. Each site still has its own <code>seite.toml</code>.</p>
