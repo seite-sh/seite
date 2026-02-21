@@ -176,7 +176,7 @@ Each language can override `title` and `description`. See [Multi-language](/docs
 
 ## [images]
 
-Optional. When this section is present, `page` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `seite init` include this section by default.
+Optional. When this section is present, `seite` automatically processes images in `static/`. When omitted, images are copied as-is with no resizing or rewriting. New projects created with `seite init` include this section by default.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

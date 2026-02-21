@@ -6,7 +6,7 @@ weight: 8
 
 ## Overview
 
-`page` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
+`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
 
 No API keys needed. It uses your Claude Code subscription directly.
 
@@ -38,7 +38,7 @@ Claude receives a rich system prompt containing:
 - Available templates
 - Frontmatter format with examples
 - File naming conventions
-- All `page` CLI commands
+- All `seite` CLI commands
 
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 

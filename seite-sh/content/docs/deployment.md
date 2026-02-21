@@ -1,12 +1,12 @@
 ---
 title: "Deployment"
-description: "Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify."
+description: "Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify."
 weight: 7
 ---
 
 ## Overview
 
-`page` supports three deployment targets out of the box:
+`seite` supports three deployment targets out of the box:
 
 - **GitHub Pages** — git-based deployment with auto-generated GitHub Actions
 - **Cloudflare Pages** — wrangler-based deployment
@@ -36,14 +36,14 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 {{% end %}}
 
 {{% callout(type="info") %}}
-`page` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
+`seite` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
 {{% end %}}
 
 ## Auto-Commit and Push
 
 By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
-**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `page` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
 
 To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 

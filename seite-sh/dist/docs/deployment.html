@@ -15,14 +15,14 @@
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Deployment — seite docs</title>
-        <meta name="description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+        <meta name="description" content="Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.">
         <link rel="canonical" href="https://seite.sh/docs/deployment">
 
         <!-- Open Graph -->
         <meta property="og:type" content="article">
         <meta property="og:url" content="https://seite.sh/docs/deployment">
         <meta property="og:title" content="Deployment">
-        <meta property="og:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+        <meta property="og:description" content="Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.">
         
         <meta property="og:site_name" content="seite">
         <meta property="og:locale" content="en">
@@ -30,7 +30,7 @@
         <!-- Twitter Card -->
         <meta name="twitter:card" content="summary">
         <meta name="twitter:title" content="Deployment">
-        <meta name="twitter:description" content="Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.">
+        <meta name="twitter:description" content="Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.">
         
 
         
@@ -47,7 +47,7 @@
         <!-- JSON-LD -->
         <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"Deployment","description":"Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/deployment"}
+    {"@context":"https://schema.org","@type":"Article","headline":"Deployment","description":"Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/deployment"}
     
     </script>
 
@@ -1795,9 +1795,9 @@
     <div class="docs-main">
         <article>
             <h1>Deployment</h1>
-            <p class="doc-description">Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.</p>
+            <p class="doc-description">Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.</p>
             <div class="content"><h2 id="overview">Overview</h2>
-<p><code>page</code> supports three deployment targets out of the box:</p>
+<p><code>seite</code> supports three deployment targets out of the box:</p>
 <ul>
 <li><strong>GitHub Pages</strong> — git-based deployment with auto-generated GitHub Actions</li>
 <li><strong>Cloudflare Pages</strong> — wrangler-based deployment</li>
@@ -1821,11 +1821,11 @@ target = &quot;github-pages&quot;
 </div>
 <div class="callout callout-info">
 <div class="callout-title">Info</div>
-<p><code>page</code> runs pre-flight checks before every deploy — verifying the output directory exists, <code>base_url</code> isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.</p>
+<p><code>seite</code> runs pre-flight checks before every deploy — verifying the output directory exists, <code>base_url</code> isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.</p>
 </div>
 <h2 id="auto-commit-and-push">Auto-Commit and Push</h2>
 <p>By default, <code>seite deploy</code> automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.</p>
-<p><strong>Branch-based preview:</strong> when you deploy from a branch other than <code>main</code> or <code>master</code>, <code>page</code> automatically deploys as a preview instead of production. No need to pass <code>--preview</code> manually.</p>
+<p><strong>Branch-based preview:</strong> when you deploy from a branch other than <code>main</code> or <code>master</code>, <code>seite</code> automatically deploys as a preview instead of production. No need to pass <code>--preview</code> manually.</p>
 <p>To disable auto-commit for a project, set <code>auto_commit = false</code> in <code>seite.toml</code>:</p>
 <pre><code>[deploy]
 target = &quot;github-pages&quot;
