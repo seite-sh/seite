@@ -239,8 +239,8 @@ impl Sha256 {
     /// Uses the system `sha256sum` or `shasum` command (same approach as install.sh).
     fn hex_digest(self) -> String {
         // Write data to a temp file and use system sha256 tool
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        fs::write(tmp.path(), &self.data).unwrap();
+        let tmp = tempfile::NamedTempFile::new().expect("failed to create temp file for checksum");
+        fs::write(tmp.path(), &self.data).expect("failed to write temp file for checksum");
 
         // Try sha256sum first, then shasum -a 256
         let output = std::process::Command::new("sha256sum")

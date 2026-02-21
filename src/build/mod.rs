@@ -466,7 +466,11 @@ pub fn build_site(
             for item in items {
                 let site_ctx_for_item = site_ctx_cache
                     .get(item.lang.as_str())
-                    .unwrap_or_else(|| site_ctx_cache.get(default_lang.as_str()).unwrap());
+                    .unwrap_or_else(|| {
+                        site_ctx_cache
+                            .get(default_lang.as_str())
+                            .expect("default language missing from site context cache")
+                    });
 
                 let mut ctx = build_page_context(site_ctx_for_item, item, &data);
 
@@ -1745,7 +1749,10 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         .and_then(|i| i.get(lang))
         .and_then(|v| v.as_object())
     {
-        let mut merged = defaults.as_object().unwrap().clone();
+        let mut merged = defaults
+            .as_object()
+            .expect("UI string defaults must be a JSON object")
+            .clone();
         for (k, v) in i18n {
             merged.insert(k.clone(), v.clone());
         }
