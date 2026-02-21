@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install page and build your first static site in under a minute.
+description: Install seite and build your first static site in under a minute.
 weight: 1
 ---
 
@@ -31,7 +31,7 @@ irm https://seite.sh/install.ps1 | iex
 If you have the Rust toolchain installed (all platforms):
 
 ```bash
-cargo install page
+cargo install seite
 ```
 
 ### Platform support
@@ -47,11 +47,11 @@ cargo install page
 ### Verify
 
 ```bash
-page --version
+seite --version
 ```
 
 {{% callout(type="tip") %}}
-Run `page --help` to see all available commands at a glance.
+Run `seite --help` to see all available commands at a glance.
 {{% end %}}
 
 ## Create Your First Site

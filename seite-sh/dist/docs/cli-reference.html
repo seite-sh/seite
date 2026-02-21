@@ -1798,10 +1798,10 @@
             <p class="doc-description">Complete reference for all seite CLI commands, flags, and options.</p>
             <div class="content"><div class="callout callout-tip">
 <div class="callout-title">Tip</div>
-<p>Run <code>page &lt;command&gt; --help</code> for quick inline help on any command.</p>
+<p>Run <code>seite &lt;command&gt; --help</code> for quick inline help on any command.</p>
 </div>
 <h2 id="overview">Overview</h2>
-<p><code>page</code> has eleven subcommands:</p>
+<p><code>seite</code> has eleven subcommands:</p>
 <table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody>
 <tr><th><code>init</code></th><th>Create a new site</th></tr>
 <tr><th><code>build</code></th><th>Build the site</th></tr>
@@ -1813,7 +1813,7 @@
 <tr><th><code>workspace</code></th><th>Manage multi-site workspaces</th></tr>
 <tr><th><code>mcp</code></th><th>MCP server for AI tool integration</th></tr>
 <tr><th><code>upgrade</code></th><th>Update project config to match current binary</th></tr>
-<tr><th><code>self-update</code></th><th>Update the page binary to the latest release</th></tr>
+<tr><th><code>self-update</code></th><th>Update the seite binary to the latest release</th></tr>
 </tbody></table>
 <h3 id="global-flags">Global Flags</h3>
 <p>These flags work with any command:</p>
@@ -2001,7 +2001,7 @@
 <p>You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use <code>seite upgrade</code> to add the MCP configuration to existing projects.</p>
 </div>
 <h2 id="seite-upgrade">seite upgrade</h2>
-<p>Update project configuration files to match the current binary version. When you upgrade the <code>page</code> binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.</p>
+<p>Update project configuration files to match the current binary version. When you upgrade the <code>seite</code> binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> upgrade </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>
@@ -2026,7 +2026,7 @@
 <p><code>seite build</code> will nudge you with a one-liner when your project config is outdated: <em>"Run <code>seite upgrade</code> for new features."</em> The build still succeeds — the nudge is informational only.</p>
 </div>
 <h2 id="seite-self-update">seite self-update</h2>
-<p>Update the <code>page</code> binary itself to the latest release (or a specific version).</p>
+<p>Update the <code>seite</code> binary itself to the latest release (or a specific version).</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> self-update </span><span style="color:#b48ead;">[</span><span style="color:#c0c5ce;">options</span><span style="color:#b48ead;">]
 </span></pre>

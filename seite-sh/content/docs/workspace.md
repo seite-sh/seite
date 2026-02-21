@@ -1,12 +1,12 @@
 ---
 title: "Workspaces"
-description: "Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys."
+description: "Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys."
 weight: 8
 ---
 
 ## Overview
 
-A workspace lets you manage multiple `page` sites from a single directory. Each site has its own `seite.toml`, content, and templates, but they share a root and can share data, static files, and templates.
+A workspace lets you manage multiple `seite` sites from a single directory. Each site has its own `seite.toml`, content, and templates, but they share a root and can share data, static files, and templates.
 
 Use cases:
 - **Company site + blog + docs** as separate sites in one repo
@@ -193,7 +193,7 @@ seite workspace status        # Detailed workspace status (config, build state, 
 
 ## Workspace Detection
 
-`page` automatically detects workspaces by walking up the directory tree looking for `seite-workspace.toml`. This means you can run commands from anywhere inside the workspace:
+`seite` automatically detects workspaces by walking up the directory tree looking for `seite-workspace.toml`. This means you can run commands from anywhere inside the workspace:
 
 ```bash
 cd my-workspace/sites/blog
@@ -201,7 +201,7 @@ seite build                   # Detects workspace, builds all sites
 seite build --site blog       # Builds just the blog
 ```
 
-If no `seite-workspace.toml` is found, `page` operates in standalone mode using the local `seite.toml`.
+If no `seite-workspace.toml` is found, `seite` operates in standalone mode using the local `seite.toml`.
 
 ## Next Steps
 

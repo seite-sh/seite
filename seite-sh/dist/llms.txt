@@ -4,16 +4,16 @@
 
 ## Documentation
 
-- [Getting Started](https://seite.sh/docs/getting-started.md): Install page and build your first static site in under a minute.
+- [Getting Started](https://seite.sh/docs/getting-started.md): Install seite and build your first static site in under a minute.
 - [Configuration](https://seite.sh/docs/configuration.md): Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images.
 - [Collections](https://seite.sh/docs/collections.md): Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS.
 - [Templates & Themes](https://seite.sh/docs/templates.md): Customize your site with Tera templates, overridable blocks, and six bundled themes.
 - [Shortcodes](https://seite.sh/docs/shortcodes.md): Reusable content components for embedding videos, callouts, figures, and custom elements in markdown
 - [Multi-Language](https://seite.sh/docs/i18n.md): Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
-- [Deployment](https://seite.sh/docs/deployment.md): Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
+- [Deployment](https://seite.sh/docs/deployment.md): Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.
 - [Trust Center](https://seite.sh/docs/trust-center.md): Build a compliance hub with certifications, subprocessors, FAQs, and security policies
 - [AI Agent](https://seite.sh/docs/agent.md): Use seite agent to get AI assistance with content creation, site management, and theme generation.
-- [Workspaces](https://seite.sh/docs/workspace.md): Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.
+- [Workspaces](https://seite.sh/docs/workspace.md): Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.
 - [MCP Server](https://seite.sh/docs/mcp-server.md): Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.
 - [Theme Gallery](https://seite.sh/docs/theme-gallery.md): Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
 - [CLI Reference](https://seite.sh/docs/cli-reference.md): Complete reference for all seite CLI commands, flags, and options.

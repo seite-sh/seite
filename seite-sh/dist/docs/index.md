@@ -1,7 +1,7 @@
 # Documentation
 
 - [Getting Started](/docs/getting-started)
-  Install page and build your first static site in under a minute.
+  Install seite and build your first static site in under a minute.
 - [Configuration](/docs/configuration)
   Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images.
 - [Collections](/docs/collections)
@@ -13,13 +13,13 @@
 - [Multi-Language](/docs/i18n)
   Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.
 - [Deployment](/docs/deployment)
-  Deploy your page site to GitHub Pages, Cloudflare Pages, or Netlify.
+  Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify.
 - [Trust Center](/docs/trust-center)
   Build a compliance hub with certifications, subprocessors, FAQs, and security policies
 - [AI Agent](/docs/agent)
   Use seite agent to get AI assistance with content creation, site management, and theme generation.
 - [Workspaces](/docs/workspace)
-  Manage multiple page sites in a single repository with shared resources, unified dev server, and coordinated deploys.
+  Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys.
 - [MCP Server](/docs/mcp-server)
   Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.
 - [Theme Gallery](/docs/theme-gallery)

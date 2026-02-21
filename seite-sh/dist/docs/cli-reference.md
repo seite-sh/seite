@@ -5,12 +5,12 @@ weight: 10
 ---
 
 {{% callout(type="tip") %}}
-Run `page <command> --help` for quick inline help on any command.
+Run `seite <command> --help` for quick inline help on any command.
 {{% end %}}
 
 ## Overview
 
-`page` has eleven subcommands:
+`seite` has eleven subcommands:
 
 | Command | Description |
 |---------|-------------|
@@ -24,7 +24,7 @@ Run `page <command> --help` for quick inline help on any command.
 | `workspace` | Manage multi-site workspaces |
 | `mcp`   | MCP server for AI tool integration |
 | `upgrade` | Update project config to match current binary |
-| `self-update` | Update the page binary to the latest release |
+| `self-update` | Update the seite binary to the latest release |
 
 ### Global Flags
 
@@ -271,7 +271,7 @@ You don't need to run this command manually. Claude Code starts it automatically
 
 ## seite upgrade
 
-Update project configuration files to match the current binary version. When you upgrade the `page` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
+Update project configuration files to match the current binary version. When you upgrade the `seite` binary, your existing project may lack new config entries (e.g., MCP server settings). This command detects what's outdated and applies additive, non-destructive changes.
 
 ```bash
 seite upgrade [options]
@@ -300,7 +300,7 @@ Upgrade is **additive and non-destructive**:
 
 ## seite self-update
 
-Update the `page` binary itself to the latest release (or a specific version).
+Update the `seite` binary itself to the latest release (or a specific version).
 
 ```bash
 seite self-update [options]

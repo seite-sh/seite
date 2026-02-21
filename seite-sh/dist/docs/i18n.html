@@ -1797,7 +1797,7 @@
             <h1>Multi-Language</h1>
             <p class="doc-description">Add translations to your site with filename-based i18n — per-language URLs, RSS, sitemaps, and discovery files.</p>
             <div class="content"><h2 id="overview">Overview</h2>
-<p><code>page</code> uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.</p>
+<p><code>seite</code> uses a filename-based translation system. It's fully backward compatible — single-language sites work identically with no configuration.</p>
 <div class="callout callout-info">
 <div class="callout-title">Info</div>
 <p>Single-language sites need zero i18n config. Everything works identically whether or not you add <code>[languages.*]</code> sections. i18n is purely additive.</p>
@@ -1844,7 +1844,7 @@ about.xx.md   → Ignored (xx not configured)
 <p>Files with a <code>.xx.md</code> suffix are safely ignored if <code>xx</code> isn't a configured language. You won't accidentally create broken translations from random filename patterns.</p>
 </div>
 <h2 id="per-language-output">Per-Language Output</h2>
-<p>When multi-language is enabled, <code>page</code> generates per-language versions of:</p>
+<p>When multi-language is enabled, <code>seite</code> generates per-language versions of:</p>
 <table><thead><tr><th>Output</th><th>Default language</th><th>Other languages</th></tr></thead><tbody>
 <tr><th>Index page</th><th><code>dist/index.html</code></th><th><code>dist/{lang}/index.html</code></th></tr>
 <tr><th>RSS feed</th><th><code>dist/feed.xml</code></th><th><code>dist/{lang}/feed.xml</code></th></tr>
