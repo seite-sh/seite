@@ -1,5 +1,5 @@
 #!/bin/sh
-# install.sh — Install the page static site generator
+# install.sh — Install the seite static site generator
 #
 # Usage:
 #   curl -fsSL https://seite.sh/install.sh | sh
@@ -185,7 +185,7 @@ main() {
   mv "${TMPDIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
   chmod +x "${INSTALL_DIR}/${BINARY}"
 
-  info "Installed page to ${INSTALL_DIR}/${BINARY}"
+  info "Installed seite to ${INSTALL_DIR}/${BINARY}"
 
   # Check PATH
   case ":${PATH}:" in
@@ -215,7 +215,7 @@ main() {
     INSTALLED_VERSION=$("${INSTALL_DIR}/${BINARY}" --version 2>/dev/null || echo "unknown")
     info "Done! ${INSTALLED_VERSION}"
   else
-    info "Done! Run 'page --version' to verify."
+    info "Done! Run 'seite --version' to verify."
   fi
 }
 

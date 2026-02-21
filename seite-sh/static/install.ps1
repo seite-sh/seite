@@ -1,4 +1,4 @@
-# install.ps1 — Install the page static site generator on Windows
+# install.ps1 — Install the seite static site generator on Windows
 #
 # Usage:
 #   irm https://seite.sh/install.ps1 | iex
@@ -75,7 +75,7 @@ $ChecksumsUrl = "$DownloadBase/$Version/checksums-sha256.txt"
 Write-Info "Installing seite $Version for $Target"
 
 # --- Download ---
-$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "page-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "seite-install-$([guid]::NewGuid().ToString('N').Substring(0,8))"
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
@@ -107,7 +107,7 @@ try {
     }
 
     Copy-Item (Join-Path $TmpDir $Binary) (Join-Path $InstallDir $Binary) -Force
-    Write-Info "Installed page to $(Join-Path $InstallDir $Binary)"
+    Write-Info "Installed seite to $(Join-Path $InstallDir $Binary)"
 
     # --- Check PATH ---
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -123,13 +123,13 @@ try {
     }
 
     # --- Verify ---
-    $PageExe = Join-Path $InstallDir $Binary
-    if (Test-Path $PageExe) {
-        $InstalledVersion = & $PageExe --version 2>$null
+    $SeiteExe = Join-Path $InstallDir $Binary
+    if (Test-Path $SeiteExe) {
+        $InstalledVersion = & $SeiteExe --version 2>$null
         if ($InstalledVersion) {
             Write-Info "Done! $InstalledVersion"
         } else {
-            Write-Info "Done! Run 'page --version' to verify."
+            Write-Info "Done! Run 'seite --version' to verify."
         }
     }
 } finally {

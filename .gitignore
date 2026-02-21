@@ -1,5 +1,6 @@
 /target
 /dist
+seite-sh/dist/
 .seite/
 .wrangler/
 .netlify/

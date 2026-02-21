@@ -199,7 +199,7 @@ main() {
     INSTALLED_VERSION=$("${INSTALL_DIR}/${BINARY}" --version 2>/dev/null || echo "unknown")
     info "Done! ${INSTALLED_VERSION}"
   else
-    info "Done! Run 'page --version' to verify."
+    info "Done! Run 'seite --version' to verify."
   fi
 }
 

@@ -1,8 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://seite.sh/sitemap.xml
-
-# AI / LLM crawlers
-# LLMs-txt: https://seite.sh/llms.txt
-# LLMs-full-txt: https://seite.sh/llms-full.txt
