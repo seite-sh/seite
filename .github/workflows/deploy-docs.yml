@@ -16,11 +16,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect if source rebuild needed
+        id: detect
+        run: |
+          BEFORE="${{ github.event.before }}"
+          NEEDS_BUILD=false
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            NEEDS_BUILD=true
+          else
+            # Fetch the previous commit for comparison
+            git fetch --depth=1 origin "$BEFORE" 2>/dev/null
+            if [ $? -ne 0 ] || git diff --name-only "$BEFORE" "${{ github.sha }}" | grep -q '^src/'; then
+              NEEDS_BUILD=true
+            fi
+          fi
+          echo "needs_build=$NEEDS_BUILD" >> "$GITHUB_OUTPUT"
+
+      # Fast path: only docs changed, download latest release binary
+      - name: Download latest seite release
+        if: steps.detect.outputs.needs_build == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name)
+          gh release download "$TAG" -p "seite-x86_64-unknown-linux-gnu.tar.gz" -R "${{ github.repository }}"
+          tar xzf seite-x86_64-unknown-linux-gnu.tar.gz
+          chmod +x seite
+          sudo mv seite /usr/local/bin/seite
+          seite --version
+
+      # Slow path: source changed (e.g. themes), build from source
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.detect.outputs.needs_build == 'true'
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.detect.outputs.needs_build == 'true'
 
       - name: Build seite from source
+        if: steps.detect.outputs.needs_build == 'true'
         run: cargo install --path .
 
       - name: Build docs site
