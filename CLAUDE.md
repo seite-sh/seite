@@ -456,6 +456,14 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Use `output::human::success()`, `info()`, `error()` for terminal output
 - Implement `CommandOutput` trait for structured output (supports `--json` flag)
 
+### Versioning
+- **Version source of truth**: `Cargo.toml` `version` field (semver: `MAJOR.MINOR.PATCH`)
+- **Every code change must bump the version** before committing — this is required for the release pipeline to deploy properly
+- **PATCH** (0.1.1 → 0.1.2): bug fixes, small improvements, new build steps, internal refactors
+- **MINOR** (0.1.x → 0.2.0): new user-facing features, new CLI commands, new config options, new collection presets
+- **MAJOR** (0.x → 1.0): breaking changes to config format, CLI interface, or template variables
+- When in doubt, bump PATCH
+
 ### Testing & Linting
 - Integration tests use `assert_cmd::Command` + `tempfile::TempDir`
 - Helper: `init_site(tmp, name, title, collections)` scaffolds a site in a temp dir
