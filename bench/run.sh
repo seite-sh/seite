@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# page SSG benchmark
+# seite SSG benchmark
 #
 # Methodology (follows lumeland/benchmark pattern):
 #   - Scaffold site with `seite init`
@@ -24,7 +24,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PAGE_BIN="$PROJECT_DIR/target/release/page"
+SEITE_BIN="$PROJECT_DIR/target/release/seite"
 BENCH_DIR="$PROJECT_DIR/bench"
 RESULTS_FILE="$BENCH_DIR/results.txt"
 
@@ -133,7 +133,7 @@ create_bench_site() {
 
   # Scaffold with seite init
   cd "$parent_dir"
-  "$PAGE_BIN" init "$site_name" \
+  "$SEITE_BIN" init "$site_name" \
     --title "Benchmark Site" \
     --description "Performance benchmark" \
     --deploy-target github-pages \
@@ -158,7 +158,7 @@ time_build() {
   local start end elapsed errfile
   errfile=$(mktemp)
   start=$(python3 -c 'import time; print(f"{time.time():.6f}")')
-  "$PAGE_BIN" build >/dev/null 2>"$errfile" || {
+  "$SEITE_BIN" build >/dev/null 2>"$errfile" || {
     echo "BUILD FAILED:" >&2
     cat "$errfile" >&2
     rm -f "$errfile"
@@ -192,7 +192,7 @@ calc_max() {
 # Print header
 print_header() {
   echo "═══════════════════════════════════════════════════════════════"
-  echo "  page SSG Performance Benchmark"
+  echo "  seite SSG Performance Benchmark"
   echo "═══════════════════════════════════════════════════════════════"
   echo ""
   if [ "$(uname)" = "Darwin" ]; then
@@ -204,7 +204,7 @@ print_header() {
     echo "  RAM:      $(free -h 2>/dev/null | awk '/Mem:/ {print $2}' || echo 'unknown')"
     echo "  OS:       $(uname -sr)"
   fi
-  echo "  Binary:   $PAGE_BIN"
+  echo "  Binary:   $SEITE_BIN"
   echo "  Runs:     $RUNS per tier"
   echo "  Date:     $(date '+%Y-%m-%d %H:%M:%S')"
   echo ""
@@ -219,8 +219,8 @@ print_header() {
 
 # Main
 main() {
-  if [ ! -f "$PAGE_BIN" ]; then
-    echo "ERROR: Release binary not found at $PAGE_BIN"
+  if [ ! -f "$SEITE_BIN" ]; then
+    echo "ERROR: Release binary not found at $SEITE_BIN"
     echo "Run: cargo build --release"
     exit 1
   fi
