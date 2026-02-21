@@ -1865,13 +1865,13 @@ fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
         "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
     );
 
-    let response = ureq::get(&url)
-        .set("Authorization", &format!("Bearer {token}"))
-        .set("Content-Type", "application/json")
+    let mut response = ureq::get(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
         .call()
         .map_err(|e| PageError::Deploy(format!("Cloudflare API request failed: {e}")))?;
 
-    let body: serde_json::Value = response.into_json()
+    let body: serde_json::Value = response.body_mut().read_json()
         .map_err(|e| PageError::Deploy(format!("failed to parse Cloudflare API response: {e}")))?;
 
     let mut domains = Vec::new();
@@ -1903,13 +1903,13 @@ pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
 
     let body = serde_json::json!({ "name": domain });
 
-    let response = ureq::post(&url)
-        .set("Authorization", &format!("Bearer {token}"))
-        .send_json(body)
+    let mut response = ureq::post(&url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_json(&body)
         .map_err(|e| PageError::Deploy(format!("Cloudflare API request failed: {e}")))?;
 
-    let status = response.status();
-    let resp_body: serde_json::Value = response.into_json().unwrap_or_default();
+    let status = response.status().as_u16();
+    let resp_body: serde_json::Value = response.body_mut().read_json().unwrap_or_default();
 
     if status == 200 || status == 201 {
         Ok(true)
