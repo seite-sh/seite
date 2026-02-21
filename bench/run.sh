@@ -68,11 +68,15 @@ generate_content() {
 
   for ((i=1; i<=count; i++)); do
     local year=$((2020 + (i % 5)))
-    local month=$(printf "%02d" $(( (i % 12) + 1 )))
-    local day=$(printf "%02d" $(( (i % 28) + 1 )))
+    local month
+    month=$(printf "%02d" $(( (i % 12) + 1 )))
+    local day
+    day=$(printf "%02d" $(( (i % 28) + 1 )))
     local date="${year}-${month}-${day}"
-    local slug="post-$(printf "%05d" $i)"
-    local tags=$(rand_tags $(( (RANDOM % 3) + 1 )))
+    local slug
+    slug="post-$(printf "%05d" $i)"
+    local tags
+    tags=$(rand_tags $(( (RANDOM % 3) + 1 )))
 
     # Pick 3-5 paragraphs
     local num_paras=$(( (RANDOM % 3) + 3 ))
@@ -267,10 +271,10 @@ main() {
     cd "$PROJECT_DIR"
 
     local median mean min max
-    median=$(cat "$times_file" | calc_median)
-    mean=$(cat "$times_file" | calc_mean)
-    min=$(cat "$times_file" | calc_min)
-    max=$(cat "$times_file" | calc_max)
+    median=$(calc_median < "$times_file")
+    mean=$(calc_mean < "$times_file")
+    min=$(calc_min < "$times_file")
+    max=$(calc_max < "$times_file")
 
     # Calculate pages/sec
     local pages_per_sec
