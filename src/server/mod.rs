@@ -64,8 +64,9 @@ pub fn start(
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
         let addr = format!("127.0.0.1:{port}");
-        let server = Server::http(&addr)
-            .map_err(|e| PageError::Server(format!("failed to start server on port {port}: {e}")))?;
+        let server = Server::http(&addr).map_err(|e| {
+            PageError::Server(format!("failed to start server on port {port}: {e}"))
+        })?;
         (server, port)
     };
 
@@ -127,8 +128,7 @@ fn run_serve_loop(
                     let version = build_version.load(Ordering::Relaxed).to_string();
                     let header =
                         Header::from_bytes("Content-Type", "text/plain").expect("valid header");
-                    let _ = request
-                        .respond(Response::from_string(version).with_header(header));
+                    let _ = request.respond(Response::from_string(version).with_header(header));
                     continue;
                 }
 
@@ -146,9 +146,9 @@ fn run_serve_loop(
                             content
                         };
 
-                        let header = Header::from_bytes("Content-Type", mime).expect("valid header");
-                        let _ = request
-                            .respond(Response::from_data(content).with_header(header));
+                        let header =
+                            Header::from_bytes("Content-Type", mime).expect("valid header");
+                        let _ = request.respond(Response::from_data(content).with_header(header));
                         continue;
                     }
                 }
@@ -157,8 +157,8 @@ fn run_serve_loop(
                 if not_found_path.exists() {
                     let content = fs::read(&not_found_path).unwrap_or_default();
                     let content = inject_livereload(&content);
-                    let header =
-                        Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("valid header");
+                    let header = Header::from_bytes("Content-Type", "text/html; charset=utf-8")
+                        .expect("valid header");
                     let _ = request.respond(
                         Response::from_data(content)
                             .with_header(header)
@@ -257,7 +257,12 @@ fn watch_and_rebuild(
     };
 
     // Watch content, templates, static, and data directories
-    let dirs = [&paths.content, &paths.templates, &paths.static_dir, &paths.data_dir];
+    let dirs = [
+        &paths.content,
+        &paths.templates,
+        &paths.static_dir,
+        &paths.data_dir,
+    ];
     for dir in &dirs {
         if dir.exists() {
             if let Err(e) = watcher.watch(dir, RecursiveMode::Recursive) {
@@ -306,7 +311,9 @@ fn watch_and_rebuild(
 /// If the connection succeeds, something is already listening.
 fn port_is_available(port: u16) -> bool {
     TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}").parse().expect("valid socket address"),
+        &format!("127.0.0.1:{port}")
+            .parse()
+            .expect("valid socket address"),
         Duration::from_millis(100),
     )
     .is_err()
@@ -324,4 +331,3 @@ fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
     }
     Err(PageError::Server("no available port found".into()))
 }
-

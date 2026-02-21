@@ -115,18 +115,18 @@ fn parse_data_file(path: &Path) -> Result<serde_json::Value> {
         .to_lowercase();
 
     match ext.as_str() {
-        "yaml" | "yml" => serde_yaml_ng::from_str::<serde_json::Value>(&content).map_err(|e| {
-            PageError::Data {
+        "yaml" | "yml" => {
+            serde_yaml_ng::from_str::<serde_json::Value>(&content).map_err(|e| PageError::Data {
                 path: path.to_path_buf(),
                 message: format!("invalid YAML: {e}"),
-            }
-        }),
-        "json" => serde_json::from_str::<serde_json::Value>(&content).map_err(|e| {
-            PageError::Data {
+            })
+        }
+        "json" => {
+            serde_json::from_str::<serde_json::Value>(&content).map_err(|e| PageError::Data {
                 path: path.to_path_buf(),
                 message: format!("invalid JSON: {e}"),
-            }
-        }),
+            })
+        }
         "toml" => {
             let toml_value: toml::Value =
                 content
@@ -285,11 +285,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let data_dir = tmp.path();
         std::fs::write(data_dir.join("authors.yaml"), "- name: Alice\n").unwrap();
-        std::fs::write(
-            data_dir.join("authors.json"),
-            r#"[{"name": "Bob"}]"#,
-        )
-        .unwrap();
+        std::fs::write(data_dir.join("authors.json"), r#"[{"name": "Bob"}]"#).unwrap();
 
         let result = load_data_dir(data_dir);
         assert!(result.is_err());

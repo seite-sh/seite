@@ -180,8 +180,7 @@ fn read_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         .as_ref()
         .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project (no seite.toml)"))?;
 
-    let value =
-        serde_json::to_value(config).map_err(|e| JsonRpcError::internal(e.to_string()))?;
+    let value = serde_json::to_value(config).map_err(|e| JsonRpcError::internal(e.to_string()))?;
     let text = serde_json::to_string_pretty(&value).unwrap_or_default();
 
     Ok(serde_json::json!({
@@ -305,13 +304,11 @@ fn read_collection(
         items.sort_by(|a, b| {
             let weight_a = a["weight"].as_i64().unwrap_or(i64::MAX);
             let weight_b = b["weight"].as_i64().unwrap_or(i64::MAX);
-            weight_a
-                .cmp(&weight_b)
-                .then_with(|| {
-                    let title_a = a["title"].as_str().unwrap_or("");
-                    let title_b = b["title"].as_str().unwrap_or("");
-                    title_a.cmp(title_b)
-                })
+            weight_a.cmp(&weight_b).then_with(|| {
+                let title_a = a["title"].as_str().unwrap_or("");
+                let title_b = b["title"].as_str().unwrap_or("");
+                title_a.cmp(title_b)
+            })
         });
     }
 

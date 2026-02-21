@@ -138,10 +138,7 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
         }
 
         // Detect shortcode delimiters: {{< or {{%
-        if b == b'{'
-            && pos + 3 < len
-            && bytes[pos + 1] == b'{'
-        {
+        if b == b'{' && pos + 3 < len && bytes[pos + 1] == b'{' {
             let kind_byte = bytes[pos + 2];
 
             if kind_byte == b'<' {
@@ -150,8 +147,7 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
                 let call_start = pos + 3;
                 if let Some(close_offset) = find_inline_close(bytes, call_start) {
                     let call_str = &input[call_start..call_start + close_offset];
-                    let (name, args) =
-                        parse_call(call_str.trim(), source_path, line)?;
+                    let (name, args) = parse_call(call_str.trim(), source_path, line)?;
                     let end = call_start + close_offset + 3; // skip past ">}}"
                     results.push(ShortcodeCall {
                         name,
@@ -179,14 +175,11 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
                         continue;
                     }
 
-                    let (name, args) =
-                        parse_call(trimmed, source_path, start_line)?;
+                    let (name, args) = parse_call(trimmed, source_path, start_line)?;
                     let open_end = call_start + close_offset + 3; // past "%}}"
 
                     // Find matching {{% end %}}
-                    if let Some((body_end_rel, close_end_rel)) =
-                        find_end_tag(input, open_end)
-                    {
+                    if let Some((body_end_rel, close_end_rel)) = find_end_tag(input, open_end) {
                         let body = &input[open_end..open_end + body_end_rel];
                         let total_end = open_end + close_end_rel;
 
@@ -352,10 +345,7 @@ fn find_end_tag(input: &str, start: usize) -> Option<(usize, usize)> {
     let mut pos = start;
     while pos + 9 < bytes.len() {
         // Look for {{% end %}}  (10 chars minimum: {{% end %}})
-        if bytes[pos] == b'{'
-            && bytes[pos + 1] == b'{'
-            && bytes[pos + 2] == b'%'
-        {
+        if bytes[pos] == b'{' && bytes[pos + 1] == b'{' && bytes[pos + 2] == b'%' {
             // Find the matching %}}
             let tag_start = pos;
             let inner_start = pos + 3;
@@ -450,11 +440,7 @@ fn parse_args(
 
         // Parse key
         let key_start = pos;
-        while pos < bytes.len()
-            && bytes[pos] != b'='
-            && bytes[pos] != b' '
-            && bytes[pos] != b','
-        {
+        while pos < bytes.len() && bytes[pos] != b'=' && bytes[pos] != b' ' && bytes[pos] != b',' {
             pos += 1;
         }
         let key = input[key_start..pos].trim().to_string();
@@ -495,7 +481,8 @@ fn parse_args(
             });
         }
 
-        let (value, consumed) = parse_value(&input[pos..], source_path, line, shortcode_name, &key)?;
+        let (value, consumed) =
+            parse_value(&input[pos..], source_path, line, shortcode_name, &key)?;
         pos += consumed;
         args.insert(key, value);
     }
@@ -656,12 +643,7 @@ mod tests {
 
     #[test]
     fn test_parse_args_string() {
-        let (name, args) = parse_call(
-            r#"test(key="hello world")"#,
-            &test_path(),
-            1,
-        )
-        .unwrap();
+        let (name, args) = parse_call(r#"test(key="hello world")"#, &test_path(), 1).unwrap();
         assert_eq!(name, "test");
         assert_eq!(
             args.get("key"),
@@ -689,8 +671,7 @@ mod tests {
 
     #[test]
     fn test_parse_args_boolean() {
-        let (_, args) =
-            parse_call("test(autoplay=true, muted=false)", &test_path(), 1).unwrap();
+        let (_, args) = parse_call("test(autoplay=true, muted=false)", &test_path(), 1).unwrap();
         assert_eq!(args.get("autoplay"), Some(&ShortcodeValue::Boolean(true)));
         assert_eq!(args.get("muted"), Some(&ShortcodeValue::Boolean(false)));
     }
@@ -704,10 +685,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args.len(), 3);
-        assert_eq!(
-            args.get("id"),
-            Some(&ShortcodeValue::String("abc".into()))
-        );
+        assert_eq!(args.get("id"), Some(&ShortcodeValue::String("abc".into())));
         assert_eq!(args.get("width"), Some(&ShortcodeValue::Integer(800)));
         assert_eq!(args.get("autoplay"), Some(&ShortcodeValue::Boolean(true)));
     }
@@ -721,8 +699,7 @@ mod tests {
 
     #[test]
     fn test_parse_args_escaped_string() {
-        let (_, args) =
-            parse_call(r#"test(text="say \"hello\"")"#, &test_path(), 1).unwrap();
+        let (_, args) = parse_call(r#"test(text="say \"hello\"")"#, &test_path(), 1).unwrap();
         assert_eq!(
             args.get("text"),
             Some(&ShortcodeValue::String("say \"hello\"".into()))
@@ -775,10 +752,7 @@ mod tests {
         let calls = parse_shortcodes(input, &test_path()).unwrap();
         assert_eq!(calls.len(), 1);
         let span = calls[0].span;
-        assert_eq!(
-            &input[span.0..span.1],
-            "{{% note() %}}\nbody\n{{% end %}}"
-        );
+        assert_eq!(&input[span.0..span.1], "{{% note() %}}\nbody\n{{% end %}}");
     }
 
     #[test]

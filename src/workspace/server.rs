@@ -71,8 +71,9 @@ pub fn start(
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
         let addr = format!("127.0.0.1:{port}");
-        let server = Server::http(&addr)
-            .map_err(|e| PageError::Server(format!("failed to start server on port {port}: {e}")))?;
+        let server = Server::http(&addr).map_err(|e| {
+            PageError::Server(format!("failed to start server on port {port}: {e}"))
+        })?;
         (server, port)
     };
 
@@ -98,7 +99,9 @@ pub fn start(
             "Port {port} in use, serving at http://localhost:{actual_port}"
         ));
     } else {
-        human::success(&format!("Serving workspace at http://localhost:{actual_port}"));
+        human::success(&format!(
+            "Serving workspace at http://localhost:{actual_port}"
+        ));
     }
 
     // Print site routes
@@ -167,8 +170,7 @@ fn run_serve_loop(
                     let version = build_version.load(Ordering::Relaxed).to_string();
                     let header =
                         Header::from_bytes("Content-Type", "text/plain").expect("valid header");
-                    let _ = request
-                        .respond(Response::from_string(version).with_header(header));
+                    let _ = request.respond(Response::from_string(version).with_header(header));
                     continue;
                 }
 
@@ -184,9 +186,9 @@ fn run_serve_loop(
                             content
                         };
 
-                        let header = Header::from_bytes("Content-Type", mime).expect("valid header");
-                        let _ = request
-                            .respond(Response::from_data(content).with_header(header));
+                        let header =
+                            Header::from_bytes("Content-Type", mime).expect("valid header");
+                        let _ = request.respond(Response::from_data(content).with_header(header));
                         continue;
                     }
                 }
@@ -195,15 +197,14 @@ fn run_serve_loop(
                 if url_path == "/" {
                     let index_html = generate_workspace_index(sites);
                     let content = inject_livereload(index_html.as_bytes());
-                    let header =
-                        Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("valid header");
-                    let _ = request
-                        .respond(Response::from_data(content).with_header(header));
+                    let header = Header::from_bytes("Content-Type", "text/html; charset=utf-8")
+                        .expect("valid header");
+                    let _ = request.respond(Response::from_data(content).with_header(header));
                     continue;
                 }
 
-                let _ = request
-                    .respond(Response::from_string("404 Not Found").with_status_code(404));
+                let _ =
+                    request.respond(Response::from_string("404 Not Found").with_status_code(404));
             }
             Ok(None) => {}
             Err(_) => break,
@@ -212,10 +213,7 @@ fn run_serve_loop(
 }
 
 /// Route a request to a site's output directory based on URL path prefix.
-fn route_request<'a>(
-    url_path: &str,
-    sites: &'a [(String, PathBuf)],
-) -> Option<(PathBuf, &'a str)> {
+fn route_request<'a>(url_path: &str, sites: &'a [(String, PathBuf)]) -> Option<(PathBuf, &'a str)> {
     let clean = url_path.split('?').next().unwrap_or(url_path);
     let clean = clean.trim_start_matches('/');
     if clean.is_empty() {
@@ -278,9 +276,7 @@ fn inject_livereload(html_bytes: &[u8]) -> Vec<u8> {
 fn generate_workspace_index(sites: &[(String, PathBuf)]) -> String {
     let mut links = String::new();
     for (name, _) in sites {
-        links.push_str(&format!(
-            "    <li><a href=\"/{name}/\">{name}</a></li>\n"
-        ));
+        links.push_str(&format!("    <li><a href=\"/{name}/\">{name}</a></li>\n"));
     }
     format!(
         r#"<!DOCTYPE html>
@@ -361,9 +357,9 @@ fn watch_and_rebuild_workspace(
                 // Determine which site(s) changed based on the event path
                 let changed_path = event.paths.first();
                 let affected_site = changed_path.and_then(|p| {
-                    sites.iter().find(|(_, dirs)| {
-                        dirs.iter().any(|d| p.starts_with(d))
-                    })
+                    sites
+                        .iter()
+                        .find(|(_, dirs)| dirs.iter().any(|d| p.starts_with(d)))
                 });
 
                 if let Some((site_name, _)) = affected_site {
@@ -424,7 +420,9 @@ fn watch_and_rebuild_workspace(
 
 fn port_is_available(port: u16) -> bool {
     TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}").parse().expect("valid socket address"),
+        &format!("127.0.0.1:{port}")
+            .parse()
+            .expect("valid socket address"),
         Duration::from_millis(100),
     )
     .is_err()

@@ -67,7 +67,10 @@ fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
         return PreflightCheck {
             name: "Output directory".into(),
             passed: false,
-            message: format!("{} does not exist — run `seite build` first", paths.output.display()),
+            message: format!(
+                "{} does not exist — run `seite build` first",
+                paths.output.display()
+            ),
         };
     }
     // Check non-empty
@@ -78,7 +81,10 @@ fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
         return PreflightCheck {
             name: "Output directory".into(),
             passed: false,
-            message: format!("{} is empty — run `seite build` first", paths.output.display()),
+            message: format!(
+                "{} is empty — run `seite build` first",
+                paths.output.display()
+            ),
         };
     }
     PreflightCheck {
@@ -90,7 +96,8 @@ fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
 
 fn check_base_url(config: &SiteConfig) -> PreflightCheck {
     let url = &config.site.base_url;
-    let is_localhost = url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0");
+    let is_localhost =
+        url.contains("localhost") || url.contains("127.0.0.1") || url.contains("0.0.0.0");
     if is_localhost {
         PreflightCheck {
             name: "Base URL".into(),
@@ -261,7 +268,9 @@ fn check_cloudflare_project(config: &SiteConfig, paths: &ResolvedPaths) -> Prefl
                 PreflightCheck {
                     name: "Cloudflare project".into(),
                     passed: false,
-                    message: format!("project '{name}' not found on Cloudflare — needs to be created"),
+                    message: format!(
+                        "project '{name}' not found on Cloudflare — needs to be created"
+                    ),
                 }
             }
         }
@@ -290,9 +299,9 @@ fn cloudflare_project_exists(name: &str) -> bool {
                 })
             } else {
                 // JSON parse failed — fall back to text search
-                stdout.lines().any(|line| {
-                    line.split('│').any(|cell| cell.trim() == name)
-                })
+                stdout
+                    .lines()
+                    .any(|line| line.split('│').any(|cell| cell.trim() == name))
             }
         }
         _ => true, // Can't verify — assume it exists to avoid false negatives
@@ -371,19 +380,23 @@ fn check_netlify_site(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCh
 fn check_cloudflare_domain(config: &SiteConfig) -> PreflightCheck {
     let domain = match &config.deploy.domain {
         Some(d) => d.clone(),
-        None => return PreflightCheck {
-            name: "Cloudflare domain".into(),
-            passed: true,
-            message: "no domain configured".into(),
-        },
+        None => {
+            return PreflightCheck {
+                name: "Cloudflare domain".into(),
+                passed: true,
+                message: "no domain configured".into(),
+            }
+        }
     };
     let project = match &config.deploy.project {
         Some(p) => p.clone(),
-        None => return PreflightCheck {
-            name: "Cloudflare domain".into(),
-            passed: false,
-            message: "domain set but no project — set deploy.project in seite.toml".into(),
-        },
+        None => {
+            return PreflightCheck {
+                name: "Cloudflare domain".into(),
+                passed: false,
+                message: "domain set but no project — set deploy.project in seite.toml".into(),
+            }
+        }
     };
 
     match cloudflare_list_domains(&project) {
@@ -416,11 +429,13 @@ fn check_cloudflare_domain(config: &SiteConfig) -> PreflightCheck {
 fn check_netlify_domain(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
     let domain = match &config.deploy.domain {
         Some(d) => d.clone(),
-        None => return PreflightCheck {
-            name: "Netlify domain".into(),
-            passed: true,
-            message: "no domain configured".into(),
-        },
+        None => {
+            return PreflightCheck {
+                name: "Netlify domain".into(),
+                passed: true,
+                message: "no domain configured".into(),
+            }
+        }
     };
 
     // Check via netlify CLI
@@ -442,7 +457,9 @@ fn check_netlify_domain(config: &SiteConfig, paths: &ResolvedPaths) -> Preflight
                 PreflightCheck {
                     name: "Netlify domain".into(),
                     passed: false,
-                    message: format!("'{domain}' not attached — run `netlify domains:add {domain}`"),
+                    message: format!(
+                        "'{domain}' not attached — run `netlify domains:add {domain}`"
+                    ),
                 }
             }
         }
@@ -463,9 +480,19 @@ pub fn print_preflight(checks: &[PreflightCheck]) -> bool {
     let mut all_passed = true;
     for check in checks {
         if check.passed {
-            println!("  {} {}: {}", console::style("✓").green(), check.name, check.message);
+            println!(
+                "  {} {}: {}",
+                console::style("✓").green(),
+                check.name,
+                check.message
+            );
         } else {
-            println!("  {} {}: {}", console::style("✗").red(), check.name, check.message);
+            println!(
+                "  {} {}: {}",
+                console::style("✗").red(),
+                check.name,
+                check.message
+            );
             all_passed = false;
         }
     }
@@ -621,7 +648,11 @@ pub fn try_fix_check(
             })
         }
         "Cloudflare domain" => {
-            let domain = check.message.split('\'').nth(1).unwrap_or("your-domain.com");
+            let domain = check
+                .message
+                .split('\'')
+                .nth(1)
+                .unwrap_or("your-domain.com");
             Some(FixAction {
                 prompt: format!("Attach domain '{domain}' to Cloudflare Pages project?"),
                 manual_instructions: vec![
@@ -631,12 +662,14 @@ pub fn try_fix_check(
             })
         }
         "Netlify domain" => {
-            let domain = check.message.split('\'').nth(1).unwrap_or("your-domain.com");
+            let domain = check
+                .message
+                .split('\'')
+                .nth(1)
+                .unwrap_or("your-domain.com");
             Some(FixAction {
                 prompt: format!("Add domain '{domain}' to Netlify site?"),
-                manual_instructions: vec![
-                    format!("Run: netlify domains:add {domain}"),
-                ],
+                manual_instructions: vec![format!("Run: netlify domains:add {domain}")],
             })
         }
         _ => None,
@@ -717,7 +750,9 @@ pub fn execute_fix(
                 .unwrap_or("my-site");
             human::info(&format!("Creating GitHub repository '{repo_name}'..."));
             let result = Command::new("gh")
-                .args(["repo", "create", repo_name, "--public", "--source", ".", "--push"])
+                .args([
+                    "repo", "create", repo_name, "--public", "--source", ".", "--push",
+                ])
                 .current_dir(&paths.root)
                 .status()
                 .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
@@ -751,9 +786,18 @@ pub fn execute_fix(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("my-site");
-            human::info(&format!("Creating Cloudflare Pages project '{project_name}'..."));
+            human::info(&format!(
+                "Creating Cloudflare Pages project '{project_name}'..."
+            ));
             let result = npm_cmd("wrangler")
-                .args(["pages", "project", "create", project_name, "--production-branch", "main"])
+                .args([
+                    "pages",
+                    "project",
+                    "create",
+                    project_name,
+                    "--production-branch",
+                    "main",
+                ])
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
             if result.success() {
@@ -761,7 +805,9 @@ pub fn execute_fix(
                 let mut updates = HashMap::new();
                 updates.insert("project".into(), project_name.to_string());
                 update_deploy_config(config_path, &updates)?;
-                human::success(&format!("Created project '{project_name}' and updated seite.toml"));
+                human::success(&format!(
+                    "Created project '{project_name}' and updated seite.toml"
+                ));
                 Ok(true)
             } else {
                 human::warning("Could not create project — it may already exist (which is fine)");
@@ -810,10 +856,14 @@ pub fn execute_fix(
             if domain.is_empty() || project.is_empty() {
                 return Ok(false);
             }
-            human::info(&format!("Attaching domain '{domain}' to Cloudflare Pages project '{project}'..."));
+            human::info(&format!(
+                "Attaching domain '{domain}' to Cloudflare Pages project '{project}'..."
+            ));
             match cloudflare_attach_domain(project, domain) {
                 Ok(true) => {
-                    human::success(&format!("Domain '{domain}' attached to project '{project}'"));
+                    human::success(&format!(
+                        "Domain '{domain}' attached to project '{project}'"
+                    ));
                     Ok(true)
                 }
                 Ok(false) => {
@@ -982,9 +1032,7 @@ pub fn auto_commit_and_push(paths: &ResolvedPaths) -> Result<GitPushResult> {
             .map_err(|e| PageError::Deploy(format!("git add failed: {e}")))?;
 
         if !add_output.status.success() {
-            return Err(PageError::Deploy(
-                "git add -A failed".into(),
-            ));
+            return Err(PageError::Deploy("git add -A failed".into()));
         }
 
         // Commit
@@ -1302,13 +1350,7 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
 
         let result = Command::new("gh")
             .args([
-                "repo",
-                "create",
-                repo_name,
-                "--public",
-                "--source",
-                ".",
-                "--push",
+                "repo", "create", repo_name, "--public", "--source", ".", "--push",
             ])
             .current_dir(&paths.root)
             .status()
@@ -1396,7 +1438,14 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
         "Creating Cloudflare Pages project '{project_name}'..."
     ));
     let result = npm_cmd("wrangler")
-        .args(["pages", "project", "create", &project_name, "--production-branch", "main"])
+        .args([
+            "pages",
+            "project",
+            "create",
+            &project_name,
+            "--production-branch",
+            "main",
+        ])
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
 
@@ -1457,7 +1506,9 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
         .map_err(|e| PageError::Deploy(format!("netlify sites:create failed: {e}")))?;
 
     if !output.status.success() {
-        human::warning("Could not create Netlify site — it may already exist or the name is taken.");
+        human::warning(
+            "Could not create Netlify site — it may already exist or the name is taken.",
+        );
         human::info("You can link to an existing site with: netlify link");
     }
 
@@ -1680,7 +1731,11 @@ pub fn domain_setup_instructions(
     config: &SiteConfig,
 ) -> DomainSetup {
     let is_apex = !domain.contains('.') || domain.matches('.').count() == 1;
-    let subdomain = if is_apex { "www" } else { domain.split('.').next().unwrap_or("www") };
+    let subdomain = if is_apex {
+        "www"
+    } else {
+        domain.split('.').next().unwrap_or("www")
+    };
 
     match target {
         DeployTarget::GithubPages => {
@@ -1702,7 +1757,10 @@ pub fn domain_setup_instructions(
             }
             // CNAME for www or subdomain
             let repo_owner = detect_github_username(&config.deploy);
-            let gh_domain = format!("{}.github.io", repo_owner.unwrap_or_else(|| "<username>".into()));
+            let gh_domain = format!(
+                "{}.github.io",
+                repo_owner.unwrap_or_else(|| "<username>".into())
+            );
             records.push(DnsRecord {
                 record_type: "CNAME".into(),
                 name: subdomain.into(),
@@ -1714,8 +1772,10 @@ pub fn domain_setup_instructions(
                 dns_records: records,
                 notes: vec![
                     "A CNAME file will be automatically created in your deploy output.".into(),
-                    "GitHub will provision an SSL certificate automatically (may take up to 24h).".into(),
-                    "Enable 'Enforce HTTPS' in your repo Settings > Pages after DNS propagates.".into(),
+                    "GitHub will provision an SSL certificate automatically (may take up to 24h)."
+                        .into(),
+                    "Enable 'Enforce HTTPS' in your repo Settings > Pages after DNS propagates."
+                        .into(),
                 ],
             }
         }
@@ -1723,7 +1783,11 @@ pub fn domain_setup_instructions(
             let project = config.deploy.project.as_deref().unwrap_or("<project-name>");
             let mut records = vec![DnsRecord {
                 record_type: "CNAME".into(),
-                name: if is_apex { "@".into() } else { subdomain.into() },
+                name: if is_apex {
+                    "@".into()
+                } else {
+                    subdomain.into()
+                },
                 value: format!("{project}.pages.dev"),
             }];
             if is_apex {
@@ -1748,7 +1812,11 @@ pub fn domain_setup_instructions(
             let site_name = config.deploy.project.as_deref().unwrap_or("<site-name>");
             let records = vec![DnsRecord {
                 record_type: "CNAME".into(),
-                name: if is_apex { "@".into() } else { subdomain.into() },
+                name: if is_apex {
+                    "@".into()
+                } else {
+                    subdomain.into()
+                },
                 value: format!("{site_name}.netlify.app"),
             }];
             DomainSetup {
@@ -1756,7 +1824,9 @@ pub fn domain_setup_instructions(
                 target: "Netlify".into(),
                 dns_records: records,
                 notes: vec![
-                    format!("Add the domain in Netlify dashboard or run: netlify domains:add {domain}"),
+                    format!(
+                        "Add the domain in Netlify dashboard or run: netlify domains:add {domain}"
+                    ),
                     "Netlify provisions SSL certificates automatically.".into(),
                     "For apex domains, consider using Netlify DNS for best results.".into(),
                 ],
@@ -1767,7 +1837,10 @@ pub fn domain_setup_instructions(
 
 /// Print domain setup instructions.
 pub fn print_domain_setup(setup: &DomainSetup) {
-    human::header(&format!("Domain setup for {} ({})", setup.domain, setup.target));
+    human::header(&format!(
+        "Domain setup for {} ({})",
+        setup.domain, setup.target
+    ));
 
     println!("\n  Add these DNS records at your domain registrar:\n");
     println!("  {:<8} {:<20} Value", "Type", "Name");
@@ -1858,8 +1931,11 @@ fn get_cloudflare_api_token() -> Option<String> {
 fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
     let account_id = get_cloudflare_account_id()
         .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
-    let token = get_cloudflare_api_token()
-        .ok_or_else(|| PageError::Deploy("no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into()))?;
+    let token = get_cloudflare_api_token().ok_or_else(|| {
+        PageError::Deploy(
+            "no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into(),
+        )
+    })?;
 
     let url = format!(
         "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
@@ -1894,8 +1970,11 @@ fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
 pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
     let account_id = get_cloudflare_account_id()
         .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
-    let token = get_cloudflare_api_token()
-        .ok_or_else(|| PageError::Deploy("no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into()))?;
+    let token = get_cloudflare_api_token().ok_or_else(|| {
+        PageError::Deploy(
+            "no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into(),
+        )
+    })?;
 
     let url = format!(
         "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
@@ -1991,9 +2070,9 @@ fn verify_http(url: &str) -> VerifyResult {
     match parsed {
         Some((host, port, path)) => {
             match TcpStream::connect_timeout(
-                &format!("{host}:{port}").parse().unwrap_or_else(|_| {
-                    std::net::SocketAddr::from(([127, 0, 0, 1], 80))
-                }),
+                &format!("{host}:{port}")
+                    .parse()
+                    .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 80))),
                 Duration::from_secs(10),
             ) {
                 Ok(mut stream) => {
@@ -2120,9 +2199,19 @@ pub fn print_verification(results: &[VerifyResult]) {
     human::header("Post-deploy verification");
     for r in results {
         if r.passed {
-            println!("  {} {}: {}", console::style("✓").green(), r.check, r.message);
+            println!(
+                "  {} {}: {}",
+                console::style("✓").green(),
+                r.check,
+                r.message
+            );
         } else {
-            println!("  {} {}: {}", console::style("✗").yellow(), r.check, r.message);
+            println!(
+                "  {} {}: {}",
+                console::style("✗").yellow(),
+                r.check,
+                r.message
+            );
         }
     }
     println!();
@@ -2139,9 +2228,11 @@ pub fn update_deploy_config(
 ) -> Result<()> {
     let contents = fs::read_to_string(config_path)?;
     let mut doc: toml::Table =
-        contents.parse().map_err(|e: toml::de::Error| PageError::ConfigInvalid {
-            message: e.to_string(),
-        })?;
+        contents
+            .parse()
+            .map_err(|e: toml::de::Error| PageError::ConfigInvalid {
+                message: e.to_string(),
+            })?;
 
     // Ensure [deploy] section exists
     if !doc.contains_key("deploy") {
@@ -2176,7 +2267,7 @@ pub fn update_deploy_config(
 // Utility
 // ---------------------------------------------------------------------------
 
-/// Extract a domain from a URL (e.g., "https://example.com/path" -> "example.com").
+/// Extract a domain from a URL (e.g., `https://example.com/path` -> `example.com`).
 pub fn extract_custom_domain(url: &str) -> Option<String> {
     let without_scheme = url
         .strip_prefix("https://")

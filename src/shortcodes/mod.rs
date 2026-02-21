@@ -53,9 +53,13 @@ impl ShortcodeRegistry {
                         .to_string();
                     let content = std::fs::read_to_string(&path)?;
                     let template_name = format!("shortcodes/{}.html", name);
-                    tera.add_raw_template(&template_name, &content).map_err(|e| {
-                        PageError::Build(format!("shortcode template '{}': {e}", path.display()))
-                    })?;
+                    tera.add_raw_template(&template_name, &content)
+                        .map_err(|e| {
+                            PageError::Build(format!(
+                                "shortcode template '{}': {e}",
+                                path.display()
+                            ))
+                        })?;
                     known.insert(name);
                 }
             }

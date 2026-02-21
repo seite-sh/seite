@@ -117,9 +117,8 @@ name = "{name}"
 
 fn run_list() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
-    let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
-    })?;
+    let ws_root = workspace::find_workspace_root(&cwd)
+        .ok_or_else(|| anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)"))?;
 
     let ws_config = WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
@@ -147,9 +146,8 @@ fn run_list() -> anyhow::Result<()> {
 
 fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
-    let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
-    })?;
+    let ws_root = workspace::find_workspace_root(&cwd)
+        .ok_or_else(|| anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)"))?;
 
     let site_path = args
         .path
@@ -253,9 +251,8 @@ path = "{}"
 
 fn run_status() -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
-    let ws_root = workspace::find_workspace_root(&cwd).ok_or_else(|| {
-        anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)")
-    })?;
+    let ws_root = workspace::find_workspace_root(&cwd)
+        .ok_or_else(|| anyhow::anyhow!("not in a workspace (no seite-workspace.toml found)"))?;
 
     let ws_config = WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 

@@ -42,9 +42,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
                 .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
 
             if !status.success() {
-                return Err(
-                    PageError::Agent("claude exited with non-zero status".into()).into(),
-                );
+                return Err(PageError::Agent("claude exited with non-zero status".into()).into());
             }
         }
         Some(prompt) => {
@@ -141,7 +139,9 @@ fn run_streaming(
                                     println!();
                                     in_text = false;
                                 }
-                                if let Some(thinking) = block.get("thinking").and_then(|t| t.as_str()) {
+                                if let Some(thinking) =
+                                    block.get("thinking").and_then(|t| t.as_str())
+                                {
                                     if !thinking.is_empty() {
                                         let styled = console::style("thinking").dim().italic();
                                         let preview = truncate(thinking, 200);
@@ -154,7 +154,8 @@ fn run_streaming(
                                     println!();
                                     in_text = false;
                                 }
-                                let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                                let name =
+                                    block.get("name").and_then(|n| n.as_str()).unwrap_or("?");
                                 let input = block.get("input").cloned().unwrap_or_default();
                                 let detail = summarize_tool_input(name, &input);
                                 let styled = console::style(format!("tool: {name}")).cyan();
