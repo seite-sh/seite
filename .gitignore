@@ -7,3 +7,4 @@ seite-sh/dist/
 *.swp
 *.swo
 .DS_Store
+.claude/settings.local.json
