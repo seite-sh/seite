@@ -170,9 +170,9 @@ Tests that require a real browser or deployed environment and can't be covered b
 
 ### Download redirects
 
-- [ ] `https://seite.sh/download/latest/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the current GitHub Release asset
+- [ ] `https://seite.sh/download/latest/seite-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the current GitHub Release asset
 - [ ] `https://seite.sh/download/latest/checksums-sha256.txt` 302-redirects to the current checksums
-- [ ] `https://seite.sh/download/v0.1.0/page-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the specific version on GitHub Releases
+- [ ] `https://seite.sh/download/v0.1.0/seite-x86_64-unknown-linux-gnu.tar.gz` 302-redirects to the specific version on GitHub Releases
 - [ ] Checksum verification passes end-to-end (download via domain, verify sha256)
 
 ### Self-update routing

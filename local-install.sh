@@ -10,7 +10,7 @@
 set -eu
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-BINARY="page"
+BINARY="seite"
 
 cargo build --release
 

@@ -52,9 +52,7 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
 
     // 2. Compare versions
     if target_version == current_version {
-        human::success(&format!(
-            "Already up to date (seite {current_version})."
-        ));
+        human::success(&format!("Already up to date (seite {current_version})."));
         return Ok(());
     }
 
@@ -68,7 +66,7 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     if args.check {
         if is_upgrade {
             human::info(&format!(
-                "Run `seite self-update` to install page {target_version}."
+                "Run `seite self-update` to install seite {target_version}."
             ));
             std::process::exit(1); // exit 1 = update available (useful for CI)
         }
@@ -156,9 +154,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
              irm https://seite.sh/install.ps1 | iex"
         );
     } else {
-        anyhow::bail!(
-            "Unsupported operating system. Install from source: cargo install seite"
-        );
+        anyhow::bail!("Unsupported operating system. Install from source: cargo install seite");
     };
 
     let arch = if cfg!(target_arch = "x86_64") {
@@ -166,9 +162,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
     } else if cfg!(target_arch = "aarch64") {
         "aarch64"
     } else {
-        anyhow::bail!(
-            "Unsupported architecture. Install from source: cargo install seite"
-        );
+        anyhow::bail!("Unsupported architecture. Install from source: cargo install seite");
     };
 
     Ok(format!("{arch}-{os}"))
@@ -215,14 +209,10 @@ fn verify_checksum(
         .lines()
         .find(|line| line.ends_with(archive_name) || line.contains(archive_name))
         .and_then(|line| line.split_whitespace().next())
-        .ok_or_else(|| {
-            anyhow::anyhow!("Archive {archive_name} not found in checksums file")
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("Archive {archive_name} not found in checksums file"))?;
 
     if actual != expected {
-        anyhow::bail!(
-            "Checksum mismatch!\n  Expected: {expected}\n  Actual:   {actual}"
-        );
+        anyhow::bail!("Checksum mismatch!\n  Expected: {expected}\n  Actual:   {actual}");
     }
 
     Ok(())
