@@ -4534,7 +4534,7 @@ fn test_build_with_google_analytics_direct() {
     );
     // Should NOT have consent banner
     assert!(
-        !index.contains("page-cookie-banner"),
+        !index.contains("seite-cookie-banner"),
         "should not have consent banner when cookie_consent is false"
     );
 
@@ -4568,19 +4568,19 @@ fn test_build_with_analytics_cookie_consent() {
 
     // Should have consent banner
     assert!(
-        index.contains("page-cookie-banner"),
+        index.contains("seite-cookie-banner"),
         "should have cookie consent banner"
     );
     assert!(
-        index.contains("page-cookie-accept"),
+        index.contains("seite-cookie-accept"),
         "should have accept button"
     );
     assert!(
-        index.contains("page-cookie-decline"),
+        index.contains("seite-cookie-decline"),
         "should have decline button"
     );
     assert!(
-        index.contains("page_analytics_consent"),
+        index.contains("seite_analytics_consent"),
         "should use localStorage key"
     );
 
@@ -4658,7 +4658,7 @@ fn test_build_without_analytics_no_injection() {
     let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
     assert!(!index.contains("googletagmanager"));
     assert!(!index.contains("plausible"));
-    assert!(!index.contains("page-cookie-banner"));
+    assert!(!index.contains("seite-cookie-banner"));
     assert!(!index.contains("usefathom"));
 }
 

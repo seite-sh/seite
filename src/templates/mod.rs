@@ -354,7 +354,7 @@ pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
     <nav class="trust-breadcrumb"><a href="{{ lang_prefix }}/trust/">{{ t.trust_center }}</a> &rsaquo; {{ page.title }}</nav>
     <h1>{{ page.title }}</h1>
     {% if page.description %}<p class="trust-description">{{ page.description }}</p>{% endif %}
-    {% if page.extra.type == "certification" and page.extra.framework %}
+    {% if page.extra and page.extra.type is defined and page.extra.type == "certification" and page.extra.framework is defined %}
     {% if data.trust.certifications %}
     {% for cert in data.trust.certifications %}
     {% if cert.framework == page.extra.framework %}
