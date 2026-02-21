@@ -212,7 +212,7 @@ jobs:
         working-directory: seite-sh
         run: seite build
 
-      - name: Generate download routing files
+      - name: Generate routing files
         working-directory: seite-sh
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
@@ -220,10 +220,12 @@ jobs:
           # version.txt — latest version pointer
           echo "$TAG" > dist/version.txt
 
-          # _redirects — route /download/ paths to GitHub Releases
-          # First rule: /download/latest/* resolves to the current release
-          # Second rule: /download/<version>/* passes through to any release
-          printf '/download/latest/* https://github.com/seite-sh/seite/releases/download/%s/:splat 302\n' "$TAG" > dist/_redirects
+          # _redirects — Cloudflare Pages routing rules
+          # Install scripts: rewrite /install.sh to /static/install.sh (200 = serve content at path)
+          printf '/install.sh /static/install.sh 200\n' > dist/_redirects
+          printf '/install.ps1 /static/install.ps1 200\n' >> dist/_redirects
+          # Download routing: /download/ paths to GitHub Releases
+          printf '/download/latest/* https://github.com/seite-sh/seite/releases/download/%s/:splat 302\n' "$TAG" >> dist/_redirects
           printf '/download/* https://github.com/seite-sh/seite/releases/download/:splat 302\n' >> dist/_redirects
 
       - name: Deploy to Cloudflare Pages
