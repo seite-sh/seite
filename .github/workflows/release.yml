@@ -174,6 +174,22 @@ jobs:
   #     base64-subjects: "${{ needs.release.outputs.digests }}"
   #     upload-assets: true
 
+  publish-crate:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Publish to crates.io
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
   deploy-site:
     name: Deploy docs site
     needs: build

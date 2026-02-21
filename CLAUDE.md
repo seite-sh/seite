@@ -409,11 +409,12 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
   1. `build` — matrix builds for macOS x86_64, macOS aarch64, Linux x86_64, Linux aarch64, Windows x86_64
   2. `release` — creates GitHub Release with `seite-{target}.tar.gz` archives + `checksums-sha256.txt`
   3. `provenance` — SLSA Level 3 attestations via `slsa-framework/slsa-github-generator`
-  4. `deploy-site` — builds and deploys `seite-sh/` to Cloudflare Pages (seite.sh)
+  4. `publish-crate` — publishes to crates.io
+  5. `deploy-site` — builds and deploys `seite-sh/` to Cloudflare Pages (seite.sh)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
 - **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
-- **Release flow**: bump version in `Cargo.toml` + update `seite-sh/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-deploy docs
-- **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+- **Release flow**: bump version in `Cargo.toml` + update `seite-sh/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-publish crate → auto-deploy docs
+- **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CARGO_REGISTRY_TOKEN`
 
 ### Themes
 
