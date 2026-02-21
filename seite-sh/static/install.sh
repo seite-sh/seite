@@ -36,8 +36,8 @@ else
   RESET=''
 fi
 
-info()  { printf "${BOLD}${GREEN}info${RESET}  %s\n" "$1"; }
-warn()  { printf "${BOLD}${YELLOW}warn${RESET}  %s\n" "$1"; }
+info()  { printf "${BOLD}${GREEN}info${RESET}  %s\n" "$1" >&2; }
+warn()  { printf "${BOLD}${YELLOW}warn${RESET}  %s\n" "$1" >&2; }
 error() { printf "${BOLD}${RED}error${RESET} %s\n" "$1" >&2; }
 
 # --- Platform detection ---
