@@ -839,6 +839,49 @@ Tag pages are i18n-aware and included in the sitemap.
 | `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 | `{{ pagination }}` | Pagination context |
 
+## Translatable UI Strings
+
+All bundled themes and default templates use the `{{ t }}` object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.
+
+### Default Keys
+
+| Key | Default (English) |
+|-----|-------------------|
+| `t.search_placeholder` | Search… |
+| `t.skip_to_content` | Skip to main content |
+| `t.no_results` | No results |
+| `t.newer` | Newer |
+| `t.older` | Older |
+| `t.page_n_of_total` | Page {n} of {total} |
+| `t.search_label` | Search site content |
+| `t.min_read` | min read |
+| `t.contents` | Contents |
+| `t.tags` | Tags |
+| `t.all_tags` | All tags |
+| `t.tagged` | Tagged |
+| `t.changelog` | Changelog |
+| `t.roadmap` | Roadmap |
+| `t.not_found_title` | Page Not Found |
+| `t.not_found_message` | The page you requested could not be found. |
+| `t.go_home` | Go to the homepage |
+| `t.in_progress` | In Progress |
+| `t.planned` | Planned |
+| `t.done` | Done |
+| `t.other` | Other |
+
+### Overriding Strings
+
+Create `data/i18n/{lang}.yaml` to override any key:
+
+```yaml
+# data/i18n/es.yaml
+search_placeholder: "Buscar…"
+skip_to_content: "Ir al contenido principal"
+no_results: "Sin resultados"
+newer: "Más recientes"
+older: "Más antiguos"
+```
+
 ## Overridable Blocks
 
 All bundled themes provide these blocks for customization:
@@ -1048,49 +1091,6 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
   {% endfor %}
 </nav>
 {% endif %}
-```
-
-## Translatable UI Strings
-
-All bundled themes and default templates use the `{{ t }}` object for UI text. This allows multilingual sites to translate interface strings without overriding entire themes.
-
-### Default Keys
-
-| Key | Default (English) |
-|-----|-------------------|
-| `t.search_placeholder` | Search… |
-| `t.skip_to_content` | Skip to main content |
-| `t.no_results` | No results |
-| `t.newer` | Newer |
-| `t.older` | Older |
-| `t.page_n_of_total` | Page {n} of {total} |
-| `t.search_label` | Search site content |
-| `t.min_read` | min read |
-| `t.contents` | Contents |
-| `t.tags` | Tags |
-| `t.all_tags` | All tags |
-| `t.tagged` | Tagged |
-| `t.changelog` | Changelog |
-| `t.roadmap` | Roadmap |
-| `t.not_found_title` | Page Not Found |
-| `t.not_found_message` | The page you requested could not be found. |
-| `t.go_home` | Go to the homepage |
-| `t.in_progress` | In Progress |
-| `t.planned` | Planned |
-| `t.done` | Done |
-| `t.other` | Other |
-
-### Overriding Strings
-
-Create `data/i18n/{lang}.yaml` to override any key for a specific language:
-
-```yaml
-# data/i18n/es.yaml
-search_placeholder: "Buscar…"
-skip_to_content: "Ir al contenido principal"
-no_results: "Sin resultados"
-newer: "Más recientes"
-older: "Más antiguos"
 ```
 
 ## Next Steps
@@ -1409,10 +1409,10 @@ Bundled themes include a language switcher UI when `translations` is non-empty. 
 |----------|-------------|
 | `{{ lang }}` | Current page language code |
 | `{{ translations }}` | Array of `{lang, url}` for available translations |
-| `{{ site.language }}` | Configured default language |
-| `{{ default_language }}` | Default language code (from `seite.toml`) |
+| `{{ site.language }}` | Configured default language (from `seite.toml`) |
+| `{{ default_language }}` | Configured default language code |
 | `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
-| `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
+| `{{ t }}` | UI translation strings (see Templates & Themes docs) |
 
 Use in templates:
 
@@ -1432,44 +1432,22 @@ Use in templates:
 
 ## Navigation and Footer Links
 
-Data file links in `data/nav.yaml` and `data/footer.yaml` can use the `external: true` flag to distinguish external URLs from internal ones. This lets themes apply the `{{ lang_prefix }}` only to internal links, so navigation works correctly across languages:
+Data file links (`data.nav`, `data.footer`) are automatically prefixed with the current language in all bundled themes. Mark external links with `external: true` so they are not prefixed:
 
 ```yaml
 # data/nav.yaml
 - title: Blog
   url: /posts
-- title: About
-  url: /about
 - title: GitHub
   url: https://github.com/user/repo
   external: true
 ```
 
-In templates, check for `external` to decide whether to prepend the language prefix:
-
-```html
-{% for item in data.nav %}
-  {% if item.external %}
-    <a href="{{ item.url }}">{{ item.title }}</a>
-  {% else %}
-    <a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>
-  {% endif %}
-{% endfor %}
-```
-
-All bundled themes handle this automatically when `data.nav` or `data.footer` are present.
+Internal links render as `{{ lang_prefix }}{{ item.url }}`. External links render with `target="_blank"`.
 
 ## UI String Translations
 
-Bundled themes use the `{{ t }}` object for all user-facing UI text (buttons, labels, placeholders). This means you can translate the interface without overriding entire theme templates.
-
-### How it works
-
-1. The build pipeline provides English defaults for all UI strings
-2. To override strings for a specific language, create `data/i18n/{lang}.yaml`
-3. Only the keys you define are overridden — everything else falls back to English
-
-### Example
+Bundled themes use `{{ t.key }}` for all interface text (search placeholder, pagination, 404 text, etc.). Override defaults per language by creating `data/i18n/{lang}.yaml`:
 
 ```yaml
 # data/i18n/es.yaml
@@ -1478,22 +1456,9 @@ skip_to_content: "Ir al contenido principal"
 no_results: "Sin resultados"
 newer: "Más recientes"
 older: "Más antiguos"
-tags: "Etiquetas"
-min_read: "min de lectura"
 ```
 
-```yaml
-# data/i18n/fr.yaml
-search_placeholder: "Rechercher…"
-skip_to_content: "Aller au contenu principal"
-no_results: "Aucun résultat"
-newer: "Plus récent"
-older: "Plus ancien"
-tags: "Mots-clés"
-min_read: "min de lecture"
-```
-
-See [Templates & Themes](/docs/templates#translatable-ui-strings) for the full list of available keys and their English defaults.
+See [Templates & Themes](/docs/templates) for the full list of available keys.
 
 ## Next Steps
 
@@ -2082,8 +2047,8 @@ Use cases:
 seite workspace init my-workspace
 
 # Add sites
-seite workspace init add blog --collections posts,pages --title "Blog"
-seite workspace init add docs --collections docs --title "Documentation"
+seite workspace add blog --collections posts,pages --title "Blog"
+seite workspace add docs --collections docs --title "Documentation"
 
 # Build all sites
 seite build
@@ -2118,7 +2083,7 @@ If you omit the name, an interactive prompt asks for it.
 ## Adding Sites
 
 ```bash
-seite workspace init add <name> [options]
+seite workspace add <name> [options]
 ```
 
 | Flag | Description |
@@ -2130,8 +2095,8 @@ seite workspace init add <name> [options]
 This creates a full site scaffold inside the workspace and registers it in `seite-workspace.toml`:
 
 ```bash
-seite workspace init add blog --collections posts,pages --title "My Blog"
-seite workspace init add docs --collections docs --title "Documentation" --path sites/documentation
+seite workspace add blog --collections posts,pages --title "My Blog"
+seite workspace add docs --collections docs --title "Documentation" --path sites/documentation
 ```
 
 ## Configuration
@@ -2249,8 +2214,8 @@ Use `seite deploy --site blog --dry-run` to preview a single site's deploy befor
 ## Checking Status
 
 ```bash
-seite workspace init list          # List all sites with config status
-seite workspace init status        # Detailed workspace status (config, build state, titles)
+seite workspace list          # List all sites with config status
+seite workspace status        # Detailed workspace status (config, build state, titles)
 ```
 
 ## Workspace Detection
@@ -2280,7 +2245,7 @@ If no `seite-workspace.toml` is found, `page` operates in standalone mode using 
 
 ## Overview
 
-`page` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a page project in Claude Code, the MCP server starts automatically — no API keys or setup required.
+`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically — no API keys or setup required.
 
 The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
 
@@ -2291,8 +2256,8 @@ The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using
 ```json
 {
   "mcpServers": {
-    "page": {
-      "command": "page",
+    "seite": {
+      "command": "seite",
       "args": ["mcp"]
     }
   }
@@ -2804,12 +2769,12 @@ seite deploy --domain example.com     # Set up custom domain
 seite deploy --setup                  # Guided setup wizard
 ```
 
-## seite workspace init
+## seite workspace
 
 Manage multi-site workspaces. See the [Workspaces](/docs/workspace) guide for full details.
 
 ```bash
-seite workspace init <subcommand>
+seite workspace <subcommand>
 ```
 
 | Subcommand | Description |
@@ -2829,10 +2794,10 @@ seite workspace init <subcommand>
 
 ```bash
 seite workspace init my-workspace
-seite workspace init add blog --collections posts,pages --title "Blog"
-seite workspace init add docs --collections docs --path sites/documentation
-seite workspace init list
-seite workspace init status
+seite workspace add blog --collections posts,pages --title "Blog"
+seite workspace add docs --collections docs --path sites/documentation
+seite workspace list
+seite workspace status
 ```
 
 When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by default. Use `--site` to target one:
@@ -2912,6 +2877,53 @@ The command downloads the appropriate binary for your platform from GitHub Relea
 {{% callout(type="info") %}}
 After updating the binary, run `seite upgrade` in each of your projects to bring their config files up to date.
 {{% end %}}
+
+
+---
+
+### Releases
+
+*Release history and changelog for page.*
+
+## v0.1.0
+
+Initial release.
+
+**Build pipeline:**
+- 13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
+- Image processing: auto-resize, WebP conversion, srcset, lazy loading
+- Asset pipeline with CSS/JS minification and fingerprinted filenames
+- Internal link validation at build time
+
+**Content:**
+- 6 collection presets: posts, docs, pages, changelog, roadmap, trust center
+- 5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes
+- Data files (YAML/JSON/TOML) injected into template context
+- Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags
+- Pagination, tag pages, table of contents, excerpts, reading time and word count
+
+**Themes:**
+- 6 bundled themes: default, minimal, dark, docs, brutalist, bento
+- AI-generated custom themes via `seite theme create`
+- Theme install/export for community sharing
+
+**AI integration:**
+- `seite agent` spawns Claude Code with full site context
+- MCP server (`seite mcp`) with 5 tools and 6+ resources for AI tool integration
+- Every site ships with `llms.txt`, `llms-full.txt`, and raw markdown
+
+**Deploy:**
+- GitHub Pages, Cloudflare Pages, and Netlify with guided setup
+- Pre-flight checks, `--dry-run` preview, custom domain management
+- Post-deploy verification, preview/staging deploys
+
+**Developer experience:**
+- Interactive dev server with REPL and live reload
+- Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent
+- Multi-site workspaces
+- `seite collection add` for adding collections to existing sites
+- Self-update from GitHub Releases with checksum verification
+- Shell installer for macOS/Linux, PowerShell installer for Windows
 
 
 ---

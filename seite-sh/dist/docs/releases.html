@@ -14,23 +14,23 @@
         </script>
 
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Theme Gallery — seite docs</title>
-        <meta name="description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
-        <link rel="canonical" href="https://seite.sh/docs/theme-gallery">
+        <title>Releases — seite docs</title>
+        <meta name="description" content="Release history and changelog for page.">
+        <link rel="canonical" href="https://seite.sh/docs/releases">
 
         <!-- Open Graph -->
         <meta property="og:type" content="article">
-        <meta property="og:url" content="https://seite.sh/docs/theme-gallery">
-        <meta property="og:title" content="Theme Gallery">
-        <meta property="og:description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
+        <meta property="og:url" content="https://seite.sh/docs/releases">
+        <meta property="og:title" content="Releases">
+        <meta property="og:description" content="Release history and changelog for page.">
         
         <meta property="og:site_name" content="seite">
         <meta property="og:locale" content="en">
 
         <!-- Twitter Card -->
         <meta name="twitter:card" content="summary">
-        <meta name="twitter:title" content="Theme Gallery">
-        <meta name="twitter:description" content="Browse all bundled themes with visual previews. Install community themes or generate your own with AI.">
+        <meta name="twitter:title" content="Releases">
+        <meta name="twitter:description" content="Release history and changelog for page.">
         
 
         
@@ -39,7 +39,7 @@
         <link rel="alternate" type="application/rss+xml" title="seite" href="/feed.xml">
         <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
         
-        <link rel="alternate" type="text/markdown" href="https://seite.sh/docs/theme-gallery.md">
+        <link rel="alternate" type="text/markdown" href="https://seite.sh/docs/releases.md">
 
         <!-- hreflang -->
         
@@ -47,7 +47,7 @@
         <!-- JSON-LD -->
         <script type="application/ld+json">
     
-    {"@context":"https://schema.org","@type":"Article","headline":"Theme Gallery","description":"Browse all bundled themes with visual previews. Install community themes or generate your own with AI.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/theme-gallery"}
+    {"@context":"https://schema.org","@type":"Article","headline":"Releases","description":"Release history and changelog for page.","author":{"@type":"Person","name":""},"publisher":{"@type":"Organization","name":"seite"},"url":"https://seite.sh/docs/releases"}
     
     </script>
 
@@ -1775,11 +1775,11 @@
                     
                 <li><a href="/docs/mcp-server" >MCP Server</a></li>
                     
-                <li class="active" ><a href="/docs/theme-gallery"  aria-current="page" >Theme Gallery</a></li>
+                <li><a href="/docs/theme-gallery" >Theme Gallery</a></li>
                     
                 <li><a href="/docs/cli-reference" >CLI Reference</a></li>
                     
-                <li><a href="/docs/releases" >Releases</a></li>
+                <li class="active" ><a href="/docs/releases"  aria-current="page" >Releases</a></li>
                     
             </ul>
             
@@ -1794,161 +1794,51 @@
     <div class="sidebar-backdrop" onclick="document.querySelector('.docs-sidebar').classList.remove('open');this.classList.remove('open');"></div>
     <div class="docs-main">
         <article>
-            <h1>Theme Gallery</h1>
-            <p class="doc-description">Browse all bundled themes with visual previews. Install community themes or generate your own with AI.</p>
-            <div class="content"><h2 id="bundled-themes">Bundled Themes</h2>
-<p>Six production-ready themes ship with every <code>page</code> binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme apply &lt;name&gt;
-</span></pre>
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin: 32px 0;">
-<div style="border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #ffffff; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
-<div style="font-size: 11px; color: #0057b7; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">DEFAULT</div>
-<div style="font-size: 18px; font-weight: 700; color: #111; margin-bottom: 6px;">Clean Readable Baseline</div>
-<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">720px centered column, system-ui font stack, blue links. The sensible starting point for any site.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 1px solid #ddd; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #111111; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #0057b7; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #f8f8f8; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">seite theme apply default</div>
-</div>
-<div style="border: 1px solid #e2e2e2; border-radius: 12px; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #faf9f6; font-family: Georgia, 'Times New Roman', serif; min-height: 140px;">
-<div style="font-size: 11px; color: #888; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; font-family: system-ui, sans-serif;">MINIMAL</div>
-<div style="font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px;">Typography First</div>
-<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">600px column, Georgia serif, understated search. Literary feel that lets content breathe.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #faf9f6; border: 1px solid #ddd; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #1a1a1a; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #888888; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #f0eeeb; border-top: 1px solid #e2e2e2; font-size: 13px; font-family: monospace; color: #555;">seite theme apply minimal</div>
-</div>
-<div style="border: 1px solid #333; border-radius: 12px; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #0a0a0a; min-height: 140px;">
-<div style="font-size: 11px; color: #8b5cf6; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; font-family: system-ui, sans-serif;">DARK</div>
-<div style="font-size: 18px; font-weight: 700; color: #e8e8e8; margin-bottom: 6px; font-family: system-ui, sans-serif;">True Black + Violet</div>
-<div style="font-size: 13px; color: #999; line-height: 1.5; margin-bottom: 12px; font-family: system-ui, sans-serif;">True black background, violet accent, styled focus rings. Easy on the eyes, day or night.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #0a0a0a; border: 1px solid #333; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #e8e8e8; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #8b5cf6; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #111; border-top: 1px solid #333; font-size: 13px; font-family: monospace; color: #999;">seite theme apply dark</div>
-</div>
-<div style="border: 1px solid #d0d7de; border-radius: 12px; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #ffffff; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
-<div style="font-size: 11px; color: #0969da; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">DOCS</div>
-<div style="font-size: 18px; font-weight: 700; color: #1f2328; margin-bottom: 6px;">Sidebar Documentation</div>
-<div style="font-size: 13px; color: #656d76; line-height: 1.5; margin-bottom: 12px;">Fixed 260px sidebar with auto-scrolling nav. GitHub-style colors. Built for technical docs.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 1px solid #ddd; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #1f2328; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #0969da; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 13px; font-family: monospace; color: #656d76;">seite theme apply docs</div>
-</div>
-<div style="border: 3px solid #000000; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #fffef0; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
-<div style="font-size: 11px; color: #000; font-weight: 900; letter-spacing: 0.5px; margin-bottom: 8px;">BRUTALIST</div>
-<div style="font-size: 18px; font-weight: 900; color: #000; margin-bottom: 6px;">Hard Edges, Bold Type</div>
-<div style="font-size: 13px; color: #333; line-height: 1.5; margin-bottom: 12px;">Cream background, 3px borders, hard shadows, yellow accent. Zero border-radius. Maximum impact.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; background: #fffef0; border: 2px solid #000; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; background: #000000; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; background: #ffe600; border: 2px solid #000; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #ffe600; border-top: 3px solid #000; font-size: 13px; font-family: monospace; color: #000; font-weight: 700;">seite theme apply brutalist</div>
-</div>
-<div style="border: 1px solid #e8e4df; border-radius: 20px; overflow: hidden;">
-<div style="padding: 24px 20px 16px; background: #f4f0eb; font-family: system-ui, -apple-system, sans-serif; min-height: 140px;">
-<div style="font-size: 11px; color: #5046e5; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px;">BENTO</div>
-<div style="font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px;">Card Grid Layout</div>
-<div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 12px;">CSS grid, mixed card sizes, rounded corners, soft shadows. Dark and indigo accent cards for rhythm.</div>
-<div style="display: flex; gap: 6px;">
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #f4f0eb; border: 1px solid #ddd; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #1a1a1a; display: inline-block;"></span>
-<span style="width: 20px; height: 20px; border-radius: 50%; background: #5046e5; display: inline-block;"></span>
-</div>
-</div>
-<div style="padding: 10px 20px; background: #e8e4df; border-top: 1px solid #ddd; font-size: 13px; font-family: monospace; color: #555; border-radius: 0 0 20px 20px;">seite theme apply bento</div>
-</div>
-</div>
-<div class="callout callout-tip">
-<div class="callout-title">Tip</div>
-<p>In the dev server REPL, type <code>theme dark</code> to instantly preview any theme with live reload — no restart needed.</p>
-</div>
-<h2 id="install-community-themes">Install Community Themes</h2>
-<p>Download and install themes shared by others:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#65737e;"># Install from a URL
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera
-</span><span style="color:#c0c5ce;">
-</span><span style="color:#65737e;"># Install with a custom name
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme install https://example.com/themes/aurora.tera</span><span style="color:#bf616a;"> --name</span><span style="color:#c0c5ce;"> my-aurora
-</span></pre>
-<p>Installed themes are saved to <code>templates/themes/&lt;name&gt;.tera</code> and appear in <code>seite theme list</code>. Apply them like any bundled theme:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme apply aurora
-</span></pre>
-<h2 id="export-share-your-theme">Export & Share Your Theme</h2>
-<p>Package your current theme for others to install:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#65737e;"># Export with a description
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme export my-theme</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Dark theme with green accents</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#c0c5ce;">
-</span><span style="color:#65737e;"># The theme is saved to templates/themes/my-theme.tera
-</span></pre>
-<p>Host the <code>.tera</code> file anywhere (GitHub, your own server, a Gist) and others can install it with <code>seite theme install &lt;url&gt;</code>.</p>
-<h2 id="generate-custom-themes-with-ai">Generate Custom Themes with AI</h2>
-<p>Instead of browsing themes, describe what you want and let AI build it:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">minimal dark theme with cyan accents and generous whitespace</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">warm editorial design with serif headings and earth tones</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">neon cyberpunk with scanline effects and monospace everything</span><span style="color:#c0c5ce;">&quot;
-</span></pre>
-<p>This spawns Claude Code to generate a complete <code>templates/base.html</code> with all required blocks, SEO tags, search, pagination, and accessibility features. Requires <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> installed.</p>
-<div class="callout callout-info">
-<div class="callout-title">Info</div>
-<p>AI-generated themes are production-ready — Claude includes all SEO meta tags, search functionality, pagination, accessibility features, and responsive design automatically.</p>
-</div>
-<p>After generating, export it to share:</p>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme export cyberpunk</span><span style="color:#bf616a;"> --description </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">Neon cyberpunk with scanlines</span><span style="color:#c0c5ce;">&quot;
-</span><span style="color:#65737e;"># Share templates/themes/cyberpunk.tera with anyone
-</span></pre>
-<h2 id="theme-anatomy">Theme Anatomy</h2>
-<p>Every theme (bundled or installed) is a single Tera template file that serves as <code>base.html</code>. A valid theme must include:</p>
+            <h1>Releases</h1>
+            <p class="doc-description">Release history and changelog for page.</p>
+            <div class="content"><h2 id="v0-1-0">v0.1.0</h2>
+<p>Initial release.</p>
+<p><strong>Build pipeline:</strong></p>
 <ul>
-<li><strong>HTML structure</strong> — <code>&lt;!DOCTYPE html&gt;</code> through <code>&lt;/html&gt;</code></li>
-<li><strong>SEO meta tags</strong> — canonical URL, Open Graph, Twitter Card, JSON-LD</li>
-<li><strong>Template blocks</strong> — <code>title</code>, <code>head</code>, <code>extra_css</code>, <code>header</code>, <code>content</code>, <code>footer</code>, <code>extra_js</code></li>
-<li><strong>Search</strong> — search input + client-side JavaScript using <code>search-index.json</code></li>
-<li><strong>Pagination</strong> — navigation when pagination context exists</li>
-<li><strong>Language switcher</strong> — hreflang links + switcher UI for multilingual sites</li>
-<li><strong>Accessibility</strong> — skip-to-main link, ARIA labels, focus rings, <code>prefers-reduced-motion</code></li>
+<li>13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files</li>
+<li>Image processing: auto-resize, WebP conversion, srcset, lazy loading</li>
+<li>Asset pipeline with CSS/JS minification and fingerprinted filenames</li>
+<li>Internal link validation at build time</li>
 </ul>
-<p>All inline CSS (no external stylesheets) so the theme is completely self-contained.</p>
-<h2 id="managing-themes">Managing Themes</h2>
-<pre style="background-color:#2b303b;">
-<span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme list              </span><span style="color:#65737e;"># Show all bundled + installed themes
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme apply &lt;name&gt;      # Apply a theme (writes templates/base.html)
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme install &lt;url&gt;     # Download a theme from a URL
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme export &lt;name&gt;     # Export current theme as shareable .tera file
-</span><span style="color:#8fa1b3;">seite</span><span style="color:#c0c5ce;"> theme create &quot;</span><span style="color:#a3be8c;">&lt;prompt&gt;</span><span style="color:#c0c5ce;">&quot; </span><span style="color:#65737e;"># Generate a custom theme with AI
-</span></pre>
-<p>In the dev server REPL, type <code>theme</code> to list themes or <code>theme &lt;name&gt;</code> to apply and auto-rebuild.</p>
-<h2 id="next-steps">Next Steps</h2>
+<p><strong>Content:</strong></p>
 <ul>
-<li><a href="/docs/templates">Templates &amp; Themes</a> — customize theme blocks, override templates, and use data files</li>
-<li><a href="/docs/agent">AI Agent</a> — use Claude for content creation, site management, and more</li>
+<li>6 collection presets: posts, docs, pages, changelog, roadmap, trust center</li>
+<li>5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes</li>
+<li>Data files (YAML/JSON/TOML) injected into template context</li>
+<li>Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags</li>
+<li>Pagination, tag pages, table of contents, excerpts, reading time and word count</li>
+</ul>
+<p><strong>Themes:</strong></p>
+<ul>
+<li>6 bundled themes: default, minimal, dark, docs, brutalist, bento</li>
+<li>AI-generated custom themes via <code>seite theme create</code></li>
+<li>Theme install/export for community sharing</li>
+</ul>
+<p><strong>AI integration:</strong></p>
+<ul>
+<li><code>seite agent</code> spawns Claude Code with full site context</li>
+<li>MCP server (<code>seite mcp</code>) with 5 tools and 6+ resources for AI tool integration</li>
+<li>Every site ships with <code>llms.txt</code>, <code>llms-full.txt</code>, and raw markdown</li>
+</ul>
+<p><strong>Deploy:</strong></p>
+<ul>
+<li>GitHub Pages, Cloudflare Pages, and Netlify with guided setup</li>
+<li>Pre-flight checks, <code>--dry-run</code> preview, custom domain management</li>
+<li>Post-deploy verification, preview/staging deploys</li>
+</ul>
+<p><strong>Developer experience:</strong></p>
+<ul>
+<li>Interactive dev server with REPL and live reload</li>
+<li>Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent</li>
+<li>Multi-site workspaces</li>
+<li><code>seite collection add</code> for adding collections to existing sites</li>
+<li>Self-update from GitHub Releases with checksum verification</li>
+<li>Shell installer for macOS/Linux, PowerShell installer for Windows</li>
 </ul>
 </div>
         </article>
@@ -2074,38 +1964,22 @@
         
         
         
+        
+        
         <nav class="doc-nav" aria-label="Documentation pagination">
             
-            <a href="/docs/mcp-server">
+            <a href="/docs/cli-reference">
                 <span class="doc-nav-label">← Previous</span>
-                <span class="doc-nav-title">MCP Server</span>
-            </a>
-            
-            
-            <a href="/docs/cli-reference" class="doc-nav-next">
-                <span class="doc-nav-label">Next →</span>
                 <span class="doc-nav-title">CLI Reference</span>
             </a>
+            
+            
+            <span class="doc-nav-placeholder"></span>
             
         </nav>
         
         
     </div>
-    
-    <aside class="docs-toc" aria-label="On this page">
-        <nav>
-            <h4>On this page</h4>
-            <ul>
-                <li class="toc-level-2"><a href="#bundled-themes">Bundled Themes</a></li>
-                <li class="toc-level-2"><a href="#install-community-themes">Install Community Themes</a></li>
-                <li class="toc-level-2"><a href="#export-share-your-theme">Export & Share Your Theme</a></li>
-                <li class="toc-level-2"><a href="#generate-custom-themes-with-ai">Generate Custom Themes with AI</a></li>
-                <li class="toc-level-2"><a href="#theme-anatomy">Theme Anatomy</a></li>
-                <li class="toc-level-2"><a href="#managing-themes">Managing Themes</a></li>
-                <li class="toc-level-2"><a href="#next-steps">Next Steps</a></li>
-                </ul>
-        </nav>
-    </aside>
     
 </div>
 

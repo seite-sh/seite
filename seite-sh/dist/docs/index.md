@@ -26,3 +26,5 @@
   Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
 - [CLI Reference](/docs/cli-reference)
   Complete reference for all seite CLI commands, flags, and options.
+- [Releases](/docs/releases)
+  Release history and changelog for page.

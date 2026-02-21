@@ -95,8 +95,7 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
-  docs.rs              Embedded documentation pages (14 docs, include_str! pattern)
-  docs/                Documentation markdown files embedded at compile time
+  docs.rs              Embedded documentation pages (14 docs, include_str! from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json) — version tracking, upgrade detection
   mcp/
     mod.rs             MCP server core (JSON-RPC over stdio, method dispatch)
@@ -350,7 +349,7 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 - `seite_apply_theme` — applies bundled or installed theme
 - `seite_lookup_docs` — searches embedded docs by topic or keyword
 
-**Files:** `src/mcp/mod.rs` (protocol), `src/mcp/resources.rs`, `src/mcp/tools.rs`, `src/docs.rs` + `src/docs/` (embedded docs)
+**Files:** `src/mcp/mod.rs` (protocol), `src/mcp/resources.rs`, `src/mcp/tools.rs`, `src/docs.rs` + `seite-sh/content/docs/` (embedded docs, single source of truth)
 
 ### Dev Server
 
@@ -563,17 +562,16 @@ When adding a new config section, CLI command, or build behavior, ensure all of 
 1. **Config model** — add struct + field to `SiteConfig` in `src/config/mod.rs`
 2. **Build pipeline** — integrate the feature in `src/build/mod.rs` (add step to `build_site()`)
 3. **Init scaffolding** — set the default in the `SiteConfig` literal in `src/cli/init.rs`
-4. **Embedded docs** — update `src/docs/configuration.md` (or the relevant `src/docs/*.md` page). These are compiled into the binary and served via the MCP server's `seite_lookup_docs` tool and `seite://docs/*` resources
-5. **Site docs** — mirror the same changes in `seite-sh/content/docs/` (the deployed documentation site)
-6. **MCP compliance** — verify the feature is visible through the MCP server:
+4. **Docs** — update `seite-sh/content/docs/configuration.md` (or the relevant `seite-sh/content/docs/*.md` page). These are compiled into the binary via `include_str!` and also deploy to seite.sh — single source of truth, no mirroring needed
+5. **MCP compliance** — verify the feature is visible through the MCP server:
    - `seite://config` auto-exposes any new `SiteConfig` fields (no code needed if serde works)
    - `seite_build` auto-includes new build steps (no code needed if added to `build_site()`)
-   - `seite_lookup_docs` returns the updated embedded docs (no code needed if `src/docs/` is updated)
+   - `seite_lookup_docs` returns the updated embedded docs (no code needed if `seite-sh/content/docs/` is updated)
    - Add an MCP integration test confirming the new config is visible via `seite://config`
-7. **CLAUDE.md** — update the module map, build pipeline step list, config example, and any relevant convention sections
-8. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
-9. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
-10. **i18n compliance** — if adding UI-visible text to themes or templates, use `{{ t.key }}` (never hardcode English); if adding internal links in themes, use `{{ lang_prefix }}{{ url }}`; add new `t` keys to `ui_strings_for_lang()` in `src/build/mod.rs`
+6. **CLAUDE.md** — update the module map, build pipeline step list, config example, and any relevant convention sections
+7. **Tests** — unit tests in the feature module, integration tests in `tests/integration.rs`
+8. **Deploy test structs** — if `SiteConfig` changed, update any test fixtures in `src/deploy/mod.rs`
+9. **i18n compliance** — if adding UI-visible text to themes or templates, use `{{ t.key }}` (never hardcode English); if adding internal links in themes, use `{{ lang_prefix }}{{ url }}`; add new `t` keys to `ui_strings_for_lang()` in `src/build/mod.rs`
 
 ### Changelog Collection
 - Date-based entries with RSS feed. Tags render as colored badges in all 6 themes
@@ -608,7 +606,7 @@ The trust center is a collection preset (`trust`) that scaffolds a compliance hu
 
 **Scaffolded CLAUDE.md:** When trust is present, the generated CLAUDE.md includes a comprehensive trust center section with data file formats, management workflows, and MCP integration docs.
 
-**Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (seite://trust), `src/docs/trust-center.md`, `src/themes/*.tera` (CSS)
+**Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (seite://trust), `seite-sh/content/docs/trust-center.md`, `src/themes/*.tera` (CSS)
 
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "seite" → "pages" so users can type either form.
@@ -787,7 +785,7 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Project metadata & upgrades — `.seite/config.json` tracks binary version that last scaffolded the project. `seite upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `seite build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
 - [x] Self-update — `seite self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
 - [x] MCP server scaffolding — `seite init` creates `.claude/settings.json` with `mcpServers.seite` block. `seite upgrade` merges MCP config into existing projects.
-- [x] MCP server — `seite mcp` runs a JSON-RPC server over stdio. Resources: `seite://docs/*` (14 embedded doc pages), `seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`. Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`. Docs embedded via `include_str!` in `src/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
+- [x] MCP server — `seite mcp` runs a JSON-RPC server over stdio. Resources: `seite://docs/*` (14 embedded doc pages), `seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`. Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`. Docs embedded via `include_str!` from `seite-sh/content/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
 - [x] Changelog collection — `changelog` preset with dated entries, RSS feed, and colored tag badges (new/fix/breaking/improvement/deprecated). Dedicated `changelog-entry.html` and `changelog-index.html` templates with CSS in all 6 themes. Collection-specific index template resolution in build pipeline.
 - [x] Roadmap collection — `roadmap` preset with weight-ordered items and status tags (planned/in-progress/done/cancelled). Three index layouts: grouped list (default), kanban (CSS grid 3-column), and timeline (vertical milestones). Dedicated templates and CSS in all 6 themes.
 - [x] Trust Center collection — `trust` preset with data-driven compliance hub scaffolding. Certifications, subprocessors, and FAQ data files. Content pages for security overview, vulnerability disclosure, per-framework details. Interactive init flow with framework selection. Dedicated `trust-index.html` and `trust-item.html` templates with CSS in all 6 themes. `seite://trust` MCP resource. 17 i18n UI string keys.

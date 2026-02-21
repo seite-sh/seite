@@ -17,6 +17,7 @@
 - [MCP Server](https://seite.sh/docs/mcp-server.md): Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.
 - [Theme Gallery](https://seite.sh/docs/theme-gallery.md): Browse all bundled themes with visual previews. Install community themes or generate your own with AI.
 - [CLI Reference](https://seite.sh/docs/cli-reference.md): Complete reference for all seite CLI commands, flags, and options.
+- [Releases](https://seite.sh/docs/releases.md): Release history and changelog for page.
 
 ## Pages
 

@@ -1,8 +1,8 @@
 //! Embedded documentation pages compiled into the binary.
 //!
 //! Follows the same `include_str!` pattern as `src/themes.rs`. The source files
-//! live in `src/docs/` and are copies of `seite-sh/content/docs/`. When updating
-//! site docs, copy the changed files to `src/docs/` to keep them in sync.
+//! live in `seite-sh/content/docs/` — the same files that deploy to seite.sh.
+//! Single source of truth: edit once, both the binary and the website update.
 
 /// A documentation page embedded in the binary.
 pub struct DocPage {
@@ -60,9 +60,9 @@ fn getting_started() -> DocPage {
     DocPage {
         slug: "getting-started",
         title: "Getting Started",
-        description: "Install page and build your first static site in under a minute.",
+        description: "Install seite and build your first static site in under a minute.",
         weight: 1,
-        raw_content: include_str!("docs/getting-started.md"),
+        raw_content: include_str!("../seite-sh/content/docs/getting-started.md"),
     }
 }
 
@@ -72,7 +72,7 @@ fn configuration() -> DocPage {
         title: "Configuration",
         description: "Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images.",
         weight: 2,
-        raw_content: include_str!("docs/configuration.md"),
+        raw_content: include_str!("../seite-sh/content/docs/configuration.md"),
     }
 }
 
@@ -82,7 +82,7 @@ fn collections() -> DocPage {
         title: "Collections",
         description: "How posts, docs, and pages work — presets, custom collections, and configuration options.",
         weight: 3,
-        raw_content: include_str!("docs/collections.md"),
+        raw_content: include_str!("../seite-sh/content/docs/collections.md"),
     }
 }
 
@@ -92,7 +92,7 @@ fn templates() -> DocPage {
         title: "Templates & Themes",
         description: "Tera template variables, blocks, data files, and theme customization.",
         weight: 4,
-        raw_content: include_str!("docs/templates.md"),
+        raw_content: include_str!("../seite-sh/content/docs/templates.md"),
     }
 }
 
@@ -102,7 +102,7 @@ fn shortcodes() -> DocPage {
         title: "Shortcodes",
         description: "Reusable content components in markdown — built-in and custom shortcodes.",
         weight: 5,
-        raw_content: include_str!("docs/shortcodes.md"),
+        raw_content: include_str!("../seite-sh/content/docs/shortcodes.md"),
     }
 }
 
@@ -112,7 +112,7 @@ fn i18n() -> DocPage {
         title: "Multi-Language",
         description: "Filename-based translation system with per-language URLs, RSS, sitemap, and discovery files.",
         weight: 6,
-        raw_content: include_str!("docs/i18n.md"),
+        raw_content: include_str!("../seite-sh/content/docs/i18n.md"),
     }
 }
 
@@ -122,7 +122,7 @@ fn trust_center() -> DocPage {
         title: "Trust Center",
         description: "Build a compliance hub with certifications, subprocessors, FAQs, and security policies.",
         weight: 7,
-        raw_content: include_str!("docs/trust-center.md"),
+        raw_content: include_str!("../seite-sh/content/docs/trust-center.md"),
     }
 }
 
@@ -132,7 +132,7 @@ fn deployment() -> DocPage {
         title: "Deployment",
         description: "Deploy to GitHub Pages, Cloudflare Pages, or Netlify.",
         weight: 7,
-        raw_content: include_str!("docs/deployment.md"),
+        raw_content: include_str!("../seite-sh/content/docs/deployment.md"),
     }
 }
 
@@ -142,7 +142,7 @@ fn agent() -> DocPage {
         title: "AI Agent",
         description: "Use Claude Code as an AI assistant with full site context.",
         weight: 8,
-        raw_content: include_str!("docs/agent.md"),
+        raw_content: include_str!("../seite-sh/content/docs/agent.md"),
     }
 }
 
@@ -152,7 +152,7 @@ fn workspace() -> DocPage {
         title: "Workspaces",
         description: "Manage multiple sites in a single repository.",
         weight: 8,
-        raw_content: include_str!("docs/workspace.md"),
+        raw_content: include_str!("../seite-sh/content/docs/workspace.md"),
     }
 }
 
@@ -162,7 +162,7 @@ fn mcp_server() -> DocPage {
         title: "MCP Server",
         description: "Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.",
         weight: 9,
-        raw_content: include_str!("docs/mcp-server.md"),
+        raw_content: include_str!("../seite-sh/content/docs/mcp-server.md"),
     }
 }
 
@@ -172,7 +172,7 @@ fn theme_gallery() -> DocPage {
         title: "Theme Gallery",
         description: "Visual showcase of all bundled themes.",
         weight: 9,
-        raw_content: include_str!("docs/theme-gallery.md"),
+        raw_content: include_str!("../seite-sh/content/docs/theme-gallery.md"),
     }
 }
 
@@ -180,9 +180,9 @@ fn cli_reference() -> DocPage {
     DocPage {
         slug: "cli-reference",
         title: "CLI Reference",
-        description: "Complete reference for allseite CLI commands, flags, and options.",
+        description: "Complete reference for all seite CLI commands, flags, and options.",
         weight: 10,
-        raw_content: include_str!("docs/cli-reference.md"),
+        raw_content: include_str!("../seite-sh/content/docs/cli-reference.md"),
     }
 }
 
@@ -192,7 +192,7 @@ fn releases() -> DocPage {
         title: "Releases",
         description: "Version history and release notes.",
         weight: 11,
-        raw_content: include_str!("docs/releases.md"),
+        raw_content: include_str!("../seite-sh/content/docs/releases.md"),
     }
 }
 
