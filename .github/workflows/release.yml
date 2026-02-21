@@ -4,12 +4,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      tag:
-        description: "Release tag (e.g., v0.1.0)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -140,12 +134,7 @@ jobs:
 
       - name: Resolve tag
         id: tag
-        run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
@@ -190,12 +179,7 @@ jobs:
 
       - name: Resolve tag
         id: tag
-        run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@v4
         with:
