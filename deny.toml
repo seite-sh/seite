@@ -2,7 +2,11 @@
 # https://embarkstudios.github.io/cargo-deny/
 
 [advisories]
-ignore = []
+ignore = [
+    # yaml-rust is unmaintained but pulled in transitively by syntect;
+    # no upgrade path until syntect drops it
+    "RUSTSEC-2024-0320",
+]
 
 [licenses]
 allow = [
