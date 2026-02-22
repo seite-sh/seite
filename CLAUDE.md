@@ -127,7 +127,7 @@ src/
     mcp.md             MCP server + state-awareness guidance
     shortcodes.md      Shortcode syntax and reference
     design-prompts.md  Theme design directions
-    homepage-builder.md  Brief CLAUDE.md mention of /landing-page skill
+    landing-page-builder.md  Brief CLAUDE.md mention of /landing-page skill
     skill-landing-page.md  Full SKILL.md for /landing-page Claude Code skill
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
