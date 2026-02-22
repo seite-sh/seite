@@ -37,10 +37,7 @@ pub fn check_internal_links(output_dir: &Path) -> Result<LinkCheckResult> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "html")
+            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
         })
     {
         let html = fs::read_to_string(entry.path())?;
@@ -315,9 +312,18 @@ mod tests {
     #[test]
     fn test_group_broken_links() {
         let broken = vec![
-            BrokenLink { source_file: "index.html".to_string(), href: "/missing".to_string() },
-            BrokenLink { source_file: "about.html".to_string(), href: "/missing".to_string() },
-            BrokenLink { source_file: "index.html".to_string(), href: "/other".to_string() },
+            BrokenLink {
+                source_file: "index.html".to_string(),
+                href: "/missing".to_string(),
+            },
+            BrokenLink {
+                source_file: "about.html".to_string(),
+                href: "/missing".to_string(),
+            },
+            BrokenLink {
+                source_file: "index.html".to_string(),
+                href: "/other".to_string(),
+            },
         ];
         let grouped = group_broken_links(&broken);
         assert_eq!(grouped.len(), 2);

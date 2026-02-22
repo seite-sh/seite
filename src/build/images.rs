@@ -151,10 +151,7 @@ fn process_single_image(
     }
 
     // Also add the original width as the largest entry
-    let orig_url = format!(
-        "/static/{}",
-        rel.to_string_lossy().replace('\\', "/")
-    );
+    let orig_url = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
     srcset_entries.push((original_width, orig_url.clone()));
 
     // Generate a full-size WebP if webp is enabled and source isn't already webp
@@ -190,13 +187,12 @@ fn save_image(
     format: ImageFormat,
     _quality: u8,
 ) -> Result<()> {
-    img.save_with_format(path, format).map_err(|e| {
-        PageError::Build(format!("failed to save image '{}': {e}", path.display()))
-    })?;
+    img.save_with_format(path, format)
+        .map_err(|e| PageError::Build(format!("failed to save image '{}': {e}", path.display())))?;
     Ok(())
 }
 
-/// Rewrite `<img>` tags in HTML to add srcset, loading="lazy", and <picture> wrapping.
+/// Rewrite `<img>` tags in HTML to add srcset, loading="lazy", and `<picture>` wrapping.
 pub fn rewrite_html_images(
     html: &str,
     manifest: &HashMap<String, ProcessedImage>,
@@ -258,11 +254,7 @@ fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-fn build_picture_element(
-    img_tag: &str,
-    processed: &ProcessedImage,
-    lazy_loading: bool,
-) -> String {
+fn build_picture_element(img_tag: &str, processed: &ProcessedImage, lazy_loading: bool) -> String {
     let mut picture = String::new();
 
     // Build srcset string for original format
@@ -296,7 +288,11 @@ fn build_picture_element(
             new_tag = add_lazy_to_tag(&new_tag);
         }
         // Add width/height for layout stability
-        new_tag = add_dimensions_to_tag(&new_tag, processed.original_width, processed.original_height);
+        new_tag = add_dimensions_to_tag(
+            &new_tag,
+            processed.original_width,
+            processed.original_height,
+        );
         picture.push_str(&new_tag);
         picture.push_str("</picture>");
     } else {
@@ -305,7 +301,11 @@ fn build_picture_element(
         if lazy_loading {
             new_tag = add_lazy_to_tag(&new_tag);
         }
-        new_tag = add_dimensions_to_tag(&new_tag, processed.original_width, processed.original_height);
+        new_tag = add_dimensions_to_tag(
+            &new_tag,
+            processed.original_width,
+            processed.original_height,
+        );
         picture.push_str(&new_tag);
     }
 
@@ -378,10 +378,7 @@ mod tests {
             extract_attr(tag, "src"),
             Some("/static/photo.jpg".to_string())
         );
-        assert_eq!(
-            extract_attr(tag, "alt"),
-            Some("A photo".to_string())
-        );
+        assert_eq!(extract_attr(tag, "alt"), Some("A photo".to_string()));
         assert_eq!(extract_attr(tag, "class"), None);
     }
 

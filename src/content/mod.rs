@@ -247,14 +247,18 @@ mod tests {
         let langs: HashSet<&str> = ["es", "fr"].into_iter().collect();
 
         assert_eq!(strip_lang_suffix("about.es", &langs), "about");
-        assert_eq!(strip_lang_suffix("2025-01-15-hello.fr", &langs), "2025-01-15-hello");
+        assert_eq!(
+            strip_lang_suffix("2025-01-15-hello.fr", &langs),
+            "2025-01-15-hello"
+        );
         assert_eq!(strip_lang_suffix("about", &langs), "about");
         assert_eq!(strip_lang_suffix("readme.min", &langs), "readme.min");
     }
 
     #[test]
     fn test_extract_excerpt_more_marker() {
-        let body = "First paragraph here.\n\nSecond paragraph.\n\n<!-- more -->\n\nThird paragraph.";
+        let body =
+            "First paragraph here.\n\nSecond paragraph.\n\n<!-- more -->\n\nThird paragraph.";
         assert_eq!(
             extract_excerpt(body),
             "First paragraph here.\n\nSecond paragraph."

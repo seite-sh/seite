@@ -214,9 +214,7 @@ fn dispatch(
     }
 }
 
-fn handle_initialize(
-    _params: &serde_json::Value,
-) -> Result<serde_json::Value, JsonRpcError> {
+fn handle_initialize(_params: &serde_json::Value) -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": {

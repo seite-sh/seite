@@ -150,8 +150,7 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
 
                 if let Some(ref lang) = code_lang {
                     if let Some(syntax) = ss.find_syntax_by_token(lang) {
-                        if let Ok(html) =
-                            highlighted_html_for_string(&code_buf, ss, syntax, theme)
+                        if let Ok(html) = highlighted_html_for_string(&code_buf, ss, syntax, theme)
                         {
                             html_output.push_str(&html);
                             highlighted = true;
@@ -261,7 +260,10 @@ mod tests {
     fn test_slugify_heading() {
         assert_eq!(slugify_heading("Hello World"), "hello-world");
         assert_eq!(slugify_heading("Rust & WebAssembly!"), "rust-webassembly");
-        assert_eq!(slugify_heading("3.1 Getting Started"), "3-1-getting-started");
+        assert_eq!(
+            slugify_heading("3.1 Getting Started"),
+            "3-1-getting-started"
+        );
     }
 
     #[test]

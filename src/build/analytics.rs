@@ -205,10 +205,7 @@ pub fn inject_analytics_into_html_files(
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "html")
+            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
         })
     {
         let html = fs::read_to_string(entry.path())?;

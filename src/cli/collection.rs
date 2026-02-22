@@ -39,10 +39,7 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
 
     // Check if collection already exists
     if site_config.collections.iter().any(|c| c.name == args.name) {
-        anyhow::bail!(
-            "collection '{}' already exists in seite.toml",
-            args.name
-        );
+        anyhow::bail!("collection '{}' already exists in seite.toml", args.name);
     }
 
     // Resolve preset
@@ -60,9 +57,9 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
 
     // Append collection to seite.toml using toml table manipulation
     let contents = fs::read_to_string(&config_path)?;
-    let mut doc: toml::Table = contents.parse().map_err(|e: toml::de::Error| {
-        anyhow::anyhow!("failed to parse seite.toml: {}", e)
-    })?;
+    let mut doc: toml::Table = contents
+        .parse()
+        .map_err(|e: toml::de::Error| anyhow::anyhow!("failed to parse seite.toml: {}", e))?;
 
     // Get or create the collections array
     let collections = doc
@@ -77,14 +74,8 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
     let new_contents = toml::to_string_pretty(&doc)?;
     fs::write(&config_path, new_contents)?;
 
-    human::success(&format!(
-        "Added '{}' collection to seite.toml",
-        args.name
-    ));
-    human::info(&format!(
-        "Content directory: {}",
-        content_dir.display()
-    ));
+    human::success(&format!("Added '{}' collection to seite.toml", args.name));
+    human::info(&format!("Content directory: {}", content_dir.display()));
     human::info(&format!(
         "Create content with: seite new {} \"My Title\"",
         args.name

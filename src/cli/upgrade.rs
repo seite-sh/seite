@@ -288,10 +288,7 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     };
 
     // Check if mcpServers.seite already exists
-    if settings
-        .pointer("/mcpServers/seite")
-        .is_some()
-    {
+    if settings.pointer("/mcpServers/seite").is_some() {
         return vec![];
     }
 

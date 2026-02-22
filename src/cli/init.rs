@@ -235,9 +235,24 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     // Create sample roadmap items if roadmap collection is included
     if collections.iter().any(|c| c.name == "roadmap") {
         let items = [
-            ("Dark Mode", "planned", 1, "Add dark mode support to the application."),
-            ("API v2", "in-progress", 2, "Redesign the API with improved authentication and rate limiting."),
-            ("Initial Release", "done", 3, "Ship the first public version."),
+            (
+                "Dark Mode",
+                "planned",
+                1,
+                "Add dark mode support to the application.",
+            ),
+            (
+                "API v2",
+                "in-progress",
+                2,
+                "Redesign the API with improved authentication and rate limiting.",
+            ),
+            (
+                "Initial Release",
+                "done",
+                3,
+                "Ship the first public version.",
+            ),
         ];
         for (title, status, weight, description) in &items {
             let slug = content::slug_from_title(title);
@@ -250,9 +265,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 ..Default::default()
             };
             let frontmatter_str = content::generate_frontmatter(&fm);
-            let roadmap_content = format!(
-                "{frontmatter_str}\n\n{description}\n"
-            );
+            let roadmap_content = format!("{frontmatter_str}\n\n{description}\n");
             fs::write(
                 root.join(format!("content/roadmap/{slug}.md")),
                 roadmap_content,
@@ -323,13 +336,41 @@ struct FrameworkInfo {
 }
 
 const FRAMEWORKS: &[FrameworkInfo] = &[
-    FrameworkInfo { slug: "soc2", name: "SOC 2 Type II", description: "Annual audit covering Security and Availability trust service criteria" },
-    FrameworkInfo { slug: "iso27001", name: "ISO 27001", description: "International standard for information security management systems (ISMS)" },
-    FrameworkInfo { slug: "gdpr", name: "GDPR", description: "EU General Data Protection Regulation for personal data processing" },
-    FrameworkInfo { slug: "hipaa", name: "HIPAA", description: "US health data privacy and security regulation" },
-    FrameworkInfo { slug: "pci-dss", name: "PCI DSS", description: "Payment Card Industry Data Security Standard" },
-    FrameworkInfo { slug: "ccpa", name: "CCPA / CPRA", description: "California Consumer Privacy Act and California Privacy Rights Act" },
-    FrameworkInfo { slug: "soc3", name: "SOC 3", description: "Public-facing summary of SOC 2 report" },
+    FrameworkInfo {
+        slug: "soc2",
+        name: "SOC 2 Type II",
+        description: "Annual audit covering Security and Availability trust service criteria",
+    },
+    FrameworkInfo {
+        slug: "iso27001",
+        name: "ISO 27001",
+        description: "International standard for information security management systems (ISMS)",
+    },
+    FrameworkInfo {
+        slug: "gdpr",
+        name: "GDPR",
+        description: "EU General Data Protection Regulation for personal data processing",
+    },
+    FrameworkInfo {
+        slug: "hipaa",
+        name: "HIPAA",
+        description: "US health data privacy and security regulation",
+    },
+    FrameworkInfo {
+        slug: "pci-dss",
+        name: "PCI DSS",
+        description: "Payment Card Industry Data Security Standard",
+    },
+    FrameworkInfo {
+        slug: "ccpa",
+        name: "CCPA / CPRA",
+        description: "California Consumer Privacy Act and California Privacy Rights Act",
+    },
+    FrameworkInfo {
+        slug: "soc3",
+        name: "SOC 3",
+        description: "Public-facing summary of SOC 2 report",
+    },
 ];
 
 fn framework_by_slug(slug: &str) -> Option<&'static FrameworkInfo> {
@@ -414,7 +455,11 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
             // Non-interactive: default to "in_progress"
             "in_progress".to_string()
         } else {
-            let options = ["Active (certified)", "In Progress (pursuing)", "Planned (on roadmap)"];
+            let options = [
+                "Active (certified)",
+                "In Progress (pursuing)",
+                "Planned (on roadmap)",
+            ];
             let selection = dialoguer::Select::new()
                 .with_prompt(format!("{fw_name} status"))
                 .items(&options)
@@ -479,7 +524,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
 
     // faq.yaml
     if opts.sections.iter().any(|s| s == "faq") {
-        let mut faq = String::from("# Security FAQ — edit answers to match your actual security posture.\n\n");
+        let mut faq = String::from(
+            "# Security FAQ — edit answers to match your actual security posture.\n\n",
+        );
         faq.push_str("- question: \"Do you encrypt data at rest?\"\n  answer: \"Yes. All customer data is encrypted at rest using AES-256 encryption.\"\n  category: encryption\n\n");
         faq.push_str("- question: \"Do you encrypt data in transit?\"\n  answer: \"Yes. All data in transit is encrypted using TLS 1.2 or higher.\"\n  category: encryption\n\n");
         faq.push_str("- question: \"Do you support SSO / SAML?\"\n  answer: \"Yes. We support SAML 2.0 SSO integration with major identity providers.\"\n  category: access\n\n");
@@ -579,7 +626,10 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             let desc = fw.map(|f| f.description).unwrap_or("");
             let status_text = match status.as_str() {
                 "active" => format!("{} is actively certified under {name}.", opts.company),
-                "in_progress" => format!("{} is currently pursuing {name} certification.", opts.company),
+                "in_progress" => format!(
+                    "{} is currently pursuing {name} certification.",
+                    opts.company
+                ),
                 _ => format!("{} has {name} certification on its roadmap.", opts.company),
             };
             let cert_page = format!(
@@ -721,7 +771,9 @@ fn generate_claude_md(
     }
     md.push_str("templates/       # Tera (Jinja2-compatible) HTML templates\n");
     md.push_str("static/          # Static assets (copied as-is to dist/)\n");
-    md.push_str("data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n");
+    md.push_str(
+        "data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n",
+    );
     md.push_str("dist/            # Build output (generated, do not edit)\n");
     md.push_str("seite.toml        # Site configuration\n");
     md.push_str("```\n\n");
@@ -756,11 +808,15 @@ fn generate_claude_md(
         if c.name == "changelog" {
             md.push_str("- Tag conventions: `new` (features), `fix` (bug fixes), `breaking` (breaking changes), `improvement` (enhancements), `deprecated` (deprecations)\n");
             md.push_str("- Tags render as colored badges in the changelog template\n");
-            md.push_str("- Create entries: `seite new changelog \"v1.0.0\" --tags new,improvement`\n");
+            md.push_str(
+                "- Create entries: `seite new changelog \"v1.0.0\" --tags new,improvement`\n",
+            );
         }
         if c.name == "roadmap" {
             md.push_str("- Status tags: `planned`, `in-progress`, `done`, `cancelled`\n");
-            md.push_str("- Use `weight:` in frontmatter to control ordering (lower = higher priority)\n");
+            md.push_str(
+                "- Use `weight:` in frontmatter to control ordering (lower = higher priority)\n",
+            );
             md.push_str("- Default index groups items by status tag\n");
             md.push_str("- Alternative layouts: copy `roadmap-kanban.html` or `roadmap-timeline.html` to `templates/roadmap-index.html`\n");
             md.push_str("- Create items: `seite new roadmap \"Feature Name\" --tags planned`\n");
@@ -777,8 +833,12 @@ fn generate_claude_md(
     if collections.iter().any(|c| c.has_date) {
         md.push_str("date: 2025-01-15        # required for dated collections\n");
     }
-    md.push_str("description: \"Optional\"  # page description — used in meta/OG/Twitter/JSON-LD\n");
-    md.push_str("image: /static/og.png    # optional social-preview image (og:image / twitter:image)\n");
+    md.push_str(
+        "description: \"Optional\"  # page description — used in meta/OG/Twitter/JSON-LD\n",
+    );
+    md.push_str(
+        "image: /static/og.png    # optional social-preview image (og:image / twitter:image)\n",
+    );
     md.push_str("updated: 2025-06-01      # optional last-modified date → JSON-LD dateModified\n");
     md.push_str("tags:                     # optional\n");
     md.push_str("  - tag1\n");
@@ -787,7 +847,9 @@ fn generate_claude_md(
     md.push_str("slug: custom-slug        # optional, overrides auto-generated slug\n");
     md.push_str("template: custom.html    # optional, overrides collection default template\n");
     md.push_str("robots: noindex          # optional, per-page <meta name=\"robots\">\n");
-    md.push_str("weight: 1                # optional, sort order for non-date collections (lower first)\n");
+    md.push_str(
+        "weight: 1                # optional, sort order for non-date collections (lower first)\n",
+    );
     md.push_str("extra:                   # optional, arbitrary data → {{ page.extra.field }}\n");
     md.push_str("  key: value\n");
     md.push_str("---\n\n");
@@ -799,10 +861,10 @@ fn generate_claude_md(
     if collections.iter().any(|c| c.name == "pages") {
         md.push_str("### Homepage\n\n");
         md.push_str("To add custom content to the homepage, create `content/pages/index.md`. ");
-        md.push_str("Its rendered content will appear above the collection listings on the index page. ");
         md.push_str(
-            "The homepage is injected as `{{ page.content }}` in the index template.\n\n",
+            "Its rendered content will appear above the collection listings on the index page. ",
         );
+        md.push_str("The homepage is injected as `{{ page.content }}` in the index template.\n\n");
     }
 
     // Multi-language support (static)
@@ -826,7 +888,10 @@ fn generate_claude_md(
     // Trust Center (dynamic — only if trust collection is present)
     if let Some(opts) = trust_opts {
         md.push_str("## Trust Center\n\n");
-        md.push_str(&format!("This site includes a compliance trust center at `/trust/`. Company: **{}**.\n\n", opts.company));
+        md.push_str(&format!(
+            "This site includes a compliance trust center at `/trust/`. Company: **{}**.\n\n",
+            opts.company
+        ));
 
         if !opts.frameworks.is_empty() {
             md.push_str("### Active Frameworks\n\n");
@@ -845,7 +910,9 @@ fn generate_claude_md(
 
         md.push_str("### How the Trust Center Works\n\n");
         md.push_str("The trust center has three layers:\n\n");
-        md.push_str("1. **Data files** (`data/trust/`) — structured YAML that drives the templates\n");
+        md.push_str(
+            "1. **Data files** (`data/trust/`) — structured YAML that drives the templates\n",
+        );
         md.push_str("2. **Content pages** (`content/trust/`) — markdown prose for each section\n");
         md.push_str("3. **Templates** (`templates/trust-index.html`, `templates/trust-item.html`) — layout (rarely edited)\n\n");
 
@@ -864,7 +931,9 @@ fn generate_claude_md(
         md.push_str("  scope: \"Security, Availability\"\n");
         md.push_str("  report_url: \"mailto:security@example.com\"\n");
         md.push_str("```\n\n");
-        md.push_str("Status values: `active` (green badge), `in_progress` (yellow), `planned` (gray).\n\n");
+        md.push_str(
+            "Status values: `active` (green badge), `in_progress` (yellow), `planned` (gray).\n\n",
+        );
         md.push_str("To add a new certification:\n");
         md.push_str("1. Add entry to `data/trust/certifications.yaml`\n");
         md.push_str("2. Create `content/trust/certifications/{slug}.md` with framework details\n");
@@ -894,32 +963,48 @@ fn generate_claude_md(
         md.push_str("Each section is a markdown file in `content/trust/`:\n\n");
         md.push_str("| File | URL | Purpose |\n");
         md.push_str("|------|-----|----------|\n");
-        md.push_str("| `security-overview.md` | `/trust/security-overview` | Main security narrative |\n");
+        md.push_str(
+            "| `security-overview.md` | `/trust/security-overview` | Main security narrative |\n",
+        );
         md.push_str("| `vulnerability-disclosure.md` | `/trust/vulnerability-disclosure` | Responsible disclosure |\n");
-        md.push_str("| `data-processing.md` | `/trust/data-processing` | DPA / data processing terms |\n");
+        md.push_str(
+            "| `data-processing.md` | `/trust/data-processing` | DPA / data processing terms |\n",
+        );
         md.push_str("| `certifications/soc2.md` | `/trust/certifications/soc2` | Framework detail page |\n\n");
         md.push_str("Use `weight:` in frontmatter to control section ordering (lower = first).\n");
         md.push_str("Use `extra.type:` to categorize: `overview`, `certification`, `policy`, `changelog`.\n\n");
 
         md.push_str("### Common Trust Center Tasks\n\n");
         md.push_str("```bash\n");
-        md.push_str("seite new trust \"PCI DSS\"                    # Add a new certification page\n");
+        md.push_str(
+            "seite new trust \"PCI DSS\"                    # Add a new certification page\n",
+        );
         md.push_str("seite new trust \"Q1 2026 Security Update\"    # Add a changelog entry\n");
         md.push_str("seite new trust \"Security Overview\" --lang es # Create a translation\n");
-        md.push_str("seite build                                   # Rebuild after editing data files\n");
+        md.push_str(
+            "seite build                                   # Rebuild after editing data files\n",
+        );
         md.push_str("```\n\n");
 
         md.push_str("### Multi-language Trust Center\n\n");
         md.push_str("Data files (`data/trust/*.yaml`) are language-neutral. Content pages get translated via the standard i18n system:\n\n");
         md.push_str("```\n");
-        md.push_str("content/trust/security-overview.md       # English → /trust/security-overview\n");
-        md.push_str("content/trust/security-overview.es.md    # Spanish → /es/trust/security-overview\n");
+        md.push_str(
+            "content/trust/security-overview.md       # English → /trust/security-overview\n",
+        );
+        md.push_str(
+            "content/trust/security-overview.es.md    # Spanish → /es/trust/security-overview\n",
+        );
         md.push_str("```\n\n");
-        md.push_str("The trust center index at `/trust/` is rendered per-language automatically.\n\n");
+        md.push_str(
+            "The trust center index at `/trust/` is rendered per-language automatically.\n\n",
+        );
 
         md.push_str("### MCP Integration\n\n");
         md.push_str("`seite://trust` returns the full trust center state (certifications, subprocessors, FAQs, content items).\n");
-        md.push_str("Use `seite_search` with `collection: \"trust\"` to find trust center content.\n");
+        md.push_str(
+            "Use `seite_search` with `collection: \"trust\"` to find trust center content.\n",
+        );
         md.push_str("Use `seite_create_content` with `collection: \"trust\"` and `extra: {\"type\": \"certification\", \"framework\": \"soc2\"}` to create trust center pages.\n\n");
     }
 
@@ -947,10 +1032,14 @@ fn generate_claude_md(
     md.push_str("## Documentation\n\n");
     md.push_str("Full documentation: <https://seite.sh/docs/getting-started>\n\n");
     md.push_str("- [Getting Started](https://seite.sh/docs/getting-started) — install and create your first site\n");
-    md.push_str("- [Configuration](https://seite.sh/docs/configuration) — full `seite.toml` reference\n");
+    md.push_str(
+        "- [Configuration](https://seite.sh/docs/configuration) — full `seite.toml` reference\n",
+    );
     md.push_str("- [Templates & Themes](https://seite.sh/docs/templates) — customize templates and themes\n");
     md.push_str("- [Shortcodes](https://seite.sh/docs/shortcodes) — reusable content components\n");
-    md.push_str("- [CLI Reference](https://seite.sh/docs/cli-reference) — all commands and flags\n");
+    md.push_str(
+        "- [CLI Reference](https://seite.sh/docs/cli-reference) — all commands and flags\n",
+    );
     md.push_str("- [AI Agent](https://seite.sh/docs/agent) — using the AI assistant\n");
 
     md
