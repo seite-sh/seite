@@ -65,8 +65,9 @@
         .reading-time { color: #666; font-size: 0.85rem; }
         .tags a, .tags span { font-size: 0.8rem; color: #888; margin-right: 0.5rem; font-style: italic; text-decoration: none; }
         .tags a:hover { color: #555; }
-        pre { background: #fafafa; padding: 1rem; border-left: 2px solid #ddd; overflow-x: auto; }
-        code { font-size: 0.9em; }
+        pre { background: #2b303b; color: #c0c5ce; padding: 1rem; border-left: 2px solid #555; overflow-x: auto; }
+        pre code { background: none; color: inherit; font-size: 0.9em; padding: 0; }
+        code { font-size: 0.9em; background: #f0f0f0; padding: 0.15em 0.4em; border-radius: 3px; }
         blockquote { border-left: 2px solid #ccc; margin-left: 0; padding-left: 1.5rem; font-style: italic; color: #666; }
         img { max-width: 100%; height: auto; }
         figure { margin: 2rem 0; }
