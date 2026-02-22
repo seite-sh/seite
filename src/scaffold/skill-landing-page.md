@@ -1,157 +1,181 @@
 ---
 name: landing-page
-description: Create or redesign a landing page — the site homepage, a product page, a launch page, or any standalone marketing page. Guides you through discovery, planning, building, and iterating until you are happy.
-# seite-skill-version: 2
+description: Create or redesign a landing page — the site homepage, a product page, a launch page, or any standalone marketing page. Guides you through messaging, structure, and design iteratively.
+# seite-skill-version: 3
 ---
 
 # Landing Page Builder
 
-You are guiding the user through creating a landing page for their seite static site. This can be the site homepage (`content/pages/index.md`) or any standalone page (`content/pages/pricing.md`, `content/pages/launch.md`, etc.). The output is two files: a content file and a matching template. Iterate until the user is satisfied.
+You are a product marketing partner helping the user create a landing page for their seite static site. Your job is to figure out the *right words and structure* before touching any code. The output is two files — a content file and a Tera template — but most of your value is in the conversation that happens before you write them.
 
 ## Before you start
 
-1. Read `seite.toml` to understand the site (title, collections, language).
-2. Ask which page this is for — or infer from context:
-   - **Homepage** → `content/pages/index.md` + `templates/index.html`
-   - **Other page** → `content/pages/{slug}.md` + `templates/{slug}-page.html`
-3. Check if the target files already exist. If they do, read them and ask what to improve rather than starting from scratch.
+1. Read `seite.toml` to understand the site (title, description, collections, language, theme).
+2. Check if `content/pages/index.md` or `templates/index.html` already exist. If they do, read them — you are improving, not starting over.
+3. Determine whether this is:
+   - **The site homepage** → `content/pages/index.md` + `templates/index.html`
+   - **A standalone landing page** (pricing, launch, product, etc.) → `content/pages/{slug}.md` + `templates/{slug}-page.html`
 
-## Phase 1: Discovery
+   If unclear, ask. These two paths share the same skill but have different goals: the homepage represents the whole site/company; a standalone landing page sells one specific thing.
 
-Ask these questions — skip any that are already obvious from the site config or existing content:
+## Phase 1: Messaging — understand the story
 
-1. **What is this page for?** — Site homepage, product launch, pricing, feature spotlight, event, waitlist, about, etc.
-2. **Who is the audience?** — Developers, business buyers, general consumers, hiring managers, etc.
-3. **What is the single most important action a visitor should take?** — Sign up, install, read docs, contact, buy, subscribe, join waitlist, etc. This becomes the primary CTA.
-4. **Is there a secondary action?** — View source on GitHub, read the blog, see pricing, etc.
-5. **What sections do you want?** Suggest relevant defaults based on page type:
-   - **SaaS/product**: hero, social proof/logos, features, comparison, pricing, CTA
-   - **Open source**: hero, install command, features, quickstart, community/GitHub, CTA
-   - **Blog/personal**: hero with bio, featured posts, about blurb, newsletter signup
-   - **Portfolio**: hero, project showcase, skills/services, testimonials, contact
-   - **Docs site**: hero, quick links to key docs, search, getting started
-   - **Startup/company**: hero, problem/solution, features, team, CTA
-   - **Launch/waitlist**: hero, problem statement, teaser features, email capture, CTA
-   - **Pricing**: hero, pricing tiers, feature comparison, FAQ, CTA
-6. **What is the visual tone?** — Clean/minimal, bold/energetic, dark/technical, playful, corporate/trust. Reference the current theme or suggest one.
+Do not ask all of these at once. Have a conversation. Start with the first one or two, then follow up based on what you learn. Skip anything you can already infer from the site config or existing content.
 
-If the user gives a short answer like "just make me a landing page", infer reasonable defaults and present your plan before building. Do not ask all questions at once if context makes some answers obvious.
+### Who and why
 
-## Phase 2: Content Plan
+- **What do you do / what does this product do?** Get a plain-language answer. If the user gives you marketing jargon, ask them to explain it like they would to a friend. This becomes the raw material for the headline.
+- **Who is this for?** Not a demographic — a *situation*. "A developer who just got told to set up a docs site and doesn't want to spend a week on it." "A startup founder who needs a landing page before their demo day." The more specific, the better the copy.
+- **What is the visitor's current alternative?** What are they doing today without this product? This reveals the pain point and the "before" state. It also tells you what to compare against.
+- **What is the single most important thing you want someone to do on this page?** Sign up, install, buy, book a demo, join a waitlist, read the docs, etc. This is the primary CTA. Everything on the page should point toward it.
 
-Present a section-by-section outline before writing files:
+### Voice and positioning
+
+- **How should this feel?** Not just visual tone — personality. "Confident but not corporate." "Technical but approachable." "Playful and a little weird." "Dead serious, we handle compliance." If the user doesn't know, suggest 2-3 options based on their audience and product.
+- **Is there a line or phrase you keep using when you describe this to people?** Often the best headline is already in the founder's vocabulary. They just haven't written it down.
+- **What should this page NOT be?** Sometimes the fastest way to find the right tone is to rule out the wrong ones. "Not enterprise-y." "Not cutesy." "Not like every other SaaS landing page."
+
+### For the homepage specifically
+
+- **What are the 2-3 things that make you different?** Not a feature list — the real reasons someone would pick this over the alternative. These become the feature section, but framed as benefits.
+- **Does the site have existing content (blog posts, docs, changelog)?** The homepage should surface these. Ask what should be most prominent.
+
+### For standalone landing pages
+
+- **What is the specific goal of this page?** A homepage is broad. A landing page is narrow. "Convert trial users to paid." "Get signups for the beta." "Explain the pricing model."
+- **Where will traffic come from?** Search, social, ads, email, direct? This affects the hero copy — someone from a Google search needs context; someone from your email list already knows you.
+
+## Phase 2: Draft the messaging
+
+Before proposing any layout, write out the actual copy and present it to the user for feedback:
 
 ```
-Landing page plan for /pricing:
-1. Hero — headline, subheading, primary CTA (Start Free Trial)
-2. Pricing tiers — 3-column grid (Free, Pro, Enterprise)
-3. Feature comparison — table with checkmarks
-4. FAQ — 4-5 common questions
-5. CTA — closing headline + primary button
+Here's what I'd put on the page:
+
+Headline: "Ship a landing page in an afternoon. Not a sprint."
+Subheading: "One CLI. Your whole web presence — built with the coding
+agent you already use."
+
+Primary CTA: "Get started" → /docs/getting-started
+Secondary CTA: "View on GitHub" → https://github.com/...
+
+Key messages (these become feature cards or sections):
+1. "Sub-second builds" — Single binary, no dependencies, no node_modules
+2. "Your agent already knows this" — .claude/CLAUDE.md is generated on init
+3. "Found by people and models" — SEO + llms.txt + markdown output
+
+Closing CTA: "Your coding agent can handle your website."
 ```
 
-Ask: "Does this structure work, or do you want to add/remove/reorder sections?" Wait for confirmation before proceeding.
+Ask: **"Does this sound like you? What would you change?"**
 
-## Phase 3: Build
+Iterate on the words until the user says they feel right. Only then move to structure.
+
+## Phase 3: Page structure
+
+Now propose how to arrange the messaging into sections:
+
+```
+Page structure:
+1. Hero — headline + subheading + two CTA buttons
+2. Ribbon — 4 quick stats (install command, output formats, themes, deps)
+3. Origin line — one sentence about why this exists
+4. Features — 3x2 grid, each card has title + paragraph
+5. Comparison table — "What you need" / "How"
+6. Quickstart — code block + 4 numbered steps
+7. Closing CTA — headline + buttons
+```
+
+Ask: **"Does this flow make sense? Anything to add, remove, or reorder?"** Wait for confirmation.
+
+## Phase 4: Build
 
 Create two files:
 
 ### Content file
 
-For the homepage: `content/pages/index.md`
-For other pages: `content/pages/{slug}.md`
+Homepage: `content/pages/index.md`
+Other pages: `content/pages/{slug}.md`
 
-All content lives here as `extra:` frontmatter fields. Keep the markdown body empty (or use it for a simple prose section if appropriate). Structure `extra:` fields with a consistent naming pattern per section:
+All copy from Phase 2 goes into `extra:` frontmatter fields. Keep the markdown body empty unless the user wants a prose section. Use a consistent naming convention:
 
 ```yaml
 ---
 title: "Page Title"
-description: "One-line tagline for meta/OG/Twitter"
+description: "One-line tagline for meta/OG/Twitter (max 160 chars)"
 image: /static/og.png
 extra:
-  # Hero
-  hero_badge: "Now in beta"
-  hero_headline: "Your main headline"
-  hero_subheadline: "Supporting copy — one or two sentences"
-  cta_primary_text: "Get Started"
+  hero_headline: "Ship a landing page in an afternoon."
+  hero_subheadline: "One CLI. Your whole web presence."
+  cta_primary_text: "Get started"
   cta_primary_url: "/docs/getting-started"
   cta_secondary_text: "GitHub"
   cta_secondary_url: "https://github.com/..."
-
-  # Features
-  features_eyebrow: "Features"
-  features_headline: "Everything you need"
-  feature_1_title: "Fast"
-  feature_1_body: "Sub-second builds"
-  feature_2_title: "Simple"
-  feature_2_body: "Zero dependencies"
+  feature_1_title: "Sub-second builds"
+  feature_1_body: "Single binary, no dependencies."
   # ... etc
 ---
 ```
 
 ### Template file
 
-For the homepage: `templates/index.html`
-For other pages: `templates/{slug}-page.html` (and set `template: {slug}-page.html` in frontmatter)
+Homepage: `templates/index.html`
+Other pages: `templates/{slug}-page.html` (set `template: {slug}-page.html` in frontmatter)
 
-Tera template that extends `base.html`. Uses `{{ page.extra.* }}` to render each section. Requirements:
+Tera template extending `base.html`:
 
 - `{% extends "base.html" %}` as the first line
-- `{% block extra_css %}` for all page-specific CSS (inline `<style>` tag)
-- `{% block content %}` for the HTML structure
-- For the homepage: include collection listings at the bottom (use `{% for collection in collections %}` loop) unless the user says otherwise
-- Responsive design (mobile-first, with breakpoints at 600px and 900px)
-- Respect the theme's CSS custom properties (e.g., `var(--heading)`, `var(--text)`, `var(--bg)`, `var(--green)`, `var(--border)`) when available
-- Accessibility: semantic HTML, proper heading hierarchy (`<h1>` only in hero), sufficient color contrast, `aria-label` on icon-only links
+- `{% block extra_css %}` — all page-specific CSS in an inline `<style>` tag
+- `{% block content %}` — the HTML structure
+- For the homepage: include `{% for collection in collections %}` loop at the bottom unless the user said otherwise
+- Responsive: mobile-first, breakpoints at 600px and 900px
+- Use the theme's CSS custom properties (`var(--heading)`, `var(--text)`, `var(--bg)`, etc.) with sensible fallbacks
+- Accessibility: semantic HTML, single `<h1>` in hero, `aria-label` on icon-only links
+- Animations should respect `prefers-reduced-motion: reduce`
+- Page must be fully functional without JavaScript
 
-CSS guidelines:
-- All styles go inside `{% block extra_css %}<style>...</style>{% endblock %}`
-- Use the theme's CSS custom properties where they exist — fall back to sensible defaults
-- Keep animations subtle and respect `prefers-reduced-motion: reduce`
-- Ensure the page is fully functional without JavaScript
+After writing both files, run `seite build` and tell the user to preview in their browser.
 
-After writing both files, run `seite build` and tell the user to check the result in their browser (`seite serve` if not already running).
+## Phase 5: Iterate
 
-## Phase 4: Iterate
+Ask: **"What would you like to change?"**
 
-After the user sees the result, ask: "What would you like to change?" Common follow-ups:
+- **Copy changes** → edit the content file only
+- **Layout/structure** → edit the template
+- **Style/visual** → edit the `<style>` block in the template
+- **New sections** → add `extra:` fields + template HTML
+- **Theme clash** → suggest `seite theme apply <name>` or `base.html` tweaks
 
-- **Copy changes** — Edit the content file only (update `extra:` fields)
-- **Layout changes** — Edit the template (add/remove/reorder sections, change grid)
-- **Style changes** — Edit the `<style>` block in the template
-- **Section additions** — Add new `extra:` fields to the content file and new HTML sections to the template
-- **Theme mismatch** — If the page clashes with the base theme, suggest `seite theme apply <name>` or adjustments to `base.html`
+Run `seite build` after every change. Keep going until the user is happy.
 
-Run `seite build` after every change so the user can see the result immediately. Keep iterating until the user confirms they are satisfied.
+## Section patterns
 
-## Section Pattern Reference
+Use these as starting points, not templates. Adapt everything to the actual copy from Phase 2.
 
-When building sections, use these proven patterns. Adapt to the site's content — never use placeholder copy.
+**Hero** — `<h1>` headline (the only h1), subheadline `<p>`, 1-2 CTA buttons. Optional: badge/eyebrow above headline, visual (screenshot, terminal demo, illustration) below buttons.
 
-**Hero** — badge/eyebrow (optional), `<h1>` headline (the only `h1` on the page), subheadline paragraph, 1-2 CTA buttons, optional visual (terminal demo, screenshot, illustration).
+**Social proof / Ribbon** — Single-row flex of stats, logos, or short quotes. Monospace, muted, uppercase. Separators between items.
 
-**Social proof / Ribbon** — Single-row flex/grid of logos, stats, or short quotes. Monospace font, muted color, uppercase. Separators between items.
+**Features** — 2x3 or 3-column CSS grid. Each card: optional SVG icon, `<h3>` title, short paragraph. Frame as benefits ("Ship in every language your customers speak") not features ("i18n support").
 
-**Features** — Eyebrow label, section headline, 2x3 or 3-column CSS grid of cards. Each card: optional icon (SVG inline or CSS), `<h3>` title, short paragraph. Use `<code>` tags for CLI commands or config values mentioned in feature copy.
+**How it works** — 3-4 numbered steps. Each: number badge, bold title, supporting copy. Pair with a code block if the product is technical.
 
-**How it works / Steps** — Numbered list (CSS counter or explicit numbers), 3-4 steps max. Each step: number badge, bold title, supporting copy. Optionally paired with a code block showing the actual commands.
+**Comparison** — Two-column `<table>` (need / how) or before/after side-by-side.
 
-**Comparison / Table** — Simple `<table>` with two columns (need / solution), or a side-by-side before/after. Monospace font works well.
+**Pricing** — 2-4 column card grid. Plan name, price, feature list with checkmarks, CTA button. Highlight the recommended tier visually.
 
-**Pricing tiers** — 2-4 column grid of cards. Each card: plan name, price, feature list with checkmarks, CTA button. Highlight the recommended tier.
+**Testimonials** — Blockquote with name, role, optional avatar. 1-3 quotes max.
 
-**Testimonials** — Blockquote with attribution. Keep to 1-3 quotes. Include name, role, and optionally a small avatar.
+**FAQ** — `<details><summary>` or heading+paragraph pairs. Group by category if 5+.
 
-**FAQ** — `<details><summary>` pairs or simple heading+paragraph pairs. Group by category if more than 5 questions.
-
-**CTA (closing)** — Repeat the primary action. Centered, large headline (use `<h2>`), supporting sentence, primary button. Often has a subtle background gradient or border-top separator.
+**Closing CTA** — `<h2>` headline, one sentence, primary button. Border-top or subtle background shift to separate from content above.
 
 ## Rules
 
-- Never use placeholder text like "Lorem ipsum" or "Your Company". Ask the user for real copy, or draft realistic copy based on what you know about their site and propose it for their approval.
-- The content file must have `title:` and `description:` in frontmatter — these feed into `<title>`, `<meta name="description">`, Open Graph, and Twitter Cards automatically.
-- Do not modify `base.html` unless the user specifically asks for theme changes. The landing page template should work with any theme.
-- If the site is multilingual, remind the user they can create translated versions (e.g., `index.es.md`, `pricing.es.md`).
-- Prefer CSS Grid and Flexbox over floats or absolute positioning. Use `clamp()` for responsive font sizes.
-- For the homepage, always include the collection listings loop unless the user explicitly says they do not want it — the homepage should still surface recent posts/docs if they exist.
-- For non-homepage landing pages, set `template: {slug}-page.html` in frontmatter to use the custom template instead of the default `page.html`.
+- **No placeholder copy.** Never write "Lorem ipsum", "Your Company", "Describe your product here". Every word on the page should be real or a concrete draft for the user to react to.
+- **`title:` and `description:` are required** in frontmatter — they feed `<title>`, meta description, Open Graph, and Twitter Cards.
+- **Do not touch `base.html`** unless the user asks for theme changes. The landing page template should work with any theme.
+- **Multilingual reminder**: if the site has `[languages.*]` in config, mention that translated versions (e.g., `index.es.md`) are supported.
+- **CSS**: prefer Grid/Flexbox, use `clamp()` for responsive type. Keep it in `{% block extra_css %}`.
+- **Homepage collection listings**: always include the `{% for collection in collections %}` loop on the homepage unless explicitly told not to.
+- **Standalone pages**: set `template: {slug}-page.html` in frontmatter.

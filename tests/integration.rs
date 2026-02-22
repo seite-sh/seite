@@ -3546,8 +3546,8 @@ fn test_init_creates_landing_page_skill() {
         "SKILL.md should define skill name"
     );
     assert!(
-        content.contains("Phase 1: Discovery"),
-        "SKILL.md should contain discovery phase"
+        content.contains("Phase 1: Messaging"),
+        "SKILL.md should contain messaging phase"
     );
 }
 
@@ -3623,15 +3623,15 @@ fn test_upgrade_updates_outdated_skill() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("updated v1"));
+        .stdout(predicate::str::contains("updated v1 \u{2192} v3"));
 
     let content = fs::read_to_string(&skill_path).unwrap();
     assert!(
-        content.contains("seite-skill-version: 2"),
+        content.contains("seite-skill-version: 3"),
         "upgrade should replace skill with newer version"
     );
     assert!(
-        content.contains("Phase 1: Discovery"),
+        content.contains("Phase 1: Messaging"),
         "upgraded skill should have full content"
     );
 }
