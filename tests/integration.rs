@@ -3962,9 +3962,13 @@ fn test_mcp_resources_list_with_project() {
     assert!(resources.iter().any(|r| r["uri"] == "seite://themes"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
     // Per-collection resources
-    assert!(resources.iter().any(|r| r["uri"] == "seite://content/posts"));
+    assert!(resources
+        .iter()
+        .any(|r| r["uri"] == "seite://content/posts"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://content/docs"));
-    assert!(resources.iter().any(|r| r["uri"] == "seite://content/pages"));
+    assert!(resources
+        .iter()
+        .any(|r| r["uri"] == "seite://content/pages"));
 }
 
 #[test]

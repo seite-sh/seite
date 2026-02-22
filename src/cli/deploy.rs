@@ -28,7 +28,7 @@ pub struct DeployArgs {
     #[arg(long)]
     pub preview: bool,
 
-    /// Override base_url for this deploy (e.g., https://example.com)
+    /// Override base_url for this deploy (e.g., `https://example.com`)
     #[arg(long)]
     pub base_url: Option<String>,
 
@@ -112,19 +112,16 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 human::info("base_url check overridden via --base-url flag");
             } else {
                 // Try to interactively fix each failed check
-                let unresolved = run_interactive_recovery(
-                    &checks,
-                    &config,
-                    &paths,
-                    &target_str,
-                    &config_path,
-                )?;
+                let unresolved =
+                    run_interactive_recovery(&checks, &config, &paths, &target_str, &config_path)?;
 
                 if !unresolved.is_empty() {
                     // Some checks still failing — check if it's only base_url
                     let only_base_url = unresolved.iter().all(|name| name == "Base URL");
                     if only_base_url {
-                        human::warning("Deploying with localhost base_url. Use --base-url to override.");
+                        human::warning(
+                            "Deploying with localhost base_url. Use --base-url to override.",
+                        );
                         human::info("Continuing anyway...");
                     } else {
                         println!();
@@ -165,7 +162,10 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 if result.committed {
                     human::success(&format!("Committed and pushed to {}", result.branch));
                 } else {
-                    human::info(&format!("No uncommitted changes, pushed to {}", result.branch));
+                    human::info(&format!(
+                        "No uncommitted changes, pushed to {}",
+                        result.branch
+                    ));
                 }
                 // Auto-enable preview when on a non-main branch
                 if !result.is_main && !preview {
@@ -304,26 +304,38 @@ fn run_domain_setup(
     updates.insert("base_url".to_string(), new_base_url.clone());
     updates.insert("domain".to_string(), clean_domain.to_string());
     deploy::update_deploy_config(config_path, &updates)?;
-    human::success(&format!("Updated base_url to '{new_base_url}' and deploy.domain to '{clean_domain}' in seite.toml"));
+    human::success(&format!(
+        "Updated base_url to '{new_base_url}' and deploy.domain to '{clean_domain}' in seite.toml"
+    ));
 
     // Offer to attach the domain to the platform
     match target {
         DeployTarget::Cloudflare => {
             if let Some(ref project) = config.deploy.project {
                 let attach = dialoguer::Confirm::new()
-                    .with_prompt(format!("Attach '{clean_domain}' to Cloudflare Pages project '{project}'?"))
+                    .with_prompt(format!(
+                        "Attach '{clean_domain}' to Cloudflare Pages project '{project}'?"
+                    ))
                     .default(true)
                     .interact()
                     .unwrap_or(false);
                 if attach {
                     match deploy::cloudflare_attach_domain(project, clean_domain) {
-                        Ok(true) => human::success(&format!("Domain '{clean_domain}' attached to project '{project}'")),
-                        Ok(false) => human::warning("Could not attach domain — add it manually in the Cloudflare dashboard"),
-                        Err(e) => human::warning(&format!("API call failed: {e} — add the domain manually")),
+                        Ok(true) => human::success(&format!(
+                            "Domain '{clean_domain}' attached to project '{project}'"
+                        )),
+                        Ok(false) => human::warning(
+                            "Could not attach domain — add it manually in the Cloudflare dashboard",
+                        ),
+                        Err(e) => human::warning(&format!(
+                            "API call failed: {e} — add the domain manually"
+                        )),
                     }
                 }
             } else {
-                human::info("Set deploy.project in seite.toml to enable automatic domain attachment");
+                human::info(
+                    "Set deploy.project in seite.toml to enable automatic domain attachment",
+                );
             }
         }
         DeployTarget::Netlify => {
@@ -335,8 +347,12 @@ fn run_domain_setup(
                 .unwrap_or(false);
             if attach {
                 match deploy::netlify_add_domain(&paths, clean_domain) {
-                    Ok(true) => human::success(&format!("Domain '{clean_domain}' added to Netlify site")),
-                    Ok(false) => human::warning("Could not add domain — run `netlify domains:add` manually"),
+                    Ok(true) => {
+                        human::success(&format!("Domain '{clean_domain}' added to Netlify site"))
+                    }
+                    Ok(false) => {
+                        human::warning("Could not add domain — run `netlify domains:add` manually")
+                    }
                     Err(e) => human::warning(&format!("Failed: {e}")),
                 }
             }
@@ -537,8 +553,7 @@ fn run_interactive_recovery(
                     match deploy::execute_fix(&check.name, paths, config, config_path) {
                         Ok(true) => {
                             // Verify the fix worked
-                            let recheck =
-                                deploy::recheck(&check.name, config, paths, target);
+                            let recheck = deploy::recheck(&check.name, config, paths, target);
                             if recheck.passed {
                                 println!(
                                     "  {} {}: {}",

@@ -8,7 +8,7 @@ repository = "https://github.com/seite-sh/seite"
 homepage = "https://seite.sh"
 keywords = ["static-site-gen", "ssg", "markdown", "llm", "ai"]
 categories = ["command-line-utilities", "web-programming"]
-rust-version = "1.75"
+rust-version = "1.88"
 readme = "README.md"
 include = [
     "src/**/*",

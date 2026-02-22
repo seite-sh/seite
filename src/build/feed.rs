@@ -11,7 +11,10 @@ pub fn generate_rss(config: &SiteConfig, items: &[&ContentItem]) -> Result<Strin
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let base = config.site.base_url.trim_end_matches('/');
 
-    write(&mut writer, Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+    write(
+        &mut writer,
+        Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
+    )?;
 
     let mut rss = BytesStart::new("rss");
     rss.push_attribute(("version", "2.0"));
@@ -31,17 +34,15 @@ pub fn generate_rss(config: &SiteConfig, items: &[&ContentItem]) -> Result<Strin
         write_text_element(&mut writer, "guid", &link)?;
         if let Some(date) = item.frontmatter.date {
             if let Some(datetime) = date.and_hms_opt(12, 0, 0) {
-                let rfc2822 =
-                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(datetime, chrono::Utc)
-                        .to_rfc2822();
+                let rfc2822 = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                    datetime,
+                    chrono::Utc,
+                )
+                .to_rfc2822();
                 write_text_element(&mut writer, "pubDate", &rfc2822)?;
             }
         }
-        let desc = item
-            .frontmatter
-            .description
-            .as_deref()
-            .unwrap_or("");
+        let desc = item.frontmatter.description.as_deref().unwrap_or("");
         write_text_element(&mut writer, "description", desc)?;
         write(&mut writer, Event::End(BytesEnd::new("item")))?;
     }

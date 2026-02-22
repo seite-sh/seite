@@ -38,8 +38,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
     // Check for workspace context
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
-        let ws_config =
-            workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
+        let ws_config = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
         let opts = workspace::build::WorkspaceBuildOptions {
             include_drafts: args.drafts,
@@ -86,7 +85,12 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
 
         for (href, sources) in &grouped {
-            human::info(&format!("  {} (linked from {} file{})", href, sources.len(), if sources.len() == 1 { "" } else { "s" }));
+            human::info(&format!(
+                "  {} (linked from {} file{})",
+                href,
+                sources.len(),
+                if sources.len() == 1 { "" } else { "s" }
+            ));
             for source in sources {
                 human::info(&format!("    - {source}"));
             }

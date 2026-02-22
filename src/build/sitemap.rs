@@ -21,7 +21,10 @@ pub(crate) fn generate_sitemap(
     let base = config.site.base_url.trim_end_matches('/');
     let is_multilingual = config.is_multilingual();
 
-    write(&mut writer, Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+    write(
+        &mut writer,
+        Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
+    )?;
 
     let mut urlset = BytesStart::new("urlset");
     urlset.push_attribute(("xmlns", "http://www.sitemaps.org/schemas/sitemap/0.9"));

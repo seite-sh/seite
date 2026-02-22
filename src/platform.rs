@@ -28,9 +28,7 @@ pub fn npm_cmd(name: &str) -> Command {
 pub fn home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        std::env::var("USERPROFILE")
-            .ok()
-            .map(PathBuf::from)
+        std::env::var("USERPROFILE").ok().map(PathBuf::from)
     }
     #[cfg(not(windows))]
     {
