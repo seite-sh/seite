@@ -471,7 +471,7 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Test naming: `test_{command}_{behavior}` (e.g., `test_build_excludes_drafts_by_default`)
 - **Before committing, always run:** `cargo fmt --all`, `cargo clippy`, and `cargo test`
 - All tests must pass, clippy must produce zero warnings, and code must be formatted before any commit
-- CI also runs: `cargo-deny` (license/vulnerability audit), `cargo doc` (no warnings), MSRV check (1.75), `cargo-semver-checks` (on PRs), ShellCheck (shell scripts)
+- CI also runs: `cargo-deny` (license/vulnerability audit), `cargo doc` (no warnings), MSRV check (1.88), `cargo-semver-checks` (on PRs), ShellCheck (shell scripts)
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks
 
 ### Documentation
