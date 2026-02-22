@@ -127,6 +127,8 @@ src/
     mcp.md             MCP server + state-awareness guidance
     shortcodes.md      Shortcode syntax and reference
     design-prompts.md  Theme design directions
+    landing-page-builder.md  Brief CLAUDE.md mention of /landing-page skill
+    skill-landing-page.md  Full SKILL.md for /landing-page Claude Code skill
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
@@ -469,7 +471,7 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 - Integration tests use `assert_cmd::Command` + `tempfile::TempDir`
 - Helper: `init_site(tmp, name, title, collections)` scaffolds a site in a temp dir
 - Test naming: `test_{command}_{behavior}` (e.g., `test_build_excludes_drafts_by_default`)
-- **Before committing, always run:** `cargo fmt --all`, `cargo clippy`, and `cargo test`
+- **MANDATORY before every commit:** run `cargo fmt --all && cargo clippy && cargo test` and verify all three pass. Never skip this step — CI will reject unformatted code. Run formatting *last* (after all edits are done) so no subsequent file writes undo it.
 - All tests must pass, clippy must produce zero warnings, and code must be formatted before any commit
 - CI also runs: `cargo-deny` (license/vulnerability audit), `cargo doc` (no warnings), MSRV check (1.88), `cargo-semver-checks` (on PRs), ShellCheck (shell scripts)
 - Never `unwrap()` in library code — handle errors properly or use `unwrap_or_else`/`unwrap_or_default` with explicit fallbacks

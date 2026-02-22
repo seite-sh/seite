@@ -151,8 +151,7 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
                 if let Some(ref lang) = code_lang {
                     let resolved = resolve_lang_alias(lang);
                     if let Some(syntax) = ss.find_syntax_by_token(resolved) {
-                        if let Ok(html) =
-                            highlighted_html_for_string(&code_buf, ss, syntax, theme)
+                        if let Ok(html) = highlighted_html_for_string(&code_buf, ss, syntax, theme)
                         {
                             html_output.push_str(&html);
                             highlighted = true;
