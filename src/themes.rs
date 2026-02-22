@@ -47,8 +47,8 @@ pub fn installed_themes(project_root: &std::path::Path) -> Vec<InstalledTheme> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let description = parse_theme_description(&content)
-            .unwrap_or_else(|| "Installed theme".to_string());
+        let description =
+            parse_theme_description(&content).unwrap_or_else(|| "Installed theme".to_string());
         themes.push(InstalledTheme {
             name,
             description,
@@ -67,8 +67,8 @@ pub fn installed_by_name(project_root: &std::path::Path, name: &str) -> Option<I
         .join("themes")
         .join(format!("{name}.tera"));
     let content = std::fs::read_to_string(&path).ok()?;
-    let description = parse_theme_description(&content)
-        .unwrap_or_else(|| "Installed theme".to_string());
+    let description =
+        parse_theme_description(&content).unwrap_or_else(|| "Installed theme".to_string());
     Some(InstalledTheme {
         name: name.to_string(),
         description,

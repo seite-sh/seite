@@ -27,8 +27,11 @@ pub fn generate_robots_txt(config: &SiteConfig) -> String {
 ///   # Site Title
 ///   > Description
 ///   ## Collection Name
-///   - [Title](url): description
-pub fn generate_llms_txt(config: &SiteConfig, collections: &[(String, Vec<&ContentItem>)]) -> String {
+///   - \[Title\](url): description
+pub fn generate_llms_txt(
+    config: &SiteConfig,
+    collections: &[(String, Vec<&ContentItem>)],
+) -> String {
     let base = config.site.base_url.trim_end_matches('/');
     let mut out = String::new();
 
@@ -49,7 +52,10 @@ pub fn generate_llms_txt(config: &SiteConfig, collections: &[(String, Vec<&Conte
             if desc.is_empty() {
                 out.push_str(&format!("- [{}]({})\n", item.frontmatter.title, md_url));
             } else {
-                out.push_str(&format!("- [{}]({}): {}\n", item.frontmatter.title, md_url, desc));
+                out.push_str(&format!(
+                    "- [{}]({}): {}\n",
+                    item.frontmatter.title, md_url, desc
+                ));
             }
         }
         out.push('\n');
@@ -60,7 +66,10 @@ pub fn generate_llms_txt(config: &SiteConfig, collections: &[(String, Vec<&Conte
 
 /// Generate llms-full.txt — the full content of every page as markdown.
 /// Each page is separated by a heading and its raw markdown body.
-pub fn generate_llms_full_txt(config: &SiteConfig, collections: &[(String, Vec<&ContentItem>)]) -> String {
+pub fn generate_llms_full_txt(
+    config: &SiteConfig,
+    collections: &[(String, Vec<&ContentItem>)],
+) -> String {
     let mut out = String::new();
 
     out.push_str(&format!("# {}\n\n", config.site.title));

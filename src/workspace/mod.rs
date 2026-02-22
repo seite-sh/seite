@@ -178,7 +178,10 @@ pub fn resolve_context(
         .unwrap_or_else(|| PathBuf::from("seite.toml"));
     let config = SiteConfig::load(&config_file)?;
     let paths = config.resolve_paths(&cwd);
-    Ok(ExecutionContext::Standalone { config: Box::new(config), paths })
+    Ok(ExecutionContext::Standalone {
+        config: Box::new(config),
+        paths,
+    })
 }
 
 /// Load a site's config and paths within a workspace context.

@@ -100,7 +100,11 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
     };
 
     let filepath = paths.content.join(&collection.directory).join(&filename);
-    fs::create_dir_all(filepath.parent().expect("content file must have a parent directory"))?;
+    fs::create_dir_all(
+        filepath
+            .parent()
+            .expect("content file must have a parent directory"),
+    )?;
     let file_content = format!(
         "{}\n\nWrite your content here.\n",
         content::generate_frontmatter(&fm)

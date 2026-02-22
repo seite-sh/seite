@@ -181,7 +181,10 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
     };
 
     // Validate theme name
-    if theme_name.is_empty() || theme_name.contains(std::path::is_separator) || theme_name.contains("..") {
+    if theme_name.is_empty()
+        || theme_name.contains(std::path::is_separator)
+        || theme_name.contains("..")
+    {
         return Err(anyhow::anyhow!("invalid theme name: '{}'", theme_name));
     }
 
@@ -220,10 +223,7 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
         theme_name,
         dest.display()
     ));
-    human::info(&format!(
-        "Apply it with: seite theme apply {}",
-        theme_name
-    ));
+    human::info(&format!("Apply it with: seite theme apply {}", theme_name));
 
     Ok(())
 }
@@ -247,10 +247,7 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
 
     // Build exported content with metadata header
     let desc = description.unwrap_or("Custom theme");
-    let exported = format!(
-        "{{#- theme-description: {} -#}}\n{}",
-        desc, content
-    );
+    let exported = format!("{{#- theme-description: {} -#}}\n{}", desc, content);
 
     let themes_dir = PathBuf::from("templates").join("themes");
     std::fs::create_dir_all(&themes_dir)?;
@@ -273,7 +270,8 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn build_theme_prompt(user_prompt: &str) -> String {
-    format!(r#"You are generating a custom theme for a `page` static site generator project.
+    format!(
+        r#"You are generating a custom theme for a `page` static site generator project.
 
 Write a complete, self-contained `templates/base.html` file based on this design direction:
 
@@ -383,5 +381,6 @@ Hreflang links in <head>:
 Write the complete file to `templates/base.html`. Include all CSS inline in a `<style>` block — no external stylesheets. The design should be fully self-contained and production-quality.
 
 Design direction to implement: {user_prompt}
-"#)
+"#
+    )
 }

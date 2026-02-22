@@ -11,7 +11,7 @@ use crate::error::Result;
 /// on both light and dark code block backgrounds.
 const CODE_COPY_CSS: &str = r#"pre{position:relative}pre .seite-copy-btn{position:absolute;top:0.5rem;right:0.5rem;padding:0.25rem 0.5rem;font-size:0.75rem;font-family:system-ui,-apple-system,sans-serif;line-height:1.4;border:1px solid rgba(128,128,128,0.3);border-radius:4px;background:rgba(128,128,128,0.15);color:rgba(200,200,200,0.8);cursor:pointer;opacity:0;transition:opacity 0.2s;z-index:1}pre:hover .seite-copy-btn{opacity:1}pre .seite-copy-btn:hover{background:rgba(128,128,128,0.3);color:rgba(220,220,220,1)}pre .seite-copy-btn.copied{color:#22c55e;border-color:rgba(34,197,94,0.4)}"#;
 
-/// JS that finds all <pre> elements and injects copy buttons at runtime.
+/// JS that finds all `<pre>` elements and injects copy buttons at runtime.
 const CODE_COPY_JS: &str = r#"document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('pre').forEach(function(pre){var btn=document.createElement('button');btn.className='seite-copy-btn';btn.textContent='Copy';btn.setAttribute('aria-label','Copy code to clipboard');btn.addEventListener('click',function(){var code=pre.querySelector('code');var text=(code||pre).textContent;navigator.clipboard.writeText(text).then(function(){btn.textContent='Copied!';btn.classList.add('copied');setTimeout(function(){btn.textContent='Copy';btn.classList.remove('copied')},2000)})});pre.appendChild(btn)})});"#;
 
 /// Inject copy-button CSS + JS into a single HTML string, before `</body>`.
@@ -45,10 +45,7 @@ pub fn inject_code_copy_into_html_files(output_dir: &Path) -> Result<()> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "html")
+            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
         })
     {
         let html = fs::read_to_string(entry.path())?;

@@ -61,8 +61,7 @@ pub fn deploy_workspace(
             let checks = deploy::preflight(&config, &paths, target_str);
             let all_passed = deploy::print_preflight(&checks);
             if !all_passed {
-                let only_base_url_failed =
-                    checks.iter().all(|c| c.passed || c.name == "Base URL");
+                let only_base_url_failed = checks.iter().all(|c| c.passed || c.name == "Base URL");
                 if only_base_url_failed {
                     human::warning("Deploying with current base_url");
                 } else {
@@ -116,7 +115,10 @@ pub fn deploy_workspace(
                 deploy::deploy_netlify(&paths, config.deploy.project.as_deref(), opts.preview)?
             }
             other => {
-                human::error(&format!("Unknown deploy target '{other}' for site '{}'", ws_site.name));
+                human::error(&format!(
+                    "Unknown deploy target '{other}' for site '{}'",
+                    ws_site.name
+                ));
                 continue;
             }
         };
