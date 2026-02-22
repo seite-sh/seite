@@ -313,6 +313,16 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         generate_claude_settings(),
     )?;
 
+    // Write Claude Code skills
+    if collections.iter().any(|c| c.name == "pages") {
+        let skill_dir = root.join(".claude/skills/homepage");
+        fs::create_dir_all(&skill_dir)?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            include_str!("../scaffold/skill-homepage.md"),
+        )?;
+    }
+
     // Write CLAUDE.md with site-specific context
     fs::write(
         root.join("CLAUDE.md"),

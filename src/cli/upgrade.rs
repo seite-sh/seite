@@ -88,6 +88,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "CLAUDE.md MCP documentation",
             check: check_claude_md_mcp,
         },
+        UpgradeStep {
+            introduced_in: (0, 1, 4),
+            label: "Homepage builder skill (/homepage)",
+            check: check_homepage_skill,
+        },
     ]
 }
 
@@ -323,6 +328,65 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
         merged: settings,
         additions,
     }]
+}
+
+/// Ensure `.claude/skills/homepage/SKILL.md` exists and is up-to-date when
+/// the project has a pages collection.
+///
+/// Skills embed a `# seite-skill-version: N` comment in their YAML frontmatter.
+/// If the existing file has a lower version (or none), the upgrade replaces it
+/// with the bundled version. This lets us ship improved prompts in new releases
+/// without requiring the user to manually diff skill files.
+fn check_homepage_skill(root: &Path) -> Vec<UpgradeAction> {
+    // Only relevant if the project has a pages collection
+    let config_path = root.join("seite.toml");
+    let has_pages = match fs::read_to_string(&config_path) {
+        Ok(content) => content.contains("name = \"pages\""),
+        Err(_) => false,
+    };
+    if !has_pages {
+        return vec![];
+    }
+
+    let bundled = include_str!("../scaffold/skill-homepage.md");
+    let bundled_version = extract_skill_version(bundled);
+    let skill_path = root.join(".claude/skills/homepage/SKILL.md");
+
+    if skill_path.exists() {
+        let existing = fs::read_to_string(&skill_path).unwrap_or_default();
+        let existing_version = extract_skill_version(&existing);
+        if existing_version >= bundled_version {
+            return vec![];
+        }
+        // Outdated — replace with newer version
+        return vec![UpgradeAction::Create {
+            path: skill_path,
+            content: bundled.to_string(),
+            description: format!(
+                ".claude/skills/homepage/SKILL.md (updated v{existing_version} → v{bundled_version})"
+            ),
+        }];
+    }
+
+    vec![UpgradeAction::Create {
+        path: skill_path,
+        content: bundled.to_string(),
+        description: ".claude/skills/homepage/SKILL.md (/homepage command)".into(),
+    }]
+}
+
+/// Extract the `# seite-skill-version: N` value from a SKILL.md file.
+/// Returns 0 if not found.
+fn extract_skill_version(content: &str) -> u32 {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("# seite-skill-version:") {
+            if let Ok(v) = rest.trim().parse::<u32>() {
+                return v;
+            }
+        }
+    }
+    0
 }
 
 /// Ensure CLAUDE.md has an MCP server section.
