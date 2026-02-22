@@ -93,6 +93,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Landing page builder skill (/landing-page)",
             check: check_landing_page_skill,
         },
+        UpgradeStep {
+            introduced_in: (0, 1, 5),
+            label: "Theme builder skill (/theme-builder)",
+            check: check_theme_builder_skill,
+        },
     ]
 }
 
@@ -385,6 +390,37 @@ fn check_landing_page_skill(root: &Path) -> Vec<UpgradeAction> {
         path: skill_path,
         content: bundled.to_string(),
         description: ".claude/skills/landing-page/SKILL.md (/landing-page command)".into(),
+    }]
+}
+
+/// Ensure `.claude/skills/theme-builder/SKILL.md` exists and is up-to-date.
+///
+/// Unlike the landing-page skill, the theme builder is unconditional — every
+/// site benefits from interactive theme creation.
+fn check_theme_builder_skill(root: &Path) -> Vec<UpgradeAction> {
+    let bundled = include_str!("../scaffold/skill-theme-builder.md");
+    let bundled_version = extract_skill_version(bundled);
+    let skill_path = root.join(".claude/skills/theme-builder/SKILL.md");
+
+    if skill_path.exists() {
+        let existing = fs::read_to_string(&skill_path).unwrap_or_default();
+        let existing_version = extract_skill_version(&existing);
+        if existing_version >= bundled_version {
+            return vec![];
+        }
+        return vec![UpgradeAction::Create {
+            path: skill_path,
+            content: bundled.to_string(),
+            description: format!(
+                ".claude/skills/theme-builder/SKILL.md (updated v{existing_version} → v{bundled_version})"
+            ),
+        }];
+    }
+
+    vec![UpgradeAction::Create {
+        path: skill_path,
+        content: bundled.to_string(),
+        description: ".claude/skills/theme-builder/SKILL.md (/theme-builder command)".into(),
     }]
 }
 

@@ -127,6 +127,8 @@ src/
     mcp.md             MCP server + state-awareness guidance
     shortcodes.md      Shortcode syntax and reference
     design-prompts.md  Theme design directions
+    theme-builder.md   Brief CLAUDE.md mention of /theme-builder skill
+    skill-theme-builder.md  Full SKILL.md for /theme-builder Claude Code skill
     landing-page-builder.md  Brief CLAUDE.md mention of /landing-page skill
     skill-landing-page.md  Full SKILL.md for /landing-page Claude Code skill
   config/
@@ -742,6 +744,19 @@ prefers-reduced-motion: reduce fully implemented.
 Edit `src/themes/{name}.tera` to modify bundled themes. The `.tera` extension prevents
 editor HTML validators from flagging Tera/Jinja2 syntax. Files are embedded at compile time
 via `include_str!` — no runtime file loading. Add new themes in `src/themes.rs`.
+
+### Theme Builder Skill (Claude Code)
+
+The `/theme-builder` skill (`.claude/skills/theme-builder/SKILL.md`) guides Claude Code through a structured 4-phase workflow when users ask to create or customize themes:
+
+1. **Understand the Vision** — Ask about site type, audience, mood, references/screenshots, colors, typography, layout, must-haves
+2. **Generate the Theme** — Write `templates/base.html` with all SEO/GEO, search, pagination, i18n, accessibility, and collection-specific CSS requirements
+3. **Preview and Iterate** — Build, preview, and refine based on user feedback
+4. **Save and Export** — Offer to export the theme via `seite theme export`
+
+The skill is scaffolded unconditionally by `seite init` (every site needs themes) and upgraded via `seite upgrade` with version tracking (`# seite-skill-version: N` in frontmatter). The scaffolded CLAUDE.md also includes a brief pointer in the Design Prompts section directing users to run `/theme-builder`.
+
+This complements `seite theme create` (which takes a one-shot design description) by providing a conversational, iterative experience within Claude Code sessions.
 
 ## Roadmap
 
