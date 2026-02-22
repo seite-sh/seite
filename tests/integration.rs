@@ -3525,15 +3525,15 @@ fn test_init_creates_mcp_server_config() {
 }
 
 #[test]
-fn test_init_creates_homepage_skill() {
+fn test_init_creates_landing_page_skill() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Skill Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    let skill_path = site_dir.join(".claude/skills/homepage/SKILL.md");
+    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
     assert!(
         skill_path.exists(),
-        "homepage skill should be created when pages collection is present"
+        "landing-page skill should be created when pages collection is present"
     );
 
     let content = fs::read_to_string(&skill_path).unwrap();
@@ -3542,7 +3542,7 @@ fn test_init_creates_homepage_skill() {
         "SKILL.md should have YAML frontmatter"
     );
     assert!(
-        content.contains("name: homepage"),
+        content.contains("name: landing-page"),
         "SKILL.md should define skill name"
     );
     assert!(
@@ -3552,26 +3552,26 @@ fn test_init_creates_homepage_skill() {
 }
 
 #[test]
-fn test_init_no_homepage_skill_without_pages() {
+fn test_init_no_landing_page_skill_without_pages() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "No Pages", "posts,docs");
     let site_dir = tmp.path().join("site");
 
-    let skill_path = site_dir.join(".claude/skills/homepage/SKILL.md");
+    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
     assert!(
         !skill_path.exists(),
-        "homepage skill should NOT be created without pages collection"
+        "landing-page skill should NOT be created without pages collection"
     );
 }
 
 #[test]
-fn test_upgrade_adds_homepage_skill() {
+fn test_upgrade_adds_landing_page_skill() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Upgrade Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
     // Remove the skill to simulate an older project
-    let skill_path = site_dir.join(".claude/skills/homepage/SKILL.md");
+    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
     fs::remove_file(&skill_path).unwrap();
     assert!(!skill_path.exists());
 
@@ -3586,14 +3586,14 @@ fn test_upgrade_adds_homepage_skill() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("homepage"));
+        .stdout(predicate::str::contains("landing-page"));
 
     assert!(
         skill_path.exists(),
-        "upgrade should create the homepage skill"
+        "upgrade should create the landing-page skill"
     );
     let content = fs::read_to_string(&skill_path).unwrap();
-    assert!(content.contains("name: homepage"));
+    assert!(content.contains("name: landing-page"));
 }
 
 #[test]
@@ -3602,13 +3602,13 @@ fn test_upgrade_updates_outdated_skill() {
     init_site(&tmp, "site", "Skill Update", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    let skill_path = site_dir.join(".claude/skills/homepage/SKILL.md");
+    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
     assert!(skill_path.exists());
 
-    // Write an older version of the skill (version 0 = no marker)
+    // Write an older version of the skill (version 1)
     fs::write(
         &skill_path,
-        "---\nname: homepage\ndescription: old\n---\nOld content\n",
+        "---\nname: landing-page\ndescription: old\n# seite-skill-version: 1\n---\nOld content\n",
     )
     .unwrap();
 
@@ -3623,16 +3623,61 @@ fn test_upgrade_updates_outdated_skill() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("updated v0"));
+        .stdout(predicate::str::contains("updated v1"));
 
     let content = fs::read_to_string(&skill_path).unwrap();
     assert!(
-        content.contains("seite-skill-version: 1"),
+        content.contains("seite-skill-version: 2"),
         "upgrade should replace skill with newer version"
     );
     assert!(
         content.contains("Phase 1: Discovery"),
         "upgraded skill should have full content"
+    );
+}
+
+#[test]
+fn test_upgrade_migrates_old_homepage_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Migration Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove the new skill and create an old homepage skill to simulate pre-rename project
+    let new_skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
+    fs::remove_file(&new_skill_path).unwrap();
+    let old_skill_dir = site_dir.join(".claude/skills/homepage");
+    fs::create_dir_all(&old_skill_dir).unwrap();
+    fs::write(
+        old_skill_dir.join("SKILL.md"),
+        "---\nname: homepage\ndescription: old\n# seite-skill-version: 1\n---\nOld content\n",
+    )
+    .unwrap();
+
+    // Downgrade the project version
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
+    fs::write(&meta_path, &updated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("landing-page"));
+
+    // New skill should exist
+    assert!(
+        new_skill_path.exists(),
+        "upgrade should create the new landing-page skill"
+    );
+    let content = fs::read_to_string(&new_skill_path).unwrap();
+    assert!(content.contains("name: landing-page"));
+
+    // Old skill should still be there (non-destructive)
+    assert!(
+        old_skill_dir.join("SKILL.md").exists(),
+        "upgrade should not delete the old homepage skill"
     );
 }
 

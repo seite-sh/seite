@@ -315,11 +315,11 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 
     // Write Claude Code skills
     if collections.iter().any(|c| c.name == "pages") {
-        let skill_dir = root.join(".claude/skills/homepage");
+        let skill_dir = root.join(".claude/skills/landing-page");
         fs::create_dir_all(&skill_dir)?;
         fs::write(
             skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-homepage.md"),
+            include_str!("../scaffold/skill-landing-page.md"),
         )?;
     }
 

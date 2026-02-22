@@ -90,8 +90,8 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
         },
         UpgradeStep {
             introduced_in: (0, 1, 4),
-            label: "Homepage builder skill (/homepage)",
-            check: check_homepage_skill,
+            label: "Landing page builder skill (/landing-page)",
+            check: check_landing_page_skill,
         },
     ]
 }
@@ -330,14 +330,16 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     }]
 }
 
-/// Ensure `.claude/skills/homepage/SKILL.md` exists and is up-to-date when
+/// Ensure `.claude/skills/landing-page/SKILL.md` exists and is up-to-date when
 /// the project has a pages collection.
 ///
 /// Skills embed a `# seite-skill-version: N` comment in their YAML frontmatter.
 /// If the existing file has a lower version (or none), the upgrade replaces it
 /// with the bundled version. This lets us ship improved prompts in new releases
 /// without requiring the user to manually diff skill files.
-fn check_homepage_skill(root: &Path) -> Vec<UpgradeAction> {
+///
+/// Also handles migration from the old `homepage` skill name to `landing-page`.
+fn check_landing_page_skill(root: &Path) -> Vec<UpgradeAction> {
     // Only relevant if the project has a pages collection
     let config_path = root.join("seite.toml");
     let has_pages = match fs::read_to_string(&config_path) {
@@ -348,10 +350,11 @@ fn check_homepage_skill(root: &Path) -> Vec<UpgradeAction> {
         return vec![];
     }
 
-    let bundled = include_str!("../scaffold/skill-homepage.md");
+    let bundled = include_str!("../scaffold/skill-landing-page.md");
     let bundled_version = extract_skill_version(bundled);
-    let skill_path = root.join(".claude/skills/homepage/SKILL.md");
+    let skill_path = root.join(".claude/skills/landing-page/SKILL.md");
 
+    // Check if the new landing-page skill already exists and is current
     if skill_path.exists() {
         let existing = fs::read_to_string(&skill_path).unwrap_or_default();
         let existing_version = extract_skill_version(&existing);
@@ -363,15 +366,25 @@ fn check_homepage_skill(root: &Path) -> Vec<UpgradeAction> {
             path: skill_path,
             content: bundled.to_string(),
             description: format!(
-                ".claude/skills/homepage/SKILL.md (updated v{existing_version} → v{bundled_version})"
+                ".claude/skills/landing-page/SKILL.md (updated v{existing_version} → v{bundled_version})"
             ),
         }];
+    }
+
+    // Check for old homepage skill — version comparison still applies
+    let old_skill_path = root.join(".claude/skills/homepage/SKILL.md");
+    if old_skill_path.exists() {
+        let existing = fs::read_to_string(&old_skill_path).unwrap_or_default();
+        let existing_version = extract_skill_version(&existing);
+        if existing_version >= bundled_version {
+            return vec![];
+        }
     }
 
     vec![UpgradeAction::Create {
         path: skill_path,
         content: bundled.to_string(),
-        description: ".claude/skills/homepage/SKILL.md (/homepage command)".into(),
+        description: ".claude/skills/landing-page/SKILL.md (/landing-page command)".into(),
     }]
 }
 
