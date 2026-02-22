@@ -313,6 +313,16 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         generate_claude_settings(),
     )?;
 
+    // Write Claude Code skills
+    if collections.iter().any(|c| c.name == "pages") {
+        let skill_dir = root.join(".claude/skills/landing-page");
+        fs::create_dir_all(&skill_dir)?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            include_str!("../scaffold/skill-landing-page.md"),
+        )?;
+    }
+
     // Write CLAUDE.md with site-specific context
     fs::write(
         root.join("CLAUDE.md"),
@@ -865,6 +875,9 @@ fn generate_claude_md(
             "Its rendered content will appear above the collection listings on the index page. ",
         );
         md.push_str("The homepage is injected as `{{ page.content }}` in the index template.\n\n");
+
+        // Landing page builder skill (static)
+        md.push_str(include_str!("../scaffold/landing-page-builder.md"));
     }
 
     // Multi-language support (static)
