@@ -1947,7 +1947,9 @@ fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
         .call()
         .map_err(|e| PageError::Deploy(format!("Cloudflare API request failed: {e}")))?;
 
-    let body: serde_json::Value = response.body_mut().read_json()
+    let body: serde_json::Value = response
+        .body_mut()
+        .read_json()
         .map_err(|e| PageError::Deploy(format!("failed to parse Cloudflare API response: {e}")))?;
 
     let mut domains = Vec::new();
