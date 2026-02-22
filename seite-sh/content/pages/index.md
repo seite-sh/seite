@@ -3,9 +3,7 @@ title: "seite"
 description: "seite is an AI-native static site generator for startup teams tired of managing too many tools for something that should be simple. Every page ships as HTML for browsers, Markdown for LLMs, and structured data for search engines. Use the Claude Code or Codex subscription you already have. Single binary. Zero dependencies."
 extra:
   hero_badge: "Built in Rust · AI-native · Open source"
-  hero_line_1: "Ship a landing page, docs site, or blog"
-  hero_accent: "in an afternoon."
-  hero_line_2: "Not a sprint."
+  hero_headline: "Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint."
   hero_sub: "One repo. One CLI. Your whole web presence — built with the coding agent you already use."
 
   ribbon_1: '<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh'
@@ -18,10 +16,10 @@ extra:
   features_eyebrow: "// features"
   features_headline_1: "Everything you need."
   features_headline_2: "Nothing you don't."
-  features_sub: "A 13-step build pipeline that outputs HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files. All from a single Rust binary with no runtime dependencies."
+  features_sub: "HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files — from a single Rust binary with no runtime dependencies."
 
   feature_1_title: "Sub-second builds. Always."
-  feature_1_body: "13-step build pipeline compiled to a single static binary. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
+  feature_1_body: "Single static binary. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
 
   feature_2_title: "Your agent already knows how to use this."
   feature_2_body: "Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) can orient themselves immediately. Run <code>seite agent \"...\"</code> and it reads your schema, your templates, your content — before it touches anything."
