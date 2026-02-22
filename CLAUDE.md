@@ -127,6 +127,7 @@ src/
     mcp.md             MCP server + state-awareness guidance
     shortcodes.md      Shortcode syntax and reference
     design-prompts.md  Theme design directions
+    homepage-builder.md  Guided homepage/landing page creation skill
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values

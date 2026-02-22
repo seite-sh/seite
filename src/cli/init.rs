@@ -865,6 +865,9 @@ fn generate_claude_md(
             "Its rendered content will appear above the collection listings on the index page. ",
         );
         md.push_str("The homepage is injected as `{{ page.content }}` in the index template.\n\n");
+
+        // Homepage builder skill (static)
+        md.push_str(include_str!("../scaffold/homepage-builder.md"));
     }
 
     // Multi-language support (static)
