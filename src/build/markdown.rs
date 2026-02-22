@@ -149,8 +149,10 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
                 let mut highlighted = false;
 
                 if let Some(ref lang) = code_lang {
-                    if let Some(syntax) = ss.find_syntax_by_token(lang) {
-                        if let Ok(html) = highlighted_html_for_string(&code_buf, ss, syntax, theme)
+                    let resolved = resolve_lang_alias(lang);
+                    if let Some(syntax) = ss.find_syntax_by_token(resolved) {
+                        if let Ok(html) =
+                            highlighted_html_for_string(&code_buf, ss, syntax, theme)
                         {
                             html_output.push_str(&html);
                             highlighted = true;
@@ -174,6 +176,28 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
     flush_pending(&mut pending, &mut html_output);
 
     (html_output, toc)
+}
+
+/// Map language tokens that syntect doesn't recognise to ones it does.
+///
+/// Syntect's default syntax set is missing PowerShell, Nix, HCL, and a few
+/// other languages people use in fenced code blocks.  Rather than shipping
+/// extra `.sublime-syntax` bundles we alias them to the closest built-in
+/// grammar so the output still gets *some* highlighting.
+fn resolve_lang_alias(lang: &str) -> &str {
+    match lang {
+        // PowerShell → bash (pipe-based one-liners look fine)
+        "powershell" | "ps1" | "posh" | "pwsh" => "bash",
+        // Windows shells
+        "batch" | "dos" => "bat",
+        // Nix / HCL / Terraform → closest built-in
+        "nix" => "bash",
+        "hcl" | "terraform" | "tf" => "ruby",
+        // Fish shell
+        "fish" => "bash",
+        // Everything else — pass through as-is
+        other => other,
+    }
 }
 
 /// Escape HTML special characters for plain code blocks.
@@ -315,6 +339,28 @@ mod tests {
         assert!(
             html.contains("footnote"),
             "should render footnote references"
+        );
+    }
+
+    #[test]
+    fn test_resolve_lang_alias() {
+        assert_eq!(resolve_lang_alias("powershell"), "bash");
+        assert_eq!(resolve_lang_alias("ps1"), "bash");
+        assert_eq!(resolve_lang_alias("pwsh"), "bash");
+        assert_eq!(resolve_lang_alias("batch"), "bat");
+        assert_eq!(resolve_lang_alias("rust"), "rust");
+        assert_eq!(resolve_lang_alias("hcl"), "ruby");
+    }
+
+    #[test]
+    fn test_powershell_code_block_gets_highlighted() {
+        let md = "```powershell\nirm https://seite.sh/install.ps1 | iex\n```";
+        let (html, _) = markdown_to_html(md);
+        // Should produce syntect-highlighted output (style= attributes), not plain <pre><code>
+        assert!(
+            html.contains("style=\""),
+            "powershell block should be syntax-highlighted via bash alias, got: {}",
+            html
         );
     }
 }

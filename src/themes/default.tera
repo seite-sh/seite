@@ -64,8 +64,9 @@
         .reading-time { color: #666; font-size: 0.85rem; }
         .tags a, .tags span { background: #eee; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.3rem; font-size: 0.85rem; text-decoration: none; color: #333; }
         .tags a:hover { background: #ddd; }
-        pre { background: #f6f6f6; padding: 1rem; border-radius: 4px; overflow-x: auto; }
-        code { font-size: 0.9em; }
+        pre { background: #1e1e2e; color: #cdd6f4; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+        pre code { background: none; color: inherit; font-size: 0.9em; padding: 0; }
+        code { font-size: 0.9em; background: #f0f0f0; padding: 0.15em 0.4em; border-radius: 3px; }
         blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
         img { max-width: 100%; height: auto; }
         figure { margin: 1.5rem 0; }
