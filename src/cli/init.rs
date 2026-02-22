@@ -323,6 +323,15 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         )?;
     }
 
+    {
+        let skill_dir = root.join(".claude/skills/theme-builder");
+        fs::create_dir_all(&skill_dir)?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            include_str!("../scaffold/skill-theme-builder.md"),
+        )?;
+    }
+
     // Write CLAUDE.md with site-specific context
     fs::write(
         root.join("CLAUDE.md"),
@@ -1026,6 +1035,9 @@ fn generate_claude_md(
 
     // Design prompts (static)
     md.push_str(include_str!("../scaffold/design-prompts.md"));
+
+    // Theme builder skill (static)
+    md.push_str(include_str!("../scaffold/theme-builder.md"));
 
     // Key conventions (short, mixed static/dynamic — keep inline)
     md.push_str("## Key Conventions\n\n");

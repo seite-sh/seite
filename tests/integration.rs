@@ -5705,3 +5705,119 @@ fn test_init_without_trust_has_no_trust_config() {
     let claude_md = fs::read_to_string(tmp.path().join("site/CLAUDE.md")).unwrap();
     assert!(!claude_md.contains("## Trust Center"));
 }
+
+#[test]
+fn test_init_creates_theme_builder_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Theme Skill Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let skill_path = site_dir.join(".claude/skills/theme-builder/SKILL.md");
+    assert!(
+        skill_path.exists(),
+        "theme-builder skill should be created on init"
+    );
+
+    let content = fs::read_to_string(&skill_path).unwrap();
+    assert!(content.contains("name: theme-builder"));
+    assert!(content.contains("seite-skill-version:"));
+    assert!(content.contains("Phase 1: Understand the Vision"));
+}
+
+#[test]
+fn test_init_creates_theme_builder_skill_without_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Pages", "posts,docs");
+    let site_dir = tmp.path().join("site");
+
+    // Theme builder is unconditional — should exist even without pages collection
+    let skill_path = site_dir.join(".claude/skills/theme-builder/SKILL.md");
+    assert!(
+        skill_path.exists(),
+        "theme-builder skill should be created even without pages collection"
+    );
+}
+
+#[test]
+fn test_init_claude_md_has_theme_builder_pointer() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Pointer Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert!(
+        claude_md.contains("/theme-builder"),
+        "CLAUDE.md should mention /theme-builder skill"
+    );
+}
+
+#[test]
+fn test_upgrade_adds_theme_builder_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Upgrade TB", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove the skill to simulate an older project
+    let skill_path = site_dir.join(".claude/skills/theme-builder/SKILL.md");
+    fs::remove_file(&skill_path).unwrap();
+    assert!(!skill_path.exists());
+
+    // Downgrade the project version so the upgrade step applies
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
+    fs::write(&meta_path, &updated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("theme-builder"));
+
+    assert!(
+        skill_path.exists(),
+        "upgrade should create the theme-builder skill"
+    );
+    let content = fs::read_to_string(&skill_path).unwrap();
+    assert!(content.contains("name: theme-builder"));
+}
+
+#[test]
+fn test_upgrade_updates_outdated_theme_builder_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "TB Update", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let skill_path = site_dir.join(".claude/skills/theme-builder/SKILL.md");
+    assert!(skill_path.exists());
+
+    // Write an older version of the skill
+    fs::write(
+        &skill_path,
+        "---\nname: theme-builder\ndescription: old\n# seite-skill-version: 0\n---\nOld content\n",
+    )
+    .unwrap();
+
+    // Downgrade the project version so the upgrade step applies
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
+    fs::write(&meta_path, &updated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&skill_path).unwrap();
+    assert!(
+        content.contains("seite-skill-version: 1"),
+        "upgrade should replace skill with newer version"
+    );
+    assert!(
+        content.contains("Phase 1: Understand the Vision"),
+        "upgraded skill should have full content"
+    );
+}
