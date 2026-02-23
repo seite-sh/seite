@@ -214,7 +214,7 @@ fn releases() -> DocPage {
         title: "Releases",
         description: "Version history and release notes.",
         weight: 12,
-        raw_content: include_str!("../seite-sh/content/docs/releases.md"),
+        raw_content: include_str!(concat!(env!("OUT_DIR"), "/releases.md")),
     }
 }
 

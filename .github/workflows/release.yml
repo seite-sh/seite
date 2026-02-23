@@ -221,6 +221,9 @@ jobs:
           sudo mv artifacts/seite /usr/local/bin/seite
           seite --version
 
+      - name: Generate releases.md from changelog entries
+        run: bash scripts/generate-release-docs.sh
+
       - name: Build docs site
         working-directory: seite-sh
         run: seite build
