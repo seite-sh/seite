@@ -1,6 +1,6 @@
 pub mod defaults;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ pub struct SiteConfig {
     #[serde(default)]
     pub deploy: DeploySection,
     #[serde(default)]
-    pub languages: HashMap<String, LanguageConfig>,
+    pub languages: BTreeMap<String, LanguageConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<ImageSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
