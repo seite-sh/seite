@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: ShellCheck
-        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh
+        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh scripts/generate-release-docs.sh scripts/prepare-release.sh
       - name: Test install.sh
         run: bash tests/install.sh
 
@@ -76,6 +76,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: obi1kenobi/cargo-semver-checks-action@v2
+
+  release-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify releases.md is in sync with changelog
+        run: bash scripts/generate-release-docs.sh --check
 
   msrv:
     runs-on: ubuntu-latest

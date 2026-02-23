@@ -1,45 +1,65 @@
 ---
 title: "Releases"
-description: "Release history and changelog for page."
+description: "Release history and changelog for seite."
 weight: 12
 ---
 
 ## v0.1.0
+Initial public release.
 
-Initial release.
+## Build Pipeline
 
-**Build pipeline:**
 - 13-step build pipeline producing HTML, markdown, RSS, sitemap, search index, and LLM discovery files
-- Image processing: auto-resize, WebP conversion, srcset, lazy loading
-- Asset pipeline with CSS/JS minification and fingerprinted filenames
+- Image processing: auto-resize to configured widths, WebP conversion, `srcset`/`<picture>` injection, `loading="lazy"`
+- Asset pipeline with CSS/JS minification (`build.minify`) and fingerprinted filenames (`build.fingerprint`)
+- Pagination with configurable items per page, generates `/posts/`, `/posts/page/2/`, etc.
+- Tag pages: auto-generated `/tags/` index and `/tags/{tag}/` archives
+- Table of contents auto-generated from heading hierarchy with anchor IDs
+- Excerpts via `<!-- more -->` marker or auto-extracted from first paragraph
+- Reading time (238 WPM) and word count on every page
 - Internal link validation at build time
+- 404 page auto-generated from `404.html` template
 
-**Content:**
+## Content
+
 - 6 collection presets: posts, docs, pages, changelog, roadmap, trust center
-- 5 built-in shortcodes: youtube, vimeo, gist, callout, figure — plus user-defined shortcodes
-- Data files (YAML/JSON/TOML) injected into template context
-- Multi-language (i18n) with per-language URLs, RSS feeds, sitemaps, and hreflang tags
-- Pagination, tag pages, table of contents, excerpts, reading time and word count
+- 5 built-in shortcodes: `youtube`, `vimeo`, `gist`, `callout`, `figure` — plus user-defined shortcodes from `templates/shortcodes/`
+- Data files (YAML/JSON/TOML from `data/` directory) injected into template context as `{{ data.filename }}`
+- Multi-language (i18n) with filename-based translations, per-language URLs, RSS feeds, sitemaps, hreflang tags, and language switcher UI
+- `extra:` frontmatter field for arbitrary key-value data accessible in templates
+- Draft exclusion with `--drafts` flag to include during development
 
-**Themes:**
+## Themes
+
 - 6 bundled themes: default, minimal, dark, docs, brutalist, bento
-- AI-generated custom themes via `seite theme create`
-- Theme install/export for community sharing
+- AI-generated custom themes via `seite theme create "<description>"` (requires Claude Code)
+- Theme install from URL (`seite theme install <url>`) and export for sharing (`seite theme export <name>`)
+- All themes include SEO meta tags, Open Graph, Twitter Cards, JSON-LD structured data, accessibility features, and i18n support
 
-**AI integration:**
-- `seite agent` spawns Claude Code with full site context
-- MCP server (`seite mcp`) with 5 tools and 6+ resources for AI tool integration
-- Every site ships with `llms.txt`, `llms-full.txt`, and raw markdown
+## AI Integration
 
-**Deploy:**
-- GitHub Pages, Cloudflare Pages, and Netlify with guided setup
-- Pre-flight checks, `--dry-run` preview, custom domain management
-- Post-deploy verification, preview/staging deploys
+- `seite agent` spawns Claude Code with full site context — content inventory, frontmatter format, template list, available commands
+- `seite agent "prompt"` for non-interactive one-shot content generation
+- MCP server (`seite mcp`) with 5 tools and 6+ resources for AI tool integration, auto-started by Claude Code
+- Every site ships `llms.txt`, `llms-full.txt`, and raw markdown alongside HTML
+- `seite init` generates `.claude/CLAUDE.md` with comprehensive site context for AI agents
 
-**Developer experience:**
-- Interactive dev server with REPL and live reload
-- Analytics support (Google, GTM, Plausible, Fathom, Umami) with cookie consent
-- Multi-site workspaces
-- `seite collection add` for adding collections to existing sites
-- Self-update from GitHub Releases with checksum verification
-- Shell installer for macOS/Linux, PowerShell installer for Windows
+## Deploy
+
+- GitHub Pages, Cloudflare Pages, and Netlify — all built in
+- Guided setup via `seite deploy --setup` (creates repos/projects, configures auth, generates CI workflows)
+- Pre-flight checks validate output dir, base_url, CLI tools, git state before deploying
+- `--dry-run` preview, `--preview` for staging/branch deploys
+- Custom domain management with DNS record display and auto-attachment
+- Post-deploy verification (homepage 200, robots.txt, sitemap.xml, llms.txt reachability)
+- Auto-commit and push before deploy with `auto_commit = true`
+
+## Developer Experience
+
+- Interactive dev server with REPL (new, agent, theme, build, status, stop) and live reload
+- Analytics support: Google Analytics, GTM, Plausible, Fathom, Umami — with optional cookie consent banner
+- Multi-site workspaces (`seite-workspace.toml`) with unified dev server and per-site deploy
+- Collection management: `seite collection add <preset>` and `seite collection list`
+- Project metadata and upgrades: `.seite/config.json` tracks version, `seite upgrade` applies version-gated changes
+- Self-update from GitHub Releases with SHA256 checksum verification
+- Shell installer for macOS/Linux (`curl | sh`), PowerShell installer for Windows

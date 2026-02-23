@@ -161,6 +161,9 @@ src/
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
   integration.rs       192 integration tests using assert_cmd + tempfile
+scripts/
+  generate-release-docs.sh  Consolidate changelog entries → releases.md
+  prepare-release.sh        Scaffold new changelog entry for current version
 ```
 
 ### Build Pipeline (13 steps)
@@ -444,7 +447,12 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
   5. `deploy-site` — builds and deploys `seite-sh/` to Cloudflare Pages (seite.sh)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
 - **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
-- **Release flow**: bump version in `Cargo.toml` + update `seite-sh/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-publish crate → auto-deploy docs
+- **Release documentation scripts** (`scripts/`):
+  - `scripts/prepare-release.sh` — scaffolds a changelog entry for the current Cargo.toml version with git log for reference
+  - `scripts/generate-release-docs.sh` — regenerates `seite-sh/content/docs/releases.md` from all changelog entries (single source of truth)
+  - `scripts/generate-release-docs.sh --check` — exits 1 if `releases.md` is out of sync (used by CI)
+- **Release flow**: run `scripts/prepare-release.sh` → fill in changelog entry → run `scripts/generate-release-docs.sh` → bump version in `Cargo.toml` → push to `main` → CI validates changelog + releases.md sync → auto-tag → auto-release → auto-publish crate → auto-deploy docs
+- **CI gates**: `rust.yml` has a `release-docs` job that verifies `releases.md` is in sync on every PR; `release-tag.yml` blocks tag creation if changelog entry is missing or `releases.md` is stale
 - **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CARGO_REGISTRY_TOKEN`
 
 ### Themes

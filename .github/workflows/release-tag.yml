@@ -35,6 +35,20 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify changelog entry exists
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          VERSION_SLUG=$(echo "${{ steps.version.outputs.version }}" | tr '.' '-')
+          if ! ls seite-sh/content/changelog/*-v"${VERSION_SLUG}".md 1>/dev/null 2>&1; then
+            echo "::error::No changelog entry found for v${{ steps.version.outputs.version }}"
+            echo "Run: scripts/prepare-release.sh"
+            exit 1
+          fi
+
+      - name: Verify releases.md is in sync
+        if: steps.check.outputs.exists == 'false'
+        run: bash scripts/generate-release-docs.sh --check
+
       - name: Create and push tag
         if: steps.check.outputs.exists == 'false'
         run: |
