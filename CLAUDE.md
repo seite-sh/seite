@@ -164,6 +164,8 @@ tests/
 scripts/
   generate-release-docs.sh  Consolidate changelog entries → releases.md
   prepare-release.sh        Scaffold new changelog entry for current version
+hooks/
+  pre-commit               Auto-regenerate releases.md on changelog changes
 ```
 
 ### Build Pipeline (13 steps)
@@ -451,7 +453,8 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
   - `scripts/prepare-release.sh` — scaffolds a changelog entry for the current Cargo.toml version with git log for reference
   - `scripts/generate-release-docs.sh` — regenerates `seite-sh/content/docs/releases.md` from all changelog entries (single source of truth)
   - `scripts/generate-release-docs.sh --check` — exits 1 if `releases.md` is out of sync (used by CI)
-- **Release flow**: run `scripts/prepare-release.sh` → fill in changelog entry → run `scripts/generate-release-docs.sh` → bump version in `Cargo.toml` → push to `main` → CI validates changelog + releases.md sync → auto-tag → auto-release → auto-publish crate → auto-deploy docs
+- **Pre-commit hook** (`hooks/pre-commit`): auto-regenerates `releases.md` when changelog files are staged. Enable with `git config core.hooksPath hooks` (one-time setup after clone)
+- **Release flow**: run `scripts/prepare-release.sh` → fill in changelog entry → commit (hook auto-regenerates releases.md) → bump version in `Cargo.toml` → push to `main` → CI validates changelog + releases.md sync → auto-tag → auto-release → auto-publish crate → auto-deploy docs
 - **CI gates**: `rust.yml` has a `release-docs` job that verifies `releases.md` is in sync on every PR; `release-tag.yml` blocks tag creation if changelog entry is missing or `releases.md` is stale
 - **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CARGO_REGISTRY_TOKEN`
 
