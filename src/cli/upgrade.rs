@@ -103,6 +103,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Fix deploy workflows (use shell installer instead of cargo install)",
             check: check_deploy_workflows,
         },
+        UpgradeStep {
+            introduced_in: (0, 1, 9),
+            label: "Pin seite version in deploy workflows",
+            check: check_deploy_version_pinning,
+        },
     ]
 }
 
@@ -493,6 +498,62 @@ fn check_deploy_workflows(root: &Path) -> Vec<UpgradeAction> {
                 path: netlify_path,
                 content: new_config,
                 description: "netlify.toml (use shell installer instead of cargo install)".into(),
+            });
+        }
+    }
+
+    actions
+}
+
+/// Fix deploy workflows that use an unpinned `install.sh` (no VERSION= env var).
+///
+/// Projects created before version pinning was introduced will have workflows
+/// that always download the latest seite binary. This regenerates them with
+/// the current binary version pinned.
+fn check_deploy_version_pinning(root: &Path) -> Vec<UpgradeAction> {
+    let mut actions = Vec::new();
+
+    let config_path = root.join("seite.toml");
+    let config = match crate::config::SiteConfig::load(&config_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Check .github/workflows/deploy.yml
+    let workflow_path = root.join(".github/workflows/deploy.yml");
+    if workflow_path.exists() {
+        let content = fs::read_to_string(&workflow_path).unwrap_or_default();
+        if content.contains("install.sh | sh") && !content.contains("VERSION=") {
+            let new_workflow = match &config.deploy.target {
+                crate::config::DeployTarget::GithubPages => {
+                    crate::deploy::generate_github_actions_workflow(&config)
+                }
+                crate::config::DeployTarget::Cloudflare => {
+                    crate::deploy::generate_cloudflare_workflow(&config)
+                }
+                crate::config::DeployTarget::Netlify => {
+                    crate::deploy::generate_netlify_workflow(&config)
+                }
+            };
+            actions.push(UpgradeAction::Create {
+                path: workflow_path,
+                content: new_workflow,
+                description: ".github/workflows/deploy.yml (pin seite version in install command)"
+                    .into(),
+            });
+        }
+    }
+
+    // Check netlify.toml
+    let netlify_path = root.join("netlify.toml");
+    if netlify_path.exists() {
+        let content = fs::read_to_string(&netlify_path).unwrap_or_default();
+        if content.contains("install.sh | sh") && !content.contains("VERSION=") {
+            let new_config = crate::deploy::generate_netlify_config(&config);
+            actions.push(UpgradeAction::Create {
+                path: netlify_path,
+                content: new_config,
+                description: "netlify.toml (pin seite version in install command)".into(),
             });
         }
     }

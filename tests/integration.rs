@@ -5882,6 +5882,10 @@ jobs:
         "upgrade should use shell installer"
     );
     assert!(
+        content.contains(&format!("VERSION={}", env!("CARGO_PKG_VERSION"))),
+        "upgrade should pin seite version"
+    );
+    assert!(
         content.contains("seite build"),
         "workflow should still build the site"
     );
