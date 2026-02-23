@@ -1528,6 +1528,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
 /// Generate a GitHub Actions workflow YAML for building and deploying with GitHub Pages.
 pub fn generate_github_actions_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"name: Deploy to GitHub Pages
 
@@ -1552,7 +1553,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: curl -fsSL https://seite.sh/install.sh | sh
+        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1584,6 +1585,7 @@ pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
         .project
         .as_deref()
         .unwrap_or("your-project-name");
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"name: Deploy to Cloudflare Pages
 
@@ -1599,7 +1601,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: curl -fsSL https://seite.sh/install.sh | sh
+        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1617,9 +1619,10 @@ jobs:
 /// Generate a Netlify configuration file (netlify.toml).
 pub fn generate_netlify_config(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"[build]
-  command = "curl -fsSL https://seite.sh/install.sh | sh && seite build"
+  command = "VERSION={version} curl -fsSL https://seite.sh/install.sh | sh && seite build"
   publish = "{output_dir}"
 
 [[redirects]]
@@ -1633,6 +1636,7 @@ pub fn generate_netlify_config(config: &SiteConfig) -> String {
 /// Generate a GitHub Actions workflow for Netlify deployment.
 pub fn generate_netlify_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
+    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"name: Deploy to Netlify
 
@@ -1648,7 +1652,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: curl -fsSL https://seite.sh/install.sh | sh
+        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
