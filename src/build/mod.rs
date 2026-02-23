@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod base_path;
 pub mod code_copy;
 pub mod discovery;
 pub mod feed;
@@ -76,6 +77,9 @@ struct SiteContext {
     title: String,
     description: String,
     base_url: String,
+    /// URL path prefix extracted from `base_url` for subpath deployments
+    /// (e.g., `"/repo"` for GitHub Pages project sites). Empty for root deployments.
+    base_path: String,
     language: String,
     author: String,
 }
@@ -179,6 +183,7 @@ impl SiteContext {
             title: config.site.title.clone(),
             description: config.site.description.clone(),
             base_url: config.site.base_url.clone(),
+            base_path: config.base_path(),
             language: config.site.language.clone(),
             author: config.site.author.clone(),
         }
@@ -189,6 +194,7 @@ impl SiteContext {
             title: config.title_for_lang(lang).to_string(),
             description: config.description_for_lang(lang).to_string(),
             base_url: config.site.base_url.clone(),
+            base_path: config.base_path(),
             language: config.site.language.clone(),
             author: config.site.author.clone(),
         }
@@ -1464,6 +1470,17 @@ pub fn build_site(
         "Inject code copy buttons".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 12c: Rewrite root-relative URLs for subpath deployments (e.g., GitHub Pages project sites)
+    let site_base_path = config.base_path();
+    if !site_base_path.is_empty() {
+        let step_start = Instant::now();
+        base_path::rewrite_html_base_path(&paths.output, &site_base_path)?;
+        step_timings.push((
+            "Rewrite base path".to_string(),
+            step_start.elapsed().as_secs_f64() * 1000.0,
+        ));
+    }
 
     // Step 13: Inject analytics scripts (and optional cookie consent banner)
     if let Some(ref analytics_config) = config.analytics {
