@@ -3,7 +3,7 @@ title: Deploy History and Rollback
 description: Track deploy history with content hashing, diff previews, and one-command rollback
 tags:
 - planned
-weight: 8
+weight: 9
 ---
 
 Track deploy history and enable rollback.

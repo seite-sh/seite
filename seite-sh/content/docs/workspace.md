@@ -1,7 +1,7 @@
 ---
 title: "Workspaces"
 description: "Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys."
-weight: 8
+weight: 9
 ---
 
 ## Overview

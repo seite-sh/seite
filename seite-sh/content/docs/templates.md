@@ -311,6 +311,7 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 
 ## Next Steps
 
+- [Building Custom Themes](/docs/custom-themes) — step-by-step guide to creating a theme from scratch
 - [Theme Gallery](/docs/theme-gallery) — browse all six bundled themes with visual previews
 - [Shortcodes](/docs/shortcodes) — add videos, callouts, and figures to your content
 - [Configuration](/docs/configuration) — data file setup and all `seite.toml` options

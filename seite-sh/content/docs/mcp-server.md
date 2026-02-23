@@ -1,7 +1,7 @@
 ---
 title: "MCP Server"
 description: "Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol."
-weight: 9
+weight: 10
 ---
 
 ## Overview

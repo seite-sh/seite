@@ -195,6 +195,7 @@ This adds any new configuration that shipped with the new version (e.g., MCP ser
 - [Collections](/docs/collections) — understand how posts, docs, and pages work and how to customize them
 - [Configuration](/docs/configuration) — the full `seite.toml` reference when you need to tune settings
 - [Templates & Themes](/docs/templates) — customize the look, override blocks, and browse the 6 bundled themes
+- [Building Custom Themes](/docs/custom-themes) — create a theme from scratch or modify a bundled one
 - [Deployment](/docs/deployment) — ship your site to GitHub Pages, Cloudflare, or Netlify
 - [Workspaces](/docs/workspace) — manage multiple sites in a single repository
 - [AI Agent](/docs/agent) — let Claude write content, debug builds, and generate themes for you

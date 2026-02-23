@@ -1,7 +1,7 @@
 ---
 title: "CLI Reference"
 description: "Complete reference for all seite CLI commands, flags, and options."
-weight: 10
+weight: 11
 ---
 
 {{% callout(type="tip") %}}

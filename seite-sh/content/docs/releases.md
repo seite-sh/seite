@@ -1,7 +1,7 @@
 ---
 title: "Releases"
 description: "Release history and changelog for page."
-weight: 11
+weight: 12
 ---
 
 ## v0.1.0
