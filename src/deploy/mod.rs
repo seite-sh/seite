@@ -2362,6 +2362,7 @@ mod tests {
             images: Default::default(),
             analytics: None,
             trust: None,
+            contact: None,
         };
 
         // Override takes precedence
@@ -2394,6 +2395,7 @@ mod tests {
             images: Default::default(),
             analytics: None,
             trust: None,
+            contact: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2416,6 +2418,7 @@ mod tests {
             images: Default::default(),
             analytics: None,
             trust: None,
+            contact: None,
         };
         let check = check_base_url(&config);
         assert!(check.passed);

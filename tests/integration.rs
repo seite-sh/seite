@@ -5809,7 +5809,8 @@ fn test_upgrade_updates_outdated_theme_builder_skill() {
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("theme-builder"));
 
     let content = fs::read_to_string(&skill_path).unwrap();
     assert!(
@@ -5889,4 +5890,309 @@ jobs:
         content.contains("seite build"),
         "workflow should still build the site"
     );
+}
+
+// --- contact form tests ---
+
+/// Helper: add [contact] section to an existing seite.toml
+fn add_contact_config(site_dir: &std::path::Path, provider: &str, endpoint: &str) {
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(&format!(
+        "\n[contact]\nprovider = \"{provider}\"\nendpoint = \"{endpoint}\"\n"
+    ));
+    fs::write(&config_path, config).unwrap();
+}
+
+#[test]
+fn test_build_contact_form_formspree() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "cftest", "CF Test", "posts,pages");
+    let site_dir = tmp.path().join("cftest");
+
+    add_contact_config(&site_dir, "formspree", "xtest123");
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("formspree.io/f/xtest123"));
+    assert!(html.contains("contact-form"));
+    assert!(html.contains("method=\"POST\""));
+    assert!(html.contains("_gotcha")); // honeypot
+}
+
+#[test]
+fn test_build_contact_form_web3forms() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "w3test", "W3 Test", "posts,pages");
+    let site_dir = tmp.path().join("w3test");
+
+    add_contact_config(&site_dir, "web3forms", "test-access-key");
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("api.web3forms.com/submit"));
+    assert!(html.contains("test-access-key"));
+    assert!(html.contains("name=\"access_key\""));
+}
+
+#[test]
+fn test_build_contact_form_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "nltest", "NL Test", "posts,pages");
+    let site_dir = tmp.path().join("nltest");
+
+    add_contact_config(&site_dir, "netlify", "contact");
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("data-netlify=\"true\""));
+    assert!(html.contains("data-netlify-honeypot=\"bot-field\""));
+    assert!(html.contains("name=\"form-name\""));
+}
+
+#[test]
+fn test_build_contact_form_hubspot() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "hstest", "HS Test", "posts,pages");
+    let site_dir = tmp.path().join("hstest");
+
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[contact]\nprovider = \"hubspot\"\nendpoint = \"12345/abcd-efgh\"\nregion = \"na1\"\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("js.hsforms.net/forms/embed/v2.js"));
+    assert!(html.contains("hbspt.forms.create"));
+    assert!(html.contains("portalId:\"12345\""));
+    assert!(html.contains("formId:\"abcd-efgh\""));
+}
+
+#[test]
+fn test_build_contact_form_typeform() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "tftest", "TF Test", "posts,pages");
+    let site_dir = tmp.path().join("tftest");
+
+    add_contact_config(&site_dir, "typeform", "abc123XY");
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("data-tf-widget=\"abc123XY\""));
+    assert!(html.contains("embed.typeform.com/next/embed.js"));
+}
+
+#[test]
+fn test_build_contact_form_without_config_shows_error() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "noconf", "No Conf", "posts,pages");
+    let site_dir = tmp.path().join("noconf");
+
+    // No [contact] section in config — shortcode should render an error message
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form() >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("contact-form-error"));
+    assert!(html.contains("seite contact setup"));
+}
+
+#[test]
+fn test_build_contact_form_with_label_overrides() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "lbltest", "Lbl Test", "posts,pages");
+    let site_dir = tmp.path().join("lbltest");
+
+    add_contact_config(&site_dir, "formspree", "xtest456");
+    fs::write(
+        site_dir.join("content/pages/contact.md"),
+        "---\ntitle: Contact\n---\n\n{{< contact_form(name_label=\"Full Name\", submit_label=\"Submit\") >}}\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/contact.html")).unwrap();
+    assert!(html.contains("Full Name"));
+    assert!(html.contains("Submit"));
+}
+
+#[test]
+fn test_init_with_contact_provider() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "ctsite",
+            "--title",
+            "Contact Site",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,pages",
+            "--contact-provider",
+            "formspree",
+            "--contact-endpoint",
+            "xpznqkdl",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(tmp.path().join("ctsite/seite.toml")).unwrap();
+    assert!(config.contains("[contact]"));
+    assert!(config.contains("formspree"));
+    assert!(config.contains("xpznqkdl"));
+
+    // Should have created a contact page
+    assert!(tmp.path().join("ctsite/content/pages/contact.md").exists());
+    let contact_page =
+        fs::read_to_string(tmp.path().join("ctsite/content/pages/contact.md")).unwrap();
+    assert!(contact_page.contains("contact_form()"));
+}
+
+#[test]
+fn test_contact_status_no_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "stsite", "Status", "posts,pages");
+
+    page_cmd()
+        .args(["contact", "status"])
+        .current_dir(tmp.path().join("stsite"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("seite contact setup"));
+}
+
+#[test]
+fn test_contact_status_with_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "stsite2", "Status", "posts,pages");
+    let site_dir = tmp.path().join("stsite2");
+
+    add_contact_config(&site_dir, "formspree", "xtest789");
+
+    page_cmd()
+        .args(["contact", "status"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Formspree"))
+        .stdout(predicate::str::contains("xtest789"));
+}
+
+#[test]
+fn test_contact_setup_noninteractive() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "setupsite", "Setup", "posts,pages");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "web3forms",
+            "--endpoint",
+            "mykey123",
+        ])
+        .current_dir(tmp.path().join("setupsite"))
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(tmp.path().join("setupsite/seite.toml")).unwrap();
+    assert!(config.contains("[contact]"));
+    assert!(config.contains("web3forms"));
+    assert!(config.contains("mykey123"));
+}
+
+#[test]
+fn test_contact_remove() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "rmsite", "Remove", "posts,pages");
+    let site_dir = tmp.path().join("rmsite");
+
+    add_contact_config(&site_dir, "formspree", "xremove");
+
+    // Verify config has [contact]
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("[contact]"));
+
+    page_cmd()
+        .args(["contact", "remove"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify [contact] was removed
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(!config.contains("[contact]"));
 }

@@ -83,6 +83,16 @@
         .callout-tip { border-left-color: #16a34a; }
         .callout-note { border-left-color: #6b7280; background: #f9fafb; }
         .callout p:last-child { margin-bottom: 0; }
+        .contact-form { max-width: 440px; }
+        .contact-form-field { margin-bottom: 1.25rem; }
+        .contact-form-field label { display: block; margin-bottom: 0.25rem; font-size: 0.9rem; color: #555; }
+        .contact-form-field input, .contact-form-field textarea { width: 100%; padding: 0.5rem 0; border: none; border-bottom: 1px solid #ccc; font: inherit; background: transparent; box-sizing: border-box; }
+        .contact-form-field input:focus, .contact-form-field textarea:focus { outline: none; border-bottom-color: #1a1a1a; }
+        .contact-form-submit { background: #1a1a1a; color: #fff; border: none; padding: 0.5rem 1.5rem; font: inherit; cursor: pointer; }
+        .contact-form-submit:hover { background: #333; }
+        .contact-form-honeypot { display: none; }
+        .contact-form-embed { min-height: 400px; }
+        .contact-form-error { color: #dc2626; padding: 1rem; border-left: 2px solid #dc2626; }
         .trust-hub { max-width: 600px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2.5rem; }
         .trust-hero h1 { font-size: 1.8rem; font-weight: normal; margin-bottom: 0.5rem; }

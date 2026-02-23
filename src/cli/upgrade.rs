@@ -108,6 +108,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Pin seite version in deploy workflows",
             check: check_deploy_version_pinning,
         },
+        UpgradeStep {
+            introduced_in: (0, 2, 0),
+            label: "Contact form support",
+            check: check_contact_form_docs,
+        },
     ]
 }
 
@@ -604,5 +609,47 @@ raw files.
         path,
         content: section.to_string(),
         description: "CLAUDE.md (added MCP Server section)".into(),
+    }]
+}
+
+/// Ensure CLAUDE.md mentions contact form support.
+fn check_contact_form_docs(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join("CLAUDE.md");
+    if !path.exists() {
+        return vec![];
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    if content.contains("contact_form") || content.contains("## Contact Form") {
+        return vec![];
+    }
+
+    let section = r#"
+
+## Contact Forms
+
+This project supports built-in contact forms via the `{{< contact_form() >}}` shortcode.
+
+**Supported providers:** Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform
+
+**Setup:** Run `seite contact setup` to configure a contact form provider.
+The shortcode renders a styled form matching the current theme.
+
+**Configuration** in `seite.toml`:
+```toml
+[contact]
+provider = "formspree"   # or web3forms, netlify, hubspot, typeform
+endpoint = "your-form-id"
+```
+"#;
+
+    vec![UpgradeAction::Append {
+        path,
+        content: section.to_string(),
+        description: "CLAUDE.md (added Contact Forms section)".into(),
     }]
 }

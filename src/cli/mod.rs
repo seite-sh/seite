@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod build;
 pub mod collection;
+pub mod contact;
 pub mod deploy;
 pub mod init;
 pub mod mcp;
@@ -67,6 +68,9 @@ pub enum Command {
 
     /// Manage collections
     Collection(collection::CollectionArgs),
+
+    /// Manage contact form configuration
+    Contact(contact::ContactArgs),
 
     /// Manage themes
     Theme(theme::ThemeArgs),

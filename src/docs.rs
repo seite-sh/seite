@@ -24,6 +24,7 @@ pub fn all() -> Vec<DocPage> {
         shortcodes(),
         i18n(),
         trust_center(),
+        contact_forms(),
         deployment(),
         agent(),
         workspace(),
@@ -137,6 +138,16 @@ fn trust_center() -> DocPage {
     }
 }
 
+fn contact_forms() -> DocPage {
+    DocPage {
+        slug: "contact-forms",
+        title: "Contact Forms",
+        description: "Add contact forms to your static site with built-in provider support.",
+        weight: 15,
+        raw_content: include_str!("../seite-sh/content/docs/contact-forms.md"),
+    }
+}
+
 fn deployment() -> DocPage {
     DocPage {
         slug: "deployment",
@@ -215,8 +226,8 @@ mod tests {
     fn test_all_returns_all_docs() {
         let docs = all();
         assert!(
-            docs.len() >= 14,
-            "Expected at least 14 docs, got {}",
+            docs.len() >= 15,
+            "Expected at least 15 docs, got {}",
             docs.len()
         );
     }

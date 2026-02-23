@@ -85,6 +85,16 @@
         .callout-tip { border-left-color: #22c55e; }
         .callout-note { border-left-color: #9ca3af; background: rgba(156,163,175,0.1); }
         .callout p:last-child { margin-bottom: 0; }
+        .contact-form { max-width: 480px; }
+        .contact-form-field { margin-bottom: 1rem; }
+        .contact-form-field label { display: block; font-weight: 600; margin-bottom: 0.25rem; font-size: 0.9rem; color: #e8e8e8; }
+        .contact-form-field input, .contact-form-field textarea { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #333; border-radius: 4px; font: inherit; background: #141414; color: #e8e8e8; box-sizing: border-box; }
+        .contact-form-field input:focus, .contact-form-field textarea:focus { outline: none; border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
+        .contact-form-submit { background: #8b5cf6; color: #fff; border: none; padding: 0.6rem 1.5rem; border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer; }
+        .contact-form-submit:hover { background: #7c3aed; }
+        .contact-form-honeypot { display: none; }
+        .contact-form-embed { min-height: 400px; border-radius: 4px; }
+        .contact-form-error { color: #ef4444; background: rgba(239,68,68,0.1); padding: 1rem; border-radius: 4px; border-left: 4px solid #ef4444; }
         .trust-hub { max-width: 720px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2rem; }
         .trust-hero h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #e8e8e8; }

@@ -434,6 +434,36 @@ fn run_setup(
     deploy::update_deploy_config(config_path, &config_updates)?;
     human::success("Updated seite.toml with deploy configuration");
 
+    // Offer contact form setup if not already configured
+    if config.contact.is_none() {
+        println!();
+        let add_contact = dialoguer::Confirm::new()
+            .with_prompt("Would you like to add a contact form?")
+            .default(false)
+            .interact()?;
+        if add_contact {
+            let setup_args = crate::cli::contact::SetupArgs {
+                provider: None,
+                endpoint: None,
+                region: None,
+                redirect: None,
+                subject: None,
+            };
+            let contact = crate::cli::contact::prompt_contact_config(&setup_args, config)?;
+
+            // Write [contact] section to seite.toml
+            let contents = std::fs::read_to_string(config_path)?;
+            let mut doc: toml::Table = contents
+                .parse()
+                .map_err(|e: toml::de::Error| anyhow::anyhow!("failed to parse seite.toml: {e}"))?;
+            let contact_value = toml::Value::try_from(&contact)?;
+            doc.insert("contact".to_string(), contact_value);
+            let new_contents = toml::to_string_pretty(&doc)?;
+            std::fs::write(config_path, new_contents)?;
+            human::success("Added [contact] section to seite.toml");
+        }
+    }
+
     println!();
     human::info("Setup complete. Next steps:");
     human::info("  1. Set your production URL:  seite deploy --domain example.com");

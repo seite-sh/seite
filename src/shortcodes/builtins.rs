@@ -34,5 +34,10 @@ pub fn all() -> Vec<BuiltinShortcode> {
             template: include_str!("builtins/figure.html"),
             is_body: false,
         },
+        BuiltinShortcode {
+            name: "contact_form",
+            template: include_str!("builtins/contact_form.html"),
+            is_body: false,
+        },
     ]
 }

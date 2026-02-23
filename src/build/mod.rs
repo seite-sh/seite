@@ -311,6 +311,13 @@ pub fn build_site(
                     "title": &config.site.title,
                     "base_url": &config.site.base_url,
                     "language": &config.site.language,
+                    "contact": config.contact.as_ref().map(|c| serde_json::json!({
+                        "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
+                        "endpoint": &c.endpoint,
+                        "region": &c.region,
+                        "redirect": &c.redirect,
+                        "subject": &c.subject,
+                    })),
                 });
                 let expanded_body =
                     shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
@@ -1862,7 +1869,11 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "changelog_subtitle": "All notable changes. Subscribe via",
         "roadmap_subtitle": "What we're working on and what's coming next.",
         "open_an_issue": "Open an issue",
-        "have_a_feature_request": "Have a feature request?"
+        "have_a_feature_request": "Have a feature request?",
+        "contact_name": "Name",
+        "contact_email": "Email",
+        "contact_message": "Message",
+        "contact_submit": "Send Message"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults
