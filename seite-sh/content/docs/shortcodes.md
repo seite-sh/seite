@@ -1,7 +1,7 @@
 ---
 title: Shortcodes
 description: Reusable content components for embedding videos, callouts, figures, and custom elements in markdown
-weight: 5
+weight: 6
 ---
 
 Shortcodes are reusable content components you can use inside markdown files. They let you embed rich content like videos, callout boxes, and figures without writing raw HTML.

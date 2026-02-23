@@ -1,7 +1,7 @@
 ---
 title: "Deployment"
 description: "Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify."
-weight: 7
+weight: 8
 ---
 
 ## Overview
