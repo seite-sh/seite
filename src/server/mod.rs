@@ -152,8 +152,16 @@ fn run_serve_loop(
                         continue;
                     }
                 }
-                // Try to serve custom 404.html if it exists
-                let not_found_path = paths.output.join("404.html");
+                // Try to serve a language-specific 404.html based on URL prefix,
+                // falling back to the default 404.html
+                let lang_404_path = url_path
+                    .trim_start_matches('/')
+                    .split('/')
+                    .next()
+                    .filter(|seg| seg.len() == 2)
+                    .map(|lang| paths.output.join(lang).join("404.html"))
+                    .filter(|p| p.exists());
+                let not_found_path = lang_404_path.unwrap_or_else(|| paths.output.join("404.html"));
                 if not_found_path.exists() {
                     let content = fs::read(&not_found_path).unwrap_or_default();
                     let content = inject_livereload(&content);

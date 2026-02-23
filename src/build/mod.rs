@@ -397,7 +397,10 @@ pub fn build_site(
     ));
 
     // Build translation map: (collection, slug) → Vec<TranslationLink>
+    // Sort each translations vec by language order (default lang first, then alphabetical)
+    // so the language switcher renders in a deterministic, predictable order.
     let translation_map: HashMap<(String, String), Vec<TranslationLink>> = if is_multilingual {
+        let lang_order: Vec<String> = config.all_languages();
         let mut map: HashMap<(String, String), Vec<TranslationLink>> = HashMap::new();
         for (coll_name, items) in &all_collections {
             for item in items {
@@ -407,6 +410,14 @@ pub fn build_site(
                     url: item.url.clone(),
                 });
             }
+        }
+        for translations in map.values_mut() {
+            translations.sort_by_key(|t| {
+                lang_order
+                    .iter()
+                    .position(|l| *l == t.lang)
+                    .unwrap_or(usize::MAX)
+            });
         }
         map
     } else {
@@ -998,40 +1009,57 @@ pub fn build_site(
         }
     }
 
-    // Step 4b: Generate 404 page
+    // Step 4b: Generate 404 page (per-language for multilingual sites)
     if tera.get_template("404.html").is_ok() {
-        let mut ctx_404 = tera::Context::new();
-        ctx_404.insert("site", &SiteContext::from_config(config));
-        ctx_404.insert("data", &data);
-        ctx_404.insert("lang", default_lang);
-        insert_i18n_context(&mut ctx_404, default_lang, default_lang, &data);
-        ctx_404.insert("translations", &Vec::<TranslationLink>::new());
-        ctx_404.insert("collections", &Vec::<CollectionContext>::new());
-        ctx_404.insert(
-            "page",
-            &PageContext {
-                title: "Page Not Found".to_string(),
-                content: String::new(),
-                date: None,
-                updated: None,
-                description: None,
-                image: None,
-                slug: "404".to_string(),
-                tags: Vec::new(),
-                url: "/404".to_string(),
-                collection: String::new(),
-                robots: Some("noindex".to_string()),
-                word_count: 0,
-                reading_time: 0,
-                excerpt: String::new(),
-                toc: Vec::new(),
-                extra: std::collections::HashMap::new(),
-            },
-        );
-        let html_404 = tera
-            .render("404.html", &ctx_404)
-            .map_err(|e| PageError::Build(format!("rendering 404 page: {e}")))?;
-        fs::write(paths.output.join("404.html"), html_404)?;
+        for lang in &config.all_languages() {
+            let lang_prefix = lang_prefix_for(lang, default_lang);
+            let t = ui_strings_for_lang(lang, &data);
+            let not_found_title = t
+                .get("not_found_title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Page Not Found")
+                .to_string();
+
+            let mut ctx_404 = tera::Context::new();
+            ctx_404.insert("site", &SiteContext::for_lang(config, lang));
+            ctx_404.insert("data", &data);
+            ctx_404.insert("lang", lang);
+            insert_i18n_context(&mut ctx_404, lang, default_lang, &data);
+            ctx_404.insert("translations", &Vec::<TranslationLink>::new());
+            ctx_404.insert("collections", &Vec::<CollectionContext>::new());
+            ctx_404.insert(
+                "page",
+                &PageContext {
+                    title: not_found_title,
+                    content: String::new(),
+                    date: None,
+                    updated: None,
+                    description: None,
+                    image: None,
+                    slug: "404".to_string(),
+                    tags: Vec::new(),
+                    url: format!("{lang_prefix}/404"),
+                    collection: String::new(),
+                    robots: Some("noindex".to_string()),
+                    word_count: 0,
+                    reading_time: 0,
+                    excerpt: String::new(),
+                    toc: Vec::new(),
+                    extra: std::collections::HashMap::new(),
+                },
+            );
+            let html_404 = tera
+                .render("404.html", &ctx_404)
+                .map_err(|e| PageError::Build(format!("rendering 404 page ({lang}): {e}")))?;
+
+            if *lang == *default_lang {
+                fs::write(paths.output.join("404.html"), html_404)?;
+            } else {
+                let lang_dir = paths.output.join(lang);
+                fs::create_dir_all(&lang_dir)?;
+                fs::write(lang_dir.join("404.html"), html_404)?;
+            }
+        }
     }
 
     // Step 4c: Generate tag pages
