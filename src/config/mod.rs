@@ -390,6 +390,26 @@ impl SiteConfig {
         Ok(config)
     }
 
+    /// Extract the URL path prefix from `base_url`.
+    ///
+    /// For GitHub Pages project sites and other subpath deployments:
+    /// - `"https://user.github.io/repo"` → `"/repo"`
+    /// - `"https://user.github.io/repo/"` → `"/repo"`
+    /// - `"https://example.com"` → `""`
+    /// - `"https://example.com/"` → `""`
+    pub fn base_path(&self) -> String {
+        let url = self.site.base_url.trim_end_matches('/');
+        if let Some(after_scheme) = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+        {
+            if let Some(slash_pos) = after_scheme.find('/') {
+                return after_scheme[slash_pos..].to_string();
+            }
+        }
+        String::new()
+    }
+
     /// Resolve all directory paths relative to the project root.
     pub fn resolve_paths(&self, project_root: &Path) -> ResolvedPaths {
         ResolvedPaths {
