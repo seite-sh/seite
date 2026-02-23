@@ -98,6 +98,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Theme builder skill (/theme-builder)",
             check: check_theme_builder_skill,
         },
+        UpgradeStep {
+            introduced_in: (0, 1, 6),
+            label: "Fix deploy workflows (use shell installer instead of cargo install)",
+            check: check_deploy_workflows,
+        },
     ]
 }
 
@@ -436,6 +441,63 @@ fn extract_skill_version(content: &str) -> u32 {
         }
     }
     0
+}
+
+/// Fix deploy workflows that use `cargo install --path .` instead of the shell installer.
+///
+/// The old generated workflows assumed the seite Rust source code was in the user's
+/// repo. This replaces them with workflows that download the pre-built binary.
+fn check_deploy_workflows(root: &Path) -> Vec<UpgradeAction> {
+    let mut actions = Vec::new();
+
+    // Load site config to determine deploy target and regenerate correct workflow
+    let config_path = root.join("seite.toml");
+    let config = match crate::config::SiteConfig::load(&config_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Check .github/workflows/deploy.yml
+    let workflow_path = root.join(".github/workflows/deploy.yml");
+    if workflow_path.exists() {
+        let content = fs::read_to_string(&workflow_path).unwrap_or_default();
+        if content.contains("cargo install --path .") {
+            let new_workflow = match &config.deploy.target {
+                crate::config::DeployTarget::GithubPages => {
+                    crate::deploy::generate_github_actions_workflow(&config)
+                }
+                crate::config::DeployTarget::Cloudflare => {
+                    crate::deploy::generate_cloudflare_workflow(&config)
+                }
+                crate::config::DeployTarget::Netlify => {
+                    crate::deploy::generate_netlify_workflow(&config)
+                }
+            };
+            actions.push(UpgradeAction::Create {
+                path: workflow_path,
+                content: new_workflow,
+                description:
+                    ".github/workflows/deploy.yml (use shell installer instead of cargo install)"
+                        .into(),
+            });
+        }
+    }
+
+    // Check netlify.toml
+    let netlify_path = root.join("netlify.toml");
+    if netlify_path.exists() {
+        let content = fs::read_to_string(&netlify_path).unwrap_or_default();
+        if content.contains("cargo install --path .") {
+            let new_config = crate::deploy::generate_netlify_config(&config);
+            actions.push(UpgradeAction::Create {
+                path: netlify_path,
+                content: new_config,
+                description: "netlify.toml (use shell installer instead of cargo install)".into(),
+            });
+        }
+    }
+
+    actions
 }
 
 /// Ensure CLAUDE.md has an MCP server section.

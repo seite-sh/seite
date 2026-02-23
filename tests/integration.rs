@@ -5821,3 +5821,68 @@ fn test_upgrade_updates_outdated_theme_builder_skill() {
         "upgraded skill should have full content"
     );
 }
+
+#[test]
+fn test_upgrade_fixes_deploy_workflow_cargo_install() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Deploy Fix", "posts");
+    let site_dir = tmp.path().join("site");
+
+    let workflow_path = site_dir.join(".github/workflows/deploy.yml");
+    assert!(workflow_path.exists());
+
+    // Verify the freshly generated workflow does NOT have cargo install
+    let fresh = fs::read_to_string(&workflow_path).unwrap();
+    assert!(
+        !fresh.contains("cargo install --path ."),
+        "fresh init should not use cargo install"
+    );
+
+    // Simulate an old workflow that uses cargo install
+    let old_workflow = r#"name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install seite
+        run: cargo install --path .
+      - name: Build site
+        run: seite build
+"#;
+    fs::write(&workflow_path, old_workflow).unwrap();
+
+    // Downgrade the project version so the upgrade step applies
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.5");
+    fs::write(&meta_path, &updated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deploy.yml"));
+
+    let content = fs::read_to_string(&workflow_path).unwrap();
+    assert!(
+        !content.contains("cargo install --path ."),
+        "upgrade should remove cargo install"
+    );
+    assert!(
+        content.contains("curl -fsSL https://seite.sh/install.sh | sh"),
+        "upgrade should use shell installer"
+    );
+    assert!(
+        content.contains("seite build"),
+        "workflow should still build the site"
+    );
+}
