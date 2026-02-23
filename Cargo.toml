@@ -13,6 +13,7 @@ readme = "README.md"
 include = [
     "src/**/*",
     "seite-sh/content/docs/**/*.md",
+    "seite-sh/content/changelog/**/*.md",
     "tests/**/*",
     "LICENSE",
     "README.md",

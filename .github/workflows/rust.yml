@@ -77,13 +77,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: obi1kenobi/cargo-semver-checks-action@v2
 
-  release-docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Verify releases.md is in sync with changelog
-        run: bash scripts/generate-release-docs.sh --check
-
   msrv:
     runs-on: ubuntu-latest
     steps:

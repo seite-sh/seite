@@ -101,8 +101,11 @@ generate() {
       basename_no_ext="$(basename "$file" .md)"
       # Strip date prefix (YYYY-MM-DD-)
       version_slug="${basename_no_ext#????-??-??-}"
-      # Convert v0-1-0 -> v0.1.0
-      title="$(echo "$version_slug" | sed 's/\([0-9]\)-/\1./g')"
+      # Convert v0-1-0 -> v0.1.0 (replace digit-hyphen with digit-dot)
+      title="$version_slug"
+      while [[ "$title" =~ ([0-9])- ]]; do
+        title="${title/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}."}"
+      done
     fi
 
     body="$(get_body "$file")"

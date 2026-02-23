@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # prepare-release.sh — Scaffold a changelog entry for the current Cargo.toml
-# version and regenerate releases.md.
+# version.
 #
 # Usage:
 #   scripts/prepare-release.sh                 # Create entry for current version
@@ -14,7 +14,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CHANGELOG_DIR="$PROJECT_DIR/seite-sh/content/changelog"
-GENERATE_SCRIPT="$SCRIPT_DIR/generate-release-docs.sh"
 
 VERSION=""
 DATE=""
@@ -65,12 +64,6 @@ done
 
 if [ -n "$EXISTING" ]; then
   echo "Changelog entry already exists: $EXISTING"
-  echo "Regenerating releases.md..."
-  if [ "$DRY_RUN" = true ]; then
-    echo "(dry-run: would run generate-release-docs.sh)"
-  else
-    bash "$GENERATE_SCRIPT"
-  fi
   exit 0
 fi
 
@@ -140,11 +133,8 @@ if [ "$DRY_RUN" = true ]; then
   echo "$TEMPLATE"
   echo "--- end ---"
   echo ""
-  echo "(dry-run: would also run generate-release-docs.sh)"
 else
   mkdir -p "$CHANGELOG_DIR"
   echo "$TEMPLATE" > "$FILEPATH"
   echo "Created: $FILEPATH"
-  echo "Regenerating releases.md..."
-  bash "$GENERATE_SCRIPT"
 fi

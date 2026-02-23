@@ -45,10 +45,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify releases.md is in sync
-        if: steps.check.outputs.exists == 'false'
-        run: bash scripts/generate-release-docs.sh --check
-
       - name: Create and push tag
         if: steps.check.outputs.exists == 'false'
         run: |
