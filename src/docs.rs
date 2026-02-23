@@ -20,6 +20,7 @@ pub fn all() -> Vec<DocPage> {
         configuration(),
         collections(),
         templates(),
+        custom_themes(),
         shortcodes(),
         i18n(),
         trust_center(),
@@ -96,12 +97,22 @@ fn templates() -> DocPage {
     }
 }
 
+fn custom_themes() -> DocPage {
+    DocPage {
+        slug: "custom-themes",
+        title: "Building Custom Themes",
+        description: "Step-by-step guide to creating a custom theme from scratch — template structure, CSS, SEO requirements, and testing.",
+        weight: 5,
+        raw_content: include_str!("../seite-sh/content/docs/custom-themes.md"),
+    }
+}
+
 fn shortcodes() -> DocPage {
     DocPage {
         slug: "shortcodes",
         title: "Shortcodes",
         description: "Reusable content components in markdown — built-in and custom shortcodes.",
-        weight: 5,
+        weight: 6,
         raw_content: include_str!("../seite-sh/content/docs/shortcodes.md"),
     }
 }
@@ -111,7 +122,7 @@ fn i18n() -> DocPage {
         slug: "i18n",
         title: "Multi-Language",
         description: "Filename-based translation system with per-language URLs, RSS, sitemap, and discovery files.",
-        weight: 6,
+        weight: 7,
         raw_content: include_str!("../seite-sh/content/docs/i18n.md"),
     }
 }
@@ -121,7 +132,7 @@ fn trust_center() -> DocPage {
         slug: "trust-center",
         title: "Trust Center",
         description: "Build a compliance hub with certifications, subprocessors, FAQs, and security policies.",
-        weight: 7,
+        weight: 8,
         raw_content: include_str!("../seite-sh/content/docs/trust-center.md"),
     }
 }
@@ -131,7 +142,7 @@ fn deployment() -> DocPage {
         slug: "deployment",
         title: "Deployment",
         description: "Deploy to GitHub Pages, Cloudflare Pages, or Netlify.",
-        weight: 7,
+        weight: 8,
         raw_content: include_str!("../seite-sh/content/docs/deployment.md"),
     }
 }
@@ -141,7 +152,7 @@ fn agent() -> DocPage {
         slug: "agent",
         title: "AI Agent",
         description: "Use Claude Code as an AI assistant with full site context.",
-        weight: 8,
+        weight: 9,
         raw_content: include_str!("../seite-sh/content/docs/agent.md"),
     }
 }
@@ -151,7 +162,7 @@ fn workspace() -> DocPage {
         slug: "workspace",
         title: "Workspaces",
         description: "Manage multiple sites in a single repository.",
-        weight: 8,
+        weight: 9,
         raw_content: include_str!("../seite-sh/content/docs/workspace.md"),
     }
 }
@@ -161,7 +172,7 @@ fn mcp_server() -> DocPage {
         slug: "mcp-server",
         title: "MCP Server",
         description: "Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol.",
-        weight: 9,
+        weight: 10,
         raw_content: include_str!("../seite-sh/content/docs/mcp-server.md"),
     }
 }
@@ -171,7 +182,7 @@ fn theme_gallery() -> DocPage {
         slug: "theme-gallery",
         title: "Theme Gallery",
         description: "Visual showcase of all bundled themes.",
-        weight: 9,
+        weight: 10,
         raw_content: include_str!("../seite-sh/content/docs/theme-gallery.md"),
     }
 }
@@ -181,7 +192,7 @@ fn cli_reference() -> DocPage {
         slug: "cli-reference",
         title: "CLI Reference",
         description: "Complete reference for all seite CLI commands, flags, and options.",
-        weight: 10,
+        weight: 11,
         raw_content: include_str!("../seite-sh/content/docs/cli-reference.md"),
     }
 }
@@ -191,7 +202,7 @@ fn releases() -> DocPage {
         slug: "releases",
         title: "Releases",
         description: "Version history and release notes.",
-        weight: 11,
+        weight: 12,
         raw_content: include_str!("../seite-sh/content/docs/releases.md"),
     }
 }
@@ -204,8 +215,8 @@ mod tests {
     fn test_all_returns_all_docs() {
         let docs = all();
         assert!(
-            docs.len() >= 13,
-            "Expected at least 13 docs, got {}",
+            docs.len() >= 14,
+            "Expected at least 14 docs, got {}",
             docs.len()
         );
     }

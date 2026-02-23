@@ -6,7 +6,7 @@ extra:
   hero_headline: "Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint."
   hero_sub: "One repo. One CLI. Your whole web presence — built with the coding agent you already use."
 
-  ribbon_1: '<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh'
+  ribbon_1: '<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh &nbsp;·&nbsp; macOS, Linux, Windows'
   ribbon_2: 'ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>'
   ribbon_3: '<span class="ribbon-highlight">6</span> bundled themes'
   ribbon_4: '<span class="ribbon-highlight">zero</span> runtime deps'
@@ -19,7 +19,7 @@ extra:
   features_sub: "HTML, markdown, RSS, sitemaps, search indexes, and LLM discovery files — from a single Rust binary with no runtime dependencies."
 
   feature_1_title: "Sub-second builds. Always."
-  feature_1_body: "Single static binary. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
+  feature_1_body: "Single static binary for macOS, Linux, and Windows. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
 
   feature_2_title: "Your agent already knows how to use this."
   feature_2_body: "Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) can orient themselves immediately. Run <code>seite agent \"...\"</code> and it reads your schema, your templates, your content — before it touches anything."
@@ -55,7 +55,7 @@ extra:
   quickstart_title_1: "Up and running in thirty seconds."
 
   step_1_title: "Install seite"
-  step_1_body: "<code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup."
+  step_1_body: "<code>curl -fsSL seite.sh/install.sh | sh</code> on macOS/Linux, <code>irm seite.sh/install.ps1 | iex</code> on Windows. Single static binary, no runtime dependencies. Works on every machine on your team without setup."
   step_2_title: "Scaffold your site"
   step_2_body: "<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented."
   step_3_title: "Create content with your agent"

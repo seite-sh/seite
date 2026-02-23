@@ -2,7 +2,7 @@
 title: Trust Center
 description: Build a compliance hub with certifications, subprocessors, FAQs, and security policies
 slug: trust-center
-weight: 7
+weight: 8
 ---
 
 # Trust Center

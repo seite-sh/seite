@@ -1,7 +1,7 @@
 ---
 title: "Theme Gallery"
 description: "Browse all bundled themes with visual previews. Install community themes or generate your own with AI."
-weight: 9
+weight: 10
 ---
 
 ## Bundled Themes
@@ -186,5 +186,6 @@ In the dev server REPL, type `theme` to list themes or `theme <name>` to apply a
 
 ## Next Steps
 
+- [Building Custom Themes](/docs/custom-themes) — step-by-step guide to creating a theme from scratch
 - [Templates & Themes](/docs/templates) — customize theme blocks, override templates, and use data files
 - [AI Agent](/docs/agent) — use Claude for content creation, site management, and more

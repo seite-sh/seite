@@ -97,6 +97,18 @@ Enable `minify` for production builds — it strips CSS/JS comments and collapse
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
 
+### CSS processing
+
+seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate design choice — all theme CSS lives inline in the Tera template file, making themes completely self-contained single files with no external dependencies. This means:
+
+- No build toolchain beyond the `seite` binary itself
+- Themes are portable — install from a URL, no asset pipeline setup
+- AI-generated themes (`seite theme create`) produce one complete file
+
+Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template — seite copies everything in `static/` to the output directory.
+
+See [Building Custom Themes](/docs/custom-themes#css-approach-why-inline-styles) for more detail on this approach.
+
 ## Data Files
 
 Place YAML, JSON, or TOML files in the `data/` directory to make structured data available in all templates as `{{ data.filename }}`.
