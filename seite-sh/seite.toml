@@ -60,4 +60,8 @@ target = "cloudflare"
 project = "site"
 domain = "seite.sh"
 
+[analytics]
+provider = "plausible"
+id = "seite.sh"
+
 [languages]
