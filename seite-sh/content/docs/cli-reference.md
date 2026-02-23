@@ -322,3 +322,13 @@ The command downloads the appropriate binary for your platform from GitHub Relea
 {{% callout(type="info") %}}
 After updating the binary, run `seite upgrade` in each of your projects to bring their config files up to date.
 {{% end %}}
+
+### Automatic update checks
+
+Seite checks for available updates in the background (at most once every 24 hours). When a newer version is available you'll see a one-liner after your command output:
+
+```
+ℹ A new version of seite is available: 0.1.8 → 0.2.0 (run `seite self-update`)
+```
+
+The check is non-blocking and silently skipped when offline. It does not run during `seite self-update` (which already checks) or `seite mcp` (JSON-RPC over stdio).

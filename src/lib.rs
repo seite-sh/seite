@@ -16,4 +16,5 @@ pub mod server;
 pub mod shortcodes;
 pub mod templates;
 pub mod themes;
+pub mod update_check;
 pub mod workspace;
