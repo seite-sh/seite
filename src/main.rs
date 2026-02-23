@@ -35,5 +35,10 @@ fn main() -> Result<()> {
         Command::Mcp(args) => seite::cli::mcp::run(args)?,
     }
 
+    // Check for available updates (skip for self-update and mcp)
+    if !matches!(&cli.command, Command::SelfUpdate(_) | Command::Mcp(_)) {
+        seite::update_check::maybe_notify();
+    }
+
     Ok(())
 }
