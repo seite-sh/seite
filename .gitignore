@@ -8,3 +8,4 @@ seite-sh/dist/
 *.swo
 .DS_Store
 .claude/settings.local.json
+seite-sh/content/docs/releases.md

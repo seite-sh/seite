@@ -161,6 +161,10 @@ src/
   templates/mod.rs     Tera template loading with embedded defaults
 tests/
   integration.rs       192 integration tests using assert_cmd + tempfile
+build.rs               Cargo build script — generates releases.md from changelog at compile time
+scripts/
+  generate-release-docs.sh  Consolidate changelog entries → releases.md (for docs site deploy)
+  prepare-release.sh        Scaffold new changelog entry for current version
 ```
 
 ### Build Pipeline (13 steps)
@@ -444,7 +448,12 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
   5. `deploy-site` — builds and deploys `seite-sh/` to Cloudflare Pages (seite.sh)
 - **Shell installer** (`install.sh`): `curl -fsSL .../install.sh | sh` — detects platform, downloads binary, verifies checksum
 - **PowerShell installer** (`install.ps1`): `irm .../install.ps1 | iex` — Windows installer
-- **Release flow**: bump version in `Cargo.toml` + update `seite-sh/content/docs/releases.md` → push to `main` → auto-tag → auto-release → auto-publish crate → auto-deploy docs
+- **Release documentation**:
+  - `build.rs` — generates `releases.md` from changelog entries at compile time (embedded into binary via `include_str!` in `src/docs.rs`). No committed generated file — `seite-sh/content/docs/releases.md` is gitignored
+  - `scripts/prepare-release.sh` — scaffolds a changelog entry for the current Cargo.toml version with git log for reference
+  - `scripts/generate-release-docs.sh` — generates `seite-sh/content/docs/releases.md` from changelog entries (used by CI `deploy-site` job to build the docs website)
+- **Release flow**: run `scripts/prepare-release.sh` → fill in changelog entry → bump version in `Cargo.toml` → commit → push to `main` → CI validates changelog exists → auto-tag → auto-release → auto-publish crate → auto-deploy docs (CI generates releases.md before site build)
+- **CI gates**: `release-tag.yml` blocks tag creation if changelog entry is missing for the version being tagged
 - **Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CARGO_REGISTRY_TOKEN`
 
 ### Themes
