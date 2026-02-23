@@ -1551,22 +1551,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
-
       - name: Install seite
-        run: cargo install --path .
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1612,22 +1598,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
-
       - name: Install seite
-        run: cargo install --path .
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1647,7 +1619,7 @@ pub fn generate_netlify_config(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
     format!(
         r#"[build]
-  command = "cargo install --path . && seite build"
+  command = "curl -fsSL https://seite.sh/install.sh | sh && seite build"
   publish = "{output_dir}"
 
 [[redirects]]
@@ -1675,22 +1647,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}
-
       - name: Install seite
-        run: cargo install --path .
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
