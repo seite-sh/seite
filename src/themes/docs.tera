@@ -272,7 +272,8 @@
         var index = null;
         var input = document.getElementById('search-input');
         var results = document.getElementById('search-results');
-        var indexUrl = {% if lang != default_language %}'/' + {{ lang | json_encode() }} + '/search-index.json'{% else %}'/search-index.json'{% endif %};
+        var basePath = {{ site.base_path | json_encode() }};
+        var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_encode() }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
         function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
         function search(q) {
             q = q.toLowerCase().trim();
@@ -283,7 +284,7 @@
             if (!hits.length) { results.innerHTML = '<div class="no-results">{{ t.no_results }}</div>'; return; }
             results.innerHTML = hits.map(function(e){
                 var meta = [e.collection, e.date].filter(Boolean).join(' · ');
-                return '<a href="' + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
+                return '<a href="' + basePath + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
             }).join('');
         }
         input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
