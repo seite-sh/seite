@@ -15,6 +15,7 @@ cargo fmt --all      # Format — CI enforces `cargo fmt --all -- --check`
 cargo clippy         # Lint — must be zero warnings before committing
 cargo run -- init mysite --title "My Site" --description "" --deploy-target github-pages --collections posts,docs,pages
 cargo run -- init trustsite --title "Acme" --collections posts,pages,trust --trust-company "Acme Corp" --trust-frameworks soc2,iso27001
+cargo run -- init contactsite --title "My Site" --collections posts,pages --contact-provider formspree --contact-endpoint xpznqkdl
 cargo run -- build   # Build site from seite.toml in current dir
 cargo run -- serve   # Dev server with REPL (live reload, port auto-increment)
 cargo run -- new post "My Post" --tags rust,web
@@ -34,6 +35,12 @@ cargo run -- deploy --no-commit                     # Deploy without auto-commit
 cargo run -- deploy --dry-run                       # Preview what deploy would do
 cargo run -- deploy --target netlify                 # Deploy to Netlify
 cargo run -- deploy --target cloudflare --dry-run    # Cloudflare dry run
+
+# Contact form management
+cargo run -- contact setup                                           # Interactive setup
+cargo run -- contact setup --provider formspree --endpoint xpznqkdl  # Non-interactive
+cargo run -- contact status                                          # Show current config
+cargo run -- contact remove                                          # Remove config
 
 # Collection management
 cargo run -- collection list                         # List site collections
@@ -87,6 +94,7 @@ src/
       gist.html        GitHub Gist embed
       callout.html     Admonition/callout body shortcode
       figure.html      Semantic figure with caption
+      contact_form.html  Contact form (5 providers: Formspree, Web3Forms, Netlify, HubSpot, Typeform)
   build/
     mod.rs             13-step build pipeline
     analytics.rs       Analytics injection + cookie consent banner
@@ -96,14 +104,14 @@ src/
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
     images.rs          Image processing (resize, WebP, srcset)
-  docs.rs              Embedded documentation pages (14 docs, include_str! from seite-sh/content/docs/)
+  docs.rs              Embedded documentation pages (16 docs, include_str! from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json) — version tracking, upgrade detection
   mcp/
     mod.rs             MCP server core (JSON-RPC over stdio, method dispatch)
     resources.rs       MCP resource providers (docs, config, content, themes, mcp-config)
     tools.rs           MCP tool implementations (build, create_content, search, apply_theme, lookup_docs)
   cli/
-    mod.rs             Cli struct + Command enum (12 subcommands)
+    mod.rs             Cli struct + Command enum (13 subcommands)
     init.rs            Interactive project scaffolding (creates .seite/config.json + MCP config)
     new.rs             Create content files
     build.rs           Build command (workspace-aware, nudges on outdated project)
@@ -114,6 +122,7 @@ src/
     mcp.rs             MCP server entry point (launches stdio JSON-RPC server)
     workspace.rs       Workspace CLI (init, list, add, status)
     upgrade.rs         Upgrade project config to current binary (version-gated steps)
+    contact.rs         Contact form management (setup, remove, status)
     collection.rs      Collection management (add, list)
     self_update.rs     Self-update binary from GitHub Releases
   update_check.rs        Background update check with 24h cache (~/.seite/update-cache.json)
@@ -127,6 +136,7 @@ src/
     config-reference.md  Optional config sections (images, analytics)
     mcp.md             MCP server + state-awareness guidance
     shortcodes.md      Shortcode syntax and reference
+    contact-form.md    Contact form provider setup and shortcode reference
     design-prompts.md  Theme design directions
     theme-builder.md   Brief CLAUDE.md mention of /theme-builder skill
     skill-theme-builder.md  Full SKILL.md for /theme-builder Claude Code skill
@@ -275,6 +285,14 @@ provider = "google"        # "google", "gtm", "plausible", "fathom", "umami"
 id = "G-XXXXXXXXXX"        # measurement/tracking ID
 cookie_consent = true      # show consent banner and gate analytics on acceptance
 # script_url = "..."       # custom script URL (required for self-hosted Umami)
+
+# Optional: contact form (omit for no contact form)
+[contact]
+provider = "formspree"     # "formspree", "web3forms", "netlify", "hubspot", "typeform"
+endpoint = "xpznqkdl"     # provider-specific form ID / access key
+# redirect = "/thank-you" # custom redirect after submission
+# subject = "New inquiry"  # email subject prefix
+# region = "na1"          # HubSpot only (na1 or eu1)
 ```
 
 ### Data Files
@@ -341,7 +359,7 @@ Requires Claude Code CLI: `npm install -g @anthropic-ai/claude-code`
 **Architecture:** Synchronous read loop on stdin, dispatches JSON-RPC methods, writes responses to stdout. All logging to stderr (never stdout — it corrupts the protocol). No async runtime needed.
 
 **Resources** (read-only data):
-- `seite://docs` / `seite://docs/{slug}` — 14 embedded documentation pages (compiled into binary via `include_str!`)
+- `seite://docs` / `seite://docs/{slug}` — 16 embedded documentation pages (compiled into binary via `include_str!`)
 - `seite://config` — `seite.toml` serialized as JSON
 - `seite://content` / `seite://content/{collection}` — content inventory with metadata
 - `seite://themes` — bundled + installed themes
@@ -558,12 +576,12 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 - Named args only: `key="string"`, `key=42`, `key=3.14`, `key=true`
 - Shortcodes expanded **before** `markdown_to_html()` — output goes through the markdown pipeline
 - `raw_body` on `ContentItem` stays unexpanded (for `.md` output and `llms-full.txt`)
-- Built-in shortcodes: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`
+- Built-in shortcodes: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`, `contact_form`
 - User-defined shortcodes: Tera templates in `templates/shortcodes/*.html`
 - User shortcodes override built-ins with the same name
 - Shortcodes inside fenced code blocks and inline code spans are NOT expanded
 - `ShortcodeRegistry` uses a separate Tera instance (not the page template Tera)
-- All 6 bundled themes include CSS for `.video-embed`, `.callout-*`, `figure`/`figcaption`
+- All 6 bundled themes include CSS for `.video-embed`, `.callout-*`, `figure`/`figcaption`, `.contact-form`
 - To add a built-in shortcode: create template in `src/shortcodes/builtins/`, add entry in `builtins.rs`
 
 ### Frontmatter Serialization
@@ -630,6 +648,30 @@ The trust center is a collection preset (`trust`) that scaffolds a compliance hu
 **Scaffolded CLAUDE.md:** When trust is present, the generated CLAUDE.md includes a comprehensive trust center section with data file formats, management workflows, and MCP integration docs.
 
 **Files:** `src/config/mod.rs` (TrustSection, preset_trust), `src/cli/init.rs` (scaffolding), `src/templates/mod.rs` (DEFAULT_TRUST_INDEX, DEFAULT_TRUST_ITEM), `src/build/mod.rs` (step 4b2), `src/mcp/resources.rs` (seite://trust), `seite-sh/content/docs/trust-center.md`, `src/themes/*.tera` (CSS)
+
+### Contact Forms
+
+Built-in contact form support via the `{{< contact_form() >}}` shortcode and `[contact]` config section.
+
+**Two integration patterns:**
+- **HTML POST** (pure HTML, no JS): Formspree, Web3Forms, Netlify Forms — renders a `<form>` with provider-specific action URL, hidden fields, and honeypot spam protection
+- **JS embed** (loads external script): HubSpot, Typeform — renders a container `<div>` with provider SDK script
+
+**Config:** `[contact]` section in `seite.toml` with `provider`, `endpoint`, optional `redirect`, `subject`, `region` (HubSpot only).
+
+**Shortcode args:** `name_label`, `email_label`, `message_label`, `submit_label` (label overrides), `subject`, `redirect` (per-instance overrides), `height` (Typeform only).
+
+**CLI:** `seite contact setup` (interactive/non-interactive), `seite contact status`, `seite contact remove`. Deploy-aware: auto-suggests Netlify Forms when deploy target is Netlify.
+
+**Init flow:** `seite init --contact-provider formspree --contact-endpoint xpznqkdl` or interactive prompt. Creates `content/pages/contact.md` with shortcode when pages collection exists.
+
+**Deploy integration:** `seite deploy --setup` offers contact form configuration after deploy setup.
+
+**Upgrade:** `seite upgrade` appends Contact Forms documentation to CLAUDE.md for existing sites.
+
+**i18n:** Labels use `{{ t.contact_name }}`, `{{ t.contact_email }}`, `{{ t.contact_message }}`, `{{ t.contact_submit }}`. Override per language in `data/i18n/{lang}.yaml`.
+
+**Files:** `src/config/mod.rs` (ContactProvider, ContactSection), `src/shortcodes/builtins/contact_form.html`, `src/cli/contact.rs`, `src/build/mod.rs` (shortcode context), `src/scaffold/contact-form.md`, `seite-sh/content/docs/contact-forms.md`, `src/themes/*.tera` (CSS)
 
 ### Singular→Plural Normalization
 `find_collection()` in `src/config/mod.rs` normalizes "post" → "posts", "doc" → "docs", "seite" → "pages" so users can type either form.
@@ -821,12 +863,13 @@ Tasks are ordered by priority. Mark each `[x]` when complete.
 - [x] Project metadata & upgrades — `.seite/config.json` tracks binary version that last scaffolded the project. `seite upgrade` applies version-gated, additive config upgrades (MCP server, CLAUDE.md sections). `seite build` nudges when outdated. `--check` mode for CI (exit 1 = outdated). Non-destructive merge into `.claude/settings.json` and append-only for CLAUDE.md.
 - [x] Self-update — `seite self-update` downloads latest binary from GitHub Releases, verifies SHA256 checksum, atomic binary replacement with backup/restore. `--check` for CI, `--target-version` to pin. Uses same release infrastructure as `install.sh`.
 - [x] MCP server scaffolding — `seite init` creates `.claude/settings.json` with `mcpServers.seite` block. `seite upgrade` merges MCP config into existing projects.
-- [x] MCP server — `seite mcp` runs a JSON-RPC server over stdio. Resources: `seite://docs/*` (14 embedded doc pages), `seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`. Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`. Docs embedded via `include_str!` from `seite-sh/content/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
+- [x] MCP server — `seite mcp` runs a JSON-RPC server over stdio. Resources: `seite://docs/*` (16 embedded doc pages), `seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`. Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`. Docs embedded via `include_str!` from `seite-sh/content/docs/`. Claude Code auto-starts the server via `.claude/settings.json`.
 - [x] Changelog collection — `changelog` preset with dated entries, RSS feed, and colored tag badges (new/fix/breaking/improvement/deprecated). Dedicated `changelog-entry.html` and `changelog-index.html` templates with CSS in all 6 themes. Collection-specific index template resolution in build pipeline.
 - [x] Roadmap collection — `roadmap` preset with weight-ordered items and status tags (planned/in-progress/done/cancelled). Three index layouts: grouped list (default), kanban (CSS grid 3-column), and timeline (vertical milestones). Dedicated templates and CSS in all 6 themes.
 - [x] Trust Center collection — `trust` preset with data-driven compliance hub scaffolding. Certifications, subprocessors, and FAQ data files. Content pages for security overview, vulnerability disclosure, per-framework details. Interactive init flow with framework selection. Dedicated `trust-index.html` and `trust-item.html` templates with CSS in all 6 themes. `seite://trust` MCP resource. 17 i18n UI string keys.
 - [x] Analytics & cookie consent — `[analytics]` config section with 5 providers (Google Analytics, GTM, Plausible, Fathom, Umami). Optional cookie consent banner with localStorage persistence. Injected into all HTML files at build step 13.
 - [x] Collection management — `seite collection add <preset>` and `seite collection list` commands for adding collections to existing sites.
+- [x] Contact forms — `[contact]` config section with 5 providers: Formspree, Web3Forms, Netlify Forms (HTML POST), HubSpot, Typeform (JS embed). `{{< contact_form() >}}` shortcode with label/redirect/subject overrides. `seite contact setup/status/remove` CLI. Deploy-aware setup (auto-suggests Netlify Forms). Honeypot spam protection for HTML POST providers. Styled in all 6 themes. Upgrade path for existing sites. i18n support.
 
 ### Up Next
 

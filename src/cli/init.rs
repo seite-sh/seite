@@ -41,6 +41,14 @@ pub struct InitArgs {
     /// Trust center sections (comma-separated: overview,certifications,subprocessors,faq,disclosure,dpa,changelog)
     #[arg(long)]
     pub trust_sections: Option<String>,
+
+    /// Contact form provider (formspree, web3forms, netlify, hubspot, typeform)
+    #[arg(long)]
+    pub contact_provider: Option<String>,
+
+    /// Contact form endpoint/ID
+    #[arg(long)]
+    pub contact_endpoint: Option<String>,
 }
 
 pub fn run(args: &InitArgs) -> anyhow::Result<()> {
@@ -148,6 +156,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         images: Some(crate::config::ImageSection::default()),
         analytics: None,
         trust: None,
+        contact: None,
     };
 
     // If trust collection is included, run trust center scaffolding
@@ -162,6 +171,40 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     } else {
         None
     };
+
+    // Optional contact form setup
+    if args.contact_provider.is_some() {
+        let setup_args = crate::cli::contact::SetupArgs {
+            provider: args.contact_provider.clone(),
+            endpoint: args.contact_endpoint.clone(),
+            region: None,
+            redirect: None,
+            subject: None,
+        };
+        config.contact = Some(crate::cli::contact::prompt_contact_config(
+            &setup_args,
+            &config,
+        )?);
+    } else if args.name.is_none() {
+        // Interactive mode (no --name given = user is in interactive init flow)
+        let add_contact = dialoguer::Confirm::new()
+            .with_prompt("Add a contact form?")
+            .default(false)
+            .interact()?;
+        if add_contact {
+            let setup_args = crate::cli::contact::SetupArgs {
+                provider: None,
+                endpoint: None,
+                region: None,
+                redirect: None,
+                subject: None,
+            };
+            config.contact = Some(crate::cli::contact::prompt_contact_config(
+                &setup_args,
+                &config,
+            )?);
+        }
+    }
 
     let toml_str = toml::to_string_pretty(&config)?;
     fs::write(root.join("seite.toml"), toml_str)?;
@@ -304,6 +347,18 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         scaffold_trust_center(&root, opts)?;
     }
 
+    // Create contact page if contact form is configured and pages collection exists
+    if config.contact.is_some() {
+        let has_pages = collections.iter().any(|c| c.name == "pages");
+        let contact_page = root.join("content/pages/contact.md");
+        if has_pages && !contact_page.exists() {
+            fs::write(
+                &contact_page,
+                "---\ntitle: Contact\ndescription: Get in touch\n---\n\n{{< contact_form() >}}\n",
+            )?;
+        }
+    }
+
     // Write project metadata (.seite/config.json)
     meta::write(&root, &meta::PageMeta::current())?;
 
@@ -335,7 +390,13 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     // Write CLAUDE.md with site-specific context
     fs::write(
         root.join("CLAUDE.md"),
-        generate_claude_md(&title, &description, &collections, trust_opts.as_ref()),
+        generate_claude_md(
+            &title,
+            &description,
+            &collections,
+            trust_opts.as_ref(),
+            config.contact.is_some(),
+        ),
     )?;
 
     human::success(&format!("Created new site in '{name}'"));
@@ -734,6 +795,7 @@ fn generate_claude_md(
     description: &str,
     collections: &[CollectionConfig],
     trust_opts: Option<&TrustOptions>,
+    has_contact: bool,
 ) -> String {
     let mut md = String::with_capacity(16384);
 
@@ -1032,6 +1094,17 @@ fn generate_claude_md(
 
     // Shortcodes (static)
     md.push_str(include_str!("../scaffold/shortcodes.md"));
+
+    // Contact forms
+    if has_contact {
+        md.push_str(include_str!("../scaffold/contact-form.md"));
+    } else {
+        md.push_str("\n## Contact Forms\n\n");
+        md.push_str("Contact forms are available via the `{{< contact_form() >}}` shortcode.\n");
+        md.push_str(
+            "Run `seite contact setup` to configure a provider (Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform).\n\n",
+        );
+    }
 
     // Design prompts (static)
     md.push_str(include_str!("../scaffold/design-prompts.md"));

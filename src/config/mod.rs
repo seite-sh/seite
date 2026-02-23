@@ -23,6 +23,8 @@ pub struct SiteConfig {
     pub analytics: Option<AnalyticsSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust: Option<TrustSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contact: Option<ContactSection>,
 }
 
 /// Per-language overrides for site metadata.
@@ -316,6 +318,40 @@ pub struct TrustSection {
     /// Active compliance frameworks (e.g., ["soc2", "iso27001"]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub frameworks: Vec<String>,
+}
+
+/// Contact form provider for static site form handling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ContactProvider {
+    Formspree,
+    Web3forms,
+    Netlify,
+    Hubspot,
+    Typeform,
+}
+
+/// Contact form configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactSection {
+    /// Contact form provider.
+    pub provider: ContactProvider,
+    /// Provider-specific identifier:
+    /// - Formspree: form ID (e.g., "xpznqkdl")
+    /// - Web3Forms: access key
+    /// - Netlify: form name (e.g., "contact")
+    /// - HubSpot: "{portalId}/{formGuid}"
+    /// - Typeform: form ID (e.g., "abc123XY")
+    pub endpoint: String,
+    /// HubSpot region (default: "na1"). Set to "eu1" for EU data center.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Custom success/thank-you redirect URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect: Option<String>,
+    /// Email subject line prefix.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
 }
 
 /// Resolved absolute paths for the project directories.

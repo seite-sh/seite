@@ -1,0 +1,70 @@
+{% if site.contact %}{% if site.contact.provider == "formspree" %}<form class="contact-form" action="https://formspree.io/f/{{ site.contact.endpoint }}" method="POST">
+{% if subject %}<input type="hidden" name="_subject" value="{{ subject }}">
+{% elif site.contact.subject %}<input type="hidden" name="_subject" value="{{ site.contact.subject }}">
+{% endif %}{% if redirect %}<input type="hidden" name="_next" value="{{ redirect }}">
+{% elif site.contact.redirect %}<input type="hidden" name="_next" value="{{ site.contact.redirect }}">
+{% endif %}<div class="contact-form-honeypot" aria-hidden="true">
+<label for="cf-bot-field">Do not fill this in</label>
+<input type="text" id="cf-bot-field" name="_gotcha" tabindex="-1" autocomplete="off">
+</div>
+<div class="contact-form-field">
+<label for="cf-name">{{ name_label | default(value="Name") }}</label>
+<input type="text" id="cf-name" name="name" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-email">{{ email_label | default(value="Email") }}</label>
+<input type="email" id="cf-email" name="email" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-message">{{ message_label | default(value="Message") }}</label>
+<textarea id="cf-message" name="message" rows="5" required></textarea>
+</div>
+<button type="submit" class="contact-form-submit">{{ submit_label | default(value="Send Message") }}</button>
+</form>{% elif site.contact.provider == "web3forms" %}<form class="contact-form" action="https://api.web3forms.com/submit" method="POST">
+<input type="hidden" name="access_key" value="{{ site.contact.endpoint }}">
+{% if subject %}<input type="hidden" name="subject" value="{{ subject }}">
+{% elif site.contact.subject %}<input type="hidden" name="subject" value="{{ site.contact.subject }}">
+{% endif %}{% if redirect %}<input type="hidden" name="redirect" value="{{ redirect }}">
+{% elif site.contact.redirect %}<input type="hidden" name="redirect" value="{{ site.contact.redirect }}">
+{% endif %}<div class="contact-form-honeypot" aria-hidden="true">
+<label for="cf-bot-field">Do not fill this in</label>
+<input type="checkbox" id="cf-bot-field" name="botcheck" tabindex="-1" autocomplete="off" style="display:none">
+</div>
+<div class="contact-form-field">
+<label for="cf-name">{{ name_label | default(value="Name") }}</label>
+<input type="text" id="cf-name" name="name" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-email">{{ email_label | default(value="Email") }}</label>
+<input type="email" id="cf-email" name="email" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-message">{{ message_label | default(value="Message") }}</label>
+<textarea id="cf-message" name="message" rows="5" required></textarea>
+</div>
+<button type="submit" class="contact-form-submit">{{ submit_label | default(value="Send Message") }}</button>
+</form>{% elif site.contact.provider == "netlify" %}<form class="contact-form" name="{{ site.contact.endpoint }}" method="POST" data-netlify="true" data-netlify-honeypot="bot-field">
+<input type="hidden" name="form-name" value="{{ site.contact.endpoint }}">
+{% if redirect %}<input type="hidden" name="_redirect" value="{{ redirect }}">
+{% elif site.contact.redirect %}<input type="hidden" name="_redirect" value="{{ site.contact.redirect }}">
+{% endif %}<div class="contact-form-honeypot" aria-hidden="true">
+<label for="cf-bot-field">Do not fill this in</label>
+<input type="text" id="cf-bot-field" name="bot-field" tabindex="-1" autocomplete="off">
+</div>
+<div class="contact-form-field">
+<label for="cf-name">{{ name_label | default(value="Name") }}</label>
+<input type="text" id="cf-name" name="name" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-email">{{ email_label | default(value="Email") }}</label>
+<input type="email" id="cf-email" name="email" required>
+</div>
+<div class="contact-form-field">
+<label for="cf-message">{{ message_label | default(value="Message") }}</label>
+<textarea id="cf-message" name="message" rows="5" required></textarea>
+</div>
+<button type="submit" class="contact-form-submit">{{ submit_label | default(value="Send Message") }}</button>
+</form>{% elif site.contact.provider == "hubspot" %}<div class="contact-form-embed" id="hs-contact-form"></div>
+<script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/embed/v2.js"></script>
+<script>hbspt.forms.create({region:"{{ site.contact.region | default(value='na1') }}",portalId:"{{ site.contact.endpoint | split(pat='/') | first }}",formId:"{{ site.contact.endpoint | split(pat='/') | last }}",target:"#hs-contact-form"});</script>{% elif site.contact.provider == "typeform" %}<div class="contact-form-embed" data-tf-widget="{{ site.contact.endpoint }}" style="width:100%;height:{{ height | default(value='500px') }};"></div>
+<script src="//embed.typeform.com/next/embed.js"></script>{% endif %}{% else %}<p class="contact-form-error"><strong>Contact form error:</strong> No <code>[contact]</code> section found in <code>seite.toml</code>. Run <code>seite contact setup</code> to configure.</p>{% endif %}
