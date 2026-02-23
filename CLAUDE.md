@@ -116,6 +116,7 @@ src/
     upgrade.rs         Upgrade project config to current binary (version-gated steps)
     collection.rs      Collection management (add, list)
     self_update.rs     Self-update binary from GitHub Releases
+  update_check.rs        Background update check with 24h cache (~/.seite/update-cache.json)
   scaffold/            Static markdown sections for generated CLAUDE.md (include_str! at compile time)
     seo-requirements.md  SEO/GEO requirements section
     repl.md            Dev server REPL commands
@@ -403,6 +404,13 @@ Multi-site workspaces let you manage multiple `seite` sites from a single direct
 - Atomic binary replacement: rename current → backup, copy new → target, restore on failure
 
 **Build nudge** (`src/cli/build.rs`): at the start of `run()`, checks `meta::needs_upgrade()` and prints a one-liner if outdated.
+
+**Background update check** (`src/update_check.rs`):
+- Runs after every CLI command (except `self-update` and `mcp`)
+- Checks `https://seite.sh/version.txt` at most once every 24 hours
+- Caches result in `~/.seite/update-cache.json` (global, not per-project)
+- Uses a 3-second HTTP timeout; silently swallows all errors
+- Prints a one-liner via `human::info()` when a newer version is available
 
 **MCP server config**: `seite init` writes `.claude/settings.json` with a `mcpServers.seite` block. `seite upgrade` merges this into existing settings without overwriting user entries.
 
