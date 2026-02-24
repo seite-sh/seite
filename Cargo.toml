@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -70,6 +70,7 @@ slug = "0.1"
 
 # Image processing
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+webp = "0.3"
 
 # HTTP client (for Cloudflare API and self-update)
 ureq = { version = "3", features = ["json"] }

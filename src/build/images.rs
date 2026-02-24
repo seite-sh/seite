@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::BufWriter;
 use std::path::Path;
 
+use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
-use image::ImageFormat;
+use image::{ImageEncoder, ImageFormat};
 use walkdir::WalkDir;
 
 use crate::config::{ImageSection, ResolvedPaths};
@@ -185,10 +187,44 @@ fn save_image(
     img: &image::DynamicImage,
     path: &Path,
     format: ImageFormat,
-    _quality: u8,
+    quality: u8,
 ) -> Result<()> {
-    img.save_with_format(path, format)
-        .map_err(|e| PageError::Build(format!("failed to save image '{}': {e}", path.display())))?;
+    match format {
+        ImageFormat::Jpeg => {
+            let file = fs::File::create(path).map_err(|e| {
+                PageError::Build(format!("failed to create image '{}': {e}", path.display()))
+            })?;
+            let writer = BufWriter::new(file);
+            let encoder = JpegEncoder::new_with_quality(writer, quality);
+            let rgba = img.to_rgba8();
+            encoder
+                .write_image(
+                    rgba.as_raw(),
+                    img.width(),
+                    img.height(),
+                    image::ExtendedColorType::Rgba8,
+                )
+                .map_err(|e| {
+                    PageError::Build(format!("failed to encode JPEG '{}': {e}", path.display()))
+                })?;
+        }
+        ImageFormat::WebP => {
+            let encoder = webp::Encoder::from_image(img).map_err(|e| {
+                PageError::Build(format!("failed to encode WebP '{}': {e}", path.display()))
+            })?;
+            let memory = encoder.encode(quality as f32);
+            fs::write(path, &*memory).map_err(|e| {
+                PageError::Build(format!("failed to write WebP '{}': {e}", path.display()))
+            })?;
+        }
+        // PNG is lossless — quality setting doesn't apply
+        _ => {
+            img.save_with_format(path, format).map_err(|e| {
+                PageError::Build(format!("failed to save image '{}': {e}", path.display()))
+            })?;
+        }
+    }
+
     Ok(())
 }
 
