@@ -12,6 +12,7 @@ rust-version = "1.88"
 readme = "README.md"
 include = [
     "src/**/*",
+    "build.rs",
     "seite-sh/content/docs/**/*.md",
     "seite-sh/content/changelog/**/*.md",
     "tests/**/*",
