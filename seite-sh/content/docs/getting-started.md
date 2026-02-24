@@ -76,7 +76,8 @@ mysite/
 │   ├── docs/      # Documentation with sidebar navigation
 │   └── pages/     # Standalone pages (about, contact, etc.)
 ├── templates/     # Tera templates (override bundled themes)
-├── static/        # Static assets (CSS, JS, images)
+├── public/        # Root-level files (favicon.ico, .well-known/, _redirects)
+├── static/        # Static assets (CSS, JS, images) → dist/static/
 ├── seite.toml      # Site configuration
 ├── .claude/       # Claude Code agent configuration (includes MCP server)
 └── .seite/         # Project metadata (version tracking)

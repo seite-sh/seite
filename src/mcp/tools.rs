@@ -190,6 +190,7 @@ fn call_build(
                 "success": true,
                 "items_built": items_built,
                 "static_files_copied": result.stats.static_files_copied,
+                "public_files_copied": result.stats.public_files_copied,
                 "data_files_loaded": result.stats.data_files_loaded,
                 "duration_ms": result.stats.duration_ms,
             }))

@@ -85,6 +85,7 @@ pub fn start(
             paths.content.clone(),
             paths.templates.clone(),
             paths.static_dir.clone(),
+            paths.public_dir.clone(),
             paths.data_dir.clone(),
         ];
         sites.push(SiteServerInfo {

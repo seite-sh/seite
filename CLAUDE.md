@@ -167,9 +167,10 @@ scripts/
   prepare-release.sh        Scaffold new changelog entry for current version
 ```
 
-### Build Pipeline (13 steps)
+### Build Pipeline (14 steps)
 
 1. Clean output directory (`dist/`)
+1b. Copy public files (`public/` → `dist/` root, no prefix, no minification)
 2. Load Tera templates (user-provided + embedded defaults)
 2b. Load shortcode registry (built-in + user-defined from `templates/shortcodes/`)
 2.5. Load data files (YAML/JSON/TOML from `data/` directory → `{{ data.filename }}` in templates)
@@ -254,6 +255,7 @@ name = "posts"
 [build]
 output_dir = "dist"
 data_dir = "data"    # optional: directory for data files (YAML/JSON/TOML)
+public_dir = "public" # optional: root-level files copied to dist/ without prefix
 minify = true        # optional: strip CSS/JS comments + collapse whitespace
 fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.json
 
@@ -552,13 +554,14 @@ Theme metadata format: `{#- theme-description: Description here -#}` as a Tera c
 Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating or modifying theme templates, ensure all of the following are present:
 
 **Required meta tags (all pages):**
+- `<link rel="icon" href="/favicon.ico">` — favicon (user places `favicon.ico` in `public/`)
 - `<link rel="canonical">` — always `{{ site.base_url }}{{ page.url | default(value='/') }}`
 - `<meta name="description">` — use `{{ page.description | default(value=site.description) }}` (per-page first, site fallback)
 - `og:type` — `"article"` when `page.collection` is set, `"website"` for index/homepage
 - `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
-- `og:image` — conditional on `page.image` (set `image:` in frontmatter)
+- `og:image` — conditional on `page.image`, must be absolute URL. Use `{% if page.image is starting_with(pat="http") %}{{ page.image }}{% else %}{{ site.base_url }}{{ page.image }}{% endif %}` to handle both absolute URLs and `/static/…` paths
 - `twitter:card` — `"summary_large_image"` when `page.image` exists, `"summary"` otherwise
-- `twitter:title`, `twitter:description`
+- `twitter:title`, `twitter:description`, `twitter:image` (same absolutization as `og:image`)
 
 **Structured data (JSON-LD):**
 - Posts (`page.collection == 'posts'`): `BlogPosting` with `headline`, `description`, `datePublished`, `dateModified` (from `page.updated`), `author`, `publisher`, `url`
@@ -568,7 +571,7 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 **Discovery links:**
 - `<link rel="alternate" type="application/rss+xml">` — RSS feed
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">` — LLM discovery
-- `<link rel="alternate" type="text/markdown">` — markdown version (when `page.url` is set)
+- `<link rel="alternate" type="text/markdown" title="Markdown">` — markdown version (when `page.url` is set, must include `title` attribute)
 
 **Per-page robots:**
 - `<meta name="robots" content="{{ page.robots }}">` — only emitted when `robots:` is set in frontmatter

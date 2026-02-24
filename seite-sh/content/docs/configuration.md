@@ -88,6 +88,7 @@ paginate = 10
 |-------|------|---------|-------------|
 | `output_dir` | string | `"dist"` | Build output directory |
 | `data_dir` | string | `"data"` | Directory for data files (YAML/JSON/TOML) |
+| `public_dir` | string | `"public"` | Directory for root-level files copied to output without prefix (favicon.ico, .well-known/, _redirects, etc.) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 

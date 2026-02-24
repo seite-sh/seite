@@ -264,11 +264,12 @@ fn watch_and_rebuild(
         }
     };
 
-    // Watch content, templates, static, and data directories
+    // Watch content, templates, static, public, and data directories
     let dirs = [
         &paths.content,
         &paths.templates,
         &paths.static_dir,
+        &paths.public_dir,
         &paths.data_dir,
     ];
     for dir in &dirs {

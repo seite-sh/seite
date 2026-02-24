@@ -125,9 +125,13 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     }
     fs::create_dir_all(root.join("templates"))?;
     fs::create_dir_all(root.join("static"))?;
+    fs::create_dir_all(root.join("public"))?;
     fs::create_dir_all(root.join("data"))?;
     fs::create_dir_all(root.join(".claude"))?;
     fs::create_dir_all(root.join(".seite"))?;
+
+    // Write .gitignore
+    fs::write(root.join(".gitignore"), "/dist\n")?;
 
     // Generate seite.toml
     let target = match deploy_target.as_str() {

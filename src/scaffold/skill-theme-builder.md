@@ -71,10 +71,12 @@ The template must define all of these blocks so child templates can override the
 
 Every `<head>` must include ALL of the following — no exceptions:
 
+- `<link rel="icon" href="/favicon.ico">` — favicon (user places `favicon.ico` in `public/`)
 - `<link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">`
 - `<meta name="description" content="{{ page.description | default(value=site.description) }}">`
 - Open Graph: `og:type` (article when `page.collection` is set, website otherwise), `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
-- `og:image` — conditional on `page.image`
+- `og:image` — conditional on `page.image`, must be an absolute URL. Use `{% if page.image is starting_with(pat="http") %}{{ page.image }}{% else %}{{ site.base_url }}{{ page.image }}{% endif %}` to handle both absolute URLs and paths like `/static/og.png`
+- `twitter:image` — same absolutization logic as `og:image`
 - Twitter Card: `twitter:card` (summary_large_image when `page.image`, summary otherwise), `twitter:title`, `twitter:description`
 - JSON-LD structured data:
   - Posts (`page.collection == 'posts'`): `BlogPosting` with headline, description, datePublished, dateModified (from page.updated), author, publisher, url
@@ -82,7 +84,7 @@ Every `<head>` must include ALL of the following — no exceptions:
   - Index/homepage: `WebSite` with name, description, url
 - `<link rel="alternate" type="application/rss+xml">` — RSS feed
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">` — LLM discovery
-- `<link rel="alternate" type="text/markdown">` — markdown version (when page.url is set)
+- `<link rel="alternate" type="text/markdown" title="Markdown">` — markdown version (when page.url is set). Must include `title` attribute
 - `<meta name="robots">` — only when `page.robots` is set
 - hreflang `<link>` tags when `translations` is non-empty
 
