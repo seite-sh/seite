@@ -63,6 +63,11 @@ fn test_init_creates_project_structure() {
     assert!(root.join("templates/page.html").exists());
     assert!(root.join("static").is_dir());
 
+    // Verify .gitignore
+    assert!(root.join(".gitignore").exists());
+    let gitignore = fs::read_to_string(root.join(".gitignore")).unwrap();
+    assert!(gitignore.contains("/dist"));
+
     // Verify seite.toml content
     let config_content = fs::read_to_string(root.join("seite.toml")).unwrap();
     assert!(config_content.contains("title = \"My Site\""));
@@ -6195,4 +6200,99 @@ fn test_contact_remove() {
     // Verify [contact] was removed
     let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     assert!(!config.contains("[contact]"));
+}
+
+// ── Public directory feature ────────────────────────────────────────
+
+#[test]
+fn test_init_creates_public_directory() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Public Dir", "posts");
+    let site_dir = tmp.path().join("site");
+    assert!(site_dir.join("public").is_dir());
+}
+
+#[test]
+fn test_build_copies_public_files_to_root() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Public Files", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Place files in public/
+    fs::write(site_dir.join("public/favicon.ico"), "fake-icon").unwrap();
+    fs::create_dir_all(site_dir.join("public/.well-known")).unwrap();
+    fs::write(
+        site_dir.join("public/.well-known/security.txt"),
+        "Contact: security@example.com",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify files appear at dist/ root, not dist/public/
+    assert!(site_dir.join("dist/favicon.ico").exists());
+    assert_eq!(
+        fs::read_to_string(site_dir.join("dist/favicon.ico")).unwrap(),
+        "fake-icon"
+    );
+    assert!(site_dir.join("dist/.well-known/security.txt").exists());
+    assert_eq!(
+        fs::read_to_string(site_dir.join("dist/.well-known/security.txt")).unwrap(),
+        "Contact: security@example.com"
+    );
+}
+
+#[test]
+fn test_build_generated_files_overwrite_public() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Public Override", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // Place a robots.txt in public/
+    fs::write(
+        site_dir.join("public/robots.txt"),
+        "User-agent: none\nDisallow: /",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Generated robots.txt should win (contains Sitemap: line)
+    let robots = fs::read_to_string(site_dir.join("dist/robots.txt")).unwrap();
+    assert!(
+        robots.contains("Sitemap:"),
+        "Generated robots.txt should overwrite public/ version"
+    );
+}
+
+#[test]
+fn test_build_link_checker_accepts_public_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Public Links", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Place a file in public/
+    fs::write(site_dir.join("public/favicon.ico"), "icon").unwrap();
+
+    // Create a post that links to the public file
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-public-link.md"),
+        "---\ntitle: Public Link\ndate: 2025-01-01\n---\n\n[icon](/favicon.ico)\n",
+    )
+    .unwrap();
+
+    // Build with --strict: should succeed (favicon.ico is in dist/ from public/)
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
 }

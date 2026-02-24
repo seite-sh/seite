@@ -140,6 +140,12 @@ fn extract_internal_links(html: &str) -> Vec<String> {
                             let href = href.split('#').next().unwrap_or(href);
                             // Strip query string
                             let href = href.split('?').next().unwrap_or(href);
+                            // Skip /favicon.ico — injected by all bundled themes but the file
+                            // is optional (user places it in public/ when they have one)
+                            if href == "/favicon.ico" {
+                                pos = val_start + end_offset + 1;
+                                continue;
+                            }
                             if !href.is_empty() && seen.insert(href.to_string()) {
                                 links.push(href.to_string());
                             }

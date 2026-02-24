@@ -113,6 +113,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Contact form support",
             check: check_contact_form_docs,
         },
+        UpgradeStep {
+            introduced_in: (0, 2, 1),
+            label: "Public directory for root-level files",
+            check: check_public_dir,
+        },
     ]
 }
 
@@ -609,6 +614,21 @@ raw files.
         path,
         content: section.to_string(),
         description: "CLAUDE.md (added MCP Server section)".into(),
+    }]
+}
+
+/// Ensure `public/` directory exists for root-level files.
+fn check_public_dir(root: &Path) -> Vec<UpgradeAction> {
+    let public_dir = root.join("public");
+    if public_dir.exists() {
+        return vec![];
+    }
+
+    vec![UpgradeAction::Create {
+        path: public_dir.join(".gitkeep"),
+        content: String::new(),
+        description: "public/ directory for root-level files (favicon.ico, .well-known/, etc.)"
+            .into(),
     }]
 }
 

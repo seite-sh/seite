@@ -8,7 +8,7 @@ pub mod links;
 pub mod markdown;
 pub mod sitemap;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -35,6 +35,7 @@ pub struct BuildResult {
 pub struct BuildStats {
     pub items_built: HashMap<String, usize>,
     pub static_files_copied: usize,
+    pub public_files_copied: usize,
     pub data_files_loaded: usize,
     pub duration_ms: u64,
     /// Per-step timing: (step_name, duration_ms)
@@ -54,6 +55,12 @@ impl CommandOutput for BuildStats {
             self.duration_ms as f64 / 1000.0,
             self.static_files_copied
         );
+        if self.public_files_copied > 0 {
+            out.push_str(&format!(
+                ", {} public files copied",
+                self.public_files_copied
+            ));
+        }
         if self.data_files_loaded > 0 {
             out.push_str(&format!(", {} data files loaded", self.data_files_loaded));
         }
@@ -217,6 +224,34 @@ pub fn build_site(
     fs::create_dir_all(&paths.output)?;
     step_timings.push((
         "Clean output".to_string(),
+        step_start.elapsed().as_secs_f64() * 1000.0,
+    ));
+
+    // Step 1b: Copy public/ files to output root (before all other generation)
+    let step_start = Instant::now();
+    let mut public_count: usize = 0;
+    let mut public_file_paths: HashSet<String> = HashSet::new();
+    if paths.public_dir.exists() {
+        for entry in WalkDir::new(&paths.public_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let rel = entry
+                .path()
+                .strip_prefix(&paths.public_dir)
+                .unwrap_or(entry.path());
+            let dest = paths.output.join(rel);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(entry.path(), &dest)?;
+            public_file_paths.insert(rel.to_string_lossy().replace('\\', "/"));
+            public_count += 1;
+        }
+    }
+    step_timings.push((
+        "Copy public files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
@@ -667,7 +702,10 @@ pub fn build_site(
                 date: homepage.frontmatter.date.map(|d| d.to_string()),
                 updated: homepage.frontmatter.updated.map(|d| d.to_string()),
                 description: homepage.frontmatter.description.clone(),
-                image: homepage.frontmatter.image.clone(),
+                image: absolutize_image(
+                    homepage.frontmatter.image.as_deref(),
+                    &config.site.base_url,
+                ),
                 slug: homepage.slug.clone(),
                 tags: homepage.frontmatter.tags.clone(),
                 url: index_page_url,
@@ -1527,6 +1565,26 @@ pub fn build_site(
         ));
     }
 
+    // Warn about public/ files overwritten by generated files
+    let known_generated = [
+        "robots.txt",
+        "sitemap.xml",
+        "feed.xml",
+        "llms.txt",
+        "llms-full.txt",
+        "search-index.json",
+        "index.html",
+        "404.html",
+        "asset-manifest.json",
+    ];
+    for rel_path in &public_file_paths {
+        if known_generated.contains(&rel_path.as_str()) {
+            crate::output::human::warning(&format!(
+                "public/{rel_path} was overwritten by the generated {rel_path} — remove it from public/ or configure the feature that generates it"
+            ));
+        }
+    }
+
     let items_built: HashMap<String, usize> = all_collections
         .iter()
         .map(|(name, items)| (name.clone(), items.len()))
@@ -1536,6 +1594,7 @@ pub fn build_site(
     let stats = BuildStats {
         items_built,
         static_files_copied: static_count,
+        public_files_copied: public_count,
         data_files_loaded: data_files_count,
         duration_ms: start.elapsed().as_millis() as u64,
         step_timings,
@@ -1812,7 +1871,7 @@ fn build_page_context(
             date: item.frontmatter.date.map(|d| d.to_string()),
             updated: item.frontmatter.updated.map(|d| d.to_string()),
             description: item.frontmatter.description.clone(),
-            image: item.frontmatter.image.clone(),
+            image: absolutize_image(item.frontmatter.image.as_deref(), &site.base_url),
             slug: item.slug.clone(),
             tags: item.frontmatter.tags.clone(),
             url: item.url.clone(),
@@ -1826,6 +1885,18 @@ fn build_page_context(
         },
     );
     ctx
+}
+
+/// Ensure an image URL is absolute by prepending `base_url` if it's a relative path.
+/// Absolute URLs (starting with `http`) are returned unchanged.
+fn absolutize_image(image: Option<&str>, base_url: &str) -> Option<String> {
+    image.map(|img| {
+        if img.starts_with("http") {
+            img.to_string()
+        } else {
+            format!("{base_url}{img}")
+        }
+    })
 }
 
 /// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.

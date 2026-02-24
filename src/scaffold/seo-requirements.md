@@ -5,20 +5,22 @@
 
 ### Every page `<head>` MUST include
 
-1. **Canonical URL** — `<link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">`  (deduplicates indexed URLs)
-2. **Open Graph tags** — `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
+1. **Favicon** — `<link rel="icon" href="/favicon.ico">` (user places `favicon.ico` in `public/`)
+2. **Canonical URL** — `<link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">`  (deduplicates indexed URLs)
+3. **Open Graph tags** — `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
    - `og:type = article` when `page.collection` is set; `website` for the homepage
-   - `og:image` only when `page.image` is set
-3. **Twitter Card tags** — `twitter:card`, `twitter:title`, `twitter:description`
+   - `og:image` only when `page.image` is set — must be an absolute URL. Use `{% if page.image is starting_with(pat="http") %}{{ page.image }}{% else %}{{ site.base_url }}{{ page.image }}{% endif %}`
+4. **Twitter Card tags** — `twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`
    - `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise
-4. **JSON-LD structured data** — `<script type="application/ld+json">` block:
+   - `twitter:image` — same absolutization logic as `og:image`
+5. **JSON-LD structured data** — `<script type="application/ld+json">` block:
    - `BlogPosting` for posts (include `datePublished`, `dateModified` if `page.updated` is set)
    - `Article` for docs and other collection pages
    - `WebSite` for the homepage/index
-5. **Markdown alternate link** — `<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">` (LLM-native differentiator)
-6. **llms.txt discovery** — `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
-7. **RSS autodiscovery** — `<link rel="alternate" type="application/rss+xml" ...>`
-8. **Language attribute** — `<html lang="{{ lang }}">` (already in bundled themes)
+6. **Markdown alternate link** — `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">` (LLM-native differentiator — must include `title` attribute)
+7. **llms.txt discovery** — `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
+8. **RSS autodiscovery** — `<link rel="alternate" type="application/rss+xml" ...>`
+9. **Language attribute** — `<html lang="{{ lang }}">` (already in bundled themes)
 
 ### Per-page frontmatter best practices
 

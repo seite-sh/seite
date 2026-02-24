@@ -173,7 +173,7 @@ Use these as starting points, not templates. Adapt everything to the actual copy
 ## Rules
 
 - **No placeholder copy.** Never write "Lorem ipsum", "Your Company", "Describe your product here". Every word on the page should be real or a concrete draft for the user to react to.
-- **`title:` and `description:` are required** in frontmatter — they feed `<title>`, meta description, Open Graph, and Twitter Cards.
+- **`title:`, `description:`, and `image:` are required** in frontmatter — they feed `<title>`, meta description, Open Graph, and Twitter Cards. The `image:` field (e.g., `/static/og.png`) provides the `og:image` and `twitter:image` social preview — pages without it show no image when shared. The bundled themes auto-prepend `site.base_url` for path-style values.
 - **Do not touch `base.html`** unless the user asks for theme changes. The landing page template should work with any theme.
 - **Multilingual reminder**: if the site has `[languages.*]` in config, mention that translated versions (e.g., `index.es.md`) are supported.
 - **CSS**: prefer Grid/Flexbox, use `clamp()` for responsive type. Keep it in `{% block extra_css %}`.
