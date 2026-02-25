@@ -118,6 +118,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Public directory for root-level files",
             check: check_public_dir,
         },
+        UpgradeStep {
+            introduced_in: (0, 2, 4),
+            label: "Brand identity builder skill (/brand-identity)",
+            check: check_brand_identity_skill,
+        },
     ]
 }
 
@@ -441,6 +446,37 @@ fn check_theme_builder_skill(root: &Path) -> Vec<UpgradeAction> {
         path: skill_path,
         content: bundled.to_string(),
         description: ".claude/skills/theme-builder/SKILL.md (/theme-builder command)".into(),
+    }]
+}
+
+/// Ensure `.claude/skills/brand-identity/SKILL.md` exists and is up-to-date.
+///
+/// Like the theme builder, this is unconditional — every site benefits from
+/// brand identity creation (logo, color palette, favicon).
+fn check_brand_identity_skill(root: &Path) -> Vec<UpgradeAction> {
+    let bundled = include_str!("../scaffold/skill-brand-identity.md");
+    let bundled_version = extract_skill_version(bundled);
+    let skill_path = root.join(".claude/skills/brand-identity/SKILL.md");
+
+    if skill_path.exists() {
+        let existing = fs::read_to_string(&skill_path).unwrap_or_default();
+        let existing_version = extract_skill_version(&existing);
+        if existing_version >= bundled_version {
+            return vec![];
+        }
+        return vec![UpgradeAction::Create {
+            path: skill_path,
+            content: bundled.to_string(),
+            description: format!(
+                ".claude/skills/brand-identity/SKILL.md (updated v{existing_version} → v{bundled_version})"
+            ),
+        }];
+    }
+
+    vec![UpgradeAction::Create {
+        path: skill_path,
+        content: bundled.to_string(),
+        description: ".claude/skills/brand-identity/SKILL.md (/brand-identity command)".into(),
     }]
 }
 
@@ -1000,6 +1036,50 @@ mod tests {
         fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
         let actions = check_theme_builder_skill(tmp.path());
         assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_brand_identity_skill_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_brand_identity_skill(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("brand-identity"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_brand_identity_skill_up_to_date() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
+        fs::create_dir_all(&skill_dir).unwrap();
+        let bundled = include_str!("../scaffold/skill-brand-identity.md");
+        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
+        let actions = check_brand_identity_skill(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_brand_identity_skill_outdated() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\n# seite-skill-version: 0\n---\nOld content",
+        )
+        .unwrap();
+        let actions = check_brand_identity_skill(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("updated v0"));
+            }
+            _ => panic!("expected Create action"),
+        }
     }
 
     #[test]

@@ -144,6 +144,8 @@ src/
     skill-theme-builder.md  Full SKILL.md for /theme-builder Claude Code skill
     landing-page-builder.md  Brief CLAUDE.md mention of /landing-page skill
     skill-landing-page.md  Full SKILL.md for /landing-page Claude Code skill
+    brand-identity.md  Brief CLAUDE.md mention of /brand-identity skill
+    skill-brand-identity.md  Full SKILL.md for /brand-identity Claude Code skill
   config/
     mod.rs             SiteConfig, CollectionConfig, ResolvedPaths
     defaults.rs        Default values
@@ -740,3 +742,17 @@ The `/theme-builder` skill (`.claude/skills/theme-builder/SKILL.md`) guides Clau
 The skill is scaffolded unconditionally by `seite init` (every site needs themes) and upgraded via `seite upgrade` with version tracking (`# seite-skill-version: N` in frontmatter).
 
 Design prompts for theme directions are in `src/scaffold/design-prompts.md`.
+
+### Brand Identity Builder Skill (Claude Code)
+
+The `/brand-identity` skill (`.claude/skills/brand-identity/SKILL.md`) guides Claude Code through a 5-phase workflow when users want to create a visual identity:
+
+1. **Understand the Brand** — Conversational dialogue about identity, personality, and visual preferences
+2. **Design the Color Palette** — 6-8 colors with clear roles, saved to `data/brand.yaml`
+3. **Design the Logo** — SVG logo (lettermark, geometric, wordmark, or combination)
+4. **Generate the Favicon** — Simplified SVG optimized for small sizes
+5. **Apply to Theme (Optional)** — Integrate colors into `templates/base.html` or suggest `/theme-builder`
+
+The skill is scaffolded unconditionally by `seite init` and upgraded via `seite upgrade` with version tracking (`# seite-skill-version: N` in frontmatter).
+
+Output files: `static/logo.svg`, `public/favicon.svg`, `public/favicon.ico` (optional), `data/brand.yaml`.
