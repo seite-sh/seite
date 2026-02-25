@@ -130,6 +130,7 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     ))
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     // Check Claude Code is available
     match npm_cmd("claude").arg("--version").output() {
@@ -164,11 +165,9 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
-    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
-
-    // Derive theme name from URL filename or use override
-    let theme_name = match name_override {
+/// Derive a theme name from a URL or explicit override.
+fn derive_theme_name(url: &str, name_override: Option<&str>) -> String {
+    match name_override {
         Some(n) => n.to_string(),
         None => {
             let url_path = url.rsplit('/').next().unwrap_or("theme");
@@ -178,15 +177,47 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
                 .unwrap_or(url_path)
                 .to_string()
         }
-    };
-
-    // Validate theme name
-    if theme_name.is_empty()
-        || theme_name.contains(std::path::is_separator)
-        || theme_name.contains("..")
-    {
-        return Err(anyhow::anyhow!("invalid theme name: '{}'", theme_name));
     }
+}
+
+/// Validate that a theme name is safe for use as a filename.
+fn validate_theme_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty() || name.contains(std::path::is_separator) || name.contains("..") {
+        return Err(anyhow::anyhow!("invalid theme name: '{}'", name));
+    }
+    Ok(())
+}
+
+/// Validate that downloaded content looks like a Tera/HTML template.
+fn validate_template_content(body: &str) -> anyhow::Result<()> {
+    if !body.contains("<!DOCTYPE") && !body.contains("<!doctype") && !body.contains("<html") {
+        return Err(anyhow::anyhow!(
+            "downloaded file doesn't look like an HTML/Tera template"
+        ));
+    }
+    Ok(())
+}
+
+/// Save a downloaded theme to the themes directory under `root`.
+fn save_installed_theme(
+    root: &std::path::Path,
+    theme_name: &str,
+    body: &str,
+) -> anyhow::Result<PathBuf> {
+    let themes_dir = root.join("templates").join("themes");
+    std::fs::create_dir_all(&themes_dir)?;
+
+    let dest = themes_dir.join(format!("{theme_name}.tera"));
+    std::fs::write(&dest, body)?;
+    Ok(dest)
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+
+    let theme_name = derive_theme_name(url, name_override);
+    validate_theme_name(&theme_name)?;
 
     // Warn if it would shadow a bundled theme
     if themes::by_name(&theme_name).is_some() {
@@ -205,18 +236,8 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
         .read_to_string()
         .map_err(|e| anyhow::anyhow!("failed to read theme response: {e}"))?;
 
-    // Basic validation: should look like a Tera template
-    if !body.contains("<!DOCTYPE") && !body.contains("<!doctype") && !body.contains("<html") {
-        return Err(anyhow::anyhow!(
-            "downloaded file doesn't look like an HTML/Tera template"
-        ));
-    }
-
-    let themes_dir = PathBuf::from("templates").join("themes");
-    std::fs::create_dir_all(&themes_dir)?;
-
-    let dest = themes_dir.join(format!("{theme_name}.tera"));
-    std::fs::write(&dest, &body)?;
+    validate_template_content(&body)?;
+    let dest = save_installed_theme(std::path::Path::new("."), &theme_name, &body)?;
 
     human::success(&format!(
         "Installed theme '{}' to {}",
@@ -238,16 +259,10 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
-    // Validate theme name
-    if name.is_empty() || name.contains(std::path::is_separator) || name.contains("..") {
-        return Err(anyhow::anyhow!("invalid theme name: '{}'", name));
-    }
+    validate_theme_name(name)?;
 
     let content = std::fs::read_to_string(&base_path)?;
-
-    // Build exported content with metadata header
-    let desc = description.unwrap_or("Custom theme");
-    let exported = format!("{{#- theme-description: {} -#}}\n{}", desc, content);
+    let exported = build_export_content(&content, description);
 
     let themes_dir = PathBuf::from("templates").join("themes");
     std::fs::create_dir_all(&themes_dir)?;
@@ -267,6 +282,12 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
     human::info("Share this .tera file — others can install it with: seite theme install <url>");
 
     Ok(())
+}
+
+/// Build exported theme content with metadata header.
+fn build_export_content(content: &str, description: Option<&str>) -> String {
+    let desc = description.unwrap_or("Custom theme");
+    format!("{{#- theme-description: {} -#}}\n{}", desc, content)
 }
 
 fn build_theme_prompt(user_prompt: &str) -> String {
@@ -383,4 +404,186 @@ Write the complete file to `templates/base.html`. Include all CSS inline in a `<
 Design direction to implement: {user_prompt}
 "#
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- derive_theme_name ---
+
+    #[test]
+    fn test_derive_name_from_tera_url() {
+        assert_eq!(
+            derive_theme_name("https://example.com/themes/coral.tera", None),
+            "coral"
+        );
+    }
+
+    #[test]
+    fn test_derive_name_from_html_url() {
+        assert_eq!(
+            derive_theme_name("https://example.com/themes/dark.html", None),
+            "dark"
+        );
+    }
+
+    #[test]
+    fn test_derive_name_from_url_no_extension() {
+        assert_eq!(
+            derive_theme_name("https://example.com/themes/neon", None),
+            "neon"
+        );
+    }
+
+    #[test]
+    fn test_derive_name_override_takes_precedence() {
+        assert_eq!(
+            derive_theme_name("https://example.com/themes/coral.tera", Some("my-theme")),
+            "my-theme"
+        );
+    }
+
+    #[test]
+    fn test_derive_name_url_with_query_string() {
+        // rsplit('/') gets the last segment including query params
+        assert_eq!(
+            derive_theme_name("https://example.com/theme.tera?v=2", None),
+            "theme.tera?v=2"
+        );
+    }
+
+    #[test]
+    fn test_derive_name_bare_domain() {
+        // No path segments after domain
+        assert_eq!(
+            derive_theme_name("https://example.com", None),
+            "example.com"
+        );
+    }
+
+    // --- validate_theme_name ---
+
+    #[test]
+    fn test_validate_name_valid() {
+        assert!(validate_theme_name("coral-brutalist").is_ok());
+        assert!(validate_theme_name("my_theme").is_ok());
+        assert!(validate_theme_name("a").is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_empty() {
+        let err = validate_theme_name("").unwrap_err();
+        assert!(err.to_string().contains("invalid theme name"));
+    }
+
+    #[test]
+    fn test_validate_name_with_separator() {
+        let err = validate_theme_name("foo/bar").unwrap_err();
+        assert!(err.to_string().contains("invalid theme name"));
+    }
+
+    #[test]
+    fn test_validate_name_with_dot_dot() {
+        let err = validate_theme_name("..sneaky").unwrap_err();
+        assert!(err.to_string().contains("invalid theme name"));
+    }
+
+    // --- validate_template_content ---
+
+    #[test]
+    fn test_validate_content_doctype() {
+        assert!(validate_template_content("<!DOCTYPE html><html></html>").is_ok());
+    }
+
+    #[test]
+    fn test_validate_content_doctype_lowercase() {
+        assert!(validate_template_content("<!doctype html><html></html>").is_ok());
+    }
+
+    #[test]
+    fn test_validate_content_html_tag_only() {
+        assert!(validate_template_content("<html lang=\"en\"><body></body></html>").is_ok());
+    }
+
+    #[test]
+    fn test_validate_content_not_html() {
+        let err = validate_template_content("just some random text").unwrap_err();
+        assert!(err.to_string().contains("doesn't look like"));
+    }
+
+    #[test]
+    fn test_validate_content_empty() {
+        let err = validate_template_content("").unwrap_err();
+        assert!(err.to_string().contains("doesn't look like"));
+    }
+
+    // --- build_export_content ---
+
+    #[test]
+    fn test_export_content_with_description() {
+        let result = build_export_content("<html></html>", Some("My dark theme"));
+        assert!(result.starts_with("{#- theme-description: My dark theme -#}\n"));
+        assert!(result.contains("<html></html>"));
+    }
+
+    #[test]
+    fn test_export_content_default_description() {
+        let result = build_export_content("<html></html>", None);
+        assert!(result.starts_with("{#- theme-description: Custom theme -#}\n"));
+    }
+
+    // --- save_installed_theme ---
+
+    #[test]
+    fn test_save_installed_theme() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dest = save_installed_theme(tmp.path(), "test-theme", "<html>content</html>").unwrap();
+        assert!(dest.exists());
+        assert_eq!(dest.file_name().unwrap(), "test-theme.tera");
+        let content = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(content, "<html>content</html>");
+    }
+
+    #[test]
+    fn test_save_installed_theme_creates_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert!(!tmp.path().join("templates").exists());
+        let dest = save_installed_theme(tmp.path(), "new-theme", "<html></html>").unwrap();
+        assert!(dest.exists());
+        assert!(tmp.path().join("templates/themes").is_dir());
+    }
+
+    // --- build_theme_prompt ---
+
+    #[test]
+    fn test_build_theme_prompt_contains_user_input() {
+        let prompt = build_theme_prompt("dark glassmorphism with teal accents");
+        assert!(prompt.contains("dark glassmorphism with teal accents"));
+    }
+
+    #[test]
+    fn test_build_theme_prompt_contains_required_blocks() {
+        let prompt = build_theme_prompt("minimal");
+        assert!(prompt.contains("block title"));
+        assert!(prompt.contains("block head"));
+        assert!(prompt.contains("block content"));
+    }
+
+    #[test]
+    fn test_build_theme_prompt_contains_template_variables() {
+        let prompt = build_theme_prompt("any");
+        assert!(prompt.contains("site.title"));
+        assert!(prompt.contains("page.content"));
+        assert!(prompt.contains("collections"));
+        assert!(prompt.contains("pagination"));
+        assert!(prompt.contains("translations"));
+    }
+
+    #[test]
+    fn test_build_theme_prompt_contains_search_pattern() {
+        let prompt = build_theme_prompt("any");
+        assert!(prompt.contains("search-input"));
+        assert!(prompt.contains("search-index.json"));
+    }
 }
