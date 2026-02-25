@@ -16,6 +16,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{% block title %}{{ site.title }}{% endblock %}</title>
         <meta name="description" content="{{ page.description | default(value=site.description) }}">
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
         <link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
 
         <!-- Open Graph -->
@@ -77,10 +78,10 @@
                 --text: #d4d4d4;
                 --text-muted: #8a8a8a;
                 --text-dim: #5a5a5a;
-                --green: #00e676;
-                --green-dim: rgba(0, 230, 118, 0.07);
-                --green-border: rgba(0, 230, 118, 0.16);
-                --blue: #3b82f6;
+                --green: #14B8A6;
+                --green-dim: rgba(20, 184, 166, 0.07);
+                --green-border: rgba(20, 184, 166, 0.16);
+                --blue: #818CF8;
                 --heading: #f0f0f0;
                 --heading-sub: #c8c8c8;
                 --strong: #f0f0f0;
@@ -88,7 +89,7 @@
                 --nav-logo: #f0f0f0;
                 --item-border: rgba(255, 255, 255, 0.05);
                 --separator: rgba(255, 255, 255, 0.12);
-                --code-color: #00e676;
+                --code-color: #14B8A6;
                 --scrollbar-thumb: #262626;
                 --radius-sm: 5px;
                 --radius: 10px;
@@ -107,10 +108,10 @@
                 --text: #333333;
                 --text-muted: #555555;
                 --text-dim: #888888;
-                --green: #0d9462;
-                --green-dim: rgba(13, 148, 98, 0.06);
-                --green-border: rgba(13, 148, 98, 0.18);
-                --blue: #2563eb;
+                --green: #0F766E;
+                --green-dim: rgba(15, 118, 110, 0.06);
+                --green-border: rgba(15, 118, 110, 0.18);
+                --blue: #6366F1;
                 --heading: #0a0a0a;
                 --heading-sub: #333333;
                 --strong: #0a0a0a;
@@ -118,7 +119,7 @@
                 --nav-logo: #0a0a0a;
                 --item-border: #e8e8e8;
                 --separator: #d4d4d4;
-                --code-color: #0a7c55;
+                --code-color: #0F766E;
                 --scrollbar-thumb: #d4d4d4;
             }
 
@@ -283,25 +284,28 @@
                 gap: 2rem;
             }
 
+            .logo-light {
+                display: none;
+            }
+
+            [data-theme="light"] .logo-dark {
+                display: none;
+            }
+
+            [data-theme="light"] .logo-light {
+                display: block;
+            }
+
             .nav-logo {
-                font-family: var(--mono);
-                font-size: 1rem;
-                font-weight: 700;
-                color: var(--nav-logo);
-                letter-spacing: -0.02em;
                 display: flex;
                 align-items: center;
-                gap: 0.4rem;
                 flex-shrink: 0;
                 text-decoration: none;
             }
 
             .nav-logo:hover {
                 text-decoration: none;
-            }
-
-            .nav-logo-caret {
-                color: var(--green);
+                opacity: 0.85;
             }
 
             .nav-links {
@@ -405,17 +409,12 @@
             }
 
             .footer-logo {
-                font-family: var(--mono);
-                font-size: 0.85rem;
-                color: var(--text-dim);
                 display: flex;
                 align-items: center;
-                gap: 0.35rem;
-            }
-
-            .footer-logo-caret {
-                color: var(--green);
-                opacity: 0.5;
+                gap: 0.5rem;
+                font-size: 0.85rem;
+                color: var(--text-dim);
+                opacity: 0.6;
             }
 
             .footer-built {
@@ -1122,12 +1121,73 @@
             @media (max-width: 640px) {
                 .nav-links {
                     display: none;
+                    flex-direction: column;
+                    position: absolute;
+                    top: 56px;
+                    left: 0;
+                    right: 0;
+                    background: var(--nav-bg);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border-bottom: 1px solid var(--border);
+                    padding: 0.75rem 1.5rem 1rem;
+                    gap: 0;
+                    z-index: 99;
+                }
+
+                .nav-links.open {
+                    display: flex;
+                }
+
+                .nav-links li {
+                    border-bottom: 1px solid var(--border);
+                }
+
+                .nav-links li:last-child {
+                    border-bottom: none;
+                }
+
+                .nav-links a {
+                    display: block;
+                    padding: 0.75rem 0;
+                    font-size: 0.95rem;
+                }
+
+                .nav-hamburger {
+                    display: flex;
+                }
+
+                .nav-cta {
+                    display: none;
                 }
 
                 .footer-inner {
                     flex-direction: column;
                     align-items: flex-start;
                 }
+            }
+
+            /* ---- Mobile hamburger ---- */
+            .nav-hamburger {
+                display: none;
+                background: none;
+                border: 1px solid var(--border-light);
+                color: var(--text-muted);
+                width: 34px;
+                height: 34px;
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                padding: 0;
+                transition: color 0.15s, border-color 0.15s;
+                margin-left: auto;
+            }
+
+            .nav-hamburger:hover {
+                color: var(--text);
+                border-color: var(--green-border);
             }
 
             /* ---- Menu toggle (docs mobile) ---- */
@@ -1168,8 +1228,9 @@
         <nav class="site-nav" role="navigation" aria-label="Main navigation">
             <div class="container nav-inner">
                 {% if nav %}<button class="menu-toggle" aria-label="{{ t.toggle_sidebar | default(value='Toggle sidebar') }}" onclick="document.querySelector('.docs-sidebar').classList.toggle('open');document.querySelector('.sidebar-backdrop').classList.toggle('open');">&#9776;</button>{% endif %}
-                <a href="/" class="nav-logo">
-                    <span class="nav-logo-caret">▸</span>{{ site.title }}
+                <a href="/" class="nav-logo" aria-label="{{ site.title }}">
+                    <img class="logo-dark" src="/static/logo-dark.svg" alt="{{ site.title }}" width="120" height="28">
+                    <img class="logo-light" src="/static/logo-light.svg" alt="{{ site.title }}" width="120" height="28">
                 </a>
                 {% if data.nav %}
                 <ul class="nav-links">
@@ -1183,6 +1244,7 @@
                     {% endif %}
                 </ul>
                 {% endif %}
+                <button class="nav-hamburger" aria-label="Toggle menu" aria-expanded="false" onclick="var l=document.querySelector('.nav-links');var o=l.classList.toggle('open');this.setAttribute('aria-expanded',o);this.innerHTML=o?'&#x2715;':'&#9776;';">&#9776;</button>
                 <button class="theme-toggle" id="theme-toggle" aria-label="{{ t.toggle_theme | default(value='Toggle light/dark mode') }}">
                     <!-- Sun: shown in dark mode, click to go light -->
                     <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1219,7 +1281,9 @@
         <footer class="site-footer">
             <div class="container footer-inner">
                 <span class="footer-logo">
-                    <span class="footer-logo-caret">▸</span>{{ site.title }}
+                    {{ t.built_with | default(value="Built with") }}
+                    <img class="logo-dark" src="/static/logo-dark.svg" alt="{{ site.title }}" width="90" height="21">
+                    <img class="logo-light" src="/static/logo-light.svg" alt="{{ site.title }}" width="90" height="21">
                 </span>
                 {% if data.footer and data.footer.links %}
                 <ul class="footer-links">
@@ -1229,7 +1293,6 @@
                 </ul>
                 {% endif %}
             </div>
-            <div class="footer-built">{{ t.built_with | default(value="Built with") }} <a href="https://seite.sh">seite</a></div>
         </footer>
         {% endblock %}
 

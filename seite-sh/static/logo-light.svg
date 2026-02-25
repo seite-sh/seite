@@ -1,0 +1,7 @@
+<svg viewBox="0 0 120 28" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(1, 5) scale(0.5625)">
+    <path d="M4 2C4 0.9 4.9 0 6 0H19L28 9V30C28 31.1 27.1 32 26 32H6C4.9 32 4 31.1 4 30V2Z" fill="#0D9488"/>
+    <path d="M19 0L28 9H21C19.9 9 19 8.1 19 7V0Z" fill="#6366F1"/>
+  </g>
+  <text x="20" y="20.5" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" letter-spacing="-0.4" fill="#0a0a0a">seite</text>
+</svg>

@@ -1,0 +1,35 @@
+colors:
+  # Primary accent (teal)
+  primary: "#14B8A6"
+  primary_hover: "#2DD4BF"
+  primary_dark: "#0D9488"
+  primary_dark_hover: "#0F766E"
+
+  # Secondary accent (indigo)
+  secondary: "#818CF8"
+  secondary_dark: "#6366F1"
+  secondary_deep: "#4F46E5"
+
+  # Dark mode
+  dark_bg: "#09090B"
+  dark_surface: "#18181B"
+  dark_text: "#E4E4E7"
+  dark_text_muted: "#A1A1AA"
+  dark_heading: "#FAFAFA"
+  dark_border: "#27272A"
+
+  # Light mode
+  light_bg: "#FAFAFA"
+  light_surface: "#F4F4F5"
+  light_text: "#18181B"
+  light_text_muted: "#52525B"
+  light_heading: "#09090B"
+  light_border: "#E4E4E7"
+
+logo:
+  icon_page: "#14B8A6"
+  icon_fold: "#818CF8"
+  icon_page_light: "#0D9488"
+  icon_fold_light: "#6366F1"
+  wordmark_weight: 700
+  wordmark_font: "Inter, system-ui, -apple-system, sans-serif"
