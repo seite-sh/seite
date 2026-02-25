@@ -1761,8 +1761,9 @@ fn test_build_image_lazy_loading() {
     init_site(&tmp, "site", "Lazy Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Create a page with an image reference
-    let page_content = "---\ntitle: Gallery\n---\n\n![A photo](/static/images/photo.png)\n";
+    // Create a page with two image references — first is skipped for LCP, second gets lazy
+    let page_content =
+        "---\ntitle: Gallery\n---\n\n![First](/static/images/photo.png)\n\n![Second](/static/images/photo.png)\n";
     fs::write(site_dir.join("content/pages/gallery.md"), page_content).unwrap();
 
     write_test_image(&site_dir, "photo.png");
@@ -1775,9 +1776,10 @@ fn test_build_image_lazy_loading() {
         .success();
 
     let html = fs::read_to_string(site_dir.join("dist/gallery.html")).unwrap();
+    // Second image should get lazy loading (first is skipped for LCP)
     assert!(
         html.contains("loading=\"lazy\""),
-        "img tags should have loading=lazy"
+        "second img tag should have loading=lazy"
     );
 }
 

@@ -62,7 +62,11 @@ pub(crate) fn generate_sitemap(
 
     for item in items {
         let loc = format!("{}{}", base, item.url);
-        let lastmod = item.frontmatter.date.map(|d| d.to_string());
+        let lastmod = item
+            .frontmatter
+            .updated
+            .or(item.frontmatter.date)
+            .map(|d| d.to_string());
 
         if is_multilingual {
             let key = (item.collection.clone(), item.slug.clone());
