@@ -310,6 +310,11 @@ pub struct AnalyticsSection {
     /// Custom script URL (required for Umami, optional for others).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script_url: Option<String>,
+    /// Plausible script extensions (e.g., ["tagged-events", "outbound-links"]).
+    /// Appended to the script filename: script.tagged-events.outbound-links.js
+    /// Only used when provider is "plausible" and script_url is not set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<String>,
 }
 
 /// Trust center configuration for compliance hub features.
