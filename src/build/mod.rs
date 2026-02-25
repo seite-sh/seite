@@ -6,6 +6,7 @@ pub mod feed;
 pub mod images;
 pub mod links;
 pub mod markdown;
+pub mod math;
 pub mod sitemap;
 
 use std::collections::{HashMap, HashSet};
@@ -356,7 +357,13 @@ pub fn build_site(
                 });
                 let expanded_body =
                     shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
-                let (html_body, toc) = markdown::markdown_to_html(&expanded_body);
+                // Math pre-pass: render $inline$ and $$display$$ before markdown
+                let math_processed = if config.build.math {
+                    math::render_math(&expanded_body)
+                } else {
+                    expanded_body.clone()
+                };
+                let (html_body, toc) = markdown::markdown_to_html(&math_processed);
 
                 // Build URL: non-default languages get /{lang} prefix
                 let base_url = build_url(&collection.url_prefix, &slug);
@@ -582,6 +589,7 @@ pub fn build_site(
                 }
                 ctx.insert("lang", &item.lang);
                 insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                insert_build_flags(&mut ctx, config);
 
                 // Always provide translations (may be empty vec)
                 let empty_translations: Vec<TranslationLink> = Vec::new();
@@ -649,6 +657,7 @@ pub fn build_site(
         index_ctx.insert("data", &data);
         index_ctx.insert("lang", lang);
         insert_i18n_context(&mut index_ctx, lang, default_lang, &data);
+        insert_build_flags(&mut index_ctx, config);
 
         // Filter collections for this language
         let collections_ctx: Vec<CollectionContext> = config
@@ -861,6 +870,7 @@ pub fn build_site(
                 ctx.insert("data", &data);
                 ctx.insert("lang", lang);
                 insert_i18n_context(&mut ctx, lang, default_lang, &data);
+                insert_build_flags(&mut ctx, config);
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
@@ -982,6 +992,7 @@ pub fn build_site(
             ctx.insert("data", &data);
             ctx.insert("lang", lang);
             insert_i18n_context(&mut ctx, lang, default_lang, &data);
+            insert_build_flags(&mut ctx, config);
             ctx.insert("collections", &[collection_ctx]);
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
@@ -1063,6 +1074,7 @@ pub fn build_site(
             ctx_404.insert("data", &data);
             ctx_404.insert("lang", lang);
             insert_i18n_context(&mut ctx_404, lang, default_lang, &data);
+            insert_build_flags(&mut ctx_404, config);
             ctx_404.insert("translations", &Vec::<TranslationLink>::new());
             ctx_404.insert("collections", &Vec::<CollectionContext>::new());
             ctx_404.insert(
@@ -1171,6 +1183,7 @@ pub fn build_site(
             tags_ctx.insert("data", &data);
             tags_ctx.insert("lang", lang);
             insert_i18n_context(&mut tags_ctx, lang, default_lang, &data);
+            insert_build_flags(&mut tags_ctx, config);
             tags_ctx.insert("tags", &tag_entries);
             tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
             tags_ctx.insert(
@@ -1211,6 +1224,7 @@ pub fn build_site(
                 tag_ctx.insert("data", &data);
                 tag_ctx.insert("lang", lang);
                 insert_i18n_context(&mut tag_ctx, lang, default_lang, &data);
+                insert_build_flags(&mut tag_ctx, config);
                 tag_ctx.insert("tag_name", tag);
                 tag_ctx.insert("items", items);
                 tag_ctx.insert("tags_url", &format!("{tags_base_url}/"));
@@ -2004,6 +2018,14 @@ fn insert_i18n_context(
     ctx.insert("lang_prefix", &lang_prefix_for(lang, default_lang));
     ctx.insert("default_language", default_lang);
     ctx.insert("t", &ui_strings_for_lang(lang, data));
+}
+
+/// Insert build feature flags into template context.
+fn insert_build_flags(ctx: &mut tera::Context, config: &SiteConfig) {
+    ctx.insert("math_enabled", &config.build.math);
+    if config.build.math {
+        ctx.insert("katex_css_url", math::KATEX_CSS_URL);
+    }
 }
 
 /// Build a JSON search index from a slice of content items.

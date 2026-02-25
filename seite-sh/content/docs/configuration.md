@@ -42,6 +42,7 @@ description = "Un blog personal"
 widths = [480, 800, 1200]
 quality = 80
 webp = true
+avif = false
 lazy_loading = true
 
 [analytics]
@@ -91,6 +92,7 @@ paginate = 10
 | `public_dir` | string | `"public"` | Directory for root-level files copied to output without prefix (favicon.ico, .well-known/, _redirects, etc.) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
+| `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds — it strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively — content hashes in filenames ensure browsers always fetch the latest version.
@@ -195,10 +197,12 @@ Optional. When this section is present, `seite` automatically processes images i
 |-------|------|---------|-------------|
 | `widths` | array | `[480, 800, 1200]` | Target widths in pixels for resized copies |
 | `quality` | int | `80` | JPEG/WebP quality (1-100) |
-| `webp` | bool | `true` | Generate WebP variants |
+| `webp` | bool | `true` | Generate WebP variants alongside originals |
+| `avif` | bool | `false` | Generate AVIF variants alongside originals (better compression than WebP) |
+| `avif_quality` | int | `70` | AVIF quality (1-100). Lower than WebP is fine — AVIF compresses better |
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
-When configured, images in `static/` are resized to each width, optionally converted to WebP, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. To disable image processing, remove the `[images]` section entirely.
+When configured, images in `static/` are resized to each width, optionally converted to WebP and/or AVIF, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. AVIF sources appear first in the `<picture>` element so browsers that support AVIF use it (best compression), falling back to WebP, then the original format. To disable image processing, remove the `[images]` section entirely.
 
 ## [analytics]
 

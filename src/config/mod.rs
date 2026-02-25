@@ -208,6 +208,9 @@ pub struct BuildSection {
     /// Add content-hash fingerprints to static filenames and write asset-manifest.json. Default: false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fingerprint: bool,
+    /// Enable math/LaTeX rendering ($inline$ and $$display$$ blocks). Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub math: bool,
 }
 
 impl Default for BuildSection {
@@ -221,6 +224,7 @@ impl Default for BuildSection {
             public_dir: defaults::public_dir(),
             minify: false,
             fingerprint: false,
+            math: false,
         }
     }
 }
@@ -275,6 +279,12 @@ pub struct ImageSection {
     /// Generate WebP copies alongside originals. Default: true.
     #[serde(default = "defaults::bool_true")]
     pub webp: bool,
+    /// Generate AVIF copies alongside originals. Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub avif: bool,
+    /// AVIF quality (1-100). Default: 70 (AVIF compresses better than WebP, so lower is OK).
+    #[serde(default = "defaults::avif_quality")]
+    pub avif_quality: u8,
 }
 
 impl Default for ImageSection {
@@ -284,6 +294,8 @@ impl Default for ImageSection {
             quality: defaults::image_quality(),
             lazy_loading: true,
             webp: true,
+            avif: false,
+            avif_quality: defaults::avif_quality(),
         }
     }
 }

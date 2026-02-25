@@ -13,7 +13,7 @@ use crate::config::{ImageSection, ResolvedPaths};
 use crate::error::{PageError, Result};
 
 /// Supported input image extensions.
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "avif"];
 
 /// An entry in the image manifest mapping original paths to processed outputs.
 #[derive(Debug, Clone)]
@@ -24,6 +24,8 @@ pub struct ProcessedImage {
     pub srcset_entries: Vec<(u32, String)>,
     /// WebP variant URLs (one per width), e.g., {480: "/static/images/photo-480w.webp"}
     pub webp_entries: Vec<(u32, String)>,
+    /// AVIF variant URLs (one per width), e.g., {480: "/static/images/photo-480w.avif"}
+    pub avif_entries: Vec<(u32, String)>,
     /// Original width of the source image.
     pub original_width: u32,
     /// Original height of the source image.
@@ -107,13 +109,17 @@ fn process_single_image(
 
     let mut srcset_entries = Vec::new();
     let mut webp_entries = Vec::new();
+    let mut avif_entries = Vec::new();
 
     // Determine the original image format for saving resized copies
     let save_format = match ext {
         "png" => ImageFormat::Png,
         "webp" => ImageFormat::WebP,
+        "avif" => ImageFormat::Avif,
         _ => ImageFormat::Jpeg, // jpg, jpeg
     };
+
+    let avif_quality = config.avif_quality;
 
     for &width in &config.widths {
         // Skip widths larger than the original
@@ -151,6 +157,20 @@ fn process_single_image(
             };
             webp_entries.push((width, webp_url));
         }
+
+        // Save AVIF variant
+        if config.avif && ext != "avif" {
+            let avif_name = format!("{stem}-{width}w.avif");
+            let avif_path = output_base.join(&avif_name);
+            save_image(&resized, &avif_path, ImageFormat::Avif, avif_quality)?;
+
+            let avif_url = if rel_dir_str.is_empty() {
+                format!("/static/{avif_name}")
+            } else {
+                format!("/static/{rel_dir_str}/{avif_name}")
+            };
+            avif_entries.push((width, avif_url));
+        }
     }
 
     // Also add the original width as the largest entry
@@ -171,14 +191,30 @@ fn process_single_image(
         webp_entries.push((original_width, webp_url));
     }
 
+    // Generate a full-size AVIF if avif is enabled and source isn't already avif
+    if config.avif && ext != "avif" {
+        let avif_name = format!("{stem}.avif");
+        let avif_path = output_base.join(&avif_name);
+        save_image(&img, &avif_path, ImageFormat::Avif, avif_quality)?;
+
+        let avif_url = if rel_dir_str.is_empty() {
+            format!("/static/{avif_name}")
+        } else {
+            format!("/static/{rel_dir_str}/{avif_name}")
+        };
+        avif_entries.push((original_width, avif_url));
+    }
+
     // Sort by width ascending
     srcset_entries.sort_by_key(|(w, _)| *w);
     webp_entries.sort_by_key(|(w, _)| *w);
+    avif_entries.sort_by_key(|(w, _)| *w);
 
     Ok(ProcessedImage {
         rel_path: rel.to_string_lossy().replace('\\', "/").to_string(),
         srcset_entries,
         webp_entries,
+        avif_entries,
         original_width,
         original_height,
     })
@@ -238,6 +274,26 @@ fn save_image(
                 )
                 .map_err(|e| {
                     PageError::Build(format!("failed to encode PNG '{}': {e}", path.display()))
+                })?;
+        }
+        ImageFormat::Avif => {
+            // AVIF encoding via the image crate's ravif backend
+            let file = fs::File::create(path).map_err(|e| {
+                PageError::Build(format!("failed to create image '{}': {e}", path.display()))
+            })?;
+            let writer = BufWriter::new(file);
+            let encoder =
+                image::codecs::avif::AvifEncoder::new_with_speed_quality(writer, 6, quality);
+            let rgba = img.to_rgba8();
+            encoder
+                .write_image(
+                    rgba.as_raw(),
+                    img.width(),
+                    img.height(),
+                    image::ExtendedColorType::Rgba8,
+                )
+                .map_err(|e| {
+                    PageError::Build(format!("failed to encode AVIF '{}': {e}", path.display()))
                 })?;
         }
         _ => {
@@ -331,19 +387,38 @@ fn build_picture_element(img_tag: &str, processed: &ProcessedImage, lazy_loading
     // Build sizes attribute — sensible defaults
     let sizes = "(max-width: 480px) 480px, (max-width: 800px) 800px, 1200px";
 
-    if !processed.webp_entries.is_empty() {
-        // Wrap in <picture> with <source> for WebP
-        let webp_srcset: Vec<String> = processed
-            .webp_entries
-            .iter()
-            .map(|(w, url)| format!("{url} {w}w"))
-            .collect();
+    let has_avif = !processed.avif_entries.is_empty();
+    let has_webp = !processed.webp_entries.is_empty();
 
+    if has_avif || has_webp {
+        // Wrap in <picture> with <source> for modern formats
         picture.push_str("<picture>");
-        picture.push_str(&format!(
-            "<source type=\"image/webp\" srcset=\"{}\" sizes=\"{sizes}\">",
-            webp_srcset.join(", ")
-        ));
+
+        // AVIF first (most compressed, browsers pick first supported source)
+        if has_avif {
+            let avif_srcset: Vec<String> = processed
+                .avif_entries
+                .iter()
+                .map(|(w, url)| format!("{url} {w}w"))
+                .collect();
+            picture.push_str(&format!(
+                "<source type=\"image/avif\" srcset=\"{}\" sizes=\"{sizes}\">",
+                avif_srcset.join(", ")
+            ));
+        }
+
+        // WebP second
+        if has_webp {
+            let webp_srcset: Vec<String> = processed
+                .webp_entries
+                .iter()
+                .map(|(w, url)| format!("{url} {w}w"))
+                .collect();
+            picture.push_str(&format!(
+                "<source type=\"image/webp\" srcset=\"{}\" sizes=\"{sizes}\">",
+                webp_srcset.join(", ")
+            ));
+        }
 
         // Add the original <img> with srcset and lazy loading
         let mut new_tag = add_srcset_to_tag(img_tag, &srcset_str, sizes);
@@ -359,7 +434,7 @@ fn build_picture_element(img_tag: &str, processed: &ProcessedImage, lazy_loading
         picture.push_str(&new_tag);
         picture.push_str("</picture>");
     } else {
-        // No WebP, just add srcset to the img tag
+        // No WebP or AVIF, just add srcset to the img tag
         let mut new_tag = add_srcset_to_tag(img_tag, &srcset_str, sizes);
         if lazy_loading {
             new_tag = add_lazy_to_tag(&new_tag);
@@ -538,6 +613,7 @@ mod tests {
                 (480, "/photo-480w.webp".into()),
                 (800, "/photo.webp".into()),
             ],
+            avif_entries: vec![],
             original_width: 800,
             original_height: 600,
         };
@@ -556,6 +632,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 1200,
             original_height: 800,
         };
@@ -564,6 +641,79 @@ mod tests {
         assert!(result.contains("srcset=\""));
         assert!(!result.contains("loading="));
         assert!(result.contains("width=\"1200\""));
+    }
+
+    #[test]
+    fn test_build_picture_element_with_avif() {
+        let img = r#"<img src="/photo.jpg" alt="test">"#;
+        let processed = ProcessedImage {
+            rel_path: "photo.jpg".into(),
+            srcset_entries: vec![(480, "/photo-480w.jpg".into()), (800, "/photo.jpg".into())],
+            webp_entries: vec![
+                (480, "/photo-480w.webp".into()),
+                (800, "/photo.webp".into()),
+            ],
+            avif_entries: vec![
+                (480, "/photo-480w.avif".into()),
+                (800, "/photo.avif".into()),
+            ],
+            original_width: 800,
+            original_height: 600,
+        };
+        let result = build_picture_element(img, &processed, true);
+        assert!(result.starts_with("<picture>"));
+        assert!(result.ends_with("</picture>"));
+        // AVIF source should appear before WebP
+        let avif_pos = result.find("image/avif").unwrap();
+        let webp_pos = result.find("image/webp").unwrap();
+        assert!(
+            avif_pos < webp_pos,
+            "AVIF source should come before WebP for browser priority"
+        );
+        assert!(result.contains("loading=\"lazy\""));
+        assert!(result.contains("width=\"800\""));
+    }
+
+    #[test]
+    fn test_build_picture_element_avif_only_no_webp() {
+        let img = r#"<img src="/photo.jpg" alt="test">"#;
+        let processed = ProcessedImage {
+            rel_path: "photo.jpg".into(),
+            srcset_entries: vec![(480, "/photo-480w.jpg".into())],
+            webp_entries: vec![],
+            avif_entries: vec![(480, "/photo-480w.avif".into())],
+            original_width: 800,
+            original_height: 600,
+        };
+        let result = build_picture_element(img, &processed, false);
+        assert!(result.contains("<picture>"));
+        assert!(result.contains("image/avif"));
+        assert!(!result.contains("image/webp"));
+    }
+
+    #[test]
+    fn test_rewrite_html_images_with_avif_entries() {
+        let mut manifest = HashMap::new();
+        manifest.insert(
+            "/static/photo.jpg".to_string(),
+            ProcessedImage {
+                rel_path: "photo.jpg".into(),
+                srcset_entries: vec![
+                    (480, "/static/photo-480w.jpg".into()),
+                    (800, "/static/photo.jpg".into()),
+                ],
+                webp_entries: vec![(480, "/static/photo-480w.webp".into())],
+                avif_entries: vec![(480, "/static/photo-480w.avif".into())],
+                original_width: 800,
+                original_height: 600,
+            },
+        );
+        let html = r#"<img src="/static/photo.jpg" alt="photo">"#;
+        let result = rewrite_html_images(html, &manifest, false);
+        assert!(result.contains("<picture>"));
+        assert!(result.contains("image/avif"));
+        assert!(result.contains("image/webp"));
+        assert!(result.contains("photo-480w.avif"));
     }
 
     #[test]
@@ -630,6 +780,7 @@ mod tests {
                     (480, "/static/photo-480w.webp".into()),
                     (1200, "/static/photo.webp".into()),
                 ],
+                avif_entries: vec![],
                 original_width: 1200,
                 original_height: 800,
             },
@@ -656,6 +807,7 @@ mod tests {
                 rel_path: "other.jpg".into(),
                 srcset_entries: vec![(800, "/static/other.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 800,
                 original_height: 600,
             },
@@ -677,6 +829,7 @@ mod tests {
                 rel_path: "other.jpg".into(),
                 srcset_entries: vec![(800, "/static/other.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 800,
                 original_height: 600,
             },
@@ -699,6 +852,7 @@ mod tests {
                 rel_path: "photo.jpg".into(),
                 srcset_entries: vec![],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 100,
                 original_height: 100,
             },
@@ -718,6 +872,7 @@ mod tests {
                 rel_path: "photo.jpg".into(),
                 srcset_entries: vec![],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 100,
                 original_height: 100,
             },
@@ -739,6 +894,7 @@ mod tests {
                 rel_path: "a.jpg".into(),
                 srcset_entries: vec![(480, "/static/a-480w.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 480,
                 original_height: 320,
             },
@@ -761,6 +917,7 @@ mod tests {
                 rel_path: "photo.jpg".into(),
                 srcset_entries: vec![],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 100,
                 original_height: 100,
             },
@@ -782,6 +939,7 @@ mod tests {
                     (960, "/static/hero.png".into()),
                 ],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 960,
                 original_height: 540,
             },
@@ -807,6 +965,7 @@ mod tests {
                 (480, "/photo-480w.webp".into()),
                 (800, "/photo.webp".into()),
             ],
+            avif_entries: vec![],
             original_width: 800,
             original_height: 600,
         };
@@ -827,6 +986,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 1200,
             original_height: 800,
         };
@@ -846,6 +1006,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 500,
             original_height: 300,
         };
@@ -865,6 +1026,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 1000,
             original_height: 700,
         };
@@ -882,6 +1044,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 1000,
             original_height: 700,
         };
@@ -899,6 +1062,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(1000, "/photo.jpg".into())],
             webp_entries: vec![(1000, "/photo.webp".into())],
+            avif_entries: vec![],
             original_width: 1000,
             original_height: 750,
         };
@@ -923,6 +1087,7 @@ mod tests {
                 (800, "/photo-800w.webp".into()),
                 (1200, "/photo.webp".into()),
             ],
+            avif_entries: vec![],
             original_width: 1200,
             original_height: 900,
         };
@@ -1110,6 +1275,7 @@ mod tests {
                 rel_path: "photo.jpg".into(),
                 srcset_entries: vec![(480, "/static/photo-480w.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 480,
                 original_height: 320,
             },
@@ -1135,6 +1301,7 @@ mod tests {
                     (480, "/static/known-480w.webp".into()),
                     (1000, "/static/known.webp".into()),
                 ],
+                avif_entries: vec![],
                 original_width: 1000,
                 original_height: 667,
             },
@@ -1165,6 +1332,7 @@ mod tests {
                 rel_path: "a.jpg".into(),
                 srcset_entries: vec![(800, "/static/a.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 800,
                 original_height: 600,
             },
@@ -1175,6 +1343,7 @@ mod tests {
                 rel_path: "b.jpg".into(),
                 srcset_entries: vec![(600, "/static/b.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 600,
                 original_height: 400,
             },
@@ -1203,6 +1372,7 @@ mod tests {
                 rel_path: "photo.jpg".into(),
                 srcset_entries: vec![],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 100,
                 original_height: 100,
             },
@@ -1334,6 +1504,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: true,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         assert_eq!(result.len(), 1);
@@ -1374,6 +1545,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: true,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         let processed = result.get("/static/small.png").unwrap();
@@ -1412,6 +1584,7 @@ mod tests {
             quality: 75,
             lazy_loading: true,
             webp: true,
+            ..Default::default()
         };
         let result =
             process_single_image(&jpeg_path, rel, &tmp.path().join("dist"), &config, "jpg")
@@ -1454,6 +1627,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: true, // webp is enabled but source is already webp
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         let processed = result.get("/static/photo.webp").unwrap();
@@ -1487,6 +1661,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: false, // WebP disabled
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         let processed = result.get("/static/test.png").unwrap();
@@ -1519,6 +1694,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: false,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         // Key should include the subdirectory path
@@ -1556,6 +1732,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: true,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         let processed = result.get("/static/test.png").unwrap();
@@ -1592,6 +1769,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: true,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         let processed = result.get("/static/test.png").unwrap();
@@ -1629,6 +1807,7 @@ mod tests {
             quality: 80,
             lazy_loading: true,
             webp: false,
+            ..Default::default()
         };
         let result = process_images(&paths, &config).unwrap();
         assert_eq!(result.len(), 2);
@@ -1646,6 +1825,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![(480, "/photo-480w.jpg".into())],
             webp_entries: vec![(480, "/photo-480w.webp".into())],
+            avif_entries: vec![],
             original_width: 1200,
             original_height: 800,
         };
@@ -1663,6 +1843,7 @@ mod tests {
             rel_path: "photo.jpg".into(),
             srcset_entries: vec![],
             webp_entries: vec![],
+            avif_entries: vec![],
             original_width: 100,
             original_height: 50,
         };
@@ -1694,6 +1875,7 @@ mod tests {
                     (800, "/static/images/hero-800w.webp".into()),
                     (1200, "/static/images/hero.webp".into()),
                 ],
+                avif_entries: vec![],
                 original_width: 1200,
                 original_height: 800,
             },
@@ -1737,6 +1919,7 @@ mod tests {
                 rel_path: "a.jpg".into(),
                 srcset_entries: vec![(100, "/static/a.jpg".into())],
                 webp_entries: vec![],
+                avif_entries: vec![],
                 original_width: 100,
                 original_height: 100,
             },

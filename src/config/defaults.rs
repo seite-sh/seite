@@ -38,6 +38,10 @@ pub fn image_quality() -> u8 {
     80
 }
 
+pub fn avif_quality() -> u8 {
+    70
+}
+
 pub fn bool_true() -> bool {
     true
 }
@@ -94,6 +98,11 @@ mod tests {
     #[test]
     fn test_image_quality() {
         assert_eq!(image_quality(), 80);
+    }
+
+    #[test]
+    fn test_avif_quality() {
+        assert_eq!(avif_quality(), 70);
     }
 
     #[test]

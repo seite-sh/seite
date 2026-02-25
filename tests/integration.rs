@@ -1894,6 +1894,146 @@ fn test_build_no_image_processing_without_config() {
     assert!(!site_dir.join("dist/static/images/photo.webp").exists());
 }
 
+#[test]
+fn test_build_image_avif_generation() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "AVIF Test", "posts");
+    let site_dir = tmp.path().join("site");
+
+    write_test_image(&site_dir, "photo.png");
+
+    // Add AVIF config
+    let toml_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    if let Some(pos) = config.find("\n[images]") {
+        config.truncate(pos);
+    }
+    config.push_str(
+        "\n[images]\nwidths = [48]\nquality = 80\nlazy_loading = true\nwebp = true\navif = true\navif_quality = 70\n",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Resized AVIF should exist
+    assert!(
+        site_dir.join("dist/static/images/photo-48w.avif").exists(),
+        "resized AVIF at 48w should exist"
+    );
+    // Full-size AVIF should exist
+    assert!(
+        site_dir.join("dist/static/images/photo.avif").exists(),
+        "full-size AVIF should exist"
+    );
+    // WebP should also exist (both enabled)
+    assert!(site_dir.join("dist/static/images/photo-48w.webp").exists());
+}
+
+#[test]
+fn test_build_image_avif_picture_element() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "AVIF Picture Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Gallery\n---\n\n![A photo](/static/images/photo.png)\n";
+    fs::write(site_dir.join("content/pages/gallery.md"), page_content).unwrap();
+
+    write_test_image(&site_dir, "photo.png");
+
+    let toml_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    if let Some(pos) = config.find("\n[images]") {
+        config.truncate(pos);
+    }
+    config.push_str(
+        "\n[images]\nwidths = [48]\nquality = 80\nlazy_loading = true\nwebp = true\navif = true\navif_quality = 70\n",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/gallery.html")).unwrap();
+    assert!(html.contains("image/avif"), "should have AVIF source type");
+    assert!(html.contains("image/webp"), "should have WebP source type");
+    // AVIF should appear before WebP in the HTML
+    let avif_pos = html.find("image/avif").unwrap();
+    let webp_pos = html.find("image/webp").unwrap();
+    assert!(
+        avif_pos < webp_pos,
+        "AVIF source should appear before WebP for browser priority"
+    );
+}
+
+// ── Math/LaTeX rendering ──
+
+#[test]
+fn test_build_math_disabled_no_rendering() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Math Off", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Math Page\n---\n\nThe formula $E=mc^2$ inline.\n";
+    fs::write(site_dir.join("content/pages/math.md"), page_content).unwrap();
+
+    // math defaults to false — no need to set it
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/math.html")).unwrap();
+    // With math disabled, no KaTeX CSS link injected and no rendered math spans
+    assert!(
+        !html.contains("katex.min.css"),
+        "should not inject katex CSS link"
+    );
+    assert!(
+        !html.contains("<span class=\"katex\""),
+        "should not contain rendered katex spans"
+    );
+}
+
+#[test]
+fn test_build_math_enabled_renders_katex() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Math On", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Math Page\n---\n\nThe formula $E=mc^2$ inline.\n";
+    fs::write(site_dir.join("content/pages/math.md"), page_content).unwrap();
+
+    // Enable math in the existing [build] section
+    let toml_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    config = config.replace("[build]", "[build]\nmath = true");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/math.html")).unwrap();
+    assert!(
+        html.contains("katex"),
+        "should contain katex rendered output: {html}"
+    );
+    assert!(
+        html.contains("katex.min.css"),
+        "should inject katex CSS link"
+    );
+}
+
 // ── Reading time + word count ──
 
 #[test]
@@ -6987,11 +7127,18 @@ fn test_workspace_build_with_site_filter() {
 
 #[test]
 fn test_self_update_check() {
-    // --check should succeed without actually updating
+    // --check with current version should report "already up to date"
+    // Uses --target-version to avoid network dependency in CI
     page_cmd()
-        .args(["self-update", "--check"])
+        .args([
+            "self-update",
+            "--check",
+            "--target-version",
+            env!("CARGO_PKG_VERSION"),
+        ])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("up to date"));
 }
 
 // --- additional deploy tests ---

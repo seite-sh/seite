@@ -9,7 +9,8 @@
 - **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)
 - **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates; `lastmod` uses `updated` date (with `date` fallback)
 - **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.
-- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See Configuration section below.
+- **Math/LaTeX rendering** — Add `math = true` to `[build]` for server-side KaTeX rendering of `$inline$` and `$$display$$` math expressions. KaTeX CSS loaded automatically from CDN.
+- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See Configuration section below.
 - **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See Configuration section below.
 - **Tag pages** — Auto-generated `/tags/` index and `/tags/{tag}/` archive pages, included in sitemap
 - **404 page** — Auto-generated `dist/404.html` using the `404.html` template. Customize by creating `templates/404.html`. Dev server serves it on 404 responses.
