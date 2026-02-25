@@ -499,10 +499,7 @@ mod tests {
 
         // The first </body> should still appear before the script
         let first_body = result_str.find("</body>").unwrap();
-        assert!(
-            first_body != script_pos,
-            "both body tags should exist"
-        );
+        assert!(first_body != script_pos, "both body tags should exist");
     }
 
     #[test]

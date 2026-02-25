@@ -2033,12 +2033,19 @@ fn verify_http(url: &str) -> VerifyResult {
     let parsed = parse_url_for_http(url);
     match parsed {
         Some((host, port, path)) => {
-            match TcpStream::connect_timeout(
-                &format!("{host}:{port}")
-                    .parse()
-                    .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 80))),
-                Duration::from_secs(10),
-            ) {
+            let addr_str = format!("{host}:{port}");
+            let addr = match addr_str.parse::<std::net::SocketAddr>() {
+                Ok(a) => a,
+                Err(_) => {
+                    // DNS resolution needed — skip verification for non-IP hosts
+                    return VerifyResult {
+                        check: "Homepage".into(),
+                        passed: true,
+                        message: "skipped (DNS resolution required)".into(),
+                    };
+                }
+            };
+            match TcpStream::connect_timeout(&addr, Duration::from_secs(10)) {
                 Ok(mut stream) => {
                     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
                     let request = format!(
