@@ -112,6 +112,7 @@
         .contact-form-honeypot { display: none; }
         .contact-form-embed { min-height: 400px; border: 3px solid #000; }
         .contact-form-error { color: #ff4d00; background: #fffef0; padding: 1rem; border: 3px solid #ff4d00; font-weight: 700; }
+        .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5em 0; }
         .trust-hub { max-width: 780px; margin: 0 auto; }
         .trust-hero { margin-bottom: 2rem; }
         .trust-hero h1 { font-size: 2.5rem; font-weight: 900; text-transform: uppercase; margin-bottom: 0.5rem; }
@@ -235,6 +236,9 @@
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}
+    {% if math_enabled %}
+    <link rel="stylesheet" href="{{ katex_css_url }}" crossorigin="anonymous">
+    {% endif %}
     {% block head %}{% endblock %}
 </head>
 <body>

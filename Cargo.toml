@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -39,6 +39,7 @@ serde_yaml_ng = "0.10"
 # Content processing
 pulldown-cmark = "0.13"
 syntect = "5"
+katex = { version = "0.4", default-features = true, optional = true }
 
 # Templating
 tera = "1.20"
@@ -69,7 +70,7 @@ quick-xml = { version = "0.38", features = ["serialize"] }
 slug = "0.1"
 
 # Image processing
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "avif"] }
 webp = "0.3"
 
 # HTTP client (for Cloudflare API and self-update)
@@ -77,6 +78,10 @@ ureq = { version = "3", features = ["json"] }
 
 # Temp files (for self-update checksum verification)
 tempfile = "3"
+
+[features]
+default = ["math"]
+math = ["dep:katex"]
 
 [dev-dependencies]
 assert_cmd = "2"

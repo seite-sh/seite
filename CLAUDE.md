@@ -105,7 +105,8 @@ src/
     feed.rs            RSS generation
     sitemap.rs         XML sitemap generation
     discovery.rs       robots.txt, llms.txt, llms-full.txt
-    images.rs          Image processing (resize, WebP, srcset)
+    images.rs          Image processing (resize, WebP, AVIF, srcset)
+    math.rs            Math/LaTeX pre-processing (KaTeX rendering of $inline$ and $$display$$ blocks)
   docs.rs              Embedded documentation pages (15 docs, include_str! from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json) — version tracking, upgrade detection
   mcp/
@@ -187,7 +188,7 @@ scripts/
 8. Output raw markdown alongside HTML (`slug.md` next to `slug.html`)
 9. Generate search index — `search-index.json` (default lang), `/{lang}/search-index.json` (per-language)
 10. Copy static files
-11. Process images (resize to configured widths, generate WebP variants)
+11. Process images (resize to configured widths, generate WebP and AVIF variants)
 12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"` — first image per page skipped for LCP)
 13. Inject analytics scripts (and optional cookie consent banner) into all HTML files
 
@@ -262,6 +263,7 @@ data_dir = "data"    # optional: directory for data files (YAML/JSON/TOML)
 public_dir = "public" # optional: root-level files copied to dist/ without prefix
 minify = true        # optional: strip CSS/JS comments + collapse whitespace
 fingerprint = true   # optional: write name.<hash8>.ext + dist/asset-manifest.json
+math = true          # optional: enable $inline$ and $$display$$ math rendering via KaTeX
 
 [deploy]
 target = "github-pages"  # or "cloudflare" or "netlify"
@@ -283,6 +285,8 @@ widths = [480, 800, 1200]  # generate resized copies at these pixel widths
 quality = 80               # JPEG/WebP quality (1-100)
 lazy_loading = true        # add loading="lazy" to <img> tags
 webp = true                # generate WebP variants alongside originals
+avif = false               # generate AVIF variants (better compression than WebP)
+avif_quality = 70          # AVIF quality (1-100, lower is fine — AVIF compresses better)
 
 # Optional: trust center (omit if not using compliance hub)
 [trust]

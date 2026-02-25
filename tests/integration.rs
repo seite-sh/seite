@@ -6987,11 +6987,18 @@ fn test_workspace_build_with_site_filter() {
 
 #[test]
 fn test_self_update_check() {
-    // --check should succeed without actually updating
+    // --check with current version should report "already up to date"
+    // Uses --target-version to avoid network dependency in CI
     page_cmd()
-        .args(["self-update", "--check"])
+        .args([
+            "self-update",
+            "--check",
+            "--target-version",
+            env!("CARGO_PKG_VERSION"),
+        ])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("up to date"));
 }
 
 // --- additional deploy tests ---
