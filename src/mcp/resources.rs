@@ -1227,7 +1227,7 @@ mod tests {
         assert_eq!(result["contents"][0]["uri"], "seite://themes");
         assert_eq!(result["contents"][0]["mimeType"], "application/json");
 
-        // Should include all 6 bundled themes
+        // Should include all 10 bundled themes
         let bundled_names: Vec<&str> = themes
             .iter()
             .filter(|t| t["source"] == "bundled")
@@ -1239,7 +1239,11 @@ mod tests {
         assert!(bundled_names.contains(&"docs"));
         assert!(bundled_names.contains(&"brutalist"));
         assert!(bundled_names.contains(&"bento"));
-        assert_eq!(bundled_names.len(), 6);
+        assert!(bundled_names.contains(&"landing"));
+        assert!(bundled_names.contains(&"terminal"));
+        assert!(bundled_names.contains(&"magazine"));
+        assert!(bundled_names.contains(&"academic"));
+        assert_eq!(bundled_names.len(), 10);
     }
 
     #[test]

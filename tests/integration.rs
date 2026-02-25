@@ -7042,7 +7042,18 @@ fn test_deploy_dry_run_preview() {
 #[test]
 fn test_theme_apply_all_bundled() {
     // Verify every bundled theme can be applied
-    let themes = ["default", "minimal", "dark", "docs", "brutalist", "bento"];
+    let themes = [
+        "default",
+        "minimal",
+        "dark",
+        "docs",
+        "brutalist",
+        "bento",
+        "landing",
+        "terminal",
+        "magazine",
+        "academic",
+    ];
     for theme_name in &themes {
         let tmp = TempDir::new().unwrap();
         init_site(&tmp, "thm", "Theme Test", "posts");
@@ -7780,7 +7791,7 @@ fn test_contact_setup_no_contact_page_without_pages_collection() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_theme_list_shows_all_six_bundled() {
+fn test_theme_list_shows_all_bundled() {
     page_cmd()
         .args(["theme", "list"])
         .assert()
@@ -7791,7 +7802,11 @@ fn test_theme_list_shows_all_six_bundled() {
         .stdout(predicate::str::contains("dark"))
         .stdout(predicate::str::contains("docs"))
         .stdout(predicate::str::contains("brutalist"))
-        .stdout(predicate::str::contains("bento"));
+        .stdout(predicate::str::contains("bento"))
+        .stdout(predicate::str::contains("landing"))
+        .stdout(predicate::str::contains("terminal"))
+        .stdout(predicate::str::contains("magazine"))
+        .stdout(predicate::str::contains("academic"));
 }
 
 #[test]
@@ -8059,7 +8074,18 @@ fn test_theme_export_duplicate_name_fails() {
 #[test]
 fn test_theme_apply_then_build_with_all_themes() {
     // Test that every bundled theme produces a valid build
-    let themes = ["default", "minimal", "dark", "docs", "brutalist", "bento"];
+    let themes = [
+        "default",
+        "minimal",
+        "dark",
+        "docs",
+        "brutalist",
+        "bento",
+        "landing",
+        "terminal",
+        "magazine",
+        "academic",
+    ];
     for theme_name in &themes {
         let tmp = TempDir::new().unwrap();
         init_site(&tmp, "thall", "All Themes Build", "posts,docs,pages");

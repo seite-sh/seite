@@ -86,7 +86,7 @@ pub fn list() -> Result<serde_json::Value, JsonRpcError> {
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Theme name: default, minimal, dark, docs, brutalist, bento, or an installed theme"
+                            "description": "Theme name: default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic, or an installed theme"
                         }
                     },
                     "required": ["name"]
@@ -482,7 +482,7 @@ fn call_apply_theme(
 
     Ok(serde_json::json!({
         "applied": false,
-        "error": format!("Theme not found: {name}. Available bundled themes: default, minimal, dark, docs, brutalist, bento"),
+        "error": format!("Theme not found: {name}. Available bundled themes: default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic"),
     }))
 }
 

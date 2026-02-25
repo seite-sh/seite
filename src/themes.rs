@@ -17,7 +17,18 @@ pub struct InstalledTheme {
 }
 
 pub fn all() -> Vec<Theme> {
-    vec![default(), minimal(), dark(), docs(), brutalist(), bento()]
+    vec![
+        default(),
+        minimal(),
+        dark(),
+        docs(),
+        brutalist(),
+        bento(),
+        landing(),
+        terminal(),
+        magazine(),
+        academic(),
+    ]
 }
 
 pub fn by_name(name: &str) -> Option<Theme> {
@@ -141,6 +152,38 @@ pub fn bento() -> Theme {
     }
 }
 
+pub fn landing() -> Theme {
+    Theme {
+        name: "landing",
+        description: "Marketing and landing page theme with hero sections and CTAs",
+        base_html: include_str!("themes/landing.tera"),
+    }
+}
+
+pub fn terminal() -> Theme {
+    Theme {
+        name: "terminal",
+        description: "Monospace hacker theme with green-on-black terminal aesthetic",
+        base_html: include_str!("themes/terminal.tera"),
+    }
+}
+
+pub fn magazine() -> Theme {
+    Theme {
+        name: "magazine",
+        description: "Multi-column editorial layout with featured articles",
+        base_html: include_str!("themes/magazine.tera"),
+    }
+}
+
+pub fn academic() -> Theme {
+    Theme {
+        name: "academic",
+        description: "Scholarly serif theme for research and long-form writing",
+        base_html: include_str!("themes/academic.tera"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,7 +209,7 @@ mod tests {
         let mut names: Vec<_> = themes.iter().map(|t| t.name).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 10);
     }
 
     #[test]
@@ -218,6 +261,10 @@ mod tests {
         assert!(names.contains(&"docs"));
         assert!(names.contains(&"brutalist"));
         assert!(names.contains(&"bento"));
+        assert!(names.contains(&"landing"));
+        assert!(names.contains(&"terminal"));
+        assert!(names.contains(&"magazine"));
+        assert!(names.contains(&"academic"));
     }
 
     #[test]
