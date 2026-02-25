@@ -7978,7 +7978,7 @@ fn test_theme_list_shows_installed_themes() {
     let site_dir = tmp.path().join("thlst2");
 
     // No installed themes initially — should only show bundled
-    let output = page_cmd()
+    page_cmd()
         .args(["theme", "list"])
         .current_dir(&site_dir)
         .assert()

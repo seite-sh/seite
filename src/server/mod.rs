@@ -500,7 +500,7 @@ mod tests {
         // The first </body> should still appear before the script
         let first_body = result_str.find("</body>").unwrap();
         assert!(
-            first_body > script_pos || first_body < script_pos,
+            first_body != script_pos,
             "both body tags should exist"
         );
     }
@@ -816,7 +816,7 @@ mod tests {
     fn test_resolve_file_path_favicon() {
         let tmp = TempDir::new().unwrap();
         let file = tmp.path().join("favicon.ico");
-        fs::write(&file, &[0u8; 10]).unwrap();
+        fs::write(&file, [0u8; 10]).unwrap();
 
         let result = resolve_file_path(tmp.path(), "/favicon.ico");
         assert_eq!(result, Some(file));
@@ -828,7 +828,7 @@ mod tests {
         let dir = tmp.path().join("static").join("images");
         fs::create_dir_all(&dir).unwrap();
         let file = dir.join("photo.jpg");
-        fs::write(&file, &[0xFF, 0xD8, 0xFF]).unwrap();
+        fs::write(&file, [0xFF, 0xD8, 0xFF]).unwrap();
 
         let result = resolve_file_path(tmp.path(), "/static/images/photo.jpg");
         assert_eq!(result, Some(file));

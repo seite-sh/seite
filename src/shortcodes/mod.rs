@@ -334,8 +334,8 @@ mod tests {
             serde_json::json!(42)
         );
         assert_eq!(
-            ShortcodeValue::Float(3.14).to_tera_value(),
-            serde_json::json!(3.14)
+            ShortcodeValue::Float(2.72).to_tera_value(),
+            serde_json::json!(2.72)
         );
         assert_eq!(
             ShortcodeValue::Boolean(true).to_tera_value(),

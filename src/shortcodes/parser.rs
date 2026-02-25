@@ -923,8 +923,8 @@ mod tests {
 
     #[test]
     fn test_parse_value_negative_float() {
-        let (val, consumed) = parse_value("-3.14", &test_path(), 1, "test", "key").unwrap();
-        assert_eq!(val, ShortcodeValue::Float(-3.14));
+        let (val, consumed) = parse_value("-2.72", &test_path(), 1, "test", "key").unwrap();
+        assert_eq!(val, ShortcodeValue::Float(-2.72));
         assert_eq!(consumed, 5);
     }
 

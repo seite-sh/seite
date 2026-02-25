@@ -4437,7 +4437,8 @@ target = "github-pages"
         let check = check_cloudflare_project(&config, &paths);
         // Should pass because cloudflare_project_exists returns true on failure
         // (assumes it exists to avoid false negatives)
-        assert!(check.passed || !check.passed);
+        // Result depends on whether wrangler is installed; just verify it ran
+        let _ = check.passed;
         assert_eq!(check.name, "Cloudflare project");
     }
 

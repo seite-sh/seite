@@ -100,7 +100,7 @@ mod tests {
     fn test_output_format_clone_copy() {
         let f = OutputFormat::Json;
         let f2 = f; // Copy
-        let f3 = f.clone(); // Clone
+        let f3 = f; // Copy (same as clone for Copy types)
         assert!(matches!(f2, OutputFormat::Json));
         assert!(matches!(f3, OutputFormat::Json));
     }
