@@ -95,3 +95,137 @@ pub fn generate_llms_full_txt(
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::Frontmatter;
+
+    fn test_config(base_url: &str, description: &str) -> SiteConfig {
+        SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test Site".into(),
+                description: description.into(),
+                base_url: base_url.into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+            analytics: None,
+            trust: None,
+            contact: None,
+        }
+    }
+
+    fn test_item(title: &str, url: &str, description: Option<&str>, body: &str) -> ContentItem {
+        ContentItem {
+            frontmatter: Frontmatter {
+                title: title.into(),
+                description: description.map(String::from),
+                ..Default::default()
+            },
+            raw_body: body.into(),
+            html_body: String::new(),
+            source_path: std::path::PathBuf::from("test.md"),
+            slug: "test".into(),
+            collection: "posts".into(),
+            url: url.into(),
+            lang: "en".into(),
+            excerpt: String::new(),
+            toc: vec![],
+            word_count: 0,
+            reading_time: 0,
+            excerpt_html: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_robots_txt_basic() {
+        let config = test_config("https://example.com", "");
+        let result = generate_robots_txt(&config);
+        assert!(result.contains("User-agent: *"));
+        assert!(result.contains("Allow: /"));
+        assert!(result.contains("Sitemap: https://example.com/sitemap.xml"));
+        assert!(result.contains("LLMs-txt: https://example.com/llms.txt"));
+        assert!(result.contains("LLMs-full-txt: https://example.com/llms-full.txt"));
+    }
+
+    #[test]
+    fn test_robots_txt_strips_trailing_slash() {
+        let config = test_config("https://example.com/", "");
+        let result = generate_robots_txt(&config);
+        assert!(result.contains("https://example.com/sitemap.xml"));
+        assert!(!result.contains("https://example.com//"));
+    }
+
+    #[test]
+    fn test_llms_txt_basic() {
+        let config = test_config("https://example.com", "A great site");
+        let item = test_item("Hello World", "/posts/hello", Some("A post"), "body");
+        let collections = vec![("Posts".to_string(), vec![&item])];
+        let result = generate_llms_txt(&config, &collections);
+        assert!(result.contains("# Test Site"));
+        assert!(result.contains("> A great site"));
+        assert!(result.contains("## Posts"));
+        assert!(result.contains("[Hello World](https://example.com/posts/hello.md): A post"));
+    }
+
+    #[test]
+    fn test_llms_txt_no_description() {
+        let config = test_config("https://example.com", "");
+        let item = test_item("Hello", "/posts/hello", None, "body");
+        let collections = vec![("Posts".to_string(), vec![&item])];
+        let result = generate_llms_txt(&config, &collections);
+        assert!(!result.contains("> "));
+        assert!(result.contains("[Hello](https://example.com/posts/hello.md)"));
+    }
+
+    #[test]
+    fn test_llms_txt_empty_collection_skipped() {
+        let config = test_config("https://example.com", "");
+        let collections: Vec<(String, Vec<&ContentItem>)> = vec![("Empty".to_string(), vec![])];
+        let result = generate_llms_txt(&config, &collections);
+        assert!(!result.contains("## Empty"));
+    }
+
+    #[test]
+    fn test_llms_full_txt_basic() {
+        let config = test_config("https://example.com", "Site desc");
+        let item = test_item(
+            "Hello",
+            "/posts/hello",
+            Some("A post"),
+            "# Content\nParagraph",
+        );
+        let collections = vec![("Posts".to_string(), vec![&item])];
+        let result = generate_llms_full_txt(&config, &collections);
+        assert!(result.contains("# Test Site"));
+        assert!(result.contains("> Site desc"));
+        assert!(result.contains("## Posts"));
+        assert!(result.contains("### Hello"));
+        assert!(result.contains("*A post*"));
+        assert!(result.contains("# Content\nParagraph"));
+    }
+
+    #[test]
+    fn test_llms_full_txt_no_item_description() {
+        let config = test_config("https://example.com", "");
+        let item = test_item("Hello", "/posts/hello", None, "Body text");
+        let collections = vec![("Posts".to_string(), vec![&item])];
+        let result = generate_llms_full_txt(&config, &collections);
+        assert!(result.contains("### Hello"));
+        assert!(result.contains("Body text"));
+    }
+
+    #[test]
+    fn test_llms_full_txt_empty_collection_skipped() {
+        let config = test_config("https://example.com", "");
+        let collections: Vec<(String, Vec<&ContentItem>)> = vec![("Empty".to_string(), vec![])];
+        let result = generate_llms_full_txt(&config, &collections);
+        assert!(!result.contains("## Empty"));
+    }
+}

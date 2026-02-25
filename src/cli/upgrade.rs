@@ -673,3 +673,425 @@ endpoint = "your-form-id"
         description: "CLAUDE.md (added Contact Forms section)".into(),
     }]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_skill_version_found() {
+        let content = "---\n# seite-skill-version: 3\n---\nContent here";
+        assert_eq!(extract_skill_version(content), 3);
+    }
+
+    #[test]
+    fn test_extract_skill_version_not_found() {
+        let content = "---\nname: test\n---\nContent here";
+        assert_eq!(extract_skill_version(content), 0);
+    }
+
+    #[test]
+    fn test_extract_skill_version_invalid_number() {
+        let content = "# seite-skill-version: abc";
+        assert_eq!(extract_skill_version(content), 0);
+    }
+
+    #[test]
+    fn test_extract_skill_version_with_spaces() {
+        let content = "# seite-skill-version:   7  ";
+        assert_eq!(extract_skill_version(content), 7);
+    }
+
+    #[test]
+    fn test_upgrade_action_describe_create() {
+        let action = UpgradeAction::Create {
+            path: PathBuf::from("test.txt"),
+            content: "content".into(),
+            description: "test file".into(),
+        };
+        assert_eq!(action.describe(), vec!["test file"]);
+    }
+
+    #[test]
+    fn test_upgrade_action_describe_merge_json() {
+        let action = UpgradeAction::MergeJson {
+            path: PathBuf::from("settings.json"),
+            merged: serde_json::json!({}),
+            additions: vec!["Added A".into(), "Added B".into()],
+        };
+        assert_eq!(action.describe(), vec!["Added A", "Added B"]);
+    }
+
+    #[test]
+    fn test_upgrade_action_describe_append() {
+        let action = UpgradeAction::Append {
+            path: PathBuf::from("README.md"),
+            content: "new section".into(),
+            description: "README.md (added section)".into(),
+        };
+        assert_eq!(action.describe(), vec!["README.md (added section)"]);
+    }
+
+    #[test]
+    fn test_check_page_meta_exists() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let meta_path = meta::meta_path(tmp.path());
+        fs::create_dir_all(meta_path.parent().unwrap()).unwrap();
+        fs::write(&meta_path, "{}").unwrap();
+
+        let actions = check_page_meta(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_page_meta_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_page_meta(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("config.json"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_claude_md_mcp_no_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_claude_md_mcp(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_claude_md_mcp_already_has_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("CLAUDE.md"),
+            "# Project\n\n## MCP Server\nExists",
+        )
+        .unwrap();
+        let actions = check_claude_md_mcp(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_claude_md_mcp_needs_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# Project\nSome content").unwrap();
+        let actions = check_claude_md_mcp(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Append {
+                description,
+                content,
+                ..
+            } => {
+                assert!(description.contains("MCP Server"));
+                assert!(content.contains("MCP Server"));
+            }
+            _ => panic!("expected Append action"),
+        }
+    }
+
+    #[test]
+    fn test_check_public_dir_exists() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::create_dir(tmp.path().join("public")).unwrap();
+        let actions = check_public_dir(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_public_dir_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_public_dir(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("public/"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_contact_form_docs_no_claude_md() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_contact_form_docs(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_contact_form_docs_already_has_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("CLAUDE.md"),
+            "# Project\n\n## Contact Form\ncontact_form shortcode",
+        )
+        .unwrap();
+        let actions = check_contact_form_docs(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_contact_form_docs_needs_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("CLAUDE.md"),
+            "# My Project\nNothing about contact",
+        )
+        .unwrap();
+        let actions = check_contact_form_docs(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Append { content, .. } => {
+                assert!(content.contains("Contact Forms"));
+                assert!(content.contains("contact_form"));
+            }
+            _ => panic!("expected Append action"),
+        }
+    }
+
+    #[test]
+    fn test_check_mcp_server_no_claude_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_mcp_server(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("settings.json"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_mcp_server_already_has_seite() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        let settings = serde_json::json!({
+            "mcpServers": {
+                "seite": {
+                    "command": "seite",
+                    "args": ["mcp"]
+                }
+            }
+        });
+        fs::write(
+            claude_dir.join("settings.json"),
+            serde_json::to_string_pretty(&settings).unwrap(),
+        )
+        .unwrap();
+        let actions = check_mcp_server(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_mcp_server_has_mcp_but_no_seite() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        let settings = serde_json::json!({
+            "mcpServers": {
+                "other": { "command": "other" }
+            }
+        });
+        fs::write(
+            claude_dir.join("settings.json"),
+            serde_json::to_string_pretty(&settings).unwrap(),
+        )
+        .unwrap();
+        let actions = check_mcp_server(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::MergeJson { additions, .. } => {
+                assert!(additions[0].contains("mcpServers.seite"));
+            }
+            _ => panic!("expected MergeJson action"),
+        }
+    }
+
+    #[test]
+    fn test_check_mcp_server_has_settings_no_mcp() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        let settings = serde_json::json!({
+            "permissions": { "allow": ["Read"] }
+        });
+        fs::write(
+            claude_dir.join("settings.json"),
+            serde_json::to_string_pretty(&settings).unwrap(),
+        )
+        .unwrap();
+        let actions = check_mcp_server(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::MergeJson { additions, .. } => {
+                assert!(additions[0].contains("mcpServers.seite"));
+            }
+            _ => panic!("expected MergeJson action"),
+        }
+    }
+
+    #[test]
+    fn test_check_mcp_server_malformed_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("settings.json"), "not json").unwrap();
+        let actions = check_mcp_server(tmp.path());
+        assert!(actions.is_empty()); // malformed JSON, don't touch
+    }
+
+    #[test]
+    fn test_check_landing_page_skill_no_pages_collection() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // seite.toml without pages collection
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"http://localhost\"\nlanguage = \"en\"\n\n[[collections]]\nname = \"posts\"\n",
+        )
+        .unwrap();
+        let actions = check_landing_page_skill(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_landing_page_skill_with_pages() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[site]\ntitle = \"Test\"\n\n[[collections]]\nname = \"pages\"\n",
+        )
+        .unwrap();
+        let actions = check_landing_page_skill(tmp.path());
+        assert!(!actions.is_empty());
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("landing-page"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_theme_builder_skill_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_theme_builder_skill(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { description, .. } => {
+                assert!(description.contains("theme-builder"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_theme_builder_skill_up_to_date() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skill_dir = tmp.path().join(".claude/skills/theme-builder");
+        fs::create_dir_all(&skill_dir).unwrap();
+        // Write the bundled version so it's considered up-to-date
+        let bundled = include_str!("../scaffold/skill-theme-builder.md");
+        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
+        let actions = check_theme_builder_skill(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_deploy_workflows_no_workflow() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            valid_seite_toml_with_deploy(),
+        )
+        .unwrap();
+        let actions = check_deploy_workflows(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    fn valid_seite_toml_with_deploy() -> &'static str {
+        "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"http://localhost\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[deploy]\ntarget = \"github-pages\"\n"
+    }
+
+    #[test]
+    fn test_check_deploy_workflows_old_cargo_install() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            valid_seite_toml_with_deploy(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - run: cargo install --path .\n",
+        )
+        .unwrap();
+        let actions = check_deploy_workflows(tmp.path());
+        assert_eq!(actions.len(), 1);
+    }
+
+    #[test]
+    fn test_check_deploy_version_pinning_already_pinned() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            valid_seite_toml_with_deploy(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - run: VERSION=0.2.0 install.sh | sh\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_pinning(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_deploy_version_pinning_needs_pin() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            valid_seite_toml_with_deploy(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - run: curl -fsSL https://seite.sh/install.sh | sh\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_pinning(tmp.path());
+        assert_eq!(actions.len(), 1);
+    }
+
+    #[test]
+    fn test_upgrade_steps_ordered_by_version() {
+        let steps = upgrade_steps();
+        for i in 1..steps.len() {
+            assert!(
+                steps[i].introduced_in >= steps[i - 1].introduced_in,
+                "upgrade steps should be ordered by version: {:?} < {:?}",
+                steps[i].introduced_in,
+                steps[i - 1].introduced_in,
+            );
+        }
+    }
+
+    #[test]
+    fn test_upgrade_steps_all_have_labels() {
+        for step in upgrade_steps() {
+            assert!(!step.label.is_empty(), "upgrade step should have a label");
+        }
+    }
+}

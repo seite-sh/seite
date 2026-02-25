@@ -43,3 +43,65 @@ impl CommandOutput for MessageOutput {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_output_without_detail() {
+        let out = MessageOutput {
+            message: "Done".into(),
+            detail: None,
+        };
+        assert_eq!(out.human_display(), "Done");
+    }
+
+    #[test]
+    fn test_message_output_with_detail() {
+        let out = MessageOutput {
+            message: "Built site".into(),
+            detail: Some("12 pages in 0.5s".into()),
+        };
+        assert_eq!(out.human_display(), "Built site\n12 pages in 0.5s");
+    }
+
+    #[test]
+    fn test_message_output_serialization() {
+        let out = MessageOutput {
+            message: "ok".into(),
+            detail: None,
+        };
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["message"], "ok");
+        assert!(json.get("detail").is_none()); // skip_serializing_if
+    }
+
+    #[test]
+    fn test_message_output_serialization_with_detail() {
+        let out = MessageOutput {
+            message: "ok".into(),
+            detail: Some("extra".into()),
+        };
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["message"], "ok");
+        assert_eq!(json["detail"], "extra");
+    }
+
+    #[test]
+    fn test_output_format_debug() {
+        // Ensure OutputFormat derives Debug
+        let f = OutputFormat::Human;
+        let dbg = format!("{:?}", f);
+        assert_eq!(dbg, "Human");
+    }
+
+    #[test]
+    fn test_output_format_clone_copy() {
+        let f = OutputFormat::Json;
+        let f2 = f; // Copy
+        let f3 = f.clone(); // Clone
+        assert!(matches!(f2, OutputFormat::Json));
+        assert!(matches!(f3, OutputFormat::Json));
+    }
+}

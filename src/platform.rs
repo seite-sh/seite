@@ -62,3 +62,60 @@ pub fn wrangler_config_path() -> Option<PathBuf> {
         home_path(".config/.wrangler/config/default.toml")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_npm_cmd_creates_command() {
+        let cmd = npm_cmd("claude");
+        let program = cmd.get_program().to_string_lossy().to_string();
+        if cfg!(windows) {
+            assert_eq!(program, "cmd");
+        } else {
+            assert_eq!(program, "claude");
+        }
+    }
+
+    #[test]
+    fn test_home_dir_returns_some() {
+        // HOME is set in most test environments
+        let home = home_dir();
+        assert!(home.is_some());
+        assert!(home.unwrap().is_absolute());
+    }
+
+    #[test]
+    fn test_home_path_appends_relative() {
+        let p = home_path(".seite/config.json");
+        assert!(p.is_some());
+        let path = p.unwrap();
+        assert!(path.to_string_lossy().ends_with(".seite/config.json"));
+    }
+
+    #[test]
+    fn test_wrangler_config_path_returns_some() {
+        let p = wrangler_config_path();
+        assert!(p.is_some());
+        let path = p.unwrap();
+        assert!(path.to_string_lossy().contains("wrangler"));
+        assert!(path.to_string_lossy().ends_with("default.toml"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_wrangler_config_path_macos() {
+        let p = wrangler_config_path().unwrap();
+        assert!(p
+            .to_string_lossy()
+            .contains("Library/Preferences/.wrangler"));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[test]
+    fn test_wrangler_config_path_linux() {
+        let p = wrangler_config_path().unwrap();
+        assert!(p.to_string_lossy().contains(".config/.wrangler"));
+    }
+}

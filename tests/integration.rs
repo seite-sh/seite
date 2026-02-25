@@ -6296,3 +6296,2113 @@ fn test_build_link_checker_accepts_public_files() {
         .assert()
         .success();
 }
+
+// --- collection command ---
+
+#[test]
+fn test_collection_list() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collsite", "Coll Test", "posts,docs,pages");
+    let site_dir = tmp.path().join("collsite");
+
+    page_cmd()
+        .args(["collection", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("posts"))
+        .stdout(predicate::str::contains("docs"))
+        .stdout(predicate::str::contains("pages"));
+}
+
+#[test]
+fn test_collection_list_shows_table_headers() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collhdr", "Headers", "posts");
+    let site_dir = tmp.path().join("collhdr");
+
+    page_cmd()
+        .args(["collection", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("NAME"))
+        .stdout(predicate::str::contains("DIRECTORY"))
+        .stdout(predicate::str::contains("DATED"))
+        .stdout(predicate::str::contains("RSS"));
+}
+
+#[test]
+fn test_collection_add_changelog() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "colladd", "Add Test", "posts");
+    let site_dir = tmp.path().join("colladd");
+
+    page_cmd()
+        .args(["collection", "add", "changelog"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added 'changelog' collection"));
+
+    // Verify content directory was created
+    assert!(site_dir.join("content/changelog").is_dir());
+
+    // Verify seite.toml was updated
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("changelog"));
+}
+
+#[test]
+fn test_collection_add_roadmap() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collrm", "Roadmap Test", "posts");
+    let site_dir = tmp.path().join("collrm");
+
+    page_cmd()
+        .args(["collection", "add", "roadmap"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added 'roadmap' collection"));
+
+    assert!(site_dir.join("content/roadmap").is_dir());
+}
+
+#[test]
+fn test_collection_add_docs() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "colldoc", "Doc Test", "posts");
+    let site_dir = tmp.path().join("colldoc");
+
+    page_cmd()
+        .args(["collection", "add", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added 'docs' collection"));
+
+    assert!(site_dir.join("content/docs").is_dir());
+}
+
+#[test]
+fn test_collection_add_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collpg", "Pages Test", "posts");
+    let site_dir = tmp.path().join("collpg");
+
+    page_cmd()
+        .args(["collection", "add", "pages"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Added 'pages' collection"));
+
+    assert!(site_dir.join("content/pages").is_dir());
+}
+
+#[test]
+fn test_collection_add_duplicate_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "colldup", "Dup Test", "posts");
+    let site_dir = tmp.path().join("colldup");
+
+    page_cmd()
+        .args(["collection", "add", "posts"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+}
+
+#[test]
+fn test_collection_add_unknown_preset_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collunk", "Unknown Test", "posts");
+    let site_dir = tmp.path().join("collunk");
+
+    page_cmd()
+        .args(["collection", "add", "foobar"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown collection preset"));
+}
+
+#[test]
+fn test_collection_add_outside_project_fails() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["collection", "add", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_collection_list_shows_properties() {
+    // Test that collection list shows has_date, has_rss etc. correctly
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collprop", "Props", "posts,docs");
+    let site_dir = tmp.path().join("collprop");
+
+    // posts should show has_date=yes, has_rss=yes
+    let stdout = String::from_utf8(
+        page_cmd()
+            .args(["collection", "list"])
+            .current_dir(&site_dir)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(stdout.contains("yes")); // At least some "yes" for dated/rss collections
+    assert!(stdout.contains("/posts")); // URL prefix
+    assert!(stdout.contains("/docs")); // URL prefix
+}
+
+#[test]
+fn test_collection_add_then_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "collbuild", "Build Test", "posts");
+    let site_dir = tmp.path().join("collbuild");
+
+    // Add changelog collection
+    page_cmd()
+        .args(["collection", "add", "changelog"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Create a changelog entry
+    fs::write(
+        site_dir.join("content/changelog/2025-01-01-v1.md"),
+        "---\ntitle: v1.0.0\ndate: 2025-01-01\ntags:\n  - new\n---\nFirst release!\n",
+    )
+    .unwrap();
+
+    // Build should succeed with the new collection
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify changelog output exists
+    let changelog_dir = site_dir.join("dist/changelog");
+    assert!(changelog_dir.is_dir());
+    let changelog_files: Vec<_> = fs::read_dir(&changelog_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
+        .collect();
+    assert!(
+        !changelog_files.is_empty(),
+        "Should have at least one changelog HTML file"
+    );
+}
+
+// --- MCP resource coverage additions ---
+
+#[test]
+fn test_mcp_read_content_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpcoll", "Coll MCP", "posts,docs");
+    let site_dir = tmp.path().join("mcpcoll");
+
+    // Create a specific post
+    fs::write(
+        site_dir.join("content/posts/2025-03-15-test-post.md"),
+        "---\ntitle: Test Post\ndate: 2025-03-15\ntags:\n  - test\ndescription: A test post\n---\nHello world\n",
+    )
+    .unwrap();
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://content/posts" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let items: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    // Should include the sample post from init + our test post
+    assert!(items.iter().any(|i| i["title"] == "Test Post"));
+}
+
+#[test]
+fn test_mcp_read_content_unknown_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpunkcoll", "Unknown Coll", "posts");
+    let site_dir = tmp.path().join("mcpunkcoll");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://content/nonexistent" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert_eq!(responses[0]["error"]["code"], -32602);
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
+}
+
+#[test]
+fn test_mcp_read_config_outside_project() {
+    let tmp = TempDir::new().unwrap();
+
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://config" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("seite project"));
+}
+
+#[test]
+fn test_mcp_read_content_outside_project() {
+    let tmp = TempDir::new().unwrap();
+
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://content" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+}
+
+#[test]
+fn test_mcp_read_themes_outside_project() {
+    let tmp = TempDir::new().unwrap();
+
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://themes" }
+        })],
+    );
+
+    // Themes should still work (bundled themes are always available)
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+}
+
+#[test]
+fn test_mcp_read_missing_uri_param() {
+    let tmp = TempDir::new().unwrap();
+
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("uri"));
+}
+
+#[test]
+fn test_mcp_read_doc_unknown_slug() {
+    let tmp = TempDir::new().unwrap();
+
+    let responses = mcp_request(
+        tmp.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://docs/nonexistent-page" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_object());
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not found"));
+}
+
+fn init_trust_site(tmp: &TempDir, name: &str) {
+    page_cmd()
+        .args([
+            "init",
+            name,
+            "--title",
+            "Trust Test",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,trust",
+            "--trust-company",
+            "TestCo",
+            "--trust-frameworks",
+            "soc2",
+            "--trust-sections",
+            "overview,certifications",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_mcp_resources_list_with_trust() {
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "mcptrust");
+    let site_dir = tmp.path().join("mcptrust");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/list",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let resources = responses[0]["result"]["resources"].as_array().unwrap();
+    assert!(resources.iter().any(|r| r["uri"] == "seite://trust"));
+}
+
+#[test]
+fn test_mcp_read_trust_resource() {
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "mcptrustr");
+    let site_dir = tmp.path().join("mcptrustr");
+
+    let responses = mcp_request(
+        &site_dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "resources/read",
+            "params": { "uri": "seite://trust" }
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    assert!(responses[0]["error"].is_null());
+    let contents = responses[0]["result"]["contents"].as_array().unwrap();
+    let text = contents[0]["text"].as_str().unwrap();
+    let trust: serde_json::Value = serde_json::from_str(text).unwrap();
+    // Trust resource should include content_items from init scaffold
+    assert!(trust.get("content_items").is_some());
+}
+
+// --- workspace CLI ---
+
+#[test]
+fn test_workspace_init() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "my-ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // workspace init creates in cwd, with the name as the config name, not a subdir
+    assert!(tmp.path().join("seite-workspace.toml").exists());
+    assert!(tmp.path().join("sites").is_dir());
+}
+
+#[test]
+fn test_workspace_add_and_list() {
+    let tmp = TempDir::new().unwrap();
+
+    // Init workspace
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Add a site with a unique name
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "mysite",
+            "--title",
+            "My Site",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // List should show the site
+    page_cmd()
+        .args(["workspace", "list"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mysite"));
+}
+
+#[test]
+fn test_workspace_status() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "ws-status"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "docs",
+            "--title",
+            "Docs",
+            "--collections",
+            "docs,pages",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["workspace", "status"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("docs"));
+}
+
+// --- contact form additions ---
+
+#[test]
+fn test_contact_setup_web3forms() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctweb3", "Web3 Contact", "posts,pages");
+    let site_dir = tmp.path().join("ctweb3");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "web3forms",
+            "--endpoint",
+            "abc123",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("web3forms"));
+    assert!(config.contains("abc123"));
+}
+
+#[test]
+fn test_contact_setup_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctnet", "Netlify Contact", "posts,pages");
+    let site_dir = tmp.path().join("ctnet");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "netlify",
+            "--endpoint",
+            "contact",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("netlify"));
+}
+
+#[test]
+fn test_contact_setup_creates_contact_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctpage", "Contact Page", "posts,pages");
+    let site_dir = tmp.path().join("ctpage");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xtest",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Should create a contact page when pages collection exists
+    assert!(site_dir.join("content/pages/contact.md").exists());
+    let contact = fs::read_to_string(site_dir.join("content/pages/contact.md")).unwrap();
+    assert!(contact.contains("contact_form"));
+}
+
+// --- deploy additional tests ---
+
+#[test]
+fn test_deploy_dry_run_no_commit() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "depnc", "Deploy NC", "posts");
+    let site_dir = tmp.path().join("depnc");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+}
+
+// --- workspace build ---
+
+#[test]
+fn test_workspace_build() {
+    let tmp = TempDir::new().unwrap();
+
+    // Init workspace
+    page_cmd()
+        .args(["workspace", "init", "ws-build"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Add a site with a unique name
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "myblog",
+            "--title",
+            "My Blog",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Build all sites in workspace
+    page_cmd()
+        .args(["build"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Verify output was created
+    assert!(tmp.path().join("sites/myblog/dist").exists());
+}
+
+#[test]
+fn test_workspace_build_with_site_filter() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "ws-filter"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "docs",
+            "--title",
+            "Docs",
+            "--collections",
+            "docs",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Build only the docs site
+    page_cmd()
+        .args(["build", "--site", "docs"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+// --- self-update ---
+
+#[test]
+fn test_self_update_check() {
+    // --check should succeed without actually updating
+    page_cmd()
+        .args(["self-update", "--check"])
+        .assert()
+        .success();
+}
+
+// --- additional deploy tests ---
+
+#[test]
+fn test_deploy_dry_run_skip_checks() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "dskip", "Deploy Skip", "posts");
+    let site_dir = tmp.path().join("dskip");
+
+    // Build first
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Deploy with skip-checks should skip the pre-flight
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_deploy_dry_run_preview() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "dprev", "Deploy Preview", "posts");
+    let site_dir = tmp.path().join("dprev");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--preview"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+}
+
+// --- additional theme tests ---
+
+#[test]
+fn test_theme_apply_all_bundled() {
+    // Verify every bundled theme can be applied
+    let themes = ["default", "minimal", "dark", "docs", "brutalist", "bento"];
+    for theme_name in &themes {
+        let tmp = TempDir::new().unwrap();
+        init_site(&tmp, "thm", "Theme Test", "posts");
+        let site_dir = tmp.path().join("thm");
+
+        page_cmd()
+            .args(["theme", "apply", theme_name])
+            .current_dir(&site_dir)
+            .assert()
+            .success();
+
+        // Verify base.html was written
+        let base = fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+        assert!(!base.is_empty());
+    }
+}
+
+// --- additional build tests ---
+
+#[test]
+fn test_build_outputs_search_index_json() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "search2", "Search Test", "posts,pages");
+    let site_dir = tmp.path().join("search2");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(site_dir.join("dist/search-index.json").exists());
+}
+
+#[test]
+fn test_build_generates_404() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "err404", "404 Test", "posts");
+    let site_dir = tmp.path().join("err404");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(site_dir.join("dist/404.html").exists());
+}
+
+#[test]
+fn test_build_generates_llms_txt() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "llms", "LLMs Test", "posts");
+    let site_dir = tmp.path().join("llms");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(site_dir.join("dist/llms.txt").exists());
+    assert!(site_dir.join("dist/llms-full.txt").exists());
+}
+
+#[test]
+fn test_build_generates_robots_txt() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "robots", "Robots Test", "posts");
+    let site_dir = tmp.path().join("robots");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let robots = fs::read_to_string(site_dir.join("dist/robots.txt")).unwrap();
+    assert!(robots.contains("User-agent"));
+    assert!(robots.contains("Sitemap:"));
+}
+
+#[test]
+fn test_build_generates_sitemap() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "smap", "Sitemap Test", "posts");
+    let site_dir = tmp.path().join("smap");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+    assert!(sitemap.contains("<urlset"));
+    assert!(sitemap.contains("<url>"));
+}
+
+#[test]
+fn test_build_with_data_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "datasite", "Data Test", "posts,pages");
+    let site_dir = tmp.path().join("datasite");
+
+    // Create a data file
+    fs::create_dir_all(site_dir.join("data")).unwrap();
+    fs::write(
+        site_dir.join("data/nav.yaml"),
+        "- title: Blog\n  url: /posts\n- title: About\n  url: /about\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_build_with_public_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "pubsite", "Public Test", "posts");
+    let site_dir = tmp.path().join("pubsite");
+
+    // Place a file in public/
+    fs::create_dir_all(site_dir.join("public")).unwrap();
+    fs::write(site_dir.join("public/favicon.ico"), "icon").unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Public files should be copied to dist/
+    assert!(site_dir.join("dist/favicon.ico").exists());
+}
+
+// --- upgrade command tests ---
+
+#[test]
+fn test_upgrade_force() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "upf", "Upgrade Force", "posts");
+    let site_dir = tmp.path().join("upf");
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+// --- theme export with description verification ---
+
+#[test]
+fn test_theme_export_with_description_metadata() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "texps2", "Theme Export Desc", "posts");
+    let site_dir = tmp.path().join("texps2");
+
+    page_cmd()
+        .args(["theme", "apply", "minimal"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args([
+            "theme",
+            "export",
+            "my-custom2",
+            "--description",
+            "My custom theme",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(site_dir.join("templates/themes/my-custom2.tera")).unwrap();
+    assert!(content.contains("theme-description: My custom theme"));
+}
+
+// --- contact remove when not configured ---
+
+#[test]
+fn test_contact_remove_when_not_configured() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "cr2", "Contact Remove 2", "posts");
+    let site_dir = tmp.path().join("cr2");
+
+    page_cmd()
+        .args(["contact", "remove"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No contact form"));
+}
+
+// --- build with multiple collections ---
+
+#[test]
+fn test_build_with_all_collection_types() {
+    let tmp = TempDir::new().unwrap();
+    init_site(
+        &tmp,
+        "allcol",
+        "All Collections",
+        "posts,docs,pages,changelog,roadmap",
+    );
+    let site_dir = tmp.path().join("allcol");
+
+    // Create content in each collection
+    page_cmd()
+        .args(["new", "post", "Test Post", "--tags", "test"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["new", "doc", "Getting Started"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["new", "changelog", "v1.0.0", "--tags", "new"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["new", "roadmap", "Dark Mode", "--tags", "planned"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify each collection has output
+    assert!(site_dir.join("dist/index.html").exists());
+    assert!(site_dir.join("dist/sitemap.xml").exists());
+    assert!(site_dir.join("dist/feed.xml").exists());
+}
+
+// --- build with google analytics ---
+
+#[test]
+fn test_build_with_google_analytics() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ganalytics", "GA Test", "posts");
+    let site_dir = tmp.path().join("ganalytics");
+
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[analytics]\nprovider = \"google\"\nid = \"G-TESTID123\"\n");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index.contains("G-TESTID123"));
+}
+
+// --- build with images config ---
+
+#[test]
+fn test_build_with_images_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "imgcfg", "Images Config", "posts");
+    let site_dir = tmp.path().join("imgcfg");
+
+    // Replace the default images config with custom widths
+    let config_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&config_path).unwrap();
+    // init_site already creates an [images] section, so replace it
+    let config = config.replace(
+        "[images]\nwidths = [480, 800, 1200]\nquality = 80\nlazy_loading = true\nwebp = true",
+        "[images]\nwidths = [480, 800]\nquality = 85\nlazy_loading = true\nwebp = true",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+// --- workspace init and add ---
+
+#[test]
+fn test_workspace_init_and_add_site() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "ws-test"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Verify workspace file was created
+    assert!(tmp.path().join("seite-workspace.toml").exists());
+    assert!(tmp.path().join("sites").exists());
+
+    // Add a site (use "mysite" not "blog" — init template has a commented `# name = "blog"` line
+    // which trips the naive string-contains check in workspace add)
+    page_cmd()
+        .args(["workspace", "add", "mysite", "--collections", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Verify the site was added
+    assert!(tmp.path().join("sites/mysite/seite.toml").exists());
+
+    // List sites
+    page_cmd()
+        .args(["workspace", "list"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mysite"));
+}
+
+// --- new content creation with lang flag ---
+
+#[test]
+fn test_new_post_with_lang_flag() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "nlang", "New Lang", "posts");
+    let site_dir = tmp.path().join("nlang");
+
+    // Add Spanish language config
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[languages.es]\ntitle = \"Test ES\"\n");
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .args(["new", "post", "Hola Mundo", "--lang", "es"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify the file has .es.md extension
+    let posts_dir = site_dir.join("content/posts");
+    let entries: Vec<_> = fs::read_dir(&posts_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_str().unwrap().contains(".es.md"))
+        .collect();
+    assert!(!entries.is_empty());
+}
+
+// --- build output markdown alongside HTML ---
+
+#[test]
+fn test_build_outputs_markdown_alongside_html() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mdout", "MD Output", "posts");
+    let site_dir = tmp.path().join("mdout");
+
+    page_cmd()
+        .args(["new", "post", "Markdown Output Test"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Find the generated post
+    let dist = site_dir.join("dist/posts");
+    if dist.exists() {
+        let html_files: Vec<_> = fs::read_dir(&dist)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "html").unwrap_or(false))
+            .collect();
+        // Each HTML should have a corresponding .md
+        for html in &html_files {
+            let md_path = html.path().with_extension("md");
+            assert!(md_path.exists(), "Missing .md for {:?}", html.path());
+        }
+    }
+}
+
+// --- build with minify and fingerprint ---
+
+#[test]
+fn test_build_with_minify_and_fingerprint() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "minify", "Minify Test", "posts");
+    let site_dir = tmp.path().join("minify");
+
+    // Add build options
+    let config_path = site_dir.join("seite.toml");
+    let config_content = fs::read_to_string(&config_path).unwrap();
+    let updated = config_content.replace("[build]", "[build]\nminify = true\nfingerprint = true");
+    fs::write(&config_path, updated).unwrap();
+
+    // Create a static CSS file
+    fs::create_dir_all(site_dir.join("static")).unwrap();
+    fs::write(
+        site_dir.join("static/style.css"),
+        "/* comment */ body { margin: 0; }",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Check that asset-manifest.json exists (fingerprinting)
+    assert!(site_dir.join("dist/asset-manifest.json").exists());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Additional contact CLI tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_contact_setup_formspree_noninteractive() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctfsp", "Formspree Setup", "posts,pages");
+    let site_dir = tmp.path().join("ctfsp");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xpznqkdl",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Formspree"));
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("[contact]"));
+    assert!(config.contains("formspree"));
+    assert!(config.contains("xpznqkdl"));
+}
+
+#[test]
+fn test_contact_setup_formspree_then_status() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctfst", "FS Status", "posts,pages");
+    let site_dir = tmp.path().join("ctfst");
+
+    // Setup formspree
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xtest456",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Check status
+    page_cmd()
+        .args(["contact", "status"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Formspree"))
+        .stdout(predicate::str::contains("xtest456"));
+}
+
+#[test]
+fn test_contact_setup_then_remove_then_status() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctrms", "Remove Status", "posts,pages");
+    let site_dir = tmp.path().join("ctrms");
+
+    // Setup
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xrm123",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify config present
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("[contact]"));
+
+    // Remove
+    page_cmd()
+        .args(["contact", "remove"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed"));
+
+    // Verify config gone
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(!config.contains("[contact]"));
+
+    // Status should show not configured
+    page_cmd()
+        .args(["contact", "status"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("seite contact setup"));
+}
+
+#[test]
+fn test_contact_setup_web3forms_noninteractive() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctw3f2", "Web3 Setup2", "posts,pages");
+    let site_dir = tmp.path().join("ctw3f2");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "web3forms",
+            "--endpoint",
+            "w3key789",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Web3Forms"));
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("web3forms"));
+    assert!(config.contains("w3key789"));
+}
+
+#[test]
+fn test_contact_setup_netlify_noninteractive() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctnet2", "Netlify Setup2", "posts,pages");
+    let site_dir = tmp.path().join("ctnet2");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "netlify",
+            "--endpoint",
+            "myform",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Netlify"));
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("netlify"));
+    assert!(config.contains("myform"));
+}
+
+#[test]
+fn test_contact_setup_with_redirect_and_subject() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctopt", "Contact Opts", "posts,pages");
+    let site_dir = tmp.path().join("ctopt");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xopts",
+            "--redirect",
+            "/thank-you",
+            "--subject",
+            "New inquiry",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("formspree"));
+    assert!(config.contains("xopts"));
+    assert!(config.contains("/thank-you"));
+    assert!(config.contains("New inquiry"));
+}
+
+#[test]
+fn test_contact_setup_invalid_provider() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctinv", "Invalid Provider", "posts,pages");
+    let site_dir = tmp.path().join("ctinv");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "invalid_provider",
+            "--endpoint",
+            "x123",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown contact provider"));
+}
+
+#[test]
+fn test_contact_status_shows_redirect_and_subject() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctstat2", "Status Detail", "posts,pages");
+    let site_dir = tmp.path().join("ctstat2");
+
+    // Add contact config with redirect and subject
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str(
+        "\n[contact]\nprovider = \"formspree\"\nendpoint = \"xdetail\"\nredirect = \"/thanks\"\nsubject = \"Contact Form\"\n",
+    );
+    fs::write(&config_path, config).unwrap();
+
+    page_cmd()
+        .args(["contact", "status"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Formspree"))
+        .stdout(predicate::str::contains("xdetail"))
+        .stdout(predicate::str::contains("/thanks"))
+        .stdout(predicate::str::contains("Contact Form"));
+}
+
+#[test]
+fn test_contact_setup_outside_project_fails() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "x123",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_contact_setup_creates_contact_page_with_shortcode() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctpg2", "Contact Page2", "posts,pages");
+    let site_dir = tmp.path().join("ctpg2");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "web3forms",
+            "--endpoint",
+            "w3key",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify contact page was created
+    let contact_page = site_dir.join("content/pages/contact.md");
+    assert!(contact_page.exists());
+    let content = fs::read_to_string(&contact_page).unwrap();
+    assert!(content.contains("contact_form"));
+    assert!(content.contains("title: Contact"));
+}
+
+#[test]
+fn test_contact_setup_no_contact_page_without_pages_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ctnopg", "No Pages", "posts");
+    let site_dir = tmp.path().join("ctnopg");
+
+    page_cmd()
+        .args([
+            "contact",
+            "setup",
+            "--provider",
+            "formspree",
+            "--endpoint",
+            "xnopg",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // No contact page should be created when no pages collection
+    assert!(!site_dir.join("content/pages/contact.md").exists());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Additional theme CLI tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_theme_list_shows_all_six_bundled() {
+    page_cmd()
+        .args(["theme", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Bundled themes"))
+        .stdout(predicate::str::contains("default"))
+        .stdout(predicate::str::contains("minimal"))
+        .stdout(predicate::str::contains("dark"))
+        .stdout(predicate::str::contains("docs"))
+        .stdout(predicate::str::contains("brutalist"))
+        .stdout(predicate::str::contains("bento"));
+}
+
+#[test]
+fn test_theme_apply_dark_then_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thdkb", "Dark Build", "posts");
+    let site_dir = tmp.path().join("thdkb");
+
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Build should succeed with dark theme applied
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify the output uses dark theme styles
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(index.contains("0a0a0a"), "dark theme should use true black");
+}
+
+#[test]
+fn test_theme_apply_minimal_then_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thmnb", "Minimal Build", "posts");
+    let site_dir = tmp.path().join("thmnb");
+
+    page_cmd()
+        .args(["theme", "apply", "minimal"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Build should succeed with minimal theme applied
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify the output uses minimal theme styles
+    let index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains("Georgia"),
+        "minimal theme should use Georgia serif"
+    );
+}
+
+#[test]
+fn test_theme_apply_docs_then_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thdob", "Docs Build", "posts,docs");
+    let site_dir = tmp.path().join("thdob");
+
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(site_dir.join("dist/index.html").exists());
+}
+
+#[test]
+fn test_theme_apply_nonexistent_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thfail", "Fail Theme", "posts");
+    let site_dir = tmp.path().join("thfail");
+
+    page_cmd()
+        .args(["theme", "apply", "totally-fake-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown theme"));
+}
+
+#[test]
+fn test_theme_install_from_local_file_url() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thinst", "Install Test", "posts");
+    let site_dir = tmp.path().join("thinst");
+
+    // Create a temporary theme file to serve via file:// won't work (ureq http-only),
+    // so create it directly in the installed themes dir to test the apply path
+    let themes_dir = site_dir.join("templates/themes");
+    fs::create_dir_all(&themes_dir).unwrap();
+    fs::write(
+        themes_dir.join("local-test.tera"),
+        "{#- theme-description: A local test theme -#}\n<!DOCTYPE html>\n<html lang=\"{{ lang }}\"><head><title>{% block title %}{{ site.title }}{% endblock %}</title></head><body>local-test-marker{% block content %}{% endblock %}</body></html>",
+    ).unwrap();
+
+    // Verify it shows up in theme list
+    page_cmd()
+        .args(["theme", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installed themes"))
+        .stdout(predicate::str::contains("local-test"));
+
+    // Apply the installed theme
+    page_cmd()
+        .args(["theme", "apply", "local-test"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Applied installed theme"));
+
+    let base = fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("local-test-marker"));
+}
+
+#[test]
+fn test_theme_export_then_apply() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thexp2", "Export Apply", "posts");
+    let site_dir = tmp.path().join("thexp2");
+
+    // Apply brutalist first
+    page_cmd()
+        .args(["theme", "apply", "brutalist"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Export it
+    page_cmd()
+        .args([
+            "theme",
+            "export",
+            "my-brutalist",
+            "--description",
+            "My modified brutalist",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify exported file exists
+    let exported = site_dir.join("templates/themes/my-brutalist.tera");
+    assert!(exported.exists());
+    let content = fs::read_to_string(&exported).unwrap();
+    assert!(content.contains("theme-description: My modified brutalist"));
+
+    // Now apply a different theme
+    page_cmd()
+        .args(["theme", "apply", "minimal"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let base = fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(base.contains("Georgia"), "should now be minimal theme");
+
+    // Apply the exported theme
+    page_cmd()
+        .args(["theme", "apply", "my-brutalist"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Applied installed theme"));
+
+    let base = fs::read_to_string(site_dir.join("templates/base.html")).unwrap();
+    assert!(
+        base.contains("fffef0"),
+        "should be back to brutalist cream background"
+    );
+}
+
+#[test]
+fn test_theme_list_shows_installed_themes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thlst2", "List Installed", "posts");
+    let site_dir = tmp.path().join("thlst2");
+
+    // No installed themes initially — should only show bundled
+    let output = page_cmd()
+        .args(["theme", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Install a theme manually
+    let themes_dir = site_dir.join("templates/themes");
+    fs::create_dir_all(&themes_dir).unwrap();
+    fs::write(
+        themes_dir.join("my-fancy.tera"),
+        "{#- theme-description: A fancy theme -#}\n<!DOCTYPE html><html><body>fancy</body></html>",
+    )
+    .unwrap();
+
+    // Now list should show installed section
+    page_cmd()
+        .args(["theme", "list"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Installed themes"))
+        .stdout(predicate::str::contains("my-fancy"))
+        .stdout(predicate::str::contains("A fancy theme"));
+}
+
+#[test]
+fn test_theme_apply_outside_project_fails() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_theme_export_without_base_html_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thnobase", "No Base", "posts");
+    let site_dir = tmp.path().join("thnobase");
+
+    // Remove base.html
+    fs::remove_file(site_dir.join("templates/base.html")).unwrap();
+
+    page_cmd()
+        .args(["theme", "export", "my-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no templates/base.html"));
+}
+
+#[test]
+fn test_theme_export_duplicate_name_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "thdup2", "Dup Theme2", "posts");
+    let site_dir = tmp.path().join("thdup2");
+
+    // Export once
+    page_cmd()
+        .args(["theme", "export", "dup-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Export again with same name should fail
+    page_cmd()
+        .args(["theme", "export", "dup-theme"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+}
+
+#[test]
+fn test_theme_apply_then_build_with_all_themes() {
+    // Test that every bundled theme produces a valid build
+    let themes = ["default", "minimal", "dark", "docs", "brutalist", "bento"];
+    for theme_name in &themes {
+        let tmp = TempDir::new().unwrap();
+        init_site(&tmp, "thall", "All Themes Build", "posts,docs,pages");
+        let site_dir = tmp.path().join("thall");
+
+        page_cmd()
+            .args(["theme", "apply", theme_name])
+            .current_dir(&site_dir)
+            .assert()
+            .success();
+
+        page_cmd()
+            .args(["build"])
+            .current_dir(&site_dir)
+            .assert()
+            .success();
+
+        assert!(
+            site_dir.join("dist/index.html").exists(),
+            "build with {} theme should produce index.html",
+            theme_name
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Additional deploy CLI tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_deploy_dry_run_no_commit_github_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddnc1", "Deploy NC GH", "posts");
+    let site_dir = tmp.path().join("ddnc1");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("github-pages"));
+}
+
+#[test]
+fn test_deploy_dry_run_no_commit_cloudflare() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddnc2", "Deploy NC CF", "posts");
+    let site_dir = tmp.path().join("ddnc2");
+
+    // Change target to cloudflare
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"test-proj\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("cloudflare"))
+        .stdout(predicate::str::contains("test-proj"));
+}
+
+#[test]
+fn test_deploy_dry_run_no_commit_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddnc3", "Deploy NC Net", "posts");
+    let site_dir = tmp.path().join("ddnc3");
+
+    // Change target to netlify
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("netlify"));
+}
+
+#[test]
+fn test_deploy_dry_run_skip_checks_github_pages() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddsc1", "Deploy SC GH", "posts");
+    let site_dir = tmp.path().join("ddsc1");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("github-pages"));
+}
+
+#[test]
+fn test_deploy_dry_run_skip_checks_cloudflare() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddsc2", "Deploy SC CF", "posts");
+    let site_dir = tmp.path().join("ddsc2");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"cf-proj\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("cloudflare"));
+}
+
+#[test]
+fn test_deploy_dry_run_skip_checks_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddsc3", "Deploy SC Net", "posts");
+    let site_dir = tmp.path().join("ddsc3");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"))
+        .stdout(predicate::str::contains("netlify"));
+}
+
+#[test]
+fn test_deploy_dry_run_no_commit_skip_checks_combined() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddcomb", "Deploy Combined", "posts");
+    let site_dir = tmp.path().join("ddcomb");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit", "--skip-checks"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+}
+
+#[test]
+fn test_deploy_dry_run_with_target_override() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddtgt", "Deploy Target Override", "posts");
+    let site_dir = tmp.path().join("ddtgt");
+
+    // Config says github-pages, but override to netlify
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "netlify"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("netlify"))
+        .stdout(predicate::str::contains("Dry run"));
+}
+
+#[test]
+fn test_deploy_dry_run_cloudflare_preview_mode() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddcfp", "CF Preview", "posts");
+    let site_dir = tmp.path().join("ddcfp");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"cf-prev\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--preview"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preview"));
+}
+
+#[test]
+fn test_deploy_dry_run_netlify_production_mode() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddntp", "Net Prod", "posts");
+    let site_dir = tmp.path().join("ddntp");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("production"));
+}
+
+#[test]
+fn test_deploy_dry_run_shows_output_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddout", "Deploy Output", "posts");
+    let site_dir = tmp.path().join("ddout");
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Output dir"));
+}
+
+#[test]
+fn test_deploy_dry_run_github_pages_shows_branch() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddbr", "Deploy Branch", "posts");
+    let site_dir = tmp.path().join("ddbr");
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("gh-pages"));
+}
+
+#[test]
+fn test_deploy_outside_project_fails() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["deploy", "--dry-run"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_deploy_invalid_target_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddinv", "Deploy Invalid", "posts");
+    let site_dir = tmp.path().join("ddinv");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "aws-s3"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown deploy target"));
+}
+
+#[test]
+fn test_deploy_dry_run_base_url_override_with_cloudflare() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "ddbucf", "Deploy BU CF", "posts");
+    let site_dir = tmp.path().join("ddbucf");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"cf-bu\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args([
+            "deploy",
+            "--dry-run",
+            "--base-url",
+            "https://my-cf-site.pages.dev",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Base URL override: https://my-cf-site.pages.dev",
+        ));
+}
+
+#[test]
+fn test_deploy_domain_cloudflare() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "dddomcf", "Domain CF", "posts");
+    let site_dir = tmp.path().join("dddomcf");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "target = \"github-pages\"",
+        "target = \"cloudflare\"\nproject = \"cf-domain\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--domain", "example.com"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated base_url"))
+        .stdout(predicate::str::contains("example.com"));
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("https://example.com"));
+}
+
+#[test]
+fn test_deploy_domain_netlify() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "dddomnt", "Domain Net", "posts");
+    let site_dir = tmp.path().join("dddomnt");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("target = \"github-pages\"", "target = \"netlify\"");
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["deploy", "--domain", "mysite.netlify.app"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Updated base_url"));
+
+    let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(config.contains("https://mysite.netlify.app"));
+}

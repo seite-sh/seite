@@ -783,4 +783,230 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "real");
     }
+
+    #[test]
+    fn test_detect_fence_start_backtick() {
+        assert_eq!(detect_fence_start(b"```rust", 0), Some((b'`', 3)));
+        assert_eq!(detect_fence_start(b"````", 0), Some((b'`', 4)));
+    }
+
+    #[test]
+    fn test_detect_fence_start_tilde() {
+        assert_eq!(detect_fence_start(b"~~~", 0), Some((b'~', 3)));
+        assert_eq!(detect_fence_start(b"~~~~python", 0), Some((b'~', 4)));
+    }
+
+    #[test]
+    fn test_detect_fence_start_not_enough() {
+        assert_eq!(detect_fence_start(b"``", 0), None);
+        assert_eq!(detect_fence_start(b"~~", 0), None);
+    }
+
+    #[test]
+    fn test_detect_fence_start_not_fence_char() {
+        assert_eq!(detect_fence_start(b"abc", 0), None);
+        assert_eq!(detect_fence_start(b"", 0), None);
+    }
+
+    #[test]
+    fn test_detect_fence_end_matching() {
+        assert!(detect_fence_end(b"```\n", 0, b'`', 3));
+        assert!(detect_fence_end(b"```", 0, b'`', 3)); // at end of input
+        assert!(detect_fence_end(b"````\n", 0, b'`', 3)); // longer fence OK
+    }
+
+    #[test]
+    fn test_detect_fence_end_not_matching() {
+        assert!(!detect_fence_end(b"``\n", 0, b'`', 3)); // too short
+        assert!(!detect_fence_end(b"~~~\n", 0, b'`', 3)); // wrong char
+        assert!(!detect_fence_end(b"```text\n", 0, b'`', 3)); // non-whitespace after
+    }
+
+    #[test]
+    fn test_count_char_basic() {
+        assert_eq!(count_char(b"```abc", 0, b'`'), 3);
+        assert_eq!(count_char(b"abc", 0, b'a'), 1);
+        assert_eq!(count_char(b"abc", 0, b'x'), 0);
+    }
+
+    #[test]
+    fn test_is_line_start() {
+        assert!(is_line_start(b"abc", 0));
+        assert!(is_line_start(b"a\nb", 2));
+        assert!(!is_line_start(b"abc", 1));
+    }
+
+    #[test]
+    fn test_skip_to_eol() {
+        assert_eq!(skip_to_eol(b"abc\ndef", 0), 4);
+        assert_eq!(skip_to_eol(b"abc", 0), 3); // no newline, return len
+    }
+
+    #[test]
+    fn test_find_closing_backticks() {
+        assert_eq!(find_closing_backticks(b"hello` rest", 0, 1), Some(5));
+        assert_eq!(find_closing_backticks(b"hello`` rest", 0, 2), Some(5));
+        assert_eq!(find_closing_backticks(b"no close", 0, 1), None);
+    }
+
+    #[test]
+    fn test_find_inline_close() {
+        assert_eq!(find_inline_close(b"name() >}}", 0), Some(7));
+        assert_eq!(find_inline_close(b"name()\n>}}", 0), None); // newline blocks
+        assert_eq!(find_inline_close(b"no close", 0), None);
+    }
+
+    #[test]
+    fn test_find_body_close() {
+        assert_eq!(find_body_close(b" end %}}", 0), Some(5));
+        assert_eq!(find_body_close(b" end\n%}}", 0), None); // newline blocks
+        assert_eq!(find_body_close(b"no close", 0), None);
+    }
+
+    #[test]
+    fn test_find_end_tag() {
+        let input = "body content {{% end %}}";
+        let result = find_end_tag(input, 0);
+        assert!(result.is_some());
+        let (body_end, close_end) = result.unwrap();
+        assert_eq!(&input[..body_end], "body content ");
+        assert_eq!(close_end, input.len());
+    }
+
+    #[test]
+    fn test_find_end_tag_not_found() {
+        assert!(find_end_tag("no end tag here", 0).is_none());
+    }
+
+    #[test]
+    fn test_parse_call_no_parens() {
+        let result = parse_call("name_only", &test_path(), 1);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Expected `name(args...)`"));
+    }
+
+    #[test]
+    fn test_parse_call_empty_name() {
+        let result = parse_call("(args)", &test_path(), 1);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("empty shortcode name"));
+    }
+
+    #[test]
+    fn test_parse_call_invalid_name_chars() {
+        let result = parse_call("bad name!()", &test_path(), 1);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid shortcode name"));
+    }
+
+    #[test]
+    fn test_parse_call_hyphen_underscore_name() {
+        let (name, _) = parse_call("my-short_code()", &test_path(), 1).unwrap();
+        assert_eq!(name, "my-short_code");
+    }
+
+    #[test]
+    fn test_parse_value_unclosed_string() {
+        let result = parse_value("\"unclosed", &test_path(), 1, "test", "key");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unclosed string"));
+    }
+
+    #[test]
+    fn test_parse_value_negative_float() {
+        let (val, consumed) = parse_value("-3.14", &test_path(), 1, "test", "key").unwrap();
+        assert_eq!(val, ShortcodeValue::Float(-3.14));
+        assert_eq!(consumed, 5);
+    }
+
+    #[test]
+    fn test_parse_value_invalid() {
+        let result = parse_value("@invalid", &test_path(), 1, "test", "key");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid value"));
+    }
+
+    #[test]
+    fn test_parse_args_missing_equals() {
+        let result = parse_args("key value", &test_path(), 1, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expected `=`"));
+    }
+
+    #[test]
+    fn test_parse_args_missing_value() {
+        let result = parse_args("key=", &test_path(), 1, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing value"));
+    }
+
+    #[test]
+    fn test_stray_end_tag_skipped() {
+        let input = "{{% end %}}\n{{< test() >}}";
+        let calls = parse_shortcodes(input, &test_path()).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "test");
+    }
+
+    #[test]
+    fn test_inline_code_with_double_backtick() {
+        let input = "``{{< test() >}}`` and {{< real() >}}";
+        let calls = parse_shortcodes(input, &test_path()).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "real");
+    }
+
+    #[test]
+    fn test_tilde_fence_at_start_of_file() {
+        let input = "~~~\n{{< test() >}}\n~~~";
+        let calls = parse_shortcodes(input, &test_path()).unwrap();
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_line_tracking_with_body_shortcode() {
+        let input =
+            "line 1\n{{% callout(type=\"info\") %}}\nbody\nmore body\n{{% end %}}\n{{< test() >}}";
+        let calls = parse_shortcodes(input, &test_path()).unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].name, "callout");
+        assert_eq!(calls[0].line, 2);
+        assert_eq!(calls[1].name, "test");
+        assert_eq!(calls[1].line, 6);
+    }
+
+    #[test]
+    fn test_detect_fence_end_with_trailing_whitespace() {
+        assert!(detect_fence_end(b"```  \t\n", 0, b'`', 3));
+    }
+
+    #[test]
+    fn test_escaped_backslash_in_string() {
+        let (_, args) = parse_call(r#"test(path="C:\\Users\\file")"#, &test_path(), 1).unwrap();
+        assert_eq!(
+            args.get("path"),
+            Some(&ShortcodeValue::String("C:\\Users\\file".into()))
+        );
+    }
+
+    #[test]
+    fn test_parse_value_boolean_boundary() {
+        // "true" followed by non-alphanumeric should parse as boolean
+        let (val, consumed) = parse_value("true,", &test_path(), 1, "t", "k").unwrap();
+        assert_eq!(val, ShortcodeValue::Boolean(true));
+        assert_eq!(consumed, 4);
+
+        let (val, consumed) = parse_value("false)", &test_path(), 1, "t", "k").unwrap();
+        assert_eq!(val, ShortcodeValue::Boolean(false));
+        assert_eq!(consumed, 5);
+    }
 }

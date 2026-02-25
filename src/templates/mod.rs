@@ -535,3 +535,136 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
 
     Ok(tera)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_base_is_non_empty() {
+        let base = default_base();
+        assert!(!base.is_empty());
+        assert!(base.contains("<!DOCTYPE html>") || base.contains("<!doctype html>"));
+    }
+
+    #[test]
+    fn test_get_default_template_known_names() {
+        assert!(get_default_template("base.html").is_some());
+        assert!(get_default_template("index.html").is_some());
+        assert!(get_default_template("post.html").is_some());
+        assert!(get_default_template("doc.html").is_some());
+        assert!(get_default_template("page.html").is_some());
+        assert!(get_default_template("404.html").is_some());
+        assert!(get_default_template("tags.html").is_some());
+        assert!(get_default_template("tag.html").is_some());
+        assert!(get_default_template("changelog-entry.html").is_some());
+        assert!(get_default_template("changelog-index.html").is_some());
+        assert!(get_default_template("roadmap-item.html").is_some());
+        assert!(get_default_template("roadmap-index.html").is_some());
+        assert!(get_default_template("roadmap-kanban.html").is_some());
+        assert!(get_default_template("roadmap-timeline.html").is_some());
+        assert!(get_default_template("trust-item.html").is_some());
+        assert!(get_default_template("trust-index.html").is_some());
+    }
+
+    #[test]
+    fn test_get_default_template_unknown_returns_none() {
+        assert!(get_default_template("unknown.html").is_none());
+        assert!(get_default_template("").is_none());
+    }
+
+    #[test]
+    fn test_load_templates_no_dir() {
+        let path = std::path::Path::new("/nonexistent/templates");
+        let tera = load_templates(path, &[]).unwrap();
+        // Essential templates should be loaded from defaults
+        assert!(tera.get_template("base.html").is_ok());
+        assert!(tera.get_template("index.html").is_ok());
+        assert!(tera.get_template("404.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_collections() {
+        let path = std::path::Path::new("/nonexistent/templates");
+        let collections = vec![
+            CollectionConfig::preset_posts(),
+            CollectionConfig::preset_docs(),
+        ];
+        let tera = load_templates(path, &collections).unwrap();
+        assert!(tera.get_template("post.html").is_ok());
+        assert!(tera.get_template("doc.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_changelog_collection() {
+        let path = std::path::Path::new("/nonexistent/templates");
+        let collections = vec![CollectionConfig::preset_changelog()];
+        let tera = load_templates(path, &collections).unwrap();
+        assert!(tera.get_template("changelog-entry.html").is_ok());
+        assert!(tera.get_template("changelog-index.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_roadmap_collection() {
+        let path = std::path::Path::new("/nonexistent/templates");
+        let collections = vec![CollectionConfig::preset_roadmap()];
+        let tera = load_templates(path, &collections).unwrap();
+        assert!(tera.get_template("roadmap-item.html").is_ok());
+        assert!(tera.get_template("roadmap-index.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_trust_collection() {
+        let path = std::path::Path::new("/nonexistent/templates");
+        let collections = vec![CollectionConfig::preset_trust()];
+        let tera = load_templates(path, &collections).unwrap();
+        assert!(tera.get_template("trust-item.html").is_ok());
+        assert!(tera.get_template("trust-index.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_from_real_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        std::fs::create_dir_all(&tpl_dir).unwrap();
+        // Write a custom base.html
+        std::fs::write(
+            tpl_dir.join("base.html"),
+            "<!DOCTYPE html><html><body>{% block content %}{% endblock %}</body></html>",
+        )
+        .unwrap();
+        let tera = load_templates(&tpl_dir, &[]).unwrap();
+        // Our custom template should be loaded
+        assert!(tera.get_template("base.html").is_ok());
+    }
+
+    #[test]
+    fn test_all_default_templates_extend_base() {
+        // All page-level templates should extend base.html
+        let templates_that_extend_base = [
+            "index.html",
+            "post.html",
+            "doc.html",
+            "page.html",
+            "404.html",
+            "tags.html",
+            "tag.html",
+            "changelog-entry.html",
+            "changelog-index.html",
+            "roadmap-item.html",
+            "roadmap-index.html",
+            "roadmap-kanban.html",
+            "roadmap-timeline.html",
+            "trust-item.html",
+            "trust-index.html",
+        ];
+        for name in templates_that_extend_base {
+            let content = get_default_template(name).unwrap();
+            assert!(
+                content.contains(r#"extends "base.html""#),
+                "Template '{}' should extend base.html",
+                name
+            );
+        }
+    }
+}

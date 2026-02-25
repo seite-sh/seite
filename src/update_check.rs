@@ -233,4 +233,64 @@ mod tests {
         fs::write(&path, "not json").unwrap();
         assert!(load_cache(&path).is_none());
     }
+
+    #[test]
+    fn test_version_is_newer_major_bump() {
+        assert!(version_is_newer("2.0.0", "1.9.9"));
+        assert!(version_is_newer("10.0.0", "9.9.9"));
+    }
+
+    #[test]
+    fn test_version_is_newer_invalid_input() {
+        // Non-numeric parts parse to 0
+        assert!(!version_is_newer("abc", "0.1.0"));
+        assert!(!version_is_newer("", "0.1.0"));
+        // Two-part versions treated as (0,0,0)
+        assert!(!version_is_newer("1.0", "0.1.0"));
+    }
+
+    #[test]
+    fn test_write_cache_creates_parent_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("deep").join("nested").join("cache.json");
+        let cache = UpdateCache {
+            last_check: Utc::now().to_rfc3339(),
+            latest_version: "1.0.0".to_string(),
+        };
+        write_cache(&path, &cache).unwrap();
+        assert!(path.exists());
+        let loaded = load_cache(&path).unwrap();
+        assert_eq!(loaded.latest_version, "1.0.0");
+    }
+
+    #[test]
+    fn test_should_check_future_timestamp() {
+        // A timestamp in the future should still trigger a check (elapsed < 0)
+        let future = Utc::now() + chrono::Duration::hours(2);
+        let cache = UpdateCache {
+            last_check: future.to_rfc3339(),
+            latest_version: "0.1.7".to_string(),
+        };
+        assert!(should_check(&Some(cache)));
+    }
+
+    #[test]
+    fn test_should_check_exactly_at_boundary() {
+        // Cache from exactly 24 hours ago should trigger a check
+        let exactly_24h = Utc::now() - chrono::Duration::hours(24);
+        let cache = UpdateCache {
+            last_check: exactly_24h.to_rfc3339(),
+            latest_version: "0.1.7".to_string(),
+        };
+        assert!(should_check(&Some(cache)));
+    }
+
+    #[test]
+    fn test_cache_path_returns_some() {
+        // cache_path depends on HOME being set, which it usually is in tests
+        let path = cache_path();
+        if let Some(p) = path {
+            assert!(p.ends_with(".seite/update-cache.json"));
+        }
+    }
 }

@@ -182,3 +182,183 @@ fn write_url_with_alternates(
 
     write(writer, Event::End(BytesEnd::new("url")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::Frontmatter;
+
+    fn test_config(base_url: &str) -> SiteConfig {
+        SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: base_url.into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+            analytics: None,
+            trust: None,
+            contact: None,
+        }
+    }
+
+    fn test_item(slug: &str, url: &str, collection: &str) -> ContentItem {
+        ContentItem {
+            frontmatter: Frontmatter {
+                title: slug.into(),
+                date: None,
+                updated: None,
+                description: None,
+                image: None,
+                slug: None,
+                tags: vec![],
+                draft: false,
+                template: None,
+                robots: None,
+                weight: None,
+                extra: Default::default(),
+            },
+            raw_body: String::new(),
+            html_body: String::new(),
+            source_path: std::path::PathBuf::from("test.md"),
+            slug: slug.into(),
+            collection: collection.into(),
+            url: url.into(),
+            lang: "en".into(),
+            excerpt: String::new(),
+            toc: vec![],
+            word_count: 0,
+            reading_time: 0,
+            excerpt_html: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_generate_sitemap_basic() {
+        let config = test_config("https://example.com");
+        let item = test_item("hello", "/posts/hello", "posts");
+        let items: Vec<&ContentItem> = vec![&item];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("<urlset"));
+        assert!(result.contains("https://example.com/"));
+        assert!(result.contains("https://example.com/posts/hello"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_strips_trailing_slash() {
+        let config = test_config("https://example.com/");
+        let items: Vec<&ContentItem> = vec![];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("https://example.com/"));
+        assert!(!result.contains("https://example.com//"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_with_lastmod() {
+        let config = test_config("https://example.com");
+        let mut item = test_item("hello", "/posts/hello", "posts");
+        item.frontmatter.date = Some(chrono::NaiveDate::from_ymd_opt(2025, 6, 15).unwrap());
+        let items: Vec<&ContentItem> = vec![&item];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("<lastmod>2025-06-15</lastmod>"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_extra_urls() {
+        let config = test_config("https://example.com");
+        let items: Vec<&ContentItem> = vec![];
+        let translation_map = HashMap::new();
+        let extra = vec!["/tags/".to_string(), "/tags/rust/".to_string()];
+        let result = generate_sitemap(&config, &items, &translation_map, &extra).unwrap();
+        assert!(result.contains("https://example.com/tags/"));
+        assert!(result.contains("https://example.com/tags/rust/"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_empty() {
+        let config = test_config("https://example.com");
+        let items: Vec<&ContentItem> = vec![];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("<urlset"));
+        assert!(result.contains("</urlset>"));
+        assert!(result.contains("https://example.com/"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_multilingual() {
+        let mut config = test_config("https://example.com");
+        config.languages.insert(
+            "es".into(),
+            crate::config::LanguageConfig {
+                title: Some("Test ES".into()),
+                description: None,
+            },
+        );
+        let item = test_item("hello", "/posts/hello", "posts");
+        let items: Vec<&ContentItem> = vec![&item];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("xmlns:xhtml"));
+        assert!(result.contains("hreflang"));
+        assert!(result.contains("https://example.com/es/"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_with_translations() {
+        let mut config = test_config("https://example.com");
+        config.languages.insert(
+            "es".into(),
+            crate::config::LanguageConfig {
+                title: Some("Test ES".into()),
+                description: None,
+            },
+        );
+        let item_en = test_item("hello", "/posts/hello", "posts");
+        let mut item_es = test_item("hello", "/es/posts/hello", "posts");
+        item_es.lang = "es".into();
+        let items: Vec<&ContentItem> = vec![&item_en, &item_es];
+        let mut translation_map = HashMap::new();
+        translation_map.insert(
+            ("posts".to_string(), "hello".to_string()),
+            vec![
+                TranslationLink {
+                    lang: "en".into(),
+                    url: "/posts/hello".into(),
+                },
+                TranslationLink {
+                    lang: "es".into(),
+                    url: "/es/posts/hello".into(),
+                },
+            ],
+        );
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("hreflang=\"en\""));
+        assert!(result.contains("hreflang=\"es\""));
+        assert!(result.contains("/posts/hello"));
+        assert!(result.contains("/es/posts/hello"));
+    }
+
+    #[test]
+    fn test_generate_sitemap_multiple_items() {
+        let config = test_config("https://example.com");
+        let item1 = test_item("first", "/posts/first", "posts");
+        let item2 = test_item("second", "/posts/second", "posts");
+        let item3 = test_item("about", "/about", "pages");
+        let items: Vec<&ContentItem> = vec![&item1, &item2, &item3];
+        let translation_map = HashMap::new();
+        let result = generate_sitemap(&config, &items, &translation_map, &[]).unwrap();
+        assert!(result.contains("/posts/first"));
+        assert!(result.contains("/posts/second"));
+        assert!(result.contains("/about"));
+    }
+}

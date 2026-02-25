@@ -280,4 +280,128 @@ mod tests {
     fn test_extract_excerpt_single_paragraph() {
         assert_eq!(extract_excerpt("Just one paragraph"), "Just one paragraph");
     }
+
+    #[test]
+    fn test_split_frontmatter_with_leading_whitespace() {
+        let raw = "  \n---\ntitle: Test\n---\nBody";
+        let (fm, body) = split_frontmatter(raw).unwrap();
+        assert_eq!(fm, "title: Test");
+        assert_eq!(body, "Body");
+    }
+
+    #[test]
+    fn test_split_frontmatter_unclosed() {
+        assert!(split_frontmatter("---\ntitle: Test\nNo closing").is_none());
+    }
+
+    #[test]
+    fn test_split_frontmatter_body_with_newlines() {
+        let raw = "---\ntitle: Test\n---\n\n\nBody with leading newlines";
+        let (_, body) = split_frontmatter(raw).unwrap();
+        assert_eq!(body, "Body with leading newlines");
+    }
+
+    #[test]
+    fn test_slug_from_title_unicode() {
+        let slug = slug_from_title("Héllo Wörld");
+        assert!(!slug.is_empty());
+        assert!(!slug.contains(' '));
+    }
+
+    #[test]
+    fn test_slug_from_title_special_chars() {
+        let slug = slug_from_title("What's New? (2026)");
+        assert!(!slug.contains('\''));
+        assert!(!slug.contains('?'));
+        assert!(!slug.contains('('));
+    }
+
+    #[test]
+    fn test_generate_frontmatter_with_all_fields() {
+        let fm = Frontmatter {
+            title: "Full Post".into(),
+            date: Some(NaiveDate::from_ymd_opt(2025, 6, 15).unwrap()),
+            updated: Some(NaiveDate::from_ymd_opt(2025, 7, 1).unwrap()),
+            description: Some("A description".into()),
+            image: Some("/static/hero.jpg".into()),
+            slug: Some("custom-slug".into()),
+            tags: vec!["rust".into(), "web".into()],
+            draft: true,
+            template: Some("custom.html".into()),
+            robots: Some("noindex".into()),
+            weight: Some(5),
+            extra: HashMap::new(),
+        };
+        let generated = generate_frontmatter(&fm);
+        assert!(generated.contains("title: Full Post"));
+        assert!(generated.contains("2025-06-15"));
+        assert!(generated.contains("2025-07-01"));
+        assert!(generated.contains("A description"));
+        assert!(generated.contains("custom-slug"));
+        assert!(generated.contains("draft: true"));
+        assert!(generated.contains("noindex"));
+    }
+
+    #[test]
+    fn test_extract_lang_from_filename_no_extension() {
+        let langs: HashSet<&str> = ["es"].into_iter().collect();
+        assert_eq!(extract_lang_from_filename(Path::new("noext"), &langs), None);
+    }
+
+    #[test]
+    fn test_extract_excerpt_more_marker_at_start() {
+        assert_eq!(extract_excerpt("<!-- more -->\nrest"), "");
+    }
+
+    #[test]
+    fn test_extract_excerpt_blank_first_paragraph() {
+        let body = "\n\nActual first paragraph.\n\nSecond.";
+        assert_eq!(extract_excerpt(body), "Actual first paragraph.");
+    }
+
+    #[test]
+    fn test_is_false_helper() {
+        assert!(is_false(&false));
+        assert!(!is_false(&true));
+    }
+
+    #[test]
+    fn test_parse_content_file_real() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        std::fs::write(
+            &path,
+            "---\ntitle: Hello World\ntags:\n  - rust\n---\nThis is the body.",
+        )
+        .unwrap();
+        let (fm, body) = parse_content_file(&path).unwrap();
+        assert_eq!(fm.title, "Hello World");
+        assert_eq!(fm.tags, vec!["rust"]);
+        assert_eq!(body, "This is the body.");
+    }
+
+    #[test]
+    fn test_parse_content_file_missing() {
+        let result = parse_content_file(Path::new("/nonexistent/file.md"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_content_file_no_frontmatter() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("nofm.md");
+        std::fs::write(&path, "Just text, no frontmatter").unwrap();
+        let result = parse_content_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("frontmatter"));
+    }
+
+    #[test]
+    fn test_strip_lang_suffix_multiple_dots() {
+        let langs: HashSet<&str> = ["es"].into_iter().collect();
+        // "readme.min.es" should strip "es"
+        assert_eq!(strip_lang_suffix("readme.min.es", &langs), "readme.min");
+        // "readme.min" should not strip
+        assert_eq!(strip_lang_suffix("readme.min", &langs), "readme.min");
+    }
 }

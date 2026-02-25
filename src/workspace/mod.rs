@@ -206,3 +206,262 @@ pub fn load_site_in_workspace(
 
     Ok((config, paths))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_workspace_config(sites: Vec<WorkspaceSite>) -> WorkspaceConfig {
+        WorkspaceConfig {
+            workspace: WorkspaceSection {
+                name: "test-ws".into(),
+                shared_data: None,
+                shared_static: None,
+                shared_templates: None,
+            },
+            sites,
+            cross_site: CrossSiteSection::default(),
+        }
+    }
+
+    fn make_site(name: &str, path: &str) -> WorkspaceSite {
+        WorkspaceSite {
+            name: name.into(),
+            path: path.into(),
+            base_url: None,
+            output_dir: None,
+        }
+    }
+
+    #[test]
+    fn test_find_site_found() {
+        let config = make_workspace_config(vec![
+            make_site("blog", "sites/blog"),
+            make_site("docs", "sites/docs"),
+        ]);
+        let site = config.find_site("blog");
+        assert!(site.is_some());
+        assert_eq!(site.unwrap().name, "blog");
+    }
+
+    #[test]
+    fn test_find_site_not_found() {
+        let config = make_workspace_config(vec![make_site("blog", "sites/blog")]);
+        assert!(config.find_site("missing").is_none());
+    }
+
+    #[test]
+    fn test_sites_to_operate_all() {
+        let config = make_workspace_config(vec![
+            make_site("blog", "sites/blog"),
+            make_site("docs", "sites/docs"),
+        ]);
+        let sites = config.sites_to_operate(None).unwrap();
+        assert_eq!(sites.len(), 2);
+    }
+
+    #[test]
+    fn test_sites_to_operate_filtered() {
+        let config = make_workspace_config(vec![
+            make_site("blog", "sites/blog"),
+            make_site("docs", "sites/docs"),
+        ]);
+        let sites = config.sites_to_operate(Some("docs")).unwrap();
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].name, "docs");
+    }
+
+    #[test]
+    fn test_sites_to_operate_unknown_filter() {
+        let config = make_workspace_config(vec![make_site("blog", "sites/blog")]);
+        let err = config.sites_to_operate(Some("nope")).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("unknown site 'nope'"));
+        assert!(msg.contains("blog"));
+    }
+
+    #[test]
+    fn test_validate_empty_sites() {
+        let config = make_workspace_config(vec![]);
+        let err = config.validate(Path::new("/tmp")).unwrap_err();
+        assert!(err.to_string().contains("at least one site"));
+    }
+
+    #[test]
+    fn test_validate_duplicate_names() {
+        let config = make_workspace_config(vec![
+            make_site("blog", "sites/blog1"),
+            make_site("blog", "sites/blog2"),
+        ]);
+        let err = config.validate(Path::new("/tmp")).unwrap_err();
+        assert!(err.to_string().contains("duplicate site name: 'blog'"));
+    }
+
+    #[test]
+    fn test_validate_missing_seite_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("sites/blog")).unwrap();
+        // No seite.toml created
+        let config = make_workspace_config(vec![make_site("blog", "sites/blog")]);
+        let err = config.validate(tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("no seite.toml"));
+    }
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let err =
+            WorkspaceConfig::load(Path::new("/nonexistent/seite-workspace.toml")).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_load_valid_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Create a workspace toml
+        let ws_toml = r#"
+[workspace]
+name = "my-ws"
+
+[[sites]]
+name = "blog"
+path = "sites/blog"
+"#;
+        std::fs::write(tmp.path().join("seite-workspace.toml"), ws_toml).unwrap();
+        // Create site dir with seite.toml
+        let blog_dir = tmp.path().join("sites/blog");
+        std::fs::create_dir_all(&blog_dir).unwrap();
+        let site_toml = r#"
+[site]
+title = "Blog"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+nested = false
+url_prefix = "/posts"
+default_template = "post.html"
+"#;
+        std::fs::write(blog_dir.join("seite.toml"), site_toml).unwrap();
+
+        let config = WorkspaceConfig::load(&tmp.path().join("seite-workspace.toml")).unwrap();
+        assert_eq!(config.workspace.name, "my-ws");
+        assert_eq!(config.sites.len(), 1);
+        assert_eq!(config.sites[0].name, "blog");
+    }
+
+    #[test]
+    fn test_load_invalid_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("seite-workspace.toml"),
+            "not valid [[[ toml",
+        )
+        .unwrap();
+        let err = WorkspaceConfig::load(&tmp.path().join("seite-workspace.toml")).unwrap_err();
+        assert!(!err.to_string().is_empty()); // Should have a parse error
+    }
+
+    #[test]
+    fn test_find_workspace_root_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("seite-workspace.toml"), "").unwrap();
+        let nested = tmp.path().join("deep/nested");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let root = find_workspace_root(&nested);
+        assert!(root.is_some());
+        assert_eq!(root.unwrap(), tmp.path());
+    }
+
+    #[test]
+    fn test_find_workspace_root_not_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No seite-workspace.toml anywhere
+        let root = find_workspace_root(tmp.path());
+        assert!(root.is_none());
+    }
+
+    #[test]
+    fn test_load_site_in_workspace_applies_overrides() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let blog_dir = tmp.path().join("sites/blog");
+        std::fs::create_dir_all(&blog_dir).unwrap();
+        let site_toml = r#"
+[site]
+title = "Blog"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+nested = false
+url_prefix = "/posts"
+default_template = "post.html"
+"#;
+        std::fs::write(blog_dir.join("seite.toml"), site_toml).unwrap();
+
+        let ws_site = WorkspaceSite {
+            name: "blog".into(),
+            path: "sites/blog".into(),
+            base_url: Some("https://blog.example.com".into()),
+            output_dir: Some("dist/blog".into()),
+        };
+
+        let (config, paths) = load_site_in_workspace(tmp.path(), &ws_site).unwrap();
+        assert_eq!(config.site.base_url, "https://blog.example.com");
+        assert_eq!(paths.output, tmp.path().join("dist/blog"));
+    }
+
+    #[test]
+    fn test_load_site_in_workspace_no_overrides() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let blog_dir = tmp.path().join("sites/blog");
+        std::fs::create_dir_all(&blog_dir).unwrap();
+        let site_toml = r#"
+[site]
+title = "Blog"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+nested = false
+url_prefix = "/posts"
+default_template = "post.html"
+"#;
+        std::fs::write(blog_dir.join("seite.toml"), site_toml).unwrap();
+
+        let ws_site = make_site("blog", "sites/blog");
+        let (config, paths) = load_site_in_workspace(tmp.path(), &ws_site).unwrap();
+        assert_eq!(config.site.base_url, "http://localhost:3000");
+        // output should be relative to the site root, not workspace root
+        assert_eq!(paths.output, blog_dir.join("dist"));
+    }
+
+    #[test]
+    fn test_cross_site_section_defaults() {
+        let css = CrossSiteSection::default();
+        assert!(!css.unified_sitemap);
+        assert!(!css.unified_search);
+        assert!(!css.cross_site_links);
+    }
+}

@@ -686,4 +686,188 @@ mod tests {
         assert!(result.contains("Second line"));
         assert!(!result.contains("Second paragraph"));
     }
+
+    #[test]
+    fn test_first_paragraph_empty() {
+        assert_eq!(first_paragraph(""), "");
+    }
+
+    #[test]
+    fn test_first_paragraph_truncates_at_200_chars() {
+        let long_line = "a".repeat(300);
+        let result = first_paragraph(&long_line);
+        assert_eq!(result.len(), 200);
+    }
+
+    #[test]
+    fn test_first_paragraph_max_3_lines() {
+        let body = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
+        let result = first_paragraph(body);
+        assert!(result.contains("Line 1"));
+        assert!(result.contains("Line 2"));
+        assert!(result.contains("Line 3"));
+        assert!(!result.contains("Line 4"));
+    }
+
+    #[test]
+    fn test_extract_excerpt_not_found_falls_back() {
+        let body = "Hello world";
+        let result = extract_excerpt(body, "missing");
+        assert_eq!(result, "Hello world");
+    }
+
+    #[test]
+    fn test_extract_excerpt_at_start() {
+        let body = "deploy is great. More text follows for context and padding.";
+        let result = extract_excerpt(body, "deploy");
+        assert!(result.contains("deploy"));
+        // Should not have leading "..." since match is at start
+        assert!(!result.starts_with("..."));
+    }
+
+    #[test]
+    fn test_extract_excerpt_at_end() {
+        let long_prefix = "x".repeat(200);
+        let body = format!("{long_prefix}deploy");
+        let result = extract_excerpt(&body, "deploy");
+        assert!(result.contains("deploy"));
+        assert!(result.starts_with("..."));
+    }
+
+    #[test]
+    fn test_extract_matching_sections_no_match() {
+        let body = "## Intro\nSome text.\n## Config\nMore text.";
+        let sections = extract_matching_sections(body, "zzzzz");
+        assert!(sections.is_empty());
+    }
+
+    #[test]
+    fn test_extract_matching_sections_multiple() {
+        let body = "## Section A\nfoo bar\n## Section B\nfoo baz\n## Section C\nunrelated";
+        let sections = extract_matching_sections(body, "foo");
+        assert_eq!(sections.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_matching_sections_truncates_long() {
+        let long_content = "x".repeat(600);
+        let body = format!("## Long Section\nsearchterm {long_content}");
+        let sections = extract_matching_sections(&body, "searchterm");
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].ends_with("..."));
+        assert!(sections[0].len() <= 504); // 500 + "..."
+    }
+
+    #[test]
+    fn test_extract_matching_sections_no_headings() {
+        let body = "Just plain text with searchterm in it.";
+        let sections = extract_matching_sections(body, "searchterm");
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].contains("searchterm"));
+    }
+
+    #[test]
+    fn test_call_missing_name() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({});
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("Missing 'name'"));
+    }
+
+    #[test]
+    fn test_call_unknown_tool() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({ "name": "nonexistent_tool" });
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("Unknown tool"));
+    }
+
+    #[test]
+    fn test_call_build_no_config() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({ "name": "seite_build" });
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("seite project"));
+    }
+
+    #[test]
+    fn test_call_search_no_config() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({
+            "name": "seite_search",
+            "arguments": { "query": "test" }
+        });
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("seite project"));
+    }
+
+    #[test]
+    fn test_call_apply_theme_no_config() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({
+            "name": "seite_apply_theme",
+            "arguments": { "name": "dark" }
+        });
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("project"));
+    }
+
+    #[test]
+    fn test_call_create_content_no_config() {
+        let mut state = ServerState {
+            config: None,
+            paths: None,
+            cwd: std::path::PathBuf::new(),
+        };
+        let params = serde_json::json!({
+            "name": "seite_create_content",
+            "arguments": { "collection": "posts", "title": "Test" }
+        });
+        let err = call(&mut state, &params).unwrap_err();
+        assert!(err.message.contains("seite project"));
+    }
+
+    #[test]
+    fn test_lookup_docs_all_topics_have_content() {
+        for doc in crate::docs::all() {
+            let args = serde_json::json!({ "topic": doc.slug });
+            let result = call_lookup_docs(&args).unwrap();
+            assert_eq!(
+                result["found"], true,
+                "Doc topic '{}' should be found",
+                doc.slug
+            );
+            assert!(!result["content"].as_str().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_extract_matching_sections_max_5() {
+        let mut body = String::new();
+        for i in 0..10 {
+            body.push_str(&format!("## Section {i}\nsearchterm content\n"));
+        }
+        let sections = extract_matching_sections(&body, "searchterm");
+        assert_eq!(sections.len(), 5);
+    }
 }

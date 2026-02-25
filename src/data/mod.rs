@@ -341,4 +341,136 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         assert_eq!(count_data_files(&tmp.path().join("nonexistent")), 0);
     }
+
+    #[test]
+    fn test_parse_data_file_invalid_yaml() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("bad.yaml");
+        std::fs::write(&path, "{{{{not valid yaml}}}}").unwrap();
+        let result = parse_data_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid YAML"));
+    }
+
+    #[test]
+    fn test_parse_data_file_invalid_json() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("bad.json");
+        std::fs::write(&path, "not json at all").unwrap();
+        let result = parse_data_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid JSON"));
+    }
+
+    #[test]
+    fn test_parse_data_file_invalid_toml() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("bad.toml");
+        std::fs::write(&path, "[[[[not valid").unwrap();
+        let result = parse_data_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid TOML"));
+    }
+
+    #[test]
+    fn test_parse_data_file_unsupported_extension() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("data.xml");
+        std::fs::write(&path, "<xml/>").unwrap();
+        let result = parse_data_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsupported"));
+    }
+
+    #[test]
+    fn test_insert_nested_single_segment() {
+        let mut root = serde_json::Map::new();
+        let value = serde_json::json!("hello");
+        insert_nested(&mut root, &["key".to_string()], value, Path::new("test")).unwrap();
+        assert_eq!(root.get("key").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_insert_nested_multiple_segments() {
+        let mut root = serde_json::Map::new();
+        let value = serde_json::json!(42);
+        insert_nested(
+            &mut root,
+            &["a".to_string(), "b".to_string(), "c".to_string()],
+            value,
+            Path::new("test"),
+        )
+        .unwrap();
+        assert_eq!(root["a"]["b"]["c"], 42);
+    }
+
+    #[test]
+    fn test_insert_nested_empty_segments() {
+        let mut root = serde_json::Map::new();
+        insert_nested(&mut root, &[], serde_json::json!("x"), Path::new("test")).unwrap();
+        assert!(root.is_empty());
+    }
+
+    #[test]
+    fn test_check_conflicts_no_conflict() {
+        let files = vec![
+            (vec!["a".to_string()], PathBuf::from("a.yaml")),
+            (vec!["b".to_string()], PathBuf::from("b.json")),
+        ];
+        assert!(check_conflicts(&files).is_ok());
+    }
+
+    #[test]
+    fn test_check_conflicts_with_conflict() {
+        let files = vec![
+            (vec!["a".to_string()], PathBuf::from("a.yaml")),
+            (vec!["a".to_string()], PathBuf::from("a.json")),
+        ];
+        let result = check_conflicts(&files);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("data key conflict"));
+    }
+
+    #[test]
+    fn test_deeply_nested_directory() {
+        let tmp = TempDir::new().unwrap();
+        let deep_dir = tmp.path().join("a").join("b");
+        std::fs::create_dir_all(&deep_dir).unwrap();
+        std::fs::write(deep_dir.join("c.yaml"), "val: 1\n").unwrap();
+
+        let data = load_data_dir(tmp.path()).unwrap();
+        assert_eq!(data["a"]["b"]["c"]["val"], 1);
+    }
+
+    #[test]
+    fn test_count_data_files_nested() {
+        let tmp = TempDir::new().unwrap();
+        let sub = tmp.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(tmp.path().join("a.yaml"), "x: 1\n").unwrap();
+        std::fs::write(sub.join("b.json"), "{}").unwrap();
+        std::fs::write(sub.join("c.txt"), "ignored").unwrap();
+
+        assert_eq!(count_data_files(tmp.path()), 2);
+    }
+
+    #[test]
+    fn test_load_yaml_object() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("site.yaml"), "title: Hello\nurl: /\n").unwrap();
+        let data = load_data_dir(tmp.path()).unwrap();
+        assert_eq!(data["site"]["title"], "Hello");
+        assert_eq!(data["site"]["url"], "/");
+    }
+
+    #[test]
+    fn test_load_toml_nested_tables() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("config.toml"), "[section]\nkey = \"val\"\n").unwrap();
+        let data = load_data_dir(tmp.path()).unwrap();
+        assert_eq!(data["config"]["section"]["key"], "val");
+    }
 }

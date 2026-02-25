@@ -316,4 +316,105 @@ mod tests {
         assert!(result.contains("<custom>test</custom>"));
         assert!(!result.contains("youtube.com"));
     }
+
+    #[test]
+    fn test_registry_is_not_empty() {
+        let registry = test_registry();
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_shortcode_value_to_tera_value() {
+        assert_eq!(
+            ShortcodeValue::String("hello".into()).to_tera_value(),
+            serde_json::Value::String("hello".into())
+        );
+        assert_eq!(
+            ShortcodeValue::Integer(42).to_tera_value(),
+            serde_json::json!(42)
+        );
+        assert_eq!(
+            ShortcodeValue::Float(3.14).to_tera_value(),
+            serde_json::json!(3.14)
+        );
+        assert_eq!(
+            ShortcodeValue::Boolean(true).to_tera_value(),
+            serde_json::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_user_defined_shortcode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sc_dir = tmp.path().join("shortcodes");
+        std::fs::create_dir(&sc_dir).unwrap();
+        std::fs::write(sc_dir.join("custom.html"), "<div>{{ text }}</div>").unwrap();
+
+        let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
+        let (page, site) = empty_contexts();
+        let input = r#"{{< custom(text="hello") >}}"#;
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .unwrap();
+        assert!(result.contains("<div>hello</div>"));
+    }
+
+    #[test]
+    fn test_shortcode_with_page_context() {
+        let registry = test_registry();
+        let page = serde_json::json!({"title": "My Page"});
+        let site = serde_json::json!({"base_url": "https://example.com"});
+        // youtube shortcode doesn't use page context, but the rendering shouldn't fail
+        let input = r#"{{< youtube(id="abc") >}}"#;
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .unwrap();
+        assert!(result.contains("youtube.com/embed/abc"));
+    }
+
+    #[test]
+    fn test_expand_contact_form_shortcode() {
+        let registry = test_registry();
+        let page = serde_json::json!({});
+        let site = serde_json::json!({
+            "contact": {
+                "provider": "formspree",
+                "endpoint": "xpznqkdl"
+            }
+        });
+        let input = r#"{{< contact_form() >}}"#;
+        let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site);
+        // Contact form renders even without provider — it just won't have an action URL
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_empty_registry() {
+        // Create a registry with a custom non-existent shortcodes dir that exists but is empty
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sc_dir = tmp.path().join("shortcodes");
+        std::fs::create_dir(&sc_dir).unwrap();
+
+        // The registry still has built-in shortcodes
+        let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_user_shortcode_non_html_skipped() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sc_dir = tmp.path().join("shortcodes");
+        std::fs::create_dir(&sc_dir).unwrap();
+        std::fs::write(sc_dir.join("readme.txt"), "Not a template").unwrap();
+        std::fs::write(sc_dir.join("valid.html"), "<p>{{ text }}</p>").unwrap();
+
+        let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
+        // "readme" should not be registered, "valid" should
+        let (page, site) = empty_contexts();
+        let input = r#"{{< valid(text="ok") >}}"#;
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .unwrap();
+        assert!(result.contains("<p>ok</p>"));
+    }
 }

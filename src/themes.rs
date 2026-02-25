@@ -179,4 +179,137 @@ mod tests {
     fn test_by_name_not_found() {
         assert!(by_name("nonexistent").is_none());
     }
+
+    #[test]
+    fn test_all_themes_have_non_empty_html() {
+        for theme in all() {
+            assert!(
+                !theme.base_html.is_empty(),
+                "Theme '{}' has empty HTML",
+                theme.name
+            );
+            assert!(
+                theme.base_html.contains("<!DOCTYPE html>")
+                    || theme.base_html.contains("<!doctype html>"),
+                "Theme '{}' should contain DOCTYPE",
+                theme.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_themes_have_descriptions() {
+        for theme in all() {
+            assert!(
+                !theme.description.is_empty(),
+                "Theme '{}' has empty description",
+                theme.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_bundled_theme_names() {
+        let themes = all();
+        let names: Vec<&str> = themes.iter().map(|t| t.name).collect();
+        assert!(names.contains(&"default"));
+        assert!(names.contains(&"minimal"));
+        assert!(names.contains(&"dark"));
+        assert!(names.contains(&"docs"));
+        assert!(names.contains(&"brutalist"));
+        assert!(names.contains(&"bento"));
+    }
+
+    #[test]
+    fn test_installed_themes_empty_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes = installed_themes(tmp.path());
+        assert!(themes.is_empty());
+    }
+
+    #[test]
+    fn test_installed_themes_with_themes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes_dir = tmp.path().join("templates").join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(
+            themes_dir.join("custom.tera"),
+            "{#- theme-description: My custom theme -#}\n<!DOCTYPE html><html></html>",
+        )
+        .unwrap();
+        let themes = installed_themes(tmp.path());
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].name, "custom");
+        assert_eq!(themes[0].description, "My custom theme");
+    }
+
+    #[test]
+    fn test_installed_themes_skips_non_tera() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes_dir = tmp.path().join("templates").join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(themes_dir.join("readme.txt"), "not a theme").unwrap();
+        std::fs::write(themes_dir.join("valid.tera"), "<!DOCTYPE html>").unwrap();
+        let themes = installed_themes(tmp.path());
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].name, "valid");
+    }
+
+    #[test]
+    fn test_installed_by_name_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes_dir = tmp.path().join("templates").join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(
+            themes_dir.join("mytest.tera"),
+            "{#- theme-description: Test theme -#}\n<html></html>",
+        )
+        .unwrap();
+        let theme = installed_by_name(tmp.path(), "mytest");
+        assert!(theme.is_some());
+        let theme = theme.unwrap();
+        assert_eq!(theme.name, "mytest");
+        assert_eq!(theme.description, "Test theme");
+    }
+
+    #[test]
+    fn test_installed_by_name_not_found() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert!(installed_by_name(tmp.path(), "missing").is_none());
+    }
+
+    #[test]
+    fn test_installed_theme_no_description() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes_dir = tmp.path().join("templates").join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(themes_dir.join("plain.tera"), "<html></html>").unwrap();
+        let theme = installed_by_name(tmp.path(), "plain").unwrap();
+        assert_eq!(theme.description, "Installed theme");
+    }
+
+    #[test]
+    fn test_parse_theme_description_deep_in_file() {
+        // Description must be in first 10 lines
+        let mut content = String::new();
+        for _ in 0..11 {
+            content.push_str("<!-- line -->\n");
+        }
+        content.push_str("{#- theme-description: Too deep -#}");
+        assert_eq!(parse_theme_description(&content), None);
+    }
+
+    #[test]
+    fn test_installed_themes_sorted() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let themes_dir = tmp.path().join("templates").join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(themes_dir.join("zebra.tera"), "<html></html>").unwrap();
+        std::fs::write(themes_dir.join("alpha.tera"), "<html></html>").unwrap();
+        std::fs::write(themes_dir.join("middle.tera"), "<html></html>").unwrap();
+        let themes = installed_themes(tmp.path());
+        assert_eq!(themes[0].name, "alpha");
+        assert_eq!(themes[1].name, "middle");
+        assert_eq!(themes[2].name, "zebra");
+    }
 }

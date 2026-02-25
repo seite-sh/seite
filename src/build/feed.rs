@@ -65,3 +65,117 @@ fn write_text_element(writer: &mut Writer<Cursor<Vec<u8>>>, tag: &str, text: &st
     write(writer, Event::Text(BytesText::new(text)))?;
     write(writer, Event::End(BytesEnd::new(tag)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::{ContentItem, Frontmatter};
+
+    fn test_config() -> SiteConfig {
+        SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test Blog".into(),
+                description: "A test blog".into(),
+                base_url: "https://example.com".into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![],
+            build: Default::default(),
+            deploy: Default::default(),
+            languages: Default::default(),
+            images: Default::default(),
+            analytics: None,
+            trust: None,
+            contact: None,
+        }
+    }
+
+    fn test_item(title: &str, date: Option<chrono::NaiveDate>, desc: Option<&str>) -> ContentItem {
+        ContentItem {
+            frontmatter: Frontmatter {
+                title: title.into(),
+                date,
+                updated: None,
+                description: desc.map(|d| d.into()),
+                image: None,
+                slug: None,
+                tags: vec![],
+                draft: false,
+                template: None,
+                robots: None,
+                weight: None,
+                extra: Default::default(),
+            },
+            raw_body: "test".into(),
+            html_body: "<p>test</p>".into(),
+            source_path: std::path::PathBuf::from("test.md"),
+            slug: "test-post".into(),
+            collection: "posts".into(),
+            url: "/posts/test-post".into(),
+            lang: "en".into(),
+            word_count: 1,
+            reading_time: 1,
+            excerpt: String::new(),
+            excerpt_html: String::new(),
+            toc: vec![],
+        }
+    }
+
+    #[test]
+    fn test_generate_rss_basic() {
+        let config = test_config();
+        let item = test_item(
+            "Hello World",
+            Some(chrono::NaiveDate::from_ymd_opt(2025, 1, 15).unwrap()),
+            Some("A first post"),
+        );
+        let items: Vec<&ContentItem> = vec![&item];
+        let rss = generate_rss(&config, &items).unwrap();
+        assert!(rss.contains("<title>Test Blog</title>"));
+        assert!(rss.contains("<title>Hello World</title>"));
+        assert!(rss.contains("https://example.com/posts/test-post"));
+        assert!(rss.contains("<pubDate>"));
+        assert!(rss.contains("<description>A first post</description>"));
+    }
+
+    #[test]
+    fn test_generate_rss_no_date() {
+        let config = test_config();
+        let item = test_item("No Date", None, Some("desc"));
+        let items: Vec<&ContentItem> = vec![&item];
+        let rss = generate_rss(&config, &items).unwrap();
+        assert!(rss.contains("<title>No Date</title>"));
+        assert!(!rss.contains("<pubDate>"));
+    }
+
+    #[test]
+    fn test_generate_rss_no_description() {
+        let config = test_config();
+        let item = test_item("No Desc", None, None);
+        let items: Vec<&ContentItem> = vec![&item];
+        let rss = generate_rss(&config, &items).unwrap();
+        assert!(rss.contains("<description></description>"));
+    }
+
+    #[test]
+    fn test_generate_rss_empty_items() {
+        let config = test_config();
+        let items: Vec<&ContentItem> = vec![];
+        let rss = generate_rss(&config, &items).unwrap();
+        assert!(rss.contains("<channel>"));
+        assert!(rss.contains("</channel>"));
+        assert!(!rss.contains("<item>"));
+    }
+
+    #[test]
+    fn test_generate_rss_trailing_slash_removed() {
+        let mut config = test_config();
+        config.site.base_url = "https://example.com/".into();
+        let item = test_item("Trailing", None, None);
+        let items: Vec<&ContentItem> = vec![&item];
+        let rss = generate_rss(&config, &items).unwrap();
+        assert!(rss.contains("https://example.com/posts/test-post"));
+        assert!(!rss.contains("https://example.com//posts/test-post"));
+    }
+}

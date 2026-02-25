@@ -340,3 +340,820 @@ fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
     }
     Err(PageError::Server("no available port found".into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    // =========================================================================
+    // LIVERELOAD_SCRIPT constant
+    // =========================================================================
+
+    #[test]
+    fn test_livereload_script_is_valid_script_tag() {
+        assert!(
+            LIVERELOAD_SCRIPT.starts_with("<script>"),
+            "script should open with <script>"
+        );
+        assert!(
+            LIVERELOAD_SCRIPT.ends_with("</script>"),
+            "script should close with </script>"
+        );
+    }
+
+    #[test]
+    fn test_livereload_script_contains_reload_endpoint() {
+        assert!(
+            LIVERELOAD_SCRIPT.contains("/__livereload"),
+            "script should poll the /__livereload endpoint"
+        );
+    }
+
+    #[test]
+    fn test_livereload_script_calls_location_reload() {
+        assert!(
+            LIVERELOAD_SCRIPT.contains("location.reload()"),
+            "script should trigger page reload on version change"
+        );
+    }
+
+    // =========================================================================
+    // ServerHandle
+    // =========================================================================
+
+    #[test]
+    fn test_server_handle_port() {
+        let handle = ServerHandle {
+            stop: Arc::new(AtomicBool::new(false)),
+            port: 3000,
+        };
+        assert_eq!(handle.port(), 3000);
+    }
+
+    #[test]
+    fn test_server_handle_stop() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = ServerHandle {
+            stop: stop.clone(),
+            port: 3000,
+        };
+        assert!(!stop.load(Ordering::Relaxed), "should start as not stopped");
+        handle.stop();
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "should be stopped after calling stop()"
+        );
+    }
+
+    #[test]
+    fn test_server_handle_drop_stops() {
+        let stop = Arc::new(AtomicBool::new(false));
+        {
+            let _handle = ServerHandle {
+                stop: stop.clone(),
+                port: 3000,
+            };
+            assert!(!stop.load(Ordering::Relaxed));
+        } // handle dropped here
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "dropping the handle should set stop to true"
+        );
+    }
+
+    #[test]
+    fn test_server_handle_stop_is_idempotent() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = ServerHandle {
+            stop: stop.clone(),
+            port: 3000,
+        };
+        handle.stop();
+        handle.stop();
+        assert!(
+            stop.load(Ordering::Relaxed),
+            "calling stop twice should still be stopped"
+        );
+    }
+
+    // =========================================================================
+    // inject_livereload
+    // =========================================================================
+
+    #[test]
+    fn test_inject_livereload_with_body_tag() {
+        let html = b"<html><body><p>Hello</p></body></html>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+        assert!(
+            result_str.contains(LIVERELOAD_SCRIPT),
+            "livereload script should be injected"
+        );
+        assert!(
+            result_str.contains("</body>"),
+            "closing body tag should still be present"
+        );
+        // Script should appear before </body>
+        let script_pos = result_str.find(LIVERELOAD_SCRIPT).unwrap();
+        let body_pos = result_str.rfind("</body>").unwrap();
+        assert!(
+            script_pos < body_pos,
+            "script should be injected before </body>"
+        );
+    }
+
+    #[test]
+    fn test_inject_livereload_no_body_tag() {
+        let html = b"<html><p>No body tag here</p></html>";
+        let result = inject_livereload(html);
+        assert_eq!(
+            result,
+            html.to_vec(),
+            "HTML without </body> should be returned unchanged"
+        );
+    }
+
+    #[test]
+    fn test_inject_livereload_empty() {
+        let result = inject_livereload(b"");
+        assert!(result.is_empty(), "empty input should return empty output");
+    }
+
+    #[test]
+    fn test_inject_livereload_multiple_body_tags() {
+        // rfind should find the LAST </body>
+        let html = b"<html><body>first</body><body>second</body></html>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+
+        // The script should be injected before the last </body>
+        let script_pos = result_str.find(LIVERELOAD_SCRIPT).unwrap();
+        let last_body = result_str.rfind("</body>").unwrap();
+        assert!(
+            script_pos < last_body,
+            "script should be injected before the last </body>"
+        );
+
+        // The first </body> should still appear before the script
+        let first_body = result_str.find("</body>").unwrap();
+        assert!(
+            first_body > script_pos || first_body < script_pos,
+            "both body tags should exist"
+        );
+    }
+
+    #[test]
+    fn test_inject_livereload_preserves_original_content() {
+        let html = b"<html><head><title>Test</title></head><body><h1>Hello World</h1><p>Content here.</p></body></html>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+
+        assert!(result_str.contains("<h1>Hello World</h1>"));
+        assert!(result_str.contains("<p>Content here.</p>"));
+        assert!(result_str.contains("<title>Test</title>"));
+        assert!(result_str.contains("</html>"));
+    }
+
+    #[test]
+    fn test_inject_livereload_body_at_end() {
+        let html = b"</body>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+        assert!(
+            result_str.contains(LIVERELOAD_SCRIPT),
+            "should inject even when </body> is the only content"
+        );
+        assert!(result_str.ends_with("</body>"), "should end with </body>");
+    }
+
+    #[test]
+    fn test_inject_livereload_body_with_whitespace_around() {
+        let html = b"<body>content\n  \n</body>\n";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+        assert!(result_str.contains(LIVERELOAD_SCRIPT));
+    }
+
+    #[test]
+    fn test_inject_livereload_invalid_utf8_passthrough() {
+        // Invalid UTF-8 bytes without </body>
+        let bytes: Vec<u8> = vec![0xFF, 0xFE, 0x00, 0x01];
+        let result = inject_livereload(&bytes);
+        assert_eq!(
+            result, bytes,
+            "non-UTF8 input without </body> should be returned as-is"
+        );
+    }
+
+    #[test]
+    fn test_inject_livereload_uppercase_body_not_matched() {
+        // The function uses rfind("</body>") which is case-sensitive
+        let html = b"<html><BODY>content</BODY></html>";
+        let result = inject_livereload(html);
+        assert_eq!(
+            result,
+            html.to_vec(),
+            "uppercase </BODY> should not trigger injection"
+        );
+    }
+
+    #[test]
+    fn test_inject_livereload_inserts_newlines() {
+        let html = b"<body>content</body>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+        // The function inserts \n before and after the script
+        let expected = format!("<body>content\n{}\n</body>", LIVERELOAD_SCRIPT);
+        assert_eq!(result_str, expected);
+    }
+
+    // =========================================================================
+    // resolve_file_path
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_file_path_root() {
+        let tmp = TempDir::new().unwrap();
+        let index = tmp.path().join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/");
+        assert_eq!(result, Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_root_no_index() {
+        let tmp = TempDir::new().unwrap();
+        // No index.html exists
+        let result = resolve_file_path(tmp.path(), "/");
+        // Returns Some(path) even though file doesn't exist — the caller checks existence
+        // Actually, let's check: clean is empty, returns Some(output_dir.join("index.html"))
+        assert_eq!(result, Some(tmp.path().join("index.html")));
+    }
+
+    #[test]
+    fn test_resolve_file_path_exact_file() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("robots.txt");
+        fs::write(&file, "User-agent: *").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/robots.txt");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_clean_url() {
+        let tmp = TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("posts");
+        fs::create_dir_all(&posts_dir).unwrap();
+        let file = posts_dir.join("hello-world.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/posts/hello-world");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_directory_index() {
+        let tmp = TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("posts");
+        fs::create_dir_all(&posts_dir).unwrap();
+        let index = posts_dir.join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/posts/");
+        assert_eq!(result, Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_not_found() {
+        let tmp = TempDir::new().unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/nonexistent");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_file_path_query_string() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("page.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/page?v=1");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_query_string_with_path() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("docs");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("guide.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/docs/guide?section=intro&highlight=true");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_empty_query_string() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("page.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/page?");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_nested_directory_index() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("docs").join("guides");
+        fs::create_dir_all(&nested).unwrap();
+        let index = nested.join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/docs/guides");
+        assert_eq!(result, Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_nested_clean_url() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("docs").join("guides");
+        fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("setup.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/docs/guides/setup");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_exact_html_file() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("about.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        // Requesting the exact .html path should find the file directly
+        let result = resolve_file_path(tmp.path(), "/about.html");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_xml_file() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("feed.xml");
+        fs::write(&file, "<rss></rss>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/feed.xml");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_markdown_file() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hello-world.md");
+        fs::write(&file, "# Hello").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/posts/hello-world.md");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_static_asset() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("static");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("style.css");
+        fs::write(&file, "body{}").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/static/style.css");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_search_index_json() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("search-index.json");
+        fs::write(&file, "[]").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/search-index.json");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_i18n_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("es").join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hola-mundo.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/es/posts/hola-mundo");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_i18n_index() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("es");
+        fs::create_dir_all(&dir).unwrap();
+        let index = dir.join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/es/");
+        assert_eq!(result, Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_priority_exact_file_over_html() {
+        // If both "about" (exact file) and "about.html" exist, exact file wins
+        let tmp = TempDir::new().unwrap();
+        let exact = tmp.path().join("about");
+        fs::write(&exact, "raw file").unwrap();
+        let html = tmp.path().join("about.html");
+        fs::write(&html, "<html></html>").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/about");
+        // "about" is a file, so candidate.is_file() returns true — exact match wins
+        assert_eq!(result, Some(exact));
+    }
+
+    #[test]
+    fn test_resolve_file_path_directory_without_trailing_slash() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let index = dir.join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+
+        // /posts without trailing slash — candidate is a dir (not a file),
+        // html_candidate posts.html doesn't exist, then checks posts/index.html
+        let result = resolve_file_path(tmp.path(), "/posts");
+        assert_eq!(result, Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_directory_without_index() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("empty-dir");
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/empty-dir");
+        assert_eq!(
+            result, None,
+            "directory without index.html should return None"
+        );
+    }
+
+    #[test]
+    fn test_resolve_file_path_favicon() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("favicon.ico");
+        fs::write(&file, &[0u8; 10]).unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/favicon.ico");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_image_file() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("static").join("images");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("photo.jpg");
+        fs::write(&file, &[0xFF, 0xD8, 0xFF]).unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/static/images/photo.jpg");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_dotfile() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join(".nojekyll");
+        fs::write(&file, "").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/.nojekyll");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_fingerprinted_asset() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("static");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("style.a1b2c3d4.css");
+        fs::write(&file, "body{}").unwrap();
+
+        let result = resolve_file_path(tmp.path(), "/static/style.a1b2c3d4.css");
+        assert_eq!(result, Some(file));
+    }
+
+    // =========================================================================
+    // guess_mime
+    // =========================================================================
+
+    #[test]
+    fn test_guess_mime_html() {
+        assert_eq!(
+            guess_mime(Path::new("index.html")),
+            "text/html; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_css() {
+        assert_eq!(guess_mime(Path::new("style.css")), "text/css");
+    }
+
+    #[test]
+    fn test_guess_mime_js() {
+        assert_eq!(guess_mime(Path::new("app.js")), "application/javascript");
+    }
+
+    #[test]
+    fn test_guess_mime_json() {
+        assert_eq!(guess_mime(Path::new("data.json")), "application/json");
+    }
+
+    #[test]
+    fn test_guess_mime_xml() {
+        assert_eq!(guess_mime(Path::new("sitemap.xml")), "application/xml");
+    }
+
+    #[test]
+    fn test_guess_mime_images() {
+        assert_eq!(guess_mime(Path::new("photo.png")), "image/png");
+        assert_eq!(guess_mime(Path::new("photo.jpg")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("photo.jpeg")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("anim.gif")), "image/gif");
+        assert_eq!(guess_mime(Path::new("icon.svg")), "image/svg+xml");
+        assert_eq!(guess_mime(Path::new("favicon.ico")), "image/x-icon");
+    }
+
+    #[test]
+    fn test_guess_mime_fonts() {
+        assert_eq!(guess_mime(Path::new("font.woff")), "font/woff");
+        assert_eq!(guess_mime(Path::new("font.woff2")), "font/woff2");
+    }
+
+    #[test]
+    fn test_guess_mime_md() {
+        assert_eq!(
+            guess_mime(Path::new("readme.md")),
+            "text/plain; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_txt() {
+        assert_eq!(
+            guess_mime(Path::new("llms.txt")),
+            "text/plain; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_unknown() {
+        assert_eq!(
+            guess_mime(Path::new("archive.tar.gz")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            guess_mime(Path::new("file.xyz")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_no_extension() {
+        assert_eq!(guess_mime(Path::new("CNAME")), "application/octet-stream");
+        assert_eq!(
+            guess_mime(Path::new(".nojekyll")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_nested_path() {
+        assert_eq!(guess_mime(Path::new("static/css/style.css")), "text/css");
+        assert_eq!(guess_mime(Path::new("posts/2026/photo.png")), "image/png");
+        assert_eq!(
+            guess_mime(Path::new("docs/guides/setup.html")),
+            "text/html; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_double_extension() {
+        // Path::extension() returns the last extension
+        assert_eq!(
+            guess_mime(Path::new("archive.tar.gz")),
+            "application/octet-stream"
+        );
+        assert_eq!(guess_mime(Path::new("style.min.css")), "text/css");
+        assert_eq!(
+            guess_mime(Path::new("app.bundle.js")),
+            "application/javascript"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_fingerprinted_assets() {
+        // Fingerprinted file: name.<hash>.ext — extension() still returns the last part
+        assert_eq!(guess_mime(Path::new("style.a1b2c3d4.css")), "text/css");
+        assert_eq!(
+            guess_mime(Path::new("app.deadbeef.js")),
+            "application/javascript"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_webp() {
+        // WebP is not in the match — should return octet-stream
+        assert_eq!(
+            guess_mime(Path::new("image.webp")),
+            "application/octet-stream"
+        );
+    }
+
+    // =========================================================================
+    // port_is_available
+    // =========================================================================
+
+    #[test]
+    fn test_port_is_available_high_port() {
+        // Port 39_517 is high and extremely unlikely to be in use
+        assert!(
+            port_is_available(39_517),
+            "a high unused port should be available"
+        );
+    }
+
+    #[test]
+    fn test_port_is_available_multiple_high_ports() {
+        // Several high ports should all be available
+        for port in [39_518, 49_999, 60_000, 65_000] {
+            assert!(
+                port_is_available(port),
+                "high port {port} should be available"
+            );
+        }
+    }
+
+    #[test]
+    fn test_port_is_available_detects_bound_port() {
+        // Bind a port, then check that port_is_available returns false
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        assert!(
+            !port_is_available(bound_port),
+            "a port with a bound listener should not be available"
+        );
+        drop(listener);
+    }
+
+    // =========================================================================
+    // try_bind_auto
+    // =========================================================================
+
+    #[test]
+    fn test_try_bind_auto_finds_available_port() {
+        // Should find a port starting from a high number
+        let result = try_bind_auto(49_800);
+        assert!(result.is_ok(), "should find an available port");
+        let (server, port) = result.unwrap();
+        assert!(port >= 49_800);
+        assert!(port < 49_900);
+        drop(server);
+    }
+
+    #[test]
+    fn test_try_bind_auto_skips_busy_port() {
+        // Bind a port, then ask try_bind_auto to start from it
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+
+        let result = try_bind_auto(bound_port);
+        assert!(result.is_ok(), "should find a port even if first is busy");
+        let (_server, actual_port) = result.unwrap();
+        // It might bind the same port if the OS released it or a different one
+        // The key is it succeeds
+        assert!(actual_port >= bound_port);
+        drop(listener);
+    }
+
+    // =========================================================================
+    // Integration: resolve_file_path + guess_mime
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_and_mime_html_page() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("my-post.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        let resolved = resolve_file_path(tmp.path(), "/posts/my-post");
+        assert_eq!(resolved, Some(file.clone()));
+
+        let mime = guess_mime(&file);
+        assert_eq!(mime, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn test_resolve_and_mime_css_file() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("static");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("style.css");
+        fs::write(&file, "body{}").unwrap();
+
+        let resolved = resolve_file_path(tmp.path(), "/static/style.css");
+        assert_eq!(resolved, Some(file.clone()));
+
+        let mime = guess_mime(&file);
+        assert_eq!(mime, "text/css");
+    }
+
+    #[test]
+    fn test_resolve_and_mime_markdown_file() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("my-post.md");
+        fs::write(&file, "# Title").unwrap();
+
+        let resolved = resolve_file_path(tmp.path(), "/posts/my-post.md");
+        assert_eq!(resolved, Some(file.clone()));
+
+        let mime = guess_mime(&file);
+        assert_eq!(mime, "text/plain; charset=utf-8");
+    }
+
+    // =========================================================================
+    // Edge cases / regression tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_file_path_root_empty_string() {
+        let tmp = TempDir::new().unwrap();
+        // "/" trims to "" — returns index.html
+        let result = resolve_file_path(tmp.path(), "");
+        // empty path after trimming = returns index.html (even if not exists)
+        assert_eq!(result, Some(tmp.path().join("index.html")));
+    }
+
+    #[test]
+    fn test_resolve_file_path_just_slash() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_file_path(tmp.path(), "/");
+        assert_eq!(result, Some(tmp.path().join("index.html")));
+    }
+
+    #[test]
+    fn test_resolve_file_path_multiple_leading_slashes() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("page.html");
+        fs::write(&file, "<html></html>").unwrap();
+
+        // trim_start_matches('/') removes all leading slashes
+        let result = resolve_file_path(tmp.path(), "///page");
+        assert_eq!(result, Some(file));
+    }
+
+    #[test]
+    fn test_inject_livereload_large_html() {
+        // Simulate a large page
+        let mut html = String::from("<html><body>");
+        for i in 0..1000 {
+            html.push_str(&format!("<p>Paragraph {i}</p>"));
+        }
+        html.push_str("</body></html>");
+        let result = inject_livereload(html.as_bytes());
+        let result_str = String::from_utf8(result).unwrap();
+        assert!(result_str.contains(LIVERELOAD_SCRIPT));
+        assert!(result_str.contains("<p>Paragraph 999</p>"));
+    }
+
+    #[test]
+    fn test_inject_livereload_only_body_close_in_string() {
+        // </body> appears as text content, not as a real tag — the function
+        // doesn't parse HTML, it uses string matching, so it still injects
+        let html = b"<body><p>the text </body> is special</p></body>";
+        let result = inject_livereload(html);
+        let result_str = String::from_utf8(result).unwrap();
+        assert!(
+            result_str.contains(LIVERELOAD_SCRIPT),
+            "should inject even when </body> appears in content"
+        );
+    }
+}

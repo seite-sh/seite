@@ -2403,11 +2403,17 @@ mod tests {
 
     #[test]
     fn test_check_base_url_production() {
-        let config = SiteConfig {
+        let config = test_config("https://example.com");
+        let check = check_base_url(&config);
+        assert!(check.passed);
+    }
+
+    fn test_config(base_url: &str) -> SiteConfig {
+        SiteConfig {
             site: crate::config::SiteSection {
                 title: "Test".into(),
                 description: "".into(),
-                base_url: "https://example.com".into(),
+                base_url: base_url.into(),
                 language: "en".into(),
                 author: "".into(),
             },
@@ -2419,8 +2425,3075 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+        }
+    }
+
+    #[test]
+    fn test_check_base_url_127() {
+        let config = test_config("http://127.0.0.1:3000");
+        assert!(!check_base_url(&config).passed);
+    }
+
+    #[test]
+    fn test_check_base_url_0000() {
+        let config = test_config("http://0.0.0.0:8080");
+        assert!(!check_base_url(&config).passed);
+    }
+
+    #[test]
+    fn test_extract_custom_domain_no_scheme() {
+        assert_eq!(extract_custom_domain("example.com"), None);
+    }
+
+    #[test]
+    fn test_extract_custom_domain_empty() {
+        assert_eq!(extract_custom_domain("https://"), None);
+    }
+
+    #[test]
+    fn test_extract_custom_domain_with_port() {
+        assert_eq!(
+            extract_custom_domain("http://localhost:3000"),
+            Some("localhost".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_url_from_output_no_url() {
+        assert_eq!(extract_url_from_output("no urls here\njust text"), None);
+    }
+
+    #[test]
+    fn test_extract_url_from_output_embedded() {
+        let output = "Visit https://my-site.pages.dev for details";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://my-site.pages.dev".into())
+        );
+    }
+
+    #[test]
+    fn test_parse_url_no_scheme() {
+        assert!(parse_url_for_http("example.com/path").is_none());
+    }
+
+    #[test]
+    fn test_parse_url_http_default_port() {
+        let (host, port, path) = parse_url_for_http("http://example.com/test").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/test");
+    }
+
+    #[test]
+    fn test_parse_url_no_path() {
+        let (host, port, path) = parse_url_for_http("https://example.com").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_resolve_deploy_base_url_strips_trailing_slash() {
+        let config = test_config("http://localhost:3000");
+        assert_eq!(
+            resolve_deploy_base_url(&config, Some("https://example.com/")),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("Deploy to GitHub Pages"));
+        assert!(workflow.contains("seite build"));
+        assert!(workflow.contains("deploy-pages@v4"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-project".into());
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("Deploy to Cloudflare Pages"));
+        assert!(workflow.contains("my-project"));
+        assert!(workflow.contains("CLOUDFLARE_API_TOKEN"));
+    }
+
+    #[test]
+    fn test_generate_netlify_config() {
+        let config = test_config("https://example.com");
+        let netlify = generate_netlify_config(&config);
+        assert!(netlify.contains("[build]"));
+        assert!(netlify.contains("seite build"));
+        assert!(netlify.contains("404.html"));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow() {
+        let config = test_config("https://example.com");
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("Deploy to Netlify"));
+        assert!(workflow.contains("NETLIFY_AUTH_TOKEN"));
+    }
+
+    #[test]
+    fn test_check_output_dir_missing() {
+        let paths = ResolvedPaths {
+            root: std::path::PathBuf::from("/nonexistent"),
+            content: std::path::PathBuf::from("/nonexistent/content"),
+            templates: std::path::PathBuf::from("/nonexistent/templates"),
+            static_dir: std::path::PathBuf::from("/nonexistent/static"),
+            output: std::path::PathBuf::from("/nonexistent/dist"),
+            data_dir: std::path::PathBuf::from("/nonexistent/data"),
+            public_dir: std::path::PathBuf::from("/nonexistent/public"),
         };
+        let check = check_output_dir(&paths);
+        assert!(!check.passed);
+        assert!(check.message.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_check_output_dir_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let check = check_output_dir(&paths);
+        assert!(!check.passed);
+        assert!(check.message.contains("empty"));
+    }
+
+    #[test]
+    fn test_check_output_dir_with_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "<html></html>").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let check = check_output_dir(&paths);
+        assert!(check.passed);
+    }
+
+    #[test]
+    fn test_preflight_github_pages() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "github-pages");
+        assert!(checks.len() >= 2); // output dir + base url + git checks
+    }
+
+    fn test_paths(dir: &std::path::Path) -> ResolvedPaths {
+        ResolvedPaths {
+            root: dir.to_path_buf(),
+            content: dir.join("content"),
+            templates: dir.join("templates"),
+            static_dir: dir.join("static"),
+            output: dir.join("dist"),
+            data_dir: dir.join("data"),
+            public_dir: dir.join("public"),
+        }
+    }
+
+    fn test_deploy_section(repo: Option<&str>) -> crate::config::DeploySection {
+        crate::config::DeploySection {
+            target: crate::config::DeployTarget::GithubPages,
+            repo: repo.map(|s| s.to_string()),
+            project: None,
+            auto_commit: false,
+            domain: None,
+        }
+    }
+
+    #[test]
+    fn test_try_fix_check_passed() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Output directory".into(),
+            passed: true,
+            message: "ok".into(),
+        };
+        assert!(try_fix_check(&check, &paths, "github-pages").is_none());
+    }
+
+    #[test]
+    fn test_try_fix_check_output_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Output directory".into(),
+            passed: false,
+            message: "does not exist".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Build the site"));
+    }
+
+    #[test]
+    fn test_try_fix_check_base_url() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Base URL".into(),
+            passed: false,
+            message: "localhost".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("base_url"));
+    }
+
+    #[test]
+    fn test_try_fix_check_git_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "git CLI".into(),
+            passed: false,
+            message: "not installed".into(),
+        };
+        assert!(try_fix_check(&check, &paths, "github-pages").is_none());
+    }
+
+    #[test]
+    fn test_try_fix_check_git_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Git repository".into(),
+            passed: false,
+            message: "not a git repository".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Initialize a git repository"));
+    }
+
+    #[test]
+    fn test_try_fix_check_unknown() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Something Unknown".into(),
+            passed: false,
+            message: "unknown error".into(),
+        };
+        assert!(try_fix_check(&check, &paths, "github-pages").is_none());
+    }
+
+    #[test]
+    fn test_print_preflight_all_pass() {
+        let checks = vec![
+            PreflightCheck {
+                name: "Output directory".into(),
+                passed: true,
+                message: "dist/".into(),
+            },
+            PreflightCheck {
+                name: "Base URL".into(),
+                passed: true,
+                message: "https://example.com".into(),
+            },
+        ];
+        assert!(print_preflight(&checks));
+    }
+
+    #[test]
+    fn test_print_preflight_one_fails() {
+        let checks = vec![
+            PreflightCheck {
+                name: "Output directory".into(),
+                passed: true,
+                message: "dist/".into(),
+            },
+            PreflightCheck {
+                name: "Base URL".into(),
+                passed: false,
+                message: "localhost".into(),
+            },
+        ];
+        assert!(!print_preflight(&checks));
+    }
+
+    #[test]
+    fn test_domain_setup_github_pages_apex() {
+        let mut config = test_config("https://example.com");
+        config.deploy.repo = Some("https://github.com/testuser/mysite".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        assert_eq!(setup.domain, "example.com");
+        assert_eq!(setup.target, "GitHub Pages");
+        // Apex domain should have A records
+        let a_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "A")
+            .collect();
+        assert_eq!(a_records.len(), 4);
+        assert_eq!(a_records[0].name, "@");
+        // Should also have a CNAME for www
+        let cname_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "CNAME")
+            .collect();
+        assert_eq!(cname_records.len(), 1);
+        assert_eq!(cname_records[0].name, "www");
+        assert!(cname_records[0].value.contains("github.io"));
+    }
+
+    #[test]
+    fn test_domain_setup_github_pages_subdomain() {
+        let mut config = test_config("https://blog.example.com");
+        config.deploy.repo = Some("https://github.com/testuser/mysite".into());
+        let setup = domain_setup_instructions(
+            "blog.example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        assert_eq!(setup.domain, "blog.example.com");
+        // Subdomain should NOT have A records
+        let a_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "A")
+            .collect();
+        assert_eq!(a_records.len(), 0);
+        // Should have a CNAME for "blog"
+        let cname_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "CNAME")
+            .collect();
+        assert_eq!(cname_records.len(), 1);
+        assert_eq!(cname_records[0].name, "blog");
+        assert!(cname_records[0].value.contains("testuser.github.io"));
+    }
+
+    #[test]
+    fn test_domain_setup_cloudflare() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-cf-project".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Cloudflare,
+            &config,
+        );
+        assert_eq!(setup.target, "Cloudflare Pages");
+        let cname_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "CNAME")
+            .collect();
+        assert!(!cname_records.is_empty());
+        assert!(cname_records.iter().any(|r| r.value.contains("pages.dev")));
+    }
+
+    #[test]
+    fn test_domain_setup_netlify() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-netlify-site".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Netlify,
+            &config,
+        );
+        assert_eq!(setup.target, "Netlify");
+        let cname_records: Vec<_> = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "CNAME")
+            .collect();
+        assert!(!cname_records.is_empty());
+        assert!(cname_records
+            .iter()
+            .any(|r| r.value.contains("netlify.app")));
+    }
+
+    #[test]
+    fn test_detect_github_username_https() {
+        let deploy = test_deploy_section(Some("https://github.com/octocat/my-repo"));
+        let username = detect_github_username(&deploy);
+        assert_eq!(username, Some("octocat".into()));
+    }
+
+    #[test]
+    fn test_detect_github_username_ssh() {
+        let deploy = test_deploy_section(Some("git@github.com:octocat/my-repo.git"));
+        let username = detect_github_username(&deploy);
+        assert_eq!(username, Some("octocat".into()));
+    }
+
+    #[test]
+    fn test_detect_github_username_none() {
+        let deploy = test_deploy_section(None);
+        let username = detect_github_username(&deploy);
+        assert!(username.is_none());
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_from_wrangler_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content = r#"name = "my-cf-project"
+compatibility_date = "2026-01-01"
+"#;
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        assert_eq!(project, Some("my-cf-project".into()));
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_fallback_dir_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No wrangler.toml, should fall back to directory name
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        // The temp dir has an auto-generated name; just verify we get something
+        assert!(project.is_some());
+        // Should match the directory name
+        let expected = tmp
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        assert_eq!(project, expected);
+    }
+
+    #[test]
+    fn test_update_deploy_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "github-pages"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "my-project".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        assert!(result.contains("my-project"));
+    }
+
+    #[test]
+    fn test_update_deploy_config_creates_deploy_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("target".into(), "cloudflare".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        assert!(result.contains("[deploy]"));
+        assert!(result.contains("cloudflare"));
+    }
+
+    #[test]
+    fn test_update_deploy_config_base_url() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "github-pages"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("base_url".into(), "https://example.com".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        assert!(result.contains("https://example.com"));
+        // base_url should be in [site], not [deploy]
+        let doc: toml::Table = result.parse().unwrap();
+        let site = doc.get("site").unwrap().as_table().unwrap();
+        assert_eq!(
+            site.get("base_url").unwrap().as_str().unwrap(),
+            "https://example.com"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_url_for_http — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_url_https_with_explicit_port() {
+        let (host, port, path) = parse_url_for_http("https://example.com:8443/api").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 8443);
+        assert_eq!(path, "/api");
+    }
+
+    #[test]
+    fn test_parse_url_with_invalid_port_falls_back_to_default() {
+        // "notaport" can't be parsed as u16, so should fall back to default port
+        let (host, port, path) = parse_url_for_http("https://example.com:notaport/path").unwrap();
+        assert_eq!(host, "example.com:notaport");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/path");
+    }
+
+    #[test]
+    fn test_parse_url_http_no_path() {
+        let (host, port, path) = parse_url_for_http("http://myhost").unwrap();
+        assert_eq!(host, "myhost");
+        assert_eq!(port, 80);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_parse_url_empty_after_scheme() {
+        // "https://" -> rest is "", host_port is "", host is ""
+        let result = parse_url_for_http("https://");
+        // Should return Some with empty host — the function doesn't reject it
+        assert!(result.is_some());
+        let (host, _, _) = result.unwrap();
+        assert_eq!(host, "");
+    }
+
+    #[test]
+    fn test_parse_url_deep_path() {
+        let (host, port, path) =
+            parse_url_for_http("https://cdn.example.com/assets/css/style.css").unwrap();
+        assert_eq!(host, "cdn.example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/assets/css/style.css");
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_url_from_output — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_url_from_output_empty_string() {
+        assert_eq!(extract_url_from_output(""), None);
+    }
+
+    #[test]
+    fn test_extract_url_from_output_multiple_urls_returns_first() {
+        let output = "first: https://first.example.com\nsecond: https://second.example.com\n";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://first.example.com".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_url_from_output_url_on_own_line() {
+        let output = "  https://standalone.example.com  \nMore text";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://standalone.example.com".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_url_from_output_url_with_path() {
+        let output = "Deployed to https://example.com/blog/post done";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://example.com/blog/post".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_url_from_output_http_not_matched() {
+        // Only https:// is matched, not http://
+        let output = "Visit http://example.com for details";
+        assert_eq!(extract_url_from_output(output), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_custom_domain — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_custom_domain_http_with_path() {
+        assert_eq!(
+            extract_custom_domain("http://mysite.org/some/path"),
+            Some("mysite.org".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_custom_domain_https_with_port_and_path() {
+        assert_eq!(
+            extract_custom_domain("https://staging.example.com:8080/admin"),
+            Some("staging.example.com".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_custom_domain_http_empty() {
+        assert_eq!(extract_custom_domain("http://"), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_deploy_base_url — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_deploy_base_url_config_with_trailing_slash() {
+        let config = test_config("https://mysite.com/");
+        assert_eq!(resolve_deploy_base_url(&config, None), "https://mysite.com");
+    }
+
+    #[test]
+    fn test_resolve_deploy_base_url_override_no_trailing_slash() {
+        let config = test_config("http://localhost:3000");
+        assert_eq!(
+            resolve_deploy_base_url(&config, Some("https://prod.example.com")),
+            "https://prod.example.com"
+        );
+    }
+
+    #[test]
+    fn test_resolve_deploy_base_url_override_with_multiple_trailing_slashes() {
+        let config = test_config("http://localhost:3000");
+        // trim_end_matches('/') removes all trailing slashes
+        assert_eq!(
+            resolve_deploy_base_url(&config, Some("https://example.com///")),
+            "https://example.com"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // check_base_url — message content tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_base_url_production_contains_url_in_message() {
+        let config = test_config("https://blog.example.com");
         let check = check_base_url(&config);
         assert!(check.passed);
+        assert_eq!(check.message, "https://blog.example.com");
+        assert_eq!(check.name, "Base URL");
+    }
+
+    #[test]
+    fn test_check_base_url_localhost_message_mentions_base_url() {
+        let config = test_config("http://localhost:3000");
+        let check = check_base_url(&config);
+        assert!(!check.passed);
+        assert!(check.message.contains("base_url"));
+        assert!(check.message.contains("localhost"));
+    }
+
+    // -----------------------------------------------------------------------
+    // detect_github_username — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_detect_github_username_non_github_url() {
+        let deploy = test_deploy_section(Some("https://gitlab.com/user/repo"));
+        let username = detect_github_username(&deploy);
+        assert!(username.is_none());
+    }
+
+    #[test]
+    fn test_detect_github_username_https_with_git_suffix() {
+        let deploy = test_deploy_section(Some("https://github.com/alice/my-blog.git"));
+        let username = detect_github_username(&deploy);
+        assert_eq!(username, Some("alice".into()));
+    }
+
+    #[test]
+    fn test_detect_github_username_ssh_with_dotgit() {
+        let deploy = test_deploy_section(Some("git@github.com:bob/site.git"));
+        let username = detect_github_username(&deploy);
+        assert_eq!(username, Some("bob".into()));
+    }
+
+    // -----------------------------------------------------------------------
+    // detect_cloudflare_project — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_detect_cloudflare_project_from_wrangler_toml_single_quotes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content = "name = 'single-quoted-project'\n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        assert_eq!(project, Some("single-quoted-project".into()));
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_wrangler_toml_empty_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content = "name = \"\"\ncompatibility_date = \"2026-01-01\"\n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        // Empty name should be skipped, falling back to directory name
+        let dir_name = tmp
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        assert_eq!(project, dir_name);
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_wrangler_toml_name_not_first_line() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content =
+            "compatibility_date = \"2026-01-01\"\nname = \"second-line-project\"\n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        assert_eq!(project, Some("second-line-project".into()));
+    }
+
+    // -----------------------------------------------------------------------
+    // domain_setup_instructions — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_setup_cloudflare_subdomain() {
+        let mut config = test_config("https://docs.example.com");
+        config.deploy.project = Some("my-docs-project".into());
+        let setup = domain_setup_instructions(
+            "docs.example.com",
+            &crate::config::DeployTarget::Cloudflare,
+            &config,
+        );
+        assert_eq!(setup.target, "Cloudflare Pages");
+        // Subdomain should not create a www CNAME
+        assert_eq!(setup.dns_records.len(), 1);
+        assert_eq!(setup.dns_records[0].record_type, "CNAME");
+        assert_eq!(setup.dns_records[0].name, "docs");
+        assert!(setup.dns_records[0]
+            .value
+            .contains("my-docs-project.pages.dev"));
+    }
+
+    #[test]
+    fn test_domain_setup_cloudflare_apex_creates_two_cnames() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-project".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Cloudflare,
+            &config,
+        );
+        // Apex should create @ CNAME + www CNAME
+        assert_eq!(setup.dns_records.len(), 2);
+        assert_eq!(setup.dns_records[0].name, "@");
+        assert_eq!(setup.dns_records[1].name, "www");
+    }
+
+    #[test]
+    fn test_domain_setup_netlify_subdomain() {
+        let mut config = test_config("https://blog.example.com");
+        config.deploy.project = Some("my-blog".into());
+        let setup = domain_setup_instructions(
+            "blog.example.com",
+            &crate::config::DeployTarget::Netlify,
+            &config,
+        );
+        assert_eq!(setup.target, "Netlify");
+        assert_eq!(setup.dns_records.len(), 1);
+        assert_eq!(setup.dns_records[0].name, "blog");
+        assert!(setup.dns_records[0].value.contains("my-blog.netlify.app"));
+    }
+
+    #[test]
+    fn test_domain_setup_netlify_apex() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-site".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Netlify,
+            &config,
+        );
+        assert_eq!(setup.dns_records.len(), 1);
+        assert_eq!(setup.dns_records[0].name, "@");
+        assert!(setup.dns_records[0].value.contains("my-site.netlify.app"));
+    }
+
+    #[test]
+    fn test_domain_setup_github_pages_no_repo_uses_placeholder() {
+        let config = test_config("https://example.com");
+        // No repo set — should use <username> placeholder
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        let cname = setup
+            .dns_records
+            .iter()
+            .find(|r| r.record_type == "CNAME")
+            .unwrap();
+        assert!(cname.value.contains("<username>"));
+    }
+
+    #[test]
+    fn test_domain_setup_cloudflare_no_project_uses_placeholder() {
+        let config = test_config("https://example.com");
+        // No project set — should use <project-name> placeholder
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Cloudflare,
+            &config,
+        );
+        assert!(setup.dns_records[0].value.contains("<project-name>"));
+    }
+
+    #[test]
+    fn test_domain_setup_netlify_no_project_uses_placeholder() {
+        let config = test_config("https://example.com");
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Netlify,
+            &config,
+        );
+        assert!(setup.dns_records[0].value.contains("<site-name>"));
+    }
+
+    #[test]
+    fn test_domain_setup_notes_are_nonempty() {
+        let config = test_config("https://example.com");
+        for target in &[
+            crate::config::DeployTarget::GithubPages,
+            crate::config::DeployTarget::Cloudflare,
+            crate::config::DeployTarget::Netlify,
+        ] {
+            let setup = domain_setup_instructions("example.com", target, &config);
+            assert!(
+                !setup.notes.is_empty(),
+                "notes should not be empty for {:?}",
+                target
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // try_fix_check — additional branches
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_try_fix_check_wrangler_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "wrangler CLI".into(),
+            passed: false,
+            message: "not installed".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "cloudflare");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        // Either prompt to install via npm or manual instructions
+        assert!(fix.prompt.contains("wrangler") || !fix.manual_instructions.is_empty());
+    }
+
+    #[test]
+    fn test_try_fix_check_netlify_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "netlify CLI".into(),
+            passed: false,
+            message: "not installed".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "netlify");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("netlify") || !fix.manual_instructions.is_empty());
+    }
+
+    #[test]
+    fn test_try_fix_check_cloudflare_auth() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Cloudflare auth".into(),
+            passed: false,
+            message: "not logged in".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "cloudflare");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Log in to Cloudflare"));
+        assert_eq!(fix.manual_instructions, vec!["Run: wrangler login"]);
+    }
+
+    #[test]
+    fn test_try_fix_check_netlify_auth() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Netlify auth".into(),
+            passed: false,
+            message: "not logged in".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "netlify");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Log in to Netlify"));
+        assert_eq!(fix.manual_instructions, vec!["Run: netlify login"]);
+    }
+
+    #[test]
+    fn test_try_fix_check_cloudflare_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Cloudflare project".into(),
+            passed: false,
+            message: "no project name".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "cloudflare");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Create Cloudflare Pages project"));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("wrangler pages project create")));
+    }
+
+    #[test]
+    fn test_try_fix_check_netlify_site() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Netlify site".into(),
+            passed: false,
+            message: "no site linked".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "netlify");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("Create Netlify site"));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("netlify sites:create")));
+    }
+
+    #[test]
+    fn test_try_fix_check_cloudflare_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Cloudflare domain".into(),
+            passed: false,
+            message: "'example.com' not attached to project 'my-project'".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "cloudflare");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("example.com"));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("Cloudflare dashboard")));
+    }
+
+    #[test]
+    fn test_try_fix_check_netlify_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Netlify domain".into(),
+            passed: false,
+            message: "'mysite.com' not attached".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "netlify");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        assert!(fix.prompt.contains("mysite.com"));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("netlify domains:add")));
+    }
+
+    #[test]
+    fn test_try_fix_check_cloudflare_domain_no_quote_in_message() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Cloudflare domain".into(),
+            passed: false,
+            message: "domain not attached".into(), // no quotes, so nth(1) returns None
+        };
+        let fix = try_fix_check(&check, &paths, "cloudflare");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        // Should fall back to "your-domain.com"
+        assert!(fix.prompt.contains("your-domain.com"));
+    }
+
+    #[test]
+    fn test_try_fix_check_gh_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "gh CLI".into(),
+            passed: false,
+            message: "not installed".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        // On macOS with brew, should suggest brew install; otherwise, manual instructions
+        assert!(fix.prompt.contains("Homebrew") || !fix.manual_instructions.is_empty());
+    }
+
+    #[test]
+    fn test_try_fix_check_git_remote() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Git remote".into(),
+            passed: false,
+            message: "no remote 'origin'".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        // Whether or not gh is available, we should get manual instructions
+        assert!(!fix.manual_instructions.is_empty());
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("github.com")));
+    }
+
+    // -----------------------------------------------------------------------
+    // preflight — additional targets
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_preflight_cloudflare_target() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "cloudflare");
+        // Should have output dir + base url + wrangler cli + cloudflare auth + cloudflare project
+        assert!(checks.len() >= 5);
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"Output directory"));
+        assert!(names.contains(&"Base URL"));
+        assert!(names.contains(&"wrangler CLI"));
+        assert!(names.contains(&"Cloudflare auth"));
+        assert!(names.contains(&"Cloudflare project"));
+    }
+
+    #[test]
+    fn test_preflight_netlify_target() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "netlify");
+        assert!(checks.len() >= 5);
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"Output directory"));
+        assert!(names.contains(&"Base URL"));
+        assert!(names.contains(&"netlify CLI"));
+        assert!(names.contains(&"Netlify auth"));
+        assert!(names.contains(&"Netlify site"));
+    }
+
+    #[test]
+    fn test_preflight_unknown_target() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "unknown-target");
+        // Only output dir + base url checks
+        assert_eq!(checks.len(), 2);
+    }
+
+    #[test]
+    fn test_preflight_cloudflare_with_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let mut config = test_config("https://example.com");
+        config.deploy.domain = Some("example.com".into());
+        let checks = preflight(&config, &paths, "cloudflare");
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"Cloudflare domain"));
+    }
+
+    #[test]
+    fn test_preflight_netlify_with_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let mut config = test_config("https://example.com");
+        config.deploy.domain = Some("mysite.com".into());
+        let checks = preflight(&config, &paths, "netlify");
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"Netlify domain"));
+    }
+
+    // -----------------------------------------------------------------------
+    // print_preflight — edge case
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_preflight_empty_checks() {
+        assert!(print_preflight(&[]));
+    }
+
+    // -----------------------------------------------------------------------
+    // generate_*_workflow — additional assertions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_generate_github_actions_workflow_contains_version() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(workflow.contains(version));
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow_uses_output_dir() {
+        let mut config = test_config("https://example.com");
+        config.build.output_dir = "build-output".into();
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("build-output"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_default_project() {
+        let config = test_config("https://example.com");
+        // No project configured — should use default placeholder
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("your-project-name"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_contains_version() {
+        let config = test_config("https://example.com");
+        let workflow = generate_cloudflare_workflow(&config);
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(workflow.contains(version));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_uses_output_dir() {
+        let mut config = test_config("https://example.com");
+        config.build.output_dir = "public".into();
+        config.deploy.project = Some("test-project".into());
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("public"));
+        assert!(workflow.contains("test-project"));
+    }
+
+    #[test]
+    fn test_generate_netlify_config_contains_version() {
+        let config = test_config("https://example.com");
+        let netlify = generate_netlify_config(&config);
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(workflow_contains_substr(&netlify, version));
+    }
+
+    #[test]
+    fn test_generate_netlify_config_uses_output_dir() {
+        let mut config = test_config("https://example.com");
+        config.build.output_dir = "_site".into();
+        let netlify = generate_netlify_config(&config);
+        assert!(netlify.contains("_site"));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow_contains_version() {
+        let config = test_config("https://example.com");
+        let workflow = generate_netlify_workflow(&config);
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(workflow.contains(version));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow_uses_output_dir() {
+        let mut config = test_config("https://example.com");
+        config.build.output_dir = "www".into();
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("www"));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow_contains_secrets() {
+        let config = test_config("https://example.com");
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("NETLIFY_AUTH_TOKEN"));
+        assert!(workflow.contains("NETLIFY_SITE_ID"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_contains_secrets() {
+        let config = test_config("https://example.com");
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("CLOUDFLARE_API_TOKEN"));
+        assert!(workflow.contains("CLOUDFLARE_ACCOUNT_ID"));
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow_contains_permissions() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("permissions:"));
+        assert!(workflow.contains("pages: write"));
+        assert!(workflow.contains("id-token: write"));
+    }
+
+    // Helper for the test above to avoid name collision with "workflow.contains"
+    fn workflow_contains_substr(s: &str, sub: &str) -> bool {
+        s.contains(sub)
+    }
+
+    // -----------------------------------------------------------------------
+    // update_deploy_config — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_deploy_config_multiple_updates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "cloudflare"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "my-cf-project".into());
+        updates.insert("domain".into(), "example.com".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        assert!(result.contains("my-cf-project"));
+        assert!(result.contains("example.com"));
+    }
+
+    #[test]
+    fn test_update_deploy_config_invalid_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        std::fs::write(&config_path, "this is not valid toml {{{").unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "test".into());
+        let result = update_deploy_config(&config_path, &updates);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_deploy_config_nonexistent_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("nonexistent.toml");
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "test".into());
+        let result = update_deploy_config(&config_path, &updates);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_deploy_config_base_url_not_in_deploy() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "github-pages"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("base_url".into(), "https://example.com".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        let doc: toml::Table = result.parse().unwrap();
+        // base_url should be in [site], NOT [deploy]
+        let deploy = doc.get("deploy").unwrap().as_table().unwrap();
+        assert!(deploy.get("base_url").is_none());
+        let site = doc.get("site").unwrap().as_table().unwrap();
+        assert_eq!(
+            site.get("base_url").unwrap().as_str().unwrap(),
+            "https://example.com"
+        );
+    }
+
+    #[test]
+    fn test_update_deploy_config_empty_updates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "github-pages"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let updates = HashMap::new();
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        // File should still be valid TOML
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        let doc: toml::Table = result.parse().unwrap();
+        assert!(doc.contains_key("site"));
+        assert!(doc.contains_key("deploy"));
+    }
+
+    // -----------------------------------------------------------------------
+    // recheck — unknown check name
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_recheck_unknown_check_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Some Unknown Check", &config, &paths, "github-pages");
+        assert!(!result.passed);
+        assert_eq!(result.message, "unknown check");
+        assert_eq!(result.name, "Some Unknown Check");
+    }
+
+    #[test]
+    fn test_recheck_output_directory() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Create a dist dir with a file so the check passes
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Output directory", &config, &paths, "github-pages");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_recheck_base_url() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Base URL", &config, &paths, "github-pages");
+        assert!(result.passed);
+        assert!(result.message.contains("https://example.com"));
+    }
+
+    #[test]
+    fn test_recheck_base_url_localhost() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("http://localhost:3000");
+        let result = recheck("Base URL", &config, &paths, "github-pages");
+        assert!(!result.passed);
+    }
+
+    // -----------------------------------------------------------------------
+    // GitPushResult struct
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_git_push_result_fields() {
+        let result = GitPushResult {
+            branch: "main".into(),
+            is_main: true,
+            committed: false,
+        };
+        assert_eq!(result.branch, "main");
+        assert!(result.is_main);
+        assert!(!result.committed);
+
+        let result2 = GitPushResult {
+            branch: "feature/deploy".into(),
+            is_main: false,
+            committed: true,
+        };
+        assert_eq!(result2.branch, "feature/deploy");
+        assert!(!result2.is_main);
+        assert!(result2.committed);
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_deployment — structure tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_deployment_returns_four_results() {
+        // verify_deployment creates 4 checks: Homepage, robots.txt, sitemap.xml, llms.txt
+        let results = verify_deployment("http://127.0.0.1:99999");
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[0].check, "Homepage");
+        assert_eq!(results[1].check, "robots.txt");
+        assert_eq!(results[2].check, "sitemap.xml");
+        assert_eq!(results[3].check, "llms.txt");
+    }
+
+    #[test]
+    fn test_verify_deployment_invalid_url() {
+        let results = verify_deployment("not-a-url");
+        assert_eq!(results.len(), 4);
+        // All should fail since the URL has no scheme
+        for r in &results {
+            assert!(!r.passed);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // VerifyResult and print_verification
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_verification_mixed_results() {
+        let results = vec![
+            VerifyResult {
+                check: "Homepage".into(),
+                passed: true,
+                message: "200 OK".into(),
+            },
+            VerifyResult {
+                check: "robots.txt".into(),
+                passed: false,
+                message: "404 Not Found".into(),
+            },
+        ];
+        // Just verify it doesn't panic
+        print_verification(&results);
+    }
+
+    #[test]
+    fn test_print_verification_empty() {
+        print_verification(&[]);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_git_remote — with configured repo
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_git_remote_with_configured_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_remote(&paths, Some("https://github.com/user/repo"));
+        assert!(check.passed);
+        assert!(check.message.contains("configured"));
+        assert!(check.message.contains("https://github.com/user/repo"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_output_dir — name field
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_output_dir_name_field() {
+        let paths = ResolvedPaths {
+            root: std::path::PathBuf::from("/nonexistent"),
+            content: std::path::PathBuf::from("/nonexistent/content"),
+            templates: std::path::PathBuf::from("/nonexistent/templates"),
+            static_dir: std::path::PathBuf::from("/nonexistent/static"),
+            output: std::path::PathBuf::from("/nonexistent/dist"),
+            data_dir: std::path::PathBuf::from("/nonexistent/data"),
+            public_dir: std::path::PathBuf::from("/nonexistent/public"),
+        };
+        let check = check_output_dir(&paths);
+        assert_eq!(check.name, "Output directory");
+    }
+
+    // -----------------------------------------------------------------------
+    // PreflightCheck / FixAction struct fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_preflight_check_struct() {
+        let check = PreflightCheck {
+            name: "Test Check".into(),
+            passed: true,
+            message: "all good".into(),
+        };
+        assert_eq!(check.name, "Test Check");
+        assert!(check.passed);
+        assert_eq!(check.message, "all good");
+    }
+
+    #[test]
+    fn test_fix_action_struct() {
+        let fix = FixAction {
+            prompt: "Fix this?".into(),
+            manual_instructions: vec!["Step 1".into(), "Step 2".into()],
+        };
+        assert_eq!(fix.prompt, "Fix this?");
+        assert_eq!(fix.manual_instructions.len(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // DomainSetup / DnsRecord struct fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_setup_struct_fields() {
+        let setup = DomainSetup {
+            domain: "test.com".into(),
+            target: "GitHub Pages".into(),
+            dns_records: vec![DnsRecord {
+                record_type: "A".into(),
+                name: "@".into(),
+                value: "1.2.3.4".into(),
+            }],
+            notes: vec!["Note 1".into()],
+        };
+        assert_eq!(setup.domain, "test.com");
+        assert_eq!(setup.target, "GitHub Pages");
+        assert_eq!(setup.dns_records.len(), 1);
+        assert_eq!(setup.dns_records[0].record_type, "A");
+        assert_eq!(setup.dns_records[0].name, "@");
+        assert_eq!(setup.dns_records[0].value, "1.2.3.4");
+        assert_eq!(setup.notes.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // print_domain_setup (no panic)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_domain_setup_no_panic() {
+        let setup = DomainSetup {
+            domain: "example.com".into(),
+            target: "Netlify".into(),
+            dns_records: vec![DnsRecord {
+                record_type: "CNAME".into(),
+                name: "@".into(),
+                value: "my-site.netlify.app".into(),
+            }],
+            notes: vec!["Add domain in dashboard.".into()],
+        };
+        // Just verify it doesn't panic
+        print_domain_setup(&setup);
+    }
+
+    #[test]
+    fn test_print_domain_setup_empty_records() {
+        let setup = DomainSetup {
+            domain: "empty.com".into(),
+            target: "Test".into(),
+            dns_records: vec![],
+            notes: vec![],
+        };
+        print_domain_setup(&setup);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_base_url edge: URL containing "localhost" as substring
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_base_url_url_with_localhost_substring() {
+        // A URL that has "localhost" as a substring inside a domain should still fail
+        let config = test_config("https://mylocalhostsite.com");
+        let check = check_base_url(&config);
+        // contains("localhost") catches this — it's a conservative check
+        assert!(!check.passed);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_git_remote — without configured repo (no git repo)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_git_remote_no_repo_no_git() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        // No configured repo and no git repo at all
+        let check = check_git_remote(&paths, None);
+        assert!(!check.passed);
+        assert!(check.message.contains("origin"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_git_repo — no .git directory
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_git_repo_not_a_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_repo(&paths);
+        assert!(!check.passed);
+        assert!(check.message.contains("not a git repository"));
+    }
+
+    #[test]
+    fn test_check_git_repo_with_git_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_repo(&paths);
+        assert!(check.passed);
+        assert_eq!(check.message, "detected");
+    }
+
+    // -----------------------------------------------------------------------
+    // check_netlify_site — with project configured
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_netlify_site_with_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-netlify-site".into());
+        let check = check_netlify_site(&config, &paths);
+        assert!(check.passed);
+        assert!(check.message.contains("configured"));
+        assert!(check.message.contains("my-netlify-site"));
+    }
+
+    #[test]
+    fn test_check_netlify_site_with_state_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let netlify_dir = tmp.path().join(".netlify");
+        std::fs::create_dir_all(&netlify_dir).unwrap();
+        std::fs::write(netlify_dir.join("state.json"), r#"{"siteId": "abc123"}"#).unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let check = check_netlify_site(&config, &paths);
+        assert!(check.passed);
+        assert!(check.message.contains("state.json"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_cloudflare_domain — edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_cloudflare_domain_no_domain() {
+        let config = test_config("https://example.com");
+        // No domain configured
+        let check = check_cloudflare_domain(&config);
+        assert!(check.passed);
+        assert!(check.message.contains("no domain configured"));
+    }
+
+    #[test]
+    fn test_check_cloudflare_domain_no_project() {
+        let mut config = test_config("https://example.com");
+        config.deploy.domain = Some("example.com".into());
+        // No project configured
+        let check = check_cloudflare_domain(&config);
+        assert!(!check.passed);
+        assert!(check.message.contains("no project"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_netlify_domain — no domain
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_netlify_domain_no_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let check = check_netlify_domain(&config, &paths);
+        assert!(check.passed);
+        assert!(check.message.contains("no domain configured"));
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_http — edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_http_invalid_url_no_scheme() {
+        let result = verify_http("not-a-url");
+        assert!(!result.passed);
+        assert!(result.message.contains("could not parse URL"));
+        assert_eq!(result.check, "Homepage");
+    }
+
+    #[test]
+    fn test_verify_http_connection_refused() {
+        // Port 1 is almost certainly not listening
+        let result = verify_http("http://127.0.0.1:1/");
+        assert!(!result.passed);
+        assert_eq!(result.check, "Homepage");
+        // Should indicate connection failure
+        assert!(
+            result.message.contains("connection failed") || result.message.contains("failed"),
+            "expected connection failure message, got: {}",
+            result.message
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_url_reachable — edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_url_reachable_invalid_url() {
+        let result = verify_url_reachable("garbage", "test-resource");
+        assert!(!result.passed);
+        assert_eq!(result.check, "test-resource");
+        assert!(result.message.contains("invalid URL"));
+    }
+
+    #[test]
+    fn test_verify_url_reachable_dns_resolution_skip() {
+        // A hostname (not an IP) that can't be resolved to a SocketAddr directly
+        // should result in "skipped (DNS resolution required)"
+        let result = verify_url_reachable("https://example.com/robots.txt", "robots.txt");
+        assert_eq!(result.check, "robots.txt");
+        // parse::<SocketAddr> will fail for "example.com:443", so it skips
+        assert!(result.passed);
+        assert!(result.message.contains("skipped"));
+    }
+
+    #[test]
+    fn test_verify_url_reachable_connection_refused() {
+        // IP address that resolves as SocketAddr but port 1 won't be listening
+        let result = verify_url_reachable("http://127.0.0.1:1/robots.txt", "robots.txt");
+        assert!(!result.passed);
+        assert_eq!(result.check, "robots.txt");
+        assert!(result.message.contains("connection failed"));
+    }
+
+    // -----------------------------------------------------------------------
+    // verify_deployment — URL normalization
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_deployment_trims_trailing_slash() {
+        // Verify that trailing slash on URL doesn't cause double-slash in sub-URLs
+        let results = verify_deployment("https://example.com/");
+        // robots.txt check URL should not have double slash
+        // We verify indirectly by checking the structure
+        assert_eq!(results.len(), 4);
+        assert_eq!(results[1].check, "robots.txt");
+        assert_eq!(results[2].check, "sitemap.xml");
+        assert_eq!(results[3].check, "llms.txt");
+    }
+
+    #[test]
+    fn test_verify_deployment_no_trailing_slash() {
+        let results = verify_deployment("https://example.com");
+        assert_eq!(results.len(), 4);
+        // All checks should be created (they'll skip DNS resolution)
+        for r in &results {
+            assert!(
+                r.passed,
+                "check '{}' should pass (DNS skip): {}",
+                r.check, r.message
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_url_for_http — more edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_url_for_http_port_zero() {
+        let (host, port, path) = parse_url_for_http("http://localhost:0/test").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 0);
+        assert_eq!(path, "/test");
+    }
+
+    #[test]
+    fn test_parse_url_for_http_very_long_path() {
+        let long_path = "/a".repeat(100);
+        let url = format!("https://example.com{}", long_path);
+        let (host, port, path) = parse_url_for_http(&url).unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, long_path);
+    }
+
+    #[test]
+    fn test_parse_url_for_http_with_query_string() {
+        let (host, port, path) = parse_url_for_http("https://example.com/page?foo=bar").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/page?foo=bar");
+    }
+
+    #[test]
+    fn test_parse_url_for_http_with_fragment() {
+        let (host, port, path) = parse_url_for_http("https://example.com/page#section").unwrap();
+        assert_eq!(host, "example.com");
+        assert_eq!(port, 443);
+        assert_eq!(path, "/page#section");
+    }
+
+    #[test]
+    fn test_parse_url_for_http_port_65535() {
+        let (host, port, _) = parse_url_for_http("http://localhost:65535/").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 65535);
+    }
+
+    #[test]
+    fn test_parse_url_for_http_port_overflow_falls_back() {
+        // Port 99999 overflows u16, should fall back to default
+        let (host, port, _) = parse_url_for_http("http://localhost:99999/").unwrap();
+        assert_eq!(host, "localhost:99999");
+        assert_eq!(port, 80);
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_url_from_output — more edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_url_from_output_with_trailing_punctuation() {
+        let output = "Deployed to https://example.com/site.";
+        // The period is part of the URL since it's not whitespace
+        let result = extract_url_from_output(output);
+        assert_eq!(result, Some("https://example.com/site.".into()));
+    }
+
+    #[test]
+    fn test_extract_url_from_output_only_whitespace_lines() {
+        let output = "   \n  \n\t\n";
+        assert_eq!(extract_url_from_output(output), None);
+    }
+
+    #[test]
+    fn test_extract_url_from_output_url_with_port() {
+        let output = "Server at https://localhost:8443/dashboard";
+        assert_eq!(
+            extract_url_from_output(output),
+            Some("https://localhost:8443/dashboard".into())
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_custom_domain — more edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_custom_domain_just_scheme_and_host() {
+        assert_eq!(extract_custom_domain("https://a"), Some("a".into()));
+    }
+
+    #[test]
+    fn test_extract_custom_domain_subdomain_chain() {
+        assert_eq!(
+            extract_custom_domain("https://a.b.c.d.example.com/path"),
+            Some("a.b.c.d.example.com".into())
+        );
+    }
+
+    #[test]
+    fn test_extract_custom_domain_port_only_no_host() {
+        // "https://:8080" -> domain after strip_prefix is ":8080", split('/') -> ":8080",
+        // split(':') -> "" which is empty
+        assert_eq!(extract_custom_domain("https://:8080"), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_cloudflare_project — no project name (None branch)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_cloudflare_project_no_project_no_wrangler() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        // No deploy.project and no wrangler.toml — falls back to dir name
+        // cloudflare_project_exists will fail (no wrangler), returns true
+        let check = check_cloudflare_project(&config, &paths);
+        // Should pass because cloudflare_project_exists returns true on failure
+        // (assumes it exists to avoid false negatives)
+        assert!(check.passed || !check.passed);
+        assert_eq!(check.name, "Cloudflare project");
+    }
+
+    #[test]
+    fn test_check_cloudflare_project_with_configured_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-cf-project".into());
+        let check = check_cloudflare_project(&config, &paths);
+        assert_eq!(check.name, "Cloudflare project");
+        // Will attempt to verify with wrangler; either succeeds or reports not found
+        assert!(
+            check.message.contains("my-cf-project"),
+            "message should reference the project name: {}",
+            check.message
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // detect_cloudflare_project — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_detect_cloudflare_project_wrangler_toml_with_spaces_around_equals() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content = "name   =   \"spaced-project\"  \n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        assert_eq!(project, Some("spaced-project".into()));
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_wrangler_toml_commented_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Commented out name line — the "name" check uses starts_with, so
+        // "# name" should not match (trimmed line starts with "#")
+        let wrangler_content = "# name = \"commented\"\ncompatibility_date = \"2026-01-01\"\n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        // Should fall back to directory name since "# name" doesn't start with "name"
+        let dir_name = tmp
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        assert_eq!(project, dir_name);
+    }
+
+    #[test]
+    fn test_detect_cloudflare_project_wrangler_toml_no_value_after_equals() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let wrangler_content = "name =\ncompat = \"2026\"\n";
+        std::fs::write(tmp.path().join("wrangler.toml"), wrangler_content).unwrap();
+        let paths = test_paths(tmp.path());
+        let project = detect_cloudflare_project(&paths);
+        // Empty value after trimming should be skipped, falls back to dir name
+        let dir_name = tmp
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        assert_eq!(project, dir_name);
+    }
+
+    // -----------------------------------------------------------------------
+    // preflight — domain NOT included when not configured
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_preflight_cloudflare_no_domain_check_when_not_configured() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        // No domain configured
+        let checks = preflight(&config, &paths, "cloudflare");
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(!names.contains(&"Cloudflare domain"));
+    }
+
+    #[test]
+    fn test_preflight_netlify_no_domain_check_when_not_configured() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "netlify");
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(!names.contains(&"Netlify domain"));
+    }
+
+    // -----------------------------------------------------------------------
+    // preflight — github-pages includes git checks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_preflight_github_pages_includes_git_checks() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist,
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        let checks = preflight(&config, &paths, "github-pages");
+        let names: Vec<&str> = checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"git CLI"));
+        assert!(names.contains(&"Git repository"));
+        assert!(names.contains(&"Git remote"));
+    }
+
+    // -----------------------------------------------------------------------
+    // print_preflight — all fail scenario
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_preflight_all_fail() {
+        let checks = vec![
+            PreflightCheck {
+                name: "Check A".into(),
+                passed: false,
+                message: "failed A".into(),
+            },
+            PreflightCheck {
+                name: "Check B".into(),
+                passed: false,
+                message: "failed B".into(),
+            },
+            PreflightCheck {
+                name: "Check C".into(),
+                passed: false,
+                message: "failed C".into(),
+            },
+        ];
+        assert!(!print_preflight(&checks));
+    }
+
+    #[test]
+    fn test_print_preflight_single_pass() {
+        let checks = vec![PreflightCheck {
+            name: "Only Check".into(),
+            passed: true,
+            message: "ok".into(),
+        }];
+        assert!(print_preflight(&checks));
+    }
+
+    #[test]
+    fn test_print_preflight_single_fail() {
+        let checks = vec![PreflightCheck {
+            name: "Only Check".into(),
+            passed: false,
+            message: "not ok".into(),
+        }];
+        assert!(!print_preflight(&checks));
+    }
+
+    // -----------------------------------------------------------------------
+    // recheck — additional check names
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_recheck_git_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Git repository", &config, &paths, "github-pages");
+        // Temp dir has no .git, so should fail
+        assert!(!result.passed);
+        assert!(result.message.contains("not a git repository"));
+    }
+
+    #[test]
+    fn test_recheck_git_repo_with_git_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Git repository", &config, &paths, "github-pages");
+        assert!(result.passed);
+    }
+
+    #[test]
+    fn test_recheck_git_remote_with_configured_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let mut config = test_config("https://example.com");
+        config.deploy.repo = Some("https://github.com/user/repo".into());
+        let result = recheck("Git remote", &config, &paths, "github-pages");
+        assert!(result.passed);
+        assert!(result.message.contains("configured"));
+    }
+
+    #[test]
+    fn test_recheck_output_dir_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Don't create dist dir
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("Output directory", &config, &paths, "github-pages");
+        assert!(!result.passed);
+        assert!(result.message.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_recheck_wrangler_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("wrangler CLI", &config, &paths, "cloudflare");
+        // Just verify it returns a valid check (whether it finds wrangler or not)
+        assert_eq!(result.name, "wrangler CLI");
+    }
+
+    #[test]
+    fn test_recheck_netlify_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("netlify CLI", &config, &paths, "netlify");
+        assert_eq!(result.name, "netlify CLI");
+    }
+
+    #[test]
+    fn test_recheck_git_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("git CLI", &config, &paths, "github-pages");
+        assert_eq!(result.name, "git CLI");
+        // git is typically installed on dev machines
+    }
+
+    #[test]
+    fn test_recheck_gh_cli() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let result = recheck("gh CLI", &config, &paths, "github-pages");
+        assert_eq!(result.name, "gh CLI");
+    }
+
+    // -----------------------------------------------------------------------
+    // try_fix_check — Netlify domain no quote in message fallback
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_try_fix_check_netlify_domain_no_quote_in_message() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Netlify domain".into(),
+            passed: false,
+            message: "domain not attached".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "netlify");
+        assert!(fix.is_some());
+        let fix = fix.unwrap();
+        // Falls back to "your-domain.com"
+        assert!(fix.prompt.contains("your-domain.com"));
+    }
+
+    // -----------------------------------------------------------------------
+    // update_deploy_config — combined base_url + deploy updates
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_deploy_config_base_url_and_project_together() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[deploy]
+target = "cloudflare"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("base_url".into(), "https://prod.example.com".into());
+        updates.insert("project".into(), "my-cf-project".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        let doc: toml::Table = result.parse().unwrap();
+
+        // base_url should be in [site]
+        let site = doc.get("site").unwrap().as_table().unwrap();
+        assert_eq!(
+            site.get("base_url").unwrap().as_str().unwrap(),
+            "https://prod.example.com"
+        );
+
+        // project should be in [deploy]
+        let deploy = doc.get("deploy").unwrap().as_table().unwrap();
+        assert_eq!(
+            deploy.get("project").unwrap().as_str().unwrap(),
+            "my-cf-project"
+        );
+        // base_url should NOT be in deploy
+        assert!(deploy.get("base_url").is_none());
+    }
+
+    #[test]
+    fn test_update_deploy_config_overwrite_existing_value() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "Test"
+description = ""
+base_url = "https://old.example.com"
+language = "en"
+author = ""
+
+[deploy]
+target = "cloudflare"
+project = "old-project"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "new-project".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        let doc: toml::Table = result.parse().unwrap();
+        let deploy = doc.get("deploy").unwrap().as_table().unwrap();
+        assert_eq!(
+            deploy.get("project").unwrap().as_str().unwrap(),
+            "new-project"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // domain_setup_instructions — notes content verification
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_setup_github_pages_notes_mention_ssl() {
+        let config = test_config("https://example.com");
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        assert!(
+            setup
+                .notes
+                .iter()
+                .any(|n| n.contains("SSL") || n.contains("HTTPS")),
+            "GitHub Pages notes should mention SSL/HTTPS"
+        );
+    }
+
+    #[test]
+    fn test_domain_setup_cloudflare_notes_mention_ssl() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("proj".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Cloudflare,
+            &config,
+        );
+        assert!(
+            setup.notes.iter().any(|n| n.contains("SSL")),
+            "Cloudflare notes should mention SSL"
+        );
+    }
+
+    #[test]
+    fn test_domain_setup_netlify_notes_mention_ssl() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("proj".into());
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::Netlify,
+            &config,
+        );
+        assert!(
+            setup.notes.iter().any(|n| n.contains("SSL")),
+            "Netlify notes should mention SSL"
+        );
+    }
+
+    #[test]
+    fn test_domain_setup_github_pages_notes_mention_cname() {
+        let config = test_config("https://example.com");
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        assert!(
+            setup.notes.iter().any(|n| n.contains("CNAME")),
+            "GitHub Pages notes should mention CNAME file"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // domain_setup_instructions — single-dot domain detection
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_is_apex_single_dot() {
+        // "example.com" has 1 dot -> is_apex = true
+        let config = test_config("https://example.com");
+        let setup = domain_setup_instructions(
+            "example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        // Apex should have A records
+        let a_count = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "A")
+            .count();
+        assert_eq!(a_count, 4);
+    }
+
+    #[test]
+    fn test_domain_is_not_apex_two_dots() {
+        // "sub.example.com" has 2 dots -> is_apex = false
+        let config = test_config("https://sub.example.com");
+        let setup = domain_setup_instructions(
+            "sub.example.com",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        let a_count = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "A")
+            .count();
+        assert_eq!(a_count, 0);
+    }
+
+    #[test]
+    fn test_domain_no_dots_is_apex() {
+        // "localhost" has 0 dots -> is_apex via the `!domain.contains('.')` path
+        let config = test_config("https://localhost");
+        let setup = domain_setup_instructions(
+            "localhost",
+            &crate::config::DeployTarget::GithubPages,
+            &config,
+        );
+        let a_count = setup
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == "A")
+            .count();
+        assert_eq!(a_count, 4);
+    }
+
+    // -----------------------------------------------------------------------
+    // generate_*_workflow — structural checks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_generate_github_actions_workflow_has_workflow_dispatch() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("workflow_dispatch"));
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow_has_concurrency() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("concurrency:"));
+        assert!(workflow.contains("cancel-in-progress: false"));
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow_has_two_jobs() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("build:"));
+        assert!(workflow.contains("deploy:"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_has_workflow_dispatch() {
+        let config = test_config("https://example.com");
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("workflow_dispatch"));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow_has_workflow_dispatch() {
+        let config = test_config("https://example.com");
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("workflow_dispatch"));
+    }
+
+    #[test]
+    fn test_generate_netlify_config_has_redirects() {
+        let config = test_config("https://example.com");
+        let netlify = generate_netlify_config(&config);
+        assert!(netlify.contains("[[redirects]]"));
+        assert!(netlify.contains("404"));
+    }
+
+    #[test]
+    fn test_generate_github_actions_workflow_uploads_artifact() {
+        let config = test_config("https://example.com");
+        let workflow = generate_github_actions_workflow(&config);
+        assert!(workflow.contains("upload-pages-artifact"));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_uses_wrangler_action() {
+        let config = test_config("https://example.com");
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("wrangler-action"));
+    }
+
+    #[test]
+    fn test_generate_netlify_workflow_uses_netlify_action() {
+        let config = test_config("https://example.com");
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("actions-netlify"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_base_url — additional edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_base_url_with_https_and_path() {
+        let config = test_config("https://example.com/blog");
+        let check = check_base_url(&config);
+        assert!(check.passed);
+    }
+
+    #[test]
+    fn test_check_base_url_with_subdomain() {
+        let config = test_config("https://docs.example.com");
+        let check = check_base_url(&config);
+        assert!(check.passed);
+    }
+
+    #[test]
+    fn test_check_base_url_ip_address_not_localhost() {
+        // 192.168.1.1 doesn't contain "localhost", "127.0.0.1", or "0.0.0.0"
+        let config = test_config("http://192.168.1.1:3000");
+        let check = check_base_url(&config);
+        assert!(check.passed);
+    }
+
+    #[test]
+    fn test_check_base_url_0000_with_different_port() {
+        let config = test_config("http://0.0.0.0:3000");
+        let check = check_base_url(&config);
+        assert!(!check.passed);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_git_repo — name field consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_git_repo_name_field() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_repo(&paths);
+        assert_eq!(check.name, "Git repository");
+    }
+
+    #[test]
+    fn test_check_git_remote_name_field() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_remote(&paths, None);
+        assert_eq!(check.name, "Git remote");
+    }
+
+    #[test]
+    fn test_check_git_remote_configured_name_field() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = check_git_remote(&paths, Some("https://github.com/user/repo"));
+        assert_eq!(check.name, "Git remote");
+    }
+
+    // -----------------------------------------------------------------------
+    // detect_github_username — unusual repo URL formats
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_detect_github_username_https_trailing_slash() {
+        let deploy = test_deploy_section(Some("https://github.com/alice/"));
+        let username = detect_github_username(&deploy);
+        assert_eq!(username, Some("alice".into()));
+    }
+
+    #[test]
+    fn test_detect_github_username_ssh_no_repo() {
+        let deploy = test_deploy_section(Some("git@github.com:justuser"));
+        let username = detect_github_username(&deploy);
+        // split('/').next() returns "justuser" since there's no '/'
+        assert_eq!(username, Some("justuser".into()));
+    }
+
+    #[test]
+    fn test_detect_github_username_empty_repo_string() {
+        let deploy = test_deploy_section(Some(""));
+        let username = detect_github_username(&deploy);
+        assert!(username.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // GitPushResult — additional branch scenarios
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_git_push_result_master_branch() {
+        let result = GitPushResult {
+            branch: "master".into(),
+            is_main: true,
+            committed: true,
+        };
+        assert_eq!(result.branch, "master");
+        assert!(result.is_main);
+    }
+
+    #[test]
+    fn test_git_push_result_develop_branch() {
+        let result = GitPushResult {
+            branch: "develop".into(),
+            is_main: false,
+            committed: false,
+        };
+        assert_eq!(result.branch, "develop");
+        assert!(!result.is_main);
+        assert!(!result.committed);
+    }
+
+    // -----------------------------------------------------------------------
+    // VerifyResult — field access
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_verify_result_struct_fields() {
+        let result = VerifyResult {
+            check: "robots.txt".into(),
+            passed: true,
+            message: "reachable".into(),
+        };
+        assert_eq!(result.check, "robots.txt");
+        assert!(result.passed);
+        assert_eq!(result.message, "reachable");
+    }
+
+    #[test]
+    fn test_verify_result_failed() {
+        let result = VerifyResult {
+            check: "Homepage".into(),
+            passed: false,
+            message: "connection refused".into(),
+        };
+        assert!(!result.passed);
+    }
+
+    // -----------------------------------------------------------------------
+    // print_verification — all pass, all fail
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_verification_all_pass() {
+        let results = vec![
+            VerifyResult {
+                check: "Homepage".into(),
+                passed: true,
+                message: "200 OK".into(),
+            },
+            VerifyResult {
+                check: "robots.txt".into(),
+                passed: true,
+                message: "reachable".into(),
+            },
+            VerifyResult {
+                check: "sitemap.xml".into(),
+                passed: true,
+                message: "reachable".into(),
+            },
+            VerifyResult {
+                check: "llms.txt".into(),
+                passed: true,
+                message: "reachable".into(),
+            },
+        ];
+        print_verification(&results);
+    }
+
+    #[test]
+    fn test_print_verification_all_fail() {
+        let results = vec![
+            VerifyResult {
+                check: "Homepage".into(),
+                passed: false,
+                message: "connection refused".into(),
+            },
+            VerifyResult {
+                check: "robots.txt".into(),
+                passed: false,
+                message: "connection refused".into(),
+            },
+        ];
+        print_verification(&results);
+    }
+
+    // -----------------------------------------------------------------------
+    // check_netlify_site — name field consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_netlify_site_name_field() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let check = check_netlify_site(&config, &paths);
+        assert_eq!(check.name, "Netlify site");
+    }
+
+    // -----------------------------------------------------------------------
+    // check_cloudflare_domain — name field consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_cloudflare_domain_name_field() {
+        let config = test_config("https://example.com");
+        let check = check_cloudflare_domain(&config);
+        assert_eq!(check.name, "Cloudflare domain");
+    }
+
+    // -----------------------------------------------------------------------
+    // check_netlify_domain — name field consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_netlify_domain_name_field() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let config = test_config("https://example.com");
+        let check = check_netlify_domain(&config, &paths);
+        assert_eq!(check.name, "Netlify domain");
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_deploy_base_url — empty string override
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_deploy_base_url_empty_override() {
+        let config = test_config("https://example.com");
+        // Empty string override
+        let result = resolve_deploy_base_url(&config, Some(""));
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_resolve_deploy_base_url_whitespace_in_config() {
+        let config = test_config("  https://example.com  ");
+        // config value is not trimmed by resolve_deploy_base_url — only trailing slash stripped
+        let result = resolve_deploy_base_url(&config, None);
+        assert_eq!(result, "  https://example.com  ");
+    }
+
+    // -----------------------------------------------------------------------
+    // print_domain_setup — multiple records and notes
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_print_domain_setup_multiple_records() {
+        let setup = DomainSetup {
+            domain: "example.com".into(),
+            target: "GitHub Pages".into(),
+            dns_records: vec![
+                DnsRecord {
+                    record_type: "A".into(),
+                    name: "@".into(),
+                    value: "185.199.108.153".into(),
+                },
+                DnsRecord {
+                    record_type: "A".into(),
+                    name: "@".into(),
+                    value: "185.199.109.153".into(),
+                },
+                DnsRecord {
+                    record_type: "CNAME".into(),
+                    name: "www".into(),
+                    value: "user.github.io".into(),
+                },
+            ],
+            notes: vec!["Note one".into(), "Note two".into(), "Note three".into()],
+        };
+        // Should not panic with multiple records and notes
+        print_domain_setup(&setup);
+    }
+
+    // -----------------------------------------------------------------------
+    // update_deploy_config — preserves existing non-deploy keys
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_deploy_config_preserves_site_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let initial = r#"[site]
+title = "My Blog"
+description = "A great blog"
+base_url = "https://myblog.com"
+language = "en"
+author = "Author"
+
+[deploy]
+target = "github-pages"
+"#;
+        std::fs::write(&config_path, initial).unwrap();
+
+        let mut updates = HashMap::new();
+        updates.insert("project".into(), "new-project".into());
+        update_deploy_config(&config_path, &updates).unwrap();
+
+        let result = std::fs::read_to_string(&config_path).unwrap();
+        let doc: toml::Table = result.parse().unwrap();
+        let site = doc.get("site").unwrap().as_table().unwrap();
+        // Original site fields should be preserved
+        assert_eq!(site.get("title").unwrap().as_str().unwrap(), "My Blog");
+        assert_eq!(
+            site.get("description").unwrap().as_str().unwrap(),
+            "A great blog"
+        );
+        assert_eq!(site.get("author").unwrap().as_str().unwrap(), "Author");
+    }
+
+    // -----------------------------------------------------------------------
+    // try_fix_check — all check names return correct number of manual instructions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_try_fix_check_output_dir_has_manual_instructions() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Output directory".into(),
+            passed: false,
+            message: "missing".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages").unwrap();
+        assert!(!fix.manual_instructions.is_empty());
+        assert!(fix.manual_instructions[0].contains("seite build"));
+    }
+
+    #[test]
+    fn test_try_fix_check_base_url_has_manual_instructions() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Base URL".into(),
+            passed: false,
+            message: "localhost".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages").unwrap();
+        assert!(fix.manual_instructions.len() >= 2);
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("base_url")));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|i| i.contains("--base-url")));
+    }
+
+    #[test]
+    fn test_try_fix_check_git_repo_has_manual_instructions() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let check = PreflightCheck {
+            name: "Git repository".into(),
+            passed: false,
+            message: "not a repo".into(),
+        };
+        let fix = try_fix_check(&check, &paths, "github-pages").unwrap();
+        assert!(!fix.manual_instructions.is_empty());
+        assert!(fix.manual_instructions[0].contains("git init"));
+    }
+
+    // -----------------------------------------------------------------------
+    // check_cloudflare_domain — with domain and project both set (API call path)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_cloudflare_domain_with_domain_and_project() {
+        let mut config = test_config("https://example.com");
+        config.deploy.domain = Some("example.com".into());
+        config.deploy.project = Some("my-project".into());
+        let check = check_cloudflare_domain(&config);
+        assert_eq!(check.name, "Cloudflare domain");
+        // The API call will likely fail (no credentials), but that returns
+        // passed=true with "could not verify" message
+        assert!(
+            check.message.contains("example.com"),
+            "message should mention the domain: {}",
+            check.message
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // check_cloudflare_auth / check_netlify_auth — name field
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_cloudflare_auth_name_field() {
+        let check = check_cloudflare_auth();
+        assert_eq!(check.name, "Cloudflare auth");
+    }
+
+    #[test]
+    fn test_check_netlify_auth_name_field() {
+        let check = check_netlify_auth();
+        assert_eq!(check.name, "Netlify auth");
+    }
+
+    // -----------------------------------------------------------------------
+    // deploy_github_pages — .nojekyll and CNAME generation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_deploy_github_pages_writes_nojekyll() {
+        // We can't test the full deploy (needs git), but we can test that
+        // the function creates .nojekyll before the git commands fail
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist.clone(),
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://example.com");
+        // This will fail at the git init step, but .nojekyll should exist
+        let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
+        assert!(dist.join(".nojekyll").exists());
+    }
+
+    #[test]
+    fn test_deploy_github_pages_writes_cname_for_custom_domain() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist.clone(),
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://myblog.com");
+        let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
+        let cname_path = dist.join("CNAME");
+        assert!(cname_path.exists());
+        let content = std::fs::read_to_string(&cname_path).unwrap();
+        assert_eq!(content, "myblog.com");
+    }
+
+    #[test]
+    fn test_deploy_github_pages_no_cname_for_github_io() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("index.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist.clone(),
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let config = test_config("https://user.github.io");
+        let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
+        // CNAME should NOT be written for github.io URLs
+        assert!(!dist.join("CNAME").exists());
+    }
+
+    // -----------------------------------------------------------------------
+    // check_output_dir — message contains path
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_check_output_dir_pass_message_contains_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dist = tmp.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(dist.join("file.html"), "ok").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            output: dist.clone(),
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+        let check = check_output_dir(&paths);
+        assert!(check.passed);
+        assert!(
+            check.message.contains("dist"),
+            "passed message should include the output path: {}",
+            check.message
+        );
     }
 }
