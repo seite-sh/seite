@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,6 +32,6 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
-          fail_ci_if_error: false
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

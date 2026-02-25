@@ -1,5 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "mcpServers": {
+    "seite": {
+      "args": [
+        "mcp"
+      ],
+      "command": "seite"
+    }
+  },
   "permissions": {
     "allow": [
       "Read",

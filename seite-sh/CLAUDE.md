@@ -304,3 +304,40 @@ information. Full `prefers-reduced-motion: reduce` support.
   - `minify` strips CSS/JS comments and collapses whitespace
   - `fingerprint` writes `file.<hash8>.ext` copies of each static asset and a `dist/asset-manifest.json` mapping original names to fingerprinted names
 - Custom theme: `seite theme create "your design description"` generates `templates/base.html` with Claude (requires Claude Code)
+
+
+## MCP Server
+
+This project includes an MCP server that AI tools can connect to for structured
+access to site content, documentation, themes, and build tools.
+
+The server is configured in `.claude/settings.json` and starts automatically
+when Claude Code opens this project. No API keys or setup required.
+
+**Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
+`seite_apply_theme`, `seite_lookup_docs`
+
+**Available resources:** `seite://docs/*` (page documentation),
+`seite://content/*` (site content), `seite://themes` (themes),
+`seite://config` (site configuration), `seite://mcp-config` (MCP settings)
+
+The MCP server provides typed, structured access to your site — AI tools work
+with page concepts (collections, content items, themes) rather than parsing
+raw files.
+
+
+## Contact Forms
+
+This project supports built-in contact forms via the `{{< contact_form() >}}` shortcode.
+
+**Supported providers:** Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform
+
+**Setup:** Run `seite contact setup` to configure a contact form provider.
+The shortcode renders a styled form matching the current theme.
+
+**Configuration** in `seite.toml`:
+```toml
+[contact]
+provider = "formspree"   # or web3forms, netlify, hubspot, typeform
+endpoint = "your-form-id"
+```
