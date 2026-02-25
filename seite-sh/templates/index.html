@@ -4,11 +4,11 @@
 {% block extra_css %}
 <style>
     /* ── Fonts ─────────────────────────────────────── */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
     :root {
-        --display: 'Inter', system-ui, -apple-system, sans-serif;
-        --sans: 'Inter', system-ui, -apple-system, sans-serif;
+        --display: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+        --sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
         --cyan: #06b6d4;
         --cyan-dim: rgba(6, 182, 212, 0.08);
     }
@@ -58,7 +58,7 @@
 
     /* ── Hero ──────────────────────────────────────── */
     .hero {
-        padding: 7rem 0 4rem;
+        padding: 5.5rem 0 3.5rem;
         position: relative;
         overflow: hidden;
     }
@@ -72,7 +72,7 @@
         transform: translate(-50%, -50%);
         width: 900px;
         height: 700px;
-        background: radial-gradient(ellipse, rgba(0, 230, 118, 0.1) 0%, transparent 55%);
+        background: radial-gradient(ellipse, rgba(20, 184, 166, 0.1) 0%, transparent 55%);
         pointer-events: none;
         animation: orb-drift 16s ease-in-out infinite;
     }
@@ -89,10 +89,10 @@
         animation: orb-drift-2 20s ease-in-out infinite;
     }
     [data-theme="light"] .hero::before {
-        background: radial-gradient(ellipse, rgba(13, 148, 98, 0.07) 0%, transparent 55%);
+        background: radial-gradient(ellipse, rgba(15, 118, 110, 0.12) 0%, transparent 55%);
     }
     [data-theme="light"] .hero::after {
-        background: radial-gradient(ellipse, rgba(6, 140, 170, 0.04) 0%, transparent 55%);
+        background: radial-gradient(ellipse, rgba(6, 140, 170, 0.08) 0%, transparent 55%);
     }
 
     .hero > .container { position: relative; z-index: 1; }
@@ -135,7 +135,7 @@
     .hero h1 {
         font-family: var(--display);
         font-size: clamp(2.4rem, 3.6vw, 3.4rem);
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: -0.04em;
         line-height: 1.08;
         color: var(--heading);
@@ -172,8 +172,8 @@
         align-items: center;
         justify-content: center;
         gap: 2rem;
-        padding-top: 3rem;
-        margin-top: 3rem;
+        padding-top: 2rem;
+        margin-top: 2rem;
         border-top: 1px solid var(--border);
     }
     .hero-tech-label {
@@ -197,8 +197,16 @@
         align-items: center;
         gap: 0.5rem;
         white-space: nowrap;
+        border: 1px solid var(--border);
+        border-radius: 100px;
+        padding: 0.35rem 0.9rem;
+        transition: border-color 0.2s, color 0.2s;
     }
-    .hero-tech-item svg { opacity: 0.5; flex-shrink: 0; }
+    .hero-tech-item:hover {
+        border-color: var(--green-border);
+        color: var(--text);
+    }
+    .hero-tech-item svg { opacity: 0.65; flex-shrink: 0; }
 
     /* ── Install bar ─────────────────────────────────── */
     .install-bar {
@@ -259,15 +267,15 @@
     }
     .btn-primary:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(0, 230, 118, 0.2);
+        box-shadow: 0 8px 32px rgba(20, 184, 166, 0.2);
         text-decoration: none;
     }
     [data-theme="light"] .btn-primary {
-        background: #0a0a0a;
-        color: #fafafa;
+        background: #0F766E;
+        color: #ffffff;
     }
     [data-theme="light"] .btn-primary:hover {
-        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+        box-shadow: 0 8px 28px rgba(15, 118, 110, 0.25);
     }
 
     .btn-secondary {
@@ -300,29 +308,29 @@
         overflow: hidden;
         border: 1px solid var(--border);
         box-shadow:
-            0 0 0 1px rgba(0, 230, 118, 0.04),
-            0 0 80px rgba(0, 230, 118, 0.06),
+            0 0 0 1px rgba(20, 184, 166, 0.04),
+            0 0 80px rgba(20, 184, 166, 0.06),
             0 32px 80px -24px rgba(0, 0, 0, 0.5);
         text-align: left;
         transition: box-shadow 0.4s ease;
     }
     .terminal-wrap:hover {
         box-shadow:
-            0 0 0 1px rgba(0, 230, 118, 0.06),
-            0 0 120px rgba(0, 230, 118, 0.08),
+            0 0 0 1px rgba(20, 184, 166, 0.06),
+            0 0 120px rgba(20, 184, 166, 0.08),
             0 40px 100px -24px rgba(0, 0, 0, 0.6);
     }
     [data-theme="light"] .terminal-wrap {
         box-shadow:
-            0 0 0 1px rgba(13, 148, 98, 0.05),
-            0 0 50px rgba(13, 148, 98, 0.03),
-            0 24px 60px -20px rgba(0, 0, 0, 0.14);
+            0 0 0 1px rgba(15, 118, 110, 0.08),
+            0 0 50px rgba(15, 118, 110, 0.05),
+            0 24px 60px -20px rgba(60, 50, 40, 0.14);
     }
     [data-theme="light"] .terminal-wrap:hover {
         box-shadow:
-            0 0 0 1px rgba(13, 148, 98, 0.07),
-            0 0 70px rgba(13, 148, 98, 0.05),
-            0 32px 80px -20px rgba(0, 0, 0, 0.18);
+            0 0 0 1px rgba(15, 118, 110, 0.10),
+            0 0 70px rgba(15, 118, 110, 0.07),
+            0 32px 80px -20px rgba(60, 50, 40, 0.18);
     }
 
     .terminal-bar {
@@ -380,7 +388,7 @@
 
     /* ── Shared section styles ─────────────────────── */
     .section {
-        padding: 6rem 0;
+        padding: 4.5rem 0;
         border-top: 1px solid var(--border);
     }
 
@@ -395,21 +403,21 @@
     .section-title {
         font-family: var(--display);
         font-size: clamp(2rem, 4vw, 3rem);
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: -0.035em;
         color: var(--heading);
         line-height: 1.1;
     }
     .section-sub {
         font-size: 1rem;
-        color: var(--text-dim);
+        color: var(--text-muted);
         max-width: 560px;
         line-height: 1.7;
         margin-top: 1rem;
     }
 
     .section-header {
-        margin-bottom: 3.5rem;
+        margin-bottom: 2.5rem;
     }
 
     /* ── Feature grid ─────────────────────────────── */
@@ -429,10 +437,10 @@
         position: relative;
     }
     .feature-card:hover {
-        background: rgba(0, 230, 118, 0.02);
+        background: rgba(20, 184, 166, 0.04);
     }
     [data-theme="light"] .feature-card:hover {
-        background: rgba(13, 148, 98, 0.02);
+        background: rgba(15, 118, 110, 0.06);
     }
 
     .feature-icon {
@@ -440,7 +448,7 @@
         height: 36px;
         margin-bottom: 1.25rem;
         color: var(--green);
-        opacity: 0.5;
+        opacity: 0.75;
         transition: opacity 0.25s;
     }
     .feature-card:hover .feature-icon { opacity: 1; }
@@ -456,7 +464,7 @@
     }
     .feature-card p {
         font-size: 0.85rem;
-        color: var(--text-dim);
+        color: var(--text-muted);
         line-height: 1.65;
     }
     .feature-card p code {
@@ -471,7 +479,7 @@
 
     /* ── Agent showcase ──────────────────────────── */
     .agent-section {
-        padding: 6rem 0;
+        padding: 4.5rem 0;
         border-top: 1px solid var(--border);
         position: relative;
         overflow: hidden;
@@ -483,7 +491,7 @@
         right: -200px;
         width: 600px;
         height: 600px;
-        background: radial-gradient(circle, rgba(0, 230, 118, 0.03) 0%, transparent 55%);
+        background: radial-gradient(circle, rgba(20, 184, 166, 0.03) 0%, transparent 55%);
         pointer-events: none;
     }
 
@@ -492,7 +500,7 @@
         grid-template-columns: 1fr 1fr;
         gap: 3.5rem;
         align-items: center;
-        margin-top: 3rem;
+        margin-top: 2rem;
     }
 
     .agent-flow { display: flex; flex-direction: column; gap: 0; }
@@ -529,7 +537,7 @@
     }
     .flow-body p {
         font-size: 0.85rem;
-        color: var(--text-dim);
+        color: var(--text-muted);
         line-height: 1.65;
     }
 
@@ -543,7 +551,7 @@
     .agent-visual-label {
         font-family: var(--mono);
         font-size: 0.65rem;
-        color: var(--text-dim);
+        color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.1em;
         margin-bottom: 1.5rem;
@@ -558,12 +566,14 @@
         border-radius: 10px;
         font-family: var(--mono);
         font-size: 0.75rem;
-        color: var(--text-muted);
-        transition: border-color 0.2s;
-        background: transparent;
+        color: var(--text);
+        transition: border-color 0.2s, background 0.2s;
+        background: rgba(255, 255, 255, 0.02);
     }
-    .agent-file:hover { border-color: var(--green-border); }
-    .agent-file-icon { color: var(--green); opacity: 0.5; flex-shrink: 0; }
+    .agent-file:hover { border-color: var(--green-border); background: rgba(255, 255, 255, 0.04); }
+    .agent-file-icon { color: var(--green); opacity: 0.75; flex-shrink: 0; }
+    [data-theme="light"] .agent-file { background: rgba(0, 0, 0, 0.02); }
+    [data-theme="light"] .agent-file:hover { background: rgba(0, 0, 0, 0.04); }
     .agent-file-new {
         margin-left: auto;
         font-size: 0.6rem;
@@ -580,63 +590,118 @@
         margin-left: auto;
         font-family: var(--mono);
         font-size: 0.6rem;
-        color: var(--text-dim);
+        color: var(--text-muted);
         letter-spacing: 0.03em;
     }
 
+    /* File appear animation */
+    @keyframes file-appear {
+        from { opacity: 0; transform: translateX(16px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    .agent-visual.visible .agent-file {
+        opacity: 0;
+        animation: file-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .agent-visual.visible .agent-file:nth-child(1) { animation-delay: 0.15s; }
+    .agent-visual.visible .agent-file:nth-child(2) { animation-delay: 0.35s; }
+    .agent-visual.visible .agent-file:nth-child(3) { animation-delay: 0.55s; }
+    .agent-visual.visible .agent-file:nth-child(4) { animation-delay: 0.75s; }
+    @media (prefers-reduced-motion: reduce) {
+        .agent-visual.visible .agent-file { animation: none; opacity: 1; }
+    }
+
+    .agent-file-preview {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        margin-top: 0.35rem;
+        padding: 0.5rem 0.75rem;
+        border-left: 2px solid var(--green-border);
+        line-height: 1.6;
+    }
+    .agent-file-preview .fp-key { color: var(--green); font-weight: 600; }
+    .agent-file-preview .fp-val { color: var(--text); }
+
     /* ── Comparison ───────────────────────────────── */
     .compare-section {
-        padding: 6rem 0;
+        padding: 4.5rem 0;
         border-top: 1px solid var(--border);
     }
     .compare-section .section-title { margin-bottom: 0.75rem; }
     .compare-sub {
         font-size: 1rem;
-        color: var(--text-dim);
-        max-width: 500px;
+        color: var(--text-muted);
+        max-width: 540px;
         line-height: 1.65;
-        margin-bottom: 3rem;
+        margin-bottom: 2.5rem;
     }
-    .compare-grid {
+    .compare-columns {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 1px;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+    .compare-col {
         border: 1px solid var(--border);
-        border-radius: 14px;
-        overflow: hidden;
-        background: var(--border);
+        border-radius: 16px;
+        padding: 2rem;
     }
-    .compare-item {
-        background: var(--bg);
-        padding: 2rem 1.25rem;
-        text-align: center;
-        transition: all 0.25s ease;
+    .compare-col--after {
+        border-color: var(--green-border);
+        background: rgba(20, 184, 166, 0.03);
     }
-    .compare-item:hover {
-        background: rgba(0, 230, 118, 0.02);
+    [data-theme="light"] .compare-col--after {
+        background: rgba(15, 118, 110, 0.04);
     }
-    [data-theme="light"] .compare-item:hover {
-        background: rgba(13, 148, 98, 0.02);
-    }
-    .compare-need {
-        display: block;
-        font-family: var(--display);
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--heading);
-        margin-bottom: 0.5rem;
-    }
-    .compare-how {
-        display: block;
+    .compare-col-label {
         font-family: var(--mono);
-        font-size: 0.72rem;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        margin-bottom: 1.25rem;
+    }
+    .compare-col--after .compare-col-label {
         color: var(--green);
+    }
+    .compare-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+    .compare-list li {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        display: flex;
+        align-items: flex-start;
+        gap: 0.6rem;
         line-height: 1.5;
+    }
+    .compare-list li .compare-icon {
+        flex-shrink: 0;
+        margin-top: 0.15rem;
+        opacity: 0.4;
+    }
+    .compare-col--after .compare-list li .compare-icon {
+        color: var(--green);
+        opacity: 0.8;
+    }
+    .compare-list li .compare-tool {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-left: auto;
+        white-space: nowrap;
+        padding-left: 0.5rem;
+    }
+    .compare-col--after .compare-list li .compare-tool {
+        color: var(--green);
     }
 
     /* ── Quickstart ────────────────────────────────── */
     .quickstart-section {
-        padding: 6rem 0;
+        padding: 4.5rem 0;
         border-top: 1px solid var(--border);
     }
     .quickstart-grid {
@@ -644,7 +709,7 @@
         grid-template-columns: 1.1fr 0.9fr;
         gap: 3rem;
         align-items: start;
-        margin-top: 3rem;
+        margin-top: 2rem;
     }
     .code-block {
         background: #0a0a0a;
@@ -652,15 +717,15 @@
         border-radius: 16px;
         overflow: hidden;
         box-shadow:
-            0 0 60px rgba(0, 230, 118, 0.03),
+            0 0 60px rgba(20, 184, 166, 0.03),
             0 20px 60px -20px rgba(0, 0, 0, 0.4);
     }
     [data-theme="light"] .code-block {
         background: #141428;
         border-color: rgba(255, 255, 255, 0.08);
         box-shadow:
-            0 0 40px rgba(13, 148, 98, 0.02),
-            0 16px 48px -16px rgba(0, 0, 0, 0.12);
+            0 0 40px rgba(15, 118, 110, 0.04),
+            0 16px 48px -16px rgba(60, 50, 40, 0.14);
     }
     .code-block-header {
         display: flex;
@@ -691,7 +756,7 @@
         letter-spacing: 0.04em;
         text-transform: uppercase;
     }
-    .copy-btn:hover { color: #00e676; border-color: rgba(0, 230, 118, 0.3); }
+    .copy-btn:hover { color: #14B8A6; border-color: rgba(20, 184, 166, 0.3); }
 
     .code-block-body {
         padding: 1.5rem 1.4rem;
@@ -700,7 +765,7 @@
         line-height: 2;
     }
     .c-comment { color: #383838; }
-    .c-cmd { color: #00e676; }
+    .c-cmd { color: #14B8A6; }
     .c-arg { color: #e2e2e2; }
     .c-flag { color: var(--cyan); }
     .c-blank { height: 0.6rem; }
@@ -715,7 +780,7 @@
         counter-reset: step-counter;
         display: flex;
         flex-direction: column;
-        gap: 2rem;
+        gap: 1.5rem;
     }
     .step-item {
         counter-increment: step-counter;
@@ -755,7 +820,7 @@
         letter-spacing: -0.01em;
     }
     .step-body span {
-        color: var(--text-dim);
+        color: var(--text-muted);
         font-size: 0.85rem;
         line-height: 1.65;
     }
@@ -782,7 +847,7 @@
     /* ── CTA section ──────────────────────────────── */
     .cta-section {
         text-align: center;
-        padding: 8rem 0 7rem;
+        padding: 6rem 0 5rem;
         border-top: 1px solid var(--border);
         position: relative;
         overflow: hidden;
@@ -796,29 +861,29 @@
         width: 1000px;
         height: 600px;
         background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(0, 230, 118, 0.07) 0%, transparent 60%),
+            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(20, 184, 166, 0.07) 0%, transparent 60%),
             radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
         pointer-events: none;
         animation: orb-drift 18s ease-in-out infinite;
     }
     [data-theme="light"] .cta-section::before {
         background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(13, 148, 98, 0.05) 0%, transparent 60%),
-            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 140, 170, 0.03) 0%, transparent 60%);
+            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(15, 118, 110, 0.08) 0%, transparent 60%),
+            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 140, 170, 0.05) 0%, transparent 60%);
     }
     .cta-section > .container { position: relative; z-index: 1; }
 
     .cta-section h2 {
         font-family: var(--display);
         font-size: clamp(2.4rem, 5vw, 4.2rem);
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: -0.04em;
         color: var(--heading);
         margin-bottom: 1rem;
         line-height: 1.08;
     }
     .cta-section > .container > p {
-        color: var(--text-dim);
+        color: var(--text-muted);
         margin-bottom: 2.5rem;
         font-size: 1.1rem;
         max-width: 480px;
@@ -826,15 +891,15 @@
         margin-right: auto;
         line-height: 1.7;
     }
+    .cta-section .hero-actions { justify-content: center; }
 
     /* ── Responsive ───────────────────────────────── */
     @media (max-width: 1024px) {
         .feature-grid { grid-template-columns: repeat(2, 1fr); }
-        .compare-grid { grid-template-columns: repeat(3, 1fr); }
     }
 
     @media (max-width: 900px) {
-        .hero { padding: 5rem 0 3rem; }
+        .hero { padding: 4rem 0 2.5rem; }
         .hero-grid {
             grid-template-columns: 1fr;
             gap: 2.5rem;
@@ -850,18 +915,17 @@
 
     @media (max-width: 768px) {
         .quickstart-grid { grid-template-columns: 1fr; }
-        .section { padding: 5rem 0; }
-        .compare-section { padding: 5rem 0; }
-        .quickstart-section { padding: 5rem 0; }
-        .cta-section { padding: 6rem 0 5rem; }
-        .agent-section { padding: 5rem 0; }
-        .compare-grid { grid-template-columns: repeat(2, 1fr); }
+        .section { padding: 3.5rem 0; }
+        .compare-section { padding: 3.5rem 0; }
+        .quickstart-section { padding: 3.5rem 0; }
+        .cta-section { padding: 4.5rem 0 3.5rem; }
+        .agent-section { padding: 3.5rem 0; }
+        .compare-columns { grid-template-columns: 1fr; }
         .hero-tech-items { flex-wrap: wrap; justify-content: center; gap: 1rem; }
     }
 
     @media (max-width: 600px) {
         .feature-grid { grid-template-columns: 1fr; }
-        .compare-grid { grid-template-columns: 1fr; }
         .install-bar { flex-direction: column; gap: 0.4rem; }
     }
 </style>
@@ -895,7 +959,7 @@
 
                 <div class="install-bar anim-rise" style="animation-delay:0.48s">
                     <div class="install-cmd"><span>$</span> curl -fsSL seite.sh/install.sh | sh</div>
-                    <button class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='copied';setTimeout(function(){this.textContent='copy';}.bind(this),2000);if(window.plausible)plausible('CopyInstall');}.bind(this)).catch(function(){});">copy</button>
+                    <button class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='copied';setTimeout(function(){this.textContent='copy';}.bind(this),2000);}.bind(this)).catch(function(){});">copy</button>
                 </div>
             </div>
 
@@ -928,19 +992,19 @@
             <span class="hero-tech-label">Works with</span>
             <div class="hero-tech-items">
                 <span class="hero-tech-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9.5 2l3 3.5L9.5 9"/><path d="M14.5 2l-3 3.5 3 3.5"/><rect x="2" y="12" width="20" height="10" rx="3"/><path d="M6 16h.01M10 16h.01"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9.5 2l3 3.5L9.5 9"/><path d="M14.5 2l-3 3.5 3 3.5"/><rect x="2" y="12" width="20" height="10" rx="3"/><path d="M6 16h.01M10 16h.01"/></svg>
                     Claude Code
                 </span>
                 <span class="hero-tech-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                     GitHub Pages
                 </span>
                 <span class="hero-tech-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     Cloudflare
                 </span>
                 <span class="hero-tech-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                     Netlify
                 </span>
             </div>
@@ -987,7 +1051,8 @@
                 <div class="agent-files">
                     <div class="agent-file">
                         <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        content/posts/2026-02-18-v1-2-release.md
+                        <span>content/posts/2026-02-18-v1-2-release.md
+                        <div class="agent-file-preview"><span class="fp-key">title:</span> <span class="fp-val">"v1.2 Release Notes"</span><br><span class="fp-key">tags:</span> <span class="fp-val">[release, new]</span></div></span>
                         <span class="agent-file-new">new</span>
                     </div>
                     <div class="agent-file">
@@ -1000,7 +1065,7 @@
                         content/changelog/v1-2-0.md
                         <span class="agent-file-new">new</span>
                     </div>
-                    <div class="agent-file" style="opacity:0.45">
+                    <div class="agent-file" style="opacity:0.6">
                         <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                         .claude/CLAUDE.md
                         <span class="agent-file-auto">auto-scaffolded</span>
@@ -1059,30 +1124,80 @@
 <section class="compare-section" id="compare">
     <div class="container">
         <div class="reveal">
-            <h2 class="section-title">{{ page.extra.comparison_headline | default(value="One tool. Everything your site needs.") }}</h2>
-            <p class="compare-sub">{{ page.extra.comparison_sub | default(value="No new subscriptions. Just the coding agent you already have.") }}</p>
+            <h2 class="section-title">{{ page.extra.comparison_headline | default(value="Stop juggling six tools for one website.") }}</h2>
+            <p class="compare-sub">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool — then glue it with scripts. seite handles all of it.") }}</p>
         </div>
 
-        <div class="compare-grid reveal">
-            <div class="compare-item">
-                <span class="compare-need">{{ page.extra.compare_1_need | default(value="Landing page") }}</span>
-                <span class="compare-how">{{ page.extra.compare_1_how | default(value="content/index.md + template") }}</span>
+        <div class="compare-columns reveal">
+            <div class="compare-col">
+                <div class="compare-col-label">The typical setup</div>
+                <ul class="compare-list">
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        SSG + Node.js toolchain
+                        <span class="compare-tool">Hugo / Astro / Next.js</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        Separate changelog &amp; roadmap
+                        <span class="compare-tool">Headway / Notion / Canny</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        Contact form service
+                        <span class="compare-tool">Formspree / Typeform</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        Deploy pipeline
+                        <span class="compare-tool">Vercel / custom CI</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        SEO meta, sitemap, RSS
+                        <span class="compare-tool">plugins / manual</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        LLM discoverability
+                        <span class="compare-tool">DIY or nothing</span>
+                    </li>
+                </ul>
             </div>
-            <div class="compare-item">
-                <span class="compare-need">{{ page.extra.compare_2_need | default(value="Documentation") }}</span>
-                <span class="compare-how">{{ page.extra.compare_2_how | default(value="docs collection preset") }}</span>
-            </div>
-            <div class="compare-item">
-                <span class="compare-need">{{ page.extra.compare_3_need | default(value="Blog") }}</span>
-                <span class="compare-how">{{ page.extra.compare_3_how | default(value="posts collection preset") }}</span>
-            </div>
-            <div class="compare-item">
-                <span class="compare-need">{{ page.extra.compare_4_need | default(value="Changelog") }}</span>
-                <span class="compare-how">{{ page.extra.compare_4_how | default(value="changelog collection preset") }}</span>
-            </div>
-            <div class="compare-item">
-                <span class="compare-need">{{ page.extra.compare_5_need | default(value="Roadmap") }}</span>
-                <span class="compare-how">{{ page.extra.compare_5_how | default(value="roadmap collection preset") }}</span>
+            <div class="compare-col compare-col--after">
+                <div class="compare-col-label">With seite</div>
+                <ul class="compare-list">
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Single Rust binary, zero dependencies
+                        <span class="compare-tool">no Node.js</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Blog, docs, changelog, roadmap
+                        <span class="compare-tool">collection presets</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Contact form shortcode
+                        <span class="compare-tool">5 providers</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Deploy to 3 targets
+                        <span class="compare-tool">seite deploy</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        SEO + JSON-LD + sitemap + RSS
+                        <span class="compare-tool">automatic</span>
+                    </li>
+                    <li>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        llms.txt + markdown for every page
+                        <span class="compare-tool">automatic</span>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>
@@ -1100,7 +1215,7 @@
             <div class="code-block reveal">
                 <div class="code-block-header">
                     <span class="code-block-title">install + init</span>
-                    <button class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';if(window.plausible)plausible('CopyQuickstart');}.bind(this)).catch(function(){});">copy</button>
+                    <button class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';}.bind(this)).catch(function(){});">copy</button>
                 </div>
                 <div class="code-block-body">
                     <div><span class="c-comment"># install (macOS / Linux)</span></div>
