@@ -6,6 +6,24 @@ use walkdir::WalkDir;
 use crate::config::{AnalyticsProvider, AnalyticsSection};
 use crate::error::Result;
 
+/// Build the Plausible script URL, incorporating extensions if present.
+///
+/// With no extensions: `https://plausible.io/js/script.js`
+/// With extensions:    `https://plausible.io/js/script.tagged-events.outbound-links.js`
+/// With custom script_url: uses that URL as-is (extensions are ignored).
+fn plausible_script_url(config: &AnalyticsSection) -> String {
+    if let Some(custom) = &config.script_url {
+        return custom.clone();
+    }
+    if config.extensions.is_empty() {
+        return "https://plausible.io/js/script.js".to_string();
+    }
+    format!(
+        "https://plausible.io/js/script.{}.js",
+        config.extensions.join(".")
+    )
+}
+
 /// Generate the inline analytics `<script>` tags for the configured provider.
 /// This is injected directly when cookie consent is disabled.
 fn analytics_script(config: &AnalyticsSection) -> String {
@@ -24,10 +42,7 @@ fn analytics_script(config: &AnalyticsSection) -> String {
             )
         }
         AnalyticsProvider::Plausible => {
-            let src = config
-                .script_url
-                .as_deref()
-                .unwrap_or("https://plausible.io/js/script.js");
+            let src = plausible_script_url(config);
             format!(
                 r#"<script defer data-domain="{id}" src="{src}"></script>"#,
                 id = config.id,
@@ -76,10 +91,7 @@ fn analytics_loader_js(config: &AnalyticsSection) -> String {
             )
         }
         AnalyticsProvider::Plausible => {
-            let src = config
-                .script_url
-                .as_deref()
-                .unwrap_or("https://plausible.io/js/script.js");
+            let src = plausible_script_url(config);
             format!(
                 r#"var s=document.createElement('script');s.defer=true;s.setAttribute('data-domain','{id}');s.src='{src}';document.head.appendChild(s)"#,
                 id = config.id,
@@ -228,6 +240,7 @@ mod tests {
             id: "G-TEST123".to_string(),
             cookie_consent: consent,
             script_url: None,
+            extensions: vec![],
         }
     }
 
@@ -237,6 +250,7 @@ mod tests {
             id: "GTM-TEST123".to_string(),
             cookie_consent: consent,
             script_url: None,
+            extensions: vec![],
         }
     }
 
@@ -246,6 +260,7 @@ mod tests {
             id: "example.com".to_string(),
             cookie_consent: false,
             script_url: None,
+            extensions: vec![],
         }
     }
 
@@ -255,6 +270,7 @@ mod tests {
             id: "FATHOM123".to_string(),
             cookie_consent: false,
             script_url: None,
+            extensions: vec![],
         }
     }
 
@@ -264,6 +280,7 @@ mod tests {
             id: "abc-123".to_string(),
             cookie_consent: false,
             script_url: Some("https://analytics.example.com/script.js".to_string()),
+            extensions: vec![],
         }
     }
 
@@ -369,5 +386,77 @@ mod tests {
     fn test_consent_banner_responsive_css() {
         let result = inject_analytics(SIMPLE_HTML, &ga4_config(true));
         assert!(result.contains("@media(max-width:600px)"));
+    }
+
+    #[test]
+    fn test_plausible_with_extensions() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: false,
+            script_url: None,
+            extensions: vec!["tagged-events".into(), "outbound-links".into()],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("plausible.io/js/script.tagged-events.outbound-links.js"));
+        assert!(result.contains("data-domain=\"example.com\""));
+    }
+
+    #[test]
+    fn test_plausible_single_extension() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: false,
+            script_url: None,
+            extensions: vec!["outbound-links".into()],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("plausible.io/js/script.outbound-links.js"));
+    }
+
+    #[test]
+    fn test_plausible_extensions_with_consent() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: true,
+            script_url: None,
+            extensions: vec!["tagged-events".into(), "file-downloads".into()],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("plausible.io/js/script.tagged-events.file-downloads.js"));
+        assert!(result.contains("seite-cookie-banner"));
+        let head_end = result.find("</head>").unwrap();
+        let head_section = &result[..head_end];
+        assert!(!head_section.contains("plausible.io/js/script"));
+    }
+
+    #[test]
+    fn test_plausible_custom_url_ignores_extensions() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: false,
+            script_url: Some("https://proxy.example.com/js/script.js".into()),
+            extensions: vec!["tagged-events".into()],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("proxy.example.com/js/script.js"));
+        assert!(!result.contains("tagged-events"));
+    }
+
+    #[test]
+    fn test_non_plausible_extensions_ignored() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Google,
+            id: "G-TEST123".to_string(),
+            cookie_consent: false,
+            script_url: None,
+            extensions: vec!["tagged-events".into()],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("googletagmanager.com/gtag/js?id=G-TEST123"));
+        assert!(!result.contains("tagged-events"));
     }
 }

@@ -210,6 +210,7 @@ Optional. When present, analytics scripts are automatically injected into every 
 | `id` | string | required | Measurement/tracking ID (e.g., `G-XXXXXXX`, `GTM-XXXXX`, domain, or site ID) |
 | `cookie_consent` | bool | `false` | Show a cookie consent banner and gate analytics on user acceptance |
 | `script_url` | string | varies | Custom script URL (required for self-hosted Umami, optional for others) |
+| `extensions` | array | `[]` | Plausible script extensions (e.g., `["tagged-events", "outbound-links"]`). Ignored for other providers and when `script_url` is set |
 
 ### Examples
 
@@ -246,6 +247,17 @@ cookie_consent = true
 provider = "plausible"
 id = "example.com"
 ```
+
+**Plausible with conversion tracking and outbound links:**
+
+```toml
+[analytics]
+provider = "plausible"
+id = "example.com"
+extensions = ["tagged-events", "outbound-links", "file-downloads"]
+```
+
+Extensions are appended to the Plausible script filename: `script.tagged-events.outbound-links.file-downloads.js`. This enables CSS-class-based event tracking (`class="plausible-event-name=Signup"`), automatic outbound link click tracking, and file download tracking. See [Plausible script extensions](https://plausible.io/docs/script-extensions) for the full list. When `script_url` is set, `extensions` are ignored.
 
 **Fathom Analytics:**
 

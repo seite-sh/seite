@@ -291,6 +291,7 @@ provider = "google"        # "google", "gtm", "plausible", "fathom", "umami"
 id = "G-XXXXXXXXXX"        # measurement/tracking ID
 cookie_consent = true      # show consent banner and gate analytics on acceptance
 # script_url = "..."       # custom script URL (required for self-hosted Umami)
+# extensions = ["tagged-events", "outbound-links"]  # Plausible script extensions
 
 # Optional: contact form (omit for no contact form)
 [contact]

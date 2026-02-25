@@ -4,6 +4,7 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use image::codecs::jpeg::JpegEncoder;
+use image::codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder};
 use image::imageops::FilterType;
 use image::{ImageEncoder, ImageFormat};
 use walkdir::WalkDir;
@@ -217,7 +218,28 @@ fn save_image(
                 PageError::Build(format!("failed to write WebP '{}': {e}", path.display()))
             })?;
         }
-        // PNG is lossless — quality setting doesn't apply
+        ImageFormat::Png => {
+            let file = fs::File::create(path).map_err(|e| {
+                PageError::Build(format!("failed to create image '{}': {e}", path.display()))
+            })?;
+            let writer = BufWriter::new(file);
+            let encoder = PngEncoder::new_with_quality(
+                writer,
+                CompressionType::Best,
+                PngFilterType::Adaptive,
+            );
+            let rgba = img.to_rgba8();
+            encoder
+                .write_image(
+                    rgba.as_raw(),
+                    img.width(),
+                    img.height(),
+                    image::ExtendedColorType::Rgba8,
+                )
+                .map_err(|e| {
+                    PageError::Build(format!("failed to encode PNG '{}': {e}", path.display()))
+                })?;
+        }
         _ => {
             img.save_with_format(path, format).map_err(|e| {
                 PageError::Build(format!("failed to save image '{}': {e}", path.display()))

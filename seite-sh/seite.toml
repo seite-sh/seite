@@ -63,5 +63,6 @@ domain = "seite.sh"
 [analytics]
 provider = "plausible"
 id = "seite.sh"
+extensions = ["tagged-events", "outbound-links", "file-downloads"]
 
 [languages]
