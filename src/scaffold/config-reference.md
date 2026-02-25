@@ -2,6 +2,15 @@
 
 These sections in `seite.toml` enable additional features. Omit them entirely to disable.
 
+### Build Options
+
+```toml
+[build]
+math = true  # enable $inline$ and $$display$$ math rendering via KaTeX
+```
+
+When `math = true`, the build pipeline renders LaTeX math expressions to HTML using server-side KaTeX. KaTeX CSS is automatically loaded from CDN. Code blocks and inline code spans are skipped.
+
 ### Image Processing
 
 ```toml
@@ -9,10 +18,12 @@ These sections in `seite.toml` enable additional features. Omit them entirely to
 widths = [480, 800, 1200]  # generate resized copies at these pixel widths
 quality = 80               # JPEG/WebP quality (1-100)
 webp = true                # generate WebP variants alongside originals
+avif = true                # generate AVIF variants (better compression than WebP)
+avif_quality = 70          # AVIF quality (1-100, lower is fine — AVIF compresses better)
 lazy_loading = true        # add loading="lazy" to <img> tags
 ```
 
-When enabled, the build pipeline auto-resizes images, generates WebP variants, and rewrites `<img>` tags with `srcset` and `<picture>` elements. The first image on each page is excluded from `loading="lazy"` to avoid hurting Largest Contentful Paint (LCP) performance.
+When enabled, the build pipeline auto-resizes images, generates WebP and/or AVIF variants, and rewrites `<img>` tags with `srcset` and `<picture>` elements. AVIF sources are emitted before WebP in `<picture>` elements for optimal compression. The first image on each page is excluded from `loading="lazy"` to avoid hurting Largest Contentful Paint (LCP) performance.
 
 ### Analytics
 
