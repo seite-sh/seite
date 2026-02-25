@@ -247,4 +247,95 @@ mod tests {
         // $ followed by space is not math
         assert_eq!(output, input);
     }
+
+    #[test]
+    fn test_render_math_fenced_tildes() {
+        let input = "~~~\n$not math$\n~~~\n\nBut $x+1$ is.";
+        let output = render_math(input);
+        assert!(output.contains("$not math$"));
+    }
+
+    #[test]
+    fn test_render_math_fenced_with_info_string() {
+        let input = "```rust\nlet x = $5;\n```\n";
+        let output = render_math(input);
+        assert!(output.contains("let x = $5;"));
+        assert!(output.contains("```rust"));
+    }
+
+    #[test]
+    fn test_render_math_fenced_longer_closing() {
+        // 4 backticks can close a 3-backtick fence
+        let input = "```\n$skip$\n````\n";
+        let output = render_math(input);
+        assert!(output.contains("$skip$"));
+    }
+
+    #[test]
+    fn test_render_math_fenced_inner_shorter_fence() {
+        // Shorter fence markers inside should NOT close the block
+        let input = "````\ninner ``` text $x$\n````\n";
+        let output = render_math(input);
+        assert!(output.contains("inner ``` text $x$"));
+    }
+
+    #[test]
+    fn test_render_math_unclosed_display() {
+        let input = "Text $$E=mc^2 no close";
+        let output = render_math(input);
+        // Unclosed $$ preserved as-is
+        assert!(output.contains("$$E=mc^2 no close"));
+    }
+
+    #[test]
+    fn test_render_math_unclosed_inline() {
+        let input = "The formula $E=mc^2";
+        let output = render_math(input);
+        // No closing $ — preserved as literal
+        assert!(output.contains("$E=mc^2"));
+    }
+
+    #[test]
+    fn test_render_math_inline_trailing_space() {
+        let input = "Here $trailing $ end";
+        let output = render_math(input);
+        // Trailing space = not valid math, preserved
+        assert!(output.contains("$trailing $"));
+    }
+
+    #[test]
+    fn test_render_math_dollar_followed_by_newline() {
+        let input = "Price $\nnot math";
+        let output = render_math(input);
+        // $ followed by newline is not math
+        assert_eq!(output, input);
+    }
+
+    #[test]
+    fn test_render_math_inline_hits_newline_before_close() {
+        let input = "Start $x+\ny$ end";
+        let output = render_math(input);
+        // Inline math doesn't span lines — no closing $ found on same line
+        assert!(output.contains("$x+"));
+    }
+
+    #[test]
+    fn test_render_math_fenced_eof_inside_fence() {
+        let input = "```\nunclosed fence with $math$";
+        let output = render_math(input);
+        // EOF inside fence — everything preserved
+        assert!(output.contains("$math$"));
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn test_render_math_display_multiline() {
+        let input = "$$\nE = mc^2\n$$";
+        let output = render_math(input);
+        assert!(
+            output.contains("katex"),
+            "display math should span lines: {output}"
+        );
+        assert!(!output.contains("$$"));
+    }
 }

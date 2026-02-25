@@ -644,6 +644,79 @@ mod tests {
     }
 
     #[test]
+    fn test_build_picture_element_with_avif() {
+        let img = r#"<img src="/photo.jpg" alt="test">"#;
+        let processed = ProcessedImage {
+            rel_path: "photo.jpg".into(),
+            srcset_entries: vec![(480, "/photo-480w.jpg".into()), (800, "/photo.jpg".into())],
+            webp_entries: vec![
+                (480, "/photo-480w.webp".into()),
+                (800, "/photo.webp".into()),
+            ],
+            avif_entries: vec![
+                (480, "/photo-480w.avif".into()),
+                (800, "/photo.avif".into()),
+            ],
+            original_width: 800,
+            original_height: 600,
+        };
+        let result = build_picture_element(img, &processed, true);
+        assert!(result.starts_with("<picture>"));
+        assert!(result.ends_with("</picture>"));
+        // AVIF source should appear before WebP
+        let avif_pos = result.find("image/avif").unwrap();
+        let webp_pos = result.find("image/webp").unwrap();
+        assert!(
+            avif_pos < webp_pos,
+            "AVIF source should come before WebP for browser priority"
+        );
+        assert!(result.contains("loading=\"lazy\""));
+        assert!(result.contains("width=\"800\""));
+    }
+
+    #[test]
+    fn test_build_picture_element_avif_only_no_webp() {
+        let img = r#"<img src="/photo.jpg" alt="test">"#;
+        let processed = ProcessedImage {
+            rel_path: "photo.jpg".into(),
+            srcset_entries: vec![(480, "/photo-480w.jpg".into())],
+            webp_entries: vec![],
+            avif_entries: vec![(480, "/photo-480w.avif".into())],
+            original_width: 800,
+            original_height: 600,
+        };
+        let result = build_picture_element(img, &processed, false);
+        assert!(result.contains("<picture>"));
+        assert!(result.contains("image/avif"));
+        assert!(!result.contains("image/webp"));
+    }
+
+    #[test]
+    fn test_rewrite_html_images_with_avif_entries() {
+        let mut manifest = HashMap::new();
+        manifest.insert(
+            "/static/photo.jpg".to_string(),
+            ProcessedImage {
+                rel_path: "photo.jpg".into(),
+                srcset_entries: vec![
+                    (480, "/static/photo-480w.jpg".into()),
+                    (800, "/static/photo.jpg".into()),
+                ],
+                webp_entries: vec![(480, "/static/photo-480w.webp".into())],
+                avif_entries: vec![(480, "/static/photo-480w.avif".into())],
+                original_width: 800,
+                original_height: 600,
+            },
+        );
+        let html = r#"<img src="/static/photo.jpg" alt="photo">"#;
+        let result = rewrite_html_images(html, &manifest, false);
+        assert!(result.contains("<picture>"));
+        assert!(result.contains("image/avif"));
+        assert!(result.contains("image/webp"));
+        assert!(result.contains("photo-480w.avif"));
+    }
+
+    #[test]
     fn test_add_lazy_loading_no_images() {
         let html = "<p>No images here</p>";
         assert_eq!(add_lazy_loading(html), html);
