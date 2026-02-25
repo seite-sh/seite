@@ -251,6 +251,7 @@ fn save_image(
 }
 
 /// Rewrite `<img>` tags in HTML to add srcset, loading="lazy", and `<picture>` wrapping.
+/// The first image in each page skips `loading="lazy"` to avoid penalizing LCP.
 pub fn rewrite_html_images(
     html: &str,
     manifest: &HashMap<String, ProcessedImage>,
@@ -265,6 +266,7 @@ pub fn rewrite_html_images(
 
     let mut result = String::with_capacity(html.len() + 512);
     let mut remaining = html;
+    let mut img_index: usize = 0;
 
     while let Some(img_start) = remaining.find("<img ") {
         // Copy everything before the <img> tag
@@ -273,15 +275,17 @@ pub fn rewrite_html_images(
         let after_tag_start = &remaining[img_start..];
         if let Some(img_end) = after_tag_start.find('>') {
             let img_tag = &after_tag_start[..=img_end];
+            // Skip lazy loading for the first image (likely LCP element)
+            let use_lazy = lazy_loading && img_index > 0;
 
             // Extract src attribute
             if let Some(src) = extract_attr(img_tag, "src") {
                 if let Some(processed) = manifest.get(&src) {
                     // Build the enhanced tag
-                    result.push_str(&build_picture_element(img_tag, processed, lazy_loading));
+                    result.push_str(&build_picture_element(img_tag, processed, use_lazy));
                 } else {
                     // No processing for this image, just add lazy loading
-                    if lazy_loading {
+                    if use_lazy {
                         result.push_str(&add_lazy_to_tag(img_tag));
                     } else {
                         result.push_str(img_tag);
@@ -291,6 +295,7 @@ pub fn rewrite_html_images(
                 result.push_str(img_tag);
             }
 
+            img_index += 1;
             remaining = &after_tag_start[img_end + 1..];
         } else {
             // Malformed tag, just copy as-is
@@ -405,16 +410,23 @@ fn add_dimensions_to_tag(tag: &str, width: u32, height: u32) -> String {
     }
 }
 
+/// Add `loading="lazy"` to all `<img>` tags except the first (likely LCP element).
 fn add_lazy_loading(html: &str) -> String {
     let mut result = String::with_capacity(html.len() + 256);
     let mut remaining = html;
+    let mut img_index: usize = 0;
 
     while let Some(img_start) = remaining.find("<img ") {
         result.push_str(&remaining[..img_start]);
         let after = &remaining[img_start..];
         if let Some(img_end) = after.find('>') {
             let img_tag = &after[..=img_end];
-            result.push_str(&add_lazy_to_tag(img_tag));
+            if img_index > 0 {
+                result.push_str(&add_lazy_to_tag(img_tag));
+            } else {
+                result.push_str(img_tag);
+            }
+            img_index += 1;
             remaining = &after[img_end + 1..];
         } else {
             result.push_str(after);
@@ -453,11 +465,12 @@ mod tests {
 
     #[test]
     fn test_add_lazy_loading_to_html() {
+        // First image is skipped (likely LCP element), second gets lazy loading
         let html = r#"<p>Hello</p><img src="/a.jpg" alt="x"><p>World</p><img src="/b.jpg">"#;
         let result = add_lazy_loading(html);
         assert_eq!(
             result,
-            r#"<p>Hello</p><img src="/a.jpg" alt="x" loading="lazy"><p>World</p><img src="/b.jpg" loading="lazy">"#
+            r#"<p>Hello</p><img src="/a.jpg" alt="x"><p>World</p><img src="/b.jpg" loading="lazy">"#
         );
     }
 
@@ -597,8 +610,8 @@ mod tests {
         let html = r#"<img src="/photo.jpg" alt="pic">"#;
         let manifest = HashMap::new();
         let result = rewrite_html_images(html, &manifest, true);
-        // Delegates to add_lazy_loading
-        assert!(result.contains(r#"loading="lazy""#));
+        // Delegates to add_lazy_loading — first image is skipped for LCP
+        assert!(!result.contains(r#"loading="lazy""#));
         assert!(result.contains(r#"src="/photo.jpg""#));
     }
 
@@ -626,7 +639,8 @@ mod tests {
         assert!(result.contains("<picture>"));
         assert!(result.contains("</picture>"));
         assert!(result.contains("image/webp"));
-        assert!(result.contains(r#"loading="lazy""#));
+        // First image skipped for LCP — no lazy loading
+        assert!(!result.contains(r#"loading="lazy""#));
         assert!(result.contains(r#"width="1200""#));
         assert!(result.contains(r#"height="800""#));
         assert!(result.contains("<p>Text</p>"));
@@ -648,8 +662,8 @@ mod tests {
         );
         let html = r#"<img src="/static/unknown.jpg" alt="not in manifest">"#;
         let result = rewrite_html_images(html, &manifest, true);
-        // Not in manifest but lazy_loading is true → should add lazy loading
-        assert!(result.contains(r#"loading="lazy""#));
+        // Not in manifest, first image skipped for LCP — no lazy loading
+        assert!(!result.contains(r#"loading="lazy""#));
         assert!(!result.contains("<picture>"));
         assert!(!result.contains("srcset="));
     }
@@ -980,8 +994,9 @@ mod tests {
     fn test_add_lazy_loading_multiple_images() {
         let html = r#"<img src="/a.jpg"><div><img src="/b.png" alt="b"></div><img src="/c.webp">"#;
         let result = add_lazy_loading(html);
-        // All three should get lazy loading
-        assert_eq!(result.matches("loading=\"lazy\"").count(), 3);
+        // First image skipped for LCP, remaining two get lazy loading
+        assert_eq!(result.matches("loading=\"lazy\"").count(), 2);
+        assert!(!result.contains(r#"src="/a.jpg" loading="lazy""#));
     }
 
     #[test]
@@ -998,7 +1013,8 @@ mod tests {
     fn test_add_lazy_loading_self_closing_tags() {
         let html = r#"<img src="/a.jpg" /><img src="/b.jpg" />"#;
         let result = add_lazy_loading(html);
-        assert_eq!(result.matches("loading=\"lazy\"").count(), 2);
+        // First image skipped for LCP, second gets lazy
+        assert_eq!(result.matches("loading=\"lazy\"").count(), 1);
         assert_eq!(result.matches("/>").count(), 2);
     }
 
@@ -1011,18 +1027,22 @@ mod tests {
 
     #[test]
     fn test_add_lazy_loading_img_at_start() {
+        // First (and only) image is skipped for LCP — no lazy loading added
         let html = r#"<img src="/first.jpg"><p>After</p>"#;
         let result = add_lazy_loading(html);
-        assert!(result.starts_with(r#"<img src="/first.jpg" loading="lazy">"#));
+        assert!(result.starts_with(r#"<img src="/first.jpg">"#));
         assert!(result.ends_with("<p>After</p>"));
+        assert!(!result.contains("loading="));
     }
 
     #[test]
     fn test_add_lazy_loading_img_at_end() {
+        // First (and only) image is skipped for LCP — no lazy loading added
         let html = r#"<p>Before</p><img src="/last.jpg">"#;
         let result = add_lazy_loading(html);
         assert!(result.starts_with("<p>Before</p>"));
-        assert!(result.ends_with(r#"<img src="/last.jpg" loading="lazy">"#));
+        assert!(result.ends_with(r#"<img src="/last.jpg">"#));
+        assert!(!result.contains("loading="));
     }
 
     // ---------------------------------------------------------------
@@ -1125,14 +1145,14 @@ mod tests {
             r#"<img src="/static/other.png" alt="other">"#,
         );
         let result = rewrite_html_images(html, &manifest, true);
-        // First: not in manifest, gets lazy
+        // First: not in manifest, skipped for LCP (no lazy)
         assert!(result.contains(r#"src="/external.jpg""#));
         // Second: in manifest, gets <picture> + srcset + webp + lazy + dimensions
         assert!(result.contains("<picture>"));
         assert!(result.contains("image/webp"));
         // Third: not in manifest, gets lazy
         assert!(result.contains(r#"src="/static/other.png""#));
-        // All three should have loading="lazy"
+        // First image skipped for LCP; second and third get lazy loading
         assert!(result.matches(r#"loading="lazy""#).count() >= 2);
     }
 
@@ -1197,8 +1217,9 @@ mod tests {
         let manifest = HashMap::new();
         let html = "<p>We display img tags here, but not <img src=\"/a.jpg\"></p>";
         let result = rewrite_html_images(html, &manifest, true);
-        // The <img tag inside should get lazy loading
-        assert!(result.contains(r#"loading="lazy""#));
+        // The <img tag is the first image, so it's skipped for LCP
+        assert!(!result.contains(r#"loading="lazy""#));
+        assert!(result.contains(r#"src="/a.jpg""#));
     }
 
     // ---------------------------------------------------------------
@@ -1698,8 +1719,8 @@ mod tests {
         assert!(result.contains("hero-800w.jpg 800w"));
         assert!(result.contains("hero.jpg 1200w"));
 
-        // Lazy loading and dimensions
-        assert!(result.contains(r#"loading="lazy""#));
+        // First image skipped for LCP — no lazy loading, but dimensions present
+        assert!(!result.contains(r#"loading="lazy""#));
         assert!(result.contains(r#"width="1200""#));
         assert!(result.contains(r#"height="800""#));
 

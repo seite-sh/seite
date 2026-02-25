@@ -188,7 +188,7 @@ scripts/
 9. Generate search index — `search-index.json` (default lang), `/{lang}/search-index.json` (per-language)
 10. Copy static files
 11. Process images (resize to configured widths, generate WebP variants)
-12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"`)
+12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"` — first image per page skipped for LCP)
 13. Inject analytics scripts (and optional cookie consent banner) into all HTML files
 
 ### Collections System
@@ -564,19 +564,27 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 - `<meta name="description">` — use `{{ page.description | default(value=site.description) }}` (per-page first, site fallback)
 - `og:type` — `"article"` when `page.collection` is set, `"website"` for index/homepage
 - `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
-- `og:image` — conditional on `page.image`, must be absolute URL. Use `{% if page.image is starting_with(pat="http") %}{{ page.image }}{% else %}{{ site.base_url }}{{ page.image }}{% endif %}` to handle both absolute URLs and `/static/…` paths
+- `og:image` — conditional on `page.image`, must be absolute URL. Use `{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}` to handle both absolute URLs and `/static/…` paths
+- `og:image:width` (`1200`) and `og:image:height` (`630`) — standard social preview dimensions, emitted alongside `og:image`
+- `article:published_time` — emitted when `page.collection` and `page.date` are set
+- `article:modified_time` — emitted when `page.collection` and `page.updated` are set
 - `twitter:card` — `"summary_large_image"` when `page.image` exists, `"summary"` otherwise
-- `twitter:title`, `twitter:description`, `twitter:image` (same absolutization as `og:image`)
+- `twitter:title`, `twitter:description`, `twitter:image` (same absolutization as `og:image`, using `_abs_image`)
 
 **Structured data (JSON-LD):**
 - Posts (`page.collection == 'posts'`): `BlogPosting` with `headline`, `description`, `datePublished`, `dateModified` (from `page.updated`), `author`, `publisher`, `url`
 - Docs/pages (`page.collection` set but not posts): `Article` with same fields minus dates
 - Index/homepage: `WebSite` with `name`, `description`, `url`
+- `BreadcrumbList` — emitted on all collection pages (Home → Collection → Page). Uses `{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}` for the collection URL
 
 **Discovery links:**
 - `<link rel="alternate" type="application/rss+xml">` — RSS feed
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">` — LLM discovery
 - `<link rel="alternate" type="text/markdown" title="Markdown">` — markdown version (when `page.url` is set, must include `title` attribute)
+
+**AI crawler management (robots.txt):**
+- AI search crawlers (ChatGPT-User, OAI-SearchBot, PerplexityBot) — `Allow: /` so content appears in AI-generated answers
+- AI training crawlers (GPTBot, Google-Extended, CCBot, Bytespider) — `Disallow: /` to prevent training use without blocking search visibility
 
 **Per-page robots:**
 - `<meta name="robots" content="{{ page.robots }}">` — only emitted when `robots:` is set in frontmatter
@@ -584,8 +592,8 @@ Every bundled theme `<head>` emits a full SEO+GEO-optimized block. When creating
 
 **Frontmatter fields for SEO:**
 - `description:` — page-specific description for meta/OG/Twitter/JSON-LD
-- `image:` — absolute URL or `/static/…` path to social preview image
-- `updated:` — last-modified date (YYYY-MM-DD) for JSON-LD `dateModified`
+- `image:` — absolute URL or `/static/…` path to social preview image (automatically absolutized in themes)
+- `updated:` — last-modified date (YYYY-MM-DD) for JSON-LD `dateModified`, `article:modified_time` OG tag, and sitemap `lastmod` (takes priority over `date`)
 - `robots:` — per-page robots directive (e.g., `"noindex"`, `"noindex, nofollow"`)
 
 ### Shortcodes

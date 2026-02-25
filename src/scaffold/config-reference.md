@@ -12,7 +12,7 @@ webp = true                # generate WebP variants alongside originals
 lazy_loading = true        # add loading="lazy" to <img> tags
 ```
 
-When enabled, the build pipeline auto-resizes images, generates WebP variants, and rewrites `<img>` tags with `srcset` and `<picture>` elements.
+When enabled, the build pipeline auto-resizes images, generates WebP variants, and rewrites `<img>` tags with `srcset` and `<picture>` elements. The first image on each page is excluded from `loading="lazy"` to avoid hurting Largest Contentful Paint (LCP) performance.
 
 ### Analytics
 

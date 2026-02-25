@@ -116,15 +116,19 @@ Search engines and social platforms need these tags. Add them to `<head>`:
 <meta property="og:url" content="{{ site.base_url }}{{ page.url | default(value='/') }}">
 <meta property="og:title" content="{{ page.title | default(value=site.title) }}">
 <meta property="og:description" content="{{ page.description | default(value=site.description) }}">
-{% if page.image %}<meta property="og:image" content="{{ page.image }}">{% endif %}
+{% if page.image %}{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}
+<meta property="og:image" content="{{ _abs_image }}">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% endif %}
 <meta property="og:site_name" content="{{ site.title }}">
 <meta property="og:locale" content="{{ lang }}">
+{% if page.collection and page.date %}<meta property="article:published_time" content="{{ page.date }}">{% endif %}
+{% if page.collection and page.updated %}<meta property="article:modified_time" content="{{ page.updated }}">{% endif %}
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="{% if page.image %}summary_large_image{% else %}summary{% endif %}">
 <meta name="twitter:title" content="{{ page.title | default(value=site.title) }}">
 <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
-{% if page.image %}<meta name="twitter:image" content="{{ page.image }}">{% endif %}
+{% if page.image %}<meta name="twitter:image" content="{{ _abs_image }}">{% endif %}
 
 <!-- Discovery links -->
 <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
@@ -168,6 +172,21 @@ Add this before `</head>` for rich search results:
  "url":{{ site.base_url | json_encode() }}}
 {% endif %}
 </script>
+```
+
+All bundled themes also emit a **BreadcrumbList** on collection pages (Home → Collection → Page):
+
+```html
+{% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList",
+ "itemListElement":[
+   {"@type":"ListItem","position":1,"name":{{ site.title | json_encode() }},"item":{{ site.base_url | json_encode() }}},
+   {"@type":"ListItem","position":2,"name":{{ page.collection | title | json_encode() }},"item":{{ _bc_col_url | json_encode() }}},
+   {"@type":"ListItem","position":3,"name":{{ _title | json_encode() }}}
+ ]}
+</script>
+{% endif %}
 ```
 
 ## Adding Navigation

@@ -6,7 +6,7 @@
 use crate::config::SiteConfig;
 use crate::content::ContentItem;
 
-/// Generate robots.txt with sitemap reference and AI crawler hints.
+/// Generate robots.txt with sitemap reference and AI crawler directives.
 pub fn generate_robots_txt(config: &SiteConfig) -> String {
     let base = config.site.base_url.trim_end_matches('/');
     let mut out = String::new();
@@ -15,8 +15,22 @@ pub fn generate_robots_txt(config: &SiteConfig) -> String {
     out.push('\n');
     out.push_str(&format!("Sitemap: {base}/sitemap.xml\n"));
     out.push('\n');
-    // Point AI crawlers to the LLM-optimized files
-    out.push_str("# AI / LLM crawlers\n");
+
+    // AI search crawlers — allow so content appears in AI-generated answers
+    out.push_str("# AI search crawlers (allow for AI search visibility)\n");
+    out.push_str("User-agent: ChatGPT-User\nAllow: /\n\n");
+    out.push_str("User-agent: OAI-SearchBot\nAllow: /\n\n");
+    out.push_str("User-agent: PerplexityBot\nAllow: /\n\n");
+
+    // AI training crawlers — disallow by default to prevent training use
+    out.push_str("# AI training crawlers (block training, not search)\n");
+    out.push_str("User-agent: GPTBot\nDisallow: /\n\n");
+    out.push_str("User-agent: Google-Extended\nDisallow: /\n\n");
+    out.push_str("User-agent: CCBot\nDisallow: /\n\n");
+    out.push_str("User-agent: Bytespider\nDisallow: /\n\n");
+
+    // LLM discovery files
+    out.push_str("# LLM discovery\n");
     out.push_str(&format!("# LLMs-txt: {base}/llms.txt\n"));
     out.push_str(&format!("# LLMs-full-txt: {base}/llms-full.txt\n"));
     out
@@ -65,11 +79,12 @@ pub fn generate_llms_txt(
 }
 
 /// Generate llms-full.txt — the full content of every page as markdown.
-/// Each page is separated by a heading and its raw markdown body.
+/// Each page is separated by a heading, source URL, and its raw markdown body.
 pub fn generate_llms_full_txt(
     config: &SiteConfig,
     collections: &[(String, Vec<&ContentItem>)],
 ) -> String {
+    let base = config.site.base_url.trim_end_matches('/');
     let mut out = String::new();
 
     out.push_str(&format!("# {}\n\n", config.site.title));
@@ -85,6 +100,7 @@ pub fn generate_llms_full_txt(
         out.push_str(&format!("## {label}\n\n"));
         for item in items {
             out.push_str(&format!("### {}\n\n", item.frontmatter.title));
+            out.push_str(&format!("Source: {}{}\n\n", base, item.url));
             if let Some(ref desc) = item.frontmatter.description {
                 out.push_str(&format!("*{desc}*\n\n"));
             }
@@ -152,6 +168,15 @@ mod tests {
         assert!(result.contains("Sitemap: https://example.com/sitemap.xml"));
         assert!(result.contains("LLMs-txt: https://example.com/llms.txt"));
         assert!(result.contains("LLMs-full-txt: https://example.com/llms-full.txt"));
+        // AI search crawlers allowed
+        assert!(result.contains("User-agent: ChatGPT-User\nAllow: /"));
+        assert!(result.contains("User-agent: OAI-SearchBot\nAllow: /"));
+        assert!(result.contains("User-agent: PerplexityBot\nAllow: /"));
+        // AI training crawlers blocked
+        assert!(result.contains("User-agent: GPTBot\nDisallow: /"));
+        assert!(result.contains("User-agent: Google-Extended\nDisallow: /"));
+        assert!(result.contains("User-agent: CCBot\nDisallow: /"));
+        assert!(result.contains("User-agent: Bytespider\nDisallow: /"));
     }
 
     #[test]
@@ -207,6 +232,7 @@ mod tests {
         assert!(result.contains("> Site desc"));
         assert!(result.contains("## Posts"));
         assert!(result.contains("### Hello"));
+        assert!(result.contains("Source: https://example.com/posts/hello"));
         assert!(result.contains("*A post*"));
         assert!(result.contains("# Content\nParagraph"));
     }
