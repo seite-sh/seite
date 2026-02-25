@@ -99,7 +99,10 @@ All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO R
 - **Always** include `<link rel="canonical">` pointing to `{{ site.base_url }}{{ page.url | default(value='/') }}`
 - **Always** use `{{ page.description | default(value=site.description) }}` for description meta — not `site.description` alone
 - **Always** include Open Graph (`og:*`) and Twitter Card (`twitter:*`) tags for social sharing
-- **Always** include JSON-LD structured data: `BlogPosting` for posts, `Article` for docs/pages, `WebSite` for index
+- **Always** absolutize `og:image` and `twitter:image` — use `{% set _abs_image %}` pattern (see SEO Requirements section)
+- **Always** include `og:image:width` (1200) and `og:image:height` (630) alongside `og:image`
+- **Always** include `article:published_time` and `article:modified_time` OG tags on collection pages
+- **Always** include JSON-LD structured data: `BlogPosting` for posts, `Article` for docs/pages, `WebSite` for index, plus `BreadcrumbList` on all collection pages
 - **Use** `og:type = article` when `page.collection` is set; `website` for the homepage
 - **Use** `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise
 - **Include** `<link rel="alternate" type="text/markdown">` — this is your LLM-native differentiator
