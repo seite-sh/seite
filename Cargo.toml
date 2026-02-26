@@ -39,7 +39,7 @@ serde_yaml_ng = "0.10"
 # Content processing
 pulldown-cmark = "0.13"
 syntect = "5"
-katex = { version = "0.4", default-features = false, features = ["duktape"], optional = true }
+katex-rs = { version = "0.2", optional = true }
 
 # Templating
 tera = "1.20"
@@ -81,7 +81,7 @@ tempfile = "3"
 
 [features]
 default = ["math"]
-math = ["dep:katex"]
+math = ["dep:katex-rs"]
 
 [dev-dependencies]
 assert_cmd = "2"
