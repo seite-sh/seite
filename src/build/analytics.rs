@@ -1,10 +1,4 @@
-use std::fs;
-use std::path::Path;
-
-use walkdir::WalkDir;
-
 use crate::config::{AnalyticsProvider, AnalyticsSection};
-use crate::error::Result;
 
 /// Build the Plausible script URL, incorporating extensions if present.
 ///
@@ -206,27 +200,6 @@ pub fn inject_analytics(html: &str, config: &AnalyticsSection) -> String {
 
         out
     }
-}
-
-/// Walk all .html files in the output directory and inject analytics tags.
-pub fn inject_analytics_into_html_files(
-    output_dir: &Path,
-    config: &AnalyticsSection,
-) -> Result<()> {
-    for entry in WalkDir::new(output_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
-        })
-    {
-        let html = fs::read_to_string(entry.path())?;
-        let rewritten = inject_analytics(&html, config);
-        if rewritten != html {
-            fs::write(entry.path(), rewritten)?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -1,46 +1,8 @@
-use std::fs;
-use std::path::Path;
-
-use walkdir::WalkDir;
-
-use crate::error::Result;
-
-/// Rewrite root-relative URLs in all HTML files to include the given `base_path`.
-///
-/// This handles GitHub Pages project sites and other subpath deployments where
-/// the site is served from a URL like `https://user.github.io/repo/` instead of
-/// the domain root.
-///
-/// Only runs when `base_path` is non-empty. Rewrites attributes: `href`, `src`,
-/// `srcset`, `action`, `poster`, `data-src`. Does not touch absolute URLs
-/// (`https://…`, `http://…`, `//…`), fragment-only links (`#…`), or data URIs.
-pub fn rewrite_html_base_path(output_dir: &Path, base_path: &str) -> Result<()> {
-    if base_path.is_empty() {
-        return Ok(());
-    }
-
-    for entry in WalkDir::new(output_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
-        })
-    {
-        let html = fs::read_to_string(entry.path())?;
-        let rewritten = rewrite_html_urls(&html, base_path);
-        if rewritten != html {
-            fs::write(entry.path(), rewritten)?;
-        }
-    }
-
-    Ok(())
-}
-
 /// Rewrite root-relative URLs in HTML content to include a base path prefix.
 ///
 /// Iterates through the HTML tag by tag. For each opening/self-closing tag,
 /// rewrites URL-bearing attributes. Content outside tags is copied unchanged.
-fn rewrite_html_urls(html: &str, base_path: &str) -> String {
+pub fn rewrite_html_urls(html: &str, base_path: &str) -> String {
     let mut result = String::with_capacity(html.len() + 256);
     let mut pos = 0;
     let bytes = html.as_bytes();

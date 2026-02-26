@@ -1,10 +1,3 @@
-use std::fs;
-use std::path::Path;
-
-use walkdir::WalkDir;
-
-use crate::error::Result;
-
 /// CSS for code block copy buttons.
 /// Uses `position: relative` on `<pre>` and absolute positioning for the button.
 /// The button appears on hover with adaptive semi-transparent styling that works
@@ -37,27 +30,6 @@ pub fn inject_code_copy(html: &str) -> String {
     } else {
         html.to_string()
     }
-}
-
-/// Walk all `.html` files in the output directory and inject code copy buttons.
-pub fn inject_code_copy_into_html_files(output_dir: &Path) -> Result<()> {
-    for entry in WalkDir::new(output_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
-        })
-    {
-        let html = fs::read_to_string(entry.path())?;
-        if !html.contains("<pre") {
-            continue;
-        }
-        let rewritten = inject_code_copy(&html);
-        if rewritten != html {
-            fs::write(entry.path(), rewritten)?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

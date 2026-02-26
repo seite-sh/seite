@@ -14,10 +14,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use rayon::prelude::*;
 use serde::Serialize;
 use walkdir::WalkDir;
 
-use crate::config::{CollectionConfig, ResolvedPaths, SiteConfig};
+use crate::config::{AnalyticsSection, CollectionConfig, ResolvedPaths, SiteConfig};
 use crate::content::{self, ContentItem, Frontmatter};
 use crate::error::{PageError, Result};
 use crate::output::CommandOutput;
@@ -302,100 +303,107 @@ pub fn build_site(
             );
         }
         if collection_dir.exists() {
-            for entry in WalkDir::new(&collection_dir)
+            let entries: Vec<_> = WalkDir::new(&collection_dir)
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-            {
-                let path = entry.path();
-                let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
+                .collect();
 
-                let (fm, raw_body) = content::parse_content_file(path)?;
+            let results: Vec<std::result::Result<Option<ContentItem>, PageError>> = entries
+                .par_iter()
+                .map(|entry| {
+                    let path = entry.path();
+                    let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
-                if fm.draft && !opts.include_drafts {
-                    continue;
+                    let (fm, raw_body) = content::parse_content_file(path)?;
+
+                    if fm.draft && !opts.include_drafts {
+                        return Ok(None);
+                    }
+
+                    let file_lang = if is_multilingual {
+                        content::extract_lang_from_filename(path, &configured_langs)
+                    } else {
+                        None
+                    };
+                    let lang = file_lang.as_deref().unwrap_or(default_lang).to_string();
+
+                    let slug = if file_lang.is_some() {
+                        resolve_slug_i18n(&fm, rel, collection, &configured_langs)
+                    } else {
+                        resolve_slug(&fm, rel, collection)
+                    };
+
+                    let mut fm = fm;
+                    if fm.date.is_none() && collection.has_date {
+                        fm.date = parse_date_from_filename(path);
+                    }
+
+                    let sc_page = serde_json::json!({
+                        "title": fm.title,
+                        "slug": &slug,
+                        "collection": &collection.name,
+                        "tags": &fm.tags,
+                    });
+                    let sc_site = serde_json::json!({
+                        "title": &config.site.title,
+                        "base_url": &config.site.base_url,
+                        "language": &config.site.language,
+                        "contact": config.contact.as_ref().map(|c| serde_json::json!({
+                            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
+                            "endpoint": &c.endpoint,
+                            "region": &c.region,
+                            "redirect": &c.redirect,
+                            "subject": &c.subject,
+                        })),
+                    });
+                    let expanded_body =
+                        shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
+                    let math_processed = if config.build.math {
+                        math::render_math(&expanded_body)
+                    } else {
+                        expanded_body.clone()
+                    };
+                    let (html_body, toc) = markdown::markdown_to_html(&math_processed);
+
+                    let base_url = build_url(&collection.url_prefix, &slug);
+                    let url = if lang != *default_lang {
+                        format!("/{lang}{base_url}")
+                    } else {
+                        base_url
+                    };
+
+                    let excerpt = content::extract_excerpt(&expanded_body);
+                    let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
+                    let word_count = raw_body.split_whitespace().count();
+                    let reading_time = if word_count == 0 {
+                        0
+                    } else {
+                        (word_count / 238).max(1)
+                    };
+
+                    Ok(Some(ContentItem {
+                        frontmatter: fm,
+                        raw_body,
+                        html_body,
+                        source_path: path.to_path_buf(),
+                        slug,
+                        collection: collection.name.clone(),
+                        url,
+                        lang,
+                        excerpt,
+                        toc,
+                        word_count,
+                        reading_time,
+                        excerpt_html,
+                    }))
+                })
+                .collect();
+
+            for result in results {
+                if let Some(item) = result? {
+                    items.push(item);
                 }
-
-                // Detect language from filename (only in multilingual mode)
-                let file_lang = if is_multilingual {
-                    content::extract_lang_from_filename(path, &configured_langs)
-                } else {
-                    None
-                };
-                let lang = file_lang.as_deref().unwrap_or(default_lang).to_string();
-
-                // Resolve slug — strip lang suffix from stem for translations
-                let slug = if file_lang.is_some() {
-                    resolve_slug_i18n(&fm, rel, collection, &configured_langs)
-                } else {
-                    resolve_slug(&fm, rel, collection)
-                };
-
-                let mut fm = fm;
-                if fm.date.is_none() && collection.has_date {
-                    fm.date = parse_date_from_filename(path);
-                }
-
-                // Expand shortcodes before markdown rendering
-                let sc_page = serde_json::json!({
-                    "title": fm.title,
-                    "slug": &slug,
-                    "collection": &collection.name,
-                    "tags": &fm.tags,
-                });
-                let sc_site = serde_json::json!({
-                    "title": &config.site.title,
-                    "base_url": &config.site.base_url,
-                    "language": &config.site.language,
-                    "contact": config.contact.as_ref().map(|c| serde_json::json!({
-                        "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
-                        "endpoint": &c.endpoint,
-                        "region": &c.region,
-                        "redirect": &c.redirect,
-                        "subject": &c.subject,
-                    })),
-                });
-                let expanded_body =
-                    shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
-                // Math pre-pass: render $inline$ and $$display$$ before markdown
-                let math_processed = if config.build.math {
-                    math::render_math(&expanded_body)
-                } else {
-                    expanded_body.clone()
-                };
-                let (html_body, toc) = markdown::markdown_to_html(&math_processed);
-
-                // Build URL: non-default languages get /{lang} prefix
-                let base_url = build_url(&collection.url_prefix, &slug);
-                let url = if lang != *default_lang {
-                    format!("/{lang}{base_url}")
-                } else {
-                    base_url
-                };
-
-                let excerpt = content::extract_excerpt(&expanded_body);
-                let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
-                let word_count = raw_body.split_whitespace().count();
-                let reading_time = if word_count == 0 {
-                    0
-                } else {
-                    (word_count / 238).max(1)
-                };
-                items.push(ContentItem {
-                    frontmatter: fm,
-                    raw_body,
-                    html_body,
-                    source_path: path.to_path_buf(),
-                    slug,
-                    collection: collection.name.clone(),
-                    url,
-                    lang,
-                    excerpt,
-                    toc,
-                    word_count,
-                    reading_time,
-                    excerpt_html,
-                });
             }
         }
 
@@ -552,71 +560,79 @@ pub fn build_site(
                 nav_slug_index = HashMap::new();
             }
 
-            for item in items {
-                let site_ctx_for_item =
-                    site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
-                        site_ctx_cache
-                            .get(default_lang.as_str())
-                            .expect("default language missing from site context cache")
-                    });
+            let render_results: Vec<std::result::Result<(PathBuf, String), PageError>> = items
+                .par_iter()
+                .map(|item| {
+                    let site_ctx_for_item =
+                        site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
+                            site_ctx_cache
+                                .get(default_lang.as_str())
+                                .expect("default language missing from site context cache")
+                        });
 
-                let mut ctx = build_page_context(site_ctx_for_item, item, &data);
+                    let mut ctx = build_page_context(site_ctx_for_item, item, &data);
 
-                // Insert nav: pre-serialized Value for nested collections, empty for others
-                if collection.nested {
-                    if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
-                        let mut nav = base_nav.clone();
-                        // Set the active flag on the matching nav item
-                        if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
-                            if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
-                                if let Some(sections) = nav.as_array_mut() {
-                                    if let Some(section) = sections.get_mut(sec_idx) {
-                                        if let Some(items_arr) =
-                                            section.get_mut("items").and_then(|i| i.as_array_mut())
-                                        {
-                                            if let Some(nav_item) = items_arr.get_mut(item_idx) {
-                                                nav_item["active"] = serde_json::Value::Bool(true);
+                    if collection.nested {
+                        if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
+                            let mut nav = base_nav.clone();
+                            if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
+                                if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
+                                    if let Some(sections) = nav.as_array_mut() {
+                                        if let Some(section) = sections.get_mut(sec_idx) {
+                                            if let Some(items_arr) = section
+                                                .get_mut("items")
+                                                .and_then(|i| i.as_array_mut())
+                                            {
+                                                if let Some(nav_item) = items_arr.get_mut(item_idx)
+                                                {
+                                                    nav_item["active"] =
+                                                        serde_json::Value::Bool(true);
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            ctx.insert("nav", &nav);
                         }
-                        ctx.insert("nav", &nav);
+                    } else {
+                        ctx.insert("nav", &empty_nav_value);
                     }
-                } else {
-                    ctx.insert("nav", &empty_nav_value);
-                }
-                ctx.insert("lang", &item.lang);
-                insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
-                insert_build_flags(&mut ctx, config);
+                    ctx.insert("lang", &item.lang);
+                    insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                    insert_build_flags(&mut ctx, config);
 
-                // Always provide translations (may be empty vec)
-                let empty_translations: Vec<TranslationLink> = Vec::new();
-                let translations = translation_map
-                    .get(&(collection.name.clone(), item.slug.clone()))
-                    .filter(|t| t.len() > 1)
-                    .map(|t| t.as_slice())
-                    .unwrap_or(&empty_translations);
-                ctx.insert("translations", &translations);
+                    let empty_translations: Vec<TranslationLink> = Vec::new();
+                    let translations = translation_map
+                        .get(&(collection.name.clone(), item.slug.clone()))
+                        .filter(|t| t.len() > 1)
+                        .map(|t| t.as_slice())
+                        .unwrap_or(&empty_translations);
+                    ctx.insert("translations", &translations);
 
-                let template_name = item
-                    .frontmatter
-                    .template
-                    .as_deref()
-                    .unwrap_or(&collection.default_template);
-                let html = tera.render(template_name, &ctx).map_err(|e| {
-                    use std::error::Error as _;
-                    let mut source_chain = String::new();
-                    let mut source: Option<&dyn std::error::Error> = e.source();
-                    while let Some(s) = source {
-                        source_chain.push_str(&format!("\n  Caused by: {s}"));
-                        source = s.source();
-                    }
-                    PageError::Build(format!("rendering '{}': {e}{source_chain}", item.slug))
-                })?;
+                    let template_name = item
+                        .frontmatter
+                        .template
+                        .as_deref()
+                        .unwrap_or(&collection.default_template);
+                    let html = tera.render(template_name, &ctx).map_err(|e| {
+                        use std::error::Error as _;
+                        let mut source_chain = String::new();
+                        let mut source: Option<&dyn std::error::Error> = e.source();
+                        while let Some(s) = source {
+                            source_chain.push_str(&format!("\n  Caused by: {s}"));
+                            source = s.source();
+                        }
+                        PageError::Build(format!("rendering '{}': {e}{source_chain}", item.slug))
+                    })?;
 
-                let output_path = url_to_output_path(&paths.output, &item.url);
+                    let output_path = url_to_output_path(&paths.output, &item.url);
+                    Ok((output_path, html))
+                })
+                .collect();
+
+            for result in render_results {
+                let (output_path, html) = result?;
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
@@ -1375,16 +1391,23 @@ pub fn build_site(
     let step_start = Instant::now();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
-            for item in items {
-                let md_path = url_to_md_path(&paths.output, &item.url);
+            let md_results: Vec<(PathBuf, String)> = items
+                .par_iter()
+                .map(|item| {
+                    let md_path = url_to_md_path(&paths.output, &item.url);
+                    let md_content = format!(
+                        "{}\n\n{}",
+                        content::generate_frontmatter(&item.frontmatter),
+                        item.raw_body
+                    );
+                    (md_path, md_content)
+                })
+                .collect();
+
+            for (md_path, md_content) in md_results {
                 if let Some(parent) = md_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                let md_content = format!(
-                    "{}\n\n{}",
-                    content::generate_frontmatter(&item.frontmatter),
-                    item.raw_body
-                );
                 fs::write(&md_path, md_content)?;
             }
         }
@@ -1537,47 +1560,24 @@ pub fn build_site(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 12: Post-process HTML files to rewrite <img> tags
+    // Step 12: Post-process all HTML files in a single pass
+    // (image srcset, code copy buttons, base path rewriting, analytics injection)
     let step_start = Instant::now();
     let lazy_loading = config.images.as_ref().is_some_and(|img| img.lazy_loading);
     let needs_image_rewrite = !image_manifest.is_empty() || lazy_loading;
-    if needs_image_rewrite {
-        rewrite_html_files(&paths.output, &image_manifest, lazy_loading)?;
-    }
-
+    let site_base_path = config.base_path();
+    let post_ctx = HtmlPostProcessContext {
+        image_manifest: &image_manifest,
+        lazy_loading,
+        needs_image_rewrite,
+        base_path: &site_base_path,
+        analytics: config.analytics.as_ref(),
+    };
+    post_process_html_files(&paths.output, &post_ctx)?;
     step_timings.push((
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
-
-    // Step 12b: Inject code block copy buttons into all HTML files
-    let step_start = Instant::now();
-    code_copy::inject_code_copy_into_html_files(&paths.output)?;
-    step_timings.push((
-        "Inject code copy buttons".to_string(),
-        step_start.elapsed().as_secs_f64() * 1000.0,
-    ));
-
-    // Step 12c: Rewrite root-relative URLs for subpath deployments (e.g., GitHub Pages project sites)
-    let site_base_path = config.base_path();
-    if !site_base_path.is_empty() {
-        let step_start = Instant::now();
-        base_path::rewrite_html_base_path(&paths.output, &site_base_path)?;
-        step_timings.push((
-            "Rewrite base path".to_string(),
-            step_start.elapsed().as_secs_f64() * 1000.0,
-        ));
-    }
-
-    // Step 13: Inject analytics scripts (and optional cookie consent banner)
-    if let Some(ref analytics_config) = config.analytics {
-        let step_start = Instant::now();
-        analytics::inject_analytics_into_html_files(&paths.output, analytics_config)?;
-        step_timings.push((
-            "Inject analytics".to_string(),
-            step_start.elapsed().as_secs_f64() * 1000.0,
-        ));
-    }
 
     // Warn about public/ files overwritten by generated files
     let known_generated = [
@@ -1620,27 +1620,71 @@ pub fn build_site(
     })
 }
 
-/// Walk all .html files in the output directory and rewrite <img> tags.
-fn rewrite_html_files(
-    output_dir: &Path,
-    image_manifest: &HashMap<String, images::ProcessedImage>,
+/// All config needed for the unified HTML post-processing pass.
+struct HtmlPostProcessContext<'a> {
+    image_manifest: &'a HashMap<String, images::ProcessedImage>,
     lazy_loading: bool,
-) -> Result<()> {
-    for entry in WalkDir::new(output_dir)
+    needs_image_rewrite: bool,
+    base_path: &'a str,
+    analytics: Option<&'a AnalyticsSection>,
+}
+
+/// Walk all `.html` files once, apply all post-processing transforms in memory, write once.
+///
+/// Consolidates image srcset rewriting, code copy button injection, base path
+/// URL rewriting, and analytics injection into a single read-transform-write pass.
+fn post_process_html_files(output_dir: &Path, ctx: &HtmlPostProcessContext) -> Result<()> {
+    let entries: Vec<_> = WalkDir::new(output_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
         })
-    {
-        let html = fs::read_to_string(entry.path())?;
-        if !html.contains("<img ") {
-            continue;
-        }
-        let rewritten = images::rewrite_html_images(&html, image_manifest, lazy_loading);
-        if rewritten != html {
-            fs::write(entry.path(), rewritten)?;
-        }
+        .collect();
+
+    let errors: Vec<PageError> = entries
+        .par_iter()
+        .filter_map(|entry| {
+            let original = match fs::read_to_string(entry.path()) {
+                Ok(h) => h,
+                Err(e) => return Some(PageError::from(e)),
+            };
+
+            let mut html = original.clone();
+
+            // 1. Image srcset rewrite
+            if ctx.needs_image_rewrite && html.contains("<img ") {
+                html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
+            }
+
+            // 2. Code copy button injection
+            if html.contains("<pre") {
+                html = code_copy::inject_code_copy(&html);
+            }
+
+            // 3. Base path URL rewriting
+            if !ctx.base_path.is_empty() {
+                html = base_path::rewrite_html_urls(&html, ctx.base_path);
+            }
+
+            // 4. Analytics injection
+            if let Some(analytics_config) = ctx.analytics {
+                html = analytics::inject_analytics(&html, analytics_config);
+            }
+
+            // Only write if something changed
+            if html != original {
+                if let Err(e) = fs::write(entry.path(), html) {
+                    return Some(PageError::from(e));
+                }
+            }
+
+            None
+        })
+        .collect();
+
+    if let Some(err) = errors.into_iter().next() {
+        return Err(err);
     }
     Ok(())
 }

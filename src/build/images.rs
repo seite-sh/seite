@@ -7,6 +7,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder};
 use image::imageops::FilterType;
 use image::{ImageEncoder, ImageFormat};
+use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::config::{ImageSection, ResolvedPaths};
@@ -38,43 +39,49 @@ pub fn process_images(
     paths: &ResolvedPaths,
     config: &ImageSection,
 ) -> Result<HashMap<String, ProcessedImage>> {
-    let mut manifest = HashMap::new();
-
     if !paths.static_dir.exists() {
-        return Ok(manifest);
+        return Ok(HashMap::new());
     }
 
-    for entry in WalkDir::new(&paths.static_dir)
+    let entries: Vec<_> = WalkDir::new(&paths.static_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
-        let ext = entry
-            .path()
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        })
+        .collect();
 
-        if !IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-            continue;
-        }
+    let manifest: HashMap<String, ProcessedImage> = entries
+        .par_iter()
+        .filter_map(|entry| {
+            let ext = entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
 
-        let rel = entry
-            .path()
-            .strip_prefix(&paths.static_dir)
-            .unwrap_or(entry.path());
+            let rel = entry
+                .path()
+                .strip_prefix(&paths.static_dir)
+                .unwrap_or(entry.path());
 
-        match process_single_image(entry.path(), rel, &paths.output, config, &ext) {
-            Ok(processed) => {
-                let key = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
-                manifest.insert(key, processed);
+            match process_single_image(entry.path(), rel, &paths.output, config, &ext) {
+                Ok(processed) => {
+                    let key = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
+                    Some((key, processed))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to process image {}: {e}", entry.path().display());
+                    None
+                }
             }
-            Err(e) => {
-                tracing::warn!("Failed to process image {}: {e}", entry.path().display());
-            }
-        }
-    }
+        })
+        .collect();
 
     Ok(manifest)
 }
