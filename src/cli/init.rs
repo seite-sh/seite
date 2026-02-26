@@ -841,7 +841,7 @@ fn generate_claude_md(
     md.push_str("seite collection list                    # List site collections\n");
     md.push_str("seite collection add <preset>            # Add a preset collection (posts, docs, pages, changelog, roadmap, trust)\n");
     md.push_str("seite theme list                         # List available themes\n");
-    md.push_str("seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)\n");
+    md.push_str("seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic)\n");
     md.push_str("seite theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
     md.push_str("seite theme install <url>                # Install theme from URL\n");
     md.push_str("seite theme export <name>                # Export current theme for sharing\n");

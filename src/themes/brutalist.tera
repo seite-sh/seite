@@ -38,9 +38,12 @@
     {% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}<script type="application/ld+json">
     {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_encode() }},"item":{{ site.base_url | json_encode() }}},{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_encode() }},"item":{{ _bc_col_url | json_encode() }}},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_encode() }}}]}
     </script>{% endif %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
-        body { max-width: 780px; margin: 0 auto; padding: 2rem 1rem; font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; color: #000000; background: #fffef0; }
+        body { max-width: 780px; margin: 0 auto; padding: 2rem 1rem; font-family: 'Archivo', system-ui, -apple-system, sans-serif; line-height: 1.5; color: #000000; background: #fffef0; }
         a { color: #000000; text-decoration: underline; text-underline-offset: 3px; }
         a:hover { background: #ffe600; text-decoration: none; }
         header { border: 3px solid #000; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 6px 6px 0 #000; }
@@ -70,6 +73,15 @@
         #search-results strong { color: #000; }
         #search-results .result-meta { font-size: 0.75rem; color: #555; font-weight: 400; margin-top: 0.1rem; }
         #search-results .no-results { padding: 0.5rem 0.75rem; font-size: 0.9rem; font-weight: 700; }
+        .homepage-content { margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 3px solid #111; }
+        .homepage-content > h1:first-child { font-size: 2.5rem; font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; margin-bottom: 0.5rem; line-height: 1.1; }
+        .homepage-content > p { font-size: 1.05rem; line-height: 1.7; margin-bottom: 0.75rem; }
+        .homepage-content > h2 { font-size: 1.3rem; font-weight: 700; text-transform: uppercase; margin-top: 1.75rem; margin-bottom: 0.5rem; }
+        .homepage-content > h3 { font-size: 1.1rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.4rem; }
+        .homepage-content > ul { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; list-style: none; padding: 0; margin: 1.5rem 0; }
+        .homepage-content > ul > li { padding: 1rem; border: 3px solid #111; box-shadow: 6px 6px 0 #111; }
+        .homepage-content > ul > li strong { display: block; font-size: 1.8rem; font-weight: 900; color: #111; margin-bottom: 0.1rem; }
+        .homepage-content blockquote { border-left: 6px solid #ffe600; padding-left: 1rem; margin: 1.5rem 0; font-weight: 500; }
         main section { border: 3px solid #000; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 5px 5px 0 #000; }
         main section h2 { margin: 0 0 1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 900; background: #000; color: #ffe600; display: inline-block; padding: 0.2rem 0.6rem; }
         article { border-top: 2px solid #000; padding: 1rem 0; }
@@ -282,19 +294,38 @@
         var basePath = {{ site.base_path | json_encode() }};
         var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_encode() }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
         function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
-        function search(q) {
+        function doSearch(q) {
             q = q.toLowerCase().trim();
-            if (!q) { results.innerHTML = ''; return; }
+            if (!q) { results.textContent = ''; return; }
             var hits = index.filter(function(e){
                 return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
             }).slice(0, 8);
-            if (!hits.length) { results.innerHTML = '<div class="no-results">{{ t.no_results }}</div>'; return; }
-            results.innerHTML = hits.map(function(e){
-                var meta = [e.collection, e.date].filter(Boolean).join(' · ');
-                return '<a href="' + basePath + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
-            }).join('');
+            if (!hits.length) {
+                var noRes = document.createElement('div');
+                noRes.className = 'no-results';
+                noRes.textContent = '{{ t.no_results }}';
+                results.textContent = '';
+                results.appendChild(noRes);
+                return;
+            }
+            results.textContent = '';
+            hits.forEach(function(e){
+                var a = document.createElement('a');
+                a.href = basePath + e.url;
+                var strong = document.createElement('strong');
+                strong.textContent = e.title;
+                a.appendChild(strong);
+                var meta = [e.collection, e.date].filter(Boolean).join(' \u00b7 ');
+                if (meta) {
+                    var div = document.createElement('div');
+                    div.className = 'result-meta';
+                    div.textContent = meta;
+                    a.appendChild(div);
+                }
+                results.appendChild(a);
+            });
         }
-        input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
+        input.addEventListener('input', function(){ load(function(){ doSearch(input.value); }); });
     })();
     </script>
     {% block footer %}{% endblock %}
