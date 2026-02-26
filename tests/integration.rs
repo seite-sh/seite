@@ -461,7 +461,7 @@ fn test_build_homepage_without_index_page() {
     // Collection listing should work as before
     assert!(index.contains("Hello World"));
     // No homepage-content div since there's no index.md
-    assert!(!index.contains("homepage-content"));
+    assert!(!index.contains("class=\"homepage-content\""));
 }
 
 // --- multi-language (i18n) ---

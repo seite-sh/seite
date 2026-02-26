@@ -38,6 +38,9 @@
     {% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}<script type="application/ld+json">
     {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_encode() }},"item":{{ site.base_url | json_encode() }}},{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_encode() }},"item":{{ _bc_col_url | json_encode() }}},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_encode() }}}]}
     </script>{% endif %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
     <style>
         /* === RESET & BASE === */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,7 +51,7 @@
             margin-left: auto;
             margin-right: auto;
             padding: 2.5rem 0 4rem;
-            font-family: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+            font-family: 'EB Garamond', Palatino, Georgia, serif;
             font-size: 1.1rem;
             line-height: 1.6;
             color: #111;
@@ -156,17 +159,111 @@
             position: relative;
         }
 
+        /* === HOMEPAGE CONTENT — scholarly intro === */
+        .homepage-content {
+            margin-bottom: 2.5rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid #e0ddd5;
+        }
+        .homepage-content > h1:first-child {
+            font-size: 2rem;
+            font-weight: 400;
+            line-height: 1.25;
+            margin-bottom: 0.75rem;
+        }
+        .homepage-content > p {
+            margin-bottom: 1rem;
+            line-height: 1.7;
+        }
+        .homepage-content > p strong { color: #111; font-weight: 600; }
+        .homepage-content > p a { color: #a00000; }
+        .homepage-content > h2 {
+            font-variant: small-caps;
+            letter-spacing: 0.01em;
+            font-size: 1.1rem;
+            font-weight: 400;
+            margin-top: 2rem;
+            margin-bottom: 0.6rem;
+        }
+        .homepage-content > h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.4rem;
+        }
+        .homepage-content > ul {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+            list-style: none;
+            padding: 0;
+            margin: 1.5rem 0;
+        }
+        .homepage-content > ul > li {
+            padding: 1rem 1.25rem;
+            border: 1px solid #e0ddd5;
+            background: #f7f4ee;
+        }
+        .homepage-content > ul > li strong {
+            display: block;
+            font-size: 1.5rem;
+            color: #a00000;
+            line-height: 1;
+            margin-bottom: 0.2rem;
+        }
+        .homepage-content blockquote {
+            margin: 1.5rem 0 1.5rem 2rem;
+            padding: 0;
+            border: none;
+            font-style: italic;
+            color: #333;
+        }
+        .homepage-content > hr {
+            border: none;
+            margin: 2rem auto;
+            width: 40%;
+        }
+        .homepage-content > hr::before {
+            content: '\00a7';
+            display: block;
+            text-align: center;
+            font-size: 1.2rem;
+            color: #999;
+        }
+        .homepage-content pre {
+            background: #f7f4ee;
+            color: #111;
+            padding: 1rem 1.25rem;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            line-height: 1.55;
+            font-family: ui-monospace, 'SFMono-Regular', 'SF Mono', Menlo, Consolas, monospace;
+            border: 1px solid #e0ddd5;
+            margin: 1.5rem 0;
+        }
+        .homepage-content pre code { background: none; color: inherit; padding: 0; border: none; font-size: inherit; }
+
         /* === ARTICLE LISTING (index pages) === */
-        .article-list article { margin-bottom: 1.75rem; }
-        .article-list article h3 {
+        main > section { margin-bottom: 2rem; }
+        main > section > h2 {
+            font-variant: small-caps;
+            letter-spacing: 0.01em;
+            font-size: 1.1rem;
+            font-weight: 400;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.25rem;
+            border-bottom: 1px solid #e0ddd5;
+        }
+        section > article { margin-bottom: 1.75rem; }
+        section > article h3 {
             margin: 0 0 0.1rem;
             font-size: 1.05rem;
             font-weight: 400;
         }
-        .article-list article h3 a { color: #111; text-decoration: none; }
-        .article-list article h3 a:hover { color: #a00000; }
-        .article-list article p { color: #666; font-size: 0.9rem; margin: 0.2rem 0 0; line-height: 1.5; }
-        .article-list article time { font-size: 0.75rem; color: #999; font-style: italic; }
+        section > article h3 a { color: #111; text-decoration: none; }
+        section > article h3 a:hover { color: #a00000; }
+        section > article p { color: #666; font-size: 0.9rem; margin: 0.2rem 0 0; line-height: 1.5; }
+        section > article time { font-size: 0.75rem; color: #999; font-style: italic; }
 
         /* === SINGLE ARTICLE — scholarly typesetting === */
 
@@ -782,6 +879,7 @@
             header { max-width: 100%; }
             main { width: 100%; }
             footer { max-width: 100%; }
+            .homepage-content > ul { grid-template-columns: 1fr; }
 
             /* Footnotes go inline when no margin space */
             .footnote-definition {
@@ -808,6 +906,7 @@
             pre { font-size: 0.75rem; padding: 0.75rem; }
             .cert-grid { grid-template-columns: 1fr; }
             .roadmap-items { grid-template-columns: 1fr; }
+            .homepage-content > h1:first-child { font-size: 1.5rem; }
         }
     </style>
     {% block extra_css %}{% endblock %}
@@ -854,19 +953,38 @@
         var basePath = {{ site.base_path | json_encode() }};
         var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_encode() }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
         function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
-        function search(q) {
+        function doSearch(q) {
             q = q.toLowerCase().trim();
-            if (!q) { results.innerHTML = ''; return; }
+            if (!q) { results.textContent = ''; return; }
             var hits = index.filter(function(e){
                 return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
             }).slice(0, 8);
-            if (!hits.length) { results.innerHTML = '<div class="no-results">{{ t.no_results }}</div>'; return; }
-            results.innerHTML = hits.map(function(e){
-                var meta = [e.collection, e.date].filter(Boolean).join(' · ');
-                return '<a href="' + basePath + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
-            }).join('');
+            if (!hits.length) {
+                var noRes = document.createElement('div');
+                noRes.className = 'no-results';
+                noRes.textContent = '{{ t.no_results }}';
+                results.textContent = '';
+                results.appendChild(noRes);
+                return;
+            }
+            results.textContent = '';
+            hits.forEach(function(e){
+                var a = document.createElement('a');
+                a.href = basePath + e.url;
+                var strong = document.createElement('strong');
+                strong.textContent = e.title;
+                a.appendChild(strong);
+                var meta = [e.collection, e.date].filter(Boolean).join(' \u00b7 ');
+                if (meta) {
+                    var div = document.createElement('div');
+                    div.className = 'result-meta';
+                    div.textContent = meta;
+                    a.appendChild(div);
+                }
+                results.appendChild(a);
+            });
         }
-        input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
+        input.addEventListener('input', function(){ load(function(){ doSearch(input.value); }); });
     })();
     </script>
     {% block footer %}{% endblock %}
