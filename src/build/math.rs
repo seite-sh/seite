@@ -163,17 +163,16 @@ pub fn render_math(markdown: &str) -> String {
     result
 }
 
-/// Render a single math expression to HTML via KaTeX.
+/// Render a single math expression to HTML via KaTeX (pure Rust implementation).
 #[cfg(feature = "math")]
 fn render_katex(expr: &str, display_mode: bool) -> Result<String, String> {
-    let opts = katex::Opts::builder()
+    let ctx = katex::KatexContext::default();
+    let settings = katex::Settings::builder()
         .display_mode(display_mode)
-        .output_type(katex::OutputType::HtmlAndMathml)
-        .trust(true)
-        .build()
-        .map_err(|e| format!("KaTeX options error: {e}"))?;
+        .trust(katex::TrustSetting::Bool(true))
+        .build();
 
-    katex::render_with_opts(expr, &opts).map_err(|e| format!("KaTeX render error: {e}"))
+    katex::render_to_string(&ctx, expr, &settings).map_err(|e| format!("KaTeX render error: {e}"))
 }
 
 /// Stub when math feature is not enabled — returns input unchanged.
