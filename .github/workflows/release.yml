@@ -100,7 +100,10 @@ jobs:
         run: cargo build --release --locked --target x86_64-pc-windows-msvc
 
       - name: Build aarch64
-        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+        # ducc-sys (Duktape) cannot determine intptr_t on aarch64-pc-windows-msvc,
+        # and no Rust JS engine crate supports this target yet. Build without math
+        # so server-side KaTeX is unavailable; users can use client-side KaTeX.
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc --no-default-features
 
       - name: Package x86_64
         shell: pwsh
