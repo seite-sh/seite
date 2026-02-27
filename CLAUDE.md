@@ -206,7 +206,7 @@ Six presets defined in `CollectionConfig::from_preset()`:
 | roadmap | false   | false   | true   | false  | /roadmap   | roadmap-item.html |
 | trust  | false    | false   | true   | true   | /trust     | trust-item.html |
 
-Any collection can optionally set `subdomain` to deploy to `{subdomain}.{base_domain}`. When set, the collection gets its own output dir (`dist-subdomains/{name}/`), own sitemap/RSS/robots.txt, and is excluded from main site output. Optional `deploy_project` sets the Cloudflare/Netlify project for that subdomain.
+Any collection can optionally set `subdomain` to deploy to `{subdomain}.{base_domain}`. When set, the collection gets its own output dir (`dist-subdomains/{name}/`), own sitemap/RSS/robots.txt, and is excluded from main site output. Optional `subdomain_base_url` overrides the auto-derived URL (useful when `base_url` contains `www`). Optional `deploy_project` sets the Cloudflare/Netlify project for that subdomain.
 
 ### Output Pattern
 
@@ -260,6 +260,7 @@ author = ""
 name = "posts"
 # ... all CollectionConfig fields
 # subdomain = "blog"          # optional: deploy to blog.{base_domain}
+# subdomain_base_url = "https://blog.example.com"  # optional: explicit URL override
 # deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
 
 [build]

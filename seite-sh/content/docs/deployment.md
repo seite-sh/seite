@@ -181,8 +181,11 @@ Collections with `subdomain` set are deployed as separate sites. Each subdomain 
 [[collections]]
 name = "docs"
 subdomain = "docs"           # → docs.example.com
+subdomain_base_url = "https://docs.example.com"  # optional: explicit URL override
 deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
 ```
+
+`subdomain_base_url` overrides the auto-derived subdomain URL. This is useful when `base_url` contains `www` (e.g., `https://www.example.com` would otherwise produce `docs.www.example.com`).
 
 `deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to. If omitted, the global `deploy.project` is used as a fallback.
 

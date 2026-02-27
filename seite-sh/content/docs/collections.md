@@ -56,6 +56,7 @@ paginate = 10
 | `nested` | bool | preset-based | Support subdirectories as groups |
 | `paginate` | int | none | Items per page (enables pagination) |
 | `subdomain` | string | none | Deploy to `{subdomain}.{base_domain}` |
+| `subdomain_base_url` | string | none | Explicit URL override for subdomain (e.g., `https://docs.example.com`) |
 | `deploy_project` | string | none | Cloudflare/Netlify project for subdomain |
 
 ## Posts
@@ -204,6 +205,16 @@ When `subdomain` is set:
 - Content is served at the subdomain root (no URL prefix)
 - It gets its own sitemap, RSS, robots.txt, llms.txt, and search index
 - It's excluded from the main site's build output
+
+If your `base_url` contains `www` (e.g., `https://www.example.com`), the auto-derived URL would be `docs.www.example.com`. Use `subdomain_base_url` to set an explicit override:
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"
+subdomain_base_url = "https://docs.example.com"  # explicit override
+deploy_project = "my-docs"
+```
 
 The dev server previews subdomain content at `/{name}-preview/` (e.g., `localhost:3000/docs-preview/`).
 

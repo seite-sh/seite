@@ -905,7 +905,7 @@ fn generate_claude_md(
             md.push_str("- Included in RSS feed (`/feed.xml`)\n");
         }
         if let Some(ref subdomain) = c.subdomain {
-            let sub_url = config.subdomain_base_url(subdomain);
+            let sub_url = config.subdomain_base_url(c);
             md.push_str(&format!("- **Subdomain**: `{subdomain}` → `{sub_url}`\n"));
             md.push_str("- Built to `dist-subdomains/` with own sitemap, RSS, robots.txt\n");
             md.push_str("- Cross-subdomain links are auto-rewritten to absolute URLs\n");

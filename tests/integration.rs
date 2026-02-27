@@ -8878,3 +8878,69 @@ fn test_build_subdomain_reverse_links() {
         &doc_html[..doc_html.len().min(500)]
     );
 }
+
+#[test]
+fn test_build_subdomain_explicit_base_url_override() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "explicit_sub", "Explicit Sub", "posts,docs,pages");
+    let site_dir = tmp.path().join("explicit_sub");
+
+    // Use www. base_url to demonstrate the problem being solved
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "base_url = \"http://localhost:3000\"",
+        "base_url = \"https://www.example.com\"",
+    );
+    let config = config.replace(
+        "name = \"docs\"",
+        "name = \"docs\"\nsubdomain = \"docs\"\nsubdomain_base_url = \"https://docs.example.com\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: Guide\ndescription: A guide\n---\nGuide content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist-subdomains/docs/guide.html")).unwrap();
+
+    // Should use the explicit override, not docs.www.example.com
+    assert!(
+        html.contains("docs.example.com"),
+        "subdomain pages should use explicit subdomain_base_url"
+    );
+    assert!(
+        !html.contains("docs.www.example.com"),
+        "www prefix should not appear in subdomain URLs"
+    );
+}
+
+#[test]
+fn test_subdomain_base_url_without_subdomain_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "invalid_sub", "Invalid", "posts,docs");
+    let site_dir = tmp.path().join("invalid_sub");
+
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "name = \"docs\"",
+        "name = \"docs\"\nsubdomain_base_url = \"https://docs.example.com\"",
+    );
+    fs::write(&toml_path, config).unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("requires subdomain to be set"));
+}

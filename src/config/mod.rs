@@ -60,6 +60,12 @@ pub struct CollectionConfig {
     /// Value is the subdomain prefix: `"docs"` → `docs.example.com`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subdomain: Option<String>,
+    /// Explicit base URL for this subdomain collection.
+    /// Overrides the auto-derived `{subdomain}.{base_domain}` URL.
+    /// Only meaningful when `subdomain` is set.
+    /// Example: `"https://docs.example.com"` avoids `www`-prefix issues.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdomain_base_url: Option<String>,
     /// Cloudflare/Netlify project name for this subdomain's deploy.
     /// Only used when `subdomain` is set. Falls back to the global `deploy.project`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -80,6 +86,7 @@ impl CollectionConfig {
             default_template: "post.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -97,6 +104,7 @@ impl CollectionConfig {
             default_template: "doc.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -114,6 +122,7 @@ impl CollectionConfig {
             default_template: "page.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -131,6 +140,7 @@ impl CollectionConfig {
             default_template: "changelog-entry.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -148,6 +158,7 @@ impl CollectionConfig {
             default_template: "roadmap-item.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -165,6 +176,7 @@ impl CollectionConfig {
             default_template: "trust-item.html".into(),
             paginate: None,
             subdomain: None,
+            subdomain_base_url: None,
             deploy_project: None,
         }
     }
@@ -495,6 +507,24 @@ impl SiteConfig {
                     ),
                 });
             }
+            if c.subdomain_base_url.is_some() && c.subdomain.is_none() {
+                return Err(PageError::ConfigInvalid {
+                    message: format!(
+                        "subdomain_base_url on collection '{}' requires subdomain to be set",
+                        c.name
+                    ),
+                });
+            }
+            if let Some(ref url) = c.subdomain_base_url {
+                if !url.starts_with("http://") && !url.starts_with("https://") {
+                    return Err(PageError::ConfigInvalid {
+                        message: format!(
+                            "subdomain_base_url on collection '{}' must start with http:// or https://",
+                            c.name
+                        ),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -530,8 +560,16 @@ impl SiteConfig {
     }
 
     /// Compute the subdomain base_url for a collection.
-    /// E.g., subdomain=`"docs"`, base_url=`"https://example.com"` → `"https://docs.example.com"`.
-    pub fn subdomain_base_url(&self, subdomain: &str) -> String {
+    ///
+    /// If `collection.subdomain_base_url` is set, returns that (trimmed of trailing slash).
+    /// Otherwise derives it from `{subdomain}.{base_domain}`.
+    pub fn subdomain_base_url(&self, collection: &CollectionConfig) -> String {
+        // Explicit override takes priority
+        if let Some(ref explicit) = collection.subdomain_base_url {
+            return explicit.trim_end_matches('/').to_string();
+        }
+        // Fall back to auto-derivation
+        let subdomain = collection.subdomain.as_deref().unwrap_or("");
         let scheme = if self.site.base_url.starts_with("https://") {
             "https"
         } else {
@@ -552,15 +590,13 @@ impl SiteConfig {
     pub fn subdomain_rewrite_map(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         for c in &self.collections {
-            if let Some(ref subdomain) = c.subdomain {
-                if !c.url_prefix.is_empty() {
-                    let prefix = if c.url_prefix.starts_with('/') {
-                        c.url_prefix.clone()
-                    } else {
-                        format!("/{}", c.url_prefix)
-                    };
-                    map.insert(prefix, self.subdomain_base_url(subdomain));
-                }
+            if c.subdomain.is_some() && !c.url_prefix.is_empty() {
+                let prefix = if c.url_prefix.starts_with('/') {
+                    c.url_prefix.clone()
+                } else {
+                    format!("/{}", c.url_prefix)
+                };
+                map.insert(prefix, self.subdomain_base_url(c));
             }
         }
         map
@@ -581,15 +617,15 @@ impl SiteConfig {
             if c.name == exclude_collection {
                 continue;
             }
-            // Skip subdomain collections — they get their own forward-rewrite entries
-            if let Some(ref subdomain) = c.subdomain {
+            // Subdomain collections get their resolved subdomain URL
+            if c.subdomain.is_some() {
                 if !c.url_prefix.is_empty() {
                     let prefix = if c.url_prefix.starts_with('/') {
                         c.url_prefix.clone()
                     } else {
                         format!("/{}", c.url_prefix)
                     };
-                    map.insert(prefix, self.subdomain_base_url(subdomain));
+                    map.insert(prefix, self.subdomain_base_url(c));
                 }
                 continue;
             }
@@ -731,20 +767,53 @@ mod tests {
 
     #[test]
     fn test_subdomain_base_url() {
-        let config = make_config("https://example.com", vec![]);
-        assert_eq!(
-            config.subdomain_base_url("docs"),
-            "https://docs.example.com"
-        );
+        let docs = docs_collection_with_subdomain();
+        let config = make_config("https://example.com", vec![docs.clone()]);
+        assert_eq!(config.subdomain_base_url(&docs), "https://docs.example.com");
     }
 
     #[test]
     fn test_subdomain_base_url_http() {
-        let config = make_config("http://localhost:3000", vec![]);
+        let docs = docs_collection_with_subdomain();
+        let config = make_config("http://localhost:3000", vec![docs.clone()]);
         assert_eq!(
-            config.subdomain_base_url("docs"),
+            config.subdomain_base_url(&docs),
             "http://docs.localhost:3000"
         );
+    }
+
+    #[test]
+    fn test_subdomain_base_url_explicit_override() {
+        let mut docs = docs_collection_with_subdomain();
+        docs.subdomain_base_url = Some("https://docs.example.com".into());
+        let config = make_config("https://www.example.com", vec![docs.clone()]);
+        assert_eq!(config.subdomain_base_url(&docs), "https://docs.example.com");
+    }
+
+    #[test]
+    fn test_subdomain_base_url_explicit_strips_trailing_slash() {
+        let mut docs = docs_collection_with_subdomain();
+        docs.subdomain_base_url = Some("https://docs.example.com/".into());
+        let config = make_config("https://example.com", vec![docs.clone()]);
+        assert_eq!(config.subdomain_base_url(&docs), "https://docs.example.com");
+    }
+
+    #[test]
+    fn test_validate_subdomain_base_url_without_subdomain() {
+        let mut posts = posts_collection();
+        posts.subdomain_base_url = Some("https://blog.example.com".into());
+        let config = make_config("https://example.com", vec![posts]);
+        let err = config.validate_subdomains().unwrap_err();
+        assert!(err.to_string().contains("requires subdomain to be set"));
+    }
+
+    #[test]
+    fn test_validate_subdomain_base_url_invalid_scheme() {
+        let mut docs = docs_collection_with_subdomain();
+        docs.subdomain_base_url = Some("ftp://docs.example.com".into());
+        let config = make_config("https://example.com", vec![docs]);
+        let err = config.validate_subdomains().unwrap_err();
+        assert!(err.to_string().contains("must start with http://"));
     }
 
     #[test]
@@ -791,10 +860,15 @@ directory = "docs"
 url_prefix = "/docs"
 default_template = "doc.html"
 subdomain = "docs"
+subdomain_base_url = "https://docs.example.com"
 deploy_project = "my-docs"
 "#;
         let config: SiteConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.collections[0].subdomain, Some("docs".into()));
+        assert_eq!(
+            config.collections[0].subdomain_base_url,
+            Some("https://docs.example.com".into())
+        );
         assert_eq!(config.collections[0].deploy_project, Some("my-docs".into()));
     }
 

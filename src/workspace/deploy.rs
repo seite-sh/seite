@@ -178,7 +178,7 @@ fn check_domain_conflicts(
         // Subdomain collection domains
         for c in config.subdomain_collections() {
             if let Some(ref subdomain) = c.subdomain {
-                let sub_url = config.subdomain_base_url(subdomain);
+                let sub_url = config.subdomain_base_url(c);
                 if let Some(domain) = extract_host(&sub_url) {
                     domain_map.entry(domain.clone()).or_default().push((
                         ws_site.name.clone(),

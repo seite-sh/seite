@@ -262,7 +262,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             continue;
         }
 
-        let sub_url = config.subdomain_base_url(subdomain);
+        let sub_url = config.subdomain_base_url(collection);
         human::info(&format!("Deploying subdomain: {sub_url}"));
 
         let mut sub_paths = paths.clone();
@@ -672,8 +672,7 @@ fn run_dry_run(
         println!();
         human::info("Subdomain deploys:");
         for c in &subdomain_collections {
-            let subdomain = c.subdomain.as_ref().unwrap();
-            let subdomain_url = config.subdomain_base_url(subdomain);
+            let subdomain_url = config.subdomain_base_url(c);
             let subdomain_output = paths.subdomain_output(&c.name);
             let project = c
                 .deploy_project

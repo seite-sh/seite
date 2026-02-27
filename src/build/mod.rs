@@ -294,7 +294,7 @@ fn build_subdomain_sites(
 
     for collection in config.subdomain_collections() {
         let subdomain = collection.subdomain.as_ref().unwrap();
-        let subdomain_base_url = config.subdomain_base_url(subdomain);
+        let subdomain_base_url = config.subdomain_base_url(collection);
         let subdomain_output = paths.subdomain_output(&collection.name);
 
         // Build a synthetic config for this subdomain

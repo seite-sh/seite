@@ -229,7 +229,7 @@ fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonR
         });
         if let Some(ref subdomain) = coll.subdomain {
             entry["subdomain"] = serde_json::json!(subdomain);
-            entry["subdomain_url"] = serde_json::json!(config.subdomain_base_url(subdomain));
+            entry["subdomain_url"] = serde_json::json!(config.subdomain_base_url(coll));
         }
         if let Some(ref deploy_project) = coll.deploy_project {
             entry["deploy_project"] = serde_json::json!(deploy_project);

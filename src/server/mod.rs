@@ -90,12 +90,12 @@ pub fn start(
         .collect();
 
     if !subdomain_mounts.is_empty() {
-        let domain = config.base_domain().unwrap_or_else(|| "example.com".into());
         human::info("Subdomain previews:");
-        for (prefix, _) in &subdomain_mounts {
-            let sub = prefix.strip_suffix("-preview").unwrap_or(prefix);
+        for c in config.subdomain_collections() {
+            let prefix = format!("{}-preview", c.name);
+            let resolved_url = config.subdomain_base_url(c);
             human::info(&format!(
-                "  http://localhost:{actual_port}/{prefix}/ -> {sub}.{domain}"
+                "  http://localhost:{actual_port}/{prefix}/ -> {resolved_url}"
             ));
         }
     }
