@@ -5,8 +5,7 @@ use clap::Args;
 use crate::build::{self, links, BuildOptions};
 use crate::config::SiteConfig;
 use crate::meta;
-use crate::output::human;
-use crate::output::CommandOutput;
+use crate::output::{human, CommandOutput};
 use crate::workspace;
 
 #[derive(Args)]
@@ -65,11 +64,10 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let result = build::build_site(&config, &paths, &opts)?;
     human::success(&result.stats.human_display());
 
-    // Post-build: validate internal links
-    let link_result = links::check_internal_links(&paths.output)?;
-    if !link_result.broken_links.is_empty() {
-        let grouped = links::group_broken_links(&link_result.broken_links);
-        let count = link_result.broken_links.len();
+    // Link validation results from the post-process pass (no extra file walk)
+    if !result.link_check.broken_links.is_empty() {
+        let grouped = links::group_broken_links(&result.link_check.broken_links);
+        let count = result.link_check.broken_links.len();
         let target_count = grouped.len();
 
         let header = format!(

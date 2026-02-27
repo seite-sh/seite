@@ -31,6 +31,7 @@ pub struct BuildOptions {
 pub struct BuildResult {
     pub collections: HashMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
+    pub link_check: links::LinkCheckResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -1573,7 +1574,7 @@ pub fn build_site(
         base_path: &site_base_path,
         analytics: config.analytics.as_ref(),
     };
-    post_process_html_files(&paths.output, &post_ctx)?;
+    let link_check = post_process_html_files(&paths.output, &post_ctx)?;
     step_timings.push((
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -1617,6 +1618,7 @@ pub fn build_site(
     Ok(BuildResult {
         collections: all_collections,
         stats,
+        link_check,
     })
 }
 
@@ -1630,63 +1632,97 @@ struct HtmlPostProcessContext<'a> {
 }
 
 /// Walk all `.html` files once, apply all post-processing transforms in memory, write once.
+/// Also extracts internal links for validation, eliminating a separate file walk.
 ///
 /// Consolidates image srcset rewriting, code copy button injection, base path
-/// URL rewriting, and analytics injection into a single read-transform-write pass.
-fn post_process_html_files(output_dir: &Path, ctx: &HtmlPostProcessContext) -> Result<()> {
-    let entries: Vec<_> = WalkDir::new(output_dir)
+/// URL rewriting, analytics injection, and link extraction into a single pass.
+fn post_process_html_files(
+    output_dir: &Path,
+    ctx: &HtmlPostProcessContext,
+) -> Result<links::LinkCheckResult> {
+    // Walk ALL files once to build valid URL set and collect HTML entries
+    let all_files: Vec<_> = WalkDir::new(output_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "html")
-        })
+        .filter(|e| e.file_type().is_file())
         .collect();
 
-    let errors: Vec<PageError> = entries
-        .par_iter()
-        .filter_map(|entry| {
-            let original = match fs::read_to_string(entry.path()) {
-                Ok(h) => h,
-                Err(e) => return Some(PageError::from(e)),
-            };
+    let valid_urls = links::build_valid_urls_from_entries(output_dir, &all_files);
 
-            let mut html = original.clone();
+    let html_entries: Vec<_> = all_files
+        .into_iter()
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
+        .collect();
 
-            // 1. Image srcset rewrite
-            if ctx.needs_image_rewrite && html.contains("<img ") {
-                html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
-            }
+    // Per-file result: (link_count, broken_links) or error
+    let results: Vec<std::result::Result<(usize, Vec<links::BrokenLink>), PageError>> =
+        html_entries
+            .par_iter()
+            .map(|entry| {
+                let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
 
-            // 2. Code copy button injection
-            if html.contains("<pre") {
-                html = code_copy::inject_code_copy(&html);
-            }
+                let mut html = original.clone();
 
-            // 3. Base path URL rewriting
-            if !ctx.base_path.is_empty() {
-                html = base_path::rewrite_html_urls(&html, ctx.base_path);
-            }
-
-            // 4. Analytics injection
-            if let Some(analytics_config) = ctx.analytics {
-                html = analytics::inject_analytics(&html, analytics_config);
-            }
-
-            // Only write if something changed
-            if html != original {
-                if let Err(e) = fs::write(entry.path(), html) {
-                    return Some(PageError::from(e));
+                // 1. Image srcset rewrite
+                if ctx.needs_image_rewrite && html.contains("<img ") {
+                    html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
                 }
-            }
 
-            None
-        })
-        .collect();
+                // 2. Code copy button injection
+                if html.contains("<pre") {
+                    html = code_copy::inject_code_copy(&html);
+                }
 
-    if let Some(err) = errors.into_iter().next() {
-        return Err(err);
+                // 3. Base path URL rewriting
+                if !ctx.base_path.is_empty() {
+                    html = base_path::rewrite_html_urls(&html, ctx.base_path);
+                }
+
+                // 4. Analytics injection
+                if let Some(analytics_config) = ctx.analytics {
+                    html = analytics::inject_analytics(&html, analytics_config);
+                }
+
+                // Only write if something changed
+                if html != original {
+                    fs::write(entry.path(), &html).map_err(PageError::from)?;
+                }
+
+                // 5. Extract internal links from final HTML for validation
+                let internal_links = links::extract_internal_links(&html);
+                let link_count = internal_links.len();
+                let rel_path = entry
+                    .path()
+                    .strip_prefix(output_dir)
+                    .unwrap_or(entry.path())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+
+                let broken: Vec<links::BrokenLink> = internal_links
+                    .into_iter()
+                    .filter(|href| !valid_urls.contains(href.as_str()))
+                    .map(|href| links::BrokenLink {
+                        source_file: rel_path.clone(),
+                        href,
+                    })
+                    .collect();
+
+                Ok((link_count, broken))
+            })
+            .collect();
+
+    let mut all_broken = Vec::new();
+    let mut total_checked = 0;
+    for result in results {
+        let (count, broken) = result?;
+        total_checked += count;
+        all_broken.extend(broken);
     }
-    Ok(())
+
+    Ok(links::LinkCheckResult {
+        total_links_checked: total_checked,
+        broken_links: all_broken,
+    })
 }
 
 fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig) -> String {

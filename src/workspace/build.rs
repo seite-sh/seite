@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use crate::build::{self, links, BuildOptions, BuildResult};
-use crate::output::human;
-use crate::output::CommandOutput;
+use crate::output::{human, CommandOutput};
 
 use super::{load_site_in_workspace, WorkspaceConfig};
 
@@ -62,11 +61,10 @@ pub fn build_workspace(
         let result = build::build_site(&config, &paths, &build_opts)?;
         human::success(&result.stats.human_display());
 
-        // Post-build: validate internal links per site
-        let link_result = links::check_internal_links(&paths.output)?;
-        if !link_result.broken_links.is_empty() {
-            let grouped = links::group_broken_links(&link_result.broken_links);
-            let count = link_result.broken_links.len();
+        // Link validation results from the post-process pass (no extra file walk)
+        if !result.link_check.broken_links.is_empty() {
+            let grouped = links::group_broken_links(&result.link_check.broken_links);
+            let count = result.link_check.broken_links.len();
             let target_count = grouped.len();
 
             let header = format!(
