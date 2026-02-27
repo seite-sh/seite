@@ -40,3 +40,14 @@ Analytics scripts are injected into all HTML files at build time. When `cookie_c
 
 For Plausible, `extensions` appends [script extensions](https://plausible.io/docs/script-extensions) to the filename (e.g., `script.tagged-events.outbound-links.js`). Ignored when `script_url` is set or for non-Plausible providers.
 
+### Subdomain Deploys
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"             # deploy to docs.{base_domain}
+deploy_project = "my-site-docs" # Cloudflare/Netlify project (optional)
+```
+
+When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), own sitemap, RSS, robots.txt, and search index. Internal links targeting subdomain collections are auto-rewritten to absolute URLs. The dev server previews subdomain content at `/{name}-preview/`. `deploy_project` sets the Cloudflare Pages or Netlify project name for that subdomain (auto-created by `seite deploy --setup`).
+

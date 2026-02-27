@@ -123,6 +123,16 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Brand identity builder skill (/brand-identity)",
             check: check_brand_identity_skill,
         },
+        UpgradeStep {
+            introduced_in: (0, 4, 0),
+            label: "Subdomain deploy support",
+            check: check_subdomain_deploy_docs,
+        },
+        UpgradeStep {
+            introduced_in: (0, 4, 0),
+            label: ".gitignore dist-subdomains/ entry",
+            check: check_gitignore_dist_subdomains,
+        },
     ]
 }
 
@@ -707,6 +717,73 @@ endpoint = "your-form-id"
         path,
         content: section.to_string(),
         description: "CLAUDE.md (added Contact Forms section)".into(),
+    }]
+}
+
+/// Ensure CLAUDE.md mentions subdomain deploy support.
+fn check_subdomain_deploy_docs(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join("CLAUDE.md");
+    if !path.exists() {
+        return vec![];
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    if content.contains("subdomain") || content.contains("dist-subdomains") {
+        return vec![];
+    }
+
+    let section = r#"
+
+## Subdomain Deploys
+
+Set `subdomain = "docs"` on a collection in `seite.toml` to deploy it to `docs.{base_domain}`.
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"
+deploy_project = "my-site-docs"  # optional, auto-created by deploy --setup
+```
+
+**What happens:**
+- Collection builds to `dist-subdomains/{name}/` with own sitemap, RSS, robots.txt, search index
+- Cross-subdomain links are auto-rewritten to absolute URLs (e.g., `/docs/setup` → `https://docs.example.com/setup`)
+- Dev server previews at `/{name}-preview/`
+- `seite deploy --setup` auto-creates Cloudflare/Netlify projects for subdomain collections
+- GitHub Pages does not support subdomain deploys — use Cloudflare Pages or Netlify
+"#;
+
+    vec![UpgradeAction::Append {
+        path,
+        content: section.to_string(),
+        description: "CLAUDE.md (added Subdomain Deploys section)".into(),
+    }]
+}
+
+/// Ensure .gitignore includes dist-subdomains/.
+fn check_gitignore_dist_subdomains(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join(".gitignore");
+    if !path.exists() {
+        return vec![];
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    if content.contains("dist-subdomains") {
+        return vec![];
+    }
+
+    vec![UpgradeAction::Append {
+        path,
+        content: "\n/dist-subdomains\n".to_string(),
+        description: ".gitignore (added dist-subdomains/)".into(),
     }]
 }
 

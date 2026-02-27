@@ -218,7 +218,7 @@ fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonR
         } else {
             0
         };
-        collections.push(serde_json::json!({
+        let mut entry = serde_json::json!({
             "name": coll.name,
             "label": coll.label,
             "items": count,
@@ -226,7 +226,15 @@ fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonR
             "has_rss": coll.has_rss,
             "nested": coll.nested,
             "url_prefix": coll.url_prefix,
-        }));
+        });
+        if let Some(ref subdomain) = coll.subdomain {
+            entry["subdomain"] = serde_json::json!(subdomain);
+            entry["subdomain_url"] = serde_json::json!(config.subdomain_base_url(subdomain));
+        }
+        if let Some(ref deploy_project) = coll.deploy_project {
+            entry["deploy_project"] = serde_json::json!(deploy_project);
+        }
+        collections.push(entry);
     }
 
     let text = serde_json::to_string_pretty(&collections).unwrap_or_default();

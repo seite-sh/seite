@@ -186,14 +186,32 @@ fn call_build(
                 .map(|(k, v)| (k.clone(), serde_json::json!(v)))
                 .collect();
 
-            Ok(serde_json::json!({
+            let mut response = serde_json::json!({
                 "success": true,
                 "items_built": items_built,
                 "static_files_copied": result.stats.static_files_copied,
                 "public_files_copied": result.stats.public_files_copied,
                 "data_files_loaded": result.stats.data_files_loaded,
                 "duration_ms": result.stats.duration_ms,
-            }))
+            });
+
+            if !result.subdomain_builds.is_empty() {
+                let subdomains: Vec<serde_json::Value> = result
+                    .subdomain_builds
+                    .iter()
+                    .map(|sb| {
+                        serde_json::json!({
+                            "collection": sb.collection_name,
+                            "subdomain": sb.subdomain,
+                            "base_url": sb.base_url,
+                            "output_dir": sb.output_dir.display().to_string(),
+                        })
+                    })
+                    .collect();
+                response["subdomain_builds"] = serde_json::json!(subdomains);
+            }
+
+            Ok(response)
         }
         Err(e) => Ok(serde_json::json!({
             "success": false,

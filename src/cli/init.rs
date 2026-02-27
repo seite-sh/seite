@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use crate::config::{CollectionConfig, DeployTarget};
+use crate::config::{CollectionConfig, DeployTarget, SiteConfig};
 use crate::content;
 use crate::meta;
 use crate::output::human;
@@ -404,6 +404,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::write(
         root.join("CLAUDE.md"),
         generate_claude_md(
+            &config,
             &title,
             &description,
             &collections,
@@ -804,6 +805,7 @@ pub fn mcp_server_block() -> serde_json::Value {
 
 /// Generate a CLAUDE.md tailored to the site's collections and structure.
 fn generate_claude_md(
+    config: &SiteConfig,
     title: &str,
     description: &str,
     collections: &[CollectionConfig],
@@ -869,6 +871,9 @@ fn generate_claude_md(
         "data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n",
     );
     md.push_str("dist/            # Build output (generated, do not edit)\n");
+    if config.has_subdomains() {
+        md.push_str("dist-subdomains/ # Subdomain collection output (one dir per subdomain)\n");
+    }
     md.push_str("seite.toml        # Site configuration\n");
     md.push_str("```\n\n");
 
@@ -898,6 +903,16 @@ fn generate_claude_md(
         }
         if c.has_rss {
             md.push_str("- Included in RSS feed (`/feed.xml`)\n");
+        }
+        if let Some(ref subdomain) = c.subdomain {
+            let sub_url = config.subdomain_base_url(subdomain);
+            md.push_str(&format!("- **Subdomain**: `{subdomain}` → `{sub_url}`\n"));
+            md.push_str("- Built to `dist-subdomains/` with own sitemap, RSS, robots.txt\n");
+            md.push_str("- Cross-subdomain links are auto-rewritten to absolute URLs\n");
+            md.push_str(&format!("- Dev server preview: `/{subdomain}-preview/`\n"));
+            if let Some(ref dp) = c.deploy_project {
+                md.push_str(&format!("- Deploy project: `{dp}`\n"));
+            }
         }
         if c.name == "changelog" {
             md.push_str("- Tag conventions: `new` (features), `fix` (bug fixes), `breaking` (breaking changes), `improvement` (enhancements), `deprecated` (deprecations)\n");
