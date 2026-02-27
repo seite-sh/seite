@@ -181,7 +181,7 @@ scripts/
 2.5. Load data files (YAML/JSON/TOML from `data/` directory → `{{ data.filename }}` in templates)
 3. Process each collection: walk content dir, parse frontmatter, **expand shortcodes**, render markdown to HTML, detect language from filename, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
 3b. Inject i18n context — compute `lang_prefix` (empty for default language, `"/{lang}"` for others), `default_language`, and `t` (UI strings merged from defaults + `data/i18n/{lang}.yaml`) into every template context
-4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md`. Also renders: paginated collection indexes, 404 page, tag index + per-tag archive pages
+4. Render index page(s) — per-language if multilingual, with optional homepage content from `content/pages/index.md` or collection `index.md` for subdomain roots. Also renders: paginated collection indexes (with optional collection `index.md` content on page 1), non-paginated collection indexes (with optional collection `index.md` content), 404 page, tag index + per-tag archive pages
 5. Generate RSS feed(s) — default language at `/feed.xml`, per-language at `/{lang}/feed.xml`
 6. Generate sitemap — all items, with `xhtml:link` alternates for translations
 7. Generate discovery files — per-language `llms.txt` and `llms-full.txt`
@@ -747,6 +747,16 @@ Filename-based translation system. Fully backward compatible — single-language
 
 If `content/pages/index.md` exists, its rendered content is injected into the index template context as `{{ page.content }}`. This allows custom hero/landing content on the homepage while still listing collections below it. The homepage page is extracted from the pages collection before rendering, so it doesn't collide with `dist/index.html`. Translations of the homepage (`index.es.md`) work as expected.
 
+### Collection Index Pages
+
+Any collection can have a custom index page via `content/{collection}/index.md`. This works identically to the homepage pattern: the `index.md` content is extracted from the collection (so it doesn't appear as a regular item) and injected into the collection's index template context as `{{ page.content }}`.
+
+This powers:
+- **Collection landing pages**: `content/docs/index.md` → custom content at `/docs/`
+- **Subdomain root pages**: when a collection has `subdomain` set, its `index.md` becomes the subdomain root content (e.g., `docs.example.com/`)
+- **Paginated collections**: `index.md` content appears only on page 1
+
+All frontmatter fields from the `index.md` are available in the template context (`page.title`, `page.description`, `page.extra`, etc.).
 
 ### Theme Builder Skill (Claude Code)
 

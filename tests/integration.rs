@@ -8944,3 +8944,171 @@ fn test_subdomain_base_url_without_subdomain_fails() {
         .failure()
         .stderr(predicate::str::contains("requires subdomain to be set"));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Collection index page tests (content/{collection}/index.md)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_collection_index_page_content_on_collection_index() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "col_idx1", "Collection Index", "docs,pages");
+    let site_dir = tmp.path().join("col_idx1");
+
+    // Create a collection index page
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Documentation Hub\ndescription: Welcome to our docs\n---\n\nWelcome to the **documentation hub**. Browse our guides below.\n",
+    )
+    .unwrap();
+
+    // Create a regular doc item
+    fs::write(
+        site_dir.join("content/docs/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: How to set up\n---\nSetup instructions.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The collection index page should inject content into the docs index
+    let index_html = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        index_html.contains("documentation hub"),
+        "collection index.md content should appear on collection index page"
+    );
+    assert!(
+        index_html.contains("Documentation Hub"),
+        "collection index.md title should be used"
+    );
+
+    // The regular doc should still be rendered
+    assert!(site_dir.join("dist/docs/setup.html").exists());
+
+    // The index.md should NOT be rendered as a standalone item
+    assert!(
+        !site_dir.join("dist/docs/index.html").exists() || index_html.contains("documentation hub"),
+        "index.md should be the collection index, not a standalone item"
+    );
+}
+
+#[test]
+fn test_collection_index_page_excluded_from_items() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "col_idx2", "Col Index Excl", "docs,pages");
+    let site_dir = tmp.path().join("col_idx2");
+
+    // Create a collection index page and a regular doc
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs Home\ndescription: Home\n---\nDocs home content.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: User Guide\ndescription: Guide\n---\nGuide content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The main site index should list docs as a collection but the index.md
+    // should not appear as a separate item
+    let main_index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        main_index.contains("User Guide"),
+        "regular doc should appear in listings"
+    );
+    // The index.md should not appear as a listed item (it's extracted)
+    assert!(
+        !main_index.contains("/docs/index"),
+        "collection index.md should not appear as a listed item"
+    );
+}
+
+#[test]
+fn test_subdomain_root_uses_collection_index_page() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_idx");
+    let site_dir = tmp.path().join("sub_idx");
+
+    // Create a collection index page for the subdomain collection
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Developer Docs\ndescription: API documentation and guides\n---\n\nWelcome to **developer docs**. Explore our comprehensive API guides.\n",
+    )
+    .unwrap();
+
+    // Create a regular doc
+    fs::write(
+        site_dir.join("content/docs/api-reference.md"),
+        "---\ntitle: API Reference\ndescription: Full API docs\n---\nAPI endpoint details.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root should have the index.md content
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("developer docs"),
+        "subdomain root should render collection index.md content"
+    );
+    assert!(
+        subdomain_index.contains("Developer Docs"),
+        "subdomain root should use collection index.md title"
+    );
+    assert!(
+        subdomain_index.contains("API documentation and guides"),
+        "subdomain root should use collection index.md description"
+    );
+
+    // Regular doc should still render at subdomain root level
+    assert!(
+        site_dir
+            .join("dist-subdomains/docs/api-reference.html")
+            .exists(),
+        "regular docs should still be rendered in subdomain"
+    );
+}
+
+#[test]
+fn test_subdomain_root_without_collection_index_still_works() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_noidx");
+    let site_dir = tmp.path().join("sub_noidx");
+
+    // Only create a regular doc, no index.md
+    fs::write(
+        site_dir.join("content/docs/tutorial.md"),
+        "---\ntitle: Tutorial\ndescription: A tutorial\n---\nTutorial content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Should still produce a valid subdomain root index
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("Tutorial"),
+        "subdomain root should list collection items even without index.md"
+    );
+}

@@ -206,6 +206,16 @@ When `subdomain` is set:
 - It gets its own sitemap, RSS, robots.txt, llms.txt, and search index
 - It's excluded from the main site's build output
 
+### Subdomain Root Page
+
+To customize what appears at the subdomain root (e.g., `docs.example.com/`), create `content/{collection}/index.md`:
+
+```
+content/docs/index.md    → docs.example.com/  (subdomain root)
+```
+
+The `index.md` content is injected into the index template as `{{ page.content }}`, exactly like `content/pages/index.md` works for the main site homepage. This lets you add a custom hero, introduction, or landing page above the collection listing. Without an `index.md`, the subdomain root shows a plain collection listing.
+
 If your `base_url` contains `www` (e.g., `https://www.example.com`), the auto-derived URL would be `docs.www.example.com`. Use `subdomain_base_url` to set an explicit override:
 
 ```toml
@@ -219,6 +229,19 @@ deploy_project = "my-docs"
 The dev server previews subdomain content at `/{name}-preview/` (e.g., `localhost:3000/docs-preview/`).
 
 Deploy with `seite deploy` — subdomain collections are deployed automatically after the main site. GitHub Pages does not support per-collection subdomains; use Cloudflare Pages or Netlify.
+
+## Collection Index Pages
+
+Any collection can have a custom index page by creating `content/{collection}/index.md`. This content is injected into the collection's index template as `{{ page.content }}`:
+
+```
+content/docs/index.md        → /docs/     (collection index)
+content/changelog/index.md   → /changelog/ (collection index)
+```
+
+This works identically to how `content/pages/index.md` provides content for the site homepage. The `index.md` is extracted from the collection — it won't appear as a regular item in listings. All frontmatter fields are available in the template context (`page.title`, `page.description`, `page.extra`, etc.).
+
+For paginated collections, the `index.md` content appears only on page 1.
 
 ## Pagination
 

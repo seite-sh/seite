@@ -802,6 +802,30 @@ fn build_site_inner(
         })
         .unwrap_or_default();
 
+    // Extract collection index pages (content/{collection}/index.md and translations)
+    // so they don't render as standalone items but instead inject content into the
+    // collection's index page — the same pattern as content/pages/index.md for the
+    // site homepage. This also powers subdomain root pages: when a collection is
+    // deployed to its own subdomain, its index.md becomes the subdomain root content.
+    let mut collection_index_pages: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    for (name, items) in all_collections.iter_mut() {
+        if name == "pages" {
+            continue; // pages/index.md is already handled above as the site homepage
+        }
+        let mut index_items = Vec::new();
+        let mut i = 0;
+        while i < items.len() {
+            if items[i].slug == "index" {
+                index_items.push(items.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        if !index_items.is_empty() {
+            collection_index_pages.insert(name.clone(), index_items);
+        }
+    }
+
     // Step 4: Render index page(s)
     let step_start = Instant::now();
     for lang in &config.all_languages() {
@@ -879,6 +903,38 @@ fn build_site_inner(
                 excerpt: homepage.excerpt_html.clone(),
                 toc: homepage.toc.clone(),
                 extra: homepage.frontmatter.extra.clone(),
+            }
+        } else if let Some(col_index) = config
+            .collections
+            .iter()
+            .find(|c| c.url_prefix.is_empty())
+            .and_then(|c| {
+                collection_index_pages
+                    .get(&c.name)
+                    .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+            })
+        {
+            // Subdomain root: use the collection's index.md as homepage content
+            PageContext {
+                title: col_index.frontmatter.title.clone(),
+                content: col_index.html_body.clone(),
+                date: col_index.frontmatter.date.map(|d| d.to_string()),
+                updated: col_index.frontmatter.updated.map(|d| d.to_string()),
+                description: col_index.frontmatter.description.clone(),
+                image: absolutize_image(
+                    col_index.frontmatter.image.as_deref(),
+                    &config.site.base_url,
+                ),
+                slug: col_index.slug.clone(),
+                tags: col_index.frontmatter.tags.clone(),
+                url: index_page_url,
+                collection: col_index.collection.clone(),
+                robots: col_index.frontmatter.robots.clone(),
+                word_count: col_index.word_count,
+                reading_time: col_index.reading_time,
+                excerpt: col_index.excerpt_html.clone(),
+                toc: col_index.toc.clone(),
+                extra: col_index.frontmatter.extra.clone(),
             }
         } else {
             PageContext {
@@ -1031,25 +1087,58 @@ fn build_site_inner(
                 // Always provide a page context so SEO meta tags can access page.url etc.
                 // Insert items directly so collection-specific index templates can use {% for item in items %}
                 ctx.insert("items", &chunk.to_vec());
+
+                // On page 1, inject collection's index.md content if available
+                let col_index_page = if page_num == 1 {
+                    collection_index_pages
+                        .get(&c.name)
+                        .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+                } else {
+                    None
+                };
                 ctx.insert(
                     "page",
-                    &PageContext {
-                        title: String::new(),
-                        content: String::new(),
-                        date: None,
-                        updated: None,
-                        description: None,
-                        image: None,
-                        slug: String::new(),
-                        tags: Vec::new(),
-                        url: page_url(page_num),
-                        collection: String::new(),
-                        robots: None,
-                        word_count: 0,
-                        reading_time: 0,
-                        excerpt: String::new(),
-                        toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
+                    &if let Some(ci) = col_index_page {
+                        PageContext {
+                            title: ci.frontmatter.title.clone(),
+                            content: ci.html_body.clone(),
+                            date: ci.frontmatter.date.map(|d| d.to_string()),
+                            updated: ci.frontmatter.updated.map(|d| d.to_string()),
+                            description: ci.frontmatter.description.clone(),
+                            image: absolutize_image(
+                                ci.frontmatter.image.as_deref(),
+                                &config.site.base_url,
+                            ),
+                            slug: url_prefix_trimmed.to_string(),
+                            tags: ci.frontmatter.tags.clone(),
+                            url: page_url(page_num),
+                            collection: c.name.clone(),
+                            robots: ci.frontmatter.robots.clone(),
+                            word_count: ci.word_count,
+                            reading_time: ci.reading_time,
+                            excerpt: ci.excerpt_html.clone(),
+                            toc: ci.toc.clone(),
+                            extra: ci.frontmatter.extra.clone(),
+                        }
+                    } else {
+                        PageContext {
+                            title: String::new(),
+                            content: String::new(),
+                            date: None,
+                            updated: None,
+                            description: None,
+                            image: None,
+                            slug: String::new(),
+                            tags: Vec::new(),
+                            url: page_url(page_num),
+                            collection: String::new(),
+                            robots: None,
+                            word_count: 0,
+                            reading_time: 0,
+                            excerpt: String::new(),
+                            toc: Vec::new(),
+                            extra: std::collections::HashMap::new(),
+                        }
                     },
                 );
                 // Use collection-specific index template if available (e.g., changelog-index.html)
@@ -1150,25 +1239,54 @@ fn build_site_inner(
             ctx.insert("collections", &[collection_ctx]);
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
+
+            // Use collection's index.md content if available (content/{collection}/index.md)
+            let col_index_page = collection_index_pages
+                .get(&c.name)
+                .and_then(|pages| pages.iter().find(|p| p.lang == *lang));
             ctx.insert(
                 "page",
-                &PageContext {
-                    title: c.label.clone(),
-                    content: String::new(),
-                    date: None,
-                    updated: None,
-                    description: None,
-                    image: None,
-                    slug: url_prefix_trimmed.to_string(),
-                    tags: Vec::new(),
-                    url: collection_url.clone(),
-                    collection: c.name.clone(),
-                    robots: None,
-                    word_count: 0,
-                    reading_time: 0,
-                    excerpt: String::new(),
-                    toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
+                &if let Some(ci) = col_index_page {
+                    PageContext {
+                        title: ci.frontmatter.title.clone(),
+                        content: ci.html_body.clone(),
+                        date: ci.frontmatter.date.map(|d| d.to_string()),
+                        updated: ci.frontmatter.updated.map(|d| d.to_string()),
+                        description: ci.frontmatter.description.clone(),
+                        image: absolutize_image(
+                            ci.frontmatter.image.as_deref(),
+                            &config.site.base_url,
+                        ),
+                        slug: url_prefix_trimmed.to_string(),
+                        tags: ci.frontmatter.tags.clone(),
+                        url: collection_url.clone(),
+                        collection: c.name.clone(),
+                        robots: ci.frontmatter.robots.clone(),
+                        word_count: ci.word_count,
+                        reading_time: ci.reading_time,
+                        excerpt: ci.excerpt_html.clone(),
+                        toc: ci.toc.clone(),
+                        extra: ci.frontmatter.extra.clone(),
+                    }
+                } else {
+                    PageContext {
+                        title: c.label.clone(),
+                        content: String::new(),
+                        date: None,
+                        updated: None,
+                        description: None,
+                        image: None,
+                        slug: url_prefix_trimmed.to_string(),
+                        tags: Vec::new(),
+                        url: collection_url.clone(),
+                        collection: c.name.clone(),
+                        robots: None,
+                        word_count: 0,
+                        reading_time: 0,
+                        excerpt: String::new(),
+                        toc: Vec::new(),
+                        extra: std::collections::HashMap::new(),
+                    }
                 },
             );
 
