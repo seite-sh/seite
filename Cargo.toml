@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -49,6 +49,9 @@ tiny_http = "0.12"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+
+# Parallelism
+rayon = "1.10"
 
 # File system utilities
 walkdir = "2"

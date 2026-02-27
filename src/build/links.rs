@@ -74,13 +74,22 @@ pub fn check_internal_links(output_dir: &Path) -> Result<LinkCheckResult> {
 /// - Clean URL for `.html` files: `/posts/hello-world` (from `posts/hello-world.html`)
 /// - Directory index variants: `/posts/` and `/posts` (from `posts/index.html`)
 fn build_valid_urls(output_dir: &Path) -> HashSet<String> {
-    let mut urls = HashSet::new();
-
-    for entry in WalkDir::new(output_dir)
+    let entries: Vec<_> = WalkDir::new(output_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
-    {
+        .collect();
+    build_valid_urls_from_entries(output_dir, &entries)
+}
+
+/// Build valid URL set from pre-collected WalkDir entries (avoids a redundant walk).
+pub fn build_valid_urls_from_entries(
+    output_dir: &Path,
+    entries: &[walkdir::DirEntry],
+) -> HashSet<String> {
+    let mut urls = HashSet::new();
+
+    for entry in entries {
         let rel = entry
             .path()
             .strip_prefix(output_dir)
@@ -115,7 +124,7 @@ fn build_valid_urls(output_dir: &Path) -> HashSet<String> {
 /// and query strings, and returns deduplicated paths. Only paths starting with
 /// `/` are considered internal links. External URLs, anchors, and relative paths
 /// are ignored.
-fn extract_internal_links(html: &str) -> Vec<String> {
+pub fn extract_internal_links(html: &str) -> Vec<String> {
     let mut links = Vec::new();
     let mut seen = HashSet::new();
     let bytes = html.as_bytes();
