@@ -81,7 +81,11 @@ has_rss = true
 listed = true
 nested = false
 paginate = 10
+subdomain = "blog"          # optional: deploy to blog.example.com
+deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
 ```
+
+When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), its own base URL (`https://{subdomain}.{base_domain}`), and its own sitemap, RSS, robots.txt, llms.txt, and search index. The collection is excluded from the main site build. See [Collections](/docs/collections) for details.
 
 ## [build]
 

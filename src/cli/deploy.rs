@@ -249,6 +249,69 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
+    // --- Deploy subdomain collections ---
+    for collection in config.subdomain_collections() {
+        let subdomain = collection.subdomain.as_ref().unwrap();
+        let subdomain_output = paths.subdomain_output(&collection.name);
+
+        if !subdomain_output.exists() {
+            human::warning(&format!(
+                "Subdomain output for '{subdomain}' not found at {} — skipping",
+                subdomain_output.display()
+            ));
+            continue;
+        }
+
+        let sub_url = config.subdomain_base_url(subdomain);
+        human::info(&format!("Deploying subdomain: {sub_url}"));
+
+        let mut sub_paths = paths.clone();
+        sub_paths.output = subdomain_output;
+
+        match target_str.as_str() {
+            "github-pages" => {
+                human::warning(&format!(
+                    "GitHub Pages does not support per-collection subdomains. \
+                     Skipping deploy for '{subdomain}'. Consider Cloudflare Pages or Netlify."
+                ));
+            }
+            "cloudflare" => {
+                let project = collection
+                    .deploy_project
+                    .as_deref()
+                    .or(config.deploy.project.as_deref());
+                if let Some(proj) = project {
+                    match deploy::deploy_cloudflare(&sub_paths, proj, preview) {
+                        Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
+                        Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
+                        Err(e) => {
+                            human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                        }
+                    }
+                } else {
+                    human::warning(&format!(
+                        "No deploy_project for subdomain '{subdomain}'. \
+                         Set deploy_project on the collection or deploy.project globally."
+                    ));
+                }
+            }
+            "netlify" => {
+                let project = collection
+                    .deploy_project
+                    .as_deref()
+                    .or(config.deploy.project.as_deref());
+                match deploy::deploy_netlify(&sub_paths, project, preview) {
+                    Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
+                    Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
+                    Err(e) => {
+                        human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     // --- Post-deploy verification ---
     if args.verify || !preview {
         // Auto-verify on production deploys, skip on preview unless --verify
@@ -434,6 +497,65 @@ fn run_setup(
     deploy::update_deploy_config(config_path, &config_updates)?;
     human::success("Updated seite.toml with deploy configuration");
 
+    // Auto-create projects for subdomain collections
+    let subdomain_collections = config.subdomain_collections();
+    if !subdomain_collections.is_empty() {
+        let main_project = config_updates.get("project").cloned().unwrap_or_else(|| {
+            paths
+                .root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("my-site")
+                .to_string()
+        });
+
+        match target_str {
+            "github-pages" => {
+                human::warning("GitHub Pages does not support per-collection subdomain deploys.");
+                human::info("Consider using Cloudflare Pages or Netlify for subdomain support.");
+            }
+            "cloudflare" => {
+                println!();
+                human::header("Setting up subdomain deploy projects");
+                for collection in &subdomain_collections {
+                    let subdomain = collection.subdomain.as_ref().unwrap();
+                    let project_name = format!("{main_project}-{subdomain}");
+                    if let Ok(name) = deploy::deploy_init_cloudflare_project(&project_name) {
+                        deploy::update_collection_deploy_project(
+                            config_path,
+                            &collection.name,
+                            &name,
+                        )?;
+                        human::success(&format!(
+                            "Collection '{}' → Cloudflare project '{name}'",
+                            collection.name
+                        ));
+                    }
+                }
+            }
+            "netlify" => {
+                println!();
+                human::header("Setting up subdomain deploy projects");
+                for collection in &subdomain_collections {
+                    let subdomain = collection.subdomain.as_ref().unwrap();
+                    let project_name = format!("{main_project}-{subdomain}");
+                    if let Ok(name) = deploy::deploy_init_netlify_project(&project_name) {
+                        deploy::update_collection_deploy_project(
+                            config_path,
+                            &collection.name,
+                            &name,
+                        )?;
+                        human::success(&format!(
+                            "Collection '{}' → Netlify site '{name}'",
+                            collection.name
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     // Offer contact form setup if not already configured
     if config.contact.is_none() {
         println!();
@@ -542,6 +664,32 @@ fn run_dry_run(
 
     if let Some(ref base_url) = args.base_url {
         human::info(&format!("  Base URL override: {base_url}"));
+    }
+
+    // Show subdomain deploy plan
+    let subdomain_collections = config.subdomain_collections();
+    if !subdomain_collections.is_empty() {
+        println!();
+        human::info("Subdomain deploys:");
+        for c in &subdomain_collections {
+            let subdomain = c.subdomain.as_ref().unwrap();
+            let subdomain_url = config.subdomain_base_url(subdomain);
+            let subdomain_output = paths.subdomain_output(&c.name);
+            let project = c
+                .deploy_project
+                .as_deref()
+                .or(config.deploy.project.as_deref())
+                .unwrap_or("(not configured)");
+            human::info(&format!("  {subdomain_url}:"));
+            human::info(&format!("    Output: {}", subdomain_output.display()));
+            human::info(&format!("    Project: {project}"));
+            if target_str == "github-pages" {
+                human::warning(
+                    "    GitHub Pages does not support per-collection subdomains. \
+                     Consider Cloudflare Pages or Netlify.",
+                );
+            }
+        }
     }
 
     human::success("Dry run complete (no changes made)");

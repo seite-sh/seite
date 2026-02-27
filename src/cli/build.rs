@@ -64,6 +64,19 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let result = build::build_site(&config, &paths, &opts)?;
     human::success(&result.stats.human_display());
 
+    // Display subdomain build results
+    for sub in &result.subdomain_builds {
+        let items: usize = sub.stats.items_built.values().sum();
+        human::success(&format!(
+            "Subdomain {}.{}: built {} item{} -> {}",
+            sub.subdomain,
+            config.base_domain().unwrap_or_default(),
+            items,
+            if items == 1 { "" } else { "s" },
+            sub.output_dir.display()
+        ));
+    }
+
     // Link validation results from the post-process pass (no extra file walk)
     if !result.link_check.broken_links.is_empty() {
         let grouped = links::group_broken_links(&result.link_check.broken_links);

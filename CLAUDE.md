@@ -172,7 +172,7 @@ scripts/
   prepare-release.sh        Scaffold new changelog entry for current version
 ```
 
-### Build Pipeline (14 steps)
+### Build Pipeline (15 steps)
 
 1. Clean output directory (`dist/`)
 1b. Copy public files (`public/` → `dist/` root, no prefix, no minification)
@@ -191,6 +191,7 @@ scripts/
 11. Process images (resize to configured widths, generate WebP and AVIF variants)
 12. Post-process HTML (rewrite `<img>` tags with srcset, `<picture>` for WebP, `loading="lazy"` — first image per page skipped for LCP)
 13. Inject analytics scripts (and optional cookie consent banner) into all HTML files
+14. Build subdomain sites — for each collection with `subdomain` set, create a synthetic config and run the full pipeline into `dist-subdomains/{name}/`
 
 ### Collections System
 
@@ -204,6 +205,8 @@ Six presets defined in `CollectionConfig::from_preset()`:
 | changelog | true  | true    | true   | false  | /changelog | changelog-entry.html |
 | roadmap | false   | false   | true   | false  | /roadmap   | roadmap-item.html |
 | trust  | false    | false   | true   | true   | /trust     | trust-item.html |
+
+Any collection can optionally set `subdomain` to deploy to `{subdomain}.{base_domain}`. When set, the collection gets its own output dir (`dist-subdomains/{name}/`), own sitemap/RSS/robots.txt, and is excluded from main site output. Optional `deploy_project` sets the Cloudflare/Netlify project for that subdomain.
 
 ### Output Pattern
 
@@ -256,6 +259,8 @@ author = ""
 [[collections]]
 name = "posts"
 # ... all CollectionConfig fields
+# subdomain = "blog"          # optional: deploy to blog.{base_domain}
+# deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
 
 [build]
 output_dir = "dist"

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::build::{self, BuildOptions};
@@ -29,6 +30,9 @@ pub fn deploy_workspace(
     let sites = ws_config
         .sites_to_operate(opts.site_filter.as_deref())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    // Cross-site domain conflict detection
+    check_domain_conflicts(ws_config, ws_root, &sites);
 
     let total = sites.len();
 
@@ -146,4 +150,75 @@ pub fn deploy_workspace(
     }
 
     Ok(())
+}
+
+/// Collect all effective domains across workspace sites and warn on conflicts.
+/// Each site contributes its base_url domain plus any subdomain collection domains.
+fn check_domain_conflicts(
+    _ws_config: &WorkspaceConfig,
+    ws_root: &Path,
+    sites: &[&super::WorkspaceSite],
+) {
+    // Map: effective domain → vec of (site_name, description)
+    let mut domain_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+
+    for ws_site in sites {
+        let Ok((config, _paths)) = load_site_in_workspace(ws_root, ws_site) else {
+            continue;
+        };
+
+        // Extract the host from base_url
+        if let Some(domain) = extract_host(&config.site.base_url) {
+            domain_map
+                .entry(domain.clone())
+                .or_default()
+                .push((ws_site.name.clone(), format!("base_url ({domain})")));
+        }
+
+        // Subdomain collection domains
+        for c in config.subdomain_collections() {
+            if let Some(ref subdomain) = c.subdomain {
+                let sub_url = config.subdomain_base_url(subdomain);
+                if let Some(domain) = extract_host(&sub_url) {
+                    domain_map.entry(domain.clone()).or_default().push((
+                        ws_site.name.clone(),
+                        format!("subdomain '{subdomain}' ({domain})"),
+                    ));
+                }
+            }
+        }
+    }
+
+    // Report conflicts (same domain claimed by different sites)
+    for (domain, sources) in &domain_map {
+        if sources.len() <= 1 {
+            continue;
+        }
+        // Check if all sources are from the same site (not a real conflict)
+        let site_names: std::collections::HashSet<&str> =
+            sources.iter().map(|(name, _)| name.as_str()).collect();
+        if site_names.len() <= 1 {
+            continue;
+        }
+
+        human::warning(&format!("Domain conflict detected for '{domain}':"));
+        for (site_name, desc) in sources {
+            human::info(&format!("  - site '{site_name}': {desc}"));
+        }
+    }
+}
+
+/// Extract the host (domain + optional port) from a URL string.
+fn extract_host(url: &str) -> Option<String> {
+    // Strip scheme
+    let after_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    // Take everything before the first '/'
+    let host = after_scheme.split('/').next()?;
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
 }

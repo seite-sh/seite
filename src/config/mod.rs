@@ -55,6 +55,15 @@ pub struct CollectionConfig {
     /// Number of items per paginated page. None means no pagination.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paginate: Option<usize>,
+    /// Deploy this collection to its own subdomain. When set, the collection gets
+    /// its own output directory, base_url, sitemap, RSS, discovery files, and search index.
+    /// Value is the subdomain prefix: `"docs"` → `docs.example.com`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdomain: Option<String>,
+    /// Cloudflare/Netlify project name for this subdomain's deploy.
+    /// Only used when `subdomain` is set. Falls back to the global `deploy.project`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deploy_project: Option<String>,
 }
 
 impl CollectionConfig {
@@ -70,6 +79,8 @@ impl CollectionConfig {
             nested: false,
             default_template: "post.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -85,6 +96,8 @@ impl CollectionConfig {
             nested: true,
             default_template: "doc.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -100,6 +113,8 @@ impl CollectionConfig {
             nested: false,
             default_template: "page.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -115,6 +130,8 @@ impl CollectionConfig {
             nested: false,
             default_template: "changelog-entry.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -130,6 +147,8 @@ impl CollectionConfig {
             nested: false,
             default_template: "roadmap-item.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -145,6 +164,8 @@ impl CollectionConfig {
             nested: true,
             default_template: "trust-item.html".into(),
             paginate: None,
+            subdomain: None,
+            deploy_project: None,
         }
     }
 
@@ -386,6 +407,13 @@ pub struct ResolvedPaths {
     pub public_dir: PathBuf,
 }
 
+impl ResolvedPaths {
+    /// Output directory for a subdomain collection (e.g., `{root}/dist-subdomains/docs/`).
+    pub fn subdomain_output(&self, collection_name: &str) -> PathBuf {
+        self.root.join("dist-subdomains").join(collection_name)
+    }
+}
+
 impl SiteConfig {
     /// Returns true if the site has any non-default languages configured.
     pub fn is_multilingual(&self) -> bool {
@@ -444,7 +472,139 @@ impl SiteConfig {
             toml::from_str(&contents).map_err(|e| PageError::ConfigInvalid {
                 message: e.to_string(),
             })?;
+        config.validate_subdomains()?;
         Ok(config)
+    }
+
+    /// Validate subdomain configuration.
+    fn validate_subdomains(&self) -> Result<()> {
+        let mut seen = std::collections::HashSet::new();
+        for c in &self.collections {
+            if let Some(ref sub) = c.subdomain {
+                if !seen.insert(sub.as_str()) {
+                    return Err(PageError::ConfigInvalid {
+                        message: format!("duplicate subdomain '{sub}' on collection '{}'", c.name),
+                    });
+                }
+            }
+            if c.deploy_project.is_some() && c.subdomain.is_none() {
+                return Err(PageError::ConfigInvalid {
+                    message: format!(
+                        "deploy_project on collection '{}' requires subdomain to be set",
+                        c.name
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns collections that have a subdomain configured.
+    pub fn subdomain_collections(&self) -> Vec<&CollectionConfig> {
+        self.collections
+            .iter()
+            .filter(|c| c.subdomain.is_some())
+            .collect()
+    }
+
+    /// Returns collections that do NOT have a subdomain (belong to the main site).
+    pub fn main_site_collections(&self) -> Vec<CollectionConfig> {
+        self.collections
+            .iter()
+            .filter(|c| c.subdomain.is_none())
+            .cloned()
+            .collect()
+    }
+
+    /// Whether any collection uses subdomains.
+    pub fn has_subdomains(&self) -> bool {
+        self.collections.iter().any(|c| c.subdomain.is_some())
+    }
+
+    /// Extract the base domain from `base_url` (e.g., `"https://example.com"` → `"example.com"`).
+    pub fn base_domain(&self) -> Option<String> {
+        let url = self.site.base_url.trim_end_matches('/');
+        url.strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+            .map(|after| after.split('/').next().unwrap_or(after).to_string())
+    }
+
+    /// Compute the subdomain base_url for a collection.
+    /// E.g., subdomain=`"docs"`, base_url=`"https://example.com"` → `"https://docs.example.com"`.
+    pub fn subdomain_base_url(&self, subdomain: &str) -> String {
+        let scheme = if self.site.base_url.starts_with("https://") {
+            "https"
+        } else {
+            "http"
+        };
+        if let Some(domain) = self.base_domain() {
+            format!("{scheme}://{subdomain}.{domain}")
+        } else {
+            format!("{scheme}://{subdomain}.localhost")
+        }
+    }
+
+    /// Build a map of URL prefixes → absolute subdomain URLs for link rewriting.
+    ///
+    /// For each collection with `subdomain` set, maps its `url_prefix` (e.g., `"/docs"`)
+    /// to the subdomain base URL (e.g., `"https://docs.example.com"`). Collections with
+    /// empty `url_prefix` are skipped (can't match on empty prefix).
+    pub fn subdomain_rewrite_map(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        for c in &self.collections {
+            if let Some(ref subdomain) = c.subdomain {
+                if !c.url_prefix.is_empty() {
+                    let prefix = if c.url_prefix.starts_with('/') {
+                        c.url_prefix.clone()
+                    } else {
+                        format!("/{}", c.url_prefix)
+                    };
+                    map.insert(prefix, self.subdomain_base_url(subdomain));
+                }
+            }
+        }
+        map
+    }
+
+    /// Build a reverse rewrite map for a subdomain site: maps main-site collection
+    /// prefixes to their absolute URLs on the main site.
+    ///
+    /// Used when building subdomain sites so links to other collections resolve
+    /// to the main site domain.
+    pub fn reverse_subdomain_rewrite_map(
+        &self,
+        exclude_collection: &str,
+    ) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        let base_url = self.site.base_url.trim_end_matches('/');
+        for c in &self.collections {
+            if c.name == exclude_collection {
+                continue;
+            }
+            // Skip subdomain collections — they get their own forward-rewrite entries
+            if c.subdomain.is_some() {
+                if !c.url_prefix.is_empty() {
+                    let prefix = if c.url_prefix.starts_with('/') {
+                        c.url_prefix.clone()
+                    } else {
+                        format!("/{}", c.url_prefix)
+                    };
+                    let subdomain = c.subdomain.as_ref().unwrap();
+                    map.insert(prefix, self.subdomain_base_url(subdomain));
+                }
+                continue;
+            }
+            // Main-site collections: map prefix → base_url + prefix
+            if !c.url_prefix.is_empty() {
+                let prefix = if c.url_prefix.starts_with('/') {
+                    c.url_prefix.clone()
+                } else {
+                    format!("/{}", c.url_prefix)
+                };
+                map.insert(prefix.clone(), format!("{base_url}{prefix}"));
+            }
+        }
+        map
     }
 
     /// Extract the URL path prefix from `base_url`.
@@ -478,5 +638,181 @@ impl SiteConfig {
             data_dir: project_root.join(&self.build.data_dir),
             public_dir: project_root.join(&self.build.public_dir),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config(base_url: &str, collections: Vec<CollectionConfig>) -> SiteConfig {
+        SiteConfig {
+            site: SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: base_url.into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections,
+            build: BuildSection::default(),
+            deploy: DeploySection::default(),
+            languages: BTreeMap::new(),
+            images: None,
+            analytics: None,
+            trust: None,
+            contact: None,
+        }
+    }
+
+    fn posts_collection() -> CollectionConfig {
+        CollectionConfig::preset_posts()
+    }
+
+    fn docs_collection_with_subdomain() -> CollectionConfig {
+        let mut c = CollectionConfig::preset_docs();
+        c.subdomain = Some("docs".into());
+        c
+    }
+
+    #[test]
+    fn test_subdomain_collections_filter() {
+        let config = make_config(
+            "https://example.com",
+            vec![posts_collection(), docs_collection_with_subdomain()],
+        );
+        let subs = config.subdomain_collections();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].name, "docs");
+    }
+
+    #[test]
+    fn test_main_site_collections_filter() {
+        let config = make_config(
+            "https://example.com",
+            vec![posts_collection(), docs_collection_with_subdomain()],
+        );
+        let main = config.main_site_collections();
+        assert_eq!(main.len(), 1);
+        assert_eq!(main[0].name, "posts");
+    }
+
+    #[test]
+    fn test_has_subdomains_true() {
+        let config = make_config(
+            "https://example.com",
+            vec![posts_collection(), docs_collection_with_subdomain()],
+        );
+        assert!(config.has_subdomains());
+    }
+
+    #[test]
+    fn test_has_subdomains_false() {
+        let config = make_config("https://example.com", vec![posts_collection()]);
+        assert!(!config.has_subdomains());
+    }
+
+    #[test]
+    fn test_base_domain_https() {
+        let config = make_config("https://example.com", vec![]);
+        assert_eq!(config.base_domain(), Some("example.com".into()));
+    }
+
+    #[test]
+    fn test_base_domain_http_localhost() {
+        let config = make_config("http://localhost:3000", vec![]);
+        assert_eq!(config.base_domain(), Some("localhost:3000".into()));
+    }
+
+    #[test]
+    fn test_base_domain_with_path() {
+        let config = make_config("https://user.github.io/repo", vec![]);
+        assert_eq!(config.base_domain(), Some("user.github.io".into()));
+    }
+
+    #[test]
+    fn test_subdomain_base_url() {
+        let config = make_config("https://example.com", vec![]);
+        assert_eq!(
+            config.subdomain_base_url("docs"),
+            "https://docs.example.com"
+        );
+    }
+
+    #[test]
+    fn test_subdomain_base_url_http() {
+        let config = make_config("http://localhost:3000", vec![]);
+        assert_eq!(
+            config.subdomain_base_url("docs"),
+            "http://docs.localhost:3000"
+        );
+    }
+
+    #[test]
+    fn test_validate_subdomains_duplicate() {
+        let mut docs2 = CollectionConfig::preset_pages();
+        docs2.subdomain = Some("docs".into());
+        let config = make_config(
+            "https://example.com",
+            vec![docs_collection_with_subdomain(), docs2],
+        );
+        let err = config.validate_subdomains().unwrap_err();
+        assert!(err.to_string().contains("duplicate subdomain 'docs'"));
+    }
+
+    #[test]
+    fn test_validate_deploy_project_without_subdomain() {
+        let mut posts = posts_collection();
+        posts.deploy_project = Some("my-project".into());
+        let config = make_config("https://example.com", vec![posts]);
+        let err = config.validate_subdomains().unwrap_err();
+        assert!(err.to_string().contains("requires subdomain"));
+    }
+
+    #[test]
+    fn test_validate_subdomains_ok() {
+        let config = make_config(
+            "https://example.com",
+            vec![posts_collection(), docs_collection_with_subdomain()],
+        );
+        assert!(config.validate_subdomains().is_ok());
+    }
+
+    #[test]
+    fn test_subdomain_config_deserialization() {
+        let toml = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "docs"
+label = "Docs"
+directory = "docs"
+url_prefix = "/docs"
+default_template = "doc.html"
+subdomain = "docs"
+deploy_project = "my-docs"
+"#;
+        let config: SiteConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.collections[0].subdomain, Some("docs".into()));
+        assert_eq!(config.collections[0].deploy_project, Some("my-docs".into()));
+    }
+
+    #[test]
+    fn test_subdomain_output_path() {
+        let paths = ResolvedPaths {
+            root: PathBuf::from("/project"),
+            output: PathBuf::from("/project/dist"),
+            content: PathBuf::from("/project/content"),
+            templates: PathBuf::from("/project/templates"),
+            static_dir: PathBuf::from("/project/static"),
+            data_dir: PathBuf::from("/project/data"),
+            public_dir: PathBuf::from("/project/public"),
+        };
+        assert_eq!(
+            paths.subdomain_output("docs"),
+            PathBuf::from("/project/dist-subdomains/docs")
+        );
     }
 }

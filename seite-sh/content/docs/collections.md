@@ -55,6 +55,8 @@ paginate = 10
 | `listed` | bool | preset-based | Show on index page |
 | `nested` | bool | preset-based | Support subdirectories as groups |
 | `paginate` | int | none | Items per page (enables pagination) |
+| `subdomain` | string | none | Deploy to `{subdomain}.{base_domain}` |
+| `deploy_project` | string | none | Cloudflare/Netlify project for subdomain |
 
 ## Posts
 
@@ -183,6 +185,29 @@ Three index layouts are available. The default groups items by status. To switch
 ```bash
 seite new roadmap "Feature Name" --tags planned
 ```
+
+## Subdomains
+
+Any collection can be deployed to its own subdomain. Set `subdomain` on the collection:
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"           # → docs.example.com
+deploy_project = "my-docs"   # optional: Cloudflare/Netlify project name
+```
+
+When `subdomain` is set:
+
+- The collection gets its own output directory: `dist-subdomains/docs/`
+- Its base URL becomes `https://docs.{base_domain}`
+- Content is served at the subdomain root (no URL prefix)
+- It gets its own sitemap, RSS, robots.txt, llms.txt, and search index
+- It's excluded from the main site's build output
+
+The dev server previews subdomain content at `/{name}-preview/` (e.g., `localhost:3000/docs-preview/`).
+
+Deploy with `seite deploy` — subdomain collections are deployed automatically after the main site. GitHub Pages does not support per-collection subdomains; use Cloudflare Pages or Netlify.
 
 ## Pagination
 

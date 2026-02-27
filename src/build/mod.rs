@@ -32,6 +32,17 @@ pub struct BuildResult {
     pub collections: HashMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
     pub link_check: links::LinkCheckResult,
+    /// Per-subdomain build results.
+    pub subdomain_builds: Vec<SubdomainBuildInfo>,
+}
+
+/// Build info for a single subdomain collection.
+pub struct SubdomainBuildInfo {
+    pub collection_name: String,
+    pub subdomain: String,
+    pub output_dir: PathBuf,
+    pub base_url: String,
+    pub stats: BuildStats,
 }
 
 #[derive(Debug, Serialize)]
@@ -215,6 +226,119 @@ pub fn build_site(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
+) -> Result<BuildResult> {
+    // If there are subdomain collections, build a filtered config for the main site
+    // that excludes them. Subdomain collections are built separately at the end.
+    let has_subdomains = config.has_subdomains();
+    let main_config;
+    let effective_config = if has_subdomains {
+        main_config = {
+            let mut c = config.clone();
+            c.collections = config.main_site_collections();
+            c
+        };
+        &main_config
+    } else {
+        config
+    };
+
+    // Clean subdomain output directories before building
+    if has_subdomains {
+        let subdomains_root = paths.root.join("dist-subdomains");
+        if subdomains_root.exists() {
+            fs::remove_dir_all(&subdomains_root)?;
+        }
+    }
+
+    // Compute the subdomain rewrite map from the ORIGINAL config (before filtering),
+    // since the main-site config has subdomain collections removed.
+    let main_rewrites = if has_subdomains {
+        config.subdomain_rewrite_map()
+    } else {
+        HashMap::new()
+    };
+    let rewrites_ref = if main_rewrites.is_empty() {
+        None
+    } else {
+        Some(&main_rewrites)
+    };
+
+    let result = build_site_inner(effective_config, paths, opts, rewrites_ref)?;
+
+    // Build subdomain collections into their own output directories
+    let subdomain_builds = if has_subdomains {
+        build_subdomain_sites(config, paths, opts)?
+    } else {
+        Vec::new()
+    };
+
+    Ok(BuildResult {
+        collections: result.collections,
+        stats: result.stats,
+        link_check: result.link_check,
+        subdomain_builds,
+    })
+}
+
+/// Build each subdomain collection as an independent mini-site.
+///
+/// For each collection with `subdomain` set, construct a synthetic `SiteConfig`
+/// with only that collection and call the build pipeline on it with a separate
+/// output directory and subdomain-specific `base_url`.
+fn build_subdomain_sites(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+) -> Result<Vec<SubdomainBuildInfo>> {
+    let mut results = Vec::new();
+
+    for collection in config.subdomain_collections() {
+        let subdomain = collection.subdomain.as_ref().unwrap();
+        let subdomain_base_url = config.subdomain_base_url(subdomain);
+        let subdomain_output = paths.subdomain_output(&collection.name);
+
+        // Build a synthetic config for this subdomain
+        let mut sub_config = config.clone();
+        sub_config.site.base_url = subdomain_base_url.clone();
+
+        // Clear subdomain field and use root url_prefix to prevent recursion
+        let mut sub_collection = collection.clone();
+        sub_collection.url_prefix = String::new();
+        sub_collection.subdomain = None;
+        sub_collection.deploy_project = None;
+        sub_config.collections = vec![sub_collection];
+
+        // Create subdomain-specific paths
+        let mut sub_paths = paths.clone();
+        sub_paths.output = subdomain_output.clone();
+
+        // Build reverse rewrite map: links from subdomain content to other collections
+        // resolve to absolute URLs on the main site (or other subdomains)
+        let reverse_rewrites = config.reverse_subdomain_rewrite_map(&collection.name);
+
+        let sub_result = build_site_inner(&sub_config, &sub_paths, opts, Some(&reverse_rewrites))?;
+
+        results.push(SubdomainBuildInfo {
+            collection_name: collection.name.clone(),
+            subdomain: subdomain.clone(),
+            output_dir: subdomain_output,
+            base_url: subdomain_base_url,
+            stats: sub_result.stats,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Inner build pipeline. This is the actual 14-step build.
+///
+/// `subdomain_rewrites_override`: if `Some`, used instead of computing from config.
+/// This allows subdomain builds to receive reverse-rewrite maps (subdomain→main site links).
+fn build_site_inner(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+    subdomain_rewrites_override: Option<&HashMap<String, String>>,
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
@@ -1575,15 +1699,24 @@ pub fn build_site(
     ));
 
     // Step 12: Post-process all HTML files in a single pass
-    // (image srcset, code copy buttons, base path rewriting, analytics injection)
+    // (image srcset, code copy buttons, subdomain link rewriting, base path rewriting, analytics)
     let step_start = Instant::now();
     let lazy_loading = config.images.as_ref().is_some_and(|img| img.lazy_loading);
     let needs_image_rewrite = !image_manifest.is_empty() || lazy_loading;
     let site_base_path = config.base_path();
+    let computed_rewrites;
+    let subdomain_rewrites = match subdomain_rewrites_override {
+        Some(overrides) => overrides,
+        None => {
+            computed_rewrites = config.subdomain_rewrite_map();
+            &computed_rewrites
+        }
+    };
     let post_ctx = HtmlPostProcessContext {
         image_manifest: &image_manifest,
         lazy_loading,
         needs_image_rewrite,
+        subdomain_rewrites,
         base_path: &site_base_path,
         analytics: config.analytics.as_ref(),
     };
@@ -1632,6 +1765,7 @@ pub fn build_site(
         collections: all_collections,
         stats,
         link_check,
+        subdomain_builds: Vec::new(),
     })
 }
 
@@ -1640,6 +1774,7 @@ struct HtmlPostProcessContext<'a> {
     image_manifest: &'a HashMap<String, images::ProcessedImage>,
     lazy_loading: bool,
     needs_image_rewrite: bool,
+    subdomain_rewrites: &'a HashMap<String, String>,
     base_path: &'a str,
     analytics: Option<&'a AnalyticsSection>,
 }
@@ -1686,12 +1821,17 @@ fn post_process_html_files(
                     html = code_copy::inject_code_copy(&html);
                 }
 
-                // 3. Base path URL rewriting
+                // 3. Cross-subdomain link rewriting
+                if !ctx.subdomain_rewrites.is_empty() {
+                    html = links::rewrite_subdomain_links(&html, ctx.subdomain_rewrites);
+                }
+
+                // 4. Base path URL rewriting
                 if !ctx.base_path.is_empty() {
                     html = base_path::rewrite_html_urls(&html, ctx.base_path);
                 }
 
-                // 4. Analytics injection
+                // 5. Analytics injection
                 if let Some(analytics_config) = ctx.analytics {
                     html = analytics::inject_analytics(&html, analytics_config);
                 }
@@ -1701,7 +1841,7 @@ fn post_process_html_files(
                     fs::write(entry.path(), &html).map_err(PageError::from)?;
                 }
 
-                // 5. Extract internal links from final HTML for validation
+                // 6. Extract internal links from final HTML for validation
                 let internal_links = links::extract_internal_links(&html);
                 let link_count = internal_links.len();
                 let rel_path = entry

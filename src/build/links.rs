@@ -172,6 +172,116 @@ pub fn extract_internal_links(html: &str) -> Vec<String> {
     links
 }
 
+/// Rewrite internal links that target subdomain collections to absolute URLs.
+///
+/// Given a map of URL path prefixes to absolute base URLs, scans `href="..."` values
+/// and rewrites matching paths. For example, with `{"/docs" => "https://docs.example.com"}`:
+/// - `href="/docs/setup"` → `href="https://docs.example.com/setup"`
+/// - `href="/docs/"` → `href="https://docs.example.com/"`
+/// - `href="/docs"` → `href="https://docs.example.com"`
+///
+/// Fragments and query strings are preserved. Only `href` attributes are rewritten.
+pub fn rewrite_subdomain_links(html: &str, rewrites: &HashMap<String, String>) -> String {
+    if rewrites.is_empty() {
+        return html.to_string();
+    }
+
+    let mut result = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let len = bytes.len();
+    let mut pos = 0;
+
+    while pos < len {
+        match html[pos..].find("href=") {
+            Some(idx) => {
+                let attr_start = pos + idx + 5;
+                // Copy everything up to and including "href="
+                result.push_str(&html[pos..attr_start]);
+
+                if attr_start >= len {
+                    break;
+                }
+
+                let quote = bytes[attr_start];
+                if quote == b'"' || quote == b'\'' {
+                    result.push(quote as char);
+                    let val_start = attr_start + 1;
+                    if let Some(end_offset) = html[val_start..].find(quote as char) {
+                        let href = &html[val_start..val_start + end_offset];
+
+                        if let Some(rewritten) = rewrite_href(href, rewrites) {
+                            result.push_str(&rewritten);
+                        } else {
+                            result.push_str(href);
+                        }
+
+                        result.push(quote as char);
+                        pos = val_start + end_offset + 1;
+                    } else {
+                        // No closing quote, copy as-is
+                        pos = val_start;
+                    }
+                } else {
+                    pos = attr_start;
+                }
+            }
+            None => {
+                result.push_str(&html[pos..]);
+                break;
+            }
+        }
+    }
+
+    result
+}
+
+/// Try to rewrite a single href value using the subdomain rewrite map.
+/// Returns `Some(rewritten)` if the href matched a prefix, `None` otherwise.
+fn rewrite_href(href: &str, rewrites: &HashMap<String, String>) -> Option<String> {
+    // Only rewrite root-relative paths, skip absolute URLs
+    if !href.starts_with('/') || href.starts_with("//") {
+        return None;
+    }
+
+    // Split off fragment and query for preservation
+    let (path, suffix) = split_href_suffix(href);
+
+    for (prefix, base_url) in rewrites {
+        if path == prefix {
+            // Exact match: /docs → https://docs.example.com
+            return Some(format!("{base_url}{suffix}"));
+        }
+        if let Some(rest) = path.strip_prefix(prefix) {
+            if rest.starts_with('/') {
+                // Path match: /docs/setup → https://docs.example.com/setup
+                return Some(format!("{base_url}{rest}{suffix}"));
+            }
+        }
+    }
+
+    None
+}
+
+/// Split an href into the path portion and the suffix (fragment + query).
+/// Returns (path, suffix) where suffix includes the leading `#` or `?`.
+fn split_href_suffix(href: &str) -> (&str, &str) {
+    // Find the earliest fragment or query marker
+    let frag_pos = href.find('#');
+    let query_pos = href.find('?');
+
+    let split_pos = match (frag_pos, query_pos) {
+        (Some(f), Some(q)) => Some(f.min(q)),
+        (Some(f), None) => Some(f),
+        (None, Some(q)) => Some(q),
+        (None, None) => None,
+    };
+
+    match split_pos {
+        Some(pos) => (&href[..pos], &href[pos..]),
+        None => (href, ""),
+    }
+}
+
 /// Group broken links by href, collecting all source files that link to each broken target.
 pub fn group_broken_links(broken: &[BrokenLink]) -> Vec<(String, Vec<String>)> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
@@ -347,5 +457,113 @@ mod tests {
         assert_eq!(grouped[0].1.len(), 2);
         assert_eq!(grouped[1].0, "/other");
         assert_eq!(grouped[1].1.len(), 1);
+    }
+
+    fn make_rewrites(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_basic() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="/docs/setup">Setup</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(
+            result,
+            r#"<a href="https://docs.example.com/setup">Setup</a>"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_index() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+
+        let html = r#"<a href="/docs/">Docs</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, r#"<a href="https://docs.example.com/">Docs</a>"#);
+
+        let html = r#"<a href="/docs">Docs</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, r#"<a href="https://docs.example.com">Docs</a>"#);
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_preserves_fragment() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="/docs/setup#section-1">Setup</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(
+            result,
+            r#"<a href="https://docs.example.com/setup#section-1">Setup</a>"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_preserves_query() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="/docs/search?q=test">Search</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(
+            result,
+            r#"<a href="https://docs.example.com/search?q=test">Search</a>"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_skips_non_matching() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="/posts/hello">Hello</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, html);
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_empty_map() {
+        let rewrites = HashMap::new();
+        let html = r#"<a href="/docs/setup">Setup</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, html);
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_multiple_prefixes() {
+        let rewrites = make_rewrites(&[
+            ("/docs", "https://docs.example.com"),
+            ("/blog", "https://blog.example.com"),
+        ]);
+        let html = r#"<a href="/docs/setup">Docs</a> <a href="/blog/hello">Blog</a> <a href="/about">About</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(
+            result,
+            r#"<a href="https://docs.example.com/setup">Docs</a> <a href="https://blog.example.com/hello">Blog</a> <a href="/about">About</a>"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_skips_external() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="https://example.com/docs/setup">External</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, html);
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_single_quotes() {
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = "<a href='/docs/setup'>Setup</a>";
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, "<a href='https://docs.example.com/setup'>Setup</a>");
+    }
+
+    #[test]
+    fn test_rewrite_subdomain_links_no_false_prefix_match() {
+        // /docs-extra should NOT match /docs prefix
+        let rewrites = make_rewrites(&[("/docs", "https://docs.example.com")]);
+        let html = r#"<a href="/docs-extra/page">Page</a>"#;
+        let result = rewrite_subdomain_links(html, &rewrites);
+        assert_eq!(result, html);
     }
 }

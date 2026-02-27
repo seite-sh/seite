@@ -131,7 +131,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join(".seite"))?;
 
     // Write .gitignore
-    fs::write(root.join(".gitignore"), "/dist\n")?;
+    fs::write(root.join(".gitignore"), "/dist\n/dist-subdomains\n")?;
 
     // Generate seite.toml
     let target = match deploy_target.as_str() {

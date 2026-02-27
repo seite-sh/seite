@@ -1,6 +1,6 @@
 use std::fs;
 use std::net::TcpStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -78,6 +78,28 @@ pub fn start(
         human::success(&format!("Serving at http://localhost:{actual_port}"));
     }
 
+    // Compute subdomain mount points for dev preview
+    let subdomain_mounts: Vec<(String, PathBuf)> = config
+        .subdomain_collections()
+        .iter()
+        .map(|c| {
+            let prefix = format!("{}-preview", c.name);
+            let output = paths.subdomain_output(&c.name);
+            (prefix, output)
+        })
+        .collect();
+
+    if !subdomain_mounts.is_empty() {
+        let domain = config.base_domain().unwrap_or_else(|| "example.com".into());
+        human::info("Subdomain previews:");
+        for (prefix, _) in &subdomain_mounts {
+            let sub = prefix.strip_suffix("-preview").unwrap_or(prefix);
+            human::info(&format!(
+                "  http://localhost:{actual_port}/{prefix}/ -> {sub}.{domain}"
+            ));
+        }
+    }
+
     let stop = Arc::new(AtomicBool::new(false));
     let build_version = Arc::new(AtomicU64::new(1));
 
@@ -100,7 +122,13 @@ pub fn start(
     let server_stop = stop.clone();
     let server_paths = paths.clone();
     std::thread::spawn(move || {
-        run_serve_loop(server, &server_paths, &build_version, &server_stop);
+        run_serve_loop(
+            server,
+            &server_paths,
+            &subdomain_mounts,
+            &build_version,
+            &server_stop,
+        );
     });
 
     Ok(ServerHandle {
@@ -112,6 +140,7 @@ pub fn start(
 fn run_serve_loop(
     server: Server,
     paths: &ResolvedPaths,
+    subdomain_mounts: &[(String, PathBuf)],
     build_version: &AtomicU64,
     stop: &AtomicBool,
 ) {
@@ -129,6 +158,33 @@ fn run_serve_loop(
                     let header =
                         Header::from_bytes("Content-Type", "text/plain").expect("valid header");
                     let _ = request.respond(Response::from_string(version).with_header(header));
+                    continue;
+                }
+
+                // Check subdomain mount points (e.g., /docs-preview/ → dist-subdomains/docs/)
+                let subdomain_file = {
+                    let clean_url = url_path.trim_start_matches('/');
+                    subdomain_mounts.iter().find_map(|(prefix, output_dir)| {
+                        if clean_url.starts_with(prefix.as_str()) {
+                            let rest = &clean_url[prefix.len()..];
+                            let rest = if rest.is_empty() { "/" } else { rest };
+                            resolve_file_path(output_dir, rest)
+                                .filter(|p| p.exists() && p.is_file())
+                        } else {
+                            None
+                        }
+                    })
+                };
+                if let Some(ref path) = subdomain_file {
+                    let content = fs::read(path).unwrap_or_default();
+                    let mime = guess_mime(path);
+                    let content = if mime == "text/html; charset=utf-8" {
+                        inject_livereload(&content)
+                    } else {
+                        content
+                    };
+                    let header = Header::from_bytes("Content-Type", mime).expect("valid header");
+                    let _ = request.respond(Response::from_data(content).with_header(header));
                     continue;
                 }
 

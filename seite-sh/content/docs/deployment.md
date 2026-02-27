@@ -173,6 +173,25 @@ domain = "example.com"
 
 When `deploy.domain` is set, pre-flight checks will verify the domain is attached to your project. If not, the interactive recovery will offer to attach it automatically.
 
+## Subdomain Deploys
+
+Collections with `subdomain` set are deployed as separate sites. Each subdomain collection gets its own output directory (`dist-subdomains/{name}/`) and is deployed independently after the main site.
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"           # → docs.example.com
+deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
+```
+
+`deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to. If omitted, the global `deploy.project` is used as a fallback.
+
+`seite deploy --dry-run` shows the full subdomain deploy plan. In a workspace, cross-site domain conflicts are detected and warned about at deploy time.
+
+{{% callout(type="warning") %}}
+GitHub Pages does not support per-collection subdomains. Use Cloudflare Pages or Netlify for subdomain deploys.
+{{% end %}}
+
 ## Override Target
 
 Override the configured target on the command line:

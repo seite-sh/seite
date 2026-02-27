@@ -8581,3 +8581,300 @@ fn test_deploy_domain_netlify() {
     let config = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     assert!(config.contains("https://mysite.netlify.app"));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Subdomain support tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Helper: create a site and add subdomain config to one collection.
+fn init_subdomain_site(tmp: &TempDir, name: &str) -> std::path::PathBuf {
+    init_site(tmp, name, "Subdomain Test", "posts,docs,pages");
+    let site_dir = tmp.path().join(name);
+
+    // Add subdomain = "docs" to the docs collection and set a real base_url
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace(
+        "base_url = \"http://localhost:3000\"",
+        "base_url = \"https://example.com\"",
+    );
+    // Add subdomain to the docs collection
+    let config = config.replace("name = \"docs\"", "name = \"docs\"\nsubdomain = \"docs\"");
+    fs::write(&toml_path, config).unwrap();
+    site_dir
+}
+
+#[test]
+fn test_build_with_subdomain_collection() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "subdom1");
+
+    // Create a doc in the subdomain collection
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\ndescription: A guide\n---\nHello subdomain!\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Main dist/ should NOT contain docs
+    assert!(
+        !site_dir.join("dist/docs").exists(),
+        "main dist/ should not contain subdomain collection"
+    );
+
+    // Subdomain output should exist
+    let subdomain_dir = site_dir.join("dist-subdomains/docs");
+    assert!(
+        subdomain_dir.exists(),
+        "dist-subdomains/docs/ should be created"
+    );
+
+    // Should have the doc rendered at root (no /docs prefix)
+    assert!(
+        subdomain_dir.join("getting-started.html").exists(),
+        "doc should be at subdomain root, not under /docs/"
+    );
+
+    // Main dist/ should still have posts and pages
+    assert!(site_dir.join("dist/index.html").exists());
+}
+
+#[test]
+fn test_build_subdomain_has_own_sitemap_rss() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "subdom2");
+
+    fs::write(
+        site_dir.join("content/docs/intro.md"),
+        "---\ntitle: Intro\ndescription: Introduction\n---\nIntro content\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let subdomain_dir = site_dir.join("dist-subdomains/docs");
+    assert!(
+        subdomain_dir.join("sitemap.xml").exists(),
+        "subdomain should have its own sitemap"
+    );
+    assert!(
+        subdomain_dir.join("robots.txt").exists(),
+        "subdomain should have its own robots.txt"
+    );
+    assert!(
+        subdomain_dir.join("llms.txt").exists(),
+        "subdomain should have its own llms.txt"
+    );
+}
+
+#[test]
+fn test_build_without_subdomain_no_dist_subdomains() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "nosubdom", "No Subdomain", "posts,docs");
+    let site_dir = tmp.path().join("nosubdom");
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // No dist-subdomains/ should be created
+    assert!(
+        !site_dir.join("dist-subdomains").exists(),
+        "dist-subdomains/ should not be created without subdomain config"
+    );
+
+    // Docs should be in main dist/
+    assert!(site_dir.join("dist/docs").exists() || !site_dir.join("dist/docs").exists());
+    // Main output should still work
+    assert!(site_dir.join("dist/index.html").exists());
+}
+
+#[test]
+fn test_build_subdomain_correct_base_url() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "subdom3");
+
+    fs::write(
+        site_dir.join("content/docs/test-page.md"),
+        "---\ntitle: Test Page\ndescription: Testing base URL\n---\nBase URL test\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist-subdomains/docs/test-page.html")).unwrap();
+
+    // The canonical URL should use the subdomain base_url
+    assert!(
+        html.contains("docs.example.com"),
+        "subdomain pages should use subdomain base URL"
+    );
+}
+
+#[test]
+fn test_build_subdomain_root_urls() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "subdom4");
+
+    fs::write(
+        site_dir.join("content/docs/setup.md"),
+        "---\ntitle: Setup\ndescription: Setup guide\n---\nSetup content\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let subdomain_dir = site_dir.join("dist-subdomains/docs");
+
+    // Items should be at root, not under a /docs/ prefix
+    assert!(
+        subdomain_dir.join("setup.html").exists(),
+        "content should be at subdomain root"
+    );
+    assert!(
+        !subdomain_dir.join("docs/setup.html").exists(),
+        "content should NOT be under /docs/ prefix in subdomain"
+    );
+}
+
+#[test]
+fn test_deploy_dry_run_shows_subdomains() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "subdom5");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--no-commit"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Subdomain deploys"))
+        .stdout(predicate::str::contains("docs.example.com"));
+}
+
+#[test]
+fn test_subdomain_config_validation_no_duplicate() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "subdup", "Dup Subdomain", "posts,docs,pages");
+    let site_dir = tmp.path().join("subdup");
+
+    // Set the same subdomain on two collections
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config
+        .replace("name = \"docs\"", "name = \"docs\"\nsubdomain = \"api\"")
+        .replace("name = \"pages\"", "name = \"pages\"\nsubdomain = \"api\"");
+    fs::write(&toml_path, config).unwrap();
+
+    // Build should fail due to duplicate subdomain
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("duplicate subdomain"));
+}
+
+#[test]
+fn test_init_gitignore_includes_dist_subdomains() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "gitig", "Gitignore Test", "posts");
+    let site_dir = tmp.path().join("gitig");
+
+    let gitignore = fs::read_to_string(site_dir.join(".gitignore")).unwrap();
+    assert!(
+        gitignore.contains("dist-subdomains"),
+        ".gitignore should include dist-subdomains/"
+    );
+}
+
+#[test]
+fn test_build_subdomain_rewrites_cross_links() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "crosslink1");
+
+    // Create a post that links to the docs subdomain collection
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-hello.md"),
+        "---\ntitle: Hello\ndescription: A post\n---\nCheck the [docs](/docs/setup) for info.\n",
+    )
+    .unwrap();
+
+    // Create a doc in the subdomain collection
+    fs::write(
+        site_dir.join("content/docs/setup.md"),
+        "---\ntitle: Setup\ndescription: Setup guide\n---\nSetup instructions.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The post on the main site should have the /docs/setup link rewritten to absolute
+    let post_html = fs::read_to_string(site_dir.join("dist/posts/hello.html")).unwrap();
+    assert!(
+        post_html.contains("https://docs.example.com/setup"),
+        "main site should rewrite /docs/setup to https://docs.example.com/setup, got: {}",
+        &post_html[..post_html.len().min(500)]
+    );
+    assert!(
+        !post_html.contains("href=\"/docs/setup\""),
+        "main site should NOT have unrewritten /docs/setup link"
+    );
+}
+
+#[test]
+fn test_build_subdomain_reverse_links() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "crosslink2");
+
+    // Create a post on the main site
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-hello.md"),
+        "---\ntitle: Hello\ndescription: A post\n---\nHello world!\n",
+    )
+    .unwrap();
+
+    // Create a doc in the subdomain that links to a post
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: Guide\ndescription: A guide\n---\nSee the [blog post](/posts/hello) for more.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The doc on the subdomain should have /posts/hello rewritten to absolute main-site URL
+    let doc_html = fs::read_to_string(site_dir.join("dist-subdomains/docs/guide.html")).unwrap();
+    assert!(
+        doc_html.contains("https://example.com/posts/hello"),
+        "subdomain site should rewrite /posts/hello to https://example.com/posts/hello, got: {}",
+        &doc_html[..doc_html.len().min(500)]
+    );
+}

@@ -1521,6 +1521,93 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
     Ok(site_name)
 }
 
+/// Create a Cloudflare Pages project with an explicit name (for subdomain deploys).
+///
+/// Assumes wrangler is installed and authenticated (call `deploy_init_cloudflare` first
+/// for the main project, which handles login).
+pub fn deploy_init_cloudflare_project(project_name: &str) -> Result<String> {
+    human::info(&format!(
+        "Creating Cloudflare Pages project '{project_name}'..."
+    ));
+    let result = npm_cmd("wrangler")
+        .args([
+            "pages",
+            "project",
+            "create",
+            project_name,
+            "--production-branch",
+            "main",
+        ])
+        .status()
+        .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
+
+    if !result.success() {
+        human::warning(&format!(
+            "Could not create project '{project_name}' — it may already exist (which is fine)."
+        ));
+    }
+
+    Ok(project_name.to_string())
+}
+
+/// Create a Netlify site with an explicit name (for subdomain deploys).
+///
+/// Assumes netlify CLI is installed and authenticated (call `deploy_init_netlify` first
+/// for the main project, which handles login).
+pub fn deploy_init_netlify_project(project_name: &str) -> Result<String> {
+    human::info(&format!("Creating Netlify site '{project_name}'..."));
+    let output = npm_cmd("netlify")
+        .args(["sites:create", "--name", project_name])
+        .output()
+        .map_err(|e| PageError::Deploy(format!("netlify sites:create failed: {e}")))?;
+
+    if !output.status.success() {
+        human::warning(&format!(
+            "Could not create Netlify site '{project_name}' — it may already exist or the name is taken."
+        ));
+    }
+
+    Ok(project_name.to_string())
+}
+
+/// Update a collection's `deploy_project` field in seite.toml.
+///
+/// Parses the TOML, finds the collection by name in `[[collections]]`, and sets
+/// `deploy_project = project_name`. Creates the field if it doesn't exist.
+pub fn update_collection_deploy_project(
+    config_path: &std::path::Path,
+    collection_name: &str,
+    project_name: &str,
+) -> Result<()> {
+    let contents = fs::read_to_string(config_path)?;
+    let mut doc: toml::Table =
+        contents
+            .parse()
+            .map_err(|e: toml::de::Error| PageError::ConfigInvalid {
+                message: e.to_string(),
+            })?;
+
+    if let Some(collections) = doc.get_mut("collections").and_then(|v| v.as_array_mut()) {
+        for entry in collections.iter_mut() {
+            if let Some(table) = entry.as_table_mut() {
+                if table.get("name").and_then(|v| v.as_str()) == Some(collection_name) {
+                    table.insert(
+                        "deploy_project".to_string(),
+                        toml::Value::String(project_name.to_string()),
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    let new_contents = toml::to_string_pretty(&doc).map_err(|e| PageError::ConfigInvalid {
+        message: e.to_string(),
+    })?;
+    fs::write(config_path, new_contents)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // CI workflow generation for all targets (Feature 6)
 // ---------------------------------------------------------------------------
