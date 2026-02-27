@@ -292,7 +292,7 @@ main() {
       case "$ssg" in
         seite)    (cd "$SITES_DIR/seite"    && "$SEITE_BIN" build) >/dev/null 2>&1 || build_ok=false ;;
         hugo)     (cd "$SITES_DIR/hugo"     && hugo --quiet) >/dev/null 2>&1 || build_ok=false ;;
-        zola)     (cd "$SITES_DIR/zola"     && zola build) >/dev/null 2>&1 || build_ok=false ;;
+        zola)     (cd "$SITES_DIR/zola" && zola build) >/dev/null 2>&1 || build_ok=false ;;
         eleventy) (cd "$SITES_DIR/eleventy" && npx @11ty/eleventy --quiet) >/dev/null 2>&1 || build_ok=false ;;
         jekyll)   (cd "$SITES_DIR/jekyll"   && bundle exec jekyll build --quiet) >/dev/null 2>&1 || build_ok=false ;;
         astro)    (cd "$SITES_DIR/astro"    && npx astro build --silent) >/dev/null 2>&1 || build_ok=false ;;
