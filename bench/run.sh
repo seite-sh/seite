@@ -225,7 +225,7 @@ create_bench_site() {
       local img_name
       img_name=$(printf "image-%03d.png" "$img_num")
       local post_file
-      post_file=$(ls "$site_dir/content/posts/"*"-post-$(printf "%05d" $i).md" 2>/dev/null | head -1)
+      post_file=$(find "$site_dir/content/posts/" -maxdepth 1 -name "*-post-$(printf "%05d" "$i").md" -print -quit 2>/dev/null)
       if [ -n "$post_file" ]; then
         echo "" >> "$post_file"
         echo "![Test image ${img_num}](/images/${img_name})" >> "$post_file"

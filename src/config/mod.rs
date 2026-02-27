@@ -582,14 +582,13 @@ impl SiteConfig {
                 continue;
             }
             // Skip subdomain collections — they get their own forward-rewrite entries
-            if c.subdomain.is_some() {
+            if let Some(ref subdomain) = c.subdomain {
                 if !c.url_prefix.is_empty() {
                     let prefix = if c.url_prefix.starts_with('/') {
                         c.url_prefix.clone()
                     } else {
                         format!("/{}", c.url_prefix)
                     };
-                    let subdomain = c.subdomain.as_ref().unwrap();
                     map.insert(prefix, self.subdomain_base_url(subdomain));
                 }
                 continue;
