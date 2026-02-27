@@ -292,6 +292,20 @@ pub fn build_site(
     let step_start = Instant::now();
     let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
 
+    // Pre-compute shortcode site context (identical for every page)
+    let sc_site = serde_json::json!({
+        "title": &config.site.title,
+        "base_url": &config.site.base_url,
+        "language": &config.site.language,
+        "contact": config.contact.as_ref().map(|c| serde_json::json!({
+            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
+            "endpoint": &c.endpoint,
+            "region": &c.region,
+            "redirect": &c.redirect,
+            "subject": &c.subject,
+        })),
+    });
+
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
         let mut items = Vec::new();
@@ -346,26 +360,15 @@ pub fn build_site(
                         "collection": &collection.name,
                         "tags": &fm.tags,
                     });
-                    let sc_site = serde_json::json!({
-                        "title": &config.site.title,
-                        "base_url": &config.site.base_url,
-                        "language": &config.site.language,
-                        "contact": config.contact.as_ref().map(|c| serde_json::json!({
-                            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
-                            "endpoint": &c.endpoint,
-                            "region": &c.region,
-                            "redirect": &c.redirect,
-                            "subject": &c.subject,
-                        })),
-                    });
                     let expanded_body =
                         shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
-                    let math_processed = if config.build.math {
+                    let excerpt = content::extract_excerpt(&expanded_body);
+                    let html_input = if config.build.math {
                         math::render_math(&expanded_body)
                     } else {
-                        expanded_body.clone()
+                        expanded_body
                     };
-                    let (html_body, toc) = markdown::markdown_to_html(&math_processed);
+                    let (html_body, toc) = markdown::markdown_to_html(&html_input);
 
                     let base_url = build_url(&collection.url_prefix, &slug);
                     let url = if lang != *default_lang {
@@ -373,8 +376,6 @@ pub fn build_site(
                     } else {
                         base_url
                     };
-
-                    let excerpt = content::extract_excerpt(&expanded_body);
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
                     let word_count = raw_body.split_whitespace().count();
                     let reading_time = if word_count == 0 {
@@ -485,6 +486,14 @@ pub fn build_site(
         if lang != *default_lang {
             site_ctx_cache.insert(lang.clone(), SiteContext::for_lang(config, &lang));
         }
+    }
+
+    // Pre-compute i18n context per language (avoid re-creating 37-key JSON per page)
+    let mut i18n_cache: HashMap<String, (String, String, serde_json::Value)> = HashMap::new();
+    for lang in &config.all_languages() {
+        let lang_prefix = lang_prefix_for(lang, default_lang);
+        let t = ui_strings_for_lang(lang, &data);
+        i18n_cache.insert(lang.clone(), (lang_prefix, default_lang.to_string(), t));
     }
 
     // Pre-serialize an empty nav for non-nested collections
@@ -600,7 +609,11 @@ pub fn build_site(
                         ctx.insert("nav", &empty_nav_value);
                     }
                     ctx.insert("lang", &item.lang);
-                    insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                    if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
+                        insert_i18n_context_cached(&mut ctx, cached_i18n);
+                    } else {
+                        insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                    }
                     insert_build_flags(&mut ctx, config);
 
                     let empty_translations: Vec<TranslationLink> = Vec::new();
@@ -2098,6 +2111,17 @@ fn insert_i18n_context(
     ctx.insert("lang_prefix", &lang_prefix_for(lang, default_lang));
     ctx.insert("default_language", default_lang);
     ctx.insert("t", &ui_strings_for_lang(lang, data));
+}
+
+/// Insert pre-cached i18n context into a Tera context. Avoids rebuilding the
+/// 37-key UI strings JSON object on every page render.
+fn insert_i18n_context_cached(
+    ctx: &mut tera::Context,
+    cached: &(String, String, serde_json::Value),
+) {
+    ctx.insert("lang_prefix", &cached.0);
+    ctx.insert("default_language", &cached.1);
+    ctx.insert("t", &cached.2);
 }
 
 /// Insert build feature flags into template context.
