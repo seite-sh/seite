@@ -2,8 +2,8 @@
 title: AVIF Image Format
 description: Generate AVIF variants alongside WebP in the image pipeline
 tags:
-- planned
+- done
 weight: 5
 ---
 
-Generate AVIF variants alongside WebP in the image pipeline. AVIF is smaller than WebP at comparable quality. Add to `<picture>` element sources with proper type attribute.
+AVIF image generation is now supported. Enable with `avif = true` in `[images]` config. AVIF variants are generated alongside WebP at all configured widths, with configurable quality via `avif_quality` (default 70). The post-processing step adds AVIF sources to `<picture>` elements with the correct `type="image/avif"` attribute, ordered before WebP for optimal browser selection.
