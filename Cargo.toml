@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
