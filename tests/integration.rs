@@ -4084,6 +4084,46 @@ fn test_upgrade_idempotent() {
         .stdout(predicate::str::contains("up to date"));
 }
 
+#[test]
+fn test_upgrade_stamps_version_even_when_no_actions() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Version Stamp", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Simulate a project whose files are already up to date but whose
+    // .seite/config.json records an older version (e.g. 0.4.0 → current).
+    let meta_path = site_dir.join(".seite/config.json");
+    fs::write(
+        &meta_path,
+        r#"{"version": "0.4.0", "initialized_at": "2026-01-01T00:00:00+00:00"}"#,
+    )
+    .unwrap();
+
+    // Upgrade should report "up to date" (no file actions) but still stamp the version
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+
+    // Verify the version was updated to the current binary version
+    let content = fs::read_to_string(&meta_path).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+        meta["version"].as_str().unwrap(),
+        env!("CARGO_PKG_VERSION"),
+        ".seite/config.json version should be stamped to current binary version"
+    );
+
+    // Verify initialized_at was preserved
+    assert_eq!(
+        meta["initialized_at"].as_str().unwrap(),
+        "2026-01-01T00:00:00+00:00",
+        "initialized_at should be preserved from original config"
+    );
+}
+
 // ── self-update command ─────────────────────────────────────────────
 
 #[test]

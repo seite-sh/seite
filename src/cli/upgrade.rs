@@ -159,8 +159,17 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
     }
 
     if actions.is_empty() {
+        // No file changes needed, but still stamp the version if it's behind.
+        // This handles the case where upgrade steps exist but their checks found
+        // nothing to do (files already present), or where the binary was bumped
+        // without adding new upgrade steps (e.g. 0.4.0 → 0.4.3 with only bug fixes).
+        if project_ver < binary_ver {
+            let existing_meta = meta::load(&root);
+            let new_meta = meta::PageMeta::stamp_current_version(existing_meta.as_ref());
+            meta::write(&root, &new_meta)?;
+        }
         human::success(&format!(
-            "Project is up to date (page {}).",
+            "Project is up to date (seite {}).",
             meta::format_version(binary_ver)
         ));
         return Ok(());
@@ -248,7 +257,7 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
 
     println!();
     human::success(&format!(
-        "Project upgraded to page {}",
+        "Project upgraded to seite {}",
         meta::format_version(binary_ver)
     ));
 
