@@ -1,0 +1,7 @@
+title: Benchmark Site
+url: "http://localhost:3000"
+markdown: kramdown
+highlighter: none
+exclude:
+  - Gemfile
+  - Gemfile.lock

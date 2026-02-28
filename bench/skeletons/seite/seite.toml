@@ -1,0 +1,31 @@
+[site]
+title = "Benchmark Site"
+description = "SSG performance benchmark"
+base_url = "http://localhost:3000"
+language = "en"
+author = ""
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+nested = false
+default_template = "post.html"
+
+[build]
+output_dir = "dist"
+content_dir = "content"
+template_dir = "templates"
+static_dir = "static"
+data_dir = "data"
+public_dir = "public"
+
+[images]
+widths = []
+quality = 80
+lazy_loading = false
+webp = false
