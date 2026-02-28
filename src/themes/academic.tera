@@ -505,6 +505,10 @@
         .pagination a { text-decoration: none; color: #a00000; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #999; font-size: 0.85rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
 
         /* === EMBEDS === */
         .video-embed {

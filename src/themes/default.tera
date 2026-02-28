@@ -226,6 +226,11 @@
         .pagination a { text-decoration: none; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #666; font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
+        .docs-section-list a { color: #0057b7; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #eee; color: #666; font-size: 0.85rem; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #0057b7; color: #fff; z-index: 100; text-decoration: none; }
         .skip-link:focus { top: 0; }

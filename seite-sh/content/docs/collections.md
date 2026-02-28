@@ -243,6 +243,31 @@ This works identically to how `content/pages/index.md` provides content for the 
 
 For paginated collections, the `index.md` content appears only on page 1.
 
+### Docs Index with Sidebar
+
+The docs collection ships a dedicated `docs-index.html` template that renders the same sidebar navigation as individual doc pages. When using the docs theme:
+
+- **With `index.md`**: Shows your custom content alongside the sidebar
+- **Without `index.md`**: Auto-generates a section overview grouped by subdirectory
+
+The sidebar nav (`{{ nav }}`) is available in all collection index templates, so custom templates can also render it.
+
+### Redirect to a Specific Page
+
+Instead of showing custom content, you can redirect the collection index to an existing page using `redirect_to` in the `extra` field:
+
+```yaml
+---
+title: Docs
+extra:
+  redirect_to: /docs/getting-started
+---
+```
+
+This generates an instant redirect at `/docs/` → `/docs/getting-started`. This is the most common pattern for docs sites — route the docs landing page directly to the first doc.
+
+Redirects work for both regular collection indexes and subdomain roots.
+
 ## Pagination
 
 Enable pagination on any listed collection:

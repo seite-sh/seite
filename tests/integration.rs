@@ -9112,3 +9112,165 @@ fn test_subdomain_root_without_collection_index_still_works() {
         "subdomain root should list collection items even without index.md"
     );
 }
+
+#[test]
+fn test_docs_collection_index_gets_sidebar_nav() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "docs_nav", "Docs Nav", "docs,pages");
+    let site_dir = tmp.path().join("docs_nav");
+
+    // Apply the docs theme for sidebar rendering
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Create docs with subdirectory structure for nav sections
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/overview.md"),
+        "---\ntitle: Overview\ndescription: Overview\n---\nOverview content.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: Setup\n---\nSetup content.\n",
+    )
+    .unwrap();
+
+    // Create a docs index page
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Documentation\ndescription: All docs\n---\nWelcome to the **docs**.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The docs index should have sidebar nav and page content
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Welcome to the"),
+        "docs index should have index.md content"
+    );
+    // The docs theme sidebar renders nav items
+    assert!(
+        docs_index.contains("Overview") && docs_index.contains("Setup Guide"),
+        "docs index should have sidebar nav with all doc pages"
+    );
+}
+
+#[test]
+fn test_docs_index_uses_docs_index_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "docs_tmpl", "Docs Tmpl", "docs,pages");
+    let site_dir = tmp.path().join("docs_tmpl");
+
+    // Create a doc
+    fs::write(
+        site_dir.join("content/docs/intro.md"),
+        "---\ntitle: Introduction\ndescription: Intro\n---\nIntro.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // With default template (no custom theme), the docs-index.html template
+    // should auto-generate a section overview
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Introduction"),
+        "docs index should show doc items from the auto-generated overview"
+    );
+}
+
+#[test]
+fn test_collection_index_redirect_to() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "redir", "Redirect Test", "docs,pages");
+    let site_dir = tmp.path().join("redir");
+
+    // Create a docs index that redirects to a specific doc page
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: /docs/getting-started\n---\n",
+    )
+    .unwrap();
+
+    // Create the target doc page
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\ndescription: Start here\n---\nStart here.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The docs index should be a redirect page
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("http-equiv=\"refresh\""),
+        "docs index should be an HTML redirect"
+    );
+    assert!(
+        docs_index.contains("/docs/getting-started"),
+        "docs index should redirect to the specified page"
+    );
+
+    // The target page should exist normally
+    assert!(
+        site_dir.join("dist/docs/getting-started.html").exists(),
+        "redirect target should exist"
+    );
+}
+
+#[test]
+fn test_subdomain_redirect_to() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_redir");
+    let site_dir = tmp.path().join("sub_redir");
+
+    // Create a subdomain index that redirects
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: /getting-started\n---\n",
+    )
+    .unwrap();
+
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\ndescription: Start\n---\nStart content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root should redirect
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("http-equiv=\"refresh\""),
+        "subdomain root should be an HTML redirect"
+    );
+    assert!(
+        subdomain_index.contains("/getting-started"),
+        "subdomain root should redirect to the target page"
+    );
+}

@@ -624,6 +624,11 @@ fn build_site_inner(
     let empty_nav: Vec<NavSection> = Vec::new();
     let empty_nav_value = serde_json::to_value(&empty_nav).unwrap_or_default();
 
+    // Collect nav data per collection so it can be passed to collection index templates later.
+    // Key: collection name → (lang → serialized nav). Only populated for nested collections.
+    let mut collection_nav_cache: HashMap<String, HashMap<String, serde_json::Value>> =
+        HashMap::new();
+
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
             // Only build nav for nested collections (e.g., docs with sidebar).
@@ -692,6 +697,15 @@ fn build_site_inner(
             } else {
                 nav_by_lang = HashMap::new();
                 nav_slug_index = HashMap::new();
+            }
+
+            // Cache nav for collection index rendering later (Steps 4b/4b-extra)
+            if collection.nested && !nav_by_lang.is_empty() {
+                let owned: HashMap<String, serde_json::Value> = nav_by_lang
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect();
+                collection_nav_cache.insert(collection.name.clone(), owned);
             }
 
             let render_results: Vec<std::result::Result<(PathBuf, String), PageError>> = items
@@ -872,6 +886,18 @@ fn build_site_inner(
             .collect();
         index_ctx.insert("collections", &collections_ctx);
 
+        // For subdomain builds (single collection with empty url_prefix), pass the nav
+        // so the docs theme sidebar works on the root index page.
+        if let Some(col) = config.collections.first() {
+            if col.url_prefix.is_empty() {
+                if let Some(nav_langs) = collection_nav_cache.get(&col.name) {
+                    if let Some(nav_val) = nav_langs.get(lang.as_str()) {
+                        index_ctx.insert("nav", nav_val);
+                    }
+                }
+            }
+        }
+
         // Always insert a `page` context so templates can unconditionally access
         // page.url, page.collection, etc. for SEO/GEO meta tags.
         // When no homepage page exists, `page.content` is empty so
@@ -983,9 +1009,30 @@ fn build_site_inner(
         };
         index_ctx.insert("translations", &index_translations);
 
-        let index_html = tera
-            .render("index.html", &index_ctx)
-            .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?;
+        // Handle redirect_to on collection index.md used as subdomain root
+        let redirect_target = config
+            .collections
+            .iter()
+            .find(|c| c.url_prefix.is_empty())
+            .and_then(|c| {
+                collection_index_pages
+                    .get(&c.name)
+                    .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+            })
+            .and_then(|ci| ci.frontmatter.extra.get("redirect_to"))
+            .and_then(|v| v.as_str().map(String::from));
+
+        let index_html = if let Some(target) = redirect_target {
+            let target_url = if target.starts_with('/') {
+                format!("{}{target}", lang_prefix_for(lang, default_lang))
+            } else {
+                target
+            };
+            generate_redirect_html(&target_url)
+        } else {
+            tera.render("index.html", &index_ctx)
+                .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?
+        };
 
         if *lang == *default_lang {
             fs::write(paths.output.join("index.html"), index_html)?;
@@ -1084,6 +1131,18 @@ fn build_site_inner(
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
+
+                // Pass sidebar nav for nested collections
+                if let Some(nav_langs) = collection_nav_cache.get(&c.name) {
+                    if let Some(nav_val) = nav_langs.get(lang.as_str()) {
+                        ctx.insert("nav", nav_val);
+                    } else {
+                        ctx.insert("nav", &empty_nav_value);
+                    }
+                } else {
+                    ctx.insert("nav", &empty_nav_value);
+                }
+
                 // Always provide a page context so SEO meta tags can access page.url etc.
                 // Insert items directly so collection-specific index templates can use {% for item in items %}
                 ctx.insert("items", &chunk.to_vec());
@@ -1240,10 +1299,46 @@ fn build_site_inner(
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
 
+            // Pass sidebar nav for nested collections (e.g., docs) so the
+            // collection index template can render the same sidebar as individual pages.
+            if let Some(nav_langs) = collection_nav_cache.get(&c.name) {
+                if let Some(nav_val) = nav_langs.get(lang.as_str()) {
+                    ctx.insert("nav", nav_val);
+                } else {
+                    ctx.insert("nav", &empty_nav_value);
+                }
+            } else {
+                ctx.insert("nav", &empty_nav_value);
+            }
+
             // Use collection's index.md content if available (content/{collection}/index.md)
             let col_index_page = collection_index_pages
                 .get(&c.name)
                 .and_then(|pages| pages.iter().find(|p| p.lang == *lang));
+
+            // Support redirect_to in collection index.md: generate an HTML redirect
+            // instead of the normal index template.
+            if let Some(ci) = col_index_page {
+                if let Some(redirect_url) = ci.frontmatter.extra.get("redirect_to") {
+                    if let Some(target) = redirect_url.as_str() {
+                        let target_url = if target.starts_with('/') {
+                            format!("{}{target}", lang_prefix_for(lang, default_lang))
+                        } else {
+                            target.to_string()
+                        };
+                        let redirect_html = generate_redirect_html(&target_url);
+                        let out_dir = if *lang == *default_lang {
+                            paths.output.join(url_prefix_trimmed)
+                        } else {
+                            paths.output.join(lang).join(url_prefix_trimmed)
+                        };
+                        fs::create_dir_all(&out_dir)?;
+                        fs::write(out_dir.join("index.html"), redirect_html)?;
+                        continue;
+                    }
+                }
+            }
+
             ctx.insert(
                 "page",
                 &if let Some(ci) = col_index_page {
@@ -2220,6 +2315,25 @@ fn generate_collection_index_md(label: &str, items: &[ItemSummary]) -> String {
     md
 }
 
+/// Generate an HTML redirect page (meta refresh + JS redirect).
+fn generate_redirect_html(target_url: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url={target_url}">
+<link rel="canonical" href="{target_url}">
+<title>Redirecting…</title>
+<script>window.location.replace("{target_url}");</script>
+</head>
+<body>
+<p>Redirecting to <a href="{target_url}">{target_url}</a>…</p>
+</body>
+</html>"#
+    )
+}
+
 fn build_page_context(
     site: &SiteContext,
     item: &ContentItem,
@@ -2337,7 +2451,8 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "contact_name": "Name",
         "contact_email": "Email",
         "contact_message": "Message",
-        "contact_submit": "Send Message"
+        "contact_submit": "Send Message",
+        "documentation": "Documentation"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults

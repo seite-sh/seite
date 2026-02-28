@@ -77,6 +77,45 @@ pub const DEFAULT_DOC: &str = r##"{% extends "base.html" %}
 </article>
 {% endblock %}"##;
 
+pub const DEFAULT_DOCS_INDEX: &str = r##"{% extends "base.html" %}
+{% block title %}{% if page.title %}{{ page.title }} — {% endif %}{{ site.title }}{% endblock %}
+{% block content %}
+{% if page.content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    {% if page.toc | length > 1 %}
+    <nav class="toc">
+        <h4>{{ t.contents }}</h4>
+        <ul>
+        {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
+        {% endfor %}</ul>
+    </nav>
+    {% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% else %}
+<h1>{{ page.title | default(value=t.documentation) }}</h1>
+{% if nav %}
+{% for section in nav %}
+<section class="docs-section-overview">
+    {% if section.label %}<h2>{{ section.label }}</h2>{% endif %}
+    <ul class="docs-section-list">
+    {% for item in section.items %}
+        <li><a href="{{ item.url }}">{{ item.title }}</a></li>
+    {% endfor %}
+    </ul>
+</section>
+{% endfor %}
+{% elif items %}
+<ul>
+{% for item in items %}
+    <li><a href="{{ item.url }}">{{ item.title }}</a>{% if item.description %} — {{ item.description }}{% endif %}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+{% endblock %}"##;
+
 pub const DEFAULT_PAGE: &str = r#"{% extends "base.html" %}
 {% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
 {% block content %}
@@ -461,6 +500,7 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "index.html" => Some(DEFAULT_INDEX),
         "post.html" => Some(DEFAULT_POST),
         "doc.html" => Some(DEFAULT_DOC),
+        "docs-index.html" => Some(DEFAULT_DOCS_INDEX),
         "page.html" => Some(DEFAULT_PAGE),
         "trust-item.html" => Some(DEFAULT_TRUST_ITEM),
         "trust-index.html" => Some(DEFAULT_TRUST_INDEX),
@@ -553,6 +593,7 @@ mod tests {
         assert!(get_default_template("index.html").is_some());
         assert!(get_default_template("post.html").is_some());
         assert!(get_default_template("doc.html").is_some());
+        assert!(get_default_template("docs-index.html").is_some());
         assert!(get_default_template("page.html").is_some());
         assert!(get_default_template("404.html").is_some());
         assert!(get_default_template("tags.html").is_some());
@@ -593,6 +634,7 @@ mod tests {
         let tera = load_templates(path, &collections).unwrap();
         assert!(tera.get_template("post.html").is_ok());
         assert!(tera.get_template("doc.html").is_ok());
+        assert!(tera.get_template("docs-index.html").is_ok());
     }
 
     #[test]
@@ -645,6 +687,7 @@ mod tests {
             "index.html",
             "post.html",
             "doc.html",
+            "docs-index.html",
             "page.html",
             "404.html",
             "tags.html",

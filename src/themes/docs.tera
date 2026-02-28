@@ -237,6 +237,11 @@
         .pagination a { text-decoration: none; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #666; font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; border-bottom: 1px solid #eaecef; padding-bottom: 0.3rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
+        .docs-section-list a { color: #0366d6; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e1e4e8; color: #666; font-size: 0.85rem; }
         @media (max-width: 768px) {
             .sidebar { position: static; width: 100%; border-right: none; border-bottom: 1px solid #e1e4e8; }
