@@ -241,6 +241,10 @@
         .pagination a { text-decoration: none; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #666; font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; border-bottom: 3px solid #000; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
         footer { border: 3px solid #000; padding: 1rem 1.5rem; margin-top: 2rem; font-weight: 700; font-size: 0.85rem; }
         :focus-visible { outline: 3px solid #000; outline-offset: 2px; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #000; color: #ffe600; z-index: 100; text-decoration: none; font-weight: 900; text-transform: uppercase; border: 3px solid #ffe600; }

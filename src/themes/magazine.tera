@@ -242,6 +242,10 @@
         .pagination a { text-decoration: none; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: #111; }
         .pagination a:hover { color: #e63946; }
         .pagination span { color: #888; font-size: 0.8rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
 
         /* ===== TRUST CENTER ===== */
         .trust-hub { max-width: 1000px; margin: 0 auto; }

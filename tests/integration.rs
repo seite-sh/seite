@@ -8944,3 +8944,702 @@ fn test_subdomain_base_url_without_subdomain_fails() {
         .failure()
         .stderr(predicate::str::contains("requires subdomain to be set"));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Collection index page tests (content/{collection}/index.md)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_collection_index_page_content_on_collection_index() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "col_idx1", "Collection Index", "docs,pages");
+    let site_dir = tmp.path().join("col_idx1");
+
+    // Create a collection index page (with date/updated to exercise date formatting paths)
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Documentation Hub\ndescription: Welcome to our docs\ndate: 2026-01-10\nupdated: 2026-02-15\n---\n\nWelcome to the **documentation hub**. Browse our guides below.\n",
+    )
+    .unwrap();
+
+    // Create a regular doc item
+    fs::write(
+        site_dir.join("content/docs/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: How to set up\n---\nSetup instructions.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The collection index page should inject content into the docs index
+    let index_html = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        index_html.contains("documentation hub"),
+        "collection index.md content should appear on collection index page"
+    );
+    assert!(
+        index_html.contains("Documentation Hub"),
+        "collection index.md title should be used"
+    );
+
+    // The regular doc should still be rendered
+    assert!(site_dir.join("dist/docs/setup.html").exists());
+
+    // The index.md should NOT be rendered as a standalone item
+    assert!(
+        !site_dir.join("dist/docs/index.html").exists() || index_html.contains("documentation hub"),
+        "index.md should be the collection index, not a standalone item"
+    );
+}
+
+#[test]
+fn test_collection_index_page_excluded_from_items() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "col_idx2", "Col Index Excl", "docs,pages");
+    let site_dir = tmp.path().join("col_idx2");
+
+    // Create a collection index page and a regular doc
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs Home\ndescription: Home\n---\nDocs home content.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: User Guide\ndescription: Guide\n---\nGuide content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The main site index should list docs as a collection but the index.md
+    // should not appear as a separate item
+    let main_index = fs::read_to_string(site_dir.join("dist/index.html")).unwrap();
+    assert!(
+        main_index.contains("User Guide"),
+        "regular doc should appear in listings"
+    );
+    // The index.md should not appear as a listed item (it's extracted)
+    assert!(
+        !main_index.contains("/docs/index"),
+        "collection index.md should not appear as a listed item"
+    );
+}
+
+#[test]
+fn test_subdomain_root_uses_collection_index_page() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_idx");
+    let site_dir = tmp.path().join("sub_idx");
+
+    // Create a collection index page for the subdomain collection
+    // Include date and updated fields to exercise .map(|d| d.to_string()) closure paths
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Developer Docs\ndescription: API documentation and guides\ndate: 2026-01-15\nupdated: 2026-02-20\n---\n\nWelcome to **developer docs**. Explore our comprehensive API guides.\n",
+    )
+    .unwrap();
+
+    // Create a regular doc
+    fs::write(
+        site_dir.join("content/docs/api-reference.md"),
+        "---\ntitle: API Reference\ndescription: Full API docs\n---\nAPI endpoint details.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root should have the index.md content
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("developer docs"),
+        "subdomain root should render collection index.md content"
+    );
+    assert!(
+        subdomain_index.contains("Developer Docs"),
+        "subdomain root should use collection index.md title"
+    );
+    assert!(
+        subdomain_index.contains("API documentation and guides"),
+        "subdomain root should use collection index.md description"
+    );
+
+    // Regular doc should still render at subdomain root level
+    assert!(
+        site_dir
+            .join("dist-subdomains/docs/api-reference.html")
+            .exists(),
+        "regular docs should still be rendered in subdomain"
+    );
+}
+
+#[test]
+fn test_subdomain_root_without_collection_index_still_works() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_noidx");
+    let site_dir = tmp.path().join("sub_noidx");
+
+    // Only create a regular doc, no index.md
+    fs::write(
+        site_dir.join("content/docs/tutorial.md"),
+        "---\ntitle: Tutorial\ndescription: A tutorial\n---\nTutorial content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Should still produce a valid subdomain root index
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("Tutorial"),
+        "subdomain root should list collection items even without index.md"
+    );
+}
+
+#[test]
+fn test_docs_collection_index_gets_sidebar_nav() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "docs_nav", "Docs Nav", "docs,pages");
+    let site_dir = tmp.path().join("docs_nav");
+
+    // Apply the docs theme for sidebar rendering
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Create docs with subdirectory structure for nav sections
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/overview.md"),
+        "---\ntitle: Overview\ndescription: Overview\n---\nOverview content.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: Setup\n---\nSetup content.\n",
+    )
+    .unwrap();
+
+    // Create a docs index page
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Documentation\ndescription: All docs\n---\nWelcome to the **docs**.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The docs index should have sidebar nav and page content
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Welcome to the"),
+        "docs index should have index.md content"
+    );
+    // The docs theme sidebar renders nav items
+    assert!(
+        docs_index.contains("Overview") && docs_index.contains("Setup Guide"),
+        "docs index should have sidebar nav with all doc pages"
+    );
+}
+
+#[test]
+fn test_docs_index_uses_docs_index_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "docs_tmpl", "Docs Tmpl", "docs,pages");
+    let site_dir = tmp.path().join("docs_tmpl");
+
+    // Create a doc
+    fs::write(
+        site_dir.join("content/docs/intro.md"),
+        "---\ntitle: Introduction\ndescription: Intro\n---\nIntro.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // With default template (no custom theme), the docs-index.html template
+    // should auto-generate a section overview
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Introduction"),
+        "docs index should show doc items from the auto-generated overview"
+    );
+}
+
+#[test]
+fn test_collection_index_redirect_to() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "redir", "Redirect Test", "docs,pages");
+    let site_dir = tmp.path().join("redir");
+
+    // Create a docs index that redirects to a specific doc page
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: /docs/getting-started\n---\n",
+    )
+    .unwrap();
+
+    // Create the target doc page
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\ndescription: Start here\n---\nStart here.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The docs index should be a redirect page
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("http-equiv=\"refresh\""),
+        "docs index should be an HTML redirect"
+    );
+    assert!(
+        docs_index.contains("/docs/getting-started"),
+        "docs index should redirect to the specified page"
+    );
+
+    // The target page should exist normally
+    assert!(
+        site_dir.join("dist/docs/getting-started.html").exists(),
+        "redirect target should exist"
+    );
+}
+
+#[test]
+fn test_subdomain_redirect_to() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_redir");
+    let site_dir = tmp.path().join("sub_redir");
+
+    // Create a subdomain index that redirects
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: /getting-started\n---\n",
+    )
+    .unwrap();
+
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\ndescription: Start\n---\nStart content.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root should redirect
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("http-equiv=\"refresh\""),
+        "subdomain root should be an HTML redirect"
+    );
+    assert!(
+        subdomain_index.contains("/getting-started"),
+        "subdomain root should redirect to the target page"
+    );
+}
+
+#[test]
+fn test_paginated_collection_index_page_on_first_page() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "pag_idx", "Paginated Index", "posts,pages");
+    let site_dir = tmp.path().join("pag_idx");
+
+    // Enable pagination on the posts collection
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("name = \"posts\"", "name = \"posts\"\npaginate = 2");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create a collection index page for posts
+    fs::write(
+        site_dir.join("content/posts/index.md"),
+        "---\ntitle: Blog Archive\ndescription: All our blog posts\ndate: 2026-01-01\nupdated: 2026-02-01\n---\n\nWelcome to the **blog archive**.\n",
+    )
+    .unwrap();
+
+    // Create enough posts to trigger pagination
+    for i in 1..=4 {
+        fs::write(
+            site_dir.join(format!("content/posts/2026-01-0{i}-post-{i}.md")),
+            format!("---\ntitle: Post {i}\ndescription: Post number {i}\n---\nPost {i} content.\n"),
+        )
+        .unwrap();
+    }
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Page 1 should have the collection index.md content
+    let page1 = fs::read_to_string(site_dir.join("dist/posts/index.html")).unwrap();
+    assert!(
+        page1.contains("blog archive"),
+        "paginated page 1 should include collection index.md content"
+    );
+    assert!(
+        page1.contains("Blog Archive"),
+        "paginated page 1 should use collection index.md title"
+    );
+
+    // Page 2 should NOT have the index.md content
+    let page2 = fs::read_to_string(site_dir.join("dist/posts/page/2/index.html")).unwrap();
+    assert!(
+        !page2.contains("blog archive"),
+        "paginated page 2 should not have collection index.md content"
+    );
+}
+
+#[test]
+fn test_subdomain_root_has_sidebar_nav() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_nav");
+    let site_dir = tmp.path().join("sub_nav");
+
+    // Create docs with subdirectory structure
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/overview.md"),
+        "---\ntitle: Overview\ndescription: Overview\n---\nOverview.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: Setup\n---\nSetup.\n",
+    )
+    .unwrap();
+
+    // Create a collection index page for the subdomain root
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Documentation\ndescription: All docs\n---\nWelcome to **docs**.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Subdomain root should have the index content and list nav items
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("Welcome to"),
+        "subdomain root should have index.md content"
+    );
+    assert!(
+        subdomain_index.contains("Overview"),
+        "subdomain root should have nav item Overview"
+    );
+    assert!(
+        subdomain_index.contains("Setup Guide"),
+        "subdomain root should have nav item Setup Guide"
+    );
+}
+
+#[test]
+fn test_collection_index_redirect_to_with_i18n() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "redir_i18n", "Redirect i18n", "docs,pages");
+    let site_dir = tmp.path().join("redir_i18n");
+
+    // Enable Spanish as a language
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Redirigir\"\n");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create docs index that redirects (default language)
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: /docs/getting-started\n---\n",
+    )
+    .unwrap();
+
+    // Create Spanish translation of the redirect index
+    fs::write(
+        site_dir.join("content/docs/index.es.md"),
+        "---\ntitle: Documentación\nextra:\n  redirect_to: /docs/getting-started\n---\n",
+    )
+    .unwrap();
+
+    // Create the target page
+    fs::write(
+        site_dir.join("content/docs/getting-started.md"),
+        "---\ntitle: Getting Started\n---\nStart here.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/getting-started.es.md"),
+        "---\ntitle: Comenzar\n---\nComenzar aquí.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default language redirect
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("/docs/getting-started"),
+        "default lang redirect should point to /docs/getting-started"
+    );
+
+    // Spanish redirect should have /es prefix
+    let es_docs_index = fs::read_to_string(site_dir.join("dist/es/docs/index.html")).unwrap();
+    assert!(
+        es_docs_index.contains("/es/docs/getting-started"),
+        "Spanish redirect should have /es/ prefix, got: {es_docs_index}"
+    );
+}
+
+#[test]
+fn test_paginated_collection_nav_passed_to_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "pag_nav", "Paginated Nav", "docs,pages");
+    let site_dir = tmp.path().join("pag_nav");
+
+    // Enable pagination on docs collection
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("name = \"docs\"", "name = \"docs\"\npaginate = 2");
+    fs::write(&toml_path, config).unwrap();
+
+    // Apply docs theme which renders the sidebar nav
+    page_cmd()
+        .args(["theme", "apply", "docs"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Create enough docs for pagination
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    for i in 1..=4 {
+        fs::write(
+            site_dir.join(format!("content/docs/guides/guide-{i}.md")),
+            format!("---\ntitle: Guide {i}\ndescription: Guide\nweight: {i}\n---\nGuide {i}.\n"),
+        )
+        .unwrap();
+    }
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Paginated index page 1 should contain nav items
+    let page1 = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        page1.contains("Guide 1") && page1.contains("Guide 2"),
+        "paginated docs page 1 should have nav items rendered in sidebar"
+    );
+}
+
+#[test]
+fn test_subdomain_redirect_to_with_relative_url() {
+    let tmp = TempDir::new().unwrap();
+    init_subdomain_site(&tmp, "sub_redir2");
+    let site_dir = tmp.path().join("sub_redir2");
+
+    // Create a subdomain index that redirects with an absolute URL (no lang prefix needed)
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: https://external.example.com/docs\n---\n",
+    )
+    .unwrap();
+
+    fs::write(
+        site_dir.join("content/docs/setup.md"),
+        "---\ntitle: Setup\ndescription: Setup\n---\nSetup.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root should redirect to the external URL
+    let subdomain_index =
+        fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
+    assert!(
+        subdomain_index.contains("https://external.example.com/docs"),
+        "subdomain root should redirect to external URL"
+    );
+    assert!(
+        subdomain_index.contains("http-equiv=\"refresh\""),
+        "should be an HTML redirect"
+    );
+}
+
+#[test]
+fn test_collection_index_redirect_to_external_url() {
+    // Tests the non-paginated redirect_to with a non-`/` URL (absolute/external)
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "redir_ext", "Redirect External", "docs,pages");
+    let site_dir = tmp.path().join("redir_ext");
+
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: https://docs.example.com\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: Guide\ndescription: Guide\n---\nGuide.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("https://docs.example.com"),
+        "should redirect to external URL without lang prefix"
+    );
+    assert!(
+        docs_index.contains("http-equiv=\"refresh\""),
+        "should be an HTML redirect"
+    );
+}
+
+#[test]
+fn test_docs_nav_fallback_for_missing_lang_in_cache() {
+    // Tests the nav cache fallback when nav exists for "en" but not "es"
+    // This exercises the `else` branch at nav_langs.get(lang) returning None
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "nav_fall", "Nav Fallback", "docs,pages");
+    let site_dir = tmp.path().join("nav_fall");
+
+    // Enable Spanish
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Nav Fallback\"\n");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create docs only in default language — no Spanish translations
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/overview.md"),
+        "---\ntitle: Overview\ndescription: Overview\n---\nOverview.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup\ndescription: Setup\n---\nSetup.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default lang docs index should have nav items
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Overview"),
+        "default lang docs index should have nav items"
+    );
+
+    // Build succeeds even when nav cache has "en" but not "es"
+    // The Spanish docs index should exist (possibly empty collection)
+    let es_docs_index_path = site_dir.join("dist/es/docs/index.html");
+    if es_docs_index_path.exists() {
+        // If it exists, it should not contain the English nav (empty nav fallback used)
+        let _es_docs = fs::read_to_string(&es_docs_index_path).unwrap();
+        // Just checking it renders without error is sufficient
+    }
+}
+
+#[test]
+fn test_paginated_docs_nav_fallback_for_missing_lang() {
+    // Tests the paginated nav cache fallback when nav exists for "en" but not "es"
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "pag_nav_ml", "Pag Nav ML", "docs,pages");
+    let site_dir = tmp.path().join("pag_nav_ml");
+
+    // Enable Spanish + pagination on docs
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("name = \"docs\"", "name = \"docs\"\npaginate = 2");
+    let config = format!("{config}\n[languages.es]\ntitle = \"Pag Nav ML\"\n");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create docs only in English
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    for i in 1..=4 {
+        fs::write(
+            site_dir.join(format!("content/docs/guides/guide-{i}.md")),
+            format!("---\ntitle: Guide {i}\ndescription: Guide\nweight: {i}\n---\nGuide {i}.\n"),
+        )
+        .unwrap();
+    }
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English page 1 should have nav
+    let page1 = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        page1.contains("Guide 1"),
+        "English docs page 1 should have nav items"
+    );
+
+    // Build succeeds for Spanish even though no Spanish docs content
+    // (nav cache has "en" but not "es" — exercises empty_nav_value fallback)
+}

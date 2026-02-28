@@ -260,6 +260,11 @@
         .pagination a { text-decoration: none; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #9ca3af; font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
+        .docs-section-list a { color: #5046e5; }
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.85rem; }
         :focus-visible { outline: 2px solid #5046e5; outline-offset: 2px; border-radius: 4px; }
         @media (max-width: 600px) {

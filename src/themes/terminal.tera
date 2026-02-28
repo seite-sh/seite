@@ -859,6 +859,11 @@
         .pagination a::after { content: ' ]'; color: var(--phosphor-dim); }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: var(--text-dim); font-size: 0.85rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
+        .docs-section-list a { color: var(--accent); }
 
         /* ==============================
            TAG INDEX

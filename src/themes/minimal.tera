@@ -227,6 +227,10 @@
         .pagination a { text-decoration: none; }
         .pagination a:hover { text-decoration: underline; }
         .pagination span { color: #999; font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
         footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #333; color: #fff; z-index: 100; text-decoration: none; font-family: system-ui, sans-serif; }
         .skip-link:focus { top: 0; }

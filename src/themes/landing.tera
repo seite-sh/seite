@@ -733,6 +733,10 @@
         }
         .pagination a:hover { background: var(--accent-subtle); border-color: rgba(79,70,229,0.3); }
         .pagination span { color: var(--muted); font-size: 0.9rem; }
+        .docs-section-overview { margin-bottom: 2rem; }
+        .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .docs-section-list { list-style: none; padding: 0; }
+        .docs-section-list li { margin-bottom: 0.3rem; }
 
         /* ---------- Footer ---------- */
         .site-footer {

@@ -624,6 +624,11 @@ fn build_site_inner(
     let empty_nav: Vec<NavSection> = Vec::new();
     let empty_nav_value = serde_json::to_value(&empty_nav).unwrap_or_default();
 
+    // Collect nav data per collection so it can be passed to collection index templates later.
+    // Key: collection name → (lang → serialized nav). Only populated for nested collections.
+    let mut collection_nav_cache: HashMap<String, HashMap<String, serde_json::Value>> =
+        HashMap::new();
+
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
             // Only build nav for nested collections (e.g., docs with sidebar).
@@ -692,6 +697,15 @@ fn build_site_inner(
             } else {
                 nav_by_lang = HashMap::new();
                 nav_slug_index = HashMap::new();
+            }
+
+            // Cache nav for collection index rendering later (Steps 4b/4b-extra)
+            if collection.nested && !nav_by_lang.is_empty() {
+                let owned: HashMap<String, serde_json::Value> = nav_by_lang
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect();
+                collection_nav_cache.insert(collection.name.clone(), owned);
             }
 
             let render_results: Vec<std::result::Result<(PathBuf, String), PageError>> = items
@@ -802,6 +816,30 @@ fn build_site_inner(
         })
         .unwrap_or_default();
 
+    // Extract collection index pages (content/{collection}/index.md and translations)
+    // so they don't render as standalone items but instead inject content into the
+    // collection's index page — the same pattern as content/pages/index.md for the
+    // site homepage. This also powers subdomain root pages: when a collection is
+    // deployed to its own subdomain, its index.md becomes the subdomain root content.
+    let mut collection_index_pages: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    for (name, items) in all_collections.iter_mut() {
+        if name == "pages" {
+            continue; // pages/index.md is already handled above as the site homepage
+        }
+        let mut index_items = Vec::new();
+        let mut i = 0;
+        while i < items.len() {
+            if items[i].slug == "index" {
+                index_items.push(items.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        if !index_items.is_empty() {
+            collection_index_pages.insert(name.clone(), index_items);
+        }
+    }
+
     // Step 4: Render index page(s)
     let step_start = Instant::now();
     for lang in &config.all_languages() {
@@ -848,6 +886,18 @@ fn build_site_inner(
             .collect();
         index_ctx.insert("collections", &collections_ctx);
 
+        // For subdomain builds (single collection with empty url_prefix), pass the nav
+        // so the docs theme sidebar works on the root index page.
+        if let Some(col) = config.collections.first() {
+            if col.url_prefix.is_empty() {
+                if let Some(nav_langs) = collection_nav_cache.get(&col.name) {
+                    if let Some(nav_val) = nav_langs.get(lang.as_str()) {
+                        index_ctx.insert("nav", nav_val);
+                    }
+                }
+            }
+        }
+
         // Always insert a `page` context so templates can unconditionally access
         // page.url, page.collection, etc. for SEO/GEO meta tags.
         // When no homepage page exists, `page.content` is empty so
@@ -879,6 +929,38 @@ fn build_site_inner(
                 excerpt: homepage.excerpt_html.clone(),
                 toc: homepage.toc.clone(),
                 extra: homepage.frontmatter.extra.clone(),
+            }
+        } else if let Some(col_index) = config
+            .collections
+            .iter()
+            .find(|c| c.url_prefix.is_empty())
+            .and_then(|c| {
+                collection_index_pages
+                    .get(&c.name)
+                    .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+            })
+        {
+            // Subdomain root: use the collection's index.md as homepage content
+            PageContext {
+                title: col_index.frontmatter.title.clone(),
+                content: col_index.html_body.clone(),
+                date: col_index.frontmatter.date.map(|d| d.to_string()),
+                updated: col_index.frontmatter.updated.map(|d| d.to_string()),
+                description: col_index.frontmatter.description.clone(),
+                image: absolutize_image(
+                    col_index.frontmatter.image.as_deref(),
+                    &config.site.base_url,
+                ),
+                slug: col_index.slug.clone(),
+                tags: col_index.frontmatter.tags.clone(),
+                url: index_page_url,
+                collection: col_index.collection.clone(),
+                robots: col_index.frontmatter.robots.clone(),
+                word_count: col_index.word_count,
+                reading_time: col_index.reading_time,
+                excerpt: col_index.excerpt_html.clone(),
+                toc: col_index.toc.clone(),
+                extra: col_index.frontmatter.extra.clone(),
             }
         } else {
             PageContext {
@@ -927,9 +1009,30 @@ fn build_site_inner(
         };
         index_ctx.insert("translations", &index_translations);
 
-        let index_html = tera
-            .render("index.html", &index_ctx)
-            .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?;
+        // Handle redirect_to on collection index.md used as subdomain root
+        let redirect_target = config
+            .collections
+            .iter()
+            .find(|c| c.url_prefix.is_empty())
+            .and_then(|c| {
+                collection_index_pages
+                    .get(&c.name)
+                    .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+            })
+            .and_then(|ci| ci.frontmatter.extra.get("redirect_to"))
+            .and_then(|v| v.as_str().map(String::from));
+
+        let index_html = if let Some(target) = redirect_target {
+            let target_url = if target.starts_with('/') {
+                format!("{}{target}", lang_prefix_for(lang, default_lang))
+            } else {
+                target
+            };
+            generate_redirect_html(&target_url)
+        } else {
+            tera.render("index.html", &index_ctx)
+                .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?
+        };
 
         if *lang == *default_lang {
             fs::write(paths.output.join("index.html"), index_html)?;
@@ -1028,28 +1131,72 @@ fn build_site_inner(
                 ctx.insert("collections", &[collection_ctx]);
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
+
+                // Pass sidebar nav for nested collections.
+                // If this language has items (guaranteed — we skip empty above), its
+                // nav was built from those same items, so the lookup always succeeds
+                // when the collection is in the cache.
+                let nav_val = collection_nav_cache
+                    .get(&c.name)
+                    .and_then(|langs| langs.get(lang.as_str()))
+                    .unwrap_or(&empty_nav_value);
+                ctx.insert("nav", nav_val);
+
                 // Always provide a page context so SEO meta tags can access page.url etc.
                 // Insert items directly so collection-specific index templates can use {% for item in items %}
                 ctx.insert("items", &chunk.to_vec());
+
+                // On page 1, inject collection's index.md content if available
+                let col_index_page = if page_num == 1 {
+                    collection_index_pages
+                        .get(&c.name)
+                        .and_then(|pages| pages.iter().find(|p| p.lang == *lang))
+                } else {
+                    None
+                };
                 ctx.insert(
                     "page",
-                    &PageContext {
-                        title: String::new(),
-                        content: String::new(),
-                        date: None,
-                        updated: None,
-                        description: None,
-                        image: None,
-                        slug: String::new(),
-                        tags: Vec::new(),
-                        url: page_url(page_num),
-                        collection: String::new(),
-                        robots: None,
-                        word_count: 0,
-                        reading_time: 0,
-                        excerpt: String::new(),
-                        toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
+                    &if let Some(ci) = col_index_page {
+                        PageContext {
+                            title: ci.frontmatter.title.clone(),
+                            content: ci.html_body.clone(),
+                            date: ci.frontmatter.date.map(|d| d.to_string()),
+                            updated: ci.frontmatter.updated.map(|d| d.to_string()),
+                            description: ci.frontmatter.description.clone(),
+                            image: absolutize_image(
+                                ci.frontmatter.image.as_deref(),
+                                &config.site.base_url,
+                            ),
+                            slug: url_prefix_trimmed.to_string(),
+                            tags: ci.frontmatter.tags.clone(),
+                            url: page_url(page_num),
+                            collection: c.name.clone(),
+                            robots: ci.frontmatter.robots.clone(),
+                            word_count: ci.word_count,
+                            reading_time: ci.reading_time,
+                            excerpt: ci.excerpt_html.clone(),
+                            toc: ci.toc.clone(),
+                            extra: ci.frontmatter.extra.clone(),
+                        }
+                    } else {
+                        PageContext {
+                            title: String::new(),
+                            content: String::new(),
+                            date: None,
+                            updated: None,
+                            description: None,
+                            image: None,
+                            slug: String::new(),
+                            tags: Vec::new(),
+                            url: page_url(page_num),
+                            collection: String::new(),
+                            robots: None,
+                            word_count: 0,
+                            reading_time: 0,
+                            excerpt: String::new(),
+                            toc: Vec::new(),
+                            extra: std::collections::HashMap::new(),
+                        }
                     },
                 );
                 // Use collection-specific index template if available (e.g., changelog-index.html)
@@ -1150,25 +1297,86 @@ fn build_site_inner(
             ctx.insert("collections", &[collection_ctx]);
             ctx.insert("items", &lang_items);
             ctx.insert("translations", &Vec::<TranslationLink>::new());
+
+            // Pass sidebar nav for nested collections (e.g., docs) so the
+            // collection index template can render the same sidebar as individual pages.
+            let nav_val = collection_nav_cache
+                .get(&c.name)
+                .and_then(|langs| langs.get(lang.as_str()))
+                .unwrap_or(&empty_nav_value);
+            ctx.insert("nav", nav_val);
+
+            // Use collection's index.md content if available (content/{collection}/index.md)
+            let col_index_page = collection_index_pages
+                .get(&c.name)
+                .and_then(|pages| pages.iter().find(|p| p.lang == *lang));
+
+            // Support redirect_to in collection index.md: generate an HTML redirect
+            // instead of the normal index template.
+            if let Some(ci) = col_index_page {
+                if let Some(redirect_url) = ci.frontmatter.extra.get("redirect_to") {
+                    if let Some(target) = redirect_url.as_str() {
+                        let target_url = if target.starts_with('/') {
+                            format!("{}{target}", lang_prefix_for(lang, default_lang))
+                        } else {
+                            target.to_string()
+                        };
+                        let redirect_html = generate_redirect_html(&target_url);
+                        let out_dir = if *lang == *default_lang {
+                            paths.output.join(url_prefix_trimmed)
+                        } else {
+                            paths.output.join(lang).join(url_prefix_trimmed)
+                        };
+                        fs::create_dir_all(&out_dir)?;
+                        fs::write(out_dir.join("index.html"), redirect_html)?;
+                        continue;
+                    }
+                }
+            }
+
             ctx.insert(
                 "page",
-                &PageContext {
-                    title: c.label.clone(),
-                    content: String::new(),
-                    date: None,
-                    updated: None,
-                    description: None,
-                    image: None,
-                    slug: url_prefix_trimmed.to_string(),
-                    tags: Vec::new(),
-                    url: collection_url.clone(),
-                    collection: c.name.clone(),
-                    robots: None,
-                    word_count: 0,
-                    reading_time: 0,
-                    excerpt: String::new(),
-                    toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
+                &if let Some(ci) = col_index_page {
+                    PageContext {
+                        title: ci.frontmatter.title.clone(),
+                        content: ci.html_body.clone(),
+                        date: ci.frontmatter.date.map(|d| d.to_string()),
+                        updated: ci.frontmatter.updated.map(|d| d.to_string()),
+                        description: ci.frontmatter.description.clone(),
+                        image: absolutize_image(
+                            ci.frontmatter.image.as_deref(),
+                            &config.site.base_url,
+                        ),
+                        slug: url_prefix_trimmed.to_string(),
+                        tags: ci.frontmatter.tags.clone(),
+                        url: collection_url.clone(),
+                        collection: c.name.clone(),
+                        robots: ci.frontmatter.robots.clone(),
+                        word_count: ci.word_count,
+                        reading_time: ci.reading_time,
+                        excerpt: ci.excerpt_html.clone(),
+                        toc: ci.toc.clone(),
+                        extra: ci.frontmatter.extra.clone(),
+                    }
+                } else {
+                    PageContext {
+                        title: c.label.clone(),
+                        content: String::new(),
+                        date: None,
+                        updated: None,
+                        description: None,
+                        image: None,
+                        slug: url_prefix_trimmed.to_string(),
+                        tags: Vec::new(),
+                        url: collection_url.clone(),
+                        collection: c.name.clone(),
+                        robots: None,
+                        word_count: 0,
+                        reading_time: 0,
+                        excerpt: String::new(),
+                        toc: Vec::new(),
+                        extra: std::collections::HashMap::new(),
+                    }
                 },
             );
 
@@ -2102,6 +2310,25 @@ fn generate_collection_index_md(label: &str, items: &[ItemSummary]) -> String {
     md
 }
 
+/// Generate an HTML redirect page (meta refresh + JS redirect).
+fn generate_redirect_html(target_url: &str) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0; url={target_url}">
+<link rel="canonical" href="{target_url}">
+<title>Redirecting…</title>
+<script>window.location.replace("{target_url}");</script>
+</head>
+<body>
+<p>Redirecting to <a href="{target_url}">{target_url}</a>…</p>
+</body>
+</html>"#
+    )
+}
+
 fn build_page_context(
     site: &SiteContext,
     item: &ContentItem,
@@ -2219,7 +2446,8 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "contact_name": "Name",
         "contact_email": "Email",
         "contact_message": "Message",
-        "contact_submit": "Send Message"
+        "contact_submit": "Send Message",
+        "documentation": "Documentation"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults
