@@ -1132,16 +1132,15 @@ fn build_site_inner(
                 ctx.insert("pagination", &pagination);
                 ctx.insert("translations", &Vec::<TranslationLink>::new());
 
-                // Pass sidebar nav for nested collections
-                if let Some(nav_langs) = collection_nav_cache.get(&c.name) {
-                    if let Some(nav_val) = nav_langs.get(lang.as_str()) {
-                        ctx.insert("nav", nav_val);
-                    } else {
-                        ctx.insert("nav", &empty_nav_value);
-                    }
-                } else {
-                    ctx.insert("nav", &empty_nav_value);
-                }
+                // Pass sidebar nav for nested collections.
+                // If this language has items (guaranteed — we skip empty above), its
+                // nav was built from those same items, so the lookup always succeeds
+                // when the collection is in the cache.
+                let nav_val = collection_nav_cache
+                    .get(&c.name)
+                    .and_then(|langs| langs.get(lang.as_str()))
+                    .unwrap_or(&empty_nav_value);
+                ctx.insert("nav", nav_val);
 
                 // Always provide a page context so SEO meta tags can access page.url etc.
                 // Insert items directly so collection-specific index templates can use {% for item in items %}
