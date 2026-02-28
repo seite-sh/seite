@@ -1300,15 +1300,11 @@ fn build_site_inner(
 
             // Pass sidebar nav for nested collections (e.g., docs) so the
             // collection index template can render the same sidebar as individual pages.
-            if let Some(nav_langs) = collection_nav_cache.get(&c.name) {
-                if let Some(nav_val) = nav_langs.get(lang.as_str()) {
-                    ctx.insert("nav", nav_val);
-                } else {
-                    ctx.insert("nav", &empty_nav_value);
-                }
-            } else {
-                ctx.insert("nav", &empty_nav_value);
-            }
+            let nav_val = collection_nav_cache
+                .get(&c.name)
+                .and_then(|langs| langs.get(lang.as_str()))
+                .unwrap_or(&empty_nav_value);
+            ctx.insert("nav", nav_val);
 
             // Use collection's index.md content if available (content/{collection}/index.md)
             let col_index_page = collection_index_pages
