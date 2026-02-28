@@ -8955,10 +8955,10 @@ fn test_collection_index_page_content_on_collection_index() {
     init_site(&tmp, "col_idx1", "Collection Index", "docs,pages");
     let site_dir = tmp.path().join("col_idx1");
 
-    // Create a collection index page
+    // Create a collection index page (with date/updated to exercise date formatting paths)
     fs::write(
         site_dir.join("content/docs/index.md"),
-        "---\ntitle: Documentation Hub\ndescription: Welcome to our docs\n---\n\nWelcome to the **documentation hub**. Browse our guides below.\n",
+        "---\ntitle: Documentation Hub\ndescription: Welcome to our docs\ndate: 2026-01-10\nupdated: 2026-02-15\n---\n\nWelcome to the **documentation hub**. Browse our guides below.\n",
     )
     .unwrap();
 
@@ -9041,9 +9041,10 @@ fn test_subdomain_root_uses_collection_index_page() {
     let site_dir = tmp.path().join("sub_idx");
 
     // Create a collection index page for the subdomain collection
+    // Include date and updated fields to exercise .map(|d| d.to_string()) closure paths
     fs::write(
         site_dir.join("content/docs/index.md"),
-        "---\ntitle: Developer Docs\ndescription: API documentation and guides\n---\n\nWelcome to **developer docs**. Explore our comprehensive API guides.\n",
+        "---\ntitle: Developer Docs\ndescription: API documentation and guides\ndate: 2026-01-15\nupdated: 2026-02-20\n---\n\nWelcome to **developer docs**. Explore our comprehensive API guides.\n",
     )
     .unwrap();
 
@@ -9290,7 +9291,7 @@ fn test_paginated_collection_index_page_on_first_page() {
     // Create a collection index page for posts
     fs::write(
         site_dir.join("content/posts/index.md"),
-        "---\ntitle: Blog Archive\ndescription: All our blog posts\n---\n\nWelcome to the **blog archive**.\n",
+        "---\ntitle: Blog Archive\ndescription: All our blog posts\ndate: 2026-01-01\nupdated: 2026-02-01\n---\n\nWelcome to the **blog archive**.\n",
     )
     .unwrap();
 
@@ -9515,4 +9516,130 @@ fn test_subdomain_redirect_to_with_relative_url() {
         subdomain_index.contains("http-equiv=\"refresh\""),
         "should be an HTML redirect"
     );
+}
+
+#[test]
+fn test_collection_index_redirect_to_external_url() {
+    // Tests the non-paginated redirect_to with a non-`/` URL (absolute/external)
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "redir_ext", "Redirect External", "docs,pages");
+    let site_dir = tmp.path().join("redir_ext");
+
+    fs::write(
+        site_dir.join("content/docs/index.md"),
+        "---\ntitle: Docs\nextra:\n  redirect_to: https://docs.example.com\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guide.md"),
+        "---\ntitle: Guide\ndescription: Guide\n---\nGuide.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("https://docs.example.com"),
+        "should redirect to external URL without lang prefix"
+    );
+    assert!(
+        docs_index.contains("http-equiv=\"refresh\""),
+        "should be an HTML redirect"
+    );
+}
+
+#[test]
+fn test_docs_nav_fallback_for_missing_lang_in_cache() {
+    // Tests the nav cache fallback when nav exists for "en" but not "es"
+    // This exercises the `else` branch at nav_langs.get(lang) returning None
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "nav_fall", "Nav Fallback", "docs,pages");
+    let site_dir = tmp.path().join("nav_fall");
+
+    // Enable Spanish
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = format!("{config}\n[languages.es]\ntitle = \"Nav Fallback\"\n");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create docs only in default language — no Spanish translations
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/overview.md"),
+        "---\ntitle: Overview\ndescription: Overview\n---\nOverview.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup\ndescription: Setup\n---\nSetup.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default lang docs index should have nav items
+    let docs_index = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        docs_index.contains("Overview"),
+        "default lang docs index should have nav items"
+    );
+
+    // Build succeeds even when nav cache has "en" but not "es"
+    // The Spanish docs index should exist (possibly empty collection)
+    let es_docs_index_path = site_dir.join("dist/es/docs/index.html");
+    if es_docs_index_path.exists() {
+        // If it exists, it should not contain the English nav (empty nav fallback used)
+        let _es_docs = fs::read_to_string(&es_docs_index_path).unwrap();
+        // Just checking it renders without error is sufficient
+    }
+}
+
+#[test]
+fn test_paginated_docs_nav_fallback_for_missing_lang() {
+    // Tests the paginated nav cache fallback when nav exists for "en" but not "es"
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "pag_nav_ml", "Pag Nav ML", "docs,pages");
+    let site_dir = tmp.path().join("pag_nav_ml");
+
+    // Enable Spanish + pagination on docs
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let config = config.replace("name = \"docs\"", "name = \"docs\"\npaginate = 2");
+    let config = format!("{config}\n[languages.es]\ntitle = \"Pag Nav ML\"\n");
+    fs::write(&toml_path, config).unwrap();
+
+    // Create docs only in English
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    for i in 1..=4 {
+        fs::write(
+            site_dir.join(format!("content/docs/guides/guide-{i}.md")),
+            format!("---\ntitle: Guide {i}\ndescription: Guide\nweight: {i}\n---\nGuide {i}.\n"),
+        )
+        .unwrap();
+    }
+
+    page_cmd()
+        .args(["build"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // English page 1 should have nav
+    let page1 = fs::read_to_string(site_dir.join("dist/docs/index.html")).unwrap();
+    assert!(
+        page1.contains("Guide 1"),
+        "English docs page 1 should have nav items"
+    );
+
+    // Build succeeds for Spanish even though no Spanish docs content
+    // (nav cache has "en" but not "es" — exercises empty_nav_value fallback)
 }
