@@ -77,7 +77,7 @@ jobs:
           cd ../../..
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: seite-${{ matrix.target }}
           path: seite-${{ matrix.target }}.tar.gz
@@ -113,13 +113,13 @@ jobs:
           Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
 
       - name: Upload x86_64 artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: seite-x86_64-pc-windows-msvc
           path: seite-x86_64-pc-windows-msvc.zip
 
       - name: Upload aarch64 artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: seite-aarch64-pc-windows-msvc
           path: seite-aarch64-pc-windows-msvc.zip
@@ -142,7 +142,7 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -209,7 +209,7 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: seite-x86_64-unknown-linux-gnu
           path: artifacts
