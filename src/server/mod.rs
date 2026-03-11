@@ -342,8 +342,18 @@ fn watch_and_rebuild(
     while !stop.load(Ordering::Relaxed) {
         // Block until we get an event or timeout (so we can check `stop`)
         match rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(Ok(_event)) => {
-                // Got a real fs event — drain any additional events within the debounce window
+            Ok(Ok(event)) => {
+                // Ignore metadata-only events (e.g. atime updates from file reads on
+                // strictatime/relatime systems) — only react to content changes.
+                if matches!(
+                    event.kind,
+                    notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
+                        | notify::EventKind::Access(_)
+                ) {
+                    continue;
+                }
+
+                // Drain any additional events within the debounce window
                 while rx.recv_timeout(debounce).is_ok() {}
 
                 human::info("Changes detected, rebuilding...");
@@ -357,6 +367,10 @@ fn watch_and_rebuild(
                         human::error(&format!("Rebuild failed: {e}"));
                     }
                 }
+
+                // Drain events that accumulated during the build so they don't
+                // immediately trigger another rebuild.
+                while rx.try_recv().is_ok() {}
             }
             Ok(Err(e)) => {
                 human::error(&format!("Watch error: {e}"));
