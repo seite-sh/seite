@@ -42,6 +42,14 @@ cargo run -- contact setup --provider formspree --endpoint xpznqkdl  # Non-inter
 cargo run -- contact status                                          # Show current config
 cargo run -- contact remove                                          # Remove config
 
+# Skill management
+cargo run -- skill list                              # List installed skills and packs
+cargo run -- skill install seomachine                # Install SEOMachine skill pack
+cargo run -- skill install https://example.com/SKILL.md  # Install from URL
+cargo run -- skill update                            # Update all installed packs
+cargo run -- skill update seomachine                 # Update specific pack
+cargo run -- skill remove seomachine                 # Remove a skill pack
+
 # Collection management
 cargo run -- collection list                         # List site collections
 cargo run -- collection add changelog                # Add a preset collection
@@ -127,6 +135,7 @@ src/
     upgrade.rs         Upgrade project config to current binary (version-gated steps)
     contact.rs         Contact form management (setup, remove, status)
     collection.rs      Collection management (add, list)
+    skill.rs           Skill pack management (install, list, remove, update)
     self_update.rs     Self-update binary from GitHub Releases
   update_check.rs        Background update check with 24h cache (~/.seite/update-cache.json)
   scaffold/            Static markdown sections for generated CLAUDE.md (include_str! at compile time)
@@ -791,3 +800,26 @@ The `/brand-identity` skill (`.claude/skills/brand-identity/SKILL.md`) guides Cl
 The skill is scaffolded unconditionally by `seite init` and upgraded via `seite upgrade` with version tracking (`# seite-skill-version: N` in frontmatter).
 
 Output files: `static/logo.svg`, `public/favicon.svg`, `public/favicon.ico` (optional), `data/brand.yaml`.
+
+### Skill Pack System
+
+`seite skill` manages optional Claude Code skill packs — bundles of agents, commands, skills, and context files that extend the site's AI capabilities.
+
+**Commands:**
+- `seite skill install <name-or-url>` — install a known pack or individual skill from URL
+- `seite skill list` — list bundled skills, installed packs, and custom skills
+- `seite skill remove <name>` — remove an installed pack or skill
+- `seite skill update [name]` — re-download from source (all packs if no name given)
+
+**Known packs:**
+- `seomachine` — SEO content research, writing, and optimization from [SEOMachine](https://github.com/TheCraigHewitt/seomachine). Installs 11 agents, 22 commands, 25 skills, 9 context templates, and 11 Python analytics scripts. Includes a seite-native `/publish-draft` override that replaces WordPress publishing with `seite build && seite deploy`.
+
+**Architecture:**
+- Pack manifest stored in `.claude/.seite-skill-packs.json` (tracks source, files, install date)
+- Agents → `.claude/agents/`, Commands → `.claude/commands/`, Skills → `.claude/skills/`
+- Context files → `context/` (not overwritten on update — user-customized)
+- Python scripts → `scripts/seo/`
+- URL-installed skills store source in `.claude/skills/{name}/.source` for updates
+- CLAUDE.md gets a SEOMachine integration section (auto-managed, delimited by markers)
+
+**Key files:** `src/cli/skill.rs` (CLI), `.claude/.seite-skill-packs.json` (manifest)

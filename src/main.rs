@@ -29,6 +29,7 @@ fn main() -> Result<()> {
         Command::Agent(args) => seite::cli::agent::run(args)?,
         Command::Collection(args) => seite::cli::collection::run(args)?,
         Command::Contact(args) => seite::cli::contact::run(args)?,
+        Command::Skill(args) => seite::cli::skill::run(args)?,
         Command::Theme(args) => seite::cli::theme::run(args)?,
         Command::Workspace(args) => seite::cli::workspace::run(args)?,
         Command::Upgrade(args) => seite::cli::upgrade::run(args)?,

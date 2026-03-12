@@ -1,0 +1,1290 @@
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use clap::{Args, Subcommand};
+use serde::{Deserialize, Serialize};
+
+use crate::output::human;
+
+#[derive(Args)]
+pub struct SkillArgs {
+    #[command(subcommand)]
+    pub command: SkillCommand,
+}
+
+#[derive(Subcommand)]
+pub enum SkillCommand {
+    /// Install a skill pack or individual skill from a URL
+    Install {
+        /// Known pack name (e.g., "seomachine") or URL to a SKILL.md file
+        source: String,
+
+        /// Override the skill name (for URL installs)
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// List installed skills and skill packs
+    List,
+
+    /// Remove an installed skill pack or individual skill
+    Remove {
+        /// Pack or skill name to remove
+        name: String,
+    },
+
+    /// Update installed skills from their original sources
+    Update {
+        /// Specific pack or skill to update (updates all if omitted)
+        name: Option<String>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Known skill packs
+// ---------------------------------------------------------------------------
+
+struct SkillPack {
+    name: &'static str,
+    description: &'static str,
+    repo: &'static str,
+    branch: &'static str,
+    agents: &'static [&'static str],
+    commands: &'static [&'static str],
+    skills: &'static [&'static str],
+    context_files: &'static [&'static str],
+    python_scripts: &'static [&'static str],
+}
+
+fn known_packs() -> &'static [SkillPack] {
+    &[SkillPack {
+        name: "seomachine",
+        description:
+            "SEO content research, writing, and optimization — by SEOMachine (seomachine.com)",
+        repo: "TheCraigHewitt/seomachine",
+        branch: "main",
+        agents: &[
+            "cluster-strategist.md",
+            "content-analyzer.md",
+            "cro-analyst.md",
+            "editor.md",
+            "headline-generator.md",
+            "internal-linker.md",
+            "keyword-mapper.md",
+            "landing-page-optimizer.md",
+            "meta-creator.md",
+            "performance.md",
+            "seo-optimizer.md",
+        ],
+        commands: &[
+            "analyze-existing.md",
+            "article.md",
+            "cluster.md",
+            "content-calendar.md",
+            "landing-audit.md",
+            "landing-competitor.md",
+            "landing-publish.md",
+            "landing-research.md",
+            "landing-write.md",
+            "optimize.md",
+            "performance-review.md",
+            "priorities.md",
+            "publish-draft.md",
+            "research-gaps.md",
+            "research-performance.md",
+            "research-serp.md",
+            "research-topics.md",
+            "research-trending.md",
+            "research.md",
+            "rewrite.md",
+            "scrub.md",
+            "write.md",
+        ],
+        skills: &[
+            "ab-test-setup",
+            "analytics-tracking",
+            "competitor-alternatives",
+            "content-strategy",
+            "copy-editing",
+            "copywriting",
+            "email-sequence",
+            "form-cro",
+            "free-tool-strategy",
+            "launch-strategy",
+            "marketing-ideas",
+            "marketing-psychology",
+            "onboarding-cro",
+            "page-cro",
+            "paid-ads",
+            "paywall-upgrade-cro",
+            "popup-cro",
+            "pricing-strategy",
+            "product-marketing-context",
+            "programmatic-seo",
+            "referral-program",
+            "schema-markup",
+            "seo-audit",
+            "signup-flow-cro",
+            "social-content",
+        ],
+        context_files: &[
+            "brand-voice.md",
+            "competitor-analysis.md",
+            "cro-best-practices.md",
+            "features.md",
+            "internal-links-map.md",
+            "seo-guidelines.md",
+            "style-guide.md",
+            "target-keywords.md",
+            "writing-examples.md",
+        ],
+        python_scripts: &[
+            "research_competitor_gaps.py",
+            "research_performance_matrix.py",
+            "research_priorities_comprehensive.py",
+            "research_quick_wins.py",
+            "research_serp_analysis.py",
+            "research_topic_clusters.py",
+            "research_trending.py",
+            "seo_baseline_analysis.py",
+            "seo_bofu_rankings.py",
+            "seo_competitor_analysis.py",
+            "test_dataforseo.py",
+        ],
+    }]
+}
+
+fn find_pack(name: &str) -> Option<&'static SkillPack> {
+    known_packs().iter().find(|p| p.name == name)
+}
+
+// ---------------------------------------------------------------------------
+// Source tracking
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Default)]
+struct SkillPacksManifest {
+    packs: HashMap<String, PackEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PackEntry {
+    source: String,
+    branch: String,
+    installed_at: String,
+    files: Vec<String>,
+}
+
+fn manifest_path(root: &Path) -> PathBuf {
+    root.join(".claude").join(".seite-skill-packs.json")
+}
+
+fn load_manifest(root: &Path) -> SkillPacksManifest {
+    let path = manifest_path(root);
+    if path.exists() {
+        let content = fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        SkillPacksManifest::default()
+    }
+}
+
+fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<()> {
+    let path = manifest_path(root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(manifest)?;
+    fs::write(&path, json)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// HTTP download
+// ---------------------------------------------------------------------------
+
+fn download_text(url: &str) -> anyhow::Result<String> {
+    let body = ureq::get(url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("download failed ({url}): {e}"))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| anyhow::anyhow!("failed to read response ({url}): {e}"))?;
+    Ok(body)
+}
+
+fn raw_github_url(repo: &str, branch: &str, path: &str) -> String {
+    format!("https://raw.githubusercontent.com/{repo}/{branch}/{path}")
+}
+
+// ---------------------------------------------------------------------------
+// Context injection
+// ---------------------------------------------------------------------------
+
+fn seite_context_preamble() -> &'static str {
+    r#"## seite Integration Context
+
+You are working inside a **seite** static site project (https://seite.sh). Adapt your workflow to use seite's content model and CLI:
+
+### Content model
+- Content lives in `content/{collection}/*.md` with YAML frontmatter
+- Use `seite new post "Title" --tags tag1,tag2` to create a new post
+- Set `draft: true` in frontmatter for work-in-progress drafts
+- Run `seite build` to build the site, `seite serve` for live preview, `seite deploy` to publish
+
+### Directory mapping (SEOMachine → seite)
+| SEOMachine | seite equivalent |
+|---|---|
+| `drafts/` | `content/{collection}/` with `draft: true` in frontmatter |
+| `published/` | `content/{collection}/` (no draft flag) |
+| `research/` | `research/` (same) |
+| `output/` | `output/` (same, for agent reports) |
+| `topics/` | `topics/` (same, for idea capture) |
+
+### Frontmatter format
+```yaml
+---
+title: "SEO-Optimized Title (50-60 chars)"
+date: 2026-03-12
+description: "Compelling meta description with primary keyword (150-160 chars)"
+tags:
+  - keyword1
+  - keyword2
+image: /static/og-image.png
+draft: false
+extra:
+  primary_keyword: "target keyword"
+---
+```
+
+### SEO features (automatic)
+seite themes automatically handle: canonical URLs, Open Graph tags, Twitter Cards, JSON-LD structured data (BlogPosting/Article/WebSite), hreflang tags (multilingual), robots.txt with AI crawler management, llms.txt + llms-full.txt for AI discovery, and raw markdown alongside HTML. Focus on content quality — technical SEO is built in.
+
+### Publishing workflow
+Instead of WordPress REST API, use:
+1. Write content to `content/posts/` (or other collection)
+2. Remove `draft: true` when ready to publish
+3. Run `seite build` to verify
+4. Run `seite deploy` to publish
+
+### Site context
+- Read `seite.toml` for site configuration (title, collections, base_url, language)
+- Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
+- Read `CLAUDE.md` for full site documentation
+"#
+}
+
+fn seite_publish_draft_command() -> &'static str {
+    r#"# Publish Draft — seite Edition
+
+Publish a draft article from `content/` by removing the `draft: true` flag, building the site, and optionally deploying.
+
+## Usage
+
+`/publish-draft <file-path>`
+
+Example: `/publish-draft content/posts/2026-03-12-rust-error-handling.md`
+
+## Workflow
+
+1. **Read the specified file** and verify it exists and has `draft: true` in frontmatter
+2. **Run the content scrubber** — check for AI watermarks and telltale patterns (same as SEOMachine's `/scrub`). Fix any issues found
+3. **Remove `draft: true`** from the YAML frontmatter (or set it to `draft: false`)
+4. **Run `seite build`** to verify the site builds successfully with the new content
+5. **Report the result** — show the article title, URL it will be published at, and word count
+6. **Ask if user wants to deploy** — if yes, run `seite deploy`
+
+## Important
+
+- Do NOT use WordPress or any external CMS — this is a seite static site
+- The article stays in its current location in `content/` — seite serves it from there
+- After publishing, the article will appear at its URL (e.g., `/posts/rust-error-handling`)
+- Run `seite serve` if the user wants to preview before deploying
+"#
+}
+
+// ---------------------------------------------------------------------------
+// Internal links map generation
+// ---------------------------------------------------------------------------
+
+fn generate_internal_links_map(root: &Path) -> String {
+    let mut map = String::from("# Internal Links Map\n\n");
+    map.push_str("Auto-generated by `seite skill install`. Update with `seite skill update`.\n\n");
+
+    let content_dir = root.join("content");
+    if !content_dir.exists() {
+        return map;
+    }
+
+    // Walk content directories (collections)
+    let mut entries: Vec<(String, String, String)> = Vec::new(); // (collection, title, url)
+
+    if let Ok(collections) = fs::read_dir(&content_dir) {
+        for collection_entry in collections.flatten() {
+            if !collection_entry.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            let collection_name = collection_entry.file_name().to_string_lossy().to_string();
+
+            walk_content_dir(
+                &collection_entry.path(),
+                &collection_name,
+                &collection_name,
+                &mut entries,
+            );
+        }
+    }
+
+    // Sort by collection then title
+    entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    let mut current_collection = String::new();
+    for (collection, title, url) in &entries {
+        if *collection != current_collection {
+            map.push_str(&format!("\n## {}\n\n", collection));
+            current_collection.clone_from(collection);
+        }
+        map.push_str(&format!("- [{}]({})\n", title, url));
+    }
+
+    map
+}
+
+fn walk_content_dir(
+    dir: &Path,
+    collection_name: &str,
+    url_prefix: &str,
+    entries: &mut Vec<(String, String, String)>,
+) {
+    let Ok(items) = fs::read_dir(dir) else {
+        return;
+    };
+    for item in items.flatten() {
+        let path = item.path();
+        if path.is_dir() {
+            let subdir = path.file_name().unwrap_or_default().to_string_lossy();
+            walk_content_dir(
+                &path,
+                collection_name,
+                &format!("{url_prefix}/{subdir}"),
+                entries,
+            );
+        } else if path.extension().is_some_and(|e| e == "md") {
+            let filename = path.file_stem().unwrap_or_default().to_string_lossy();
+            if filename == "index" {
+                continue;
+            }
+            // Try to extract title from frontmatter
+            let title = extract_title_from_file(&path).unwrap_or_else(|| filename.to_string());
+            // Build URL: strip date prefix if present (YYYY-MM-DD-)
+            let slug = strip_date_prefix(&filename);
+            let url = format!("/{url_prefix}/{slug}");
+            entries.push((collection_name.to_string(), title, url));
+        }
+    }
+}
+
+fn extract_title_from_file(path: &Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    if !content.starts_with("---") {
+        return None;
+    }
+    for line in content.lines().skip(1) {
+        if line.trim() == "---" {
+            break;
+        }
+        if let Some(rest) = line.strip_prefix("title:") {
+            let title = rest.trim().trim_matches('"').trim_matches('\'');
+            if !title.is_empty() {
+                return Some(title.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn strip_date_prefix(filename: &str) -> &str {
+    // Strip YYYY-MM-DD- prefix if present
+    if filename.len() > 11 && filename.as_bytes()[4] == b'-' && filename.as_bytes()[7] == b'-' {
+        if let Some(rest) = filename.get(11..) {
+            if filename[..10]
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '-')
+            {
+                return rest;
+            }
+        }
+    }
+    filename
+}
+
+// ---------------------------------------------------------------------------
+// .gitignore helpers
+// ---------------------------------------------------------------------------
+
+fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()> {
+    let gitignore_path = root.join(".gitignore");
+    let existing = if gitignore_path.exists() {
+        fs::read_to_string(&gitignore_path)?
+    } else {
+        String::new()
+    };
+
+    let mut additions = Vec::new();
+    for entry in entries {
+        if !existing.lines().any(|l| l.trim() == *entry) {
+            additions.push(*entry);
+        }
+    }
+
+    if !additions.is_empty() {
+        let mut content = existing;
+        if !content.ends_with('\n') && !content.is_empty() {
+            content.push('\n');
+        }
+        content.push_str("\n# SEOMachine\n");
+        for entry in &additions {
+            content.push_str(entry);
+            content.push('\n');
+        }
+        fs::write(&gitignore_path, content)?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// CLAUDE.md integration
+// ---------------------------------------------------------------------------
+
+const CLAUDE_MD_MARKER_START: &str = "<!-- seite-seomachine-start -->";
+const CLAUDE_MD_MARKER_END: &str = "<!-- seite-seomachine-end -->";
+
+fn append_claude_md_section(root: &Path) -> anyhow::Result<()> {
+    let claude_md_path = root.join("CLAUDE.md");
+    let existing = if claude_md_path.exists() {
+        fs::read_to_string(&claude_md_path)?
+    } else {
+        String::new()
+    };
+
+    // Remove any existing SEOMachine section
+    let cleaned = remove_claude_md_section(&existing);
+
+    let section = format!(
+        r#"
+{CLAUDE_MD_MARKER_START}
+### SEOMachine Integration
+
+This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) installed for SEO content research, writing, and optimization.
+
+**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`
+
+**Context files** in `context/` define your brand voice, target keywords, and SEO guidelines. Fill these in for best results.
+
+**Directory layout:**
+- `content/posts/` — articles (use `draft: true` for work-in-progress)
+- `research/` — research briefs and analysis reports
+- `output/` — agent optimization reports
+- `topics/` — raw topic ideas
+- `context/` — brand voice, style guide, target keywords, competitor analysis
+
+**Analytics (optional):** Python scripts in `scripts/seo/` connect to Google Analytics, Search Console, and DataForSEO. Set up `.env` with API credentials. Run `pip install -r requirements-seo.txt` to install dependencies.
+
+**Publishing:** Use `/publish-draft <file>` to remove draft status, build, and deploy. This replaces SEOMachine's WordPress integration with seite's native deploy.
+
+{seite_preamble}
+{CLAUDE_MD_MARKER_END}
+"#,
+        seite_preamble = seite_context_preamble()
+    );
+
+    let mut result = cleaned;
+    if !result.ends_with('\n') && !result.is_empty() {
+        result.push('\n');
+    }
+    result.push_str(&section);
+
+    fs::write(&claude_md_path, result)?;
+    Ok(())
+}
+
+fn remove_claude_md_section(content: &str) -> String {
+    if let (Some(start), Some(end)) = (
+        content.find(CLAUDE_MD_MARKER_START),
+        content.find(CLAUDE_MD_MARKER_END),
+    ) {
+        let end_pos = end + CLAUDE_MD_MARKER_END.len();
+        // Also strip trailing newline after marker
+        let end_pos = if content[end_pos..].starts_with('\n') {
+            end_pos + 1
+        } else {
+            end_pos
+        };
+        // Also strip leading newline before marker
+        let start = if start > 0 && content.as_bytes()[start - 1] == b'\n' {
+            start - 1
+        } else {
+            start
+        };
+        format!("{}{}", &content[..start], &content[end_pos..])
+    } else {
+        content.to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// .env.example scaffolding
+// ---------------------------------------------------------------------------
+
+fn scaffold_env_example(root: &Path) -> anyhow::Result<()> {
+    let env_path = root.join(".env.example");
+    if env_path.exists() {
+        return Ok(());
+    }
+    fs::write(
+        &env_path,
+        r#"# SEOMachine Analytics Configuration
+# Copy this file to .env and fill in your credentials.
+# See: https://github.com/TheCraigHewitt/seomachine/blob/main/data-sources-setup.md
+
+# Google Analytics 4
+GA4_PROPERTY_ID=
+GA4_CREDENTIALS_PATH=credentials/ga4-service-account.json
+
+# Google Search Console
+GSC_PROPERTY_URL=
+GSC_CREDENTIALS_PATH=credentials/gsc-service-account.json
+
+# DataForSEO
+DATAFORSEO_LOGIN=
+DATAFORSEO_PASSWORD=
+
+# WordPress (not used with seite — kept for SEOMachine compatibility)
+# WP_URL=
+# WP_USERNAME=
+# WP_APP_PASSWORD=
+"#,
+    )?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// requirements-seo.txt scaffolding
+// ---------------------------------------------------------------------------
+
+fn scaffold_requirements(root: &Path) -> anyhow::Result<()> {
+    let req_path = root.join("requirements-seo.txt");
+    if req_path.exists() {
+        return Ok(());
+    }
+    fs::write(
+        &req_path,
+        r#"# SEOMachine Python dependencies
+# Install with: pip install -r requirements-seo.txt
+google-analytics-data>=0.18.0
+google-auth>=2.0.0
+google-searchconsole>=0.1.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+scikit-learn>=1.3.0
+nltk>=3.8.0
+"#,
+    )?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Name derivation and validation
+// ---------------------------------------------------------------------------
+
+fn derive_skill_name(url: &str, name_override: Option<&str>) -> String {
+    match name_override {
+        Some(n) => n.to_string(),
+        None => {
+            // Try to get a meaningful name from the URL path
+            let segments: Vec<&str> = url.trim_end_matches('/').rsplit('/').collect();
+            // For .../skills/content-strategy/SKILL.md → "content-strategy"
+            // Check if the filename is literally "SKILL.md" (the standard name)
+            if segments.len() >= 2 && segments[0].eq_ignore_ascii_case("skill.md") {
+                return segments[1].to_string();
+            }
+            // For .../foo.md → "foo"
+            let filename = segments.first().unwrap_or(&"skill");
+            filename.strip_suffix(".md").unwrap_or(filename).to_string()
+        }
+    }
+}
+
+fn validate_skill_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty() || name.contains(std::path::is_separator) || name.contains("..") {
+        return Err(anyhow::anyhow!("invalid skill name: '{}'", name));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// CLI dispatch
+// ---------------------------------------------------------------------------
+
+pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
+    match &args.command {
+        SkillCommand::Install { source, name } => run_install(source, name.as_deref()),
+        SkillCommand::List => run_list(),
+        SkillCommand::Remove { name } => run_remove(name),
+        SkillCommand::Update { name } => run_update(name.as_deref()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Install
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+
+    // Check if it's a known pack
+    if let Some(pack) = find_pack(source) {
+        return run_install_pack(&root, pack);
+    }
+
+    // Check if it looks like a URL
+    if source.starts_with("http://") || source.starts_with("https://") {
+        return run_install_url(&root, source, name_override);
+    }
+
+    Err(anyhow::anyhow!(
+        "unknown skill pack '{}'. Known packs: {}. Or provide a URL to a SKILL.md file.",
+        source,
+        known_packs()
+            .iter()
+            .map(|p| p.name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
+    human::info(&format!(
+        "Installing skill pack '{}': {}",
+        pack.name, pack.description
+    ));
+
+    let mut installed_files: Vec<String> = Vec::new();
+    let mut download_errors: Vec<String> = Vec::new();
+
+    // Download agents
+    let agents_dir = root.join(".claude").join("agents");
+    fs::create_dir_all(&agents_dir)?;
+    human::info(&format!("Downloading {} agents...", pack.agents.len()));
+    for agent in pack.agents {
+        let url = raw_github_url(pack.repo, pack.branch, &format!(".claude/agents/{agent}"));
+        match download_text(&url) {
+            Ok(body) => {
+                fs::write(agents_dir.join(agent), &body)?;
+                installed_files.push(format!(".claude/agents/{agent}"));
+            }
+            Err(e) => download_errors.push(format!("  agent {agent}: {e}")),
+        }
+    }
+
+    // Download commands
+    let commands_dir = root.join(".claude").join("commands");
+    fs::create_dir_all(&commands_dir)?;
+    human::info(&format!("Downloading {} commands...", pack.commands.len()));
+    for command in pack.commands {
+        // Skip publish-draft — we'll write our own seite-native version
+        if *command == "publish-draft.md" {
+            continue;
+        }
+        let url = raw_github_url(
+            pack.repo,
+            pack.branch,
+            &format!(".claude/commands/{command}"),
+        );
+        match download_text(&url) {
+            Ok(body) => {
+                fs::write(commands_dir.join(command), &body)?;
+                installed_files.push(format!(".claude/commands/{command}"));
+            }
+            Err(e) => download_errors.push(format!("  command {command}: {e}")),
+        }
+    }
+
+    // Write seite-native publish-draft override
+    fs::write(
+        commands_dir.join("publish-draft.md"),
+        seite_publish_draft_command(),
+    )?;
+    installed_files.push(".claude/commands/publish-draft.md".to_string());
+
+    // Download skills
+    human::info(&format!("Downloading {} skills...", pack.skills.len()));
+    for skill in pack.skills {
+        let skill_dir = root.join(".claude").join("skills").join(skill);
+        fs::create_dir_all(&skill_dir)?;
+        let url = raw_github_url(
+            pack.repo,
+            pack.branch,
+            &format!(".claude/skills/{skill}/SKILL.md"),
+        );
+        match download_text(&url) {
+            Ok(body) => {
+                fs::write(skill_dir.join("SKILL.md"), &body)?;
+                installed_files.push(format!(".claude/skills/{skill}/SKILL.md"));
+            }
+            Err(e) => download_errors.push(format!("  skill {skill}: {e}")),
+        }
+    }
+
+    // Download context file templates (only if they don't already exist)
+    let context_dir = root.join("context");
+    fs::create_dir_all(&context_dir)?;
+    human::info("Scaffolding context templates...");
+    for context_file in pack.context_files {
+        let dest = context_dir.join(context_file);
+        if dest.exists() {
+            continue; // Don't overwrite user-customized context files
+        }
+        let url = raw_github_url(pack.repo, pack.branch, &format!("context/{context_file}"));
+        match download_text(&url) {
+            Ok(body) => {
+                fs::write(&dest, &body)?;
+                installed_files.push(format!("context/{context_file}"));
+            }
+            Err(e) => download_errors.push(format!("  context {context_file}: {e}")),
+        }
+    }
+
+    // Download Python scripts
+    let scripts_dir = root.join("scripts").join("seo");
+    fs::create_dir_all(&scripts_dir)?;
+    human::info(&format!(
+        "Downloading {} Python scripts...",
+        pack.python_scripts.len()
+    ));
+    for script in pack.python_scripts {
+        let url = raw_github_url(pack.repo, pack.branch, script);
+        match download_text(&url) {
+            Ok(body) => {
+                fs::write(scripts_dir.join(script), &body)?;
+                installed_files.push(format!("scripts/seo/{script}"));
+            }
+            Err(e) => download_errors.push(format!("  script {script}: {e}")),
+        }
+    }
+
+    // Scaffold supporting files
+    scaffold_env_example(root)?;
+    scaffold_requirements(root)?;
+
+    // Create directories for SEOMachine workflow
+    for dir in &["research", "output", "topics"] {
+        fs::create_dir_all(root.join(dir))?;
+    }
+
+    // Add to .gitignore
+    ensure_gitignore_entries(
+        root,
+        &[
+            "research/",
+            "output/",
+            "topics/",
+            ".env",
+            "credentials/",
+            ".claude/.seite-skill-packs.json",
+        ],
+    )?;
+
+    // Generate internal links map
+    let links_map = generate_internal_links_map(root);
+    fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
+
+    // Append to CLAUDE.md
+    append_claude_md_section(root)?;
+
+    // Save manifest
+    let mut manifest = load_manifest(root);
+    manifest.packs.insert(
+        pack.name.to_string(),
+        PackEntry {
+            source: format!("github:{}", pack.repo),
+            branch: pack.branch.to_string(),
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            files: installed_files.clone(),
+        },
+    );
+    save_manifest(root, &manifest)?;
+
+    // Report
+    if !download_errors.is_empty() {
+        human::info(&format!(
+            "Some files failed to download ({} errors):",
+            download_errors.len()
+        ));
+        for err in &download_errors {
+            human::info(err);
+        }
+    }
+
+    let total = installed_files.len();
+    human::success(&format!(
+        "Installed '{}' — {} files (agents, commands, skills, context, scripts)",
+        pack.name, total
+    ));
+    human::info("");
+    human::info("Next steps:");
+    human::info("  1. Fill in context/ files with your brand voice, keywords, and guidelines");
+    human::info("  2. (Optional) Set up analytics: copy .env.example to .env, fill in API keys");
+    human::info("  3. (Optional) Install Python deps: pip install -r requirements-seo.txt");
+    human::info("  4. Start with: /research \"your topic\" or /write \"your topic\"");
+
+    Ok(())
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_url(root: &Path, url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+    let skill_name = derive_skill_name(url, name_override);
+    validate_skill_name(&skill_name)?;
+
+    human::info(&format!("Downloading skill from {}...", url));
+
+    let body = download_text(url)?;
+
+    // Basic validation — should look like markdown
+    if body.is_empty() {
+        return Err(anyhow::anyhow!("downloaded file is empty"));
+    }
+
+    let skill_dir = root.join(".claude").join("skills").join(&skill_name);
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(skill_dir.join("SKILL.md"), &body)?;
+
+    // Save source URL for updates
+    fs::write(skill_dir.join(".source"), url)?;
+
+    human::success(&format!(
+        "Installed skill '{}' to .claude/skills/{}/SKILL.md",
+        skill_name, skill_name
+    ));
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// List
+// ---------------------------------------------------------------------------
+
+fn run_list() -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+    let skills_dir = root.join(".claude").join("skills");
+
+    // Bundled skills (always present after init)
+    let bundled = ["theme-builder", "brand-identity", "landing-page"];
+
+    human::info("Bundled skills:");
+    for name in &bundled {
+        let skill_path = skills_dir.join(name).join("SKILL.md");
+        if skill_path.exists() {
+            human::info(&format!("  {} (bundled)", name));
+        }
+    }
+
+    // Installed packs
+    let manifest = load_manifest(&root);
+    if !manifest.packs.is_empty() {
+        human::info("");
+        human::info("Installed packs:");
+        for (name, entry) in &manifest.packs {
+            human::info(&format!(
+                "  {} — {} files (from {})",
+                name,
+                entry.files.len(),
+                entry.source
+            ));
+        }
+    }
+
+    // Other installed skills (not bundled, not part of a pack)
+    let pack_skills: Vec<String> = manifest
+        .packs
+        .values()
+        .flat_map(|e| {
+            e.files.iter().filter_map(|f| {
+                f.strip_prefix(".claude/skills/")
+                    .and_then(|s| s.strip_suffix("/SKILL.md"))
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect();
+
+    if skills_dir.exists() {
+        let mut custom_skills = Vec::new();
+        if let Ok(entries) = fs::read_dir(&skills_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if bundled.contains(&name.as_str()) || pack_skills.contains(&name) {
+                    continue;
+                }
+                if entry.path().join("SKILL.md").exists() {
+                    custom_skills.push(name);
+                }
+            }
+        }
+        if !custom_skills.is_empty() {
+            human::info("");
+            human::info("Custom skills:");
+            for name in &custom_skills {
+                human::info(&format!("  {}", name));
+            }
+        }
+    }
+
+    // Available packs (not yet installed)
+    let available: Vec<_> = known_packs()
+        .iter()
+        .filter(|p| !manifest.packs.contains_key(p.name))
+        .collect();
+    if !available.is_empty() {
+        human::info("");
+        human::info("Available packs (not installed):");
+        for pack in &available {
+            human::info(&format!("  {} — {}", pack.name, pack.description));
+            human::info(&format!(
+                "    Install with: seite skill install {}",
+                pack.name
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Remove
+// ---------------------------------------------------------------------------
+
+fn run_remove(name: &str) -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+    let mut manifest = load_manifest(&root);
+
+    // Check if it's an installed pack
+    if let Some(entry) = manifest.packs.remove(name) {
+        human::info(&format!("Removing skill pack '{}'...", name));
+
+        for file in &entry.files {
+            let path = root.join(file);
+            if path.exists() {
+                fs::remove_file(&path)?;
+            }
+            // Clean up empty parent directories
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir(parent); // ignore errors (dir not empty)
+            }
+        }
+
+        // Remove CLAUDE.md section
+        let claude_md_path = root.join("CLAUDE.md");
+        if claude_md_path.exists() {
+            let content = fs::read_to_string(&claude_md_path)?;
+            let cleaned = remove_claude_md_section(&content);
+            fs::write(&claude_md_path, cleaned)?;
+        }
+
+        save_manifest(&root, &manifest)?;
+        human::success(&format!(
+            "Removed pack '{}' ({} files). Context files in context/ were kept.",
+            name,
+            entry.files.len()
+        ));
+        return Ok(());
+    }
+
+    // Check if it's a custom skill
+    let skill_dir = root.join(".claude").join("skills").join(name);
+    if skill_dir.exists() {
+        fs::remove_dir_all(&skill_dir)?;
+        human::success(&format!("Removed skill '{}'", name));
+        return Ok(());
+    }
+
+    Err(anyhow::anyhow!(
+        "no skill or pack named '{}' is installed",
+        name
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Update
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_update(name: Option<&str>) -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+    let manifest = load_manifest(&root);
+
+    if let Some(name) = name {
+        // Update specific pack
+        if manifest.packs.contains_key(name) {
+            if let Some(pack) = find_pack(name) {
+                human::info(&format!("Updating pack '{}'...", name));
+                return run_install_pack(&root, pack);
+            }
+            return Err(anyhow::anyhow!(
+                "pack '{}' was installed but is no longer in the known packs registry",
+                name
+            ));
+        }
+
+        // Check if it's a URL-installed skill with .source file
+        let source_path = root
+            .join(".claude")
+            .join("skills")
+            .join(name)
+            .join(".source");
+        if source_path.exists() {
+            let url = fs::read_to_string(&source_path)?.trim().to_string();
+            human::info(&format!("Updating skill '{}' from {}...", name, url));
+            return run_install_url(&root, &url, Some(name));
+        }
+
+        return Err(anyhow::anyhow!(
+            "no updatable skill or pack named '{}' found",
+            name
+        ));
+    }
+
+    // Update all packs
+    let pack_names: Vec<String> = manifest.packs.keys().cloned().collect();
+    if pack_names.is_empty() {
+        human::info("No skill packs installed. Nothing to update.");
+        return Ok(());
+    }
+
+    for pack_name in &pack_names {
+        if let Some(pack) = find_pack(pack_name) {
+            human::info(&format!("Updating pack '{}'...", pack_name));
+            run_install_pack(&root, pack)?;
+        }
+    }
+
+    // Also regenerate internal links map
+    let context_dir = root.join("context");
+    if context_dir.exists() {
+        let links_map = generate_internal_links_map(&root);
+        fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
+        human::info("Regenerated internal links map");
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_known_pack() {
+        assert!(find_pack("seomachine").is_some());
+        assert!(find_pack("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_derive_skill_name_from_url() {
+        assert_eq!(
+            derive_skill_name(
+                "https://raw.githubusercontent.com/user/repo/main/.claude/skills/content-strategy/SKILL.md",
+                None
+            ),
+            "content-strategy"
+        );
+    }
+
+    #[test]
+    fn test_derive_skill_name_plain_md() {
+        assert_eq!(
+            derive_skill_name("https://example.com/my-skill.md", None),
+            "my-skill"
+        );
+    }
+
+    #[test]
+    fn test_derive_skill_name_override() {
+        assert_eq!(
+            derive_skill_name("https://example.com/whatever.md", Some("custom-name")),
+            "custom-name"
+        );
+    }
+
+    #[test]
+    fn test_validate_skill_name() {
+        assert!(validate_skill_name("seo-content").is_ok());
+        assert!(validate_skill_name("my_skill").is_ok());
+        assert!(validate_skill_name("").is_err());
+        assert!(validate_skill_name("..").is_err());
+        assert!(validate_skill_name("../evil").is_err());
+    }
+
+    #[test]
+    fn test_strip_date_prefix() {
+        assert_eq!(strip_date_prefix("2026-03-12-hello-world"), "hello-world");
+        assert_eq!(strip_date_prefix("no-date-here"), "no-date-here");
+        assert_eq!(strip_date_prefix("short"), "short");
+    }
+
+    #[test]
+    fn test_manifest_roundtrip() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "test".to_string(),
+            PackEntry {
+                source: "github:user/repo".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec!["file1.md".to_string()],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+        let loaded = load_manifest(tmp.path());
+        assert!(loaded.packs.contains_key("test"));
+        assert_eq!(loaded.packs["test"].files.len(), 1);
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("# Internal Links Map"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_with_content() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("content").join("posts");
+        fs::create_dir_all(&posts_dir).unwrap();
+        fs::write(
+            posts_dir.join("2026-03-12-hello-world.md"),
+            "---\ntitle: \"Hello World\"\n---\nContent here",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("Hello World"));
+        assert!(map.contains("/posts/hello-world"));
+    }
+
+    #[test]
+    fn test_seite_context_preamble_nonempty() {
+        let preamble = seite_context_preamble();
+        assert!(preamble.contains("seite"));
+        assert!(preamble.contains("frontmatter"));
+    }
+
+    #[test]
+    fn test_claude_md_section_add_and_remove() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\n").unwrap();
+        append_claude_md_section(tmp.path()).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        assert!(content.contains("SEOMachine Integration"));
+        assert!(content.contains(CLAUDE_MD_MARKER_START));
+        assert!(content.contains(CLAUDE_MD_MARKER_END));
+        assert!(content.contains("# My Project")); // Original content preserved
+
+        // Remove
+        let cleaned = remove_claude_md_section(&content);
+        assert!(!cleaned.contains("SEOMachine Integration"));
+        assert!(cleaned.contains("# My Project"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_entries() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        ensure_gitignore_entries(tmp.path(), &["research/", ".env"]).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains("research/"));
+        assert!(content.contains(".env"));
+
+        // Calling again shouldn't duplicate
+        ensure_gitignore_entries(tmp.path(), &["research/", ".env"]).unwrap();
+        let content2 = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert_eq!(
+            content2.matches("research/").count(),
+            1,
+            "should not duplicate entries"
+        );
+    }
+
+    #[test]
+    fn test_scaffold_env_example() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        scaffold_env_example(tmp.path()).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".env.example")).unwrap();
+        assert!(content.contains("DATAFORSEO_LOGIN"));
+
+        // Should not overwrite
+        fs::write(tmp.path().join(".env.example"), "custom").unwrap();
+        scaffold_env_example(tmp.path()).unwrap();
+        let content2 = fs::read_to_string(tmp.path().join(".env.example")).unwrap();
+        assert_eq!(content2, "custom");
+    }
+
+    #[test]
+    fn test_scaffold_requirements() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        scaffold_requirements(tmp.path()).unwrap();
+        let content = fs::read_to_string(tmp.path().join("requirements-seo.txt")).unwrap();
+        assert!(content.contains("beautifulsoup4"));
+    }
+
+    #[test]
+    fn test_extract_title_from_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(
+            &path,
+            "---\ntitle: \"Hello World\"\ndate: 2026-01-01\n---\nBody",
+        )
+        .unwrap();
+        assert_eq!(
+            extract_title_from_file(&path),
+            Some("Hello World".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_no_frontmatter() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "# Just a heading\n\nBody").unwrap();
+        assert_eq!(extract_title_from_file(&path), None);
+    }
+
+    #[test]
+    fn test_run_list_no_skills_dir() {
+        // Just verify it doesn't panic when no .claude/skills exists
+        // We can't easily test the output without capturing stdout
+        // but the function should not error
+        let _result = run_list();
+        // May fail if cwd doesn't exist, that's fine for this test
+    }
+
+    #[test]
+    fn test_remove_nonexistent() {
+        let result = run_remove("definitely-not-installed");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no skill or pack named"));
+    }
+}

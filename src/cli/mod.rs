@@ -8,6 +8,7 @@ pub mod mcp;
 pub mod new;
 pub mod self_update;
 pub mod serve;
+pub mod skill;
 pub mod theme;
 pub mod upgrade;
 pub mod workspace;
@@ -71,6 +72,9 @@ pub enum Command {
 
     /// Manage contact form configuration
     Contact(contact::ContactArgs),
+
+    /// Manage Claude Code skills and skill packs
+    Skill(skill::SkillArgs),
 
     /// Manage themes
     Theme(theme::ThemeArgs),
