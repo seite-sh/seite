@@ -12,7 +12,7 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has eleven subcommands:
+`seite` has fifteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
@@ -23,10 +23,14 @@ Run `seite <command> --help` for quick inline help on any command.
 | `agent` | AI assistant with site context |
 | `theme` | Manage themes |
 | `deploy`| Deploy to hosting platforms |
+| `collection` | Add or list collections |
+| `contact` | Set up contact forms |
+| `skill` | Manage skill packs |
 | `workspace` | Manage multi-site workspaces |
 | `mcp` | MCP server for AI tool integration |
 | `upgrade` | Update project config to match current binary |
 | `self-update` | Update the seite binary to the latest release |
+| `completions` | Generate shell completion scripts |
 
 ### Global Flags
 
@@ -93,9 +97,10 @@ seite serve [options]
 | Flag | Description |
 |------|-------------|
 | `--port` | Starting port (default: 3000, auto-increments if taken) |
+| `--open` | Open the site in the default browser after starting |
 | `--drafts` | Include drafts |
 
-The server injects a live-reload script that polls for changes. An interactive REPL accepts commands:
+The server displays local and network URLs (Vite-style) and injects a live-reload script that polls for changes. An interactive REPL accepts commands:
 
 - `new <collection> "Title"`: create content
 - `agent [prompt]`: launch AI agent
@@ -299,6 +304,30 @@ Upgrade is **additive and non-destructive**:
 {{% callout(type="tip") %}}
 `seite build` will nudge you with a one-liner when your project config is outdated: *"Run `seite upgrade` for new features."* The build still succeeds. The nudge is informational only.
 {{% end %}}
+
+## seite completions
+
+Generate shell completion scripts for tab-completion of commands, flags, and arguments.
+
+```bash
+seite completions <shell>
+```
+
+Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`.
+
+```bash
+# Bash (add to ~/.bashrc)
+seite completions bash >> ~/.bashrc
+
+# Zsh (add to ~/.zshrc)
+seite completions zsh >> ~/.zshrc
+
+# Fish
+seite completions fish > ~/.config/fish/completions/seite.fish
+
+# PowerShell (add to $PROFILE)
+seite completions powershell >> $PROFILE
+```
 
 ## seite self-update
 

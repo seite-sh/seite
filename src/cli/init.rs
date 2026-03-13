@@ -954,6 +954,7 @@ fn generate_claude_md(
     md.push_str("seite build                              # Build the site\n");
     md.push_str("seite build --drafts                     # Build including draft content\n");
     md.push_str("seite serve                              # Dev server with live reload + REPL\n");
+    md.push_str("seite serve --open                       # Dev server + open browser\n");
     md.push_str("seite serve --port 8080                  # Use a specific port\n");
     for c in collections {
         let singular = singularize(&c.name);
@@ -975,6 +976,7 @@ fn generate_claude_md(
     md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
     md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
     md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
+    md.push_str("seite completions bash                   # Generate shell completions\n");
     md.push_str("```\n\n");
 
     // Dev server REPL (static)

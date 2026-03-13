@@ -80,13 +80,20 @@ fn run_list() -> anyhow::Result<()> {
     let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
     for theme in &all_themes {
         println!(
-            "  {:<width$}  {}  {}",
+            "  {:<width$}  {}",
             console::style(theme.name).bold(),
             theme.description,
-            console::style(format!("https://seite.sh/themes/{}", theme.name)).dim(),
             width = max_len
         );
     }
+    println!();
+    println!(
+        "  {} {}",
+        console::style("Preview all:").dim(),
+        console::style("https://seite.sh/docs/theme-gallery")
+            .dim()
+            .underlined()
+    );
 
     let project_root = PathBuf::from(".");
     let installed = themes::installed_themes(&project_root);

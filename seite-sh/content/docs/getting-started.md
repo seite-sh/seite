@@ -154,10 +154,10 @@ This triple output (HTML + Markdown + LLM files) is what makes seite an AI-nativ
 Start a dev server with live reload:
 
 ```bash
-seite serve
+seite serve --open
 ```
 
-The server starts at `http://localhost:3000` (auto-increments if the port is taken) and watches for file changes. An interactive REPL lets you run commands without restarting:
+The `--open` flag launches the site in your default browser automatically. The server starts at `http://localhost:3000` (auto-increments if the port is taken), displays both local and network URLs, and watches for file changes. An interactive REPL lets you run commands without restarting:
 
 ```
 seite> new post "Another Post"
