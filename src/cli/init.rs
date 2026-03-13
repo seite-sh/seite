@@ -428,18 +428,14 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         .collect();
     println!(
         "  {name}/\n\
-         {}  ├── seite.toml          {}\n\
-         {}  ├── content/\n\
+         ├── seite.toml          {}\n\
+         ├── content/\n\
          {}\n\
-         {}  ├── templates/base.html {}\n\
-         {}  └── static/             {}",
-        console::style("").dim(),
+         ├── templates/base.html {}\n\
+         └── static/             {}",
         console::style("← site config").dim(),
-        console::style("").dim(),
         collection_dirs.join("\n"),
-        console::style("").dim(),
         console::style("← theme template").dim(),
-        console::style("").dim(),
         console::style("← CSS, images, etc.").dim(),
     );
 

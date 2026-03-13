@@ -60,7 +60,7 @@ pub struct BuildStats {
 impl CommandOutput for BuildStats {
     fn human_display(&self) -> String {
         let mut sorted_items: Vec<(&String, &usize)> = self.items_built.iter().collect();
-        sorted_items.sort_by_key(|(name, _)| (*name).clone());
+        sorted_items.sort_by(|(a, _), (b, _)| a.cmp(b));
         let parts: Vec<String> = sorted_items
             .iter()
             .map(|(name, count)| format!("{count} {name}"))

@@ -3,8 +3,6 @@ use std::io;
 use clap::Args;
 use clap_complete::{generate, Shell};
 
-use crate::output::human;
-
 #[derive(Args)]
 pub struct CompletionsArgs {
     /// Shell to generate completions for
@@ -17,9 +15,10 @@ pub fn run(args: &CompletionsArgs) -> anyhow::Result<()> {
     generate(args.shell, &mut cmd, "seite", &mut io::stdout());
 
     eprintln!();
-    human::info(&format!(
-        "Add the output above to your shell config to enable completions for {}",
+    eprintln!(
+        "{} Add the output above to your shell config to enable completions for {}",
+        console::style("ℹ").blue().bold(),
         args.shell
-    ));
+    );
     Ok(())
 }

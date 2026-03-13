@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::{TcpStream, UdpSocket};
+use std::net::{TcpListener, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -385,16 +385,10 @@ fn watch_and_rebuild(
     }
 }
 
-/// Check if a port is available by trying to connect to it.
-/// If the connection succeeds, something is already listening.
+/// Check if a port is available by attempting to bind it.
+/// Binding succeeds only when nothing is already listening on that address.
 fn port_is_available(host: &str, port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("{host}:{port}")
-            .parse()
-            .expect("valid socket address"),
-        Duration::from_millis(100),
-    )
-    .is_err()
+    TcpListener::bind((host, port)).is_ok()
 }
 
 fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
@@ -441,13 +435,16 @@ fn print_server_banner(host: &str, port: u16) {
         console::style("Local:").bold(),
         console::style(local_url).cyan().underlined()
     );
-    if let Some(ip) = local_network_ip() {
-        println!(
-            "  {}  {}  {}",
-            console::style("➜").dim(),
-            console::style("Network:").dim(),
-            console::style(format!("http://{ip}:{port}/")).dim()
-        );
+    let is_all_interfaces = host == "0.0.0.0" || host == "::";
+    if is_all_interfaces {
+        if let Some(ip) = local_network_ip() {
+            println!(
+                "  {}  {}  {}",
+                console::style("➜").dim(),
+                console::style("Network:").dim(),
+                console::style(format!("http://{ip}:{port}/")).dim()
+            );
+        }
     }
     println!();
 }

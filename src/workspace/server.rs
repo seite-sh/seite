@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::TcpStream;
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -96,13 +96,14 @@ pub fn start(
         });
     }
 
+    let display_host = if host == "0.0.0.0" { "localhost" } else { host };
     if actual_port != port {
         human::info(&format!(
-            "Port {port} in use, serving at http://localhost:{actual_port}"
+            "Port {port} in use, serving at http://{display_host}:{actual_port}"
         ));
     } else {
         human::success(&format!(
-            "Serving workspace at http://localhost:{actual_port}"
+            "Serving workspace at http://{display_host}:{actual_port}"
         ));
     }
 
@@ -435,13 +436,7 @@ fn watch_and_rebuild_workspace(
 }
 
 fn port_is_available(host: &str, port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("{host}:{port}")
-            .parse()
-            .expect("valid socket address"),
-        Duration::from_millis(100),
-    )
-    .is_err()
+    TcpListener::bind((host, port)).is_ok()
 }
 
 fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {

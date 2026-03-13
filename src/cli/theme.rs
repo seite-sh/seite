@@ -80,10 +80,9 @@ fn run_list() -> anyhow::Result<()> {
     let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
     for theme in &all_themes {
         println!(
-            "  {:<width$}  {}",
-            console::style(theme.name).bold(),
+            "  {}  {}",
+            console::style(format!("{:<max_len$}", theme.name)).bold(),
             theme.description,
-            width = max_len
         );
     }
     println!();

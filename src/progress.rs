@@ -38,7 +38,7 @@ impl BuildProgress {
         pb.set_style(
             ProgressStyle::with_template("  {spinner:.cyan} {msg}")
                 .unwrap()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"]),
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", ""]),
         );
         pb.set_message(label.to_string());
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
