@@ -1,0 +1,104 @@
+{
+  "direct_competitors": [
+    "gohugo.io",
+    "www.11ty.dev",
+    "astro.build",
+    "jekyllrb.com",
+    "www.getzola.org"
+  ],
+  "content_competitors": [
+    "www.smashingmagazine.com",
+    "css-tricks.com",
+    "www.netlify.com",
+    "www.cloudflare.com",
+    "dev.to"
+  ],
+  "bofu_keywords": [
+    "static site generator",
+    "best static site generator",
+    "static site generator 2026",
+    "AI static site generator",
+    "hugo alternative",
+    "eleventy alternative",
+    "jekyll alternative",
+    "astro alternative",
+    "zola alternative",
+    "seite pricing",
+    "seite review",
+    "seite vs hugo",
+    "seite vs astro",
+    "rust static site generator"
+  ],
+  "mofu_keywords": [
+    "how to build a static site",
+    "static site generator tutorial",
+    "static site generator best practices",
+    "static site SEO",
+    "llms.txt static site",
+    "deploy static site cloudflare",
+    "deploy static site netlify",
+    "static site generator with blog",
+    "static site generator with docs",
+    "generative engine optimization"
+  ],
+  "alternative_keywords": [
+    "hugo alternatives",
+    "eleventy alternatives",
+    "jekyll alternatives",
+    "astro alternatives",
+    "wordpress alternative developers",
+    "next.js alternative static site"
+  ],
+  "key_queries": [
+    "static site generator",
+    "AI static site generator",
+    "seite",
+    "seite.sh"
+  ],
+  "relevant_terms": [
+    "static site generator",
+    "static site",
+    "site generator",
+    "SSG",
+    "AI",
+    "llms.txt",
+    "markdown",
+    "deploy",
+    "CLI",
+    "rust",
+    "hugo",
+    "eleventy",
+    "astro",
+    "jekyll",
+    "zola",
+    "best",
+    "alternative",
+    "review",
+    "vs",
+    "comparison",
+    "fast",
+    "simple",
+    "developer"
+  ],
+  "skip_terms": [
+    "celebrity",
+    "net worth",
+    "biography",
+    "dating",
+    "reddit",
+    "anime",
+    "movie",
+    "music",
+    "game",
+    "recipe"
+  ],
+  "topic_patterns": {
+    "AI Integration": ["ai", "llm", "agent", "claude", "mcp", "llms.txt", "generative"],
+    "Getting Started": ["how to", "guide", "tutorial", "quickstart", "getting started", "setup", "install"],
+    "Comparisons": ["vs", "versus", "compare", "comparison", "alternative", "best", "difference"],
+    "Deployment": ["deploy", "deployment", "cloudflare", "netlify", "github pages", "hosting", "publish"],
+    "SEO": ["seo", "sitemap", "robots", "canonical", "structured data", "json-ld", "open graph", "geo"],
+    "Features": ["theme", "template", "collection", "shortcode", "syntax highlight", "search", "rss", "feed"],
+    "Performance": ["fast", "speed", "build time", "performance", "single binary", "rust"]
+  }
+}
