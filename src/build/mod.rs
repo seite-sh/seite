@@ -226,7 +226,7 @@ impl SiteContext {
             description: config.description_for_lang(lang).to_string(),
             base_url: config.site.base_url.clone(),
             base_path: config.base_path(),
-            language: config.site.language.clone(),
+            language: lang.to_string(),
             author: config.site.author.clone(),
         }
     }
@@ -338,6 +338,18 @@ fn build_subdomain_sites(
     }
 
     Ok(results)
+}
+
+/// Check whether the Plausible analytics config uses deprecated `extensions` without `script_url`.
+fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> bool {
+    match analytics {
+        Some(a) => {
+            a.provider == crate::config::AnalyticsProvider::Plausible
+                && !a.extensions.is_empty()
+                && a.script_url.is_none()
+        }
+        None => false,
+    }
 }
 
 /// Inner build pipeline. This is the actual 14-step build.
@@ -2008,6 +2020,14 @@ fn build_site_inner(
             &computed_rewrites
         }
     };
+    if needs_plausible_extensions_warning(config.analytics.as_ref()) {
+        crate::output::human::warning(
+            "Plausible `extensions` are deprecated (Oct 2025). Retrieve your unique snippet \
+             from Plausible → Settings → Installation and set `script_url` in seite.toml. \
+             Your current config still works. \
+             See https://plausible.io/docs/script-update-guide",
+        );
+    }
     let post_ctx = HtmlPostProcessContext {
         image_manifest: &image_manifest,
         lazy_loading,
@@ -3397,9 +3417,9 @@ mod tests {
         let ctx = SiteContext::for_lang(&config, "es");
         assert_eq!(ctx.title, "Sitio de Prueba");
         assert_eq!(ctx.description, "Una prueba");
-        // base_url and language remain the same (they're site-level)
         assert_eq!(ctx.base_url, "https://example.com");
-        assert_eq!(ctx.language, "en");
+        // language should reflect the requested language, not the default
+        assert_eq!(ctx.language, "es");
     }
 
     #[test]
@@ -3426,6 +3446,61 @@ mod tests {
         config.site.base_url = "https://user.github.io/repo".into();
         let ctx = SiteContext::from_config(&config);
         assert_eq!(ctx.base_path, "/repo");
+    }
+
+    // ── needs_plausible_extensions_warning ─────────────────────────────
+
+    #[test]
+    fn test_plausible_warning_with_legacy_extensions() {
+        let analytics = AnalyticsSection {
+            provider: crate::config::AnalyticsProvider::Plausible,
+            id: "example.com".into(),
+            extensions: vec!["hash".into()],
+            script_url: None,
+            cookie_consent: false,
+        };
+        assert!(needs_plausible_extensions_warning(Some(&analytics)));
+    }
+
+    #[test]
+    fn test_plausible_no_warning_with_script_url() {
+        let analytics = AnalyticsSection {
+            provider: crate::config::AnalyticsProvider::Plausible,
+            id: "example.com".into(),
+            extensions: vec!["hash".into()],
+            script_url: Some("https://plausible.io/js/script.hash.js".into()),
+            cookie_consent: false,
+        };
+        assert!(!needs_plausible_extensions_warning(Some(&analytics)));
+    }
+
+    #[test]
+    fn test_plausible_no_warning_without_extensions() {
+        let analytics = AnalyticsSection {
+            provider: crate::config::AnalyticsProvider::Plausible,
+            id: "example.com".into(),
+            extensions: vec![],
+            script_url: None,
+            cookie_consent: false,
+        };
+        assert!(!needs_plausible_extensions_warning(Some(&analytics)));
+    }
+
+    #[test]
+    fn test_plausible_no_warning_for_other_providers() {
+        let analytics = AnalyticsSection {
+            provider: crate::config::AnalyticsProvider::Google,
+            id: "G-XXXXXXXX".into(),
+            extensions: vec!["hash".into()],
+            script_url: None,
+            cookie_consent: false,
+        };
+        assert!(!needs_plausible_extensions_warning(Some(&analytics)));
+    }
+
+    #[test]
+    fn test_plausible_no_warning_when_none() {
+        assert!(!needs_plausible_extensions_warning(None));
     }
 
     // ── build_page_context ──────────────────────────────────────────────

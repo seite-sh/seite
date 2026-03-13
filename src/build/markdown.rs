@@ -119,7 +119,9 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
                 });
                 html_output.push_str(&format!(
                     "<h{} id=\"{}\">{}",
-                    heading_level, id, heading_text
+                    heading_level,
+                    id,
+                    html_escape(&heading_text)
                 ));
                 html_output.push_str(&format!("</h{}>\n", heading_level));
             }

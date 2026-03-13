@@ -373,11 +373,19 @@ pub fn rewrite_html_images(
 
 fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
     let search = format!("{attr_name}=\"");
-    let start = tag.find(&search)?;
-    let value_start = start + search.len();
-    let rest = &tag[value_start..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
+    let mut offset = 0;
+    while let Some(pos) = tag[offset..].find(&search) {
+        let abs_pos = offset + pos;
+        // Ensure the match is a full attribute name (preceded by whitespace or tag start)
+        if abs_pos == 0 || tag.as_bytes()[abs_pos - 1].is_ascii_whitespace() {
+            let value_start = abs_pos + search.len();
+            let rest = &tag[value_start..];
+            let end = rest.find('"')?;
+            return Some(rest[..end].to_string());
+        }
+        offset = abs_pos + search.len();
+    }
+    None
 }
 
 fn build_picture_element(img_tag: &str, processed: &ProcessedImage, lazy_loading: bool) -> String {
@@ -1229,17 +1237,10 @@ mod tests {
 
     #[test]
     fn test_extract_attr_similar_prefix_names() {
-        // Make sure "data-src" doesn't match when looking for "src"
+        // "data-src" must NOT match when looking for "src"
         let tag = r#"<img data-src="/lazy.jpg" src="/real.jpg">"#;
-        assert_eq!(
-            extract_attr(tag, "src"),
-            Some("/lazy.jpg".to_string()).or(extract_attr(tag, "src"))
-        );
-        // The function searches for 'src="' — "data-src" also contains "src=" so it will
-        // find data-src first. This is expected behavior for the current implementation.
-        // Let's test what it actually returns.
-        let result = extract_attr(tag, "src");
-        assert!(result.is_some());
+        assert_eq!(extract_attr(tag, "src"), Some("/real.jpg".to_string()));
+        assert_eq!(extract_attr(tag, "data-src"), Some("/lazy.jpg".to_string()));
     }
 
     #[test]
