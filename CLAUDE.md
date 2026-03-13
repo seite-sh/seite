@@ -31,13 +31,13 @@ cargo run -- self-update
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
-  themes.rs            6 bundled themes + src/themes/*.tera
+  themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               15-step build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 13 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update
+  cli/                 14 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated CLAUDE.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults

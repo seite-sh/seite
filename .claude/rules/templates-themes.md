@@ -12,13 +12,17 @@ paths:
 - Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
 - User `templates/` overrides embedded defaults
 
-## 6 Bundled Themes (`.tera` files in `src/themes/`)
+## 10 Bundled Themes (`.tera` files in `src/themes/`)
 - `default` — 720px column, system-ui, blue links
 - `minimal` — 600px column, Georgia serif, literary feel
 - `dark` — True black, violet accent
 - `docs` — Fixed 260px sidebar with auto-scrolling nav
 - `brutalist` — Cream, 3px borders, hard shadows, yellow accent
 - `bento` — CSS grid, article cards with border-radius 20px
+- `landing` — Marketing landing page with hero section
+- `terminal` — Monospace hacker aesthetic, green-on-black
+- `magazine` — Multi-column editorial layout
+- `academic` — Clean scholarly style with serif typography
 
 Each compiled via `include_str!` and registers as `base.html` when applied. Edit the `.tera` files directly.
 

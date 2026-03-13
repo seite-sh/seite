@@ -8,7 +8,7 @@ paths:
 - Each subcommand: `src/cli/{name}.rs` with `{Command}Args` + `pub fn run(args) -> anyhow::Result<()>`
 - Interactive prompts use `dialoguer` (only when CLI args not provided)
 
-## Subcommands (13)
+## Subcommands (14)
 init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self-update
 
 ## Agent System
