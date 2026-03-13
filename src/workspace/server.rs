@@ -525,7 +525,10 @@ mod tests {
 
     #[test]
     fn test_guess_mime_html() {
-        assert_eq!(guess_mime(Path::new("index.html")), "text/html; charset=utf-8");
+        assert_eq!(
+            guess_mime(Path::new("index.html")),
+            "text/html; charset=utf-8"
+        );
     }
 
     #[test]
@@ -535,7 +538,10 @@ mod tests {
 
     #[test]
     fn test_guess_mime_unknown() {
-        assert_eq!(guess_mime(Path::new("file.xyz")), "application/octet-stream");
+        assert_eq!(
+            guess_mime(Path::new("file.xyz")),
+            "application/octet-stream"
+        );
     }
 
     #[test]
