@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod meta;
 pub mod output;
 pub mod platform;
+pub mod progress;
 pub mod server;
 pub mod shortcodes;
 pub mod templates;

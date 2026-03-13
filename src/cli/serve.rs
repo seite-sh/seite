@@ -21,6 +21,10 @@ pub struct ServeArgs {
     /// Build before serving
     #[arg(long, default_value = "true")]
     pub build: bool,
+
+    /// Open the site in the default browser after starting
+    #[arg(long)]
+    pub open: bool,
 }
 
 const DEFAULT_PORT: u16 = 3000;
@@ -135,10 +139,14 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let auto_increment = args.port.is_none();
     let handle = server::start(&config, &paths, port, true, auto_increment)?;
 
-    human::info(&format!(
-        "Type \"help\" for commands, \"stop\" to quit (server on port {})",
-        handle.port()
-    ));
+    human::info("Type \"help\" for commands, \"stop\" to quit");
+
+    if args.open {
+        let url = format!("http://localhost:{}", handle.port());
+        if let Err(e) = open::that(&url) {
+            human::warning(&format!("Could not open browser: {e}"));
+        }
+    }
 
     run_repl(&config, &paths, &handle)?;
 
@@ -341,15 +349,13 @@ fn cmd_new(
     let collection = match config::find_collection(collection_name, &config.collections) {
         Some(c) => c,
         None => {
+            let available: Vec<&str> = config.collections.iter().map(|c| c.name.as_str()).collect();
+            let hint = human::suggest_match(collection_name, &available);
             human::error(&format!(
-                "Unknown collection '{}'. Available: {}",
+                "Unknown collection '{}'. Available: {}{}",
                 collection_name,
-                config
-                    .collections
-                    .iter()
-                    .map(|c| c.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                available.join(", "),
+                hint,
             ));
             return;
         }

@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod build;
 pub mod collection;
+pub mod completions;
 pub mod contact;
 pub mod deploy;
 pub mod init;
@@ -14,7 +15,7 @@ pub mod theme;
 pub mod upgrade;
 pub mod workspace;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -25,7 +26,7 @@ use clap::{Parser, Subcommand};
 )]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 
     /// Enable verbose logging output
     #[arg(short, long, global = true)]
@@ -94,4 +95,12 @@ pub enum Command {
 
     /// Audit site performance via PageSpeed Insights
     Perf(perf::PerfArgs),
+
+    /// Generate shell completions
+    Completions(completions::CompletionsArgs),
+}
+
+/// Build the clap Command (used by shell completion generation).
+pub fn build_cli() -> clap::Command {
+    Cli::command()
 }

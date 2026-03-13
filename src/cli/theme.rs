@@ -75,11 +75,16 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
 
 fn run_list() -> anyhow::Result<()> {
     human::header("Bundled themes");
-    for theme in themes::all() {
+    // Find the longest theme name for alignment
+    let all_themes = themes::all();
+    let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
+    for theme in &all_themes {
         println!(
-            "  {} - {}",
+            "  {:<width$}  {}  {}",
             console::style(theme.name).bold(),
-            theme.description
+            theme.description,
+            console::style(format!("https://seite.sh/themes/{}", theme.name)).dim(),
+            width = max_len
         );
     }
 
@@ -124,9 +129,12 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let available: Vec<&str> = themes::all().iter().map(|t| t.name).collect();
+    let hint = human::suggest_match(name, &available);
     Err(anyhow::anyhow!(
-        "unknown theme '{}'. Run 'seite theme list' to see available themes",
-        name
+        "unknown theme '{}'. Run 'seite theme list' to see available themes{}",
+        name,
+        hint
     ))
 }
 

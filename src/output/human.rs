@@ -24,3 +24,19 @@ pub fn error(msg: &str) {
 pub fn header(msg: &str) {
     println!("\n{}", style(msg).bold().underlined());
 }
+
+/// Find the closest match for `input` among `candidates` using string similarity.
+/// Returns a hint string like `\n  hint: did you mean 'posts'?` or empty if no close match.
+pub fn suggest_match(input: &str, candidates: &[&str]) -> String {
+    let mut best: Option<(&str, f64)> = None;
+    for &candidate in candidates {
+        let dist = strsim::jaro_winkler(input, candidate);
+        if dist > 0.7 && (best.is_none() || dist > best.unwrap().1) {
+            best = Some((candidate, dist));
+        }
+    }
+    match best {
+        Some((name, _)) => format!("\n  hint: did you mean '{name}'?"),
+        None => String::new(),
+    }
+}

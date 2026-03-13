@@ -419,10 +419,37 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     )?;
 
     human::success(&format!("Created new site in '{name}'"));
+    println!();
+
+    // Show project structure so users know what was created
+    let collection_dirs: Vec<String> = collections
+        .iter()
+        .map(|c| format!("  │   └── {}/", c.directory))
+        .collect();
+    println!(
+        "  {name}/\n\
+         {}  ├── seite.toml          {}\n\
+         {}  ├── content/\n\
+         {}\n\
+         {}  ├── templates/base.html {}\n\
+         {}  └── static/             {}",
+        console::style("").dim(),
+        console::style("← site config").dim(),
+        console::style("").dim(),
+        collection_dirs.join("\n"),
+        console::style("").dim(),
+        console::style("← theme template").dim(),
+        console::style("").dim(),
+        console::style("← CSS, images, etc.").dim(),
+    );
+
+    println!();
     human::info("Next steps:");
     println!("  cd {name}");
-    println!("  seite build");
-    println!("  seite serve");
+    println!(
+        "  seite serve             {} start dev server with live reload",
+        console::style("←").dim()
+    );
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::TcpStream;
+use std::net::{TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -71,12 +71,34 @@ pub fn start(
     };
 
     if actual_port != port {
-        human::info(&format!(
-            "Port {port} in use, serving at http://localhost:{actual_port}"
-        ));
-    } else {
-        human::success(&format!("Serving at http://localhost:{actual_port}"));
+        human::info(&format!("Port {port} in use, using port {actual_port}"));
     }
+
+    // Vite-style prominent server display
+    println!();
+    println!(
+        "  {} {}",
+        console::style("seite").bold().cyan(),
+        console::style(format!("v{}", env!("CARGO_PKG_VERSION"))).dim()
+    );
+    println!();
+    let local_url = format!("http://localhost:{actual_port}/");
+    println!(
+        "  {}  {}  {}",
+        console::style("➜").green().bold(),
+        console::style("Local:").bold(),
+        console::style(local_url).cyan().underlined()
+    );
+    // Show network URL if available
+    if let Some(ip) = local_network_ip() {
+        println!(
+            "  {}  {}  {}",
+            console::style("➜").dim(),
+            console::style("Network:").dim(),
+            console::style(format!("http://{ip}:{actual_port}/")).dim()
+        );
+    }
+    println!();
 
     // Compute subdomain mount points for dev preview
     let subdomain_mounts: Vec<(String, PathBuf)> = config
@@ -1222,5 +1244,18 @@ mod tests {
             result_str.contains(LIVERELOAD_SCRIPT),
             "should inject even when </body> appears in content"
         );
+    }
+}
+
+/// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
+fn local_network_ip() -> Option<String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let addr = socket.local_addr().ok()?;
+    let ip = addr.ip();
+    if ip.is_loopback() || ip.is_unspecified() {
+        None
+    } else {
+        Some(ip.to_string())
     }
 }

@@ -5,7 +5,7 @@ use clap::Args;
 
 use crate::config::{self, SiteConfig};
 use crate::content::{self, Frontmatter};
-use crate::output::human;
+use crate::output::human::{self, suggest_match};
 
 #[derive(Args)]
 pub struct NewArgs {
@@ -35,15 +35,17 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
 
     let collection = config::find_collection(&args.collection, &site_config.collections)
         .ok_or_else(|| {
+            let available: Vec<&str> = site_config
+                .collections
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect();
+            let hint = suggest_match(&args.collection, &available);
             anyhow::anyhow!(
-                "unknown collection '{}'. Available: {}",
+                "unknown collection '{}'. Available: {}{}",
                 args.collection,
-                site_config
-                    .collections
-                    .iter()
-                    .map(|c| c.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                available.join(", "),
+                hint
             )
         })?;
 
@@ -111,6 +113,10 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
     );
     fs::write(&filepath, file_content)?;
     human::success(&format!("Created {}", filepath.display()));
+    println!(
+        "  {} edit this file and the dev server will auto-reload",
+        console::style("→").dim()
+    );
 
     Ok(())
 }
