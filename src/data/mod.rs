@@ -128,13 +128,11 @@ fn parse_data_file(path: &Path) -> Result<serde_json::Value> {
             })
         }
         "toml" => {
-            let toml_value: toml::Value =
-                content
-                    .parse()
-                    .map_err(|e: toml::de::Error| PageError::Data {
-                        path: path.to_path_buf(),
-                        message: format!("invalid TOML: {e}"),
-                    })?;
+            let toml_value: toml::Table =
+                toml::from_str(&content).map_err(|e| PageError::Data {
+                    path: path.to_path_buf(),
+                    message: format!("invalid TOML: {e}"),
+                })?;
             serde_json::to_value(toml_value).map_err(|e| PageError::Data {
                 path: path.to_path_buf(),
                 message: format!("TOML conversion error: {e}"),
