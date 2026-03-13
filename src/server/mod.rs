@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::TcpStream;
+use std::net::{TcpListener, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -53,30 +53,28 @@ impl Drop for ServerHandle {
 pub fn start(
     config: &SiteConfig,
     paths: &ResolvedPaths,
+    host: &str,
     port: u16,
     include_drafts: bool,
     auto_increment: bool,
 ) -> Result<ServerHandle> {
     let (server, actual_port) = if auto_increment {
-        try_bind_auto(port)?
+        try_bind_auto(host, port)?
     } else {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
-        let addr = format!("127.0.0.1:{port}");
-        let server = Server::http(&addr).map_err(|e| {
-            PageError::Server(format!("failed to start server on port {port}: {e}"))
+        let server = Server::http(server_addr(host, port)).map_err(|e| {
+            PageError::Server(format!("failed to start server on {host}:{port}: {e}"))
         })?;
         (server, port)
     };
 
     if actual_port != port {
-        human::info(&format!(
-            "Port {port} in use, serving at http://localhost:{actual_port}"
-        ));
-    } else {
-        human::success(&format!("Serving at http://localhost:{actual_port}"));
+        human::info(&format!("Port {port} in use, using port {actual_port}"));
     }
+
+    print_server_banner(host, actual_port);
 
     // Compute subdomain mount points for dev preview
     let subdomain_mounts: Vec<(String, PathBuf)> = config
@@ -386,29 +384,95 @@ fn watch_and_rebuild(
     }
 }
 
-/// Check if a port is available by trying to connect to it.
-/// If the connection succeeds, something is already listening.
-fn port_is_available(port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}")
-            .parse()
-            .expect("valid socket address"),
-        Duration::from_millis(100),
-    )
-    .is_err()
+/// Check if a port is available by attempting to bind it.
+/// Binding succeeds only when nothing is already listening on that address.
+fn port_is_available(host: &str, port: u16) -> bool {
+    TcpListener::bind((host, port)).is_ok()
 }
 
-fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
+fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     for port in start_port..start_port.saturating_add(100) {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             continue;
         }
-        match Server::http(format!("127.0.0.1:{port}")) {
+        match Server::http(server_addr(host, port)) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }
     }
     Err(PageError::Server("no available port found".into()))
+}
+
+/// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
+fn server_addr(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+/// Resolve the display hostname: `0.0.0.0`/`::` become `localhost`, everything else stays.
+fn resolve_display_host(host: &str) -> &str {
+    if host == "0.0.0.0" || host == "::" {
+        "localhost"
+    } else {
+        host
+    }
+}
+
+/// Build the local server URL string, handling IPv6 bracket notation.
+fn format_local_url(host: &str, port: u16) -> String {
+    let display_host = resolve_display_host(host);
+    if display_host.contains(':') {
+        format!("http://[{display_host}]:{port}/")
+    } else {
+        format!("http://{display_host}:{port}/")
+    }
+}
+
+/// Print the Vite-style server banner to stdout.
+fn print_server_banner(host: &str, port: u16) {
+    println!();
+    println!(
+        "  {} {}",
+        console::style("seite").bold().cyan(),
+        console::style(format!("v{}", env!("CARGO_PKG_VERSION"))).dim()
+    );
+    println!();
+    let local_url = format_local_url(host, port);
+    println!(
+        "  {}  {}  {}",
+        console::style("➜").green().bold(),
+        console::style("Local:").bold(),
+        console::style(local_url).cyan().underlined()
+    );
+    let is_all_interfaces = host == "0.0.0.0" || host == "::";
+    if is_all_interfaces {
+        if let Some(ip) = local_network_ip() {
+            println!(
+                "  {}  {}  {}",
+                console::style("➜").dim(),
+                console::style("Network:").dim(),
+                console::style(format!("http://{ip}:{port}/")).dim()
+            );
+        }
+    }
+    println!();
+}
+
+/// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn local_network_ip() -> Option<String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let addr = socket.local_addr().ok()?;
+    let ip = addr.ip();
+    if ip.is_loopback() || ip.is_unspecified() {
+        None
+    } else {
+        Some(ip.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -1059,7 +1123,7 @@ mod tests {
     fn test_port_is_available_high_port() {
         // Port 39_517 is high and extremely unlikely to be in use
         assert!(
-            port_is_available(39_517),
+            port_is_available("127.0.0.1", 39_517),
             "a high unused port should be available"
         );
     }
@@ -1069,7 +1133,7 @@ mod tests {
         // Several high ports should all be available
         for port in [39_518, 49_999, 60_000, 65_000] {
             assert!(
-                port_is_available(port),
+                port_is_available("127.0.0.1", port),
                 "high port {port} should be available"
             );
         }
@@ -1081,7 +1145,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let bound_port = listener.local_addr().unwrap().port();
         assert!(
-            !port_is_available(bound_port),
+            !port_is_available("127.0.0.1", bound_port),
             "a port with a bound listener should not be available"
         );
         drop(listener);
@@ -1094,7 +1158,7 @@ mod tests {
     #[test]
     fn test_try_bind_auto_finds_available_port() {
         // Should find a port starting from a high number
-        let result = try_bind_auto(49_800);
+        let result = try_bind_auto("127.0.0.1", 49_800);
         assert!(result.is_ok(), "should find an available port");
         let (server, port) = result.unwrap();
         assert!(port >= 49_800);
@@ -1108,7 +1172,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let bound_port = listener.local_addr().unwrap().port();
 
-        let result = try_bind_auto(bound_port);
+        let result = try_bind_auto("127.0.0.1", bound_port);
         assert!(result.is_ok(), "should find a port even if first is busy");
         let (_server, actual_port) = result.unwrap();
         // It might bind the same port if the OS released it or a different one
@@ -1222,5 +1286,127 @@ mod tests {
             result_str.contains(LIVERELOAD_SCRIPT),
             "should inject even when </body> appears in content"
         );
+    }
+
+    // =========================================================================
+    // resolve_display_host
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_display_host_wildcard_ipv4() {
+        assert_eq!(resolve_display_host("0.0.0.0"), "localhost");
+    }
+
+    #[test]
+    fn test_resolve_display_host_wildcard_ipv6() {
+        assert_eq!(resolve_display_host("::"), "localhost");
+    }
+
+    #[test]
+    fn test_resolve_display_host_loopback() {
+        assert_eq!(resolve_display_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_resolve_display_host_custom() {
+        assert_eq!(resolve_display_host("192.168.1.10"), "192.168.1.10");
+    }
+
+    // =========================================================================
+    // server_addr
+    // =========================================================================
+
+    #[test]
+    fn test_server_addr_ipv4() {
+        assert_eq!(server_addr("127.0.0.1", 3000), "127.0.0.1:3000");
+    }
+
+    #[test]
+    fn test_server_addr_ipv6_wildcard() {
+        assert_eq!(server_addr("::", 3000), "[::]:3000");
+    }
+
+    #[test]
+    fn test_server_addr_ipv6_loopback() {
+        assert_eq!(server_addr("::1", 8080), "[::1]:8080");
+    }
+
+    // =========================================================================
+    // format_local_url
+    // =========================================================================
+
+    #[test]
+    fn test_format_local_url_default() {
+        assert_eq!(
+            format_local_url("127.0.0.1", 3000),
+            "http://127.0.0.1:3000/"
+        );
+    }
+
+    #[test]
+    fn test_format_local_url_wildcard_ipv4() {
+        assert_eq!(format_local_url("0.0.0.0", 8080), "http://localhost:8080/");
+    }
+
+    #[test]
+    fn test_format_local_url_wildcard_ipv6() {
+        // :: resolves to localhost
+        assert_eq!(format_local_url("::", 8080), "http://localhost:8080/");
+    }
+
+    #[test]
+    fn test_format_local_url_ipv6_loopback() {
+        // ::1 stays as IPv6 and gets brackets
+        assert_eq!(format_local_url("::1", 3000), "http://[::1]:3000/");
+    }
+
+    #[test]
+    fn test_format_local_url_custom_host() {
+        assert_eq!(
+            format_local_url("192.168.1.10", 4000),
+            "http://192.168.1.10:4000/"
+        );
+    }
+
+    // =========================================================================
+    // local_network_ip
+    // =========================================================================
+
+    #[test]
+    fn test_local_network_ip_returns_valid_ip_or_none() {
+        // In CI, there may not be a non-loopback interface — either result is valid.
+        if let Some(ip) = local_network_ip() {
+            let parsed: std::net::IpAddr = ip.parse().expect("should be a valid IP address");
+            assert!(!parsed.is_loopback(), "should not return loopback");
+            assert!(!parsed.is_unspecified(), "should not return unspecified");
+        }
+    }
+
+    // =========================================================================
+    // print_server_banner
+    // =========================================================================
+
+    #[test]
+    fn test_print_server_banner_loopback() {
+        // Calling with a loopback host should not panic; is_all_interfaces = false
+        print_server_banner("127.0.0.1", 3000);
+    }
+
+    #[test]
+    fn test_print_server_banner_all_interfaces_ipv4() {
+        // 0.0.0.0 sets is_all_interfaces = true; may print Network URL
+        print_server_banner("0.0.0.0", 8080);
+    }
+
+    #[test]
+    fn test_print_server_banner_all_interfaces_ipv6() {
+        // :: also sets is_all_interfaces = true
+        print_server_banner("::", 8080);
+    }
+
+    #[test]
+    fn test_print_server_banner_custom_host() {
+        // Custom IP — not all-interfaces, no Network URL
+        print_server_banner("192.168.1.10", 4000);
     }
 }

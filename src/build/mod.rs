@@ -59,8 +59,9 @@ pub struct BuildStats {
 
 impl CommandOutput for BuildStats {
     fn human_display(&self) -> String {
-        let parts: Vec<String> = self
-            .items_built
+        let mut sorted_items: Vec<(&String, &usize)> = self.items_built.iter().collect();
+        sorted_items.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let parts: Vec<String> = sorted_items
             .iter()
             .map(|(name, count)| format!("{count} {name}"))
             .collect();
@@ -364,8 +365,10 @@ fn build_site_inner(
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
+    let mut progress = crate::progress::BuildProgress::new();
 
     // Step 1: Clean output directory
+    progress.step("Cleaning output directory");
     let step_start = Instant::now();
     if paths.output.exists() {
         fs::remove_dir_all(&paths.output)?;
@@ -377,6 +380,7 @@ fn build_site_inner(
     ));
 
     // Step 1b: Copy public/ files to output root (before all other generation)
+    progress.step("Copying public files");
     let step_start = Instant::now();
     let mut public_count: usize = 0;
     let mut public_file_paths: HashSet<String> = HashSet::new();
@@ -405,6 +409,7 @@ fn build_site_inner(
     ));
 
     // Step 2: Load templates (collection-aware)
+    progress.step("Loading templates");
     let step_start = Instant::now();
     let tera = templates::load_templates(&paths.templates, &config.collections)?;
     step_timings.push((
@@ -413,6 +418,7 @@ fn build_site_inner(
     ));
 
     // Step 2b: Load shortcode registry (built-in + user-defined)
+    progress.step("Loading shortcodes");
     let step_start = Instant::now();
     let shortcodes_dir = paths.templates.join("shortcodes");
     let shortcode_registry = crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir)?;
@@ -422,6 +428,7 @@ fn build_site_inner(
     ));
 
     // Step 2.5: Load data files
+    progress.step("Loading data files");
     let step_start = Instant::now();
     let data = crate::data::load_data_dir(&paths.data_dir)?;
     step_timings.push((
@@ -435,6 +442,7 @@ fn build_site_inner(
     let default_lang = &config.site.language;
 
     // Step 3: Process each collection
+    progress.step("Processing content");
     let step_start = Instant::now();
     let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
 
@@ -623,6 +631,7 @@ fn build_site_inner(
     };
 
     // Render each item in each collection
+    progress.step("Rendering pages");
     let step_start = Instant::now();
 
     // Pre-compute SiteContext per language (avoid re-creating per item)
@@ -920,6 +929,7 @@ fn build_site_inner(
     }
 
     // Step 4: Render index page(s)
+    progress.step("Rendering indexes");
     let step_start = Instant::now();
     for lang in &config.all_languages() {
         let lang_site_ctx = SiteContext::for_lang(config, lang);
@@ -1711,6 +1721,7 @@ fn build_site_inner(
     ));
 
     // Step 5: Generate RSS and Atom feeds
+    progress.step("Generating feeds");
     let step_start = Instant::now();
     let base = config.site.base_url.trim_end_matches('/');
 
@@ -1758,6 +1769,7 @@ fn build_site_inner(
     ));
 
     // Step 6: Generate sitemap (all items, all languages)
+    progress.step("Generating sitemap");
     let step_start = Instant::now();
     let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
     let sitemap_xml =
@@ -1769,6 +1781,7 @@ fn build_site_inner(
     ));
 
     // Step 7: Generate discovery files (robots.txt, llms.txt, llms-full.txt)
+    progress.step("Generating discovery files");
     let step_start = Instant::now();
     let robots = discovery::generate_robots_txt(config);
     fs::write(paths.output.join("robots.txt"), robots)?;
@@ -1823,6 +1836,7 @@ fn build_site_inner(
     ));
 
     // Step 8: Output raw markdown alongside HTML for each page
+    progress.step("Writing markdown copies");
     let step_start = Instant::now();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
@@ -1854,6 +1868,7 @@ fn build_site_inner(
     ));
 
     // Step 9: Generate search index
+    progress.step("Generating search index");
     let step_start = Instant::now();
     let all_search_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
 
@@ -1898,6 +1913,7 @@ fn build_site_inner(
     }
 
     // Step 10: Copy static files (with optional minification and fingerprinting)
+    progress.step("Copying static files");
     let step_start = Instant::now();
     let mut static_count = 0;
     // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
@@ -1990,6 +2006,7 @@ fn build_site_inner(
     ));
 
     // Step 11: Process images (resize, WebP, srcset)
+    progress.step("Processing images");
     let step_start = Instant::now();
     let image_manifest = if let Some(ref images_config) = config.images {
         if !images_config.widths.is_empty() {
@@ -2008,6 +2025,7 @@ fn build_site_inner(
 
     // Step 12: Post-process all HTML files in a single pass
     // (image srcset, code copy buttons, subdomain link rewriting, base path rewriting, analytics)
+    progress.step("Post-processing HTML");
     let step_start = Instant::now();
     let lazy_loading = config.images.as_ref().is_some_and(|img| img.lazy_loading);
     let needs_image_rewrite = !image_manifest.is_empty() || lazy_loading;
@@ -2041,6 +2059,8 @@ fn build_site_inner(
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    progress.done();
 
     // Warn about public/ files overwritten by generated files
     let known_generated = [

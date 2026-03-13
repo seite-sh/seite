@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PageError {
-    #[error("Config file not found: {path}")]
+    #[error("Config file not found: {path}\n  hint: run `seite init` to create a new site, or use `--dir` to specify a project directory")]
     ConfigNotFound { path: PathBuf },
 
     #[error("Invalid config: {message}")]

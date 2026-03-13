@@ -45,6 +45,8 @@ This is a static site built with the `seite` CLI tool.
 seite build                              # Build the site
 seite build --drafts                     # Build including draft content
 seite serve                              # Dev server with live reload + REPL
+seite serve --open                       # Dev server + open browser
+seite serve --host 0.0.0.0               # Bind to all interfaces
 seite serve --port 8080                  # Use a specific port
 seite new post "Title"                  # Create new post
 seite new doc "Title"                  # Create new doc
@@ -58,6 +60,7 @@ seite theme create "coral brutalist"     # Generate a custom theme with AI (requ
 seite agent                              # Interactive AI agent session
 seite agent "write about Rust"           # One-shot AI agent prompt
 seite deploy                             # Deploy to configured target
+seite completions bash                   # Generate shell completions
 ```
 
 ### Dev Server REPL

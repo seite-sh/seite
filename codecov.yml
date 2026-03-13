@@ -16,3 +16,4 @@ comment:
 ignore:
   - "tests/"
   - "src/main.rs"
+  - "src/cli/serve.rs"

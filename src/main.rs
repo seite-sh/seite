@@ -20,7 +20,16 @@ fn main() -> Result<()> {
         std::env::set_current_dir(dir)?;
     }
 
-    match &cli.command {
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => {
+            // No subcommand: show welcome or help
+            print_welcome();
+            return Ok(());
+        }
+    };
+
+    match &command {
         Command::Init(args) => seite::cli::init::run(args)?,
         Command::New(args) => seite::cli::new::run(args)?,
         Command::Build(args) => seite::cli::build::run(args, cli.site.as_deref())?,
@@ -36,15 +45,54 @@ fn main() -> Result<()> {
         Command::SelfUpdate(args) => seite::cli::self_update::run(args)?,
         Command::Mcp(args) => seite::cli::mcp::run(args)?,
         Command::Perf(args) => seite::cli::perf::run(args)?,
+        Command::Completions(args) => seite::cli::completions::run(args)?,
     }
 
-    // Check for available updates (skip for self-update and mcp)
+    // Check for available updates (skip for self-update, mcp, and completions — stdout must stay clean)
     if !matches!(
-        &cli.command,
-        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_)
+        &command,
+        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_) | Command::Completions(_)
     ) {
         seite::update_check::maybe_notify();
     }
 
     Ok(())
+}
+
+/// Show a friendly welcome screen when no subcommand is given.
+fn print_welcome() {
+    use console::style;
+
+    let version = env!("CARGO_PKG_VERSION");
+    let has_project = std::path::Path::new("seite.toml").exists();
+
+    println!();
+    println!(
+        "  {} {}",
+        style("seite").bold().cyan(),
+        style(format!("v{version}")).dim()
+    );
+    println!("  {}", style("AI-native static site generator").dim());
+    println!();
+
+    if has_project {
+        println!("  {}", style("Commands:").bold());
+        println!("    seite build              Build the site");
+        println!("    seite serve              Start dev server with live reload");
+        println!("    seite new post \"Title\"   Create a new post");
+        println!("    seite deploy             Deploy to production");
+        println!("    seite agent \"prompt\"     AI assistant with full site context");
+        println!("    seite --help             See all commands");
+    } else {
+        println!("  {}", style("Get started:").bold());
+        println!("    seite init mysite        Create a new site");
+        println!("    seite --help             See all commands");
+        println!();
+        println!(
+            "  {}  {}",
+            style("Docs:").bold(),
+            style("https://seite.sh/docs").dim()
+        );
+    }
+    println!();
 }

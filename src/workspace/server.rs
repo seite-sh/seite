@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::TcpStream;
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -61,18 +61,18 @@ struct SiteServerInfo {
 pub fn start(
     ws_config: &WorkspaceConfig,
     ws_root: &Path,
+    host: &str,
     port: u16,
     auto_increment: bool,
 ) -> Result<WorkspaceServerHandle> {
     let (server, actual_port) = if auto_increment {
-        try_bind_auto(port)?
+        try_bind_auto(host, port)?
     } else {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
-        let addr = format!("127.0.0.1:{port}");
-        let server = Server::http(&addr).map_err(|e| {
-            PageError::Server(format!("failed to start server on port {port}: {e}"))
+        let server = Server::http(server_addr(host, port)).map_err(|e| {
+            PageError::Server(format!("failed to start server on {host}:{port}: {e}"))
         })?;
         (server, port)
     };
@@ -95,14 +95,19 @@ pub fn start(
         });
     }
 
-    if actual_port != port {
-        human::info(&format!(
-            "Port {port} in use, serving at http://localhost:{actual_port}"
-        ));
+    let display_host = match host {
+        "0.0.0.0" | "::" => "localhost",
+        h => h,
+    };
+    let base_url = if display_host.contains(':') {
+        format!("http://[{display_host}]:{actual_port}")
     } else {
-        human::success(&format!(
-            "Serving workspace at http://localhost:{actual_port}"
-        ));
+        format!("http://{display_host}:{actual_port}")
+    };
+    if actual_port != port {
+        human::info(&format!("Port {port} in use, serving at {base_url}"));
+    } else {
+        human::success(&format!("Serving workspace at {base_url}"));
     }
 
     // Print site routes
@@ -433,25 +438,133 @@ fn watch_and_rebuild_workspace(
     }
 }
 
-fn port_is_available(port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}")
-            .parse()
-            .expect("valid socket address"),
-        Duration::from_millis(100),
-    )
-    .is_err()
+fn port_is_available(host: &str, port: u16) -> bool {
+    TcpListener::bind((host, port)).is_ok()
 }
 
-fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
+/// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
+fn server_addr(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     for port in start_port..start_port.saturating_add(100) {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             continue;
         }
-        match Server::http(format!("127.0.0.1:{port}")) {
+        match Server::http(server_addr(host, port)) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }
     }
     Err(PageError::Server("no available port found".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_port_is_available_high_port() {
+        assert!(
+            port_is_available("127.0.0.1", 39_519),
+            "high unused port should be available"
+        );
+    }
+
+    #[test]
+    fn test_port_is_available_detects_bound_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        assert!(
+            !port_is_available("127.0.0.1", bound_port),
+            "port with a bound listener should not be available"
+        );
+        drop(listener);
+    }
+
+    #[test]
+    fn test_resolve_file_path_root() {
+        let tmp = TempDir::new().unwrap();
+        let index = tmp.path().join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/"), Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_clean_url() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hello.html");
+        fs::write(&file, "<html></html>").unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/posts/hello"), Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_not_found() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/nonexistent"), None);
+    }
+
+    #[test]
+    fn test_route_request_matches_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let site_dir = tmp.path().join("blog");
+        fs::create_dir_all(&site_dir).unwrap();
+        let file = site_dir.join("index.html");
+        fs::write(&file, "<html></html>").unwrap();
+        let sites = vec![("blog".to_string(), site_dir.clone())];
+        let result = route_request("/blog/", &sites);
+        assert!(result.is_some());
+        let (path, name) = result.unwrap();
+        assert_eq!(name, "blog");
+        assert_eq!(path, site_dir.join("index.html"));
+    }
+
+    #[test]
+    fn test_route_request_root_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        let sites = vec![("blog".to_string(), tmp.path().to_path_buf())];
+        assert!(route_request("/", &sites).is_none());
+    }
+
+    #[test]
+    fn test_guess_mime_html() {
+        assert_eq!(
+            guess_mime(Path::new("index.html")),
+            "text/html; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_guess_mime_webp() {
+        assert_eq!(guess_mime(Path::new("photo.webp")), "image/webp");
+    }
+
+    #[test]
+    fn test_guess_mime_unknown() {
+        assert_eq!(
+            guess_mime(Path::new("file.xyz")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn test_generate_workspace_index_contains_sites() {
+        let sites = vec![
+            ("blog".to_string(), PathBuf::from("/tmp/blog")),
+            ("docs".to_string(), PathBuf::from("/tmp/docs")),
+        ];
+        let html = generate_workspace_index(&sites);
+        assert!(html.contains(r#"href="/blog/""#));
+        assert!(html.contains(r#"href="/docs/""#));
+        assert!(html.contains("Workspace Sites"));
+    }
 }

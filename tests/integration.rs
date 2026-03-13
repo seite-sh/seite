@@ -10034,3 +10034,55 @@ fn test_skill_update_nothing_installed() {
         .success()
         .stdout(predicate::str::contains("Nothing to update"));
 }
+
+// =========================================================================
+// Completions
+// =========================================================================
+
+#[test]
+fn test_completions_bash_outputs_script() {
+    page_cmd()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("seite"));
+}
+
+#[test]
+fn test_completions_zsh_outputs_script() {
+    page_cmd()
+        .args(["completions", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("seite"));
+}
+
+#[test]
+fn test_completions_fish_outputs_script() {
+    page_cmd()
+        .args(["completions", "fish"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("seite"));
+}
+
+#[test]
+fn test_completions_stdout_is_clean() {
+    // The completion script must be usable with shell redirection (seite completions bash > file.sh).
+    // No informational messages should appear on stdout — only the generated script.
+    let output = page_cmd()
+        .args(["completions", "bash"])
+        .output()
+        .expect("failed to run completions");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should look like a shell script, not a human-readable message
+    assert!(
+        stdout.contains("complete") || stdout.contains("compgen") || stdout.contains("_seite"),
+        "stdout should contain bash completion code, got: {stdout}"
+    );
+    // Update-check or advisory messages on stdout would corrupt the script
+    assert!(
+        !stdout.contains("A new version"),
+        "update notification must not appear on stdout"
+    );
+}

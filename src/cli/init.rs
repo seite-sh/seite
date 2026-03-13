@@ -419,10 +419,33 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     )?;
 
     human::success(&format!("Created new site in '{name}'"));
+    println!();
+
+    // Show project structure so users know what was created
+    let collection_dirs: Vec<String> = collections
+        .iter()
+        .map(|c| format!("  │   └── {}/", c.directory))
+        .collect();
+    println!(
+        "  {name}/\n\
+         ├── seite.toml          {}\n\
+         ├── content/\n\
+         {}\n\
+         ├── templates/base.html {}\n\
+         └── static/             {}",
+        console::style("← site config").dim(),
+        collection_dirs.join("\n"),
+        console::style("← theme template").dim(),
+        console::style("← CSS, images, etc.").dim(),
+    );
+
+    println!();
     human::info("Next steps:");
     println!("  cd {name}");
-    println!("  seite build");
-    println!("  seite serve");
+    println!(
+        "  seite serve             {} start dev server with live reload",
+        console::style("←").dim()
+    );
 
     Ok(())
 }
@@ -927,6 +950,7 @@ fn generate_claude_md(
     md.push_str("seite build                              # Build the site\n");
     md.push_str("seite build --drafts                     # Build including draft content\n");
     md.push_str("seite serve                              # Dev server with live reload + REPL\n");
+    md.push_str("seite serve --open                       # Dev server + open browser\n");
     md.push_str("seite serve --port 8080                  # Use a specific port\n");
     for c in collections {
         let singular = singularize(&c.name);
@@ -948,6 +972,7 @@ fn generate_claude_md(
     md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
     md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
     md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
+    md.push_str("seite completions bash                   # Generate shell completions\n");
     md.push_str("```\n\n");
 
     // Dev server REPL (static)

@@ -14,6 +14,10 @@ use crate::workspace;
 
 #[derive(Args)]
 pub struct ServeArgs {
+    /// Host to bind to (default: 127.0.0.1, use 0.0.0.0 for network access)
+    #[arg(long)]
+    pub host: Option<String>,
+
     /// Port to serve on (auto-finds available port if default is taken)
     #[arg(short, long)]
     pub port: Option<u16>,
@@ -21,12 +25,18 @@ pub struct ServeArgs {
     /// Build before serving
     #[arg(long, default_value = "true")]
     pub build: bool,
+
+    /// Open the site in the default browser after starting
+    #[arg(long)]
+    pub open: bool,
 }
 
+const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3000;
 
 pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
+    let host = args.host.as_deref().unwrap_or(DEFAULT_HOST);
 
     // Check for workspace context
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
@@ -52,7 +62,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
             let (config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
-            let handle = server::start(&config, &paths, port, true, auto_increment)?;
+            let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
 
             human::info(&format!(
                 "Serving site '{site_name}'. Type \"help\" for commands, \"stop\" to quit (port {})",
@@ -64,7 +74,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
 
         // Workspace dev server (all sites)
-        let handle = workspace::server::start(&ws_config, &ws_root, port, auto_increment)?;
+        let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
 
         human::info(&format!(
             "Type \"stop\" to quit (server on port {})",
@@ -133,12 +143,24 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
     let port = args.port.unwrap_or(DEFAULT_PORT);
     let auto_increment = args.port.is_none();
-    let handle = server::start(&config, &paths, port, true, auto_increment)?;
+    let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
 
-    human::info(&format!(
-        "Type \"help\" for commands, \"stop\" to quit (server on port {})",
-        handle.port()
-    ));
+    human::info("Type \"help\" for commands, \"stop\" to quit");
+
+    if args.open {
+        let display_host = match host {
+            "0.0.0.0" | "::" => "localhost",
+            h => h,
+        };
+        let url = if display_host.contains(':') {
+            format!("http://[{display_host}]:{}/", handle.port())
+        } else {
+            format!("http://{display_host}:{}/", handle.port())
+        };
+        if let Err(e) = open::that(&url) {
+            human::warning(&format!("Could not open browser: {e}"));
+        }
+    }
 
     run_repl(&config, &paths, &handle)?;
 
@@ -341,15 +363,13 @@ fn cmd_new(
     let collection = match config::find_collection(collection_name, &config.collections) {
         Some(c) => c,
         None => {
+            let available: Vec<&str> = config.collections.iter().map(|c| c.name.as_str()).collect();
+            let hint = human::suggest_match(collection_name, &available);
             human::error(&format!(
-                "Unknown collection '{}'. Available: {}",
+                "Unknown collection '{}'. Available: {}{}",
                 collection_name,
-                config
-                    .collections
-                    .iter()
-                    .map(|c| c.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                available.join(", "),
+                hint,
             ));
             return;
         }
