@@ -63,7 +63,7 @@ fn known_packs() -> &'static [SkillPack] {
         description:
             "SEO content research, writing, and optimization — by SEOMachine (seomachine.com)",
         repo: "TheCraigHewitt/seomachine",
-        branch: "main",
+        branch: "4e04990d4b79745275a013b613c597d9189fc142",
         agents: &[
             "cluster-strategist.md",
             "content-analyzer.md",
@@ -140,6 +140,7 @@ fn known_packs() -> &'static [SkillPack] {
             "writing-examples.md",
         ],
         python_scripts: &[
+            // Top-level scripts
             "research_competitor_gaps.py",
             "research_performance_matrix.py",
             "research_priorities_comprehensive.py",
@@ -151,6 +152,34 @@ fn known_packs() -> &'static [SkillPack] {
             "seo_bofu_rankings.py",
             "seo_competitor_analysis.py",
             "test_dataforseo.py",
+            // data_sources modules
+            "data_sources/modules/above_fold_analyzer.py",
+            "data_sources/modules/article_planner.py",
+            "data_sources/modules/competitor_gap_analyzer.py",
+            "data_sources/modules/content_length_comparator.py",
+            "data_sources/modules/content_scorer.py",
+            "data_sources/modules/content_scrubber.py",
+            "data_sources/modules/cro_checker.py",
+            "data_sources/modules/cta_analyzer.py",
+            "data_sources/modules/data_aggregator.py",
+            "data_sources/modules/dataforseo.py",
+            "data_sources/modules/engagement_analyzer.py",
+            "data_sources/modules/google_analytics.py",
+            "data_sources/modules/google_search_console.py",
+            "data_sources/modules/keyword_analyzer.py",
+            "data_sources/modules/landing_page_scorer.py",
+            "data_sources/modules/landing_performance.py",
+            "data_sources/modules/opportunity_scorer.py",
+            "data_sources/modules/readability_scorer.py",
+            "data_sources/modules/search_intent_analyzer.py",
+            "data_sources/modules/section_writer.py",
+            "data_sources/modules/seo_quality_rater.py",
+            "data_sources/modules/social_research_aggregator.py",
+            "data_sources/modules/trust_signal_analyzer.py",
+            "data_sources/modules/wordpress_publisher.py",
+            // data_sources config
+            "data_sources/config/.env.example",
+            "config/competitors.example.json",
         ],
     }]
 }
@@ -879,10 +908,14 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
         pack.python_scripts.len()
     ));
     for script in pack.python_scripts {
+        let dest = scripts_dir.join(script);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let url = raw_github_url(pack.repo, pack.branch, script);
         match download_text(&url) {
             Ok(body) => {
-                fs::write(scripts_dir.join(script), &body)?;
+                fs::write(&dest, &body)?;
                 installed_files.push(format!("scripts/seo/{script}"));
             }
             Err(e) => download_errors.push(format!("  script {script}: {e}")),
@@ -1688,7 +1721,7 @@ mod tests {
         assert_eq!(pack.commands.len(), 22);
         assert_eq!(pack.skills.len(), 25);
         assert_eq!(pack.context_files.len(), 9);
-        assert_eq!(pack.python_scripts.len(), 11);
+        assert_eq!(pack.python_scripts.len(), 37);
     }
 
     #[test]
