@@ -58,6 +58,7 @@ struct SiteServerInfo {
 
 /// Start a workspace dev server that routes requests by path prefix.
 /// `localhost:3000/blog/...` -> sites/blog/dist/...
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn start(
     ws_config: &WorkspaceConfig,
     ws_root: &Path,

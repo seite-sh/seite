@@ -40,3 +40,41 @@ pub fn suggest_match(input: &str, candidates: &[&str]) -> String {
         None => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_suggest_match_close_typo() {
+        let result = suggest_match("posst", &["posts", "docs", "pages"]);
+        assert!(
+            result.contains("posts"),
+            "should suggest 'posts' for 'posst'"
+        );
+    }
+
+    #[test]
+    fn test_suggest_match_no_match() {
+        let result = suggest_match("zzzzz", &["posts", "docs", "pages"]);
+        assert!(result.is_empty(), "should return empty for no close match");
+    }
+
+    #[test]
+    fn test_suggest_match_empty_candidates() {
+        let result = suggest_match("posts", &[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_suggest_match_exact() {
+        let result = suggest_match("posts", &["posts", "docs"]);
+        assert!(result.contains("posts"));
+    }
+
+    #[test]
+    fn test_suggest_match_picks_best() {
+        let result = suggest_match("doc", &["docs", "dock", "dog"]);
+        assert!(result.contains("docs"));
+    }
+}

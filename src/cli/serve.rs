@@ -34,6 +34,7 @@ pub struct ServeArgs {
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3000;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let host = args.host.as_deref().unwrap_or(DEFAULT_HOST);
@@ -163,6 +164,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn run_repl(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,

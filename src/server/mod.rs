@@ -50,6 +50,7 @@ impl Drop for ServerHandle {
 }
 
 /// Start the dev server in background threads. Returns a handle to stop it.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn start(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -436,6 +437,7 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
 }
 
 /// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn local_network_ip() -> Option<String> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;

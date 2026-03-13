@@ -101,6 +101,7 @@ pub enum Command {
 }
 
 /// Build the clap Command (used by shell completion generation).
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn build_cli() -> clap::Command {
     Cli::command()
 }
