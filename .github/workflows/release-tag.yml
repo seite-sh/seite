@@ -7,12 +7,14 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   tag:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v6
         with:
