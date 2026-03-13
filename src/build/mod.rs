@@ -226,7 +226,7 @@ impl SiteContext {
             description: config.description_for_lang(lang).to_string(),
             base_url: config.site.base_url.clone(),
             base_path: config.base_path(),
-            language: config.site.language.clone(),
+            language: lang.to_string(),
             author: config.site.author.clone(),
         }
     }
@@ -2008,6 +2008,20 @@ fn build_site_inner(
             &computed_rewrites
         }
     };
+    // Emit Plausible extensions deprecation warning once (not per HTML file)
+    if let Some(ref analytics) = config.analytics {
+        if analytics.provider == crate::config::AnalyticsProvider::Plausible
+            && !analytics.extensions.is_empty()
+            && analytics.script_url.is_none()
+        {
+            crate::output::human::warning(
+                "Plausible `extensions` are deprecated (Oct 2025). Retrieve your unique snippet \
+                 from Plausible → Settings → Installation and set `script_url` in seite.toml. \
+                 Your current config still works. \
+                 See https://plausible.io/docs/script-update-guide",
+            );
+        }
+    }
     let post_ctx = HtmlPostProcessContext {
         image_manifest: &image_manifest,
         lazy_loading,
@@ -3397,9 +3411,9 @@ mod tests {
         let ctx = SiteContext::for_lang(&config, "es");
         assert_eq!(ctx.title, "Sitio de Prueba");
         assert_eq!(ctx.description, "Una prueba");
-        // base_url and language remain the same (they're site-level)
         assert_eq!(ctx.base_url, "https://example.com");
-        assert_eq!(ctx.language, "en");
+        // language should reflect the requested language, not the default
+        assert_eq!(ctx.language, "es");
     }
 
     #[test]
