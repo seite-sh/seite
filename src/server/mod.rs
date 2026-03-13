@@ -53,19 +53,20 @@ impl Drop for ServerHandle {
 pub fn start(
     config: &SiteConfig,
     paths: &ResolvedPaths,
+    host: &str,
     port: u16,
     include_drafts: bool,
     auto_increment: bool,
 ) -> Result<ServerHandle> {
     let (server, actual_port) = if auto_increment {
-        try_bind_auto(port)?
+        try_bind_auto(host, port)?
     } else {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
-        let addr = format!("127.0.0.1:{port}");
+        let addr = format!("{host}:{port}");
         let server = Server::http(&addr).map_err(|e| {
-            PageError::Server(format!("failed to start server on port {port}: {e}"))
+            PageError::Server(format!("failed to start server on {host}:{port}: {e}"))
         })?;
         (server, port)
     };
@@ -82,7 +83,8 @@ pub fn start(
         console::style(format!("v{}", env!("CARGO_PKG_VERSION"))).dim()
     );
     println!();
-    let local_url = format!("http://localhost:{actual_port}/");
+    let display_host = if host == "0.0.0.0" { "localhost" } else { host };
+    let local_url = format!("http://{display_host}:{actual_port}/");
     println!(
         "  {}  {}  {}",
         console::style("➜").green().bold(),
@@ -410,9 +412,9 @@ fn watch_and_rebuild(
 
 /// Check if a port is available by trying to connect to it.
 /// If the connection succeeds, something is already listening.
-fn port_is_available(port: u16) -> bool {
+fn port_is_available(host: &str, port: u16) -> bool {
     TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}")
+        &format!("{host}:{port}")
             .parse()
             .expect("valid socket address"),
         Duration::from_millis(100),
@@ -420,12 +422,12 @@ fn port_is_available(port: u16) -> bool {
     .is_err()
 }
 
-fn try_bind_auto(start_port: u16) -> Result<(Server, u16)> {
+fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     for port in start_port..start_port.saturating_add(100) {
-        if !port_is_available(port) {
+        if !port_is_available(host, port) {
             continue;
         }
-        match Server::http(format!("127.0.0.1:{port}")) {
+        match Server::http(format!("{host}:{port}")) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }
@@ -1081,7 +1083,7 @@ mod tests {
     fn test_port_is_available_high_port() {
         // Port 39_517 is high and extremely unlikely to be in use
         assert!(
-            port_is_available(39_517),
+            port_is_available("127.0.0.1", 39_517),
             "a high unused port should be available"
         );
     }
@@ -1091,7 +1093,7 @@ mod tests {
         // Several high ports should all be available
         for port in [39_518, 49_999, 60_000, 65_000] {
             assert!(
-                port_is_available(port),
+                port_is_available("127.0.0.1", port),
                 "high port {port} should be available"
             );
         }
@@ -1103,7 +1105,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let bound_port = listener.local_addr().unwrap().port();
         assert!(
-            !port_is_available(bound_port),
+            !port_is_available("127.0.0.1", bound_port),
             "a port with a bound listener should not be available"
         );
         drop(listener);
@@ -1116,7 +1118,7 @@ mod tests {
     #[test]
     fn test_try_bind_auto_finds_available_port() {
         // Should find a port starting from a high number
-        let result = try_bind_auto(49_800);
+        let result = try_bind_auto("127.0.0.1", 49_800);
         assert!(result.is_ok(), "should find an available port");
         let (server, port) = result.unwrap();
         assert!(port >= 49_800);
@@ -1130,7 +1132,7 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let bound_port = listener.local_addr().unwrap().port();
 
-        let result = try_bind_auto(bound_port);
+        let result = try_bind_auto("127.0.0.1", bound_port);
         assert!(result.is_ok(), "should find a port even if first is busy");
         let (_server, actual_port) = result.unwrap();
         // It might bind the same port if the OS released it or a different one

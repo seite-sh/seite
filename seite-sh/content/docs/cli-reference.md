@@ -96,6 +96,7 @@ seite serve [options]
 
 | Flag | Description |
 |------|-------------|
+| `--host` | Host to bind to (default: `127.0.0.1`, use `0.0.0.0` for network access) |
 | `--port` | Starting port (default: 3000, auto-increments if taken) |
 | `--open` | Open the site in the default browser after starting |
 | `--drafts` | Include drafts |

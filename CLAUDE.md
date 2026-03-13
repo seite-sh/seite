@@ -17,6 +17,7 @@ cargo run -- init mysite --title "My Site" --collections posts,docs,pages
 cargo run -- build   # Build site from seite.toml
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
+cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- agent "create a blog post about Rust"
 cargo run -- theme create "coral brutalist with lime accents"
