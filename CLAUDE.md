@@ -40,7 +40,7 @@ src/
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 15 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions
+  cli/                 16 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions, perf
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated CLAUDE.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults

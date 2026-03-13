@@ -12,7 +12,7 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has fifteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
+`seite` has sixteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
@@ -31,6 +31,7 @@ Run `seite <command> --help` for quick inline help on any command.
 | `upgrade` | Update project config to match current binary |
 | `self-update` | Update the seite binary to the latest release |
 | `completions` | Generate shell completion scripts |
+| `perf` | Audit site performance via PageSpeed Insights |
 
 ### Global Flags
 

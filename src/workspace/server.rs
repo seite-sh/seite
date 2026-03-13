@@ -71,8 +71,7 @@ pub fn start(
         if !port_is_available(host, port) {
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
-        let addr = format!("{host}:{port}");
-        let server = Server::http(&addr).map_err(|e| {
+        let server = Server::http(server_addr(host, port)).map_err(|e| {
             PageError::Server(format!("failed to start server on {host}:{port}: {e}"))
         })?;
         (server, port)
@@ -96,15 +95,19 @@ pub fn start(
         });
     }
 
-    let display_host = if host == "0.0.0.0" { "localhost" } else { host };
-    if actual_port != port {
-        human::info(&format!(
-            "Port {port} in use, serving at http://{display_host}:{actual_port}"
-        ));
+    let display_host = match host {
+        "0.0.0.0" | "::" => "localhost",
+        h => h,
+    };
+    let base_url = if display_host.contains(':') {
+        format!("http://[{display_host}]:{actual_port}")
     } else {
-        human::success(&format!(
-            "Serving workspace at http://{display_host}:{actual_port}"
-        ));
+        format!("http://{display_host}:{actual_port}")
+    };
+    if actual_port != port {
+        human::info(&format!("Port {port} in use, serving at {base_url}"));
+    } else {
+        human::success(&format!("Serving workspace at {base_url}"));
     }
 
     // Print site routes
@@ -439,12 +442,21 @@ fn port_is_available(host: &str, port: u16) -> bool {
     TcpListener::bind((host, port)).is_ok()
 }
 
+/// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
+fn server_addr(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     for port in start_port..start_port.saturating_add(100) {
         if !port_is_available(host, port) {
             continue;
         }
-        match Server::http(format!("{host}:{port}")) {
+        match Server::http(server_addr(host, port)) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }

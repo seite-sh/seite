@@ -64,8 +64,7 @@ pub fn start(
         if !port_is_available(host, port) {
             return Err(PageError::Server(format!("port {port} is already in use")));
         }
-        let addr = format!("{host}:{port}");
-        let server = Server::http(&addr).map_err(|e| {
+        let server = Server::http(server_addr(host, port)).map_err(|e| {
             PageError::Server(format!("failed to start server on {host}:{port}: {e}"))
         })?;
         (server, port)
@@ -396,7 +395,7 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
         if !port_is_available(host, port) {
             continue;
         }
-        match Server::http(format!("{host}:{port}")) {
+        match Server::http(server_addr(host, port)) {
             Ok(server) => return Ok((server, port)),
             Err(_) => continue,
         }
@@ -404,19 +403,32 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     Err(PageError::Server("no available port found".into()))
 }
 
-/// Resolve the display hostname: `0.0.0.0` becomes `localhost`, everything else stays.
+/// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
+fn server_addr(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+/// Resolve the display hostname: `0.0.0.0`/`::` become `localhost`, everything else stays.
 fn resolve_display_host(host: &str) -> &str {
-    if host == "0.0.0.0" {
+    if host == "0.0.0.0" || host == "::" {
         "localhost"
     } else {
         host
     }
 }
 
-/// Build the local server URL string.
+/// Build the local server URL string, handling IPv6 bracket notation.
 fn format_local_url(host: &str, port: u16) -> String {
     let display_host = resolve_display_host(host);
-    format!("http://{display_host}:{port}/")
+    if display_host.contains(':') {
+        format!("http://[{display_host}]:{port}/")
+    } else {
+        format!("http://{display_host}:{port}/")
+    }
 }
 
 /// Print the Vite-style server banner to stdout.
@@ -1281,18 +1293,42 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_resolve_display_host_wildcard() {
+    fn test_resolve_display_host_wildcard_ipv4() {
         assert_eq!(resolve_display_host("0.0.0.0"), "localhost");
     }
 
     #[test]
-    fn test_resolve_display_host_localhost() {
+    fn test_resolve_display_host_wildcard_ipv6() {
+        assert_eq!(resolve_display_host("::"), "localhost");
+    }
+
+    #[test]
+    fn test_resolve_display_host_loopback() {
         assert_eq!(resolve_display_host("127.0.0.1"), "127.0.0.1");
     }
 
     #[test]
     fn test_resolve_display_host_custom() {
         assert_eq!(resolve_display_host("192.168.1.10"), "192.168.1.10");
+    }
+
+    // =========================================================================
+    // server_addr
+    // =========================================================================
+
+    #[test]
+    fn test_server_addr_ipv4() {
+        assert_eq!(server_addr("127.0.0.1", 3000), "127.0.0.1:3000");
+    }
+
+    #[test]
+    fn test_server_addr_ipv6_wildcard() {
+        assert_eq!(server_addr("::", 3000), "[::]:3000");
+    }
+
+    #[test]
+    fn test_server_addr_ipv6_loopback() {
+        assert_eq!(server_addr("::1", 8080), "[::1]:8080");
     }
 
     // =========================================================================
@@ -1308,8 +1344,20 @@ mod tests {
     }
 
     #[test]
-    fn test_format_local_url_wildcard() {
+    fn test_format_local_url_wildcard_ipv4() {
         assert_eq!(format_local_url("0.0.0.0", 8080), "http://localhost:8080/");
+    }
+
+    #[test]
+    fn test_format_local_url_wildcard_ipv6() {
+        // :: resolves to localhost
+        assert_eq!(format_local_url("::", 8080), "http://localhost:8080/");
+    }
+
+    #[test]
+    fn test_format_local_url_ipv6_loopback() {
+        // ::1 stays as IPv6 and gets brackets
+        assert_eq!(format_local_url("::1", 3000), "http://[::1]:3000/");
     }
 
     #[test]

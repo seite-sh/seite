@@ -48,10 +48,10 @@ fn main() -> Result<()> {
         Command::Completions(args) => seite::cli::completions::run(args)?,
     }
 
-    // Check for available updates (skip for self-update and mcp)
+    // Check for available updates (skip for self-update, mcp, and completions — stdout must stay clean)
     if !matches!(
         &command,
-        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_)
+        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_) | Command::Completions(_)
     ) {
         seite::update_check::maybe_notify();
     }

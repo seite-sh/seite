@@ -148,11 +148,15 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     human::info("Type \"help\" for commands, \"stop\" to quit");
 
     if args.open {
-        let url = format!(
-            "http://{}:{}",
-            if host == "0.0.0.0" { "localhost" } else { host },
-            handle.port()
-        );
+        let display_host = match host {
+            "0.0.0.0" | "::" => "localhost",
+            h => h,
+        };
+        let url = if display_host.contains(':') {
+            format!("http://[{display_host}]:{}/", handle.port())
+        } else {
+            format!("http://{display_host}:{}/", handle.port())
+        };
         if let Err(e) = open::that(&url) {
             human::warning(&format!("Could not open browser: {e}"));
         }
