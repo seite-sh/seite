@@ -201,6 +201,117 @@ fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<(
 }
 
 // ---------------------------------------------------------------------------
+// Public API for agent prompt integration
+// ---------------------------------------------------------------------------
+
+/// Summary of installed skill packs and context files, for agent prompt injection.
+pub struct SkillPackSummary {
+    pub packs: Vec<InstalledPackInfo>,
+    pub context_files: Vec<String>,
+    pub custom_skills: Vec<String>,
+}
+
+pub struct InstalledPackInfo {
+    pub name: String,
+    pub description: String,
+    pub agents: Vec<String>,
+    pub commands: Vec<String>,
+    pub skills: Vec<String>,
+}
+
+/// Gather skill pack information for the agent system prompt.
+pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
+    let manifest = load_manifest(root);
+    let bundled_skills = ["theme-builder", "brand-identity", "landing-page"];
+
+    let mut packs = Vec::new();
+    let mut all_pack_skills: Vec<String> = Vec::new();
+
+    for (name, entry) in &manifest.packs {
+        let description = find_pack(name)
+            .map(|p| p.description.to_string())
+            .unwrap_or_else(|| format!("from {}", entry.source));
+
+        let mut agents = Vec::new();
+        let mut commands = Vec::new();
+        let mut skills = Vec::new();
+
+        for file in &entry.files {
+            if let Some(rest) = file.strip_prefix(".claude/agents/") {
+                if let Some(n) = rest.strip_suffix(".md") {
+                    agents.push(n.to_string());
+                }
+            } else if let Some(rest) = file.strip_prefix(".claude/commands/") {
+                if let Some(n) = rest.strip_suffix(".md") {
+                    commands.push(n.to_string());
+                }
+            } else if let Some(rest) = file.strip_prefix(".claude/skills/") {
+                if let Some(n) = rest.strip_suffix("/SKILL.md") {
+                    skills.push(n.to_string());
+                    all_pack_skills.push(n.to_string());
+                }
+            }
+        }
+
+        agents.sort();
+        commands.sort();
+        skills.sort();
+
+        packs.push(InstalledPackInfo {
+            name: name.clone(),
+            description,
+            agents,
+            commands,
+            skills,
+        });
+    }
+
+    // Context files
+    let context_dir = root.join("context");
+    let mut context_files = Vec::new();
+    if context_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&context_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "md") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        context_files.push(stem.to_string());
+                    }
+                }
+            }
+        }
+    }
+    context_files.sort();
+
+    // Custom skills (not bundled, not in packs)
+    let skills_dir = root.join(".claude").join("skills");
+    let mut custom_skills = Vec::new();
+    if skills_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&skills_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if bundled_skills.contains(&name.as_str()) {
+                    continue;
+                }
+                if all_pack_skills.contains(&name) {
+                    continue;
+                }
+                if entry.path().join("SKILL.md").exists() {
+                    custom_skills.push(name);
+                }
+            }
+        }
+    }
+    custom_skills.sort();
+
+    SkillPackSummary {
+        packs,
+        context_files,
+        custom_skills,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // HTTP download
 // ---------------------------------------------------------------------------
 
@@ -1587,5 +1698,102 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown skill pack"));
         assert!(err.contains("seomachine")); // Should suggest known packs
+    }
+
+    #[test]
+    fn test_gather_skill_summary_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let summary = gather_skill_summary(tmp.path());
+        assert!(summary.packs.is_empty());
+        assert!(summary.context_files.is_empty());
+        assert!(summary.custom_skills.is_empty());
+    }
+
+    #[test]
+    fn test_gather_skill_summary_with_manifest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "seomachine".to_string(),
+            PackEntry {
+                source: "github:TheCraigHewitt/seomachine".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![
+                    ".claude/agents/editor.md".to_string(),
+                    ".claude/agents/seo-optimizer.md".to_string(),
+                    ".claude/commands/research.md".to_string(),
+                    ".claude/commands/write.md".to_string(),
+                    ".claude/commands/publish-draft.md".to_string(),
+                    ".claude/skills/content-strategy/SKILL.md".to_string(),
+                ],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs.len(), 1);
+        assert_eq!(summary.packs[0].name, "seomachine");
+        assert_eq!(summary.packs[0].agents.len(), 2);
+        assert_eq!(summary.packs[0].commands.len(), 3);
+        assert_eq!(summary.packs[0].skills.len(), 1);
+        assert!(summary.packs[0].description.contains("SEO"));
+    }
+
+    #[test]
+    fn test_gather_skill_summary_context_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let context_dir = tmp.path().join("context");
+        fs::create_dir_all(&context_dir).unwrap();
+        fs::write(context_dir.join("brand-voice.md"), "# Brand Voice").unwrap();
+        fs::write(context_dir.join("target-keywords.md"), "# Keywords").unwrap();
+        fs::write(context_dir.join("notes.txt"), "not markdown").unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(
+            summary.context_files,
+            vec!["brand-voice", "target-keywords"]
+        );
+    }
+
+    #[test]
+    fn test_gather_skill_summary_custom_skills() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skills_dir = tmp.path().join(".claude").join("skills");
+
+        // Create a custom skill
+        let custom = skills_dir.join("my-custom-skill");
+        fs::create_dir_all(&custom).unwrap();
+        fs::write(custom.join("SKILL.md"), "# My Skill").unwrap();
+
+        // Create a bundled skill (should be excluded)
+        let bundled = skills_dir.join("theme-builder");
+        fs::create_dir_all(&bundled).unwrap();
+        fs::write(bundled.join("SKILL.md"), "# Theme Builder").unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.custom_skills, vec!["my-custom-skill"]);
+    }
+
+    #[test]
+    fn test_gather_skill_summary_unknown_pack() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "future-pack".to_string(),
+            PackEntry {
+                source: "github:someone/future-pack".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![".claude/commands/cool.md".to_string()],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs.len(), 1);
+        assert!(summary.packs[0]
+            .description
+            .contains("github:someone/future-pack"));
     }
 }

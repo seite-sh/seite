@@ -5,6 +5,7 @@ use std::process::Stdio;
 use clap::Args;
 use walkdir::WalkDir;
 
+use crate::cli::skill;
 use crate::config::{ResolvedPaths, SiteConfig};
 use crate::content;
 use crate::error::PageError;
@@ -424,6 +425,62 @@ Custom shortcodes: create Tera templates in `templates/shortcodes/name.html`.
 "#,
     );
 
+    // Skill packs, context files, and custom skills
+    let summary = skill::gather_skill_summary(&paths.root);
+
+    let has_content = !summary.packs.is_empty()
+        || !summary.context_files.is_empty()
+        || !summary.custom_skills.is_empty();
+
+    if has_content {
+        prompt.push_str("\n## Installed Extensions\n\n");
+
+        for pack in &summary.packs {
+            prompt.push_str(&format!("### {} Pack\n", pack.name));
+            prompt.push_str(&format!("{}\n\n", pack.description));
+
+            if !pack.commands.is_empty() {
+                prompt.push_str("**Commands:** ");
+                let cmds: Vec<String> = pack.commands.iter().map(|c| format!("/{c}")).collect();
+                prompt.push_str(&cmds.join(", "));
+                prompt.push_str("\n\n");
+            }
+
+            if !pack.agents.is_empty() {
+                prompt.push_str(&format!(
+                    "**Agents:** {} specialized agents available\n\n",
+                    pack.agents.len()
+                ));
+            }
+
+            if !pack.skills.is_empty() {
+                prompt.push_str(&format!(
+                    "**Skills:** {} skills available\n\n",
+                    pack.skills.len()
+                ));
+            }
+        }
+
+        if !summary.context_files.is_empty() {
+            prompt.push_str("### Context Files\n\n");
+            prompt.push_str("The `context/` directory contains project-specific guidelines:\n");
+            for name in &summary.context_files {
+                prompt.push_str(&format!("- `context/{name}.md`\n"));
+            }
+            prompt.push_str(
+                "\nRead these files before creating or optimizing content — they define brand voice, target keywords, and style.\n\n",
+            );
+        }
+
+        if !summary.custom_skills.is_empty() {
+            prompt.push_str("### Custom Skills\n\n");
+            for name in &summary.custom_skills {
+                prompt.push_str(&format!("- `/{name}`\n"));
+            }
+            prompt.push('\n');
+        }
+    }
+
     prompt
 }
 
@@ -488,4 +545,40 @@ fn list_templates(paths: &ResolvedPaths) -> Vec<String> {
 
     names.sort();
     names
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_system_prompt_contains_site_info() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_content = "[site]\ntitle = \"Test Site\"\ndescription = \"A test\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\n";
+        std::fs::write(tmp.path().join("seite.toml"), config_content).unwrap();
+        let config = SiteConfig::load(&tmp.path().join("seite.toml")).unwrap();
+        let paths = config.resolve_paths(tmp.path());
+
+        let prompt = build_system_prompt(&config, &paths);
+        assert!(prompt.contains("Test Site"));
+        assert!(prompt.contains("## Collections"));
+        // No skill packs installed, so no extensions section
+        assert!(!prompt.contains("## Installed Extensions"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_with_context_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_content = "[site]\ntitle = \"Test Site\"\ndescription = \"A test\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\n";
+        std::fs::write(tmp.path().join("seite.toml"), config_content).unwrap();
+        std::fs::create_dir_all(tmp.path().join("context")).unwrap();
+        std::fs::write(tmp.path().join("context/brand-voice.md"), "# Brand Voice").unwrap();
+
+        let config = SiteConfig::load(&tmp.path().join("seite.toml")).unwrap();
+        let paths = config.resolve_paths(tmp.path());
+
+        let prompt = build_system_prompt(&config, &paths);
+        assert!(prompt.contains("## Installed Extensions"));
+        assert!(prompt.contains("context/brand-voice.md"));
+    }
 }
