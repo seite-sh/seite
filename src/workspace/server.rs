@@ -451,3 +451,102 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     }
     Err(PageError::Server("no available port found".into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_port_is_available_high_port() {
+        assert!(
+            port_is_available("127.0.0.1", 39_519),
+            "high unused port should be available"
+        );
+    }
+
+    #[test]
+    fn test_port_is_available_detects_bound_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        assert!(
+            !port_is_available("127.0.0.1", bound_port),
+            "port with a bound listener should not be available"
+        );
+        drop(listener);
+    }
+
+    #[test]
+    fn test_resolve_file_path_root() {
+        let tmp = TempDir::new().unwrap();
+        let index = tmp.path().join("index.html");
+        fs::write(&index, "<html></html>").unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/"), Some(index));
+    }
+
+    #[test]
+    fn test_resolve_file_path_clean_url() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hello.html");
+        fs::write(&file, "<html></html>").unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/posts/hello"), Some(file));
+    }
+
+    #[test]
+    fn test_resolve_file_path_not_found() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(resolve_file_path(tmp.path(), "/nonexistent"), None);
+    }
+
+    #[test]
+    fn test_route_request_matches_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let site_dir = tmp.path().join("blog");
+        fs::create_dir_all(&site_dir).unwrap();
+        let file = site_dir.join("index.html");
+        fs::write(&file, "<html></html>").unwrap();
+        let sites = vec![("blog".to_string(), site_dir.clone())];
+        let result = route_request("/blog/", &sites);
+        assert!(result.is_some());
+        let (path, name) = result.unwrap();
+        assert_eq!(name, "blog");
+        assert_eq!(path, site_dir.join("index.html"));
+    }
+
+    #[test]
+    fn test_route_request_root_returns_none() {
+        let tmp = TempDir::new().unwrap();
+        let sites = vec![("blog".to_string(), tmp.path().to_path_buf())];
+        assert!(route_request("/", &sites).is_none());
+    }
+
+    #[test]
+    fn test_guess_mime_html() {
+        assert_eq!(guess_mime(Path::new("index.html")), "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn test_guess_mime_webp() {
+        assert_eq!(guess_mime(Path::new("photo.webp")), "image/webp");
+    }
+
+    #[test]
+    fn test_guess_mime_unknown() {
+        assert_eq!(guess_mime(Path::new("file.xyz")), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_generate_workspace_index_contains_sites() {
+        let sites = vec![
+            ("blog".to_string(), PathBuf::from("/tmp/blog")),
+            ("docs".to_string(), PathBuf::from("/tmp/docs")),
+        ];
+        let html = generate_workspace_index(&sites);
+        assert!(html.contains(r#"href="/blog/""#));
+        assert!(html.contains(r#"href="/docs/""#));
+        assert!(html.contains("Workspace Sites"));
+    }
+}
