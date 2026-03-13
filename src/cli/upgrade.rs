@@ -133,6 +133,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: ".gitignore dist-subdomains/ entry",
             check: check_gitignore_dist_subdomains,
         },
+        UpgradeStep {
+            introduced_in: (0, 5, 0),
+            label: "Path-scoped .claude/rules/ context files",
+            check: check_claude_rules,
+        },
     ]
 }
 
@@ -260,6 +265,19 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         "Project upgraded to seite {}",
         meta::format_version(binary_ver)
     ));
+
+    // Hint about trimming CLAUDE.md if rules files were created
+    if root.join(".claude/rules").exists() {
+        if let Ok(content) = fs::read_to_string(root.join("CLAUDE.md")) {
+            if content.lines().count() > 300 {
+                println!();
+                human::info(
+                    "Detailed context now lives in .claude/rules/ and loads automatically.",
+                );
+                human::info("You can trim your CLAUDE.md — the rules files have the details.");
+            }
+        }
+    }
 
     Ok(())
 }
@@ -794,6 +812,104 @@ fn check_gitignore_dist_subdomains(root: &Path) -> Vec<UpgradeAction> {
         content: "\n/dist-subdomains\n".to_string(),
         description: ".gitignore (added dist-subdomains/)".into(),
     }]
+}
+
+/// Create `.claude/rules/*.md` files with path-scoped context for Claude.
+fn check_claude_rules(root: &Path) -> Vec<UpgradeAction> {
+    use crate::cli::init::rules_file;
+
+    let rules_dir = root.join(".claude/rules");
+    let mut actions = Vec::new();
+
+    // Always-present rules
+    let always_rules: &[(&str, &[&str], &str)] = &[
+        (
+            "seo-requirements.md",
+            &["templates/**"],
+            include_str!("../scaffold/seo-requirements.md"),
+        ),
+        (
+            "templates.md",
+            &["templates/**"],
+            include_str!("../scaffold/templates.md"),
+        ),
+        (
+            "i18n.md",
+            &["content/**", "templates/**", "data/i18n/**"],
+            include_str!("../scaffold/i18n.md"),
+        ),
+        (
+            "data-files.md",
+            &["data/**"],
+            include_str!("../scaffold/data-files.md"),
+        ),
+        (
+            "shortcodes.md",
+            &["content/**", "templates/shortcodes/**"],
+            include_str!("../scaffold/shortcodes.md"),
+        ),
+        (
+            "config-reference.md",
+            &["seite.toml"],
+            include_str!("../scaffold/config-reference.md"),
+        ),
+        (
+            "features.md",
+            &["content/**", "templates/**"],
+            include_str!("../scaffold/features.md"),
+        ),
+        (
+            "design-prompts.md",
+            &["templates/**"],
+            include_str!("../scaffold/design-prompts.md"),
+        ),
+    ];
+
+    for (filename, paths, content) in always_rules {
+        let path = rules_dir.join(filename);
+        if !path.exists() {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: rules_file(paths, content),
+                description: format!(".claude/rules/{filename}"),
+            });
+        }
+    }
+
+    // Conditional: contact form (check seite.toml for [contact])
+    let config_path = root.join("seite.toml");
+    if let Ok(config_content) = fs::read_to_string(&config_path) {
+        if config_content.contains("[contact]") {
+            let path = rules_dir.join("contact-form.md");
+            if !path.exists() {
+                actions.push(UpgradeAction::Create {
+                    path,
+                    content: rules_file(
+                        &["content/**", "templates/**", "seite.toml"],
+                        include_str!("../scaffold/contact-form.md"),
+                    ),
+                    description: ".claude/rules/contact-form.md".into(),
+                });
+            }
+        }
+
+        // Conditional: trust center
+        if config_content.contains("name = \"trust\"") {
+            let path = rules_dir.join("trust-center.md");
+            if !path.exists() {
+                actions.push(UpgradeAction::Create {
+                    path,
+                    content: rules_file(
+                        &["content/trust/**", "data/trust/**"],
+                        include_str!("../scaffold/rules-trust-center.md"),
+                    ),
+                    description: ".claude/rules/trust-center.md".into(),
+                });
+            }
+        }
+    }
+
+    actions
 }
 
 #[cfg(test)]

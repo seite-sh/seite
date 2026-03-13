@@ -4085,6 +4085,32 @@ fn test_upgrade_idempotent() {
 }
 
 #[test]
+fn test_upgrade_creates_rules_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Upgrade Rules", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Remove rules files to simulate old project
+    fs::remove_dir_all(site_dir.join(".claude/rules")).unwrap();
+    assert!(!site_dir.join(".claude/rules").exists());
+
+    // Reset version to trigger upgrade
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Verify rules were created
+    assert!(site_dir.join(".claude/rules/seo-requirements.md").exists());
+    assert!(site_dir.join(".claude/rules/templates.md").exists());
+    assert!(site_dir.join(".claude/rules/i18n.md").exists());
+    assert!(site_dir.join(".claude/rules/features.md").exists());
+}
+
+#[test]
 fn test_upgrade_stamps_version_even_when_no_actions() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Version Stamp", "posts,pages");
@@ -5745,14 +5771,18 @@ fn test_init_with_trust_collection() {
     assert!(config.contains("soc2"));
     assert!(config.contains("iso27001"));
 
-    // Verify CLAUDE.md has trust section
+    // Verify CLAUDE.md has brief trust section
     let claude_md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
     assert!(claude_md.contains("## Trust Center"));
     assert!(claude_md.contains("Acme Corp"));
-    assert!(claude_md.contains("Managing Certifications"));
-    assert!(claude_md.contains("Managing Subprocessors"));
-    assert!(claude_md.contains("Managing FAQs"));
-    assert!(claude_md.contains("seite://trust"));
+
+    // Detailed trust content now lives in .claude/rules/trust-center.md
+    let trust_rules = fs::read_to_string(root.join(".claude/rules/trust-center.md")).unwrap();
+    assert!(trust_rules.starts_with("---\npaths:\n"));
+    assert!(trust_rules.contains("Managing Certifications"));
+    assert!(trust_rules.contains("Managing Subprocessors"));
+    assert!(trust_rules.contains("Managing FAQs"));
+    assert!(trust_rules.contains("seite://trust"));
 }
 
 #[test]
@@ -5891,6 +5921,84 @@ fn test_init_without_trust_has_no_trust_config() {
 
     let claude_md = fs::read_to_string(tmp.path().join("site/CLAUDE.md")).unwrap();
     assert!(!claude_md.contains("## Trust Center"));
+}
+
+// --- Context Rules (.claude/rules/) ---
+
+#[test]
+fn test_init_creates_rules_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Rules Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Verify rules directory exists
+    assert!(site_dir.join(".claude/rules").is_dir());
+
+    // Verify always-present rules files with frontmatter
+    let expected = [
+        "seo-requirements.md",
+        "templates.md",
+        "i18n.md",
+        "data-files.md",
+        "shortcodes.md",
+        "config-reference.md",
+        "features.md",
+        "design-prompts.md",
+    ];
+    for name in &expected {
+        let path = site_dir.join(format!(".claude/rules/{name}"));
+        assert!(path.exists(), "rules file {name} should exist");
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.starts_with("---\npaths:\n"),
+            "rules file {name} should have frontmatter"
+        );
+    }
+}
+
+#[test]
+fn test_init_lean_claude_md() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Lean Test", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+
+    // Detail content should NOT be in CLAUDE.md (now in rules)
+    assert!(
+        !claude_md.contains("### Every page `<head>` MUST include"),
+        "SEO requirements detail should be in rules, not CLAUDE.md"
+    );
+    assert!(
+        !claude_md.contains("### Template Variables"),
+        "Template variables table should be in rules, not CLAUDE.md"
+    );
+
+    // Essential sections should still be present
+    assert!(claude_md.contains("## Commands"));
+    assert!(claude_md.contains("## Collections"));
+    assert!(claude_md.contains("## Content Format"));
+    assert!(claude_md.contains("## Key Conventions"));
+    assert!(claude_md.contains(".claude/rules/"));
+
+    // Line count should be well under 250
+    let line_count = claude_md.lines().count();
+    assert!(
+        line_count < 250,
+        "CLAUDE.md should be under 250 lines, got {line_count}"
+    );
+}
+
+#[test]
+fn test_init_rules_no_trust_without_trust_collection() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Trust Rules", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    assert!(
+        !site_dir.join(".claude/rules/trust-center.md").exists(),
+        "trust-center rule should not exist without trust collection"
+    );
 }
 
 #[test]

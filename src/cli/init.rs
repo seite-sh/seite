@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Args;
 
@@ -400,6 +400,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         )?;
     }
 
+    // Write .claude/rules/ files (path-scoped context for Claude)
+    generate_rules_files(&root, &collections, config.contact.is_some())?;
+
     // Write CLAUDE.md with site-specific context
     fs::write(
         root.join("CLAUDE.md"),
@@ -409,7 +412,6 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             &description,
             &collections,
             trust_opts.as_ref(),
-            config.contact.is_some(),
         ),
     )?;
 
@@ -803,6 +805,102 @@ pub fn mcp_server_block() -> serde_json::Value {
     })
 }
 
+/// Wrap scaffold content with `.claude/rules/` YAML frontmatter.
+pub(crate) fn rules_file(paths: &[&str], content: &str) -> String {
+    let mut result = String::with_capacity(content.len() + 128);
+    result.push_str("---\npaths:\n");
+    for p in paths {
+        result.push_str(&format!("  - \"{p}\"\n"));
+    }
+    result.push_str("---\n");
+    result.push_str(content);
+    result
+}
+
+/// Write `.claude/rules/*.md` files with path-scoped context for Claude.
+fn generate_rules_files(
+    root: &Path,
+    collections: &[CollectionConfig],
+    has_contact: bool,
+) -> std::io::Result<()> {
+    let rules_dir = root.join(".claude/rules");
+    fs::create_dir_all(&rules_dir)?;
+
+    // Always-present rules
+    fs::write(
+        rules_dir.join("seo-requirements.md"),
+        rules_file(
+            &["templates/**"],
+            include_str!("../scaffold/seo-requirements.md"),
+        ),
+    )?;
+    fs::write(
+        rules_dir.join("templates.md"),
+        rules_file(&["templates/**"], include_str!("../scaffold/templates.md")),
+    )?;
+    fs::write(
+        rules_dir.join("i18n.md"),
+        rules_file(
+            &["content/**", "templates/**", "data/i18n/**"],
+            include_str!("../scaffold/i18n.md"),
+        ),
+    )?;
+    fs::write(
+        rules_dir.join("data-files.md"),
+        rules_file(&["data/**"], include_str!("../scaffold/data-files.md")),
+    )?;
+    fs::write(
+        rules_dir.join("shortcodes.md"),
+        rules_file(
+            &["content/**", "templates/shortcodes/**"],
+            include_str!("../scaffold/shortcodes.md"),
+        ),
+    )?;
+    fs::write(
+        rules_dir.join("config-reference.md"),
+        rules_file(
+            &["seite.toml"],
+            include_str!("../scaffold/config-reference.md"),
+        ),
+    )?;
+    fs::write(
+        rules_dir.join("features.md"),
+        rules_file(
+            &["content/**", "templates/**"],
+            include_str!("../scaffold/features.md"),
+        ),
+    )?;
+    fs::write(
+        rules_dir.join("design-prompts.md"),
+        rules_file(
+            &["templates/**"],
+            include_str!("../scaffold/design-prompts.md"),
+        ),
+    )?;
+
+    // Conditional rules
+    if has_contact {
+        fs::write(
+            rules_dir.join("contact-form.md"),
+            rules_file(
+                &["content/**", "templates/**", "seite.toml"],
+                include_str!("../scaffold/contact-form.md"),
+            ),
+        )?;
+    }
+    if collections.iter().any(|c| c.name == "trust") {
+        fs::write(
+            rules_dir.join("trust-center.md"),
+            rules_file(
+                &["content/trust/**", "data/trust/**"],
+                include_str!("../scaffold/rules-trust-center.md"),
+            ),
+        )?;
+    }
+
+    Ok(())
+}
+
 /// Generate a CLAUDE.md tailored to the site's collections and structure.
 fn generate_claude_md(
     config: &SiteConfig,
@@ -810,9 +908,8 @@ fn generate_claude_md(
     description: &str,
     collections: &[CollectionConfig],
     trust_opts: Option<&TrustOptions>,
-    has_contact: bool,
 ) -> String {
-    let mut md = String::with_capacity(16384);
+    let mut md = String::with_capacity(8192);
 
     // Header (dynamic)
     md.push_str(&format!("# {title}\n\n"));
@@ -820,9 +917,6 @@ fn generate_claude_md(
         md.push_str(&format!("{description}\n\n"));
     }
     md.push_str("This is a static site built with the `seite` CLI tool.\n\n");
-
-    // SEO and GEO requirements (static)
-    md.push_str(include_str!("../scaffold/seo-requirements.md"));
 
     // Commands (dynamic — iterates collections)
     md.push_str("## Commands\n\n");
@@ -979,34 +1073,24 @@ fn generate_claude_md(
         md.push_str(include_str!("../scaffold/landing-page-builder.md"));
     }
 
-    // Multi-language support (static)
-    md.push_str(include_str!("../scaffold/i18n.md"));
+    // MCP Server (brief — details in embedded docs)
+    md.push_str("## MCP Server\n\n");
+    md.push_str(
+        "An MCP server is configured in `.claude/settings.json` and starts automatically.\n",
+    );
+    md.push_str(
+        "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`\n",
+    );
+    md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`\n\n");
 
-    // Data files (static)
-    md.push_str(include_str!("../scaffold/data-files.md"));
-
-    // Templates and themes (static)
-    md.push_str(include_str!("../scaffold/templates.md"));
-
-    // Features (static — docs sidebar is common enough to always include)
-    md.push_str(include_str!("../scaffold/features.md"));
-
-    // Optional configuration (static)
-    md.push_str(include_str!("../scaffold/config-reference.md"));
-
-    // MCP Server (static)
-    md.push_str(include_str!("../scaffold/mcp.md"));
-
-    // Trust Center (dynamic — only if trust collection is present)
+    // Trust Center (brief — details in .claude/rules/trust-center.md)
     if let Some(opts) = trust_opts {
         md.push_str("## Trust Center\n\n");
         md.push_str(&format!(
-            "This site includes a compliance trust center at `/trust/`. Company: **{}**.\n\n",
+            "This site includes a compliance trust center at `/trust/`. Company: **{}**.\n",
             opts.company
         ));
-
         if !opts.frameworks.is_empty() {
-            md.push_str("### Active Frameworks\n\n");
             for (slug, status) in &opts.framework_statuses {
                 let fw = framework_by_slug(slug);
                 let name = fw.map(|f| f.name).unwrap_or(slug.as_str());
@@ -1017,125 +1101,16 @@ fn generate_claude_md(
                 };
                 md.push_str(&format!("- **{name}** — {badge}\n"));
             }
-            md.push('\n');
         }
-
-        md.push_str("### How the Trust Center Works\n\n");
-        md.push_str("The trust center has three layers:\n\n");
-        md.push_str(
-            "1. **Data files** (`data/trust/`) — structured YAML that drives the templates\n",
-        );
-        md.push_str("2. **Content pages** (`content/trust/`) — markdown prose for each section\n");
-        md.push_str("3. **Templates** (`templates/trust-index.html`, `templates/trust-item.html`) — layout (rarely edited)\n\n");
-
-        md.push_str("### Managing Certifications\n\n");
-        md.push_str("Edit `data/trust/certifications.yaml` to update certification statuses:\n\n");
-        md.push_str("```yaml\n");
-        md.push_str("- name: SOC 2 Type II\n");
-        md.push_str("  slug: soc2\n");
-        md.push_str("  status: active         # active | in_progress | planned\n");
-        md.push_str("  framework: soc2\n");
-        md.push_str("  description: >         # shown on trust center hub\n");
-        md.push_str("    Annual audit covering Security and Availability\n");
-        md.push_str("  issued: 2025-11-15     # date cert was issued\n");
-        md.push_str("  expires: 2026-11-15    # expiration date\n");
-        md.push_str("  auditor: \"Deloitte\"\n");
-        md.push_str("  scope: \"Security, Availability\"\n");
-        md.push_str("  report_url: \"mailto:security@example.com\"\n");
-        md.push_str("```\n\n");
-        md.push_str(
-            "Status values: `active` (green badge), `in_progress` (yellow), `planned` (gray).\n\n",
-        );
-        md.push_str("To add a new certification:\n");
-        md.push_str("1. Add entry to `data/trust/certifications.yaml`\n");
-        md.push_str("2. Create `content/trust/certifications/{slug}.md` with framework details\n");
-        md.push_str("3. Run `seite build`\n\n");
-
-        md.push_str("### Managing Subprocessors\n\n");
-        md.push_str("Edit `data/trust/subprocessors.yaml`:\n\n");
-        md.push_str("```yaml\n");
-        md.push_str("- name: \"AWS\"\n");
-        md.push_str("  purpose: \"Cloud infrastructure\"\n");
-        md.push_str("  data_types: [\"Customer data\", \"Logs\"]\n");
-        md.push_str("  location: \"United States\"\n");
-        md.push_str("  dpa: true\n");
-        md.push_str("```\n\n");
-        md.push_str("Fields: `name` (required), `purpose`, `data_types` (array), `location`, `dpa` (bool).\n\n");
-
-        md.push_str("### Managing FAQs\n\n");
-        md.push_str("Edit `data/trust/faq.yaml`:\n\n");
-        md.push_str("```yaml\n");
-        md.push_str("- question: \"Do you encrypt data at rest?\"\n");
-        md.push_str("  answer: \"Yes. All data encrypted with AES-256.\"\n");
-        md.push_str("  category: encryption     # groups FAQs in the UI\n");
-        md.push_str("```\n\n");
-        md.push_str("Categories: `encryption`, `access`, `data-residency`, `incident-response`, `compliance`, `general`.\n\n");
-
-        md.push_str("### Trust Center Content Pages\n\n");
-        md.push_str("Each section is a markdown file in `content/trust/`:\n\n");
-        md.push_str("| File | URL | Purpose |\n");
-        md.push_str("|------|-----|----------|\n");
-        md.push_str(
-            "| `security-overview.md` | `/trust/security-overview` | Main security narrative |\n",
-        );
-        md.push_str("| `vulnerability-disclosure.md` | `/trust/vulnerability-disclosure` | Responsible disclosure |\n");
-        md.push_str(
-            "| `data-processing.md` | `/trust/data-processing` | DPA / data processing terms |\n",
-        );
-        md.push_str("| `certifications/soc2.md` | `/trust/certifications/soc2` | Framework detail page |\n\n");
-        md.push_str("Use `weight:` in frontmatter to control section ordering (lower = first).\n");
-        md.push_str("Use `extra.type:` to categorize: `overview`, `certification`, `policy`, `changelog`.\n\n");
-
-        md.push_str("### Common Trust Center Tasks\n\n");
-        md.push_str("```bash\n");
-        md.push_str(
-            "seite new trust \"PCI DSS\"                    # Add a new certification page\n",
-        );
-        md.push_str("seite new trust \"Q1 2026 Security Update\"    # Add a changelog entry\n");
-        md.push_str("seite new trust \"Security Overview\" --lang es # Create a translation\n");
-        md.push_str(
-            "seite build                                   # Rebuild after editing data files\n",
-        );
-        md.push_str("```\n\n");
-
-        md.push_str("### Multi-language Trust Center\n\n");
-        md.push_str("Data files (`data/trust/*.yaml`) are language-neutral. Content pages get translated via the standard i18n system:\n\n");
-        md.push_str("```\n");
-        md.push_str(
-            "content/trust/security-overview.md       # English → /trust/security-overview\n",
-        );
-        md.push_str(
-            "content/trust/security-overview.es.md    # Spanish → /es/trust/security-overview\n",
-        );
-        md.push_str("```\n\n");
-        md.push_str(
-            "The trust center index at `/trust/` is rendered per-language automatically.\n\n",
-        );
-
-        md.push_str("### MCP Integration\n\n");
-        md.push_str("`seite://trust` returns the full trust center state (certifications, subprocessors, FAQs, content items).\n");
-        md.push_str(
-            "Use `seite_search` with `collection: \"trust\"` to find trust center content.\n",
-        );
-        md.push_str("Use `seite_create_content` with `collection: \"trust\"` and `extra: {\"type\": \"certification\", \"framework\": \"soc2\"}` to create trust center pages.\n\n");
+        md.push_str("\nSee `.claude/rules/trust-center.md` for data file formats, management workflows, and MCP integration.\n\n");
     }
 
-    // Shortcodes (static)
-    md.push_str(include_str!("../scaffold/shortcodes.md"));
-
-    // Contact forms
-    if has_contact {
-        md.push_str(include_str!("../scaffold/contact-form.md"));
-    } else {
-        md.push_str("\n## Contact Forms\n\n");
-        md.push_str("Contact forms are available via the `{{< contact_form() >}}` shortcode.\n");
-        md.push_str(
-            "Run `seite contact setup` to configure a provider (Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform).\n\n",
-        );
-    }
-
-    // Design prompts (static)
-    md.push_str(include_str!("../scaffold/design-prompts.md"));
+    // Contact forms (brief — details in .claude/rules/contact-form.md)
+    md.push_str("## Contact Forms\n\n");
+    md.push_str("Contact forms are available via the `{{< contact_form() >}}` shortcode.\n");
+    md.push_str(
+        "Run `seite contact setup` to configure a provider (Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform).\n\n",
+    );
 
     // Theme builder skill (static)
     md.push_str(include_str!("../scaffold/theme-builder.md"));
@@ -1156,6 +1131,10 @@ fn generate_claude_md(
     md.push_str("- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.\n");
     md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
     md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
+
+    // Context rules note
+    md.push_str("## Context Rules\n\n");
+    md.push_str("Detailed guides for templates, SEO, i18n, data files, shortcodes, configuration, and more are in `.claude/rules/` and load automatically when working with matching files.\n\n");
 
     // Documentation links
     md.push_str("## Documentation\n\n");
