@@ -147,9 +147,10 @@ fn parse_data_file(path: &Path) -> Result<serde_json::Value> {
 
 /// Check for key conflicts where two files resolve to the same key path.
 fn check_conflicts(files: &[(Vec<String>, PathBuf)]) -> Result<()> {
-    let mut seen: HashMap<Vec<String>, &Path> = HashMap::new();
+    let mut seen: HashMap<String, &Path> = HashMap::new();
     for (segments, path) in files {
-        if let Some(existing) = seen.get(segments) {
+        let key = segments.join(".");
+        if let Some(existing) = seen.get(&key) {
             return Err(PageError::Data {
                 path: path.to_path_buf(),
                 message: format!(
@@ -160,7 +161,7 @@ fn check_conflicts(files: &[(Vec<String>, PathBuf)]) -> Result<()> {
                 ),
             });
         }
-        seen.insert(segments.clone(), path);
+        seen.insert(key, path);
     }
     Ok(())
 }
