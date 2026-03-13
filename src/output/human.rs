@@ -77,4 +77,14 @@ mod tests {
         let result = suggest_match("doc", &["docs", "dock", "dog"]);
         assert!(result.contains("docs"));
     }
+
+    #[test]
+    fn test_warning_does_not_panic() {
+        warning("test warning");
+    }
+
+    #[test]
+    fn test_header_does_not_panic() {
+        header("test header");
+    }
 }
