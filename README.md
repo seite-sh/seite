@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>The AI-native static site generator.</em>
+  A static site generator where Claude Code is the interface.
 </p>
 
 <p align="center">
@@ -15,11 +15,18 @@
 
 ---
 
-Managing a startup's web presence has always felt disproportionately painful. A CMS for the marketing site. A separate docs platform. A blog tool. A changelog app. Each with its own login, its own subscription, none of it connected to how you actually build the product.
+You already have Claude Code. seite gives it something to work on.
 
-Meanwhile your team ships software with AI assistance every day. seite closes that gap. One CLI tool for your landing page, docs, blog, changelog, and roadmap — managed with the coding agent you already use, with no new subscriptions required.
+```bash
+seite agent "write a post about our v1 launch — here are the notes: ..."
+seite agent "redesign the homepage hero, we just pivoted to B2B"
+seite agent "create changelog entries for these release notes: ..."
+seite agent        # interactive session
+```
 
-It was built with Claude Code. This site is managed with Claude Code. That's the point.
+The agent reads your config, your templates, and your existing content before writing anything. Output lands in the right directory with the right frontmatter. You review a diff and ship it.
+
+No new subscription. No new UI to learn. No new commands. Just the Claude Code subscription you already have — now it can manage your whole website.
 
 ```bash
 curl -fsSL https://seite.sh/install.sh | sh
@@ -39,11 +46,11 @@ All from Markdown + YAML frontmatter. No JavaScript runtime. No build dependenci
 
 ## AI integration
 
-This is where seite is different from every other SSG.
-
 ### Agent
 
-`seite agent` spawns Claude Code with full site context — config, content inventory, templates, and available commands. No API keys, no setup. It uses your Claude Code subscription directly.
+`seite agent` spawns Claude Code with full site context — config, content inventory, templates, and available commands. No API keys, no setup. Uses your existing Claude Code subscription.
+
+`seite init` generates `.claude/CLAUDE.md` with your site's full schema so the agent is oriented before it writes a single character. Output lands in the right directory, with the right frontmatter, following your conventions. You review a diff and ship it.
 
 ```bash
 seite agent "write a post about our v1.2 release — here are the notes: ..."
@@ -51,8 +58,6 @@ seite agent "rewrite the homepage hero, our positioning shifted to B2B"
 seite agent "generate docs stubs for each CLI command"
 seite agent        # interactive session
 ```
-
-The agent reads your schema, your templates, and your existing content before it writes anything. The output lands in the right directory, with the right frontmatter, following your conventions. You review a diff and ship it.
 
 ### MCP server
 
@@ -324,13 +329,22 @@ Full docs at **[seite.sh/docs](https://seite.sh/docs/getting-started)**
 
 ## Contributing
 
-Contributions are welcome. Open an issue to discuss larger changes before submitting a PR.
+seite is early and issues, PRs, and feedback are genuinely welcome. Especially useful:
+
+- **Bug reports** with a repro case (even a minimal `seite.toml` + content file)
+- **New theme ideas** — open an issue first to align on direction before building
+- **Docs improvements** — if something confused you, it'll confuse others
+- **Real-world usage** — if you build something with seite, share it
 
 ```bash
+git clone https://github.com/seite-sh/seite
 cargo build
 cargo test        # 331 tests (139 unit + 192 integration)
 cargo clippy      # must be zero warnings
+cargo fmt --all
 ```
+
+Open an issue before starting a large PR — saves everyone time.
 
 ## License
 

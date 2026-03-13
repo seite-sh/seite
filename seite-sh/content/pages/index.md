@@ -3,8 +3,8 @@ title: "seite"
 description: "seite is an AI-native static site generator for startup teams tired of managing too many tools for something that should be simple. Every page ships as HTML for browsers, Markdown for LLMs, and structured data for search engines. Use the Claude Code or Codex subscription you already have. Single binary. Zero dependencies."
 extra:
   hero_badge: "Built in Rust · AI-native · Open source"
-  hero_headline: "Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint."
-  hero_sub: "One repo. One CLI. Your whole web presence: built with the coding agent you already use."
+  hero_headline: "Your coding agent can build and manage your website. <em>No new subscription required.</em>"
+  hero_sub: "seite gives Claude Code the structure it needs to write posts, redesign pages, and deploy — using the subscription you already have."
 
   ribbon_1: '<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh &nbsp;·&nbsp; macOS, Linux, Windows'
   ribbon_2: 'ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>'
@@ -21,8 +21,8 @@ extra:
   feature_1_title: "Sub-second builds. Always."
   feature_1_body: "Single static binary for macOS, Linux, and Windows. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
 
-  feature_2_title: "Your agent already knows how to use this."
-  feature_2_body: "Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) can orient themselves immediately. Run <code>seite agent \"...\"</code> and it reads your schema, your templates, your content before it touches anything."
+  feature_2_title: "Claude Code is the UI."
+  feature_2_body: "Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) orient themselves immediately. Run <code>seite agent \"write a post about X\"</code> and it reads your schema, templates, and content before touching anything. No new commands to learn — it already knows how."
 
   feature_3_title: "Ship in every language your customers speak."
   feature_3_body: "Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites: it's just there when you need it."
@@ -53,8 +53,8 @@ extra:
 
   dogfood_line: "This site is built with seite: the docs, the changelog, the llms.txt. All of it."
 
-  cta_headline: "Your coding agent can handle your website."
-  cta_sub: "Give it the right structure and it will. One repo. One CLI. Your whole web presence."
+  cta_headline: "You already pay for Claude Code. Make it manage your website too."
+  cta_sub: "One binary. One CLI. Your landing page, docs, blog, changelog, and roadmap — all managed by the agent you already use."
 
   github_url: "https://github.com/seite-sh/seite"
 ---

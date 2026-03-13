@@ -189,7 +189,10 @@ mod tests {
     #[test]
     fn test_fetch_psi_url_encoding() {
         // Verify urlencoding::encode handles characters that would break query params
-        assert_eq!(urlencoding::encode("https://example.com"), "https%3A%2F%2Fexample.com");
+        assert_eq!(
+            urlencoding::encode("https://example.com"),
+            "https%3A%2F%2Fexample.com"
+        );
         assert_eq!(
             urlencoding::encode("https://example.com/page with spaces"),
             "https%3A%2F%2Fexample.com%2Fpage%20with%20spaces"
