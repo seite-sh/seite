@@ -110,7 +110,7 @@ The tradeoff: Ruby dependencies, slow builds on large sites, and a declining com
 
 ## A Different Kind of Hugo Alternative
 
-Every tool above shares the same assumption: a static site generator compiles markdown into HTML, and that's the job. What if the job description changed?
+Every tool above shares the same assumption: a static site generator compiles markdown into HTML, and that's the job. What if the job description changed? If you're coming from WordPress rather than Hugo, the pain points are different but the destination is the same; see the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) comparison.
 
 seite is a Rust static site generator shipped as a single binary. Like Hugo, like Zola: no runtime, no dependencies, sub-second builds. You get the speed and simplicity that brought you to Hugo in the first place. But seite was built as a static site generator with AI at its core, for a world where AI agents are part of the development workflow and AI search engines are part of the audience.
 
@@ -162,7 +162,7 @@ Here's how this Hugo alternative compares feature by feature.
 
 The left column is a powerful tool built for 2015. The right column is a tool built for 2026. They share the same DNA: compiled binary, markdown content, fast builds. The difference is everything around the compiler.
 
-When Maria, a startup CTO, needed a docs site for her API product, she started with Hugo because of its speed. Two weeks in, she had a working site but no deploy pipeline, no search, and her designer couldn't figure out Go templates. She switched to seite, got built-in search and deploy on day one, and her designer was writing Tera templates within an hour. The docs site shipped on schedule.
+When Maria, a startup CTO, needed a docs site for her API product, she started with Hugo because of its speed. Two weeks in, she had a working site but no deploy pipeline, no search, and her designer couldn't figure out Go templates. She switched to seite, got built-in search and deploy on day one, and her designer was writing Tera templates within an hour. The docs site shipped on schedule. See the [complete docs site walkthrough](/posts/build-docs-site-command-line) for the step-by-step process.
 
 **Ready to see the difference?** [Get started with seite](/docs/getting-started) in under a minute: install, init, build, serve.
 
@@ -190,7 +190,7 @@ If you're ready to switch from Hugo, here's what should drive the decision. The 
 
 **You need built-in deploy.** If wiring up GitHub Actions or Netlify config files for a static site feels like overhead, `seite deploy` does it in one command.
 
-**You want AI discoverability.** If your content should appear in ChatGPT and Perplexity answers, you need llms.txt, markdown output, and AI-aware robots.txt. seite builds these automatically. Hugo doesn't.
+**You want AI discoverability.** If your content should appear in ChatGPT and Perplexity answers, you need llms.txt, markdown output, and AI-aware robots.txt. seite builds these automatically. Hugo doesn't. See the [generative engine optimization guide](/posts/generative-engine-optimization) for the full implementation strategy. To see exactly what SEO and GEO features Hugo lacks and seite ships automatically, see the [static site generator SEO checklist](/posts/static-site-generator-with-built-in-seo).
 
 **You're a startup shipping fast.** Landing page, docs, blog, changelog, and contact form, all from one tool, deployed in an afternoon. seite's [collections system](/docs/collections) handles all of these. Hugo handles some and leaves you to figure out the rest.
 

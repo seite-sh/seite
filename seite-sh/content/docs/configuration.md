@@ -259,7 +259,18 @@ provider = "plausible"
 id = "example.com"
 ```
 
-**Plausible with conversion tracking and outbound links:**
+For new installations, Plausible now provides a **unique snippet per site** from your dashboard (Settings → Installation). Use `script_url` to point to it — features like tagged events, outbound links, and file downloads are toggled in your Plausible site settings and automatically included:
+
+```toml
+[analytics]
+provider = "plausible"
+id = "example.com"
+script_url = "https://plausible.io/js/script.XXXXXXXX.js"
+```
+
+**Legacy: Plausible with extensions (pre-October 2025 script)**
+
+The old extension-based approach still works for existing setups but won't receive new Plausible features:
 
 ```toml
 [analytics]
@@ -268,7 +279,7 @@ id = "example.com"
 extensions = ["tagged-events", "outbound-links", "file-downloads"]
 ```
 
-Extensions are appended to the Plausible script filename: `script.tagged-events.outbound-links.file-downloads.js`. This enables CSS-class-based event tracking (`class="plausible-event-name=Signup"`), automatic outbound link click tracking, and file download tracking. See [Plausible script extensions](https://plausible.io/docs/script-extensions) for the full list. When `script_url` is set, `extensions` are ignored.
+The `extensions` field appends names to the script filename (e.g., `script.tagged-events.outbound-links.js`). New sites should use `script_url` with the unique snippet from the Plausible dashboard instead. See the [Plausible script update guide](https://plausible.io/docs/script-update-guide).
 
 **Fathom Analytics:**
 

@@ -120,7 +120,7 @@ Every `seite build` produces three output formats for every page:
 2. **Markdown** (`/posts/hello-world.md`) for AI models that prefer clean text
 3. **[llms.txt](/posts/what-is-llms-txt)** and **llms-full.txt** at the site root for AI discovery
 
-This is Generative Engine Optimization (GEO) built into the build pipeline. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews.
+This is [Generative Engine Optimization](/posts/generative-engine-optimization) (GEO) built into the build pipeline. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews. For the complete technical breakdown — canonical URLs, JSON-LD, Open Graph, and all three GEO features evaluated across major SSGs — see [what to look for in a static site generator with built-in SEO](/posts/static-site-generator-with-built-in-seo).
 
 Every page also includes a `<link rel="alternate" type="text/markdown">` tag in its HTML head, pointing AI crawlers to the clean markdown version. The `robots.txt` file allows AI search crawlers (ChatGPT-User, PerplexityBot) while blocking AI training crawlers (GPTBot, CCBot). Your content appears in AI answers without being used to train models.
 
@@ -255,7 +255,7 @@ seite serve
 
 Your site now has:
 - A blog with RSS feed
-- Documentation with sidebar navigation
+- [Documentation with sidebar navigation](/posts/build-docs-site-command-line)
 - Static pages
 - Client-side search
 - AI context files (CLAUDE.md, MCP server config)
@@ -267,7 +267,7 @@ To [deploy](/docs/deployment):
 seite deploy  # GitHub Pages, Cloudflare, or Netlify
 ```
 
-One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. See the [Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for a detailed walkthrough, or the full [CLI reference](/docs/cli-reference) for all available commands.
+One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. Migrating from WordPress? See the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) guide for the full comparison and migration path. See the [Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for a detailed walkthrough, or the full [CLI reference](/docs/cli-reference) for all available commands.
 
 ## Frequently Asked Questions
 

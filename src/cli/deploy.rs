@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 
 use crate::build::{self, BuildOptions};
+use crate::cli::perf;
 use crate::config::{DeployTarget, SiteConfig};
 use crate::deploy;
 use crate::error::PageError;
@@ -321,6 +322,13 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 let results = deploy::verify_deployment(url);
                 deploy::print_verification(&results);
             }
+        }
+    }
+
+    // --- Auto PageSpeed audit on production deploys ---
+    if !preview {
+        if let Some(ref url) = deploy_url {
+            perf::run_for_deploy(url);
         }
     }
 

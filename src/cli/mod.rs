@@ -6,6 +6,7 @@ pub mod deploy;
 pub mod init;
 pub mod mcp;
 pub mod new;
+pub mod perf;
 pub mod self_update;
 pub mod serve;
 pub mod skill;
@@ -90,4 +91,7 @@ pub enum Command {
 
     /// Start MCP server for AI tool integration (stdio JSON-RPC)
     Mcp(mcp::McpArgs),
+
+    /// Audit site performance via PageSpeed Insights
+    Perf(perf::PerfArgs),
 }

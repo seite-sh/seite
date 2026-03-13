@@ -164,6 +164,17 @@ document.getElementById('seite-cookie-decline').addEventListener('click',functio
 /// - Without consent: injects script before `</head>` and optional noscript after `<body>`
 /// - With consent: injects consent banner + gated loader before `</body>`
 pub fn inject_analytics(html: &str, config: &AnalyticsSection) -> String {
+    if config.provider == AnalyticsProvider::Plausible
+        && !config.extensions.is_empty()
+        && config.script_url.is_none()
+    {
+        crate::output::human::warning(
+            "Plausible `extensions` are deprecated (Oct 2025). Retrieve your unique snippet \
+             from Plausible → Settings → Installation and set `script_url` in seite.toml. \
+             Your current config still works. \
+             See https://plausible.io/docs/script-update-guide",
+        );
+    }
     if config.cookie_consent {
         // Consent mode: inject banner + gated script before </body>
         let banner = consent_banner_html(config);

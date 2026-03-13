@@ -43,6 +43,14 @@ enum UpgradeAction {
         content: String,
         description: String,
     },
+    /// Insert a `key = value` line into a `[section]` of a TOML file if not already present.
+    InjectToml {
+        path: PathBuf,
+        section: String,
+        key: String,
+        value: String,
+        description: String,
+    },
 }
 
 impl UpgradeAction {
@@ -52,6 +60,9 @@ impl UpgradeAction {
                 vec![description.clone()]
             }
             UpgradeAction::MergeJson { additions, .. } => additions.clone(),
+            UpgradeAction::InjectToml { description, .. } => {
+                vec![description.clone()]
+            }
             UpgradeAction::Append { description, .. } => {
                 vec![description.clone()]
             }
@@ -137,6 +148,11 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             introduced_in: (0, 5, 0),
             label: "Path-scoped .claude/rules/ context files",
             check: check_claude_rules,
+        },
+        UpgradeStep {
+            introduced_in: (0, 7, 0),
+            label: "Enable CSS/JS minification by default",
+            check: check_minify_default,
         },
     ]
 }
@@ -250,6 +266,29 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
                 let mut existing = fs::read_to_string(&path).unwrap_or_default();
                 existing.push_str(&content);
                 fs::write(&path, existing)?;
+                human::success(&format!("Updated {description}"));
+            }
+            UpgradeAction::InjectToml {
+                path,
+                section,
+                key,
+                value,
+                description,
+            } => {
+                let existing = fs::read_to_string(&path).unwrap_or_default();
+                let key_prefix = format!("{key} =");
+                let patched = if existing.contains(&key_prefix) {
+                    // Key already set — leave as-is
+                    existing
+                } else {
+                    let section_header = format!("[{section}]");
+                    existing.replacen(
+                        &section_header,
+                        &format!("{section_header}\n{key} = {value}"),
+                        1,
+                    )
+                };
+                fs::write(&path, patched)?;
                 human::success(&format!("Updated {description}"));
             }
         }
@@ -912,6 +951,29 @@ fn check_claude_rules(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
+/// Add `minify = true` to `[build]` in seite.toml if not already set.
+/// This became the default for new sites in 0.7.0.
+fn check_minify_default(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join("seite.toml");
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Only act if the file has a [build] section and minify isn't already configured
+    if !content.contains("[build]") || content.contains("minify =") {
+        return vec![];
+    }
+
+    vec![UpgradeAction::InjectToml {
+        path,
+        section: "build".to_string(),
+        key: "minify".to_string(),
+        value: "true".to_string(),
+        description: "seite.toml (enabled minify = true in [build])".to_string(),
+    }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1375,5 +1437,47 @@ mod tests {
         for step in upgrade_steps() {
             assert!(!step.label.is_empty(), "upgrade step should have a label");
         }
+    }
+
+    #[test]
+    fn test_check_minify_default_injects_when_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[site]\ntitle = \"Test\"\n\n[build]\noutput_dir = \"dist\"\n",
+        )
+        .unwrap();
+        let actions = check_minify_default(tmp.path());
+        assert_eq!(actions.len(), 1);
+    }
+
+    #[test]
+    fn test_check_minify_default_skips_when_already_set() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[build]\nminify = true\n",
+        )
+        .unwrap();
+        assert!(check_minify_default(tmp.path()).is_empty());
+
+        // Also skip if explicitly false
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[build]\nminify = false\n",
+        )
+        .unwrap();
+        assert!(check_minify_default(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_minify_default_skips_without_build_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            "[site]\ntitle = \"Test\"\n",
+        )
+        .unwrap();
+        assert!(check_minify_default(tmp.path()).is_empty());
     }
 }

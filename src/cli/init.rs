@@ -148,7 +148,10 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             author: String::new(),
         },
         collections: collections.clone(),
-        build: Default::default(),
+        build: crate::config::BuildSection {
+            minify: true,
+            ..Default::default()
+        },
         deploy: crate::config::DeploySection {
             target: target.clone(),
             repo: None,

@@ -35,10 +35,14 @@ fn main() -> Result<()> {
         Command::Upgrade(args) => seite::cli::upgrade::run(args)?,
         Command::SelfUpdate(args) => seite::cli::self_update::run(args)?,
         Command::Mcp(args) => seite::cli::mcp::run(args)?,
+        Command::Perf(args) => seite::cli::perf::run(args)?,
     }
 
     // Check for available updates (skip for self-update and mcp)
-    if !matches!(&cli.command, Command::SelfUpdate(_) | Command::Mcp(_)) {
+    if !matches!(
+        &cli.command,
+        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_)
+    ) {
         seite::update_check::maybe_notify();
     }
 

@@ -32,13 +32,13 @@ When enabled, the build pipeline auto-resizes images, generates WebP and/or AVIF
 provider = "plausible"     # "google", "gtm", "plausible", "fathom", "umami"
 id = "example.com"         # measurement/tracking ID
 cookie_consent = true      # show consent banner and gate analytics on acceptance
-# script_url = "..."       # custom script URL (required for self-hosted Umami)
-# extensions = ["tagged-events", "outbound-links"]  # Plausible script extensions
+# script_url = "..."       # Plausible: paste your unique snippet URL from Settings → Installation
+# extensions = ["tagged-events", "outbound-links"]  # legacy: Plausible pre-Oct 2025 script only
 ```
 
 Analytics scripts are injected into all HTML files at build time. When `cookie_consent = true`, a banner is shown and analytics only load after the user accepts. Consent is stored in `localStorage`.
 
-For Plausible, `extensions` appends [script extensions](https://plausible.io/docs/script-extensions) to the filename (e.g., `script.tagged-events.outbound-links.js`). Ignored when `script_url` is set or for non-Plausible providers.
+For new Plausible installations, retrieve your unique snippet URL from Plausible → Settings → Installation and set it as `script_url`. The `extensions` field uses the legacy filename-based approach (e.g., `script.tagged-events.js`) which still works but won't receive new Plausible features. See the [Plausible script update guide](https://plausible.io/docs/script-update-guide).
 
 ### Subdomain Deploys
 
