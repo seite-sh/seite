@@ -28,7 +28,6 @@ impl BuildProgress {
     }
 
     /// Start a new step. Finishes the previous step's spinner (if any) with a checkmark.
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn step(&mut self, label: &str) {
         self.finish_current();
         if !self.is_tty {
@@ -47,7 +46,6 @@ impl BuildProgress {
     }
 
     /// Finish the current step's spinner with timing info.
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn finish_current(&mut self) {
         if let Some(pb) = self.spinner.take() {
             let elapsed = self.step_start.elapsed();
@@ -64,7 +62,6 @@ impl BuildProgress {
     }
 
     /// Finish the final step.
-    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn done(mut self) {
         self.finish_current();
     }
@@ -120,6 +117,52 @@ mod tests {
     #[test]
     fn test_default_creates_instance() {
         let progress = BuildProgress::default();
+        assert!(progress.spinner.is_none());
+    }
+
+    #[test]
+    fn test_step_non_tty_sets_no_spinner() {
+        // In CI (non-TTY), step() should not create a spinner
+        let mut progress = BuildProgress::new();
+        progress.step("Loading content");
+        // In non-TTY mode, spinner stays None
+        if !progress.is_tty {
+            assert!(progress.spinner.is_none());
+        }
+    }
+
+    #[test]
+    fn test_multiple_steps_non_tty() {
+        let mut progress = BuildProgress::new();
+        progress.step("Step 1");
+        progress.step("Step 2");
+        progress.step("Step 3");
+        // Should not panic
+        if !progress.is_tty {
+            assert!(progress.spinner.is_none());
+        }
+    }
+
+    #[test]
+    fn test_done_with_no_spinner() {
+        let progress = BuildProgress::new();
+        // done() with no active spinner should not panic
+        progress.done();
+    }
+
+    #[test]
+    fn test_step_then_done() {
+        let mut progress = BuildProgress::new();
+        progress.step("Building");
+        progress.done();
+        // Should complete without panicking
+    }
+
+    #[test]
+    fn test_finish_current_no_spinner() {
+        let mut progress = BuildProgress::new();
+        // Calling finish_current when there's no spinner should be a no-op
+        progress.finish_current();
         assert!(progress.spinner.is_none());
     }
 }

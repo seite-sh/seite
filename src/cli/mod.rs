@@ -101,7 +101,27 @@ pub enum Command {
 }
 
 /// Build the clap Command (used by shell completion generation).
-#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn build_cli() -> clap::Command {
     Cli::command()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_cli_returns_valid_command() {
+        let cmd = build_cli();
+        assert_eq!(cmd.get_name(), "seite");
+    }
+
+    #[test]
+    fn test_build_cli_has_subcommands() {
+        let cmd = build_cli();
+        let subcommands: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
+        assert!(subcommands.contains(&"init"));
+        assert!(subcommands.contains(&"build"));
+        assert!(subcommands.contains(&"serve"));
+        assert!(subcommands.contains(&"completions"));
+    }
 }

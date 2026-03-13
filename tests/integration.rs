@@ -10034,3 +10034,22 @@ fn test_skill_update_nothing_installed() {
         .success()
         .stdout(predicate::str::contains("Nothing to update"));
 }
+
+// =========================================================================
+// Completions
+// =========================================================================
+
+#[test]
+fn test_completions_bash_outputs_script() {
+    page_cmd().args(["completions", "bash"]).assert().success();
+}
+
+#[test]
+fn test_completions_zsh_outputs_script() {
+    page_cmd().args(["completions", "zsh"]).assert().success();
+}
+
+#[test]
+fn test_completions_fish_outputs_script() {
+    page_cmd().args(["completions", "fish"]).assert().success();
+}

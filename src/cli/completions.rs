@@ -12,7 +12,6 @@ pub struct CompletionsArgs {
     pub shell: Shell,
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn run(args: &CompletionsArgs) -> anyhow::Result<()> {
     let mut cmd = crate::cli::build_cli();
     generate(args.shell, &mut cmd, "seite", &mut io::stdout());

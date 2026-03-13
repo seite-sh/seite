@@ -50,7 +50,6 @@ impl Drop for ServerHandle {
 }
 
 /// Start the dev server in background threads. Returns a handle to stop it.
-#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn start(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -76,32 +75,7 @@ pub fn start(
         human::info(&format!("Port {port} in use, using port {actual_port}"));
     }
 
-    // Vite-style prominent server display
-    println!();
-    println!(
-        "  {} {}",
-        console::style("seite").bold().cyan(),
-        console::style(format!("v{}", env!("CARGO_PKG_VERSION"))).dim()
-    );
-    println!();
-    let display_host = if host == "0.0.0.0" { "localhost" } else { host };
-    let local_url = format!("http://{display_host}:{actual_port}/");
-    println!(
-        "  {}  {}  {}",
-        console::style("➜").green().bold(),
-        console::style("Local:").bold(),
-        console::style(local_url).cyan().underlined()
-    );
-    // Show network URL if available
-    if let Some(ip) = local_network_ip() {
-        println!(
-            "  {}  {}  {}",
-            console::style("➜").dim(),
-            console::style("Network:").dim(),
-            console::style(format!("http://{ip}:{actual_port}/")).dim()
-        );
-    }
-    println!();
+    print_server_banner(host, actual_port);
 
     // Compute subdomain mount points for dev preview
     let subdomain_mounts: Vec<(String, PathBuf)> = config
@@ -436,8 +410,49 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     Err(PageError::Server("no available port found".into()))
 }
 
+/// Resolve the display hostname: `0.0.0.0` becomes `localhost`, everything else stays.
+fn resolve_display_host(host: &str) -> &str {
+    if host == "0.0.0.0" {
+        "localhost"
+    } else {
+        host
+    }
+}
+
+/// Build the local server URL string.
+fn format_local_url(host: &str, port: u16) -> String {
+    let display_host = resolve_display_host(host);
+    format!("http://{display_host}:{port}/")
+}
+
+/// Print the Vite-style server banner to stdout.
+fn print_server_banner(host: &str, port: u16) {
+    println!();
+    println!(
+        "  {} {}",
+        console::style("seite").bold().cyan(),
+        console::style(format!("v{}", env!("CARGO_PKG_VERSION"))).dim()
+    );
+    println!();
+    let local_url = format_local_url(host, port);
+    println!(
+        "  {}  {}  {}",
+        console::style("➜").green().bold(),
+        console::style("Local:").bold(),
+        console::style(local_url).cyan().underlined()
+    );
+    if let Some(ip) = local_network_ip() {
+        println!(
+            "  {}  {}  {}",
+            console::style("➜").dim(),
+            console::style("Network:").dim(),
+            console::style(format!("http://{ip}:{port}/")).dim()
+        );
+    }
+    println!();
+}
+
 /// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn local_network_ip() -> Option<String> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
@@ -1261,5 +1276,63 @@ mod tests {
             result_str.contains(LIVERELOAD_SCRIPT),
             "should inject even when </body> appears in content"
         );
+    }
+
+    // =========================================================================
+    // resolve_display_host
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_display_host_wildcard() {
+        assert_eq!(resolve_display_host("0.0.0.0"), "localhost");
+    }
+
+    #[test]
+    fn test_resolve_display_host_localhost() {
+        assert_eq!(resolve_display_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_resolve_display_host_custom() {
+        assert_eq!(resolve_display_host("192.168.1.10"), "192.168.1.10");
+    }
+
+    // =========================================================================
+    // format_local_url
+    // =========================================================================
+
+    #[test]
+    fn test_format_local_url_default() {
+        assert_eq!(
+            format_local_url("127.0.0.1", 3000),
+            "http://127.0.0.1:3000/"
+        );
+    }
+
+    #[test]
+    fn test_format_local_url_wildcard() {
+        assert_eq!(format_local_url("0.0.0.0", 8080), "http://localhost:8080/");
+    }
+
+    #[test]
+    fn test_format_local_url_custom_host() {
+        assert_eq!(
+            format_local_url("192.168.1.10", 4000),
+            "http://192.168.1.10:4000/"
+        );
+    }
+
+    // =========================================================================
+    // local_network_ip
+    // =========================================================================
+
+    #[test]
+    fn test_local_network_ip_returns_valid_ip_or_none() {
+        // In CI, there may not be a non-loopback interface — either result is valid.
+        if let Some(ip) = local_network_ip() {
+            let parsed: std::net::IpAddr = ip.parse().expect("should be a valid IP address");
+            assert!(!parsed.is_loopback(), "should not return loopback");
+            assert!(!parsed.is_unspecified(), "should not return unspecified");
+        }
     }
 }
