@@ -1,0 +1,10 @@
+# SEOMachine Python dependencies
+# Install with: pip install -r requirements-seo.txt
+google-analytics-data>=0.18.0
+google-auth>=2.0.0
+google-searchconsole>=0.1.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+scikit-learn>=1.3.0
+nltk>=3.8.0

@@ -341,3 +341,75 @@ The shortcode renders a styled form matching the current theme.
 provider = "formspree"   # or web3forms, netlify, hubspot, typeform
 endpoint = "your-form-id"
 ```
+
+<!-- seite-seomachine-start -->
+### SEOMachine Integration
+
+This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) installed for SEO content research, writing, and optimization.
+
+**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`
+
+**Context files** in `context/` define your brand voice, target keywords, and SEO guidelines. Fill these in for best results.
+
+**Directory layout:**
+- `content/posts/` — articles (use `draft: true` for work-in-progress)
+- `research/` — research briefs and analysis reports
+- `output/` — agent optimization reports
+- `topics/` — raw topic ideas
+- `context/` — brand voice, style guide, target keywords, competitor analysis
+
+**Analytics (optional):** Python scripts in `scripts/seo/` connect to Google Analytics, Search Console, and DataForSEO. Set up `.env` with API credentials. Run `pip install -r requirements-seo.txt` to install dependencies.
+
+**Publishing:** Use `/publish-draft <file>` to remove draft status, build, and deploy. This replaces SEOMachine's WordPress integration with seite's native deploy.
+
+## seite Integration Context
+
+You are working inside a **seite** static site project (https://seite.sh). Adapt your workflow to use seite's content model and CLI:
+
+### Content model
+- Content lives in `content/{collection}/*.md` with YAML frontmatter
+- Use `seite new post "Title" --tags tag1,tag2` to create a new post
+- Set `draft: true` in frontmatter for work-in-progress drafts
+- Run `seite build` to build the site, `seite serve` for live preview, `seite deploy` to publish
+
+### Directory mapping (SEOMachine → seite)
+| SEOMachine | seite equivalent |
+|---|---|
+| `drafts/` | `content/{collection}/` with `draft: true` in frontmatter |
+| `published/` | `content/{collection}/` (no draft flag) |
+| `research/` | `research/` (same) |
+| `output/` | `output/` (same, for agent reports) |
+| `topics/` | `topics/` (same, for idea capture) |
+
+### Frontmatter format
+```yaml
+---
+title: "SEO-Optimized Title (50-60 chars)"
+date: 2026-03-12
+description: "Compelling meta description with primary keyword (150-160 chars)"
+tags:
+  - keyword1
+  - keyword2
+image: /static/og-image.png
+draft: false
+extra:
+  primary_keyword: "target keyword"
+---
+```
+
+### SEO features (automatic)
+seite themes automatically handle: canonical URLs, Open Graph tags, Twitter Cards, JSON-LD structured data (BlogPosting/Article/WebSite), hreflang tags (multilingual), robots.txt with AI crawler management, llms.txt + llms-full.txt for AI discovery, and raw markdown alongside HTML. Focus on content quality — technical SEO is built in.
+
+### Publishing workflow
+Instead of WordPress REST API, use:
+1. Write content to `content/posts/` (or other collection)
+2. Remove `draft: true` when ready to publish
+3. Run `seite build` to verify
+4. Run `seite deploy` to publish
+
+### Site context
+- Read `seite.toml` for site configuration (title, collections, base_url, language)
+- Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
+- Read `CLAUDE.md` for full site documentation
+
+<!-- seite-seomachine-end -->

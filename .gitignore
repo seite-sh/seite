@@ -9,5 +9,6 @@ seite-sh/dist/
 .DS_Store
 .claude/settings.local.json
 seite-sh/content/docs/releases.md
-bench/*docs/
+bench/
+docs/
 theme-previews/
