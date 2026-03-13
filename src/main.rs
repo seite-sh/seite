@@ -34,6 +34,7 @@ fn main() -> Result<()> {
         Command::New(args) => seite::cli::new::run(args)?,
         Command::Build(args) => seite::cli::build::run(args, cli.site.as_deref())?,
         Command::Serve(args) => seite::cli::serve::run(args, cli.site.as_deref())?,
+        Command::Edit(args) => seite::cli::edit::run(args)?,
         Command::Deploy(args) => seite::cli::deploy::run(args, cli.site.as_deref())?,
         Command::Agent(args) => seite::cli::agent::run(args)?,
         Command::Collection(args) => seite::cli::collection::run(args)?,

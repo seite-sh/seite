@@ -1,18 +1,19 @@
 ---
 title: Visual Editing Mode
-description: "Low-barrier content editing without terminal or YAML — exploring AI-native approaches"
+description: "Browser-based content editor — edit frontmatter and markdown with live preview, no terminal required"
 tags:
-- planned
+- shipped
 weight: 5
 ---
 
 The #1 pain point across all SSG communities: editing content without touching a terminal, YAML frontmatter, or git. This is the largest addressable audience gap between SSGs and WordPress/AI app builders.
 
-**Status: exploring approaches.** In the age of AI assistants, the traditional WYSIWYG editor may not be the right answer. We're evaluating several directions:
+**Status: shipped in v0.10.1.** Run `seite edit` to open a browser-based visual editor with:
 
-- **Deeper Claude Code integration**: using `seite agent` as the primary editing interface, where natural language replaces form fields
-- **Browser-based preview with AI**: a `seite edit` mode that opens a live preview where users describe changes conversationally
-- **Hybrid approach**: lightweight web UI for frontmatter and content, with AI assistance for layout and design decisions
-- **MCP-powered editing**: leveraging the existing MCP server to enable editing from any AI-capable client
+- **Collection file browser** — sidebar listing all content files with draft/published indicators
+- **Frontmatter form** — edit title, date, description, tags, image, slug, template, weight, and draft status via form fields
+- **Markdown editor** — monospace textarea with tab support and live word count
+- **Live preview** — side-by-side iframe showing the built site, auto-refreshes on save
+- **Full CRUD** — create new content in any collection, save edits, delete files
 
-The goal is to find the approach that reduces activation energy to zero without building a full CMS. The AI-native angle may be seite's unique answer to this problem.
+We chose the **hybrid approach**: a lightweight web UI for frontmatter and content editing. The AI-native editing story continues through `seite agent` and MCP — the visual editor complements rather than replaces those workflows.

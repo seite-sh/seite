@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seite editor</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f0f;
+  --bg-raised: #1a1a1a;
+  --bg-input: #222;
+  --border: #333;
+  --border-focus: #666;
+  --text: #e8e8e8;
+  --text-dim: #888;
+  --text-muted: #555;
+  --accent: #8b5cf6;
+  --accent-dim: #6d3fd6;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --radius: 6px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+}
+
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; }
+
+/* Layout */
+.app { display: grid; grid-template-columns: 240px 1fr 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+.toolbar { grid-column: 1 / -1; background: var(--bg-raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; }
+.sidebar { grid-row: 2; background: var(--bg-raised); border-right: 1px solid var(--border); overflow-y: auto; }
+.editor-pane { grid-row: 2; overflow-y: auto; display: flex; flex-direction: column; }
+.preview-pane { grid-row: 2; border-left: 1px solid var(--border); position: relative; }
+
+/* Toolbar */
+.toolbar .logo { font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing: -0.5px; }
+.toolbar .sep { width: 1px; height: 24px; background: var(--border); }
+.toolbar .status { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+.toolbar .status.saving { color: var(--warning); }
+.toolbar .status.saved { color: var(--success); }
+.toolbar .status.error { color: var(--danger); }
+
+.btn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-family: var(--font); transition: all 0.15s; }
+.btn:hover { border-color: var(--border-focus); background: #2a2a2a; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-dim); }
+.btn-danger { color: var(--danger); }
+.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--danger); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Sidebar */
+.sidebar-section { padding: 8px 0; }
+.sidebar-section:not(:last-child) { border-bottom: 1px solid var(--border); }
+.sidebar-header { padding: 8px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; }
+.sidebar-header button { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+.sidebar-header button:hover { color: var(--text); }
+
+.file-item { padding: 6px 16px; cursor: pointer; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; transition: all 0.1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+.file-item.active { background: rgba(139,92,246,0.12); color: var(--accent); }
+.file-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.file-item .dot.draft { background: var(--warning); }
+.file-item .dot.published { background: var(--success); }
+.file-item .name { overflow: hidden; text-overflow: ellipsis; }
+.file-item .date { font-size: 11px; color: var(--text-muted); margin-left: auto; flex-shrink: 0; }
+
+/* Editor pane */
+.frontmatter-section { padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.frontmatter-section h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 12px; }
+
+.fm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fm-field { display: flex; flex-direction: column; gap: 4px; }
+.fm-field.full { grid-column: 1 / -1; }
+.fm-field label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+.fm-field input, .fm-field select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
+.fm-field input:focus, .fm-field select:focus { border-color: var(--accent); }
+.fm-field input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+.fm-check { flex-direction: row; align-items: center; gap: 8px; }
+
+.body-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.body-section .section-bar { padding: 8px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.body-section .section-bar h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+
+textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: var(--text); padding: 20px 24px; font-family: var(--mono); font-size: 14px; line-height: 1.7; resize: none; outline: none; tab-size: 2; }
+
+/* Preview */
+.preview-pane iframe { width: 100%; height: 100%; border: none; background: #fff; }
+.preview-pane .preview-bar { position: absolute; top: 0; left: 0; right: 0; height: 36px; background: var(--bg-raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; gap: 8px; z-index: 1; }
+.preview-pane .preview-bar .url { font-size: 12px; color: var(--text-dim); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-pane iframe { margin-top: 36px; height: calc(100% - 36px); }
+
+/* New file dialog */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; }
+.modal h2 { font-size: 16px; margin-bottom: 16px; }
+.modal .fm-field { margin-bottom: 12px; }
+.modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+.modal-overlay.hidden { display: none; }
+
+/* Empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 12px; }
+.empty-state .icon { font-size: 48px; opacity: 0.3; }
+.empty-state p { font-size: 14px; }
+
+/* Keyboard shortcut hints */
+.kbd { font-size: 11px; color: var(--text-muted); font-family: var(--mono); background: var(--bg); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--border); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+
+/* Toast notification */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; z-index: 200; transition: opacity 0.3s, transform 0.3s; }
+.toast.success { border-color: var(--success); color: var(--success); }
+.toast.error { border-color: var(--danger); color: var(--danger); }
+.toast.hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="logo">seite</span>
+    <span class="sep"></span>
+    <button class="btn btn-primary btn-sm" onclick="saveFile()" id="save-btn" disabled>Save</button>
+    <button class="btn btn-sm" onclick="showNewFileDialog()">New</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteCurrentFile()" id="delete-btn" disabled>Delete</button>
+    <span class="sep"></span>
+    <span class="kbd">Ctrl+S</span>
+    <span class="status" id="status">Ready</span>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar"></div>
+
+  <!-- Editor -->
+  <div class="editor-pane" id="editor-pane">
+    <div class="empty-state" id="empty-state">
+      <div class="icon">&#9998;</div>
+      <p>Select a file or create a new one</p>
+    </div>
+
+    <div id="editor-content" style="display:none; flex:1; display:flex; flex-direction:column;">
+      <div class="frontmatter-section">
+        <h3>Frontmatter</h3>
+        <div class="fm-grid">
+          <div class="fm-field full">
+            <label for="fm-title">Title</label>
+            <input type="text" id="fm-title" placeholder="Page title">
+          </div>
+          <div class="fm-field">
+            <label for="fm-date">Date</label>
+            <input type="date" id="fm-date">
+          </div>
+          <div class="fm-field">
+            <label for="fm-updated">Updated</label>
+            <input type="date" id="fm-updated">
+          </div>
+          <div class="fm-field full">
+            <label for="fm-description">Description</label>
+            <input type="text" id="fm-description" placeholder="Meta description for SEO">
+          </div>
+          <div class="fm-field">
+            <label for="fm-tags">Tags (comma-separated)</label>
+            <input type="text" id="fm-tags" placeholder="rust, web, tutorial">
+          </div>
+          <div class="fm-field">
+            <label for="fm-image">Image</label>
+            <input type="text" id="fm-image" placeholder="/static/hero.jpg">
+          </div>
+          <div class="fm-field">
+            <label for="fm-slug">Slug (optional)</label>
+            <input type="text" id="fm-slug" placeholder="custom-url-slug">
+          </div>
+          <div class="fm-field">
+            <label for="fm-template">Template (optional)</label>
+            <input type="text" id="fm-template" placeholder="custom.html">
+          </div>
+          <div class="fm-field">
+            <label for="fm-weight">Weight</label>
+            <input type="number" id="fm-weight" placeholder="Sort order">
+          </div>
+          <div class="fm-field fm-check">
+            <input type="checkbox" id="fm-draft">
+            <label for="fm-draft">Draft</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="body-section">
+        <div class="section-bar">
+          <h3>Content (Markdown)</h3>
+          <span class="kbd" id="word-count">0 words</span>
+        </div>
+        <textarea id="markdown-body" placeholder="Write your markdown content here..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-pane">
+    <div class="preview-bar">
+      <span class="url" id="preview-url">Preview</span>
+      <button class="btn btn-sm" onclick="refreshPreview()" style="margin-left:auto;">Refresh</button>
+    </div>
+    <iframe id="preview-frame" src="about:blank"></iframe>
+  </div>
+</div>
+
+<!-- New File Dialog -->
+<div class="modal-overlay hidden" id="new-file-modal">
+  <div class="modal">
+    <h2>New Content</h2>
+    <div class="fm-field">
+      <label for="new-collection">Collection</label>
+      <select id="new-collection"></select>
+    </div>
+    <div class="fm-field">
+      <label for="new-title">Title</label>
+      <input type="text" id="new-title" placeholder="My New Post">
+    </div>
+    <div class="fm-field">
+      <label for="new-tags">Tags (optional)</label>
+      <input type="text" id="new-tags" placeholder="rust, web">
+    </div>
+    <div class="fm-field fm-check">
+      <input type="checkbox" id="new-draft">
+      <label for="new-draft">Create as draft</label>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="hideNewFileDialog()">Cancel</button>
+      <button class="btn btn-primary" onclick="createNewFile()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+const API = '/__editor/api';
+let currentFile = null;
+let isDirty = false;
+let collections = [];
+let previewBaseUrl = '';
+
+// --- Init ---
+async function init() {
+  try {
+    const res = await fetch(`${API}/collections`);
+    const data = await res.json();
+    collections = data.collections;
+    previewBaseUrl = data.preview_url || '';
+    renderSidebar(collections);
+  } catch (e) {
+    showToast('Failed to load collections: ' + e.message, 'error');
+  }
+}
+
+// --- Sidebar ---
+function renderSidebar(collections) {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = '';
+  for (const col of collections) {
+    const section = document.createElement('div');
+    section.className = 'sidebar-section';
+    section.innerHTML = `
+      <div class="sidebar-header">
+        <span>${col.label} (${col.files.length})</span>
+        <button title="New ${col.name}" onclick="showNewFileDialog('${col.name}')">+</button>
+      </div>
+    `;
+    for (const file of col.files) {
+      const item = document.createElement('div');
+      item.className = 'file-item' + (currentFile && currentFile.path === file.path ? ' active' : '');
+      const dotClass = file.draft ? 'draft' : 'published';
+      const dateStr = file.date || '';
+      item.innerHTML = `
+        <span class="dot ${dotClass}"></span>
+        <span class="name">${escapeHtml(file.title || file.filename)}</span>
+        ${dateStr ? `<span class="date">${dateStr}</span>` : ''}
+      `;
+      item.onclick = () => openFile(file.path);
+      section.appendChild(item);
+    }
+    sb.appendChild(section);
+  }
+}
+
+// --- File operations ---
+async function openFile(path) {
+  if (isDirty && !confirm('You have unsaved changes. Discard?')) return;
+
+  try {
+    const res = await fetch(`${API}/file?path=${encodeURIComponent(path)}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    currentFile = { path, ...data };
+    populateEditor(data);
+    isDirty = false;
+    setStatus('Ready');
+    document.getElementById('save-btn').disabled = false;
+    document.getElementById('delete-btn').disabled = false;
+    renderSidebar(collections);
+    updatePreview(data.url);
+  } catch (e) {
+    showToast('Failed to open file: ' + e.message, 'error');
+  }
+}
+
+function populateEditor(data) {
+  document.getElementById('empty-state').style.display = 'none';
+  const ec = document.getElementById('editor-content');
+  ec.style.display = 'flex';
+
+  const fm = data.frontmatter;
+  document.getElementById('fm-title').value = fm.title || '';
+  document.getElementById('fm-date').value = fm.date || '';
+  document.getElementById('fm-updated').value = fm.updated || '';
+  document.getElementById('fm-description').value = fm.description || '';
+  document.getElementById('fm-tags').value = (fm.tags || []).join(', ');
+  document.getElementById('fm-image').value = fm.image || '';
+  document.getElementById('fm-slug').value = fm.slug || '';
+  document.getElementById('fm-template').value = fm.template || '';
+  document.getElementById('fm-weight').value = fm.weight != null ? fm.weight : '';
+  document.getElementById('fm-draft').checked = fm.draft || false;
+  document.getElementById('markdown-body').value = data.body || '';
+  updateWordCount();
+}
+
+function gatherFileData() {
+  const tags = document.getElementById('fm-tags').value;
+  const weightVal = document.getElementById('fm-weight').value;
+  return {
+    path: currentFile.path,
+    frontmatter: {
+      title: document.getElementById('fm-title').value,
+      date: document.getElementById('fm-date').value || null,
+      updated: document.getElementById('fm-updated').value || null,
+      description: document.getElementById('fm-description').value || null,
+      tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      image: document.getElementById('fm-image').value || null,
+      slug: document.getElementById('fm-slug').value || null,
+      template: document.getElementById('fm-template').value || null,
+      weight: weightVal !== '' ? parseInt(weightVal, 10) : null,
+      draft: document.getElementById('fm-draft').checked,
+    },
+    body: document.getElementById('markdown-body').value,
+  };
+}
+
+async function saveFile() {
+  if (!currentFile) return;
+  setStatus('Saving...', 'saving');
+
+  try {
+    const data = gatherFileData();
+    const res = await fetch(`${API}/file`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    isDirty = false;
+    setStatus('Saved', 'saved');
+    showToast('File saved', 'success');
+
+    // Refresh sidebar in case title/draft changed
+    await refreshCollections();
+
+    // Wait a moment for rebuild, then refresh preview
+    setTimeout(() => refreshPreview(), 1500);
+  } catch (e) {
+    setStatus('Save failed', 'error');
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+
+async function deleteCurrentFile() {
+  if (!currentFile) return;
+  if (!confirm(`Delete "${currentFile.frontmatter?.title || currentFile.path}"?`)) return;
+
+  try {
+    const res = await fetch(`${API}/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    currentFile = null;
+    isDirty = false;
+    document.getElementById('editor-content').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('save-btn').disabled = true;
+    document.getElementById('delete-btn').disabled = true;
+    showToast('File deleted', 'success');
+    await refreshCollections();
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+async function createNewFile() {
+  const collection = document.getElementById('new-collection').value;
+  const title = document.getElementById('new-title').value.trim();
+  if (!title) { showToast('Title is required', 'error'); return; }
+
+  const tags = document.getElementById('new-tags').value;
+  const draft = document.getElementById('new-draft').checked;
+
+  try {
+    const res = await fetch(`${API}/file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collection, title, tags: tags || '', draft }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    hideNewFileDialog();
+    showToast('File created', 'success');
+    await refreshCollections();
+    openFile(data.path);
+  } catch (e) {
+    showToast('Create failed: ' + e.message, 'error');
+  }
+}
+
+async function refreshCollections() {
+  try {
+    const res = await fetch(`${API}/collections`);
+    const data = await res.json();
+    collections = data.collections;
+    renderSidebar(collections);
+  } catch (e) { /* silent */ }
+}
+
+// --- Preview ---
+function updatePreview(url) {
+  if (!url) return;
+  const frame = document.getElementById('preview-frame');
+  const fullUrl = previewBaseUrl + url;
+  frame.src = fullUrl;
+  document.getElementById('preview-url').textContent = url;
+}
+
+function refreshPreview() {
+  const frame = document.getElementById('preview-frame');
+  if (frame.src && frame.src !== 'about:blank') {
+    frame.src = frame.src;
+  } else if (currentFile && currentFile.url) {
+    updatePreview(currentFile.url);
+  }
+}
+
+// --- UI helpers ---
+function setStatus(text, cls) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type || '');
+  setTimeout(() => { el.className = 'toast hidden'; }, 3000);
+}
+
+function showNewFileDialog(preselect) {
+  const select = document.getElementById('new-collection');
+  select.innerHTML = collections.map(c =>
+    `<option value="${c.name}" ${c.name === preselect ? 'selected' : ''}>${c.label}</option>`
+  ).join('');
+  document.getElementById('new-title').value = '';
+  document.getElementById('new-tags').value = '';
+  document.getElementById('new-draft').checked = false;
+  document.getElementById('new-file-modal').classList.remove('hidden');
+  document.getElementById('new-title').focus();
+}
+
+function hideNewFileDialog() {
+  document.getElementById('new-file-modal').classList.add('hidden');
+}
+
+function updateWordCount() {
+  const text = document.getElementById('markdown-body').value;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById('word-count').textContent = words + ' word' + (words !== 1 ? 's' : '');
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Change tracking ---
+document.addEventListener('input', (e) => {
+  if (currentFile && (e.target.closest('.frontmatter-section') || e.target.id === 'markdown-body')) {
+    isDirty = true;
+    setStatus('Unsaved changes');
+  }
+  if (e.target.id === 'markdown-body') updateWordCount();
+});
+
+// --- Keyboard shortcuts ---
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveFile();
+  }
+  if (e.key === 'Escape') {
+    hideNewFileDialog();
+  }
+});
+
+// Handle Tab in textarea
+document.getElementById('markdown-body').addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ta = e.target;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+    ta.selectionStart = ta.selectionEnd = start + 2;
+  }
+});
+
+// Close modal on overlay click
+document.getElementById('new-file-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideNewFileDialog();
+});
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+  if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// Enter to submit new file dialog
+document.getElementById('new-title').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') createNewFile();
+});
+
+init();
+</script>
+</body>
+</html>

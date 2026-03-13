@@ -18,6 +18,8 @@ cargo run -- build   # Build site from seite.toml
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
+cargo run -- edit             # Visual content editor in browser
+cargo run -- edit --open      # Editor + open browser
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- agent "create a blog post about Rust"
 cargo run -- theme create "coral brutalist with lime accents"
@@ -40,7 +42,7 @@ src/
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 16 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions, perf
+  cli/                 17 subcommands: init, new, build, serve, edit, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions, perf
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated CLAUDE.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults

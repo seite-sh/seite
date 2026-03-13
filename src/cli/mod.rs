@@ -4,6 +4,7 @@ pub mod collection;
 pub mod completions;
 pub mod contact;
 pub mod deploy;
+pub mod edit;
 pub mod init;
 pub mod mcp;
 pub mod new;
@@ -62,6 +63,9 @@ pub enum Command {
 
     /// Start a local development server
     Serve(serve::ServeArgs),
+
+    /// Open the visual content editor in a browser
+    Edit(edit::EditArgs),
 
     /// Deploy the site to a hosting provider
     Deploy(deploy::DeployArgs),

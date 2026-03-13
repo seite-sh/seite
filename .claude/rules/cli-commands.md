@@ -8,14 +8,17 @@ paths:
 - Each subcommand: `src/cli/{name}.rs` with `{Command}Args` + `pub fn run(args) -> anyhow::Result<()>`
 - Interactive prompts use `dialoguer` (only when CLI args not provided)
 
-## Subcommands (16)
-init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self-update, completions, perf
+## Subcommands (17)
+init, new, build, serve, edit, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self-update, completions, perf
 
 ## Agent System
 `seite agent` spawns Claude Code with system prompt containing site config, content inventory, template list, frontmatter format. Two modes: `seite agent "prompt"` (non-interactive) and `seite agent` (interactive).
 
 ## Dev Server
 `seite serve` starts HTTP server + file watcher. Returns `ServerHandle`. Shows Vite-style local + network URLs. `--open` flag launches browser. Interactive REPL: new, agent, theme, build, status, stop. Live reload via `/__livereload` polling.
+
+## Visual Editor
+`seite edit` starts a browser-based content editor on port 3001 (editor UI + API) with a preview server on port 3000. Editor HTML is embedded in the binary via `include_str!`. API at `/__editor/api/` provides CRUD for content files. Flags: `--open`, `--port`, `--host`.
 
 ## Workspace System
 Multi-site via `seite-workspace.toml`. `workspace::resolve_context()` returns `Standalone` or `Workspace`. `--site` flag filters. Unified serving routes `/<site-name>/...`.
