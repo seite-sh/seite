@@ -970,7 +970,11 @@ fn run_list() -> anyhow::Result<()> {
 
 fn run_remove(name: &str) -> anyhow::Result<()> {
     let root = std::env::current_dir()?;
-    let mut manifest = load_manifest(&root);
+    remove_from(&root, name)
+}
+
+fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
 
     // Check if it's an installed pack
     if let Some(entry) = manifest.packs.remove(name) {
@@ -995,7 +999,7 @@ fn run_remove(name: &str) -> anyhow::Result<()> {
             fs::write(&claude_md_path, cleaned)?;
         }
 
-        save_manifest(&root, &manifest)?;
+        save_manifest(root, &manifest)?;
         human::success(&format!(
             "Removed pack '{}' ({} files). Context files in context/ were kept.",
             name,
@@ -1465,12 +1469,7 @@ mod tests {
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# My Custom Skill\n").unwrap();
 
-        // Change to tmp dir for run_remove
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(tmp.path()).unwrap();
-
-        let result = run_remove("my-custom");
-        std::env::set_current_dir(original_dir).unwrap();
+        let result = remove_from(tmp.path(), "my-custom");
 
         assert!(result.is_ok());
         assert!(!skill_dir.exists());
@@ -1505,11 +1504,7 @@ mod tests {
         );
         save_manifest(tmp.path(), &manifest).unwrap();
 
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(tmp.path()).unwrap();
-
-        let result = run_remove("test-pack");
-        std::env::set_current_dir(original_dir).unwrap();
+        let result = remove_from(tmp.path(), "test-pack");
 
         assert!(result.is_ok());
         assert!(!agent_dir.join("test-agent.md").exists());
