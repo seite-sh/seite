@@ -115,6 +115,7 @@ endpoint = "xpznqkdl"
 
 ### Testing
 - `cargo fmt --all && cargo clippy && cargo test` before every commit
+- **Check code coverage before committing**: `cargo tarpaulin --out Html` (or `cargo llvm-cov`). Coverage must not regress.
 - Integration tests: `assert_cmd` + `tempfile`. Naming: `test_{command}_{behavior}`
 
 ### Adding a User-Facing Feature
