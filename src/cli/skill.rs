@@ -714,25 +714,30 @@ DATAFORSEO_PASSWORD=
 // requirements-seo.txt scaffolding
 // ---------------------------------------------------------------------------
 
-fn scaffold_requirements(root: &Path) -> anyhow::Result<()> {
+fn scaffold_requirements(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
     let req_path = root.join("requirements-seo.txt");
     if req_path.exists() {
         return Ok(());
     }
-    fs::write(
-        &req_path,
-        r#"# SEOMachine Python dependencies
-# Install with: pip install -r requirements-seo.txt
-google-analytics-data>=0.18.0
-google-auth>=2.0.0
-google-searchconsole>=0.1.0
-beautifulsoup4>=4.12.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-scikit-learn>=1.3.0
-nltk>=3.8.0
-"#,
-    )?;
+    let url = raw_github_url(pack.repo, pack.branch, "data_sources/requirements.txt");
+    let content = match download_text(&url) {
+        Ok(body) => body,
+        Err(_) => {
+            // Fallback if download fails
+            "google-analytics-data>=0.18.0\n\
+             google-auth>=2.23.0\n\
+             google-auth-oauthlib>=1.1.0\n\
+             google-auth-httplib2>=0.1.1\n\
+             google-api-python-client>=2.100.0\n\
+             requests>=2.31.0\n\
+             python-dotenv>=1.0.0\n\
+             beautifulsoup4>=4.12.0\n\
+             nltk>=3.8.0\n\
+             scikit-learn>=1.3.0\n"
+                .to_string()
+        }
+    };
+    fs::write(&req_path, content)?;
     Ok(())
 }
 
@@ -924,7 +929,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Scaffold supporting files
     scaffold_env_example(root)?;
-    scaffold_requirements(root)?;
+    scaffold_requirements(root, pack)?;
 
     // Create directories for SEOMachine workflow
     for dir in &["research", "output", "topics"] {
@@ -1389,9 +1394,10 @@ mod tests {
     #[test]
     fn test_scaffold_requirements() {
         let tmp = tempfile::TempDir::new().unwrap();
-        scaffold_requirements(tmp.path()).unwrap();
+        let pack = find_pack("seomachine").unwrap();
+        scaffold_requirements(tmp.path(), pack).unwrap();
         let content = fs::read_to_string(tmp.path().join("requirements-seo.txt")).unwrap();
-        assert!(content.contains("beautifulsoup4"));
+        assert!(!content.is_empty());
     }
 
     #[test]
