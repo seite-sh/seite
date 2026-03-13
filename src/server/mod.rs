@@ -450,6 +450,7 @@ fn print_server_banner(host: &str, port: u16) {
 }
 
 /// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn local_network_ip() -> Option<String> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
@@ -1331,5 +1332,33 @@ mod tests {
             assert!(!parsed.is_loopback(), "should not return loopback");
             assert!(!parsed.is_unspecified(), "should not return unspecified");
         }
+    }
+
+    // =========================================================================
+    // print_server_banner
+    // =========================================================================
+
+    #[test]
+    fn test_print_server_banner_loopback() {
+        // Calling with a loopback host should not panic; is_all_interfaces = false
+        print_server_banner("127.0.0.1", 3000);
+    }
+
+    #[test]
+    fn test_print_server_banner_all_interfaces_ipv4() {
+        // 0.0.0.0 sets is_all_interfaces = true; may print Network URL
+        print_server_banner("0.0.0.0", 8080);
+    }
+
+    #[test]
+    fn test_print_server_banner_all_interfaces_ipv6() {
+        // :: also sets is_all_interfaces = true
+        print_server_banner("::", 8080);
+    }
+
+    #[test]
+    fn test_print_server_banner_custom_host() {
+        // Custom IP — not all-interfaces, no Network URL
+        print_server_banner("192.168.1.10", 4000);
     }
 }

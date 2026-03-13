@@ -33,6 +33,12 @@ impl BuildProgress {
         if !self.is_tty {
             return;
         }
+        self.start_spinner(label);
+    }
+
+    /// Set up an animated spinner for the current step (TTY-only).
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn start_spinner(&mut self, label: &str) {
         self.step_start = Instant::now();
         let pb = ProgressBar::new_spinner();
         pb.set_style(
@@ -45,7 +51,8 @@ impl BuildProgress {
         self.spinner = Some(pb);
     }
 
-    /// Finish the current step's spinner with timing info.
+    /// Finish the current step's spinner with timing info (TTY-only).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn finish_current(&mut self) {
         if let Some(pb) = self.spinner.take() {
             let elapsed = self.step_start.elapsed();
