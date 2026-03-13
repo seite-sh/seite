@@ -694,7 +694,7 @@ GA4_PROPERTY_ID=
 GA4_CREDENTIALS_PATH=credentials/ga4-service-account.json
 
 # Google Search Console
-GSC_PROPERTY_URL=
+GSC_SITE_URL=
 GSC_CREDENTIALS_PATH=credentials/gsc-service-account.json
 
 # DataForSEO

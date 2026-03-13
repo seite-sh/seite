@@ -7,6 +7,7 @@ pub mod images;
 pub mod links;
 pub mod markdown;
 pub mod math;
+pub mod redirects;
 pub mod sitemap;
 
 use std::collections::{HashMap, HashSet};
@@ -1697,40 +1698,50 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 5: Generate RSS feed(s)
+    // Step 5: Generate RSS and Atom feeds
     let step_start = Instant::now();
-    // Default language feed at /feed.xml
-    let default_rss_items: Vec<&ContentItem> = config
+    let base = config.site.base_url.trim_end_matches('/');
+
+    // Default language feeds at /feed.xml and /atom.xml
+    let default_feed_items: Vec<&ContentItem> = config
         .collections
         .iter()
         .filter(|c| c.has_rss)
         .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
         .filter(|item| item.lang == *default_lang)
         .collect();
-    let rss = feed::generate_rss(config, &default_rss_items)?;
+    let rss = feed::generate_rss(config, &default_feed_items)?;
     fs::write(paths.output.join("feed.xml"), rss)?;
+    let atom = feed::generate_atom(config, &default_feed_items, &format!("{base}/atom.xml"))?;
+    fs::write(paths.output.join("atom.xml"), atom)?;
 
-    // Per-language RSS feeds
+    // Per-language RSS and Atom feeds
     if is_multilingual {
         for lang in config.languages.keys() {
-            let lang_rss_items: Vec<&ContentItem> = config
+            let lang_feed_items: Vec<&ContentItem> = config
                 .collections
                 .iter()
                 .filter(|c| c.has_rss)
                 .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
                 .filter(|item| item.lang == *lang)
                 .collect();
-            if !lang_rss_items.is_empty() {
-                let lang_rss = feed::generate_rss(config, &lang_rss_items)?;
+            if !lang_feed_items.is_empty() {
                 let lang_dir = paths.output.join(lang);
                 fs::create_dir_all(&lang_dir)?;
+                let lang_rss = feed::generate_rss(config, &lang_feed_items)?;
                 fs::write(lang_dir.join("feed.xml"), lang_rss)?;
+                let lang_atom = feed::generate_atom(
+                    config,
+                    &lang_feed_items,
+                    &format!("{base}/{lang}/atom.xml"),
+                )?;
+                fs::write(lang_dir.join("atom.xml"), lang_atom)?;
             }
         }
     }
 
     step_timings.push((
-        "Generate RSS".to_string(),
+        "Generate feeds".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
@@ -1862,6 +1873,17 @@ fn build_site_inner(
         "Generate search index".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 9b: Generate redirect pages from aliases
+    let step_start = Instant::now();
+    let all_redirect_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
+    let redirect_count = redirects::generate_redirects(config, &all_redirect_items, &paths.output)?;
+    if redirect_count > 0 {
+        step_timings.push((
+            format!("Generate {redirect_count} redirects"),
+            step_start.elapsed().as_secs_f64() * 1000.0,
+        ));
+    }
 
     // Step 10: Copy static files (with optional minification and fingerprinting)
     let step_start = Instant::now();
@@ -2005,6 +2027,8 @@ fn build_site_inner(
         "robots.txt",
         "sitemap.xml",
         "feed.xml",
+        "atom.xml",
+        "_redirects",
         "llms.txt",
         "llms-full.txt",
         "search-index.json",

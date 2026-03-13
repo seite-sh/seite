@@ -2,7 +2,7 @@
 title: Redirects via Frontmatter
 description: "Redirect old URLs to new ones via aliases in frontmatter, generating HTML meta-refresh files"
 tags:
-- planned
+- done
 weight: 3
 ---
 

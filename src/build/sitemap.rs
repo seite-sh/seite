@@ -216,17 +216,7 @@ mod tests {
         ContentItem {
             frontmatter: Frontmatter {
                 title: slug.into(),
-                date: None,
-                updated: None,
-                description: None,
-                image: None,
-                slug: None,
-                tags: vec![],
-                draft: false,
-                template: None,
-                robots: None,
-                weight: None,
-                extra: Default::default(),
+                ..Default::default()
             },
             raw_body: String::new(),
             html_body: String::new(),

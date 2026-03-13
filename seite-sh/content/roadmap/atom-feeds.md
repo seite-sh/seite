@@ -2,7 +2,7 @@
 title: Atom Feed Format
 description: Generate Atom 1.0 feeds alongside RSS 2.0 for broader feed reader compatibility
 tags:
-- planned
+- done
 weight: 4
 ---
 

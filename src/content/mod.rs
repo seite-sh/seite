@@ -34,6 +34,10 @@ pub struct Frontmatter {
     /// When unset, items sort after weighted items, alphabetically by title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<i32>,
+    /// Old URL paths that should redirect to this page.
+    /// Each alias generates an HTML redirect file and an entry in `_redirects`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     /// Arbitrary key-value data passed through to templates as `page.extra`.
     /// Use this for custom per-page data that doesn't fit standard fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -330,6 +334,7 @@ mod tests {
             template: Some("custom.html".into()),
             robots: Some("noindex".into()),
             weight: Some(5),
+            aliases: vec!["/old-url".into()],
             extra: HashMap::new(),
         };
         let generated = generate_frontmatter(&fm);

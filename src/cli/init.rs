@@ -999,12 +999,12 @@ fn generate_claude_md(
             );
         }
         if c.has_rss {
-            md.push_str("- Included in RSS feed (`/feed.xml`)\n");
+            md.push_str("- Included in RSS feed (`/feed.xml`) and Atom feed (`/atom.xml`)\n");
         }
         if let Some(ref subdomain) = c.subdomain {
             let sub_url = config.subdomain_base_url(c);
             md.push_str(&format!("- **Subdomain**: `{subdomain}` → `{sub_url}`\n"));
-            md.push_str("- Built to `dist-subdomains/` with own sitemap, RSS, robots.txt\n");
+            md.push_str("- Built to `dist-subdomains/` with own sitemap, RSS, Atom, robots.txt\n");
             md.push_str("- Cross-subdomain links are auto-rewritten to absolute URLs\n");
             md.push_str(&format!("- Dev server preview: `/{subdomain}-preview/`\n"));
             if let Some(ref dp) = c.deploy_project {
@@ -1056,6 +1056,8 @@ fn generate_claude_md(
     md.push_str(
         "weight: 1                # optional, sort order for non-date collections (lower first)\n",
     );
+    md.push_str("aliases:                 # optional, old URLs that redirect to this page\n");
+    md.push_str("  - /old-url\n");
     md.push_str("extra:                   # optional, arbitrary data → {{ page.extra.field }}\n");
     md.push_str("  key: value\n");
     md.push_str("---\n\n");

@@ -41,6 +41,7 @@
 
         <!-- Discovery -->
         <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
+        <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="/atom.xml">
         <link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">
         {% if page.url %}{% if page.url is ending_with("/") %}
         <link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}index.md">{% else %}

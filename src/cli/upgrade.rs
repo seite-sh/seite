@@ -154,6 +154,16 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Enable CSS/JS minification by default",
             check: check_minify_default,
         },
+        UpgradeStep {
+            introduced_in: (0, 8, 0),
+            label: "Atom feed + redirect aliases documentation",
+            check: check_atom_aliases_docs,
+        },
+        UpgradeStep {
+            introduced_in: (0, 8, 0),
+            label: "Atom autodiscovery in custom templates",
+            check: check_atom_autodiscovery_template,
+        },
     ]
 }
 
@@ -951,6 +961,92 @@ fn check_claude_rules(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
+/// Document Atom feed and redirect aliases in CLAUDE.md.
+/// These features were added in 0.8.0.
+fn check_atom_aliases_docs(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join("CLAUDE.md");
+    if !path.exists() {
+        return vec![];
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Skip if already documented
+    if content.contains("atom.xml") || content.contains("Atom Feed") {
+        return vec![];
+    }
+
+    let section = r#"
+
+## Atom Feeds & Redirect Aliases
+
+**Atom feeds** are now generated alongside RSS. Every collection with `has_rss = true` produces
+both `feed.xml` (RSS 2.0) and `atom.xml` (Atom 1.0). Bundled themes include autodiscovery
+`<link>` tags for both formats. No configuration changes needed.
+
+**Redirect aliases** let you set `aliases: ["/old-path"]` in any page's frontmatter.
+During build, seite generates:
+- A lightweight HTML redirect file at each alias path (`<meta http-equiv="refresh">`)
+- A `_redirects` file (Netlify/Cloudflare compatible) with 301 status codes
+
+Example frontmatter:
+```yaml
+aliases:
+  - /old-url
+  - /legacy/path
+```
+"#;
+
+    vec![UpgradeAction::Append {
+        path,
+        content: section.to_string(),
+        description: "CLAUDE.md (added Atom Feeds & Redirect Aliases section)".into(),
+    }]
+}
+
+/// Check for custom templates that may need Atom autodiscovery `<link>` tags.
+/// Bundled themes are auto-upgraded, but custom `templates/base.html` files need
+/// the user to add the Atom link manually.
+fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
+    let base_html = root.join("templates/base.html");
+    if !base_html.exists() {
+        return vec![]; // Using bundled theme — auto-upgraded
+    }
+
+    let content = match fs::read_to_string(&base_html) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Skip if already has Atom autodiscovery
+    if content.contains("application/atom+xml") {
+        return vec![];
+    }
+
+    // Check if there's an RSS link we can suggest adding the Atom link next to
+    let hint = if content.contains("application/rss+xml") {
+        "Add an Atom autodiscovery link next to your existing RSS link"
+    } else {
+        "Add Atom feed autodiscovery to your <head>"
+    };
+
+    let snippet = r#"<link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">"#;
+
+    vec![UpgradeAction::Append {
+        path: root.join("CLAUDE.md"),
+        content: format!(
+            "\n\n### Custom Template: Atom Autodiscovery\n\n\
+             Your custom `templates/base.html` does not include Atom feed autodiscovery.\n\
+             {hint}:\n\n\
+             ```html\n{snippet}\n```\n"
+        ),
+        description: "CLAUDE.md (Atom autodiscovery hint for custom template)".into(),
+    }]
+}
+
 /// Add `minify = true` to `[build]` in seite.toml if not already set.
 /// This became the default for new sites in 0.7.0.
 fn check_minify_default(root: &Path) -> Vec<UpgradeAction> {
@@ -1454,30 +1550,112 @@ mod tests {
     #[test]
     fn test_check_minify_default_skips_when_already_set() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[build]\nminify = true\n",
-        )
-        .unwrap();
+        fs::write(tmp.path().join("seite.toml"), "[build]\nminify = true\n").unwrap();
         assert!(check_minify_default(tmp.path()).is_empty());
 
         // Also skip if explicitly false
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[build]\nminify = false\n",
-        )
-        .unwrap();
+        fs::write(tmp.path().join("seite.toml"), "[build]\nminify = false\n").unwrap();
         assert!(check_minify_default(tmp.path()).is_empty());
     }
 
     #[test]
     fn test_check_minify_default_skips_without_build_section() {
         let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("seite.toml"), "[site]\ntitle = \"Test\"\n").unwrap();
+        assert!(check_minify_default(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_atom_aliases_docs_no_claude_md() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_atom_aliases_docs(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_atom_aliases_docs_already_documented() {
+        let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
-            tmp.path().join("seite.toml"),
-            "[site]\ntitle = \"Test\"\n",
+            tmp.path().join("CLAUDE.md"),
+            "# Project\n\nSite generates atom.xml feeds.",
         )
         .unwrap();
-        assert!(check_minify_default(tmp.path()).is_empty());
+        let actions = check_atom_aliases_docs(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_atom_aliases_docs_needs_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\nSome content").unwrap();
+        let actions = check_atom_aliases_docs(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Append { content, .. } => {
+                assert!(content.contains("Atom"));
+                assert!(content.contains("aliases"));
+            }
+            _ => panic!("expected Append action"),
+        }
+    }
+
+    #[test]
+    fn test_check_atom_autodiscovery_no_custom_template() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_atom_autodiscovery_template(tmp.path());
+        assert!(actions.is_empty()); // no templates/ dir → bundled theme
+    }
+
+    #[test]
+    fn test_check_atom_autodiscovery_already_present() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        fs::create_dir_all(&tpl_dir).unwrap();
+        fs::write(
+            tpl_dir.join("base.html"),
+            r#"<link rel="alternate" type="application/atom+xml" title="Blog" href="/atom.xml">"#,
+        )
+        .unwrap();
+        let actions = check_atom_autodiscovery_template(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_atom_autodiscovery_needs_hint() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        fs::create_dir_all(&tpl_dir).unwrap();
+        fs::write(
+            tpl_dir.join("base.html"),
+            r#"<link rel="alternate" type="application/rss+xml" title="Blog" href="/feed.xml">"#,
+        )
+        .unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# Project").unwrap();
+        let actions = check_atom_autodiscovery_template(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Append { content, .. } => {
+                assert!(content.contains("application/atom+xml"));
+                assert!(content.contains("next to your existing RSS"));
+            }
+            _ => panic!("expected Append action"),
+        }
+    }
+
+    #[test]
+    fn test_check_atom_autodiscovery_no_rss_either() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        fs::create_dir_all(&tpl_dir).unwrap();
+        fs::write(tpl_dir.join("base.html"), "<html><head></head></html>").unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# Project").unwrap();
+        let actions = check_atom_autodiscovery_template(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Append { content, .. } => {
+                assert!(content.contains("Add Atom feed autodiscovery"));
+            }
+            _ => panic!("expected Append action"),
+        }
     }
 }
