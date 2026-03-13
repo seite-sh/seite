@@ -1,8 +1,10 @@
 ---
-title: Contact Forms
-description: Add contact forms to your static site with built-in provider support
+title: Contact Forms for Static Sites
+description: "Add contact forms to your seite static site with five built-in providers. Formspree, Web3Forms, Netlify Forms, HubSpot, and Typeform. No backend needed."
 weight: 15
 ---
+
+Static site generators usually punt on contact forms. You end up wiring together third-party scripts yourself. seite handles this natively with a single [shortcode](/docs/shortcodes) that works across five providers. Pick one, add one line of config, drop the shortcode into any page, and you have a working form that matches your theme automatically.
 
 seite supports contact forms through a built-in shortcode that integrates with popular form service providers. No backend code or JavaScript frameworks required for HTML POST providers.
 
@@ -20,7 +22,7 @@ seite contact setup
 {{< contact_form() >}}
 ```
 
-3. Build and deploy:
+3. Build and [deploy](/docs/deployment):
 
 ```bash
 seite build && seite deploy
@@ -28,7 +30,7 @@ seite build && seite deploy
 
 ## Configuration
 
-Add a `[contact]` section to `seite.toml`:
+Add a `[contact]` section to your `seite.toml` (see the full [configuration reference](/docs/configuration) for all options):
 
 ```toml
 [contact]
@@ -110,6 +112,20 @@ endpoint = "abc123XY"
 
 Free tier: 10 submissions/month.
 
+## Which Provider Should I Choose?
+
+| Provider | Type | Free Tier | Best For |
+|----------|------|-----------|----------|
+| **Formspree** | HTML POST | 50/month | Simple contact forms, quick setup |
+| **Web3Forms** | HTML POST | 250/month | Higher volume, no account required |
+| **Netlify** | HTML POST | 100/month | Already deploying to Netlify |
+| **HubSpot** | JS embed | Free CRM | Lead tracking and CRM integration |
+| **Typeform** | JS embed | 10/month | Interactive, conversational forms |
+
+HTML POST providers render a plain `<form>` tag with no JavaScript: they are faster, more accessible, and work with JS disabled. JS embed providers load an external script and give you a richer form builder UI in exchange.
+
+If you are just starting out and want the least friction, go with Formspree. If you are already [deploying to Netlify](/docs/deployment), use Netlify Forms: zero extra config.
+
 ## Shortcode Usage
 
 ### Basic
@@ -171,3 +187,10 @@ contact_submit: "Enviar"
 ```
 
 Or use shortcode args for one-off overrides.
+
+## Next Steps
+
+- [Configuration](/docs/configuration): full `[contact]` section reference and all `seite.toml` options
+- [Getting Started](/docs/getting-started): set up your first seite site from scratch
+- [Deployment](/docs/deployment): deploy your site with the contact form live
+- [Shortcodes](/docs/shortcodes): other built-in content components like callouts, figures, and video embeds

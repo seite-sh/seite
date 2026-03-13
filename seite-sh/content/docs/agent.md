@@ -1,18 +1,20 @@
 ---
-title: "AI Agent"
-description: "Use seite agent to get AI assistance with content creation, site management, and theme generation."
+title: "AI Agent for Your Static Site"
+description: "Let Claude write content, generate themes, debug builds, and manage your static site generator project, all with full project context. No API keys required."
 weight: 9
 ---
 
+Most static site generators treat AI as an afterthought: a plugin, a separate API call, a bolted-on chatbot. seite takes a different approach. The `seite agent` command gives Claude Code full context about your site's configuration, content, templates, and conventions. It reads your project, understands the structure, and writes files that actually fit. No other static site generator ships with this kind of native AI integration.
+
 ## Overview
 
-`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context — configuration, content inventory, templates, and available commands.
+`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context: configuration, content inventory, templates, and available commands. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
 
 No API keys needed. It uses your Claude Code subscription directly.
 
 ## Setup
 
-Install Claude Code:
+Install Claude Code (see the [getting started guide](/docs/getting-started) if you haven't set up your project yet):
 
 ```bash
 npm install -g @anthropic-ai/claude-code
@@ -100,7 +102,7 @@ Be specific about format and tone. "Write a 1500-word technical tutorial about R
 {{% end %}}
 
 {{% callout(type="tip") %}}
-The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include — just describe what you want.
+The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include, just describe what you want.
 {{% end %}}
 
 ## Theme Generation
@@ -111,7 +113,7 @@ Generate custom themes with AI:
 seite theme create "dark mode with neon green accents and brutalist layout"
 ```
 
-Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly.
+Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly. For more on themes, see the [theme gallery](/docs/theme-gallery).
 
 ## REPL Integration
 
@@ -126,12 +128,31 @@ This is useful for quick content creation while previewing your site.
 ## What the Agent Can Do
 
 The agent has access to these tools:
-- **Read** — read any file in your project
-- **Write** — create new content files
-- **Edit** — modify existing files
-- **Glob** — find files by pattern
-- **Grep** — search file contents
-- **Bash** — run CLI commands (build, serve, deploy)
+- **Read**: read any file in your project
+- **Write**: create new content files
+- **Edit**: modify existing files
+- **Glob**: find files by pattern
+- **Grep**: search file contents
+- **Bash**: run CLI commands (build, serve, deploy)
+
+### Concrete example: writing a blog post
+
+Without the agent, creating a well-structured post means remembering the frontmatter format, putting the file in the right directory with the right filename pattern, picking appropriate tags from your existing taxonomy, and making sure the description is under 160 characters for SEO.
+
+With the agent, you say:
+
+```bash
+seite agent "write a post about our new pricing model, mention the 3 tiers, \
+  keep the tone conversational, and tag it appropriately"
+```
+
+The agent checks your existing posts for tone and tag conventions, creates `content/posts/2026-03-13-new-pricing-model.md` with correct frontmatter (title, date, description, tags), writes the body matching your site's voice, and runs `seite build` to verify everything compiles cleanly. One command, no manual scaffolding.
+
+## How It Compares
+
+Other static site generators require you to set up AI workflows yourself: connect to an LLM API, write prompts that describe your project structure, and hope the output matches your conventions. If your site uses Hugo, you need to explain Hugo's content model. If you use Jekyll, you explain Jekyll's. Every time.
+
+seite's agent understands your project natively. It knows the [configuration](/docs/configuration) format, the collection types, your existing content, and the template system. The system prompt is generated from your actual `seite.toml` and content directory, not a generic "you are a helpful assistant" preamble. This means the agent produces files that build on the first try, use your existing tag taxonomy, and follow your site's established patterns.
 
 ## Claude Code Scaffolding
 
@@ -139,6 +160,7 @@ When you run `seite init`, it creates `.claude/settings.json` with pre-configure
 
 ## Next Steps
 
-- [Theme Gallery](/docs/theme-gallery) — browse bundled themes and generate custom ones with AI
-- [CLI Reference](/docs/cli-reference) — all `seite agent` flags and options
-- [Getting Started](/docs/getting-started) — initial site setup if you haven't started yet
+- [Theme Gallery](/docs/theme-gallery): browse bundled themes and generate custom ones with AI
+- [CLI Reference](/docs/cli-reference), all `seite agent` flags and options
+- [Getting Started](/docs/getting-started): initial site setup if you haven't started yet
+- [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): how AI agent integration fits into the bigger picture of AI-native site generation
