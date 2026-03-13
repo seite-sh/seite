@@ -1287,4 +1287,310 @@ mod tests {
             .to_string()
             .contains("no skill or pack named"));
     }
+
+    #[test]
+    fn test_raw_github_url() {
+        let url = raw_github_url(
+            "TheCraigHewitt/seomachine",
+            "main",
+            ".claude/agents/editor.md",
+        );
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/TheCraigHewitt/seomachine/main/.claude/agents/editor.md"
+        );
+    }
+
+    #[test]
+    fn test_load_manifest_missing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let manifest = load_manifest(tmp.path());
+        assert!(manifest.packs.is_empty());
+    }
+
+    #[test]
+    fn test_load_manifest_corrupt_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join(".claude");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join(".seite-skill-packs.json"), "not valid json {{{").unwrap();
+        let manifest = load_manifest(tmp.path());
+        assert!(manifest.packs.is_empty()); // Falls back to default
+    }
+
+    #[test]
+    fn test_remove_claude_md_section_no_markers() {
+        let content = "# My Project\n\nSome content here.\n";
+        let result = remove_claude_md_section(content);
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn test_append_claude_md_no_existing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No CLAUDE.md exists
+        append_claude_md_section(tmp.path()).unwrap();
+        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        assert!(content.contains("SEOMachine Integration"));
+        assert!(content.contains(CLAUDE_MD_MARKER_START));
+    }
+
+    #[test]
+    fn test_append_claude_md_idempotent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\n").unwrap();
+
+        // Call twice
+        append_claude_md_section(tmp.path()).unwrap();
+        append_claude_md_section(tmp.path()).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        // Should have exactly one section
+        assert_eq!(
+            content.matches(CLAUDE_MD_MARKER_START).count(),
+            1,
+            "should not duplicate section"
+        );
+        assert!(content.contains("# My Project"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_multiple_collections() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("content").join("posts");
+        let docs_dir = tmp.path().join("content").join("docs");
+        fs::create_dir_all(&posts_dir).unwrap();
+        fs::create_dir_all(&docs_dir).unwrap();
+        fs::write(
+            posts_dir.join("2026-01-01-first.md"),
+            "---\ntitle: \"First Post\"\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            docs_dir.join("getting-started.md"),
+            "---\ntitle: \"Getting Started\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("First Post"));
+        assert!(map.contains("Getting Started"));
+        assert!(map.contains("## posts"));
+        assert!(map.contains("## docs"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_nested_docs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let nested_dir = tmp.path().join("content").join("docs").join("guides");
+        fs::create_dir_all(&nested_dir).unwrap();
+        fs::write(
+            nested_dir.join("setup.md"),
+            "---\ntitle: \"Setup Guide\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("Setup Guide"));
+        assert!(map.contains("/docs/guides/setup"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_skips_index() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("content").join("posts");
+        fs::create_dir_all(&posts_dir).unwrap();
+        fs::write(
+            posts_dir.join("index.md"),
+            "---\ntitle: \"Posts Index\"\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            posts_dir.join("real-post.md"),
+            "---\ntitle: \"Real Post\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(!map.contains("Posts Index"));
+        assert!(map.contains("Real Post"));
+    }
+
+    #[test]
+    fn test_derive_skill_name_trailing_slash() {
+        assert_eq!(
+            derive_skill_name("https://example.com/my-skill.md/", None),
+            "my-skill"
+        );
+    }
+
+    #[test]
+    fn test_derive_skill_name_no_extension() {
+        assert_eq!(
+            derive_skill_name("https://example.com/raw-name", None),
+            "raw-name"
+        );
+    }
+
+    #[test]
+    fn test_validate_skill_name_with_separator() {
+        // Platform-dependent path separator
+        assert!(validate_skill_name("a/b").is_err());
+    }
+
+    #[test]
+    fn test_strip_date_prefix_edge_cases() {
+        // Exactly 11 chars (YYYY-MM-DD-) — len is not > 11, returns as-is
+        assert_eq!(strip_date_prefix("2026-03-12-"), "2026-03-12-");
+        // Non-date that looks similar — fails digit check
+        assert_eq!(strip_date_prefix("abcd-ef-gh-rest"), "abcd-ef-gh-rest");
+        // Date with 10 chars exactly (no trailing -)
+        assert_eq!(strip_date_prefix("2026-03-12"), "2026-03-12");
+        // Date prefix with one char after
+        assert_eq!(strip_date_prefix("2026-03-12-x"), "x");
+    }
+
+    #[test]
+    fn test_seite_publish_draft_command_content() {
+        let content = seite_publish_draft_command();
+        assert!(content.contains("Publish Draft"));
+        assert!(content.contains("seite build"));
+        assert!(content.contains("seite deploy"));
+        assert!(content.contains("draft: true"));
+        // Should explicitly say NOT to use WordPress
+        assert!(content.contains("Do NOT use WordPress"));
+    }
+
+    #[test]
+    fn test_remove_custom_skill() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skill_dir = tmp.path().join(".claude").join("skills").join("my-custom");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# My Custom Skill\n").unwrap();
+
+        // Change to tmp dir for run_remove
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+
+        let result = run_remove("my-custom");
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert!(!skill_dir.exists());
+    }
+
+    #[test]
+    fn test_remove_pack_cleans_files_and_manifest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create a fake installed pack with a few files
+        let agent_dir = tmp.path().join(".claude").join("agents");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::write(agent_dir.join("test-agent.md"), "# Agent").unwrap();
+
+        let cmd_dir = tmp.path().join(".claude").join("commands");
+        fs::create_dir_all(&cmd_dir).unwrap();
+        fs::write(cmd_dir.join("test-cmd.md"), "# Command").unwrap();
+
+        // Write manifest
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "test-pack".to_string(),
+            PackEntry {
+                source: "github:user/repo".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![
+                    ".claude/agents/test-agent.md".to_string(),
+                    ".claude/commands/test-cmd.md".to_string(),
+                ],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+
+        let result = run_remove("test-pack");
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert!(!agent_dir.join("test-agent.md").exists());
+        assert!(!cmd_dir.join("test-cmd.md").exists());
+
+        // Manifest should no longer have the pack
+        let updated = load_manifest(tmp.path());
+        assert!(!updated.packs.contains_key("test-pack"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_appends_to_existing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join(".gitignore"), "dist/\nnode_modules/\n").unwrap();
+        ensure_gitignore_entries(tmp.path(), &["research/"]).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains("dist/"));
+        assert!(content.contains("research/"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_skips_existing_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join(".gitignore"), "research/\n").unwrap();
+        ensure_gitignore_entries(tmp.path(), &["research/", ".env"]).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert_eq!(content.matches("research/").count(), 1);
+        assert!(content.contains(".env"));
+    }
+
+    #[test]
+    fn test_extract_title_single_quotes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: 'Single Quoted'\n---\nBody").unwrap();
+        assert_eq!(
+            extract_title_from_file(&path),
+            Some("Single Quoted".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_unquoted() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: Bare Title\n---\nBody").unwrap();
+        assert_eq!(
+            extract_title_from_file(&path),
+            Some("Bare Title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_empty_title() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: \"\"\n---\nBody").unwrap();
+        assert_eq!(extract_title_from_file(&path), None);
+    }
+
+    #[test]
+    fn test_known_packs_seomachine_completeness() {
+        let pack = find_pack("seomachine").unwrap();
+        assert!(!pack.agents.is_empty());
+        assert!(!pack.commands.is_empty());
+        assert!(!pack.skills.is_empty());
+        assert!(!pack.context_files.is_empty());
+        assert!(!pack.python_scripts.is_empty());
+        assert_eq!(pack.agents.len(), 11);
+        assert_eq!(pack.commands.len(), 22);
+        assert_eq!(pack.skills.len(), 25);
+        assert_eq!(pack.context_files.len(), 9);
+        assert_eq!(pack.python_scripts.len(), 11);
+    }
+
+    #[test]
+    fn test_run_install_unknown_source() {
+        let result = run_install("completely-unknown-pack", None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("unknown skill pack"));
+        assert!(err.contains("seomachine")); // Should suggest known packs
+    }
 }
