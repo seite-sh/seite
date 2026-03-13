@@ -186,7 +186,7 @@ seite theme install https://example.com/themes/aurora.tera --name my-aurora
 seite theme export my-theme --description "My custom dark theme"
 ```
 
-Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
+10 bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
 ## seite deploy
 

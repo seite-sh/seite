@@ -118,7 +118,7 @@ Every `seite build` produces three output formats for every page:
 
 1. **HTML** (`/posts/hello-world`) for browsers and traditional search engines
 2. **Markdown** (`/posts/hello-world.md`) for AI models that prefer clean text
-3. **llms.txt** and **llms-full.txt** at the site root for AI discovery
+3. **[llms.txt](/posts/what-is-llms-txt)** and **llms-full.txt** at the site root for AI discovery
 
 This is Generative Engine Optimization (GEO) built into the build pipeline. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews.
 
@@ -136,7 +136,7 @@ seite theme create "coral brutalist with lime accents and hard shadows"
 
 This spawns Claude Code with a detailed prompt that includes all template variables, Tera block requirements, and SEO guardrails. Claude writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
 
-Six bundled themes (default, minimal, dark, docs, brutalist, bento) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
+10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
 
 ## How AI Discoverability Changes the Game
 
@@ -259,7 +259,7 @@ Your site now has:
 - Static pages
 - Client-side search
 - AI context files (CLAUDE.md, MCP server config)
-- Six themes to choose from
+- 10 themes to choose from
 
 To [deploy](/docs/deployment):
 
@@ -267,7 +267,7 @@ To [deploy](/docs/deployment):
 seite deploy  # GitHub Pages, Cloudflare, or Netlify
 ```
 
-One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. See the full [CLI reference](/docs/cli-reference) for all available commands.
+One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. See the [Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for a detailed walkthrough, or the full [CLI reference](/docs/cli-reference) for all available commands.
 
 ## Frequently Asked Questions
 

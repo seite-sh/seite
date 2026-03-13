@@ -31,7 +31,7 @@ seite is what came out of that experiment. It was built with Claude Code, iterat
 
 ## How it's built
 
-seite is written in Rust. The build pipeline compiles to a single static binary that ships with all six themes included: nothing to download, nothing to configure.
+seite is written in Rust. The build pipeline compiles to a single static binary that ships with all 10 themes included: nothing to download, nothing to configure.
 
 The stack underneath:
 

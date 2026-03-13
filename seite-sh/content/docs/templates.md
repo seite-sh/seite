@@ -239,7 +239,7 @@ All 10 bundled themes render `data.nav` and `data.footer` automatically when pre
 
 ## Bundled Themes
 
-Six themes ship with the binary, no downloads needed:
+10 themes ship with the binary, no downloads needed:
 
 ### default
 Clean baseline. 720px centered column, system-ui font, blue links. Good starting point.

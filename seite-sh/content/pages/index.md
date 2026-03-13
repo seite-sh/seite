@@ -33,8 +33,8 @@ extra:
   feature_5_title: "One command. Three targets. Auto-generated CI."
   feature_5_body: "GitHub Pages, Cloudflare Pages, and Netlify, all built in. Pre-flight checks, <code>--dry-run</code> preview, and auto-generated GitHub Actions workflows so your site builds on every push."
 
-  feature_6_title: "Six themes. Generate your own with a sentence."
-  feature_6_body: "Default, dark, minimal, docs, brutalist, and bento. Or: <code>seite theme create \"coral brutalist with lime accents\"</code>. The agent generates the CSS. You review it. Ship it."
+  feature_6_title: "10 themes. Generate your own with a sentence."
+  feature_6_body: "Default, dark, minimal, docs, brutalist, bento, landing, terminal, magazine, and academic. Or: <code>seite theme create \"coral brutalist with lime accents\"</code>. The agent generates the CSS. You review it. Ship it."
 
   comparison_headline: "Stop juggling six tools for one website."
   comparison_sub: "Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool, then glue it with scripts. seite handles all of it."

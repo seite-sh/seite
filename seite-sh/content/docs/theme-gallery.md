@@ -4,11 +4,11 @@ description: "Browse all 10 bundled seite themes with visual previews. Install c
 weight: 10
 ---
 
-seite ships six production-ready themes compiled directly into the static site generator binary, no downloads, no dependencies, instant access.
+seite ships 10 production-ready themes compiled directly into the static site generator binary, no downloads, no dependencies, instant access.
 
 ## Bundled Themes
 
-Six production-ready themes ship with every `seite` binary. Each is self-contained: includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
+10 production-ready themes ship with every `seite` binary. Each is self-contained: includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
 
 ```bash
 seite theme apply <name>

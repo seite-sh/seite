@@ -76,7 +76,7 @@ Hugo builds your site. Then it stops. Getting that site online is your problem.
 
 You need a separate deploy pipeline: a GitHub Actions workflow, a Netlify config file, a Vercel project. For many developers, wiring this up takes longer than building the site itself.
 
-And Hugo has no awareness that AI agents exist. There's no CLAUDE.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No `llms.txt` output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself.
+And Hugo has no awareness that AI agents exist. There's no CLAUDE.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/posts/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself.
 
 Want to see how AI integration actually works? [Read about AI-native static site generators](/posts/ai-static-site-generator) and what that architecture looks like.
 
@@ -122,9 +122,9 @@ Here's what that means in practice:
 
 **Triple output.** Every build produces HTML (for browsers), markdown (for AI models), and `llms.txt` (for AI search engines). Your site is optimized for three audiences from a single command. No plugins. No configuration.
 
-**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [deployment docs](/docs/deployment) for setup details.
+**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
 
-**Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. Six [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
+**Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. 10 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
 
 **AI-generated themes.** Describe a theme in English and get a production-ready template:
 
