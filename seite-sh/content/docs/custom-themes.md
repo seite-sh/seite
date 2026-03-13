@@ -409,5 +409,5 @@ seite theme install https://your-site.com/themes/my-theme.tera
 ## Next Steps
 
 - [Templates & Themes](/docs/templates), all template variables, blocks, and data file integration
-- [Theme Gallery](/docs/theme-gallery): visual previews of all 6 bundled themes
+- [Theme Gallery](/docs/theme-gallery): visual previews of all 10 bundled themes
 - [Shortcodes](/docs/shortcodes): content components your theme CSS should support

@@ -173,7 +173,7 @@ The REPL is the fastest way to iterate. Create content, switch themes, and rebui
 
 ## Choose a Theme
 
-seite ships with [6 bundled themes](/docs/templates) compiled into the binary, no downloads or CDN required.
+seite ships with [10 bundled themes](/docs/templates) compiled into the binary, no downloads or CDN required.
 
 List available themes:
 
@@ -242,7 +242,7 @@ Now that your static site generator is up and running, explore these guides to g
 
 - [Collections](/docs/collections): understand how posts, docs, pages, changelog, and roadmap collections work and how to add custom ones
 - [Configuration](/docs/configuration): the full `seite.toml` reference for images, analytics, contact forms, and more
-- [Templates & Themes](/docs/templates): customize the look, override template blocks, and browse all 6 bundled themes
+- [Templates & Themes](/docs/templates): customize the look, override template blocks, and browse all 10 bundled themes
 - [Building Custom Themes](/docs/custom-themes): create a theme from scratch or modify a bundled one with the theme builder skill
 - [Deployment](/docs/deployment): detailed setup for GitHub Pages, Cloudflare Pages, and Netlify including custom domains
 - [Multi-Language](/docs/i18n): add translations with filename-based i18n and per-language RSS, sitemap, and search

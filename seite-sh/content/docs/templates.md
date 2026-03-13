@@ -1,10 +1,10 @@
 ---
 title: "Templates and Themes"
-description: "Customize your seite static site with Tera templates, overridable blocks, six bundled themes, and data-driven navigation. No JavaScript framework needed."
+description: "Customize your seite static site with Tera templates, overridable blocks, 10 bundled themes, and data-driven navigation. No JavaScript framework needed."
 weight: 4
 ---
 
-seite uses Tera templates to give you full control over your site's HTML output. The static site generator ships six bundled themes and supports AI-generated custom themes, all as single self-contained files with no external dependencies.
+seite uses Tera templates to give you full control over your site's HTML output. The static site generator ships 10 bundled themes and supports AI-generated custom themes, all as single self-contained files with no external dependencies.
 
 ## Template Engine
 
@@ -235,7 +235,7 @@ Use in templates:
 {% endif %}
 ```
 
-All 6 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+All 10 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
 
 ## Bundled Themes
 
@@ -314,6 +314,6 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 ## Next Steps
 
 - [Building Custom Themes](/docs/custom-themes): step-by-step guide to creating a theme from scratch
-- [Theme Gallery](/docs/theme-gallery): browse all six bundled themes with visual previews
+- [Theme Gallery](/docs/theme-gallery): browse all 10 bundled themes with visual previews
 - [Shortcodes](/docs/shortcodes): add videos, callouts, and figures to your content
 - [Configuration](/docs/configuration): data file setup and all `seite.toml` options

@@ -163,7 +163,7 @@ seite contact remove                                          # Remove config
 
 ## Theme Support
 
-All 6 bundled themes include styled contact form CSS. The form automatically matches your theme's design language (colors, borders, border-radius, fonts).
+All 10 bundled themes include styled contact form CSS. The form automatically matches your theme's design language (colors, borders, border-radius, fonts).
 
 ## Spam Protection
 

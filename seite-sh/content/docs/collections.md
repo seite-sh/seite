@@ -164,7 +164,7 @@ Use tags for status and `weight` for priority ordering within each group:
 - `planned`: upcoming work
 - `in-progress`: actively being worked on
 - `done`: completed
-- `cancelled`, no longer planned
+- `cancelled`: no longer planned
 
 ```yaml
 ---

@@ -133,8 +133,8 @@ The hub page at `/trust/` is rendered using `trust-index.html` and displays:
 1. **Hero section**: company name and headline
 2. **Certification grid**: cards from `data.trust.certifications` with status badges
 3. **Content sections**: trust collection items ordered by weight
-4. **Subprocessor table**, from `data.trust.subprocessors`
-5. **FAQ accordion**, from `data.trust.faq`
+4. **Subprocessor table**: from `data.trust.subprocessors`
+5. **FAQ accordion**: from `data.trust.faq`
 
 All sections are conditional: if a data file is empty or missing, the section doesn't render.
 

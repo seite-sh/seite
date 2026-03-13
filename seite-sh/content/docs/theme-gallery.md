@@ -1,6 +1,6 @@
 ---
 title: "Theme Gallery"
-description: "Browse all six bundled seite themes with visual previews. Install community themes from URLs or generate your own custom theme with AI."
+description: "Browse all 10 bundled seite themes with visual previews. Install community themes from URLs or generate your own custom theme with AI."
 weight: 10
 ---
 

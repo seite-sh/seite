@@ -170,7 +170,7 @@ The workspace dev server routes requests by site name:
 - `http://localhost:3000/blog/`: blog site
 - `http://localhost:3000/docs/`: docs site
 
-File watching is per-site, when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
+File watching is per-site: when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
 
 ## Deploying
 

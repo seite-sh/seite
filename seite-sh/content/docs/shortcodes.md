@@ -114,7 +114,7 @@ Be careful with this operation. It **cannot be undone**.
 |-----------|----------|-------------|
 | `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
 
-All six bundled themes include styled callout boxes with appropriate colors for each type.
+All 10 bundled themes include styled callout boxes with appropriate colors for each type.
 
 ## Custom shortcodes
 
@@ -194,4 +194,4 @@ All error messages include the source file path and line number for quick debugg
 ## Next Steps
 
 - [Templates & Themes](/docs/templates): template variables available inside shortcode templates
-- [Theme Gallery](/docs/theme-gallery), all bundled themes include styling for built-in shortcodes
+- [Theme Gallery](/docs/theme-gallery): all bundled themes include styling for built-in shortcodes
