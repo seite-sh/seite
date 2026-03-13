@@ -15,6 +15,10 @@
 
 ---
 
+<p align="center">
+  <img src="https://seite.sh/static/demo.svg" alt="seite demo" width="700">
+</p>
+
 You already have Claude Code. seite gives it something to work on.
 
 ```bash
