@@ -58,6 +58,12 @@ pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
     {% endif %}
     <div class="content">{{ page.content | safe }}</div>
 </article>
+{% if prev_post or next_post %}
+<nav class="article-nav">
+    {% if next_post %}<a href="{{ next_post.url }}">&larr; {{ next_post.title }}</a>{% endif %}
+    {% if prev_post %}<a href="{{ prev_post.url }}">{{ prev_post.title }} &rarr;</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}"#;
 
 pub const DEFAULT_DOC: &str = r##"{% extends "base.html" %}

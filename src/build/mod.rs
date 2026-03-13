@@ -134,6 +134,15 @@ struct PageContext {
     extra: std::collections::HashMap<String, serde_yaml_ng::Value>,
 }
 
+/// Lightweight previous/next post link exposed to templates as `prev_post` / `next_post`.
+#[derive(Serialize, Clone)]
+struct AdjacentPost {
+    title: String,
+    url: String,
+    date: Option<String>,
+    description: Option<String>,
+}
+
 #[derive(Serialize)]
 struct CollectionContext {
     name: String,
@@ -708,6 +717,54 @@ fn build_site_inner(
                 collection_nav_cache.insert(collection.name.clone(), owned);
             }
 
+            // Pre-compute adjacent (prev/next) posts per language for this collection.
+            // Items are already sorted (date desc for dated, weight/title for others).
+            // "Next" = newer (toward index 0), "Previous" = older (toward end).
+            let adjacent_posts: HashMap<
+                (String, String),
+                (Option<AdjacentPost>, Option<AdjacentPost>),
+            > = {
+                let mut map = HashMap::new();
+                // Group items by language to compute adjacency within same language
+                let mut by_lang: HashMap<&str, Vec<usize>> = HashMap::new();
+                for (i, item) in items.iter().enumerate() {
+                    by_lang.entry(item.lang.as_str()).or_default().push(i);
+                }
+                for indices in by_lang.values() {
+                    for (pos, &idx) in indices.iter().enumerate() {
+                        let item = &items[idx];
+                        // Next = newer post (previous index in sorted-desc list)
+                        let next = if pos > 0 {
+                            let ni = indices[pos - 1];
+                            let n = &items[ni];
+                            Some(AdjacentPost {
+                                title: n.frontmatter.title.clone(),
+                                url: n.url.clone(),
+                                date: n.frontmatter.date.map(|d| d.to_string()),
+                                description: n.frontmatter.description.clone(),
+                            })
+                        } else {
+                            None
+                        };
+                        // Prev = older post (next index in sorted-desc list)
+                        let prev = if pos + 1 < indices.len() {
+                            let pi = indices[pos + 1];
+                            let p = &items[pi];
+                            Some(AdjacentPost {
+                                title: p.frontmatter.title.clone(),
+                                url: p.url.clone(),
+                                date: p.frontmatter.date.map(|d| d.to_string()),
+                                description: p.frontmatter.description.clone(),
+                            })
+                        } else {
+                            None
+                        };
+                        map.insert((item.lang.clone(), item.slug.clone()), (prev, next));
+                    }
+                }
+                map
+            };
+
             let render_results: Vec<std::result::Result<(PathBuf, String), PageError>> = items
                 .par_iter()
                 .map(|item| {
@@ -719,6 +776,15 @@ fn build_site_inner(
                         });
 
                     let mut ctx = build_page_context(site_ctx_for_item, item, &data);
+
+                    // Inject adjacent post links (prev_post / next_post).
+                    // Always insert both keys so Tera templates can check them without errors.
+                    let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
+                    let (prev, next) = adjacent_posts
+                        .get(&(item.lang.clone(), item.slug.clone()))
+                        .unwrap_or(&empty);
+                    ctx.insert("prev_post", prev);
+                    ctx.insert("next_post", next);
 
                     if collection.nested {
                         if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
@@ -2430,6 +2496,8 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "resources": "Resources",
         "previous": "Previous",
         "next": "Next",
+        "prev_post": "Previous",
+        "next_post": "Next",
         "on_this_page": "On this page",
         "search_docs": "Search docs\u{2026}",
         "search_documentation": "Search documentation",
@@ -3921,6 +3989,8 @@ mod tests {
             "resources",
             "previous",
             "next",
+            "prev_post",
+            "next_post",
             "on_this_page",
             "search_docs",
             "search_documentation",
@@ -3942,5 +4012,36 @@ mod tests {
         for key in expected_keys {
             assert!(obj.contains_key(key), "Missing UI string key: {key}");
         }
+    }
+
+    // ── AdjacentPost serialization ─────────────────────────────────────
+
+    #[test]
+    fn test_adjacent_post_serialization() {
+        let post = AdjacentPost {
+            title: "Hello World".into(),
+            url: "/posts/hello-world/".into(),
+            date: Some("2025-06-01".into()),
+            description: Some("A post".into()),
+        };
+        let json = serde_json::to_value(&post).unwrap();
+        assert_eq!(json["title"], "Hello World");
+        assert_eq!(json["url"], "/posts/hello-world/");
+        assert_eq!(json["date"], "2025-06-01");
+        assert_eq!(json["description"], "A post");
+    }
+
+    #[test]
+    fn test_adjacent_post_none_fields() {
+        let post = AdjacentPost {
+            title: "No Date".into(),
+            url: "/posts/no-date/".into(),
+            date: None,
+            description: None,
+        };
+        let json = serde_json::to_value(&post).unwrap();
+        assert_eq!(json["title"], "No Date");
+        assert!(json["date"].is_null());
+        assert!(json["description"].is_null());
     }
 }

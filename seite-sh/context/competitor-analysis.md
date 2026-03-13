@@ -1,351 +1,311 @@
-# Competitor Analysis
+# Competitor Analysis — seite
 
-This document tracks key competitors in the podcast hosting and podcasting content space, analyzing their content strategies to identify opportunities for Castos.
-
-## Instructions
-Fill in this template with your main competitors' information. Update quarterly or when significant competitive shifts occur.
+Primary competitors in the static site generator space. Updated March 2026.
 
 ---
 
 ## Primary Competitors
 
-### Competitor 1: [Name]
+### Competitor 1: Hugo
 
-**Company Overview**:
-- **Website**: [URL]
-- **Primary Offering**: [Podcast hosting / All-in-one / Specific niche]
-- **Target Audience**: [Beginners / Pro / Enterprise / etc.]
-- **Pricing**: [Brief pricing overview]
-- **Market Position**: [Leader / Challenger / Niche player]
+**Overview**:
+- **Website**: gohugo.io
+- **Language**: Go (single binary)
+- **Target Audience**: Developers, technical writers, large sites
+- **Pricing**: Free, open source
+- **Market Position**: Market leader — most-used SSG by GitHub stars and adoption
 
 **Content Strategy**:
-- **Blog URL**: [URL]
-- **Publishing Frequency**: [X posts per week/month]
-- **Content Types**: [How-tos, guides, news, case studies, etc.]
-- **Average Article Length**: [words]
-- **Content Quality**: [Assessment]
+- Heavy documentation focus
+- Community-driven tutorials and themes
+- Blog covers mostly release notes
+- Strong presence in "best static site generator" comparison searches
 
-**Top Performing Content** (highest traffic/rankings):
-1. [Article Title] - [URL]
-   - Keyword: [primary keyword]
-   - Estimated Traffic: [monthly visitors]
-   - Why It Works: [brief analysis]
-
-2. [Article Title] - [URL]
-   [Continue with top 5-10 articles]
+**Top Content Topics**:
+- Getting started / quickstart guides
+- Theme development
+- Hugo vs Jekyll comparisons
+- Performance benchmarks
 
 **SEO Strengths**:
-- [Strength 1: e.g., "Strong domain authority (DR 75)"]
-- [Strength 2: e.g., "Comprehensive pillar content on all major topics"]
-- [Strength 3: e.g., "Regular content updates and freshness"]
+- Extremely high domain authority and brand recognition
+- Years of backlinks from developer tutorials and comparisons
+- Ranks for nearly every "static site generator" term
+- Large community generating third-party content
 
 **SEO Weaknesses**:
-- [Weakness 1: e.g., "Thin content on advanced topics"]
-- [Weakness 2: e.g., "Poor internal linking structure"]
-- [Weakness 3: e.g., "Outdated articles (1-2 years old)"]
+- No content covering AI workflows or LLM integration
+- Config complexity (Go templating, archetypes, taxonomies) creates frustrated users searching for alternatives
+- No content about modern deploy workflows (Cloudflare Pages, Netlify one-command deploys)
+- Documentation is thorough but dense — poor onboarding content for non-experts
 
-**Content Gaps** (Topics they don't cover well):
-- [Gap 1: Topic Castos could own]
-- [Gap 2: Underserved keyword area]
-- [Gap 3: Missing perspective or angle]
+**Content Gaps**:
+- AI-assisted site building
+- Single-command deploy workflows
+- Non-developer use cases (founders, indie hackers)
+- llms.txt and AI discoverability
+- MCP server integration
 
 **Differentiation Opportunities**:
-- [How Castos can stand out vs. this competitor]
-- [Unique angle or approach to take]
-- [Topics to focus on to win against them]
+- Target "hugo alternative" — users who find Hugo too complex
+- Own "AI static site generator" — Hugo has nothing here
+- Win on simplicity messaging: seite vs Hugo config complexity
 
 ---
 
-### Competitor 2: [Name]
+### Competitor 2: Eleventy (11ty)
 
-[Follow same format as above]
+**Overview**:
+- **Website**: 11ty.dev
+- **Language**: JavaScript/Node.js
+- **Target Audience**: JavaScript developers, web agencies
+- **Pricing**: Free, open source
+- **Market Position**: Strong challenger — popular in JS community, well-regarded among web developers
+
+**Content Strategy**:
+- Strong community tutorials and starter projects
+- Blog covers release notes and community spotlights
+- Developer-focused, minimal marketing content
+
+**SEO Strengths**:
+- Good domain authority
+- Strong JS community presence
+- Flexible template system creates diverse content
+- Sponsors well-known developers who write about it
+
+**SEO Weaknesses**:
+- Requires Node.js — no content addressing runtime complexity for non-JS developers
+- No AI workflow content
+- Limited content for non-developer audiences
+- "11ty" vs "Eleventy" creates keyword fragmentation
+
+**Content Gaps**:
+- AI/LLM integration
+- Non-JS developer use cases
+- Single-binary distribution
+- Startup/indie hacker audience
+
+**Differentiation Opportunities**:
+- Target "eleventy alternative" for developers who don't want Node.js in their stack
+- "No Node.js static site generator" is an under-served keyword cluster
+- Emphasize zero-dependency install vs npm ecosystem complexity
 
 ---
 
-### Competitor 3: [Name]
+### Competitor 3: Astro
 
-[Follow same format as above]
+**Overview**:
+- **Website**: astro.build
+- **Language**: JavaScript/Node.js (component islands)
+- **Target Audience**: JavaScript/React/Vue developers, content sites
+- **Pricing**: Free, open source (Astro DB and cloud products are paid)
+- **Market Position**: Fast-growing challenger — popular for JS devs who want static output with component reuse
+
+**Content Strategy**:
+- Heavy investment in blog and showcase content
+- Strong comparison content ("Astro vs Next.js", "Astro vs Gatsby")
+- Tutorial-heavy, good onboarding content
+- Targets "best static site generator 2024/2025/2026"
+
+**SEO Strengths**:
+- Growing domain authority with VC-backed company behind it
+- Actively creates SEO content with dedicated team
+- Good technical content quality
+- Ranks for many comparison and "alternative" searches
+
+**SEO Weaknesses**:
+- Overkill for simple sites — no content acknowledging this
+- Requires Node.js, npm, and build tooling
+- No AI-native architecture or LLM content
+- Complex for basic markdown-to-HTML use cases
+
+**Content Gaps**:
+- Simple markdown sites without JavaScript
+- CLI-first workflows (not IDE-first)
+- AI context and agent integration
+- Startup landing page + docs + blog in one tool
+
+**Differentiation Opportunities**:
+- "Astro alternative for simple sites" — Astro is often too much for basic use cases
+- Own the "no JavaScript runtime" angle for static site generation
+- Developers who want a site, not an app framework
 
 ---
 
-### Competitor 4: [Name]
+### Competitor 4: Jekyll
 
-[Follow same format as above]
+**Overview**:
+- **Website**: jekyllrb.com
+- **Language**: Ruby
+- **Target Audience**: GitHub Pages users, bloggers, legacy projects
+- **Pricing**: Free, open source
+- **Market Position**: Declining but still widely used — GitHub Pages default
+
+**Content Strategy**:
+- Mostly documentation, minimal blog content
+- Community-maintained tutorials
+- Large volume of legacy tutorial content on third-party sites
+
+**SEO Strengths**:
+- Massive volume of existing backlinks and third-party content
+- "GitHub Pages" association drives passive traffic
+- Very high name recognition from early blog era
+
+**SEO Weaknesses**:
+- Requires Ruby runtime — a friction point that generates "Jekyll alternative" searches
+- Slow builds at scale
+- No AI integration content at all
+- Declining share of mind — few new tutorials being created
+
+**Content Gaps**:
+- Everything modern: AI workflows, fast builds, modern deploy targets
+- Non-Ruby alternatives for GitHub Pages users
+- Simple deploy to Cloudflare or Netlify
+
+**Differentiation Opportunities**:
+- "Jekyll alternative" has strong search intent from frustrated Ruby users
+- GitHub Pages users who want faster builds
+- Target "static site generator without Ruby"
 
 ---
 
-### Competitor 5: [Name]
+### Competitor 5: Zola
 
-[Follow same format as above]
+**Overview**:
+- **Website**: getzola.org
+- **Language**: Rust (single binary — closest technical peer to seite)
+- **Target Audience**: Developers who want fast, simple, no-runtime SSG
+- **Pricing**: Free, open source
+- **Market Position**: Niche — respected among developers who value simplicity and Rust
+
+**Content Strategy**:
+- Minimal marketing — mostly documentation
+- No blog, no SEO content strategy
+- Relies on community tutorials and word of mouth
+
+**SEO Strengths**:
+- Some presence in "hugo alternative" and "rust static site generator" searches
+- Developer trust due to Rust ecosystem credibility
+
+**SEO Weaknesses**:
+- Almost zero SEO investment — no blog, no comparison content
+- No AI integration, no MCP server, no skill packs
+- Smaller community than Hugo/Astro/Eleventy
+- No one-command deploy, no collections system beyond the basics
+
+**Content Gaps**:
+- Everything seite has: AI integration, collections presets, one-command deploy, skill packs
+- No content for non-developer audiences
+
+**Differentiation Opportunities**:
+- Own "rust static site generator" more aggressively
+- "Zola alternative" for users who want AI integration and modern deploy tooling
+- seite is Zola + AI-native + opinionated collections + deploy
 
 ---
 
-## Secondary Competitors / Content Publishers
+## Secondary Competitors
 
-These may not be direct product competitors but compete for content visibility:
+### WordPress / Ghost / Webflow
 
-### Publisher 1: [Name]
-- **Website**: [URL]
-- **Focus**: [Podcast education / Industry news / etc.]
-- **Why They Matter**: [Authority in space, ranks for key terms, etc.]
-- **Content Approach**: [Brief description]
-- **Opportunity vs. Them**: [How to compete]
+- Compete for "make a website" intent, not "static site generator" intent
+- Users who outgrow these or want git-native workflows search for SSG alternatives
+- Opportunity: "WordPress alternative for developers" — users tired of hosting, plugins, databases
+- seite angle: "No database, no hosting lock-in, no security patches"
 
-### Publisher 2: [Name]
-[Continue]
+### Next.js / Remix (for static output)
+
+- Compete when developers consider using a React framework for a mostly-static site
+- Overkill for most content sites — creates frustrated users searching for simpler tools
+- Opportunity: "static site without React" / "simpler alternative to Next.js"
 
 ---
 
 ## Competitive Keyword Analysis
 
-### Keywords Competitors Dominate (Castos doesn't rank top 10):
+### Keywords seite Should Own (or Is Building Toward)
 
-**Keyword**: [keyword]
-- **Difficulty**: [score]
-- **Volume**: [monthly searches]
-- **Who Ranks**:
-  1. [Competitor] - Position 1
-  2. [Competitor] - Position 2
-  3. [Competitor] - Position 3
-- **Castos Position**: [rank or "Not ranking"]
-- **Their Content Type**: [Guide / Comparison / How-to / etc.]
-- **What They Do Well**: [Analysis of why they rank]
-- **Castos Strategy**: [How to compete - new content, optimize existing, etc.]
+| Keyword | Why We Can Win |
+|---------|---------------|
+| AI static site generator | No real competition — we created the category |
+| AI-native website builder | Same — new category |
+| llms.txt static site | Direct match with our output format |
+| generative engine optimization | Emerging term, we have content |
+| static site generator single binary | seite + Zola split this — we can win it |
+| Hugo alternative | High intent, Hugo's complexity creates this search |
+| Jekyll alternative | High intent, Ruby runtime frustration |
+| static site generator no Node.js | Under-served, directly addresses our advantage |
+| static site generator with deploy | We have built-in deploy — nobody else does simply |
+| Rust static site generator | seite + Zola — we should own this |
 
-[List 10-15 high-priority competitive keywords]
+### Keywords Competitors Dominate (Longer-Term Play)
+
+| Keyword | Who Ranks | Our Strategy |
+|---------|-----------|--------------|
+| static site generator | Hugo, Astro, Eleventy | Build DR, target long-tail first |
+| best static site generator 2026 | Astro, Hugo, listicle sites | Create comparison content, get in roundups |
+| fast static site generator | Hugo, Zola | Benchmark content showing seite speed |
+| static site generator for beginners | Eleventy, Jekyll guides | Target "startup founders" angle instead |
 
 ---
 
 ## Competitive Content Patterns
 
-### Common Topics All Competitors Cover:
-1. [Topic 1 - e.g., "How to start a podcast"]
-   - Standard approach: [How most competitors handle it]
-   - Castos differentiation: [How we can be different/better]
+### Topics All Competitors Cover (Table Stakes)
+- Getting started / quickstart
+- Deployment guides
+- Theme/template customization
+- Markdown content format
+- **Our angle**: All of these but CLI-first, with agent context woven in
 
-2. [Topic 2]
-   [Continue]
+### Topics Only seite Covers (Own These)
+- AI agent integration with `seite agent`
+- MCP server for AI tools
+- llms.txt and llms-full.txt generation
+- Skill packs (SEOMachine, etc.)
+- Triple output: HTML + Markdown + LLM files
+- Collections presets (changelog, roadmap, trust center)
 
-### Emerging Topics Some Competitors Cover:
-- [Topic]: Covered by [Competitor names]
-  - Opportunity: [Early adopter advantage / Wait and see / etc.]
-
-### Unique Topics Only One Competitor Covers:
-- [Topic]: Only [Competitor name]
-  - Why they own it: [Analysis]
-  - Should Castos pursue?: [Yes/No and why]
-
----
-
-## Content Quality Benchmarks
-
-### Word Count Analysis:
-- **Competitor Average**: [X words]
-- **Top Ranking Articles**: [X words]
-- **Castos Target**: [X words to compete]
-
-### Content Depth:
-- **Comprehensive Guides**: [Which competitors do this well]
-- **Tactical How-Tos**: [Who excels at this]
-- **Quick Tips**: [Who focuses here]
-- **Castos Sweet Spot**: [Where we should focus]
-
-### Visual Content:
-- **Screenshots**: [Who uses extensively]
-- **Custom Graphics**: [Who creates these]
-- **Videos**: [Who embeds video]
-- **Charts/Data Viz**: [Who visualizes data well]
-- **Castos Opportunity**: [Where we can excel]
-
-### Update Frequency:
-- **Regular Updates**: [Competitors who update old content]
-- **Publication Dates**: [Who shows dates prominently]
-- **Content Freshness**: [Who keeps content current]
-- **Castos Approach**: [Our update strategy]
-
----
-
-## Link Building & Authority
-
-### Domain Authority Comparison:
-- **Castos**: DR [score]
-- **[Competitor 1]**: DR [score]
-- **[Competitor 2]**: DR [score]
-- **[Competitor 3]**: DR [score]
-- **[Competitor 4]**: DR [score]
-
-### Backlink Strategies They Use:
-- **[Competitor]**: [Guest posting / Original research / Tools / etc.]
-- **[Competitor]**: [Their link building approach]
-- **Castos Opportunity**: [Link building tactics to pursue]
-
-### Content Formats That Earn Links:
-- [Format 1: e.g., "Original surveys and data"]
-  - Who does it: [Competitors]
-  - Castos potential: [Could we do this?]
-
-- [Format 2: e.g., "Free tools and calculators"]
-  - Who does it: [Competitors]
-  - Castos potential: [Assessment]
-
----
-
-## User Experience & Engagement
-
-### Content Presentation:
-- **Table of Contents**: [Who uses them well]
-- **Jump Links**: [Who implements]
-- **Formatting**: [Who has best readability]
-- **CTAs**: [Who has compelling calls-to-action]
-- **Castos Benchmark**: [What we should emulate/avoid]
-
-### On-Page Engagement:
-- **Comments**: [Who has active comment sections]
-- **Social Sharing**: [Who optimizes for shares]
-- **Related Content**: [Who does internal linking well]
-- **Castos Focus**: [Our engagement strategy]
-
----
-
-## Competitive SERP Features
-
-### Featured Snippets:
-**Keywords with Snippets**:
-- [Keyword]: Held by [Competitor]
-  - Format: [Paragraph / List / Table]
-  - Castos Strategy: [How to win it]
-
-### People Also Ask (PAA):
-- Common questions: [List questions that appear frequently]
-- Who answers them: [Which competitors appear in PAA]
-- Castos opportunities: [Questions we should target]
-
-### Video Results:
-- [Keyword]: [Competitor] has video
-  - Should Castos create video?: [Assessment]
-
----
-
-## Competitive Moats & Advantages
-
-### Their Unfair Advantages:
-**[Competitor 1]**:
-- [Advantage: e.g., "Market leader brand recognition"]
-- [Advantage: e.g., "10+ years of content and backlinks"]
-- [How Castos can compete anyway]: [Strategy]
-
-**[Competitor 2]**:
-- [Their advantages]
-- [Our counter-strategy]
-
-### Castos's Unique Advantages:
-- [Advantage 1: e.g., "WordPress integration expertise"]
-- [Advantage 2: e.g., "Focus on serious creators vs. hobbyists"]
-- [Advantage 3: e.g., "Private podcasting specialization"]
-- [How to leverage]: [Content strategy to amplify these]
+### Emerging Topics (Move Fast)
+- Generative Engine Optimization (GEO)
+- AI search discoverability
+- LLM-readable website formats
+- Coding agent workflows for content sites
 
 ---
 
 ## Content Opportunity Matrix
 
-### High Opportunity (Low competition, high value):
-1. [Topic/Keyword]
-   - Why opportunity: [Competitors don't cover well]
-   - Business value: [Why it matters for Castos]
-   - Action: [Create priority content]
+### High Opportunity (Low Competition, High Relevance)
+1. "AI static site generator" — we own this category, keep building authority
+2. "llms.txt" explainer content — new standard, we have first-mover advantage
+3. "Hugo alternative" comparison — high intent, Hugo's complexity creates consistent search volume
+4. "static site generator without Node.js" — under-served, directly maps to our value prop
+5. Generative engine optimization guides — emerging category, seite is the tool for this
 
-[List top opportunities]
+### Medium Opportunity (Worth Pursuing)
+1. "Jekyll alternative" — declining tool, users actively looking for a replacement
+2. "deploy static site Cloudflare" — we have built-in deploy, content should surface this
+3. "static site generator for startups" — niche angle, high value audience
+4. "docs site from command line" — long-tail, matches our use case
 
-### Medium Opportunity (Moderate competition, good value):
-[List opportunities]
-
-### Long-term Play (High competition, high value):
-[Topics to tackle with comprehensive, superior content over time]
-
----
-
-## Quarterly Competitive Review
-
-### Q[X] 20[XX] Review
-
-**Date**: [Date of review]
-
-**Major Competitive Shifts**:
-- [Change 1: New competitor emerged, competitor launched new feature, etc.]
-- [Change 2]
-
-**Content Strategy Changes Observed**:
-- [Change 1: Competitor increased publishing frequency, shifted focus, etc.]
-- [Change 2]
-
-**New Topics Competitors Are Covering**:
-- [Topic 1] - Should Castos cover?: [Yes/No]
-- [Topic 2]
-
-**Ranking Changes**:
-- Keywords Castos gained: [List]
-- Keywords Castos lost: [List]
-- Keywords competitors gained: [List]
-
-**Action Items from This Review**:
-1. [Action item]
-2. [Action item]
-3. [Action item]
+### Long-Term Play (High Competition, High Value)
+1. "best static site generator 2026" — dominated by aggregators and big SSGs, needs DR and links
+2. "static site generator" (head term) — years of authority building needed
+3. "Astro alternative" — Astro has strong brand, but worth targeting when we have more DR
 
 ---
 
-## Competitive Watching List
+## Our Unfair Advantages
 
-### Monitor Regularly:
-- [ ] [Competitor 1] blog RSS feed
-- [ ] [Competitor 2] new content alerts
-- [ ] [Competitor 3] ranking changes for key terms
-- [ ] Industry news sites for competitive announcements
-
-### Tools for Monitoring:
-- **Rank Tracking**: [Tool name - track competitors' rankings]
-- **Content Alerts**: [Tool - get notified of new competitor content]
-- **Backlink Monitoring**: [Tool - see where competitors get links]
-- **Topic Discovery**: [Tool - find trending topics in space]
+1. **Category ownership**: "AI static site generator" is ours. Nobody else is here.
+2. **Triple output**: HTML + Markdown + LLM files from every build — no other SSG does this.
+3. **MCP server**: Structured AI access to site content — no other SSG has this.
+4. **Single Rust binary**: No runtime, instant install — matches Zola but adds AI layer.
+5. **Opinionated collections**: changelog, roadmap, trust center — no SSG has these presets.
+6. **Built-in deploy**: `seite deploy` works out of the box — competitors require external CI.
 
 ---
 
-## Usage Guidelines
-
-### When Planning Content:
-1. Check what competitors have already created on topic
-2. Identify gaps or weaknesses in their coverage
-3. Plan how to create superior, differentiated content
-4. Note their keyword strategy
-5. Assess competitive difficulty
-
-### When Writing Content:
-1. Reference competitor articles to ensure comprehensiveness
-2. Don't copy - identify what's missing and add it
-3. Find unique angle or perspective
-4. Aim to create the definitive resource on topic
-5. Differentiate with Castos-specific insights
-
-### When Analyzing Performance:
-1. Compare Castos rankings to competitor rankings
-2. Identify which competitors won rankings we wanted
-3. Analyze why their content outperformed ours
-4. Adapt strategy based on what's working for them
-5. Double down on areas where Castos has unique advantage
-
----
-
-## Maintenance Schedule
-
-- **Weekly**: Monitor top 3 competitors for new content
-- **Monthly**: Check ranking changes for key terms
-- **Quarterly**: Full competitive audit and strategy review
-- **Annually**: Comprehensive competitor landscape assessment
-
-**Last Updated**: [Date]
-**Next Review**: [Date]
-**Reviewer**: [Person responsible]
-
----
-
-**Note**: Competitive analysis isn't about copying - it's about understanding the landscape so Castos can create better, more differentiated content that serves podcast creators in unique ways. Always filter competitive insights through "What would best serve our audience?"
+**Last Updated**: March 2026
+**Next Review**: June 2026

@@ -42,6 +42,8 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.excerpt }}` | Auto-extracted excerpt (HTML) |
 | `{{ page.toc }}` | Table of contents entries |
 | `{{ page.extra }}` | Custom frontmatter data |
+| `{{ prev_post }}` | Previous (older) post link: `.title`, `.url`, `.date`, `.description` |
+| `{{ next_post }}` | Next (newer) post link: `.title`, `.url`, `.date`, `.description` |
 
 ### Context variables
 
@@ -82,6 +84,8 @@ All bundled themes and default templates use the `{{ t }}` object for UI text. T
 | `t.not_found_title` | Page Not Found |
 | `t.not_found_message` | The page you requested could not be found. |
 | `t.go_home` | Go to the homepage |
+| `t.prev_post` | Previous |
+| `t.next_post` | Next |
 | `t.in_progress` | In Progress |
 | `t.planned` | Planned |
 | `t.done` | Done |
