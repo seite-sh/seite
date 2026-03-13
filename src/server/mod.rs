@@ -435,6 +435,19 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
     Err(PageError::Server("no available port found".into()))
 }
 
+/// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
+fn local_network_ip() -> Option<String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let addr = socket.local_addr().ok()?;
+    let ip = addr.ip();
+    if ip.is_loopback() || ip.is_unspecified() {
+        None
+    } else {
+        Some(ip.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1246,18 +1259,5 @@ mod tests {
             result_str.contains(LIVERELOAD_SCRIPT),
             "should inject even when </body> appears in content"
         );
-    }
-}
-
-/// Detect a LAN IP address by binding a UDP socket (no actual traffic sent).
-fn local_network_ip() -> Option<String> {
-    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
-    socket.connect("8.8.8.8:80").ok()?;
-    let addr = socket.local_addr().ok()?;
-    let ip = addr.ip();
-    if ip.is_loopback() || ip.is_unspecified() {
-        None
-    } else {
-        Some(ip.to_string())
     }
 }
