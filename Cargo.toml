@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -78,6 +78,9 @@ webp = "0.3"
 
 # HTTP client (for Cloudflare API and self-update)
 ureq = { version = "3", features = ["json"] }
+
+# URL percent-encoding (for API query parameter construction)
+urlencoding = "2"
 
 # Temp files (for self-update checksum verification)
 tempfile = "3"

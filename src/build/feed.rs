@@ -97,10 +97,16 @@ pub fn generate_atom(
     write_text_element(&mut writer, "id", &format!("{base}/"))?;
 
     // Feed-level <author> is required by Atom spec (RFC 4287 §4.1.1)
-    // unless every <entry> has its own <author>.
-    if !config.site.author.is_empty() {
+    // unless every <entry> has its own <author>. We always emit it to satisfy
+    // the spec; fall back to site title when no author is configured.
+    {
+        let author_name = if config.site.author.is_empty() {
+            &config.site.title
+        } else {
+            &config.site.author
+        };
         write(&mut writer, Event::Start(BytesStart::new("author")))?;
-        write_text_element(&mut writer, "name", &config.site.author)?;
+        write_text_element(&mut writer, "name", author_name)?;
         write(&mut writer, Event::End(BytesEnd::new("author")))?;
     }
 
@@ -365,5 +371,25 @@ mod tests {
         let items: Vec<&ContentItem> = vec![];
         let atom = generate_atom(&config, &items, "https://example.com/atom.xml").unwrap();
         assert!(!atom.contains("<subtitle>"));
+    }
+
+    #[test]
+    fn test_generate_atom_author_falls_back_to_site_title() {
+        // When author is empty, feed-level <author> should use the site title
+        // so RFC 4287 §4.1.1 is satisfied without per-entry authors.
+        let config = test_config(); // author = ""
+        let items: Vec<&ContentItem> = vec![];
+        let atom = generate_atom(&config, &items, "https://example.com/atom.xml").unwrap();
+        assert!(atom.contains("<author>"));
+        assert!(atom.contains("<name>Test Blog</name>"));
+    }
+
+    #[test]
+    fn test_generate_atom_author_uses_configured_author() {
+        let mut config = test_config();
+        config.site.author = "Jane Doe".into();
+        let items: Vec<&ContentItem> = vec![];
+        let atom = generate_atom(&config, &items, "https://example.com/atom.xml").unwrap();
+        assert!(atom.contains("<name>Jane Doe</name>"));
     }
 }

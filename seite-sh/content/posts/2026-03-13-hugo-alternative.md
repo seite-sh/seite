@@ -18,7 +18,7 @@ If you're reading this, you've probably nodded at something like it. Maybe you u
 
 You're looking for a Hugo alternative. So are a lot of other developers.
 
-This isn't another listicle ranking six tools you've already heard of. Every "Hugo alternative" article on the internet lists Jekyll, Gatsby, Astro, Eleventy, and calls it a day. None of them address *why* developers actually leave Hugo. And none of them mention the category that didn't exist when Hugo was built: [AI-native static site generators](/posts/ai-static-site-generator).
+This isn't another listicle ranking six tools you've already heard of. Every "Hugo alternative" article on the internet lists Jekyll, Gatsby, Astro, Eleventy, and calls it a day. None of them address *why* developers actually leave Hugo. And none of them mention the category that didn't exist when Hugo was built: [AI-native static site generators](/blog/ai-static-site-generator).
 
 Here's what to actually consider when you're ready to move on, whether you want a static site generator like Hugo but simpler, or something fundamentally different for 2026.
 
@@ -76,9 +76,9 @@ Hugo builds your site. Then it stops. Getting that site online is your problem.
 
 You need a separate deploy pipeline: a GitHub Actions workflow, a Netlify config file, a Vercel project. For many developers, wiring this up takes longer than building the site itself.
 
-And Hugo has no awareness that AI agents exist. There's no CLAUDE.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/posts/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself.
+And Hugo has no awareness that AI agents exist. There's no CLAUDE.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/blog/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself. For the full picture of what website AI discoverability requires and the architecture behind triple output, see [why your website needs to speak AI](/blog/website-ai-discoverability).
 
-Want to see how AI integration actually works? [Read about AI-native static site generators](/posts/ai-static-site-generator) and what that architecture looks like.
+Want to see how AI integration actually works? [Read about AI-native static site generators](/blog/ai-static-site-generator) and what that architecture looks like.
 
 ## The Usual Suspects (and What They Trade Off)
 
@@ -88,7 +88,7 @@ Before we get to the Hugo alternative you haven't heard of, let's be honest abou
 
 [Astro](https://astro.build/) is excellent if you're in the JavaScript ecosystem. It ships zero client-side JS by default, supports React/Vue/Svelte components, and has strong documentation.
 
-The tradeoff in any Hugo vs Astro comparison comes down to toolchain: Astro requires Node.js. Your build depends on `node_modules`. A fresh Astro project downloads hundreds of packages before you write a line of content. If Hugo's single-binary simplicity attracted you, Astro moves in the opposite direction.
+The tradeoff in any Hugo vs Astro comparison comes down to toolchain: Astro requires Node.js. Your build depends on `node_modules`. A fresh Astro project downloads hundreds of packages before you write a line of content. If Hugo's single-binary simplicity attracted you, Astro moves in the opposite direction. If you are already evaluating Astro as the Hugo replacement, see the [full Astro vs seite comparison](/blog/astro-alternative-for-static-sites) for the detailed feature breakdown and migration path.
 
 ### Eleventy: Flexible but Node.js Required
 
@@ -110,7 +110,7 @@ The tradeoff: Ruby dependencies, slow builds on large sites, and a declining com
 
 ## A Different Kind of Hugo Alternative
 
-Every tool above shares the same assumption: a static site generator compiles markdown into HTML, and that's the job. What if the job description changed? If you're coming from WordPress rather than Hugo, the pain points are different but the destination is the same; see the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) comparison.
+Every tool above shares the same assumption: a static site generator compiles markdown into HTML, and that's the job. What if the job description changed? If you're coming from WordPress rather than Hugo, the pain points are different but the destination is the same; see the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) comparison.
 
 seite is a Rust static site generator shipped as a single binary. Like Hugo, like Zola: no runtime, no dependencies, sub-second builds. You get the speed and simplicity that brought you to Hugo in the first place. But seite was built as a static site generator with AI at its core, for a world where AI agents are part of the development workflow and AI search engines are part of the audience.
 
@@ -122,7 +122,7 @@ Here's what that means in practice:
 
 **Triple output.** Every build produces HTML (for browsers), markdown (for AI models), and `llms.txt` (for AI search engines). Your site is optimized for three audiences from a single command. No plugins. No configuration.
 
-**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
+**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
 
 **Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. 10 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
 
@@ -162,7 +162,7 @@ Here's how this Hugo alternative compares feature by feature.
 
 The left column is a powerful tool built for 2015. The right column is a tool built for 2026. They share the same DNA: compiled binary, markdown content, fast builds. The difference is everything around the compiler.
 
-When Maria, a startup CTO, needed a docs site for her API product, she started with Hugo because of its speed. Two weeks in, she had a working site but no deploy pipeline, no search, and her designer couldn't figure out Go templates. She switched to seite, got built-in search and deploy on day one, and her designer was writing Tera templates within an hour. The docs site shipped on schedule. See the [complete docs site walkthrough](/posts/build-docs-site-command-line) for the step-by-step process.
+When Maria, a startup CTO, needed a docs site for her API product, she started with Hugo because of its speed. Two weeks in, she had a working site but no deploy pipeline, no search, and her designer couldn't figure out Go templates. She switched to seite, got built-in search and deploy on day one, and her designer was writing Tera templates within an hour. The docs site shipped on schedule. See the [complete docs site walkthrough](/blog/build-docs-site-command-line) for the step-by-step process.
 
 **Ready to see the difference?** [Get started with seite](/docs/getting-started) in under a minute: install, init, build, serve.
 
@@ -190,7 +190,7 @@ If you're ready to switch from Hugo, here's what should drive the decision. The 
 
 **You need built-in deploy.** If wiring up GitHub Actions or Netlify config files for a static site feels like overhead, `seite deploy` does it in one command.
 
-**You want AI discoverability.** If your content should appear in ChatGPT and Perplexity answers, you need llms.txt, markdown output, and AI-aware robots.txt. seite builds these automatically. Hugo doesn't. See the [generative engine optimization guide](/posts/generative-engine-optimization) for the full implementation strategy. To see exactly what SEO and GEO features Hugo lacks and seite ships automatically, see the [static site generator SEO checklist](/posts/static-site-generator-with-built-in-seo).
+**You want AI discoverability.** If your content should appear in ChatGPT and Perplexity answers, you need llms.txt, markdown output, and AI-aware robots.txt. seite builds these automatically. Hugo doesn't. See the [generative engine optimization guide](/blog/generative-engine-optimization) for the full implementation strategy. To see exactly what SEO and GEO features Hugo lacks and seite ships automatically, see the [static site generator SEO checklist](/blog/static-site-generator-built-in-seo).
 
 **You're a startup shipping fast.** Landing page, docs, blog, changelog, and contact form, all from one tool, deployed in an afternoon. seite's [collections system](/docs/collections) handles all of these. Hugo handles some and leaves you to figure out the rest.
 

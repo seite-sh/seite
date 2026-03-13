@@ -134,7 +134,7 @@ One command. Here's what happens under the hood:
 
 1. **Auto-commits** your changes (unless you opt out with `--no-commit`)
 2. **Pushes** to your remote repository
-3. **Builds** the site (HTML, markdown, sitemap, RSS, [llms.txt](/posts/what-is-llms-txt), search index, robots.txt)
+3. **Builds** the site (HTML, markdown, sitemap, RSS, [llms.txt](/blog/what-is-llms-txt), search index, robots.txt)
 4. **Deploys** to Cloudflare via wrangler
 5. **Prints** the live URL
 
@@ -142,7 +142,7 @@ No dashboard. No clicking. No build configuration in the Cloudflare UI. See the 
 
 ### What Gets Deployed
 
-When you deploy a static site to Cloudflare Pages with seite, you're not just deploying HTML files. The `dist/` directory reflects your site's [collections](/docs/collections) and contains a complete, [AI-readable](/posts/ai-static-site-generator), SEO-optimized site:
+When you deploy a static site to Cloudflare Pages with seite, you're not just deploying HTML files. The `dist/` directory reflects your site's [collections](/docs/collections) and contains a complete, [AI-readable](/blog/ai-static-site-generator), SEO-optimized site:
 
 ```
 dist/
@@ -165,7 +165,7 @@ dist/
     ...                   # Assets
 ```
 
-Every page ships as HTML and markdown. Every build generates discovery files for search engines and AI models. This is what differentiates deploying with a tool that understands [generative engine optimization](/posts/generative-engine-optimization) from manually uploading files through a dashboard.
+Every page ships as HTML and markdown. Every build generates discovery files for search engines and AI models. This is what differentiates deploying with a tool that understands [generative engine optimization](/blog/generative-engine-optimization) from manually uploading files through a dashboard. seite's themes ship pre-compiled into the binary too, so there's no npm install step in your CI pipeline. See [why seite compiles themes into the binary](/blog/compiled-themes-binary) for the full rationale.
 
 ### Preview Deploys from Branches
 
@@ -275,7 +275,7 @@ The deploy command is always the same: `seite deploy`. The build output is ident
 
 When Nina, a startup founder, launched her SaaS landing page, she started with GitHub Pages because the repo was already on GitHub. Two months later, she needed preview deploys for her marketing team to review changes before they went live. She changed `target = "github-pages"` to `target = "cloudflare"`, added a `project = "acme-landing"` line, and ran `seite deploy`. Same command, different platform, five-minute migration.
 
-If you're still evaluating static site generators, see our [Hugo alternative comparison](/posts/hugo-alternative) for SSG-to-SSG comparison or the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) guide if you're migrating from a CMS. Detailed setup guides for all three deploy targets are in the [deployment documentation](/docs/deployment).
+If you're still evaluating static site generators, see our [Hugo alternative comparison](/blog/hugo-alternative) for SSG-to-SSG comparison or the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide if you're migrating from a CMS. Detailed setup guides for all three deploy targets are in the [deployment documentation](/docs/deployment).
 
 ## Common Deploy Issues and Fixes
 
@@ -303,7 +303,7 @@ wrangler pages project create my-site
 
 ### Base URL Still Shows localhost
 
-The most common deploy mistake. If `base_url` in `seite.toml` is still `http://localhost:3000`, your canonical URLs, sitemaps, RSS feeds, and [llms.txt](/posts/what-is-llms-txt) will all point to localhost. Set it to your actual domain before deploying:
+The most common deploy mistake. If `base_url` in `seite.toml` is still `http://localhost:3000`, your canonical URLs, sitemaps, RSS feeds, and [llms.txt](/blog/what-is-llms-txt) will all point to localhost. Set it to your actual domain before deploying:
 
 ```toml
 [site]
@@ -360,7 +360,7 @@ Three things to remember:
 
 1. **One command is enough.** One command to deploy your website to a global CDN. `seite deploy` builds, commits, pushes, and publishes. No dashboard, no CI config, no manual steps.
 2. **The platform doesn't matter as much as the workflow.** Whether Cloudflare calls it Pages or Workers, your deploy command stays the same. Use a tool that abstracts the platform so you don't rewrite your workflow every time a hosting provider renames a product.
-3. **A deploy is more than HTML.** When you deploy with seite, you're shipping a complete site: HTML for browsers, markdown for AI, [llms.txt](/posts/what-is-llms-txt) for AI search engines, sitemap for Google, RSS for subscribers, and search index for your visitors. One build, every format.
+3. **A deploy is more than HTML.** When you deploy with seite, you're shipping a complete site: HTML for browsers, markdown for AI, [llms.txt](/blog/what-is-llms-txt) for AI search engines, sitemap for Google, RSS for subscribers, and search index for your visitors. One build, every format.
 
 If you want to deploy a static site to Cloudflare Pages (or GitHub Pages, or Netlify) with one command:
 
@@ -368,4 +368,4 @@ If you want to deploy a static site to Cloudflare Pages (or GitHub Pages, or Net
 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
-Build your site. Deploy it. [Ship it in an afternoon.](/docs/getting-started)
+Build your site. Deploy it. [Ship it in an afternoon.](/docs/getting-started) If you are a startup that needs a full site — landing page, docs, blog, changelog — deployed in one afternoon before a demo or launch, see [static site generator for startups](/blog/static-site-generator-for-startups) for the complete timeline.

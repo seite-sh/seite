@@ -241,6 +241,20 @@
         :focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #8b5cf6; color: #fff; z-index: 100; text-decoration: none; }
         .skip-link:focus { top: 0; }
+        .toc-level-1 { padding-left: 0; }
+        .toc-level-2 { padding-left: 1rem; }
+        .toc-level-3 { padding-left: 2rem; }
+        .toc-level-4 { padding-left: 3rem; }
+        .article-nav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #333; font-size: 0.9rem; }
+        .article-nav a { text-decoration: none; max-width: 45%; }
+        .article-nav a:hover { text-decoration: underline; }
+        .tags-index { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+        .tag-link { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 3px; background: #1a1a1a; border: 1px solid #2a2a2a; color: #a78bfa; text-decoration: none; font-size: 0.9rem; }
+        .tag-link:hover { background: #2a2a2a; text-decoration: none; }
+        .tag-count { color: #888; font-size: 0.85em; }
+        .excerpt { color: #aaa; font-size: 0.9rem; line-height: 1.55; margin: 0.3rem 0 0; }
+        .roadmap-milestone--left { border-left: 3px solid #a78bfa; padding-left: 1rem; }
+        .roadmap-milestone--right { border-left: 3px solid #333; padding-left: 1rem; }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}

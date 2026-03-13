@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ t.tags | default(value="Tags") }} — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+    }
+
+    @keyframes tags-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .tgs-page { animation: none; opacity: 1; }
+    }
+
+    .tgs-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: tags-fade-in 0.5s ease both;
+    }
+
+    /* ── Header ── */
+    .tgs-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.75rem;
+    }
+
+    .tgs-page h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin: 0 0 2.5rem;
+        line-height: 1.1;
+    }
+
+    /* ── Tag cloud ── */
+    .tgs-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+
+    .tgs-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        padding: 0.45rem 0.85rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .tgs-tag:hover {
+        border-color: var(--green-border);
+        background: var(--green-dim);
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    .tgs-tag-count {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--text-dim);
+        background: var(--bg-raised);
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        transition: background 0.15s, color 0.15s;
+    }
+    .tgs-tag:hover .tgs-tag-count {
+        background: var(--green-dim);
+        color: var(--green);
+    }
+
+    @media (max-width: 640px) {
+        .tgs-page {
+            padding: 2rem 1rem 4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tgs-page">
+    <div class="tgs-eyebrow">Browse</div>
+    <h1>{{ t.tags | default(value="Tags") }}</h1>
+
+    <div class="tgs-cloud">
+        {% for tag in tags %}
+        <a href="{{ tag.url }}" class="tgs-tag">
+            #{{ tag.name }}
+            <span class="tgs-tag-count">{{ tag.count }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

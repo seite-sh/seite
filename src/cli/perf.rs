@@ -72,9 +72,10 @@ fn resolve_url(explicit: Option<&str>) -> anyhow::Result<String> {
 }
 
 fn fetch_psi(url: &str, strategy: &str, key: Option<&str>) -> anyhow::Result<PerfReport> {
+    let encoded_url = urlencoding::encode(url);
     let mut api_url = format!(
         "https://www.googleapis.com/pagespeedonline/v5/runPagespeed\
-         ?url={url}&strategy={strategy}&category=performance"
+         ?url={encoded_url}&strategy={strategy}&category=performance"
     );
     if let Some(k) = key {
         api_url.push_str(&format!("&key={k}"));
@@ -183,6 +184,16 @@ mod tests {
     fn test_is_local_url_public() {
         assert!(!is_local_url("https://seite.sh"));
         assert!(!is_local_url("https://example.com"));
+    }
+
+    #[test]
+    fn test_fetch_psi_url_encoding() {
+        // Verify urlencoding::encode handles characters that would break query params
+        assert_eq!(urlencoding::encode("https://example.com"), "https%3A%2F%2Fexample.com");
+        assert_eq!(
+            urlencoding::encode("https://example.com/page with spaces"),
+            "https%3A%2F%2Fexample.com%2Fpage%20with%20spaces"
+        );
     }
 
     #[test]

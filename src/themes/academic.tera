@@ -870,6 +870,20 @@
         }
         .skip-link:focus { top: 0; }
         :focus-visible { outline: 2px solid #a00000; outline-offset: 2px; }
+        .toc-level-1 { padding-left: 0; }
+        .toc-level-2 { padding-left: 1rem; }
+        .toc-level-3 { padding-left: 2rem; }
+        .toc-level-4 { padding-left: 3rem; }
+        .article-nav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e0ddd5; font-size: 0.9rem; }
+        .article-nav a { text-decoration: none; max-width: 45%; color: #a00000; }
+        .article-nav a:hover { text-decoration: underline; }
+        .tags-index { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+        .tag-link { color: #a00000; font-size: 0.8rem; text-decoration: none; font-variant: small-caps; letter-spacing: 0.03em; }
+        .tag-link:hover { text-decoration: underline; }
+        .tag-count { color: #999; font-size: 0.85em; font-variant: normal; letter-spacing: 0; }
+        .excerpt { color: #666; font-size: 0.9rem; line-height: 1.65; margin: 0.3rem 0 0; font-style: italic; }
+        .roadmap-milestone--left { border-left: 2px solid #a00000; padding-left: 1rem; }
+        .roadmap-milestone--right { border-left: 2px solid #e0ddd5; padding-left: 1rem; }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;

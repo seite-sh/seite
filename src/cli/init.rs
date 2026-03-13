@@ -1126,12 +1126,12 @@ fn generate_claude_md(
     // Key conventions (short, mixed static/dynamic — keep inline)
     md.push_str("## Key Conventions\n\n");
     md.push_str("- Run `seite build` after creating or editing content to regenerate the site\n");
-    md.push_str("- URLs are clean (no extension): `/posts/hello-world` on disk is `dist/posts/hello-world.html`\n");
+    md.push_str("- URLs are clean (no extension): `/{collection-url-prefix}/hello-world` on disk is `dist/{collection-url-prefix}/hello-world.html` (e.g. `/blog/hello-world`)\n");
     md.push_str("- Templates use Tera syntax and extend `base.html`\n");
     md.push_str("- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)\n");
     md.push_str("- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate\n");
     md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
-    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate `/posts/`, `/posts/page/2/`, etc.\n");
+    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate paginated index pages (e.g. `/blog/`, `/blog/page/2/`, etc.)\n");
     md.push_str("  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`\n");
     md.push_str("- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.\n");
     md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");

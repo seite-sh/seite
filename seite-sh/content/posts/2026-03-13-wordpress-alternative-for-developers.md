@@ -56,7 +56,7 @@ WordPress is open source. The software costs $0. Everything around it costs mone
 | Developer time: updates | 2-4 hours/month | 0 hours |
 | **Annual total** | **$2,000-5,000+** | **$0** |
 
-The $0 column isn't aspirational. Cloudflare Pages, GitHub Pages, and Netlify all offer free static hosting with unlimited bandwidth. Your SSL is automatic. Your backup is `git push`. Your security model is "no server to compromise." See how to [deploy a static site to Cloudflare Pages](/posts/deploy-static-site-cloudflare-pages) in one command.
+The $0 column isn't aspirational. Cloudflare Pages, GitHub Pages, and Netlify all offer free static hosting with unlimited bandwidth. Your SSL is automatic. Your backup is `git push`. Your security model is "no server to compromise." See how to [deploy a static site to Cloudflare Pages](/blog/deploy-static-site-cloudflare-pages) in one command.
 
 ## What Developers Actually Need (And WordPress Doesn't Provide)
 
@@ -105,13 +105,13 @@ If you've decided to replace WordPress with a static site generator, the next qu
 | Markdown copies | No | No | No | No | Every build |
 | AI agent | No | No | No | No | `seite agent` |
 
-**For blogs:** If you need a WordPress alternative for your blog, any SSG handles date-ordered content and RSS. Hugo and seite are the fastest. For a detailed Hugo vs seite comparison, see the [Hugo alternative guide](/posts/hugo-alternative). If you want the simplest blog setup, seite's [collections system](/docs/collections) gives you posts, docs, pages, changelog, and roadmap from a single config file.
+**For blogs:** If you need a WordPress alternative for your blog, any SSG handles date-ordered content and RSS. Hugo and seite are the fastest. For a detailed Hugo vs seite comparison, see the [Hugo alternative guide](/blog/hugo-alternative). If you are evaluating Astro as your WordPress replacement, the [Astro alternative for static sites](/blog/astro-alternative-for-static-sites) article covers the tradeoffs between Astro's component island model and a Node.js-free Rust binary. If you want the simplest blog setup, seite's [collections system](/docs/collections) gives you posts, docs, pages, changelog, and roadmap from a single config file.
 
-**For documentation:** You need nested navigation, sidebar layout, and search. Most SSGs require plugins or custom code for this. seite has a built-in docs [collection preset](/docs/collections) with sidebar nav and client-side search. See how to [build a docs site from the command line](/posts/build-docs-site-command-line) in five minutes.
+**For documentation:** You need nested navigation, sidebar layout, and search. Most SSGs require plugins or custom code for this. seite has a built-in docs [collection preset](/docs/collections) with sidebar nav and client-side search. See how to [build a docs site from the command line](/blog/build-docs-site-command-line) in five minutes.
 
 **For startups:** The best WordPress alternative for a startup ships landing page, documentation, blog, changelog, and contact form from one tool. This is where most SSGs fall short because you end up stitching together multiple tools. seite handles all five as [collections](/docs/collections), built and deployed together.
 
-**For AI discoverability:** This is the category that didn't exist when most SSGs were built. If you care about your site appearing in ChatGPT and Perplexity answers, you need [`llms.txt`](/posts/what-is-llms-txt), markdown copies alongside HTML, and AI-aware `robots.txt`. seite generates all three on every build. No other SSG in this list does. Learn more about [generative engine optimization](/posts/generative-engine-optimization) and why it matters. For the complete technical SEO breakdown — covering all 12 standard SEO features and three GEO features across major SSGs — see the [static site generator built-in SEO checklist](/posts/static-site-generator-with-built-in-seo).
+**For AI discoverability:** This is the category that didn't exist when most SSGs were built. If you care about your site appearing in ChatGPT and Perplexity answers, you need [`llms.txt`](/blog/what-is-llms-txt), markdown copies alongside HTML, and AI-aware `robots.txt`. seite generates all three on every build. No other SSG in this list does. Learn more about [generative engine optimization](/blog/generative-engine-optimization) and why it matters. For the complete technical SEO breakdown — covering all 12 standard SEO features and three GEO features across major SSGs — see the [static site generator built-in SEO checklist](/blog/static-site-generator-built-in-seo).
 
 **Ready to see the difference?** [Explore seite's features](/docs/getting-started) and build your first site in under five minutes.
 
@@ -137,7 +137,7 @@ Let's be honest about what WordPress does better and what static site generators
 
 **Developer experience.** Git, markdown, CLI, CI/CD. The tools you already use, applied to your website.
 
-**AI readability.** This is the emerging advantage. WordPress outputs HTML with plugin-injected scripts, tracking pixels, cookie banners, and serialized Gutenberg blocks. When ChatGPT reads a WordPress page, it's parsing noise alongside content. A static site with [triple output](/posts/ai-static-site-generator) ships HTML for browsers, clean markdown for AI, and `llms.txt` for AI search discovery.
+**AI readability.** This is the emerging advantage. WordPress outputs HTML with plugin-injected scripts, tracking pixels, cookie banners, and serialized Gutenberg blocks. When ChatGPT reads a WordPress page, it's parsing noise alongside content. A static site with [triple output](/blog/ai-static-site-generator) ships HTML for browsers, clean markdown for AI, and `llms.txt` for AI search discovery.
 
 ### When to Stay on WordPress
 
@@ -157,7 +157,7 @@ WordPress URLs like `/2026/03/my-post/` become `/posts/my-post` in a static site
 
 ### Choose a Deploy Target
 
-Static sites deploy anywhere. [Cloudflare Pages](/posts/deploy-static-site-cloudflare-pages) gives you unlimited bandwidth on the free tier. GitHub Pages works if you're already on GitHub. Netlify offers form handling and serverless functions if you need them. All three take minutes to set up. See the [deployment documentation](/docs/deployment) for step-by-step setup guides.
+Static sites deploy anywhere. [Cloudflare Pages](/blog/deploy-static-site-cloudflare-pages) gives you unlimited bandwidth on the free tier. GitHub Pages works if you're already on GitHub. Netlify offers form handling and serverless functions if you need them. All three take minutes to set up. See the [deployment documentation](/docs/deployment) for step-by-step setup guides.
 
 ### Build and Verify
 
@@ -189,7 +189,7 @@ After the Mullenweg/WP Engine controversy, Raj reviewed his company's WordPress 
 
 The trust question is separate from the technical question, but it matters. Your website shouldn't depend on a platform where [one person's conflict with a hosting company](https://techcrunch.com/2024/10/12/wordpress-vs-wp-engine-drama-explained/) can disrupt your plugin updates. With a static site, your content is files. Your templates are files. Your deploy is a command. No single point of control.
 
-This is what [generative engine optimization](/posts/generative-engine-optimization) looks like in practice. Your site serves three audiences from one build: browsers, search engines, and AI models. WordPress can't retroactively add this architecture. Its content model, database-stored block markup rendered through PHP, is fundamentally incompatible with clean markdown output.
+This is what [generative engine optimization](/blog/generative-engine-optimization) looks like in practice. Your site serves three audiences from one build: browsers, search engines, and AI models. WordPress can't retroactively add this architecture. Its content model, database-stored block markup rendered through PHP, is fundamentally incompatible with clean markdown output.
 
 ## Frequently Asked Questions
 
@@ -223,7 +223,7 @@ Three things to remember:
 
 2. **WordPress security is a treadmill.** 11,334 vulnerabilities in 2025, 92% from plugins you installed to add features that a static site generator includes by default. No database means no SQL injection. No admin panel means no brute force attacks. No plugins mean no supply chain vulnerabilities.
 
-3. **AI search is the new frontier, and WordPress can't play.** Static sites with [triple output](/posts/ai-static-site-generator) serve browsers, search engines, and AI models from one build. WordPress serves bloated HTML and hopes AI can parse it. The sites that ship clean markdown and `llms.txt` will be cited. The ones that don't will be invisible.
+3. **AI search is the new frontier, and WordPress can't play.** Static sites with [triple output](/blog/ai-static-site-generator) serve browsers, search engines, and AI models from one build. WordPress serves bloated HTML and hopes AI can parse it. The sites that ship clean markdown and `llms.txt` will be cited. The ones that don't will be invisible.
 
 If you want a WordPress alternative that works the way developers work:
 

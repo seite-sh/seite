@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}#{{ tag_name }} — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+    }
+
+    @keyframes tag-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .tg-page { animation: none; opacity: 1; }
+    }
+
+    .tg-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: tag-fade-in 0.5s ease both;
+    }
+
+    /* ── Header ── */
+    .tg-header {
+        margin-bottom: 3rem;
+    }
+
+    .tg-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.75rem;
+    }
+
+    .tg-header h1 {
+        font-family: var(--serif);
+        font-size: clamp(1.8rem, 4vw, 2.5rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin: 0 0 0.5rem;
+        line-height: 1.1;
+    }
+
+    .tg-header h1 .tg-tag-name {
+        color: var(--green);
+        font-style: normal;
+    }
+
+    .tg-count {
+        font-size: 0.875rem;
+        color: var(--text-dim);
+        margin: 0;
+    }
+
+    /* ── Back link ── */
+    .tg-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 2rem;
+        transition: color 0.15s;
+    }
+    .tg-back:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    /* ── Post list ── */
+    .tg-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .tg-list-heading {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .tg-item {
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .tg-item:last-child {
+        border-bottom: none;
+    }
+
+    .tg-item h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--heading);
+        margin: 0 0 0.35rem;
+        letter-spacing: -0.01em;
+        line-height: 1.3;
+    }
+    .tg-item h2 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.12s;
+    }
+    .tg-item h2 a:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    .tg-item-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        margin-bottom: 0.4rem;
+    }
+    .tg-item-meta time { color: var(--text-muted); }
+    .tg-item-meta .meta-sep { color: var(--border-light); user-select: none; }
+
+    .tg-item p {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0;
+    }
+
+    /* ── Empty state ── */
+    .tg-empty {
+        text-align: center;
+        padding: 4rem 1rem;
+        color: var(--text-dim);
+        font-size: 0.95rem;
+    }
+
+    @media (max-width: 640px) {
+        .tg-page {
+            padding: 2rem 1rem 4rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tg-page">
+    <a href="{{ tags_url }}" class="tg-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        {{ t.all_tags | default(value="All tags") }}
+    </a>
+
+    <div class="tg-header">
+        <div class="tg-eyebrow">Tag</div>
+        <h1>{{ t.tagged | default(value="Tagged") }} <span class="tg-tag-name">#{{ tag_name }}</span></h1>
+        <p class="tg-count">{{ items | length }} {{ t.post | default(value="post") }}{% if items | length != 1 %}s{% endif %}</p>
+    </div>
+
+    {% if items | length == 0 %}
+    <div class="tg-empty">{{ t.no_posts | default(value="No posts yet.") }}</div>
+    {% else %}
+    <div class="tg-list-heading">{{ t.older_posts | default(value="All posts") }}</div>
+    <ul class="tg-list">
+        {% for item in items %}
+        <li class="tg-item">
+            <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+            <div class="tg-item-meta">
+                {% if item.date %}<time datetime="{{ item.date }}">{{ item.date }}</time>{% endif %}
+                {% if item.reading_time %}<span class="meta-sep">&middot;</span><span>{{ item.reading_time }} min read</span>{% endif %}
+            </div>
+            {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<p>{{ item.excerpt | striptags | truncate(length=180) }}</p>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

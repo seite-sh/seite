@@ -30,7 +30,7 @@ The distinction matters because the mechanics are different. Google crawls your 
 
 The RAG pipeline has implications for how you structure content. Google rewards pages. AI engines reward passages. A 3,000-word article that buries the answer in paragraph 47 will rank on Google if it has backlinks. An AI engine will skip it entirely because the retrieval step could not find a clean, self-contained chunk that answers the query.
 
-**Want to understand how AI-native architecture connects to GEO?** Read the [AI static site generator](/posts/ai-static-site-generator) deep dive for the full picture.
+**Want to understand how AI-native architecture connects to GEO?** Read the [AI static site generator](/blog/ai-static-site-generator) deep dive for the full picture.
 
 ## GEO vs SEO: What Changes and What Stays the Same
 
@@ -80,7 +80,7 @@ These three techniques are the foundation of how to optimize content for ChatGPT
 
 ## Five Files That Make Your Site AI-Discoverable
 
-Before covering the five GEO-specific files, see the [12-point SEO checklist for static site generators](/posts/static-site-generator-with-built-in-seo) for the full technical foundation that GEO builds on — canonical URLs, Open Graph, JSON-LD and the other baseline features your site needs before AI discoverability adds value.
+Before covering the five GEO-specific files, see the [12-point SEO checklist for static site generators](/blog/static-site-generator-built-in-seo) for the full technical foundation that GEO builds on — canonical URLs, Open Graph, JSON-LD and the other baseline features your site needs before AI discoverability adds value.
 
 Every GEO guide tells you to "optimize for AI." Here is what that looks like on disk. If you want to know how to optimize for AI search at the implementation level, these are the five files that determine whether AI search engines can find, understand, and cite your content.
 
@@ -99,11 +99,11 @@ Every GEO guide tells you to "optimize for AI." Here is what that looks like on 
 - [Templates](/docs/templates.md): Tera templates and theme customization
 
 ## Blog
-- [AI Static Site Generator](/posts/ai-static-site-generator.md): What AI-native means
-- [Generative Engine Optimization](/posts/generative-engine-optimization.md): Make your site visible to AI search
+- [AI Static Site Generator](/blog/ai-static-site-generator.md): What AI-native means
+- [Generative Engine Optimization](/blog/generative-engine-optimization.md): Make your site visible to AI search
 ```
 
-The companion file `llms-full.txt` concatenates all your content into a single document that AI systems can consume in one request. llms.txt SEO is still an emerging practice, but early adopters report measurable improvements in AI citation frequency. For a deep dive on implementation, format, and why this matters, see [what llms.txt is and how to implement it](/posts/what-is-llms-txt).
+The companion file `llms-full.txt` concatenates all your content into a single document that AI systems can consume in one request. llms.txt SEO is still an emerging practice, but early adopters report measurable improvements in AI citation frequency. For a deep dive on implementation, format, and why this matters, see [what llms.txt is and how to implement it](/blog/what-is-llms-txt).
 
 ### 2. Markdown Copies: Your AI-Readable Format
 
@@ -189,11 +189,13 @@ For multilingual sites, `xhtml:link` alternates in the sitemap connect translati
 
 ## Generative Engine Optimization for Static Sites
 
-Static sites have a structural advantage for GEO that nobody talks about. This is one of the key reasons developers are [switching from WordPress to static site generators](/posts/wordpress-alternative-for-developers).
+Static sites have a structural advantage for GEO that nobody talks about. This is one of the key reasons developers are [switching from WordPress to static site generators](/blog/wordpress-alternative-for-developers).
 
 Every GEO guide recommends server-side rendering because AI crawlers cannot execute JavaScript. React SPAs, Next.js apps with client-side data fetching, and JavaScript-heavy CMSes are partially or fully invisible to AI crawlers. This is the single biggest technical barrier to AI search visibility.
 
 Static sites do not have this problem. Every page is pre-rendered HTML. There is no JavaScript dependency for content display. When ChatGPT-User or PerplexityBot requests a page, they get the full content immediately.
+
+If you want to go further and let an AI coding agent build and optimize your site end-to-end, see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) — the `seite agent` command understands your GEO setup and can audit and update content directly.
 
 Beyond rendering, static sites align with GEO best practices by default:
 
@@ -223,7 +225,7 @@ dist/
 
 When Kenji's content team at a B2B SaaS company migrated their marketing site from a headless CMS to a static site generator in late 2025, they were primarily motivated by build speed and simplicity. The GEO improvement was accidental. Within six weeks of launching the static site with llms.txt and markdown copies, they noticed ChatGPT citing their documentation in answers about their product category. Their headless CMS site, running for two years with better Google rankings and more backlinks, had never appeared in a single AI-generated answer. The difference was not content quality. It was content accessibility.
 
-**Ready to see this in action?** The seite build pipeline produces this exact output structure automatically. See the [deployment guide](/posts/deploy-static-site-cloudflare-pages) for how to ship it to production in one command.
+**Ready to see this in action?** The seite build pipeline produces this exact output structure automatically. See the [deployment guide](/blog/deploy-static-site-cloudflare-pages) for how to ship it to production in one command.
 
 ## How to Measure Generative Engine Optimization Performance
 
@@ -267,13 +269,15 @@ No. GEO extends SEO. Traditional search still drives the majority of web traffic
 
 ### What is llms.txt and do I need it for GEO?
 
-llms.txt is a plain text file at your site's root that provides AI systems with a structured summary of your content. It is not strictly required for GEO, but it significantly improves AI discoverability by giving LLMs a curated overview of what your site offers. See our full [llms.txt implementation guide](/posts/what-is-llms-txt) for the format and best practices.
+llms.txt is a plain text file at your site's root that provides AI systems with a structured summary of your content. It is not strictly required for GEO, but it significantly improves AI discoverability by giving LLMs a curated overview of what your site offers. See our full [llms.txt implementation guide](/blog/what-is-llms-txt) for the format and best practices.
 
 ### How long does it take for generative engine optimization to work?
 
 Faster than SEO, but not instant. AI crawlers revisit content frequently (weekly or more for active sites). After implementing GEO artifacts (llms.txt, schema markup, markdown copies, proper robots.txt), most sites see AI crawler activity within 1-2 weeks and citations within 1-3 months. Content freshness matters: regularly updated content gets cited faster.
 
 ## Ship for Three Audiences
+
+For a broader look at why the AI audience requires a different architecture than traditional search, see [The Third Audience: Why Your Website Needs to Speak AI](/blog/website-ai-discoverability) — it covers the mental model behind triple output and why most sites fail the AI readability test.
 
 Generative engine optimization is not a separate discipline from SEO. It is SEO extended to a new class of search engines. The core principles are the same: publish quality content, structure it clearly, make it accessible to crawlers. The implementation adds five files that most sites do not have yet.
 

@@ -34,10 +34,10 @@ Before you type a command, here's what the finished docs site includes:
 And something you won't find in MkDocs or Docusaurus tutorials:
 
 - **Markdown output** alongside HTML for every page (`/docs/setup.md` next to `/docs/setup.html`)
-- **[llms.txt](/posts/what-is-llms-txt) and llms-full.txt** that tell AI models what your docs contain
+- **[llms.txt](/blog/what-is-llms-txt) and llms-full.txt** that tell AI models what your docs contain
 - **AI crawler management** via robots.txt that allows AI search bots while blocking AI training crawlers
 
-This is the [triple output pattern](/posts/ai-static-site-generator): HTML for browsers, markdown for AI models, and discovery files for search engines. Your docs are readable by every audience from the first build.
+This is the [triple output pattern](/blog/ai-static-site-generator): HTML for browsers, markdown for AI models, and discovery files for search engines. Your docs are readable by every audience from the first build.
 
 **Want the full feature breakdown?** See the [getting started guide](/docs/getting-started) for everything seite includes out of the box.
 
@@ -113,7 +113,7 @@ Then deploy:
 seite deploy
 ```
 
-One command. It builds the site, pushes to your remote, and deploys to [Cloudflare Pages](/posts/deploy-static-site-cloudflare-pages) (or [GitHub Pages or Netlify](/docs/deployment), your choice). The output includes HTML, markdown, sitemap, RSS, search index, llms.txt, and robots.txt. Three commands total, from nothing to a live URL.
+One command. It builds the site, pushes to your remote, and deploys to [Cloudflare Pages](/blog/deploy-static-site-cloudflare-pages) (or [GitHub Pages or Netlify](/docs/deployment), your choice). The output includes HTML, markdown, sitemap, RSS, search index, llms.txt, and robots.txt. Three commands total, from nothing to a live URL.
 
 When Priya joined a startup as the first backend engineer, the team's documentation lived in three places: a Notion doc with API specs, a Google Doc with onboarding steps, and a Slack thread that nobody could find. She needed a docs site before the next hire started Monday.
 
@@ -184,7 +184,7 @@ Apply the built-in docs theme with one command:
 seite theme apply docs
 ```
 
-This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Six bundled [themes](/docs/templates) are compiled into the binary, so there's nothing to download.
+This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Six bundled [themes](/docs/templates) are compiled into the binary; no npm install, no downloads ever. See [6 Themes, 0 Downloads](/blog/compiled-themes-binary) for the engineering rationale.
 
 ### Search Works Automatically
 
@@ -225,7 +225,7 @@ When he audited `node_modules`, he found 1,200+ packages powering what was essen
 
 The [Stack Overflow 2025 Developer Survey](https://survey.stackoverflow.co/2025/) found that 22% of developers use static site generators for documentation. [Markdown is the most admired collaboration tool](https://survey.stackoverflow.co/2025/) for three years running. The tooling should match the simplicity of the format. If you want to create a documentation website from markdown, your docs site generator should be as simple as the content format itself.
 
-Hugo deserves a mention here. It's also a single binary, fast builds, no runtime dependencies. It's a strong [documentation site generator](/posts/hugo-alternative). Where it falls short for docs specifically: no built-in deploy command, no AI-readable output, and configuring a docs sidebar requires more template work than most developers expect. If you're coming from WordPress or another CMS, the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) guide covers why static sites are the better path for docs and blogs alike.
+Hugo deserves a mention here. It's also a single binary, fast builds, no runtime dependencies. It's a strong [documentation site generator](/blog/hugo-alternative). Where it falls short for docs specifically: no built-in deploy command, no AI-readable output, and configuring a docs sidebar requires more template work than most developers expect. If you're coming from WordPress or another CMS, the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide covers why static sites are the better path for docs and blogs alike.
 
 ## Docs That AI Can Read
 
@@ -243,7 +243,9 @@ dist/docs/
   api-reference.md
 ```
 
-The [llms.txt](/posts/what-is-llms-txt) file lists every docs page with a link to its markdown version. An AI model can read `llms.txt`, find the relevant page, and fetch clean markdown without parsing HTML. This is [generative engine optimization](/posts/generative-engine-optimization) for your documentation; making your content citable by AI search engines and readable by AI coding assistants.
+The [llms.txt](/blog/what-is-llms-txt) file lists every docs page with a link to its markdown version. An AI model can read `llms.txt`, find the relevant page, and fetch clean markdown without parsing HTML. This is [generative engine optimization](/blog/generative-engine-optimization) for your documentation; making your content citable by AI search engines and readable by AI coding assistants.
+
+You can also use an AI coding agent to generate and maintain your documentation from the command line — see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) for the full `seite agent` workflow, or [how we built seite.sh with Claude Code](/blog/built-with-seite-claude-code) for an honest behind-the-scenes account.
 
 68% of developers rely on technical documentation as their primary learning resource. Increasingly, they access that documentation through AI intermediaries. If your docs are locked inside HTML that AI models struggle to parse, you're invisible to a growing percentage of your users.
 
@@ -272,7 +274,7 @@ One repo. One build command. One deploy. Every collection gets HTML, markdown, a
 
 Lena runs a developer tools startup. When she launched, she used MkDocs for docs, Ghost for the blog, GitHub releases for version notes, and Carrd for the landing page. Four tools meant four places to update, four deploy workflows, and four sets of credentials to manage.
 
-When her docs referenced a blog post, she linked to a completely different domain. When her blog mentioned a feature, she linked to a different site with a different design. She consolidated everything into one seite project. Same content, one domain, one `seite deploy`. Her docs link to her blog, her blog links to her changelog, and the whole site shares one design system.
+When her docs referenced a blog post, she linked to a completely different domain. When her blog mentioned a feature, she linked to a different site with a different design. She consolidated everything into one seite project. Same content, one domain, one `seite deploy`. Her docs link to her blog, her blog links to her changelog, and the whole site shares one design system. For the complete startup site workflow — landing page, docs, blog, changelog, and contact form from one init command — see [static site generator for startups](/blog/static-site-generator-for-startups).
 
 ## Frequently Asked Questions
 

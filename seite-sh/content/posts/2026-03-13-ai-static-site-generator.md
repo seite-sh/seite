@@ -28,7 +28,7 @@ That's the short version. Here's why the distinction matters.
 
 That definition matters because it draws a line between three categories of tools that people keep confusing:
 
-**Traditional SSGs** ([Hugo](/posts/hugo-alternative), Astro, Eleventy, Zola) compile markdown into HTML. They do this well. Some do it in milliseconds. But they produce HTML and nothing else. An AI agent working with a Hugo site has to parse HTML, guess at your config structure, and reverse-engineer your content model from filenames.
+**Traditional SSGs** ([Hugo](/blog/hugo-alternative), Astro, Eleventy, Zola) compile markdown into HTML. They do this well. Some do it in milliseconds. But they produce HTML and nothing else. An AI agent working with a Hugo site has to parse HTML, guess at your config structure, and reverse-engineer your content model from filenames.
 
 **AI website builders** (Relume, CodeDesign, TeleportHQ) use AI to generate sites for you. You describe what you want, and the AI produces HTML, CSS, and maybe some JavaScript. The output is a website, but it's not a workflow. There's no git history, no CLI, no content model. The AI generates *for* you, then steps away.
 
@@ -112,15 +112,17 @@ seite agent                                                   # interactive sess
 
 This isn't "AI writes your website." It's "AI has a seat at your workbench." The agent can create content, modify templates, troubleshoot build errors, and deploy, all while understanding the site's structure and conventions. It can even manage [shortcodes](/docs/shortcodes) and build [custom themes](/docs/custom-themes). Read more about the [AI agent capabilities](/docs/agent).
 
+For a step-by-step walkthrough of using the agent to build a complete site — landing page, blog, docs, and deploy — see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent).
+
 ### Triple Output: HTML + Markdown + llms.txt
 
 Every `seite build` produces three output formats for every page:
 
 1. **HTML** (`/posts/hello-world`) for browsers and traditional search engines
 2. **Markdown** (`/posts/hello-world.md`) for AI models that prefer clean text
-3. **[llms.txt](/posts/what-is-llms-txt)** and **llms-full.txt** at the site root for AI discovery
+3. **[llms.txt](/blog/what-is-llms-txt)** and **llms-full.txt** at the site root for AI discovery
 
-This is [Generative Engine Optimization](/posts/generative-engine-optimization) (GEO) built into the build pipeline. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews. For the complete technical breakdown — canonical URLs, JSON-LD, Open Graph, and all three GEO features evaluated across major SSGs — see [what to look for in a static site generator with built-in SEO](/posts/static-site-generator-with-built-in-seo).
+This is [Generative Engine Optimization](/blog/generative-engine-optimization) (GEO) built into the build pipeline. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews. For the complete technical breakdown — canonical URLs, JSON-LD, Open Graph, and all three GEO features evaluated across major SSGs — see [what to look for in a static site generator with built-in SEO](/blog/static-site-generator-built-in-seo).
 
 Every page also includes a `<link rel="alternate" type="text/markdown">` tag in its HTML head, pointing AI crawlers to the clean markdown version. The `robots.txt` file allows AI search crawlers (ChatGPT-User, PerplexityBot) while blocking AI training crawlers (GPTBot, CCBot). Your content appears in AI answers without being used to train models.
 
@@ -136,7 +138,7 @@ seite theme create "coral brutalist with lime accents and hard shadows"
 
 This spawns Claude Code with a detailed prompt that includes all template variables, Tera block requirements, and SEO guardrails. Claude writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
 
-10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
+10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding — why seite ships themes in the binary instead of downloading them — see [6 Themes, 0 Downloads](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
 
 ## How AI Discoverability Changes the Game
 
@@ -156,7 +158,7 @@ The combination of llms.txt, raw markdown output, and AI-aware robots.txt means 
 | Traditional search | HTML + JSON-LD + sitemap | Googlebot, Bingbot |
 | AI search | Markdown + llms.txt | ChatGPT-User, PerplexityBot, Claude |
 
-Most SSG comparison articles don't even mention this third audience. It already accounts for a growing share of how people discover content. [Search Engine Land covered the llms.txt proposal](https://searchengineland.com/llms-txt-proposed-standard-453676) as a significant shift in how websites communicate with AI systems.
+Most SSG comparison articles don't even mention this third audience. It already accounts for a growing share of how people discover content. [Search Engine Land covered the llms.txt proposal](https://searchengineland.com/llms-txt-proposed-standard-453676) as a significant shift in how websites communicate with AI systems. For the full argument on why every website now needs to reach all three audiences, see [The Third Audience: Why Your Website Needs to Speak AI](/blog/website-ai-discoverability).
 
 ## Comparing AI-Native vs Traditional: A Practical Example
 
@@ -255,7 +257,7 @@ seite serve
 
 Your site now has:
 - A blog with RSS feed
-- [Documentation with sidebar navigation](/posts/build-docs-site-command-line)
+- [Documentation with sidebar navigation](/blog/build-docs-site-command-line)
 - Static pages
 - Client-side search
 - AI context files (CLAUDE.md, MCP server config)
@@ -267,7 +269,7 @@ To [deploy](/docs/deployment):
 seite deploy  # GitHub Pages, Cloudflare, or Netlify
 ```
 
-One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. Migrating from WordPress? See the [WordPress alternative for developers](/posts/wordpress-alternative-for-developers) guide for the full comparison and migration path. See the [Cloudflare Pages deploy guide](/posts/deploy-static-site-cloudflare-pages) for a detailed walkthrough, or the full [CLI reference](/docs/cli-reference) for all available commands.
+One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. Migrating from WordPress? See the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide for the full comparison and migration path. See the [Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for a detailed walkthrough, the [static site generator for startups](/blog/static-site-generator-for-startups) guide if you need a complete site live in an afternoon, or the full [CLI reference](/docs/cli-reference) for all available commands.
 
 ## Frequently Asked Questions
 

@@ -47,7 +47,7 @@ These two files sit next to each other in your site root, but they solve complet
 
 robots.txt tells crawlers where they *can't* go. llms.txt tells AI what it *should* read. They complement each other. You still need robots.txt to manage crawl behavior. llms.txt adds a layer specifically for AI comprehension.
 
-For [AI-native static site generators](/posts/ai-static-site-generator), both files are build outputs. seite generates `robots.txt` with AI crawler management (allowing AI search bots like ChatGPT-User and PerplexityBot while blocking AI training crawlers like GPTBot) alongside `llms.txt` on every build. The [deployment pipeline](/docs/deployment) publishes both files automatically. They work together as part of a coherent AI discoverability strategy.
+For [AI-native static site generators](/blog/ai-static-site-generator), both files are build outputs. seite generates `robots.txt` with AI crawler management (allowing AI search bots like ChatGPT-User and PerplexityBot while blocking AI training crawlers like GPTBot) alongside `llms.txt` on every build. The [deployment pipeline](/docs/deployment) publishes both files automatically. They work together as part of a coherent AI discoverability strategy.
 
 ## The llms.txt Format
 
@@ -117,7 +117,7 @@ Second, the study measures the wrong thing. The 300k-domain study measured wheth
 
 Third, the cost is near zero. Adding an llms.txt file to your site takes minutes. If your build tool generates it automatically, it takes zero additional effort. The downside of having it is nothing. The downside of not having it, if AI systems start using it, is being invisible to a growing channel.
 
-When Liam, an API documentation maintainer, noticed that ChatGPT was giving wrong answers about his company's SDK, he investigated. The AI was parsing HTML pages with navigation sidebars, footer links, and cookie banners mixed into the content. The LLM couldn't distinguish documentation from chrome. After adding llms.txt with links to clean markdown versions of each docs page, the AI answers improved noticeably. Not because llms.txt was a ranking signal, but because the AI had a clean reading path to accurate content. See [how to build a docs site](/posts/build-docs-site-command-line) that outputs both formats automatically.
+When Liam, an API documentation maintainer, noticed that ChatGPT was giving wrong answers about his company's SDK, he investigated. The AI was parsing HTML pages with navigation sidebars, footer links, and cookie banners mixed into the content. The LLM couldn't distinguish documentation from chrome. After adding llms.txt with links to clean markdown versions of each docs page, the AI answers improved noticeably. Not because llms.txt was a ranking signal, but because the AI had a clean reading path to accurate content. See [how to build a docs site](/blog/build-docs-site-command-line) that outputs both formats automatically.
 
 ### The Honest Take
 
@@ -131,7 +131,7 @@ And if your build tool generates it automatically, the debate is irrelevant. You
 
 ## The Bigger Picture: Triple Output
 
-llms.txt doesn't exist in isolation. It's one piece of a larger architecture for making websites readable by AI. For a full comparison of what different static site generators include out of the box — covering canonical URLs, Open Graph tags, JSON-LD and GEO features — see [which static site generators have built-in SEO](/posts/static-site-generator-with-built-in-seo).
+llms.txt doesn't exist in isolation. It's one piece of a larger architecture for making websites readable by AI. For a full comparison of what different static site generators include out of the box — covering canonical URLs, Open Graph tags, JSON-LD and GEO features — see [which static site generators have built-in SEO](/blog/static-site-generator-built-in-seo).
 
 The complete pattern has three layers:
 
@@ -143,9 +143,9 @@ Most articles about llms.txt treat it as a standalone file you bolt onto an exis
 
 Here's why: llms.txt links to pages. If those links point to HTML, the AI still has to parse HTML. If those links point to `.md` files that your build pipeline generates alongside every HTML page, the AI gets clean markdown from end to end. The discovery file and the content files speak the same language.
 
-This is what [Generative Engine Optimization](/posts/generative-engine-optimization) (GEO) looks like in practice. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews. The triple output pattern covers both. llms.txt is one piece of a broader GEO strategy that includes markdown copies, schema markup, and AI crawler management.
+This is what [Generative Engine Optimization](/blog/generative-engine-optimization) (GEO) looks like in practice. Traditional SEO optimizes for Google's index. GEO optimizes for AI-generated answers in ChatGPT, Perplexity, Claude, and Google's AI Overviews. The triple output pattern covers both. llms.txt is one piece of a broader GEO strategy that includes markdown copies, schema markup, and AI crawler management.
 
-Traditional static site generators like [Hugo](/posts/hugo-alternative) produce HTML only. You'd need to build the markdown output and llms.txt generation yourself, page by page. seite produces all three formats on every `seite build`:
+Traditional static site generators like [Hugo](/blog/hugo-alternative) produce HTML only. You'd need to build the markdown output and llms.txt generation yourself, page by page. seite produces all three formats on every `seite build`:
 
 ```
 dist/
@@ -181,7 +181,7 @@ Several tools can generate llms.txt for you:
 - **Documentation platforms:** [Mintlify](https://www.mintlify.com/blog/how-to-generate-llmstxt-file-automatically), [GitBook](https://www.gitbook.com/blog/what-is-llms-txt), and Fern have built-in support
 - **Standalone tools:** [llmstxtgenerator.org](https://llmstxtgenerator.org/) generates files from any URL
 
-These solve the generation problem but add a dependency. You need the plugin to keep working, and you need to remember to regenerate when content changes. If you're a developer considering [moving away from WordPress](/posts/wordpress-alternative-for-developers), a build-pipeline approach eliminates the plugin dependency entirely.
+These solve the generation problem but add a dependency. You need the plugin to keep working, and you need to remember to regenerate when content changes. If you're a developer considering [moving away from WordPress](/blog/wordpress-alternative-for-developers), a build-pipeline approach eliminates the plugin dependency entirely.
 
 ### Option 3: Build Pipeline Integration
 
@@ -265,7 +265,7 @@ The cost of implementing llms.txt is near zero. The cost of not having it, if th
 Three things to remember:
 
 1. **llms.txt is a reading guide for AI, not a ranking signal.** It helps AI systems understand your site accurately. That's valuable even if it doesn't move your search position today.
-2. **The triple output pattern matters more than any single file.** HTML + markdown + llms.txt together make your site readable by every audience. llms.txt alone is a half-measure.
+2. **The triple output pattern matters more than any single file.** HTML + markdown + llms.txt together make your site readable by every audience. llms.txt alone is a half-measure. For the full argument on why your site now needs to reach three distinct audiences, see [The Third Audience: Why Your Website Needs to Speak AI](/blog/website-ai-discoverability).
 3. **The best implementation is the one you don't think about.** If your build tool generates llms.txt automatically, the debate about whether it "works" becomes irrelevant. You get it for free.
 
 If you want a site that outputs HTML, markdown, and llms.txt from a single build command:

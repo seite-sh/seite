@@ -89,7 +89,7 @@ seite.toml        # Site configuration
 
 ### Posts
 - Directory: `content/posts/`
-- URL prefix: `/posts`
+- URL prefix: `/blog`
 - Template: `post.html`
 - Date-based: yes (filename format: `YYYY-MM-DD-slug.md`)
 - Included in RSS feed (`/feed.xml`)

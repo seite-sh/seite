@@ -235,6 +235,20 @@
         footer { margin-top: 4rem; font-size: 0.85rem; color: #aaa; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #333; color: #fff; z-index: 100; text-decoration: none; font-family: system-ui, sans-serif; }
         .skip-link:focus { top: 0; }
+        .toc-level-1 { padding-left: 0; }
+        .toc-level-2 { padding-left: 1rem; }
+        .toc-level-3 { padding-left: 2rem; }
+        .toc-level-4 { padding-left: 3rem; }
+        .article-nav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #ddd; font-size: 0.9rem; }
+        .article-nav a { text-decoration: none; max-width: 45%; color: #666; }
+        .article-nav a:hover { color: #333; }
+        .tags-index { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+        .tag-link { color: #888; font-size: 0.9rem; text-decoration: none; font-style: italic; }
+        .tag-link:hover { color: #555; }
+        .tag-count { font-size: 0.85em; opacity: 0.6; }
+        .excerpt { color: #666; font-size: 0.95rem; line-height: 1.65; margin: 0.3rem 0 0; }
+        .roadmap-milestone--left { border-left: 2px solid #ddd; padding-left: 1rem; }
+        .roadmap-milestone--right { border-left: 2px solid #eee; padding-left: 1rem; }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}
