@@ -413,3 +413,22 @@ Instead of WordPress REST API, use:
 - Read `CLAUDE.md` for full site documentation
 
 <!-- seite-seomachine-end -->
+
+
+## Subdomain Deploys
+
+Set `subdomain = "docs"` on a collection in `seite.toml` to deploy it to `docs.{base_domain}`.
+
+```toml
+[[collections]]
+name = "docs"
+subdomain = "docs"
+deploy_project = "my-site-docs"  # optional, auto-created by deploy --setup
+```
+
+**What happens:**
+- Collection builds to `dist-subdomains/{name}/` with own sitemap, RSS, robots.txt, search index
+- Cross-subdomain links are auto-rewritten to absolute URLs (e.g., `/docs/setup` → `https://docs.example.com/setup`)
+- Dev server previews at `/{name}-preview/`
+- `seite deploy --setup` auto-creates Cloudflare/Netlify projects for subdomain collections
+- GitHub Pages does not support subdomain deploys — use Cloudflare Pages or Netlify

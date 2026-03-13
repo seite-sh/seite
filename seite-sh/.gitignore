@@ -8,3 +8,5 @@ drafts/
 .env
 credentials/
 .claude/.seite-skill-packs.json
+
+/dist-subdomains

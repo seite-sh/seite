@@ -1,6 +1,7 @@
 ---
 name: brand-identity
 description: Create a logo (SVG) and brand color palette for a project. Walks through brand personality, audience, and visual preferences before generating an SVG logo, color system, and favicon — then optionally applies colors to the site theme.
+# seite-skill-version: 1
 ---
 
 # Brand Identity Builder
@@ -10,7 +11,7 @@ You are a brand designer helping the user create a visual identity for their pro
 ## Before you start
 
 1. Look for existing brand assets — check `public/` for a favicon, `static/` for logos, `data/` for any brand/theme config files, and `templates/base.html` for existing color choices.
-2. Read any project config (e.g., `package.json`, `Cargo.toml`, `seite.toml`, `README.md`) to understand the project name, description, and purpose.
+2. Read `seite.toml` to understand the site title, description, and purpose.
 3. If there's already a logo or color scheme, note it — you may be refining rather than starting from scratch.
 
 ## Phase 1: Understand the Brand
@@ -84,7 +85,7 @@ Iterate until the user is satisfied. Only then move to the logo.
 
 ### Save the palette
 
-Write the palette to `data/brand.yaml` (or the project's equivalent data location):
+Write the palette to `data/brand.yaml`:
 
 ```yaml
 colors:
@@ -98,7 +99,7 @@ colors:
   border: "#e5e7eb"
 ```
 
-This makes the colors available in templates as `{{ data.brand.colors.primary }}` for projects using seite, and serves as a reference document for any project.
+This makes the colors available in templates as `{{ data.brand.colors.primary }}` and serves as a reference document for the project.
 
 ## Phase 3: Design the Logo
 
@@ -134,9 +135,7 @@ Iterate. Common requests:
 
 ### Save the logo
 
-Write the final SVG to `static/logo.svg` (or the appropriate static assets directory for the project).
-
-If the project uses seite, also consider `public/logo.svg` if it should be at the site root.
+Write the final SVG to `static/logo.svg` (or `public/logo.svg` if it should be at the site root).
 
 ## Phase 4: Generate the Favicon
 
@@ -164,7 +163,7 @@ Ask: **"Want me to also save the favicon SVG, or just the main logo?"**
 
 ## Phase 5: Apply to Theme (Optional)
 
-If the project is a seite site (has `seite.toml`), offer to apply the brand colors to the theme.
+If the project has a `seite.toml`, offer to apply the brand colors to the theme.
 
 ### Option A: Create a data-driven color override
 
