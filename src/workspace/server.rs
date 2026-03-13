@@ -352,6 +352,16 @@ fn watch_and_rebuild_workspace(
     while !stop.load(Ordering::Relaxed) {
         match rx.recv_timeout(Duration::from_secs(1)) {
             Ok(Ok(event)) => {
+                // Ignore metadata-only events (e.g. atime updates from file reads on
+                // strictatime/relatime systems) — only react to content changes.
+                if matches!(
+                    event.kind,
+                    notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
+                        | notify::EventKind::Access(_)
+                ) {
+                    continue;
+                }
+
                 // Drain additional events within debounce window
                 while rx.recv_timeout(debounce).is_ok() {}
 
@@ -409,6 +419,10 @@ fn watch_and_rebuild_workspace(
                     }
                     build_version.fetch_add(1, Ordering::Relaxed);
                 }
+
+                // Drain events that accumulated during the build so they don't
+                // immediately trigger another rebuild.
+                while rx.try_recv().is_ok() {}
             }
             Ok(Err(e)) => {
                 human::error(&format!("Watch error: {e}"));
