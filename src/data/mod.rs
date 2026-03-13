@@ -38,7 +38,7 @@ pub fn load_data_dir(data_dir: &Path) -> Result<serde_json::Value> {
             Some("yaml" | "yml" | "json" | "toml") => {}
             _ => {
                 eprintln!(
-                    "Warning: skipping unknown data file format: {}",
+                    "Warning: skipping unsupported file format: {} (supported: yaml, yml, json, toml)",
                     path.display()
                 );
                 continue;
