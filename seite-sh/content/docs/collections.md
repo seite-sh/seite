@@ -1,8 +1,10 @@
 ---
-title: "Collections"
-description: "Configure content collections — posts, docs, pages, changelog, roadmap, and trust center — with pagination, date handling, and RSS."
+title: "Content Collections"
+description: "Configure content collections in your seite static site: posts, docs, pages, changelog, roadmap, and trust center, with pagination, RSS, and subdomain support."
 weight: 3
 ---
+
+Collections are the core content model in seite. The static site generator ships six collection presets that handle common patterns, from date-ordered blog posts to nested documentation, so you can start writing content immediately.
 
 ## Overview
 
@@ -10,16 +12,16 @@ Collections are groups of related content. Each collection has its own directory
 
 | Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
 |--------|-----------|-------|-----|--------|--------|-------------|
-| posts  | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
-| docs   | `content/docs/`  | No  | No  | Yes | Yes | `/docs/slug` |
-| pages  | `content/pages/` | No  | No  | No  | No | `/slug` |
+| posts | `content/posts/` | Yes | Yes | Yes | No | `/posts/slug` |
+| docs | `content/docs/` | No | No | Yes | Yes | `/docs/slug` |
+| pages | `content/pages/` | No | No | No | No | `/slug` |
 | changelog | `content/changelog/` | Yes | Yes | Yes | No | `/changelog/slug` |
 | roadmap | `content/roadmap/` | No | No | Yes | No | `/roadmap/slug` |
-| trust  | `content/trust/`   | No | No | Yes | Yes | `/trust/slug` |
+| trust | `content/trust/` | No | No | Yes | Yes | `/trust/slug` |
 
 ## Defining Collections
 
-Collections are configured in `seite.toml`:
+Collections are configured in `seite.toml` (created during [`seite init`](/docs/getting-started)):
 
 ```toml
 [[collections]]
@@ -91,7 +93,7 @@ content/docs/
     └── config.md
 ```
 
-Nested docs get URLs like `/docs/guides/setup`. The docs theme shows a sidebar with sections grouped by directory.
+Nested docs get URLs like `/docs/guides/setup`: the docs theme shows a sidebar with sections grouped by directory.
 
 {{% callout(type="info") %}}
 Subdirectories automatically become sidebar sections. Create `content/docs/guides/` and every markdown file inside it appears under a "Guides" heading in the sidebar navigation.
@@ -136,11 +138,11 @@ content/changelog/
 
 Use tags to categorize changes. Tags render as colored badges in the changelog templates:
 
-- `new` — new features (green)
-- `fix` — bug fixes (blue)
-- `breaking` — breaking changes (red)
-- `improvement` — enhancements (purple)
-- `deprecated` — deprecations (gray)
+- `new`: new features (green)
+- `fix`: bug fixes (blue)
+- `breaking`: breaking changes (red)
+- `improvement`: enhancements (purple)
+- `deprecated`: deprecations (gray)
 
 ```bash
 seite new changelog "v1.0.0" --tags new,improvement
@@ -159,10 +161,10 @@ content/roadmap/
 
 Use tags for status and `weight` for priority ordering within each group:
 
-- `planned` — upcoming work
-- `in-progress` — actively being worked on
-- `done` — completed
-- `cancelled` — no longer planned
+- `planned`: upcoming work
+- `in-progress`: actively being worked on
+- `done`: completed
+- `cancelled`: no longer planned
 
 ```yaml
 ---
@@ -228,7 +230,7 @@ deploy_project = "my-docs"
 
 The dev server previews subdomain content at `/{name}-preview/` (e.g., `localhost:3000/docs-preview/`).
 
-Deploy with `seite deploy` — subdomain collections are deployed automatically after the main site. GitHub Pages does not support per-collection subdomains; use Cloudflare Pages or Netlify.
+Deploy with `seite deploy`: subdomain collections are deployed automatically after the main site. GitHub Pages does not support per-collection subdomains; use Cloudflare Pages or Netlify. See the [Deployment guide](/docs/deployment) for platform-specific setup.
 
 ## Collection Index Pages
 
@@ -239,7 +241,7 @@ content/docs/index.md        → /docs/     (collection index)
 content/changelog/index.md   → /changelog/ (collection index)
 ```
 
-This works identically to how `content/pages/index.md` provides content for the site homepage. The `index.md` is extracted from the collection — it won't appear as a regular item in listings. All frontmatter fields are available in the template context (`page.title`, `page.description`, `page.extra`, etc.).
+This works identically to how `content/pages/index.md` provides content for the site homepage. The `index.md` is extracted from the collection. It won't appear as a regular item in listings. All frontmatter fields are available in the template context (`page.title`, `page.description`, `page.extra`, etc.).
 
 For paginated collections, the `index.md` content appears only on page 1.
 
@@ -264,7 +266,7 @@ extra:
 ---
 ```
 
-This generates an instant redirect at `/docs/` → `/docs/getting-started`. This is the most common pattern for docs sites — route the docs landing page directly to the first doc.
+This generates an instant redirect at `/docs/` → `/docs/getting-started`. This is the most common pattern for docs sites: route the docs landing page directly to the first doc.
 
 Redirects work for both regular collection indexes and subdomain roots.
 
@@ -279,9 +281,9 @@ paginate = 10
 ```
 
 This generates:
-- `/posts/` — page 1
-- `/posts/page/2/` — page 2
-- `/posts/page/3/` — page 3, etc.
+- `/posts/`: page 1
+- `/posts/page/2/`: page 2
+- `/posts/page/3/`: page 3, etc.
 
 Templates receive pagination context:
 
@@ -294,19 +296,19 @@ Templates receive pagination context:
 
 ## Singular/Plural
 
-Both `seite new post` and `seite new posts` work — the CLI normalizes singular to plural automatically.
+Both `seite new post` and `seite new posts` work. The CLI normalizes singular to plural automatically.
 
 ## Tag Pages
 
 Tags are collected from all posts and generate archive pages:
 
-- `/tags/` — tag index with all tags and counts
-- `/tags/rust/` — all posts tagged "rust"
+- `/tags/`: tag index with all tags and counts
+- `/tags/rust/`, all posts tagged "rust"
 
 Tag pages are i18n-aware and included in the sitemap.
 
 ## Next Steps
 
-- [Configuration](/docs/configuration) — full reference for all collection fields and site settings
-- [Templates & Themes](/docs/templates) — customize how collections are rendered
-- [Shortcodes](/docs/shortcodes) — add rich content like videos, callouts, and figures to your pages
+- [Configuration](/docs/configuration): full reference for all collection fields and site settings
+- [Templates & Themes](/docs/templates): customize how collections are rendered
+- [Shortcodes](/docs/shortcodes): add rich content like videos, callouts, and figures to your pages

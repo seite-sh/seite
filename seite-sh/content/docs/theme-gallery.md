@@ -1,12 +1,14 @@
 ---
 title: "Theme Gallery"
-description: "Browse all bundled themes with visual previews. Install community themes or generate your own with AI."
+description: "Browse all 10 bundled seite themes with visual previews. Install community themes from URLs or generate your own custom theme with AI."
 weight: 10
 ---
 
+seite ships 10 production-ready themes compiled directly into the static site generator binary, no downloads, no dependencies, instant access.
+
 ## Bundled Themes
 
-Six production-ready themes ship with every `seite` binary. Each is self-contained — includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
+10 production-ready themes ship with every `seite` binary. Each is self-contained: includes SEO meta tags, search, pagination, language switcher, and accessibility features. Apply any theme instantly:
 
 ```bash
 seite theme apply <name>
@@ -101,7 +103,7 @@ seite theme apply <name>
 </div>
 
 {{% callout(type="tip") %}}
-In the dev server REPL, type `theme dark` to instantly preview any theme with live reload — no restart needed.
+In the dev server REPL, type `theme dark` to instantly preview any theme with live reload, no restart needed.
 {{% end %}}
 
 ## Install Community Themes
@@ -148,7 +150,7 @@ seite theme create "neon cyberpunk with scanline effects and monospace everythin
 This spawns Claude Code to generate a complete `templates/base.html` with all required blocks, SEO tags, search, pagination, and accessibility features. Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
 
 {{% callout(type="info") %}}
-AI-generated themes are production-ready — Claude includes all SEO meta tags, search functionality, pagination, accessibility features, and responsive design automatically.
+AI-generated themes are production-ready. Claude includes all SEO meta tags, search functionality, pagination, accessibility features, and responsive design automatically.
 {{% end %}}
 
 After generating, export it to share:
@@ -162,13 +164,13 @@ seite theme export cyberpunk --description "Neon cyberpunk with scanlines"
 
 Every theme (bundled or installed) is a single Tera template file that serves as `base.html`. A valid theme must include:
 
-- **HTML structure** — `<!DOCTYPE html>` through `</html>`
-- **SEO meta tags** — canonical URL, Open Graph, Twitter Card, JSON-LD
-- **Template blocks** — `title`, `head`, `extra_css`, `header`, `content`, `footer`, `extra_js`
-- **Search** — search input + client-side JavaScript using `search-index.json`
-- **Pagination** — navigation when pagination context exists
-- **Language switcher** — hreflang links + switcher UI for multilingual sites
-- **Accessibility** — skip-to-main link, ARIA labels, focus rings, `prefers-reduced-motion`
+- **HTML structure**: `<!DOCTYPE html>` through `</html>`
+- **SEO meta tags**: canonical URL, Open Graph, Twitter Card, JSON-LD
+- **Template blocks**: `title`, `head`, `extra_css`, `header`, `content`, `footer`, `extra_js`
+- **Search**: search input + client-side JavaScript using `search-index.json`
+- **Pagination**: navigation when pagination context exists
+- **Language switcher**: hreflang links + switcher UI for multilingual sites
+- **Accessibility**: skip-to-main link, ARIA labels, focus rings, `prefers-reduced-motion`
 
 All inline CSS (no external stylesheets) so the theme is completely self-contained.
 
@@ -186,6 +188,6 @@ In the dev server REPL, type `theme` to list themes or `theme <name>` to apply a
 
 ## Next Steps
 
-- [Building Custom Themes](/docs/custom-themes) — step-by-step guide to creating a theme from scratch
-- [Templates & Themes](/docs/templates) — customize theme blocks, override templates, and use data files
-- [AI Agent](/docs/agent) — use Claude for content creation, site management, and more
+- [Building Custom Themes](/docs/custom-themes): step-by-step guide to creating a theme from scratch
+- [Templates & Themes](/docs/templates): customize theme blocks, override templates, and use data files
+- [AI Agent](/docs/agent): use Claude for content creation, site management, and more

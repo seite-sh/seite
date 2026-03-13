@@ -49,6 +49,17 @@ url_prefix = "/roadmap"
 nested = false
 default_template = "roadmap-item.html"
 
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/blog"
+nested = false
+default_template = "post.html"
+
 [build]
 output_dir = "dist"
 content_dir = "content"

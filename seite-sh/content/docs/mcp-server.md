@@ -1,18 +1,41 @@
 ---
-title: "MCP Server"
-description: "Structured AI access to site content, configuration, themes, and build tools via the Model Context Protocol."
+title: "MCP Server for AI Integration"
+description: "Give AI tools structured access to your static site's content, configuration, and build tools via the Model Context Protocol. Auto-configured, no API keys."
 weight: 10
 ---
 
+AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is what makes the [AI agent](/docs/agent) and other AI integrations understand your static site generator project as a project, not just a pile of files.
+
 ## Overview
 
-`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically — no API keys or setup required.
+`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically, no API keys or setup required.
 
 The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
 
+## Why MCP?
+
+Without MCP, an AI tool working on your site has to:
+1. Find and read `seite.toml` to understand your configuration
+2. List directories to discover collections
+3. Parse YAML frontmatter from each markdown file
+4. Guess which themes are available by reading template files
+5. Run `seite build` via shell and parse terminal output for errors
+
+With MCP, the same tool makes a single structured request and gets back typed JSON:
+
+```
+Request:  resources/read  →  seite://content/posts
+Response: [
+  {"title": "Rust Error Handling", "date": "2026-03-01", "tags": ["rust", "tutorial"], "slug": "rust-error-handling", "url": "/posts/rust-error-handling", "draft": false},
+  {"title": "Why Static Sites", "date": "2026-02-15", "tags": ["web"], "slug": "why-static-sites", "url": "/posts/why-static-sites", "draft": false}
+]
+```
+
+No file parsing. No guessing. The AI tool gets clean data and can focus on what you actually asked it to do.
+
 ## How It Works
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in `.claude/settings.json`:
+The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in `.claude/settings.json` (created by `seite init` or added with `seite upgrade`: see the [configuration docs](/docs/configuration) for details on `seite.toml`):
 
 ```json
 {
@@ -101,6 +124,14 @@ Look up page documentation by topic or keyword.
 
 When `topic` matches a doc slug, returns the full page. When `query` is provided, searches across all documentation and returns matching sections with context.
 
+## Practical Example
+
+Say you're using Claude Code and ask: "Add a new blog post summarizing our three most recent posts."
+
+**Without MCP**, the AI has to `glob` for markdown files, `read` each one, parse YAML frontmatter manually, sort by date, extract titles and descriptions, then write the summary post. Multiple tool calls, fragile parsing, easy to miss edge cases.
+
+**With MCP**, the AI calls `seite://content/posts`, gets a sorted JSON array of all posts with metadata, picks the top three, and writes the summary. One resource call instead of a dozen file operations. The [AI agent](/docs/agent) uses this automatically. You don't need to think about it.
+
 ## Manual Testing
 
 You can test the MCP server manually by sending JSON-RPC messages:
@@ -117,6 +148,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"
 
 ## Next Steps
 
-- [AI Agent](/docs/agent) — interactive AI sessions with `seite agent`
-- [CLI Reference](/docs/cli-reference) — the `seite mcp` command reference
-- [Configuration](/docs/configuration) — the full `seite.toml` reference
+- [AI Agent](/docs/agent): interactive AI sessions with `seite agent`
+- [CLI Reference](/docs/cli-reference): the `seite mcp` command reference
+- [Configuration](/docs/configuration): the full `seite.toml` reference
+- [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native

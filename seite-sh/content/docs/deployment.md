@@ -1,16 +1,18 @@
 ---
-title: "Deployment"
-description: "Deploy your seite site to GitHub Pages, Cloudflare Pages, or Netlify."
+title: "Deploying Your Static Site"
+description: "Deploy your seite static site to GitHub Pages, Cloudflare Pages, or Netlify with one command. Preview deploys, custom domains, and subdomain support built in."
 weight: 8
 ---
+
+Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. Preview deploys happen automatically when you push from a branch, and custom domains are wired up interactively.
 
 ## Overview
 
 `seite` supports three deployment targets out of the box:
 
-- **GitHub Pages** — git-based deployment with auto-generated GitHub Actions
-- **Cloudflare Pages** — wrangler-based deployment
-- **Netlify** — CLI-based deployment
+- **GitHub Pages**: git-based deployment with auto-generated GitHub Actions
+- **Cloudflare Pages**: wrangler-based deployment
+- **Netlify**: CLI-based deployment
 
 ## Which Target Should I Choose?
 
@@ -36,7 +38,7 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 {{% end %}}
 
 {{% callout(type="info") %}}
-`seite` runs pre-flight checks before every deploy — verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
+`seite` runs pre-flight checks before every deploy: verifying the output directory exists, `base_url` isn't localhost, required CLI tools are installed, and platform config is valid. If a check fails, interactive recovery will offer to fix it.
 {{% end %}}
 
 ## Auto-Commit and Push
@@ -61,7 +63,7 @@ seite deploy --no-commit
 
 ## GitHub Pages
 
-The default deployment target. When you run `seite init` with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
+The default deployment target. When you run [`seite init`](/docs/getting-started) with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
 
 ### Manual deployment
 
@@ -96,7 +98,7 @@ repo = "https://github.com/user/repo.git"
 
 ### Setup
 
-1. Install wrangler: `npm install -g wrangler`
+1. Install wrangler: `npm install -g wrangler` (see [Cloudflare Pages docs](https://developers.cloudflare.com/pages/) for details)
 2. Authenticate: `wrangler login`
 3. Configure:
 
@@ -125,7 +127,7 @@ seite deploy --target cloudflare --dry-run
 
 ### Setup
 
-1. Install Netlify CLI: `npm install -g netlify-cli`
+1. Install Netlify CLI: `npm install -g netlify-cli` (see [Netlify docs](https://docs.netlify.com/) for details)
 2. Authenticate: `netlify login`
 3. Configure:
 
@@ -175,7 +177,7 @@ When `deploy.domain` is set, pre-flight checks will verify the domain is attache
 
 ## Subdomain Deploys
 
-Collections with `subdomain` set are deployed as separate sites. Each subdomain collection gets its own output directory (`dist-subdomains/{name}/`) and is deployed independently after the main site.
+[Collections](/docs/collections) with `subdomain` set are deployed as separate sites. Each subdomain collection gets its own output directory (`dist-subdomains/{name}/`) and is deployed independently after the main site.
 
 ```toml
 [[collections]]
@@ -233,5 +235,7 @@ All three platforms serve `404.html` automatically for missing routes.
 
 ## Next Steps
 
-- [Configuration](/docs/configuration) — all deploy-related settings in `seite.toml`
-- [CLI Reference](/docs/cli-reference) — complete list of `seite deploy` flags
+- [Configuration](/docs/configuration), all deploy-related settings in `seite.toml`
+- [CLI Reference](/docs/cli-reference): complete list of `seite deploy` flags and options
+- [Collections](/docs/collections): configure subdomain deploys and collection routing
+- [Getting Started](/docs/getting-started): set up a new seite site from scratch

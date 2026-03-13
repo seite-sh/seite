@@ -1,8 +1,10 @@
 ---
-title: "CLI Reference"
-description: "Complete reference for all seite CLI commands, flags, and options."
+title: "seite CLI Reference"
+description: "Complete reference for every seite command, flag, and option, from init and build to deploy, agent, and self-update. Includes workspace and MCP commands."
 weight: 11
 ---
+
+Every feature of the seite static site generator is accessible through its CLI. This page documents every command, flag, and option.
 
 {{% callout(type="tip") %}}
 Run `seite <command> --help` for quick inline help on any command.
@@ -14,15 +16,15 @@ Run `seite <command> --help` for quick inline help on any command.
 
 | Command | Description |
 |---------|-------------|
-| `init`  | Create a new site |
+| `init` | Create a new site |
 | `build` | Build the site |
 | `serve` | Development server with live reload |
-| `new`   | Create content files |
+| `new` | Create content files |
 | `agent` | AI assistant with site context |
 | `theme` | Manage themes |
 | `deploy`| Deploy to hosting platforms |
 | `workspace` | Manage multi-site workspaces |
-| `mcp`   | MCP server for AI tool integration |
+| `mcp` | MCP server for AI tool integration |
 | `upgrade` | Update project config to match current binary |
 | `self-update` | Update the seite binary to the latest release |
 
@@ -40,7 +42,7 @@ These flags work with any command:
 
 ## seite init
 
-Create a new site directory with scaffolded structure.
+Create a new site directory with scaffolded structure. See [Getting Started](/docs/getting-started) for a guided walkthrough.
 
 ```bash
 seite init <name> [options]
@@ -78,7 +80,7 @@ seite build [options]
 
 The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
 
-After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found — useful in CI pipelines.
+After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found: useful in CI pipelines.
 
 ## seite serve
 
@@ -95,12 +97,12 @@ seite serve [options]
 
 The server injects a live-reload script that polls for changes. An interactive REPL accepts commands:
 
-- `new <collection> "Title"` — create content
-- `agent [prompt]` — launch AI agent
-- `theme apply <name>` — apply theme and rebuild
-- `build` — rebuild the site
-- `status` — show server info
-- `stop` — stop the server
+- `new <collection> "Title"`: create content
+- `agent [prompt]`: launch AI agent
+- `theme apply <name>`: apply theme and rebuild
+- `build`: rebuild the site
+- `status`: show server info
+- `stop`: stop the server
 
 ## seite new
 
@@ -133,14 +135,14 @@ seite agent [prompt]
 ```
 
 Two modes:
-- **Interactive**: `seite agent` — opens a Claude Code session
-- **One-shot**: `seite agent "write a blog post about Rust"` — runs and exits
+- **Interactive**: `seite agent`: opens a Claude Code session
+- **One-shot**: `seite agent "write a blog post about Rust"`: runs and exits
 
 The agent receives your site config, content inventory, template list, and available CLI commands. It can read, write, and edit files. Requires Claude Code: `npm install -g @anthropic-ai/claude-code`.
 
 ## seite collection
 
-Manage site collections — add presets to an existing site or list current collections.
+Manage site collections: add presets to an existing site or list current collections.
 
 ```bash
 seite collection <subcommand>
@@ -161,7 +163,7 @@ seite collection list             # Show all configured collections
 
 ## seite theme
 
-Manage site themes — list, apply, install, export, and generate.
+Manage site themes: list, apply, install, export, and generate.
 
 ```bash
 seite theme <subcommand>
@@ -184,7 +186,7 @@ seite theme install https://example.com/themes/aurora.tera --name my-aurora
 seite theme export my-theme --description "My custom dark theme"
 ```
 
-Six bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
+10 bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
 ## seite deploy
 
@@ -289,13 +291,13 @@ seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 ```
 
 Upgrade is **additive and non-destructive**:
-- Merges into `.claude/settings.json` — adds new entries, never removes yours
-- Appends to `CLAUDE.md` — adds new sections, never modifies existing content
-- Creates `.seite/config.json` if missing — tracks the project's config version
+- Merges into `.claude/settings.json`: adds new entries, never removes yours
+- Appends to `CLAUDE.md`: adds new sections, never modifies existing content
+- Creates `.seite/config.json` if missing: tracks the project's config version
 - Each upgrade step is version-gated, so running it on a current project is a fast no-op
 
 {{% callout(type="tip") %}}
-`seite build` will nudge you with a one-liner when your project config is outdated: *"Run `seite upgrade` for new features."* The build still succeeds — the nudge is informational only.
+`seite build` will nudge you with a one-liner when your project config is outdated: *"Run `seite upgrade` for new features."* The build still succeeds. The nudge is informational only.
 {{% end %}}
 
 ## seite self-update

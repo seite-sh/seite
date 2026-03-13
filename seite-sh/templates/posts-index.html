@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block title %}Blog — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+    }
+
+    @keyframes bl-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .bl-page { animation: none; opacity: 1; }
+    }
+
+    .bl-page {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 3.5rem 1.5rem 6rem;
+        animation: bl-fade-in 0.5s ease both;
+    }
+
+    /* ── Header ── */
+    .bl-header {
+        margin-bottom: 3rem;
+    }
+
+    .bl-eyebrow {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        margin-bottom: 0.75rem;
+    }
+
+    .bl-header-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1.5rem;
+    }
+
+    .bl-page > .bl-header h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin: 0 0 0.5rem;
+        line-height: 1.1;
+    }
+
+    .bl-subtitle {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0;
+    }
+    .bl-subtitle a { color: var(--green); }
+
+    .bl-rss {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        padding: 0.3rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        transition: color 0.12s, border-color 0.12s;
+        flex-shrink: 0;
+    }
+    .bl-rss:hover {
+        color: var(--green);
+        border-color: var(--green-border);
+        text-decoration: none;
+    }
+
+    /* ── Featured post (first item) ── */
+    .bl-featured {
+        padding: 0;
+        margin-bottom: 2.5rem;
+    }
+
+    .bl-featured-label {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 0.75rem;
+    }
+
+    .bl-featured h2 {
+        font-family: var(--serif);
+        font-size: clamp(1.3rem, 3vw, 1.6rem);
+        font-weight: 400;
+        font-style: italic;
+        color: var(--heading);
+        margin: 0 0 0.5rem;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+    }
+    .bl-featured h2 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    .bl-featured h2 a:hover { color: var(--green); text-decoration: none; }
+
+    .bl-featured-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        margin-bottom: 0.65rem;
+    }
+    .bl-featured-meta time { color: var(--text-muted); }
+    .bl-featured-meta .meta-sep { color: var(--border-light); user-select: none; }
+
+    .bl-featured p {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+        margin: 0;
+    }
+
+    .bl-featured-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.75rem;
+    }
+    .bl-featured-tags a {
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        padding: 0.12rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        color: var(--green);
+        text-decoration: none;
+        transition: filter 0.1s;
+    }
+    .bl-featured-tags a:hover {
+        filter: brightness(1.15);
+        text-decoration: none;
+    }
+
+    .bl-featured-read {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.8rem;
+        color: var(--green);
+        text-decoration: none;
+        margin-top: 1rem;
+        transition: gap 0.15s;
+    }
+    .bl-featured-read:hover {
+        gap: 0.5rem;
+        text-decoration: none;
+    }
+
+    /* ── Post list ── */
+    .bl-list-heading {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .bl-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .bl-item {
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .bl-item:last-child {
+        border-bottom: none;
+    }
+
+    .bl-item h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--heading);
+        margin: 0 0 0.35rem;
+        letter-spacing: -0.01em;
+        line-height: 1.3;
+    }
+    .bl-item h2 a {
+        color: var(--heading);
+        text-decoration: none;
+        transition: color 0.12s;
+    }
+    .bl-item h2 a:hover { color: var(--green); text-decoration: none; }
+
+    .bl-item-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        margin-bottom: 0.4rem;
+    }
+    .bl-item-meta time { color: var(--text-muted); }
+    .bl-item-meta .meta-sep { color: var(--border-light); user-select: none; }
+
+    .bl-item p {
+        font-size: 0.87rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0;
+    }
+
+    .bl-item-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+    }
+    .bl-item-tags a {
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        padding: 0.12rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        color: var(--green);
+        text-decoration: none;
+        transition: filter 0.1s;
+    }
+    .bl-item-tags a:hover {
+        filter: brightness(1.15);
+        text-decoration: none;
+    }
+
+    /* ── Pagination ── */
+    .bl-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1.5rem;
+        margin-top: 3rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--border);
+        font-size: 0.85rem;
+    }
+    .bl-pagination a {
+        color: var(--green);
+        text-decoration: none;
+        padding: 0.35rem 0.8rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        transition: background 0.1s, border-color 0.1s;
+    }
+    .bl-pagination a:hover {
+        background: var(--bg-raised);
+        border-color: var(--green-border);
+        text-decoration: none;
+    }
+    .bl-page-info { color: var(--text-dim); font-size: 0.8rem; }
+
+    /* ── Empty state ── */
+    .bl-empty {
+        text-align: center;
+        padding: 4rem 1rem;
+        color: var(--text-dim);
+        font-size: 0.95rem;
+    }
+
+    @media (max-width: 640px) {
+        .bl-page {
+            padding: 2rem 1rem 4rem;
+        }
+        .bl-header-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+        .bl-featured {
+            padding: 1.25rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bl-page">
+    <div class="bl-header">
+        <div class="bl-eyebrow">Blog</div>
+        <div class="bl-header-row">
+            <div>
+                <h1>Thoughts &amp; Ideas</h1>
+                <p class="bl-subtitle">On static sites, AI, and the modern web. Subscribe via <a href="{{ lang_prefix }}/feed.xml">RSS</a>.</p>
+            </div>
+            <a href="{{ lang_prefix }}/feed.xml" class="bl-rss" aria-label="RSS Feed">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
+                </svg>
+                RSS
+            </a>
+        </div>
+    </div>
+
+    {% if items | length == 0 %}
+    <div class="bl-empty">{{ t.no_posts | default(value="No posts yet. Check back soon.") }}</div>
+    {% else %}
+
+    {# Featured: first post gets a card treatment #}
+    {% set featured = items | first %}
+    <div class="bl-featured">
+        <div class="bl-featured-label">{{ t.latest | default(value="Latest") }}</div>
+        <h2><a href="{{ featured.url }}">{{ featured.title }}</a></h2>
+        <div class="bl-featured-meta">
+            {% if featured.date %}<time datetime="{{ featured.date }}">{{ featured.date }}</time>{% endif %}
+            {% if featured.reading_time %}<span class="meta-sep">&middot;</span><span>{{ featured.reading_time }} min read</span>{% endif %}
+        </div>
+        {% if featured.description %}<p>{{ featured.description }}</p>{% elif featured.excerpt %}<p>{{ featured.excerpt | striptags | truncate(length=220) }}</p>{% endif %}
+        {% if featured.tags | length > 0 %}
+        <div class="bl-featured-tags">
+            {% for tag in featured.tags %}<a href="{{ lang_prefix }}/blog/tags/{{ tag }}">{{ tag }}</a>{% endfor %}
+        </div>
+        {% endif %}
+        <a href="{{ featured.url }}" class="bl-featured-read">{{ t.read_more | default(value="Read article") }} <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg></a>
+    </div>
+
+    {# Remaining posts #}
+    {% set rest = items | slice(start=1) %}
+    {% if rest | length > 0 %}
+    <div class="bl-list-heading">{{ t.older_posts | default(value="All posts") }}</div>
+    <ul class="bl-list">
+        {% for item in rest %}
+        <li class="bl-item">
+            <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
+            <div class="bl-item-meta">
+                {% if item.date %}<time datetime="{{ item.date }}">{{ item.date }}</time>{% endif %}
+                {% if item.reading_time %}<span class="meta-sep">&middot;</span><span>{{ item.reading_time }} min read</span>{% endif %}
+            </div>
+            {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<p>{{ item.excerpt | striptags | truncate(length=180) }}</p>{% endif %}
+            {% if item.tags | length > 0 %}
+            <div class="bl-item-tags">
+                {% for tag in item.tags %}<a href="{{ lang_prefix }}/blog/tags/{{ tag }}">{{ tag }}</a>{% endfor %}
+            </div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% endif %}
+
+    {% if pagination %}
+    <nav class="bl-pagination" aria-label="{{ t.pagination | default(value='Pagination') }}">
+        {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer | default(value="Newer") }}</a>{% endif %}
+        <span class="bl-page-info">{{ t.page_n_of_total | default(value="Page {n} of {total}") | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+        {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older | default(value="Older") }} &rarr;</a>{% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — {{ site.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+        --serif: 'Instrument Serif', 'Georgia', serif;
+    }
+
+    @keyframes post-fade-in {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .post-page { animation: none; opacity: 1; }
+    }
+
+    .post-page {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2.5rem 1.5rem 6rem;
+        animation: post-fade-in 0.5s ease both;
+    }
+
+    /* ── Breadcrumb ── */
+    .post-breadcrumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 2rem;
+        transition: color 0.15s;
+    }
+    .post-breadcrumb:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+    .post-breadcrumb svg {
+        flex-shrink: 0;
+    }
+
+    /* ── Post header ── */
+    .post-header {
+        margin-bottom: 2.5rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .post-header h1 {
+        font-family: var(--serif);
+        font-size: clamp(2rem, 5vw, 2.8rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        line-height: 1.15;
+        margin: 0 0 1rem;
+    }
+
+    .post-description {
+        font-size: 1.05rem;
+        color: var(--text-muted);
+        line-height: 1.65;
+        margin: 0 0 1.25rem;
+    }
+
+    .post-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.8rem;
+        color: var(--text-dim);
+        margin: 0;
+    }
+
+    .post-meta time {
+        color: var(--text-muted);
+    }
+
+    .post-meta .meta-sep {
+        color: var(--border-light);
+        user-select: none;
+    }
+
+    .post-meta .reading-time {
+        color: var(--text-dim);
+    }
+
+    /* ── Tags ── */
+    .post-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 1rem;
+    }
+
+    .post-tags a {
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
+        padding: 0.12rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        color: var(--green);
+        text-decoration: none;
+        transition: filter 0.1s;
+    }
+    .post-tags a:hover {
+        filter: brightness(1.15);
+        text-decoration: none;
+    }
+
+    /* ── Article content ── */
+    .post-content h2 {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: var(--heading);
+        margin: 2.5rem 0 0.9rem;
+        letter-spacing: -0.025em;
+        line-height: 1.2;
+    }
+
+    .post-content h3 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--heading-sub);
+        margin: 2rem 0 0.65rem;
+    }
+
+    .post-content p {
+        margin-bottom: 1.25rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+
+    .post-content a {
+        color: var(--green);
+    }
+
+    .post-content a:hover {
+        opacity: 0.8;
+    }
+
+    .post-content strong {
+        color: var(--strong);
+    }
+
+    .post-content code {
+        font-family: var(--mono);
+        font-size: 0.82em;
+        background: var(--bg-raised);
+        border: 1px solid var(--border-light);
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+        color: var(--code-color);
+    }
+
+    .post-content pre {
+        background: #2b303b;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: var(--radius);
+        padding: 1.25rem 1.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+    }
+
+    .post-content pre code {
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 0.875rem;
+        color: #c0c5ce;
+    }
+
+    .post-content ul,
+    .post-content ol {
+        margin-bottom: 1.25rem;
+        padding-left: 1.5rem;
+    }
+
+    .post-content li {
+        margin-bottom: 0.35rem;
+        line-height: 1.7;
+    }
+
+    .post-content blockquote {
+        border-left: 3px solid var(--green);
+        padding-left: 1.25rem;
+        color: var(--text-muted);
+        margin: 1.5rem 0;
+        font-style: italic;
+    }
+
+    .post-content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 2.5rem 0;
+    }
+
+    .post-content table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+    }
+
+    .post-content th,
+    .post-content td {
+        border: 1px solid var(--border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+    }
+
+    .post-content th {
+        background: var(--bg-raised);
+        font-weight: 600;
+        color: var(--heading);
+    }
+
+    .post-content img {
+        border-radius: var(--radius);
+        margin: 1.5rem 0;
+    }
+
+    /* ── Post footer ── */
+    .post-footer {
+        margin-top: 3.5rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .post-footer-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+    .post-footer-back:hover {
+        color: var(--green);
+        text-decoration: none;
+    }
+
+    .post-footer-rss {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.72rem;
+        color: var(--text-dim);
+        text-decoration: none;
+        padding: 0.3rem 0.7rem;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        transition: color 0.12s, border-color 0.12s;
+    }
+    .post-footer-rss:hover {
+        color: var(--green);
+        border-color: var(--green-border);
+        text-decoration: none;
+    }
+
+    @media (max-width: 640px) {
+        .post-page {
+            padding: 1.5rem 1rem 4rem;
+        }
+        .post-header h1 {
+            font-size: 1.8rem;
+        }
+        .post-footer {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="post-page">
+    <a href="{{ lang_prefix }}/blog" class="post-breadcrumb">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        {{ t.all_posts | default(value="All posts") }}
+    </a>
+
+    <article>
+        <header class="post-header">
+            <h1>{{ page.title }}</h1>
+            {% if page.description %}<p class="post-description">{{ page.description }}</p>{% endif %}
+            <div class="post-meta">
+                {% if page.date %}<time datetime="{{ page.date }}">{{ page.date }}</time>{% endif %}
+                {% if page.reading_time %}<span class="meta-sep">&middot;</span><span class="reading-time">{{ page.reading_time }} min read</span>{% endif %}
+            </div>
+            {% if page.tags %}
+            <div class="post-tags">
+                {% for tag in page.tags %}<a href="{{ lang_prefix }}/blog/tags/{{ tag }}">{{ tag }}</a>{% endfor %}
+            </div>
+            {% endif %}
+        </header>
+
+        <div class="post-content">{{ page.content | safe }}</div>
+    </article>
+
+    <footer class="post-footer">
+        <a href="{{ lang_prefix }}/blog" class="post-footer-back">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            {{ t.back_to_blog | default(value="Back to blog") }}
+        </a>
+        <a href="{{ lang_prefix }}/feed.xml" class="post-footer-rss" aria-label="RSS Feed">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>
+            </svg>
+            RSS
+        </a>
+    </footer>
+</div>
+{% endblock %}

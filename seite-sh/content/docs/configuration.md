@@ -1,12 +1,14 @@
 ---
-title: "Configuration"
-description: "Complete seite.toml reference — site settings, collections, build options, deployment, languages, and images."
+title: "Site Configuration"
+description: "Complete seite.toml reference for your static site: site settings, collections, build options, deployment targets, languages, images, and analytics."
 weight: 2
 ---
 
+Everything about your seite site is configured in a single `seite.toml` file. The static site generator uses sensible defaults, so most sections are optional: start with `[site]` and `[[collections]]`, then add sections as you need them.
+
 ## Overview
 
-All configuration lives in `seite.toml` at the project root. Here's a complete example:
+All configuration lives in `seite.toml` at the project root, created by [`seite init`](/docs/getting-started). Here's a complete example:
 
 ```toml
 [site]
@@ -100,20 +102,20 @@ When `subdomain` is set on a collection, it gets its own output directory (`dist
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 
 {{% callout(type="tip") %}}
-Enable `minify` for production builds — it strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively — content hashes in filenames ensure browsers always fetch the latest version.
+Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
 {{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
 
 ### CSS processing
 
-seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate design choice — all theme CSS lives inline in the Tera template file, making themes completely self-contained single files with no external dependencies. This means:
+seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate design choice: all theme CSS lives inline in the Tera template file, making themes completely self-contained single files with no external dependencies. This means:
 
 - No build toolchain beyond the `seite` binary itself
-- Themes are portable — install from a URL, no asset pipeline setup
+- Themes are portable: install from a URL, no asset pipeline setup
 - AI-generated themes (`seite theme create`) produce one complete file
 
-Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template — seite copies everything in `static/` to the output directory.
+Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template: seite copies everything in `static/` to the output directory.
 
 See [Building Custom Themes](/docs/custom-themes#css-approach-why-inline-styles) for more detail on this approach.
 
@@ -286,7 +288,7 @@ script_url = "https://stats.example.com/script.js"
 ```
 
 {{% callout(type="tip") %}}
-Privacy-respecting analytics like Plausible, Fathom, and Umami don't use cookies. You can typically use them without a consent banner (`cookie_consent = false`). Google Analytics and GTM set cookies and may require consent under GDPR/ePrivacy — set `cookie_consent = true` for those.
+Privacy-respecting analytics like Plausible, Fathom, and Umami don't use cookies. You can typically use them without a consent banner (`cookie_consent = false`). Google Analytics and GTM set cookies and may require consent under GDPR/ePrivacy: set `cookie_consent = true` for those.
 {{% end %}}
 
 ### Cookie consent banner
@@ -371,7 +373,7 @@ See [Workspaces](/docs/workspace) for the full guide.
 
 ## Next Steps
 
-- [Collections](/docs/collections) — configure how posts, docs, and pages behave
-- [Templates & Themes](/docs/templates) — use config values and data files in your templates
-- [Deployment](/docs/deployment) — deploy with the settings you've configured
-- [Workspaces](/docs/workspace) — manage multiple sites in a single repository
+- [Collections](/docs/collections): configure how posts, docs, and pages behave
+- [Templates & Themes](/docs/templates): use config values and data files in your templates
+- [Deployment](/docs/deployment): deploy with the settings you've configured
+- [Workspaces](/docs/workspace): manage multiple sites in a single repository

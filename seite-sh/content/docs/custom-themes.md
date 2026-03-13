@@ -1,12 +1,14 @@
 ---
 title: "Building Custom Themes"
-description: "Step-by-step guide to creating a custom theme from scratch — template structure, CSS, SEO requirements, and testing."
+description: "Step-by-step guide to creating a custom seite theme from scratch: template structure, inline CSS, SEO meta tags, search, accessibility, and testing."
 weight: 5
 ---
 
+seite takes a single-file approach to theming: every static site generator theme is one self-contained Tera template with HTML, CSS, SEO tags, and JavaScript built in.
+
 ## Overview
 
-Every seite theme is a single Tera template file that serves as `base.html`. It contains the full HTML structure, all CSS (inline), SEO meta tags, search, pagination, and accessibility features. No external stylesheets, no build tools, no preprocessors — one file, completely self-contained.
+Every seite theme is a single Tera template file that serves as `base.html`. It contains the full HTML structure, all CSS (inline), SEO meta tags, search, pagination, and accessibility features. No external stylesheets, no build tools, no preprocessors: one file, completely self-contained.
 
 This guide walks you through creating a theme from scratch. If you'd rather start from an existing theme and modify it, see [Copying a Bundled Theme](#copying-a-bundled-theme).
 
@@ -207,7 +209,7 @@ Render `data.nav` for header links (all bundled themes do this):
 {% endif %}
 ```
 
-Note the `{{ lang_prefix }}` on internal links — this ensures URLs are correct for multilingual sites.
+Note the `{{ lang_prefix }}` on internal links. This ensures URLs are correct for multilingual sites.
 
 ## Adding Search
 
@@ -294,11 +296,11 @@ For multilingual sites, show available translations:
 
 Every theme should include:
 
-- **Skip-to-main link** — `<a href="#main" class="skip-link">Skip to main content</a>` as the first element in `<body>`
-- **Landmark roles** — `role="search"` on search forms, `aria-label` on navigation
-- **Live regions** — `aria-live="polite"` on search results for screen reader announcements
-- **Focus rings** — visible focus indicators on all interactive elements (don't remove `outline`)
-- **Reduced motion** — `@media (prefers-reduced-motion: reduce)` to disable animations
+- **Skip-to-main link**: `<a href="#main" class="skip-link">Skip to main content</a>` as the first element in `<body>`
+- **Landmark roles**: `role="search"` on search forms, `aria-label` on navigation
+- **Live regions**: `aria-live="polite"` on search results for screen reader announcements
+- **Focus rings**: visible focus indicators on all interactive elements (don't remove `outline`)
+- **Reduced motion**: `@media (prefers-reduced-motion: reduce)` to disable animations
 
 ```css
 .skip-link {
@@ -324,10 +326,10 @@ Every theme should include:
 
 seite themes use inline CSS (inside `<style>` tags in the template) rather than external stylesheets or preprocessors like Sass. This is a deliberate design choice:
 
-- **Single-file themes** — one `.tera` file contains everything. Copy it, share it, install it from a URL. No asset dependencies to manage.
-- **Zero build tools** — no Sass compiler, no PostCSS, no Node.js. The single Rust binary handles everything.
-- **Instant portability** — themes work identically on any machine without toolchain setup.
-- **AI-friendly** — when `seite theme create` generates a theme, it produces one complete file. No multi-file coordination needed.
+- **Single-file themes**: one `.tera` file contains everything. Copy it, share it, install it from a URL. No asset dependencies to manage.
+- **Zero build tools**, no Sass compiler, no PostCSS, no Node.js. The single Rust binary handles everything.
+- **Instant portability**: themes work identically on any machine without toolchain setup.
+- **AI-friendly**, when `seite theme create` generates a theme, it produces one complete file. No multi-file coordination needed.
 
 If you need advanced CSS features, modern CSS covers most use cases that previously required preprocessors:
 
@@ -351,7 +353,7 @@ seite theme apply dark
 # Now edit templates/base.html directly
 ```
 
-The applied theme becomes your `templates/base.html`. Modify colors, fonts, spacing, layout — anything you want. The dev server (`seite serve`) live-reloads your changes instantly.
+The applied theme becomes your `templates/base.html`. Modify colors, fonts, spacing, layout: anything you want. The dev server (`seite serve`) live-reloads your changes instantly.
 
 ## Shortcode CSS
 
@@ -379,16 +381,16 @@ figcaption { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
 
 After building your theme, verify these work:
 
-1. **Build succeeds** — `seite build` with no errors
-2. **Homepage renders** — check `/` in the dev server
-3. **Posts render** — check a post page with tags, date, reading time
-4. **Docs render** — check a doc page (sidebar navigation if using docs theme)
-5. **Search works** — type in the search box, results appear
-6. **Pagination works** — if you have enough posts, page navigation renders
-7. **Tags work** — click a tag, `/tags/{tag}/` shows filtered results
-8. **RSS link** — `/feed.xml` returns valid XML
-9. **Mobile** — resize browser below 768px, layout adapts
-10. **Accessibility** — Tab through the page, focus rings are visible
+1. **Build succeeds**: `seite build` with no errors
+2. **Homepage renders**: check `/` in the dev server
+3. **Posts render**: check a post page with tags, date, reading time
+4. **Docs render**: check a doc page (sidebar navigation if using docs theme)
+5. **Search works**: type in the search box, results appear
+6. **Pagination works**: if you have enough posts, page navigation renders
+7. **Tags work**: click a tag, `/tags/{tag}/` shows filtered results
+8. **RSS link**: `/feed.xml` returns valid XML
+9. **Mobile**: resize browser below 768px, layout adapts
+10. **Accessibility**: Tab through the page, focus rings are visible
 
 ## Exporting and Sharing
 
@@ -406,6 +408,6 @@ seite theme install https://your-site.com/themes/my-theme.tera
 
 ## Next Steps
 
-- [Templates & Themes](/docs/templates) — all template variables, blocks, and data file integration
-- [Theme Gallery](/docs/theme-gallery) — visual previews of all 6 bundled themes
-- [Shortcodes](/docs/shortcodes) — content components your theme CSS should support
+- [Templates & Themes](/docs/templates), all template variables, blocks, and data file integration
+- [Theme Gallery](/docs/theme-gallery): visual previews of all 10 bundled themes
+- [Shortcodes](/docs/shortcodes): content components your theme CSS should support

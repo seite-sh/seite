@@ -1,8 +1,10 @@
 ---
-title: "Templates & Themes"
-description: "Customize your site with Tera templates, overridable blocks, and six bundled themes."
+title: "Templates and Themes"
+description: "Customize your seite static site with Tera templates, overridable blocks, 10 bundled themes, and data-driven navigation. No JavaScript framework needed."
 weight: 4
 ---
+
+seite uses Tera templates to give you full control over your site's HTML output. The static site generator ships 10 bundled themes and supports AI-generated custom themes, all as single self-contained files with no external dependencies.
 
 ## Template Engine
 
@@ -130,7 +132,7 @@ To override a block, create a template that extends `base.html`:
 {% endblock %}
 ```
 
-Here's a more complete example — a custom `post.html` with reading time, tags, and a back link:
+Here's a more complete example: a custom `post.html` with reading time, tags, and a back link:
 
 ```html
 {% extends "base.html" %}
@@ -151,7 +153,7 @@ Here's a more complete example — a custom `post.html` with reading time, tags,
 ```
 
 {{% callout(type="info") %}}
-Always use `| safe` with `{{ page.content }}`. Tera escapes HTML by default, so without `| safe` your rendered content would display as raw HTML tags.
+Always use `| safe` with `{{ page.content }}`. Tera escapes HTML by default, so without `| safe` your rendered content would display as raw HTML tags. Content can include rich elements via [shortcodes](/docs/shortcodes): videos, callouts, figures, and contact forms.
 {{% end %}}
 
 ## Extra Frontmatter
@@ -177,7 +179,7 @@ Access in templates:
 ```
 
 {{% callout(type="tip") %}}
-Create `data/nav.yaml` with your links and every bundled theme renders header navigation automatically — no template editing needed.
+Create `data/nav.yaml` with your links and every bundled theme renders header navigation automatically, no template editing needed.
 {{% end %}}
 
 ## Data Files in Templates
@@ -233,11 +235,11 @@ Use in templates:
 {% endif %}
 ```
 
-All 6 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+All 10 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
 
 ## Bundled Themes
 
-Six themes ship with the binary — no downloads needed:
+10 themes ship with the binary, no downloads needed:
 
 ### default
 Clean baseline. 720px centered column, system-ui font, blue links. Good starting point.
@@ -311,7 +313,7 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 
 ## Next Steps
 
-- [Building Custom Themes](/docs/custom-themes) — step-by-step guide to creating a theme from scratch
-- [Theme Gallery](/docs/theme-gallery) — browse all six bundled themes with visual previews
-- [Shortcodes](/docs/shortcodes) — add videos, callouts, and figures to your content
-- [Configuration](/docs/configuration) — data file setup and all `seite.toml` options
+- [Building Custom Themes](/docs/custom-themes): step-by-step guide to creating a theme from scratch
+- [Theme Gallery](/docs/theme-gallery): browse all 10 bundled themes with visual previews
+- [Shortcodes](/docs/shortcodes): add videos, callouts, and figures to your content
+- [Configuration](/docs/configuration): data file setup and all `seite.toml` options

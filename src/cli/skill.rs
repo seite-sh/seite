@@ -201,6 +201,117 @@ fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<(
 }
 
 // ---------------------------------------------------------------------------
+// Public API for agent prompt integration
+// ---------------------------------------------------------------------------
+
+/// Summary of installed skill packs and context files, for agent prompt injection.
+pub struct SkillPackSummary {
+    pub packs: Vec<InstalledPackInfo>,
+    pub context_files: Vec<String>,
+    pub custom_skills: Vec<String>,
+}
+
+pub struct InstalledPackInfo {
+    pub name: String,
+    pub description: String,
+    pub agents: Vec<String>,
+    pub commands: Vec<String>,
+    pub skills: Vec<String>,
+}
+
+/// Gather skill pack information for the agent system prompt.
+pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
+    let manifest = load_manifest(root);
+    let bundled_skills = ["theme-builder", "brand-identity", "landing-page"];
+
+    let mut packs = Vec::new();
+    let mut all_pack_skills: Vec<String> = Vec::new();
+
+    for (name, entry) in &manifest.packs {
+        let description = find_pack(name)
+            .map(|p| p.description.to_string())
+            .unwrap_or_else(|| format!("from {}", entry.source));
+
+        let mut agents = Vec::new();
+        let mut commands = Vec::new();
+        let mut skills = Vec::new();
+
+        for file in &entry.files {
+            if let Some(rest) = file.strip_prefix(".claude/agents/") {
+                if let Some(n) = rest.strip_suffix(".md") {
+                    agents.push(n.to_string());
+                }
+            } else if let Some(rest) = file.strip_prefix(".claude/commands/") {
+                if let Some(n) = rest.strip_suffix(".md") {
+                    commands.push(n.to_string());
+                }
+            } else if let Some(rest) = file.strip_prefix(".claude/skills/") {
+                if let Some(n) = rest.strip_suffix("/SKILL.md") {
+                    skills.push(n.to_string());
+                    all_pack_skills.push(n.to_string());
+                }
+            }
+        }
+
+        agents.sort();
+        commands.sort();
+        skills.sort();
+
+        packs.push(InstalledPackInfo {
+            name: name.clone(),
+            description,
+            agents,
+            commands,
+            skills,
+        });
+    }
+
+    // Context files
+    let context_dir = root.join("context");
+    let mut context_files = Vec::new();
+    if context_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&context_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "md") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        context_files.push(stem.to_string());
+                    }
+                }
+            }
+        }
+    }
+    context_files.sort();
+
+    // Custom skills (not bundled, not in packs)
+    let skills_dir = root.join(".claude").join("skills");
+    let mut custom_skills = Vec::new();
+    if skills_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&skills_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if bundled_skills.contains(&name.as_str()) {
+                    continue;
+                }
+                if all_pack_skills.contains(&name) {
+                    continue;
+                }
+                if entry.path().join("SKILL.md").exists() {
+                    custom_skills.push(name);
+                }
+            }
+        }
+    }
+    custom_skills.sort();
+
+    SkillPackSummary {
+        packs,
+        context_files,
+        custom_skills,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // HTTP download
 // ---------------------------------------------------------------------------
 
@@ -970,7 +1081,11 @@ fn run_list() -> anyhow::Result<()> {
 
 fn run_remove(name: &str) -> anyhow::Result<()> {
     let root = std::env::current_dir()?;
-    let mut manifest = load_manifest(&root);
+    remove_from(&root, name)
+}
+
+fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
 
     // Check if it's an installed pack
     if let Some(entry) = manifest.packs.remove(name) {
@@ -995,7 +1110,7 @@ fn run_remove(name: &str) -> anyhow::Result<()> {
             fs::write(&claude_md_path, cleaned)?;
         }
 
-        save_manifest(&root, &manifest)?;
+        save_manifest(root, &manifest)?;
         human::success(&format!(
             "Removed pack '{}' ({} files). Context files in context/ were kept.",
             name,
@@ -1286,5 +1401,399 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("no skill or pack named"));
+    }
+
+    #[test]
+    fn test_raw_github_url() {
+        let url = raw_github_url(
+            "TheCraigHewitt/seomachine",
+            "main",
+            ".claude/agents/editor.md",
+        );
+        assert_eq!(
+            url,
+            "https://raw.githubusercontent.com/TheCraigHewitt/seomachine/main/.claude/agents/editor.md"
+        );
+    }
+
+    #[test]
+    fn test_load_manifest_missing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let manifest = load_manifest(tmp.path());
+        assert!(manifest.packs.is_empty());
+    }
+
+    #[test]
+    fn test_load_manifest_corrupt_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join(".claude");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join(".seite-skill-packs.json"), "not valid json {{{").unwrap();
+        let manifest = load_manifest(tmp.path());
+        assert!(manifest.packs.is_empty()); // Falls back to default
+    }
+
+    #[test]
+    fn test_remove_claude_md_section_no_markers() {
+        let content = "# My Project\n\nSome content here.\n";
+        let result = remove_claude_md_section(content);
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn test_append_claude_md_no_existing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No CLAUDE.md exists
+        append_claude_md_section(tmp.path()).unwrap();
+        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        assert!(content.contains("SEOMachine Integration"));
+        assert!(content.contains(CLAUDE_MD_MARKER_START));
+    }
+
+    #[test]
+    fn test_append_claude_md_idempotent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\n").unwrap();
+
+        // Call twice
+        append_claude_md_section(tmp.path()).unwrap();
+        append_claude_md_section(tmp.path()).unwrap();
+
+        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        // Should have exactly one section
+        assert_eq!(
+            content.matches(CLAUDE_MD_MARKER_START).count(),
+            1,
+            "should not duplicate section"
+        );
+        assert!(content.contains("# My Project"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_multiple_collections() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("content").join("posts");
+        let docs_dir = tmp.path().join("content").join("docs");
+        fs::create_dir_all(&posts_dir).unwrap();
+        fs::create_dir_all(&docs_dir).unwrap();
+        fs::write(
+            posts_dir.join("2026-01-01-first.md"),
+            "---\ntitle: \"First Post\"\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            docs_dir.join("getting-started.md"),
+            "---\ntitle: \"Getting Started\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("First Post"));
+        assert!(map.contains("Getting Started"));
+        assert!(map.contains("## posts"));
+        assert!(map.contains("## docs"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_nested_docs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let nested_dir = tmp.path().join("content").join("docs").join("guides");
+        fs::create_dir_all(&nested_dir).unwrap();
+        fs::write(
+            nested_dir.join("setup.md"),
+            "---\ntitle: \"Setup Guide\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(map.contains("Setup Guide"));
+        assert!(map.contains("/docs/guides/setup"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_skips_index() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let posts_dir = tmp.path().join("content").join("posts");
+        fs::create_dir_all(&posts_dir).unwrap();
+        fs::write(
+            posts_dir.join("index.md"),
+            "---\ntitle: \"Posts Index\"\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            posts_dir.join("real-post.md"),
+            "---\ntitle: \"Real Post\"\n---\n",
+        )
+        .unwrap();
+        let map = generate_internal_links_map(tmp.path());
+        assert!(!map.contains("Posts Index"));
+        assert!(map.contains("Real Post"));
+    }
+
+    #[test]
+    fn test_derive_skill_name_trailing_slash() {
+        assert_eq!(
+            derive_skill_name("https://example.com/my-skill.md/", None),
+            "my-skill"
+        );
+    }
+
+    #[test]
+    fn test_derive_skill_name_no_extension() {
+        assert_eq!(
+            derive_skill_name("https://example.com/raw-name", None),
+            "raw-name"
+        );
+    }
+
+    #[test]
+    fn test_validate_skill_name_with_separator() {
+        // Platform-dependent path separator
+        assert!(validate_skill_name("a/b").is_err());
+    }
+
+    #[test]
+    fn test_strip_date_prefix_edge_cases() {
+        // Exactly 11 chars (YYYY-MM-DD-) — len is not > 11, returns as-is
+        assert_eq!(strip_date_prefix("2026-03-12-"), "2026-03-12-");
+        // Non-date that looks similar — fails digit check
+        assert_eq!(strip_date_prefix("abcd-ef-gh-rest"), "abcd-ef-gh-rest");
+        // Date with 10 chars exactly (no trailing -)
+        assert_eq!(strip_date_prefix("2026-03-12"), "2026-03-12");
+        // Date prefix with one char after
+        assert_eq!(strip_date_prefix("2026-03-12-x"), "x");
+    }
+
+    #[test]
+    fn test_seite_publish_draft_command_content() {
+        let content = seite_publish_draft_command();
+        assert!(content.contains("Publish Draft"));
+        assert!(content.contains("seite build"));
+        assert!(content.contains("seite deploy"));
+        assert!(content.contains("draft: true"));
+        // Should explicitly say NOT to use WordPress
+        assert!(content.contains("Do NOT use WordPress"));
+    }
+
+    #[test]
+    fn test_remove_custom_skill() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skill_dir = tmp.path().join(".claude").join("skills").join("my-custom");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# My Custom Skill\n").unwrap();
+
+        let result = remove_from(tmp.path(), "my-custom");
+
+        assert!(result.is_ok());
+        assert!(!skill_dir.exists());
+    }
+
+    #[test]
+    fn test_remove_pack_cleans_files_and_manifest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create a fake installed pack with a few files
+        let agent_dir = tmp.path().join(".claude").join("agents");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::write(agent_dir.join("test-agent.md"), "# Agent").unwrap();
+
+        let cmd_dir = tmp.path().join(".claude").join("commands");
+        fs::create_dir_all(&cmd_dir).unwrap();
+        fs::write(cmd_dir.join("test-cmd.md"), "# Command").unwrap();
+
+        // Write manifest
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "test-pack".to_string(),
+            PackEntry {
+                source: "github:user/repo".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![
+                    ".claude/agents/test-agent.md".to_string(),
+                    ".claude/commands/test-cmd.md".to_string(),
+                ],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let result = remove_from(tmp.path(), "test-pack");
+
+        assert!(result.is_ok());
+        assert!(!agent_dir.join("test-agent.md").exists());
+        assert!(!cmd_dir.join("test-cmd.md").exists());
+
+        // Manifest should no longer have the pack
+        let updated = load_manifest(tmp.path());
+        assert!(!updated.packs.contains_key("test-pack"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_appends_to_existing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join(".gitignore"), "dist/\nnode_modules/\n").unwrap();
+        ensure_gitignore_entries(tmp.path(), &["research/"]).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert!(content.contains("dist/"));
+        assert!(content.contains("research/"));
+    }
+
+    #[test]
+    fn test_ensure_gitignore_skips_existing_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join(".gitignore"), "research/\n").unwrap();
+        ensure_gitignore_entries(tmp.path(), &["research/", ".env"]).unwrap();
+        let content = fs::read_to_string(tmp.path().join(".gitignore")).unwrap();
+        assert_eq!(content.matches("research/").count(), 1);
+        assert!(content.contains(".env"));
+    }
+
+    #[test]
+    fn test_extract_title_single_quotes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: 'Single Quoted'\n---\nBody").unwrap();
+        assert_eq!(
+            extract_title_from_file(&path),
+            Some("Single Quoted".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_unquoted() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: Bare Title\n---\nBody").unwrap();
+        assert_eq!(
+            extract_title_from_file(&path),
+            Some("Bare Title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_title_empty_title() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.md");
+        fs::write(&path, "---\ntitle: \"\"\n---\nBody").unwrap();
+        assert_eq!(extract_title_from_file(&path), None);
+    }
+
+    #[test]
+    fn test_known_packs_seomachine_completeness() {
+        let pack = find_pack("seomachine").unwrap();
+        assert!(!pack.agents.is_empty());
+        assert!(!pack.commands.is_empty());
+        assert!(!pack.skills.is_empty());
+        assert!(!pack.context_files.is_empty());
+        assert!(!pack.python_scripts.is_empty());
+        assert_eq!(pack.agents.len(), 11);
+        assert_eq!(pack.commands.len(), 22);
+        assert_eq!(pack.skills.len(), 25);
+        assert_eq!(pack.context_files.len(), 9);
+        assert_eq!(pack.python_scripts.len(), 11);
+    }
+
+    #[test]
+    fn test_run_install_unknown_source() {
+        let result = run_install("completely-unknown-pack", None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("unknown skill pack"));
+        assert!(err.contains("seomachine")); // Should suggest known packs
+    }
+
+    #[test]
+    fn test_gather_skill_summary_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let summary = gather_skill_summary(tmp.path());
+        assert!(summary.packs.is_empty());
+        assert!(summary.context_files.is_empty());
+        assert!(summary.custom_skills.is_empty());
+    }
+
+    #[test]
+    fn test_gather_skill_summary_with_manifest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "seomachine".to_string(),
+            PackEntry {
+                source: "github:TheCraigHewitt/seomachine".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![
+                    ".claude/agents/editor.md".to_string(),
+                    ".claude/agents/seo-optimizer.md".to_string(),
+                    ".claude/commands/research.md".to_string(),
+                    ".claude/commands/write.md".to_string(),
+                    ".claude/commands/publish-draft.md".to_string(),
+                    ".claude/skills/content-strategy/SKILL.md".to_string(),
+                ],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs.len(), 1);
+        assert_eq!(summary.packs[0].name, "seomachine");
+        assert_eq!(summary.packs[0].agents.len(), 2);
+        assert_eq!(summary.packs[0].commands.len(), 3);
+        assert_eq!(summary.packs[0].skills.len(), 1);
+        assert!(summary.packs[0].description.contains("SEO"));
+    }
+
+    #[test]
+    fn test_gather_skill_summary_context_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let context_dir = tmp.path().join("context");
+        fs::create_dir_all(&context_dir).unwrap();
+        fs::write(context_dir.join("brand-voice.md"), "# Brand Voice").unwrap();
+        fs::write(context_dir.join("target-keywords.md"), "# Keywords").unwrap();
+        fs::write(context_dir.join("notes.txt"), "not markdown").unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(
+            summary.context_files,
+            vec!["brand-voice", "target-keywords"]
+        );
+    }
+
+    #[test]
+    fn test_gather_skill_summary_custom_skills() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skills_dir = tmp.path().join(".claude").join("skills");
+
+        // Create a custom skill
+        let custom = skills_dir.join("my-custom-skill");
+        fs::create_dir_all(&custom).unwrap();
+        fs::write(custom.join("SKILL.md"), "# My Skill").unwrap();
+
+        // Create a bundled skill (should be excluded)
+        let bundled = skills_dir.join("theme-builder");
+        fs::create_dir_all(&bundled).unwrap();
+        fs::write(bundled.join("SKILL.md"), "# Theme Builder").unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.custom_skills, vec!["my-custom-skill"]);
+    }
+
+    #[test]
+    fn test_gather_skill_summary_unknown_pack() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "future-pack".to_string(),
+            PackEntry {
+                source: "github:someone/future-pack".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![".claude/commands/cool.md".to_string()],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs.len(), 1);
+        assert!(summary.packs[0]
+            .description
+            .contains("github:someone/future-pack"));
     }
 }

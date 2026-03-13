@@ -1,13 +1,15 @@
 ---
-title: Trust Center
-description: Build a compliance hub with certifications, subprocessors, FAQs, and security policies
+title: "Trust Center for Compliance"
+description: "Build a compliance hub for your seite static site with built-in certifications, subprocessor tracking, security FAQs, and policy document management."
 slug: trust-center
 weight: 8
 ---
 
-# Trust Center
+seite includes a trust center as a built-in [collection preset](/docs/collections), letting you ship a compliance hub directly from your static site generator with no external tools.
 
-The trust center is a built-in collection preset that scaffolds a compliance hub for your site. It generates data-driven pages for certifications, subprocessor lists, security FAQs, and policy documents.
+## Overview
+
+The trust center scaffolds a compliance hub for your site. It generates data-driven pages for certifications, subprocessor lists, security FAQs, and policy documents.
 
 ## Getting Started
 
@@ -18,10 +20,10 @@ seite init mysite --collections posts,pages,trust
 ```
 
 When `trust` is included, you'll be prompted to select:
-- **Company name** — displayed on the trust center
-- **Compliance frameworks** — SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3
-- **Sections** — Security Overview, Certifications, Subprocessors, FAQ, Vulnerability Disclosure, DPA, Changelog
-- **Per-framework status** — Active, In Progress, or Planned
+- **Company name**: displayed on the trust center
+- **Compliance frameworks**: SOC 2, ISO 27001, GDPR, HIPAA, PCI DSS, CCPA, SOC 3
+- **Sections**: Security Overview, Certifications, Subprocessors, FAQ, Vulnerability Disclosure, DPA, Changelog
+- **Per-framework status**: Active, In Progress, or Planned
 
 ### Non-interactive (CI-friendly)
 
@@ -37,9 +39,9 @@ seite init mysite \
 
 The trust center has three layers:
 
-1. **Data files** (`data/trust/`) — structured YAML that drives the templates
-2. **Content pages** (`content/trust/`) — markdown prose for each section
-3. **Templates** — `trust-index.html` (hub page at `/trust/`) and `trust-item.html` (individual pages)
+1. **Data files** (`data/trust/`): structured YAML that drives the templates
+2. **Content pages** (`content/trust/`): markdown prose for each section
+3. **Templates**: `trust-index.html` (hub page at `/trust/`) and `trust-item.html` (individual pages)
 
 ### Scaffolded File Structure
 
@@ -77,9 +79,9 @@ content/trust/
 ```
 
 Status values control the badge display:
-- `active` — green badge, shows issued/expires dates
-- `in_progress` — yellow badge, shows target date
-- `planned` — gray badge, shown on roadmap
+- `active`: green badge, shows issued/expires dates
+- `in_progress`: yellow badge, shows target date
+- `planned`: gray badge, shown on roadmap
 
 ### Subprocessors (`data/trust/subprocessors.yaml`)
 
@@ -119,22 +121,22 @@ extra:
 ```
 
 The `extra.type` field categorizes the page:
-- `overview` — main security narrative
-- `certification` — framework detail page (paired with `extra.framework`)
-- `policy` — vulnerability disclosure, DPA, etc.
-- `changelog` — security updates and changes
+- `overview`: main security narrative
+- `certification`: framework detail page (paired with `extra.framework`)
+- `policy`: vulnerability disclosure, DPA, etc.
+- `changelog`: security updates and changes
 
 ## Trust Center Index
 
 The hub page at `/trust/` is rendered using `trust-index.html` and displays:
 
-1. **Hero section** — company name and headline
-2. **Certification grid** — cards from `data.trust.certifications` with status badges
-3. **Content sections** — trust collection items ordered by weight
-4. **Subprocessor table** — from `data.trust.subprocessors`
-5. **FAQ accordion** — from `data.trust.faq`
+1. **Hero section**: company name and headline
+2. **Certification grid**: cards from `data.trust.certifications` with status badges
+3. **Content sections**: trust collection items ordered by weight
+4. **Subprocessor table**: from `data.trust.subprocessors`
+5. **FAQ accordion**: from `data.trust.faq`
 
-All sections are conditional — if a data file is empty or missing, the section doesn't render.
+All sections are conditional: if a data file is empty or missing, the section doesn't render.
 
 ## Configuration
 
@@ -146,8 +148,8 @@ company = "Acme Corp"
 frameworks = ["soc2", "iso27001"]
 ```
 
-- `company` — displayed on the trust center (defaults to `site.title`)
-- `frameworks` — list of active framework slugs
+- `company`: displayed on the trust center (defaults to `site.title`)
+- `frameworks`: list of active framework slugs
 
 ## Common Tasks
 
@@ -167,7 +169,7 @@ seite build
 
 ## Multi-language Support
 
-Data files (`data/trust/*.yaml`) are language-neutral — structured data like dates, statuses, and vendor names don't change per language.
+Data files (`data/trust/*.yaml`) are language-neutral: structured data like dates, statuses, and vendor names don't change per language.
 
 Content pages get translated using the standard i18n filename convention:
 
@@ -182,13 +184,19 @@ The trust center index is rendered per-language automatically.
 
 Override `templates/trust-index.html` or `templates/trust-item.html` to customize the layout. Template variables available:
 
-- `data.trust.certifications` — array of certification objects
-- `data.trust.subprocessors` — array of vendor objects
-- `data.trust.faq` — array of Q&A objects
-- `collections` — trust collection items (on index page)
-- `page.extra.type` — content type (on item pages)
-- `page.extra.framework` — framework slug for certification pages
+- `data.trust.certifications`: array of certification objects
+- `data.trust.subprocessors`: array of vendor objects
+- `data.trust.faq`: array of Q&A objects
+- `collections`: trust collection items (on index page)
+- `page.extra.type`: content type (on item pages)
+- `page.extra.framework`: framework slug for certification pages
 
 ## MCP Integration
 
 The `seite://trust` resource returns the full trust center state as JSON, including certifications, subprocessor count, FAQ count, and content items. Use `seite_search` with `collection: "trust"` to find trust center content.
+
+## Next Steps
+
+- [Content Collections](/docs/collections): trust is a collection preset; learn how presets, pagination, and subdomains work
+- [Site Configuration](/docs/configuration): `[trust]` section reference and all `seite.toml` options
+- [Deployment](/docs/deployment): deploy your trust center alongside your main site

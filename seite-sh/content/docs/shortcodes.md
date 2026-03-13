@@ -1,10 +1,10 @@
 ---
-title: Shortcodes
-description: Reusable content components for embedding videos, callouts, figures, and custom elements in markdown
+title: "Shortcodes for Rich Content"
+description: "Embed YouTube videos, callout boxes, figures, GitHub Gists, and contact forms in your seite static site using built-in and custom shortcodes."
 weight: 6
 ---
 
-Shortcodes are reusable content components you can use inside markdown files. They let you embed rich content like videos, callout boxes, and figures without writing raw HTML.
+Shortcodes are reusable content components you can use inside markdown files to embed rich content in your static site: videos, callout boxes, figures, and more, without writing raw HTML.
 
 ## Syntax
 
@@ -29,7 +29,7 @@ This is **bold** markdown inside the callout.
 ```
 
 {{% callout(type="tip") %}}
-Content inside body shortcodes is processed as regular markdown — bold, links, lists, and code blocks all work as expected.
+Content inside body shortcodes is processed as regular markdown: bold, links, lists, and code blocks all work as expected.
 {{% end %}}
 
 ### Arguments
@@ -102,7 +102,7 @@ Renders a semantic `<figure>` element with optional caption.
 
 ### callout
 
-Renders an admonition/callout box. This is a **body shortcode** — the content between the tags is processed as markdown.
+Renders an admonition/callout box. This is a **body shortcode**. The content between the tags is processed as markdown.
 
 ```
 {{% callout(type="warning") %}}
@@ -114,7 +114,7 @@ Be careful with this operation. It **cannot be undone**.
 |-----------|----------|-------------|
 | `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
 
-All six bundled themes include styled callout boxes with appropriate colors for each type.
+All 10 bundled themes include styled callout boxes with appropriate colors for each type.
 
 ## Custom shortcodes
 
@@ -143,9 +143,9 @@ Something went wrong. Please try again.
 Shortcode templates have access to:
 
 - All named arguments as top-level variables
-- `{{ body }}` — the raw body content (for body shortcodes)
-- `{{ page }}` — current page context (title, slug, tags, etc.)
-- `{{ site }}` — site context (title, base_url, language)
+- `{{ body }}`: the raw body content (for body shortcodes)
+- `{{ page }}`: current page context (title, slug, tags, etc.)
+- `{{ site }}`: site context (title, base_url, language)
 
 ### Example: button shortcode with conditional styling
 
@@ -193,5 +193,5 @@ All error messages include the source file path and line number for quick debugg
 
 ## Next Steps
 
-- [Templates & Themes](/docs/templates) — template variables available inside shortcode templates
-- [Theme Gallery](/docs/theme-gallery) — all bundled themes include styling for built-in shortcodes
+- [Templates & Themes](/docs/templates): template variables available inside shortcode templates
+- [Theme Gallery](/docs/theme-gallery): all bundled themes include styling for built-in shortcodes

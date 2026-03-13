@@ -1,8 +1,10 @@
 ---
-title: "Workspaces"
-description: "Manage multiple seite sites in a single repository with shared resources, unified dev server, and coordinated deploys."
+title: "Multi-Site Workspaces"
+description: "Manage multiple seite static sites in a single repository with shared resources, a unified dev server, and coordinated multi-target deploys."
 weight: 9
 ---
+
+seite's workspace system lets you manage multiple static site generator projects from a single repository with shared builds, a unified dev server, and coordinated deploys.
 
 ## Overview
 
@@ -164,11 +166,11 @@ seite serve --site blog       # Serve one site
 
 The workspace dev server routes requests by site name:
 
-- `http://localhost:3000/` — workspace index listing all sites
-- `http://localhost:3000/blog/` — blog site
-- `http://localhost:3000/docs/` — docs site
+- `http://localhost:3000/`: workspace index listing all sites
+- `http://localhost:3000/blog/`: blog site
+- `http://localhost:3000/docs/`: docs site
 
-File watching is per-site — when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
+File watching is per-site: when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
 
 ## Deploying
 
@@ -178,7 +180,7 @@ seite deploy --site blog      # Deploy one site
 seite deploy --dry-run        # Preview all deploys
 ```
 
-Each site deploys according to its own `seite.toml` deploy config. Sites can use different deploy targets — one on GitHub Pages, another on Cloudflare.
+Each site deploys according to its own `seite.toml` deploy config. Sites can use different deploy targets: one on GitHub Pages, another on Cloudflare.
 
 {{% callout(type="tip") %}}
 Use `seite deploy --site blog --dry-run` to preview a single site's deploy before pushing to production.
@@ -205,6 +207,6 @@ If no `seite-workspace.toml` is found, `seite` operates in standalone mode using
 
 ## Next Steps
 
-- [Configuration](/docs/configuration) — site-level `seite.toml` settings that each workspace site uses
-- [Deployment](/docs/deployment) — deploy targets and options for each site
-- [CLI Reference](/docs/cli-reference) — complete list of commands and flags
+- [Configuration](/docs/configuration): site-level `seite.toml` settings that each workspace site uses
+- [Deployment](/docs/deployment): deploy targets and options for each site
+- [CLI Reference](/docs/cli-reference): complete list of commands and flags
