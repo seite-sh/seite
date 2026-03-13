@@ -82,7 +82,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             let options = ["github-pages", "cloudflare", "netlify"];
             let selection = dialoguer::Select::new()
                 .with_prompt("Deploy target")
-                .items(&options)
+                .items(options)
                 .default(0)
                 .interact()?;
             options[selection].to_string()
@@ -100,7 +100,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             let defaults = &[true, false, true, false, false, false]; // posts + pages on by default
             let selections = dialoguer::MultiSelect::new()
                 .with_prompt("Collections to include")
-                .items(&preset_names)
+                .items(preset_names)
                 .defaults(defaults)
                 .interact()?;
             selections
@@ -496,7 +496,7 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
             let defaults = &[true, false, false, false, false, false, false];
             let selections = dialoguer::MultiSelect::new()
                 .with_prompt("Compliance frameworks")
-                .items(&names)
+                .items(names)
                 .defaults(defaults)
                 .interact()?;
             selections
@@ -530,7 +530,7 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
             let defaults = &[true, true, true, true, true, false, false];
             let selections = dialoguer::MultiSelect::new()
                 .with_prompt("Trust center sections")
-                .items(&section_names)
+                .items(section_names)
                 .defaults(defaults)
                 .interact()?;
             selections
@@ -556,7 +556,7 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
             ];
             let selection = dialoguer::Select::new()
                 .with_prompt(format!("{fw_name} status"))
-                .items(&options)
+                .items(options)
                 .default(0)
                 .interact()?;
             match selection {
