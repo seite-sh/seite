@@ -133,10 +133,10 @@ You can combine multiple schema types on one page using `@graph`:
 - Server-side rendered for SEO
 - Serialize data to JSON-LD
 
-### CMS / WordPress
-- Plugins (Yoast, Rank Math, Schema Pro)
-- Theme modifications
-- Custom fields to structured data
+### Static Site Generators
+- JSON-LD in Tera templates (seite uses `{% block head %}`)
+- Build-time generation from frontmatter
+- Structured data from data files (YAML/JSON/TOML)
 
 ---
 

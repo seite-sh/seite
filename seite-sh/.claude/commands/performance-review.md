@@ -44,7 +44,7 @@ The Performance Agent automatically identifies:
 - Content gaps in growing areas
 
 **Competitor Gaps**:
-- Keywords competitors rank for but your company doesn't
+- Keywords competitors rank for but seite doesn't
 - Strategic positioning opportunities
 - Estimated traffic potential
 
@@ -183,7 +183,7 @@ The Performance Agent output directly informs other commands:
    /write AI podcast tools
    ```
 
-5. **Competitor Gap**: competitor.com ranks #3, your company not ranking
+5. **Competitor Gap**: competitor.com ranks #3, seite not ranking
    ```
    /research podcast editing workflow
    /write podcast editing workflow

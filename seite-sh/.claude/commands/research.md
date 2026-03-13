@@ -6,10 +6,10 @@ Use this command to conduct comprehensive SEO keyword research and competitive a
 `/research [topic]`
 
 ## What This Command Does
-1. Performs keyword research for your industry-related topics
+1. Performs keyword research for static site generator and developer tool topics
 2. Analyzes top-ranking competitor content
 3. Identifies content gaps and opportunities
-4. Develops unique angle for your company perspective
+4. Develops unique angle for seite perspective
 5. Creates detailed research brief for writing
 
 ## Process
@@ -20,7 +20,7 @@ Use this command to conduct comprehensive SEO keyword research and competitive a
 - **Keyword Variations**: Find semantic variations and long-tail opportunities
 - **Related Questions**: Discover what people are actually asking (People Also Ask, forums, Reddit)
 - **Search Intent**: Determine if intent is informational, navigational, commercial, or transactional
-- **Topic Cluster**: Identify how this topic fits into your company content clusters
+- **Topic Cluster**: Identify how this topic fits into seite content clusters
 
 ### Competitive Analysis
 - **Top 10 SERP Review**: Analyze the top 10 ranking articles for target keyword
@@ -32,18 +32,18 @@ Use this command to conduct comprehensive SEO keyword research and competitive a
 - **Domain Authority**: Note which competitors rank (indie blogs vs. major publications)
 
 ### Context Integration
-- **your company Advantage**: How can your company product features naturally enhance this content?
+- **seite Advantage**: How can seite product features naturally enhance this content?
 - **Brand Alignment**: Check @context/brand-voice.md for messaging fit
-- **Existing Content**: Review @context/internal-links-map.md for related your company articles
+- **Existing Content**: Review @context/internal-links-map.md for related seite articles
 - **Target Keywords**: Cross-reference with @context/target-keywords.md priority list
 - **SEO Guidelines**: Ensure research aligns with @context/seo-guidelines.md requirements
 
-### Podcast Industry Focus
-- **Podcast Creator Angle**: How does this topic specifically impact target audiences?
-- **Technical Requirements**: Any your industry-specific technical considerations?
-- **Industry Trends**: Current trends in your industry that relate to this topic
-- **Use Cases**: Real podcast scenarios where this topic matters
-- **Pain Points**: Specific challenges target audiences face with this topic
+### Developer Tools Industry Focus
+- **Developer Angle**: How does this topic specifically impact developers and technical founders?
+- **Technical Requirements**: Any static site generator-specific technical considerations?
+- **Industry Trends**: Current trends in developer tools and AI-native tooling that relate to this topic
+- **Use Cases**: Real scenarios where developers building marketing sites face this challenge
+- **Pain Points**: Specific challenges developers and founders face with this topic
 
 ### Content Planning
 - **Recommended Structure**: Outline H2 and H3 headings based on research
@@ -51,7 +51,7 @@ Use this command to conduct comprehensive SEO keyword research and competitive a
 - **Supporting Evidence**: Identify statistics, studies, or data to include
 - **Expert Sources**: Find industry experts or quotes to reference
 - **Visual Opportunities**: Suggest images, screenshots, or graphics needed
-- **Internal Links**: Map 3-5 key your company pages to link to (from @context/internal-links-map.md)
+- **Internal Links**: Map 3-5 key seite pages to link to (from @context/internal-links-map.md)
 - **External Authority**: Identify 2-3 authoritative external sources to link
 
 ### Hook Development
@@ -73,7 +73,7 @@ Provides a comprehensive research brief with:
 - **Top 3 Competitor Articles**: URLs and key takeaways from each
 - **Common Sections**: Must-cover topics based on SERP analysis
 - **Content Gaps**: Opportunities to provide unique value
-- **Differentiation Strategy**: How your company can stand out
+- **Differentiation Strategy**: How seite can stand out
 
 ### 3. Recommended Outline
 ```
@@ -99,13 +99,13 @@ Conclusion
 ### 4. Supporting Elements
 - **Statistics to Include**: 5-7 relevant data points with sources
 - **Expert Quotes**: Potential sources or existing quotes
-- **Examples/Case Studies**: Real podcast scenarios to feature
+- **Examples/Case Studies**: Real developer/founder scenarios to feature
 - **Visual Suggestions**: Screenshots, charts, or graphics needed
 
 ### 5. Internal Linking Strategy
-- **Pillar Page**: Main your company pillar content to link to
+- **Pillar Page**: Main seite pillar content to link to
 - **Related Articles**: 2-4 relevant blog posts to link
-- **Product Pages**: your company features to naturally mention
+- **Product Pages**: seite features to naturally mention
 - **Resource Pages**: Tools or guides to reference
 
 ### 6. Meta Elements Preview

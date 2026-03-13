@@ -141,11 +141,11 @@ Analyze completed articles and provide actionable recommendations to maximize se
 - Clear next steps or takeaways?
 - Strong conclusion with CTA?
 
-### 6. Podcast Industry Relevance
+### 6. Developer Tools Industry Relevance
 
-#### Podcast Creator Focus
-- Content specifically addresses podcast creator needs?
-- Examples are podcasting-relevant?
+#### Developer Focus
+- Content specifically addresses developer and technical founder needs?
+- Examples are relevant to building and deploying websites?
 - Terminology is accurate for podcasting?
 - Solutions are applicable to podcast workflows?
 

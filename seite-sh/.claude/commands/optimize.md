@@ -49,7 +49,7 @@ Use this command to perform a final SEO optimization pass on completed articles 
 ### Link Optimization
 
 #### Internal Links (3-5+ required)
-- **Quantity**: Count current internal links to your company content
+- **Quantity**: Count current internal links to seite content
 - **Quality**: Verify links are contextually relevant
 - **Anchor Text**: Check for keyword-rich, descriptive anchor text
 - **Placement**: Natural integration within body content
@@ -81,8 +81,8 @@ Use this command to perform a final SEO optimization pass on completed articles 
 - **Length**: 50-60 characters (check current length)
 - **Keyword**: Primary keyword included naturally
 - **Compelling**: Attention-grabbing and click-worthy
-- **Brand**: Consider adding "| your company" if space allows
-- **Uniqueness**: Distinct from other your company page titles
+- **Brand**: Consider adding "| seite" if space allows
+- **Uniqueness**: Distinct from other seite page titles
 
 **Provide**:
 - Current meta title analysis
@@ -135,11 +135,11 @@ Use this command to perform a final SEO optimization pass on completed articles 
 
 ### Brand & Voice
 
-#### your company Alignment
+#### seite Alignment
 - **Brand Voice**: Verify alignment with @context/brand-voice.md
 - **Style Guide**: Check adherence to @context/style-guide.md
-- **Messaging**: Ensure messaging reflects your company positioning
-- **Product Mentions**: Natural integration of your company features
+- **Messaging**: Ensure messaging reflects seite positioning
+- **Product Mentions**: Natural integration of seite features
 - **CTA**: Appropriate call-to-action for article intent
 
 #### User Experience
@@ -265,4 +265,4 @@ Based on optimization score:
 - **70-79**: Fair - address priority fixes before publishing
 - **Below 70**: Needs work - significant improvements required
 
-This ensures every article meets your company quality standards and SEO best practices before going live.
+This ensures every article meets seite quality standards and SEO best practices before going live.

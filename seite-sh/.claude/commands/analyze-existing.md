@@ -1,6 +1,6 @@
 # Analyze Existing Command
 
-Use this command to review and analyze existing your company blog posts for SEO opportunities, content gaps, and improvement areas.
+Use this command to review and analyze existing seite blog posts for SEO opportunities, content gaps, and improvement areas.
 
 ## Usage
 `/analyze-existing [URL or file path]`
@@ -115,4 +115,4 @@ Based on the analysis, the system will suggest:
 2. Running `/optimize [file]` if content needs light SEO polish
 3. Archiving the post if it's no longer relevant or valuable
 
-This ensures every analysis leads to clear, actionable next steps for improving your company blog content.
+This ensures every analysis leads to clear, actionable next steps for improving seite blog content.

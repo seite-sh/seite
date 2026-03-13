@@ -139,7 +139,7 @@ Don't just put one CTA at the end. Embedded CTAs get 121% more conversions than 
 - **Practical Application**: Show how information applies to their specific challenges
 - **Product Integration**: Naturally mention how your features solve problems (reference @context/features.md)
 - **Industry Context**: Reference relevant trends and best practices
-- **Technical Accuracy**: Ensure terminology and processes are correct for your industry
+- **Technical Accuracy**: Ensure terminology and processes are correct for the static site generator space
 
 ### Brand Voice Consistency
 - Maintain your brand tone (reference @context/brand-voice.md for specifics)

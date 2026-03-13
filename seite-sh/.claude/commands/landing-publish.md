@@ -1,50 +1,52 @@
 # Landing Page Publish Command
 
-Use this command to publish landing pages to WordPress as pages (not blog posts).
+Use this command to publish landing pages to the seite site as pages.
 
 ## Usage
 `/landing-publish [file path] [options]`
 
 **Options:**
-- `--noindex`: Set noindex meta (for PPC pages)
-- `--template [slug]`: Use specific WordPress page template
+- `--noindex`: Set `robots: noindex` in frontmatter (for PPC pages)
+- `--draft`: Keep as draft instead of publishing immediately
 
 **Examples:**
-- `/landing-publish landing-pages/product-hosting-beginners-2025-12-11.md`
-- `/landing-publish landing-pages/free-trial-ppc-2025-12-11.md --noindex`
-- `/landing-publish landing-pages/pricing-comparison-2025-12-11.md --template landing-page`
+- `/landing-publish content/pages/product-hosting-beginners.md`
+- `/landing-publish content/pages/free-trial-ppc.md --noindex`
+- `/landing-publish content/pages/pricing-comparison.md --draft`
 
 ## What This Command Does
 
 1. Validates the landing page file
-2. Checks landing page score (must be ≥75)
-3. Parses markdown and metadata
-4. Creates WordPress page via REST API
-5. Sets Yoast SEO fields
-6. Returns edit URL for review
+2. Checks landing page score (must be >=75)
+3. Verifies frontmatter format and required fields
+4. Runs `seite build` to verify it builds correctly
+5. Optionally deploys with `seite deploy`
 
 ## Prerequisites
 
 Before publishing, ensure:
-1. Landing page score is ≥75 (run `/landing-audit` first)
+1. Landing page score is >=75 (run `/landing-audit` first)
 2. No critical issues remain
-3. All required metadata is present
-4. Content has been scrubbed for AI watermarks
+3. All required frontmatter is present
+4. Content has been scrubbed for formatting artifacts
 
 ## File Format Requirements
 
-Landing page files must include this metadata:
+Landing page files must be in `content/pages/` with proper seite frontmatter:
 
-```markdown
-# [H1 Headline]
-
-**Meta Title**: [50-60 characters]
-**Meta Description**: [150-160 characters]
-**Target Keyword**: [primary keyword]
-**Page Type**: seo | ppc
-**Conversion Goal**: trial | demo | lead
-**URL Slug**: /[page-slug]/
-
+```yaml
+---
+title: "Benefit-Focused Headline (50-60 chars)"
+description: "Compelling meta description with primary keyword (150-160 chars)"
+slug: page-slug
+tags:
+  - landing-page
+  - target-keyword
+image: /static/og-landing.png
+extra:
+  page_type: seo
+  conversion_goal: trial
+  target_keyword: "primary keyword"
 ---
 
 [Content...]
@@ -54,74 +56,40 @@ Landing page files must include this metadata:
 
 ### Step 1: Validation
 
-Check file exists and contains required fields:
-- Meta Title (required)
-- Meta Description (required)
-- Target Keyword (required for SEO pages)
-- Page Type
-- Conversion Goal
-- URL Slug
+Check file exists in `content/pages/` and contains required frontmatter:
+- `title` (required)
+- `description` (required)
+- `slug` (required)
+- `extra.target_keyword` (required for SEO pages)
+- `extra.page_type` (seo or ppc)
+- `extra.conversion_goal` (trial, demo, or lead)
 
 ### Step 2: Score Check
 
-Run landing page scorer:
-```python
-from data_sources.modules.landing_page_scorer import score_landing_page
+Run landing page scorer on the content:
+- If score < 75, abort publishing
+- Display current score and critical issues
+- Suggest running `/landing-audit` for full analysis
 
-score = score_landing_page(content, page_type, goal, meta_title, meta_description, keyword)
+### Step 3: Frontmatter Adjustments
 
-if score['overall_score'] < 75:
-    print("Score too low. Fix issues before publishing.")
-    print(f"Current score: {score['overall_score']}")
-    print(f"Critical issues: {score['critical_issues']}")
-    # Abort publishing
-```
+1. Ensure `draft: true` is removed (or set to `false`)
+2. If `--noindex` flag is set, add `robots: noindex` to frontmatter
+3. Verify `description` is 150-160 characters
+4. Verify `title` is 50-60 characters
 
-### Step 3: Content Preparation
+### Step 4: Build Verification
 
-1. Parse metadata from file header
-2. Extract main content (markdown)
-3. Convert markdown to HTML
-4. Prepare Yoast SEO fields
+Run `seite build` to verify the page builds correctly:
+- Check for template errors
+- Verify the page appears at the expected URL
+- Confirm no broken internal links
 
-### Step 4: WordPress API Call
+### Step 5: Deploy (Optional)
 
-Uses existing `wordpress_publisher.py` module:
-
-```python
-from data_sources.modules.wordpress_publisher import WordPressPublisher
-
-publisher = WordPressPublisher()
-
-result = publisher.create_page(
-    title=headline,
-    content=html_content,
-    slug=url_slug,
-    status='draft',  # Always create as draft first
-    meta={
-        'yoast_wpseo_title': meta_title,
-        'yoast_wpseo_metadesc': meta_description,
-        'yoast_wpseo_focuskw': target_keyword,
-    }
-)
-```
-
-### Step 5: Additional Settings
-
-**For PPC Pages (--noindex):**
-```python
-# Set noindex via Yoast
-meta['yoast_wpseo_meta-robots-noindex'] = '1'
-```
-
-**For Page Templates:**
-```python
-# Set page template
-result = publisher.update_page(
-    page_id=page_id,
-    template=template_slug
-)
-```
+Ask user if they want to deploy:
+- If yes, run `seite deploy`
+- If no, remind them to deploy later with `seite deploy`
 
 ## Output
 
@@ -129,17 +97,15 @@ result = publisher.update_page(
 ```
 === Landing Page Published ===
 
-Status: Draft created
-Page ID: [ID]
-Edit URL: https://yoursite.com/wp-admin/post.php?post=[ID]&action=edit
+Status: Ready to deploy
+File: content/pages/product-hosting-beginners.md
+URL: /product-hosting-beginners
+Landing Page Score: [X]/100
 
 Next Steps:
-1. Review the page in WordPress
-2. Check formatting and images
-3. Set featured image if needed
-4. Publish when ready
-
-Landing Page Score: [X]/100
+1. Preview with `seite serve`
+2. Deploy with `seite deploy` when ready
+3. Verify live page loads correctly
 ```
 
 ### Failed Publish
@@ -155,19 +121,18 @@ If score too low:
   1. [Issue 1]
   2. [Issue 2]
 
-Run `/landing-audit landing-pages/[file].md` for full analysis.
+Run `/landing-audit content/pages/[file].md` for full analysis.
 ```
 
 ## Differences from /publish-draft
 
 | Aspect | /publish-draft (Blog) | /landing-publish (Pages) |
 |--------|----------------------|--------------------------|
-| WordPress Type | Post | Page |
-| Categories/Tags | Yes | No |
-| Score Required | Content score ≥70 | Landing page score ≥75 |
+| Content Type | Blog post | Landing page |
+| Location | content/posts/ | content/pages/ |
+| Score Required | Content score >=70 | Landing page score >=75 |
 | noindex Option | No | Yes (for PPC) |
-| Template Option | No | Yes |
-| Output Directory | drafts/ | landing-pages/ |
+| Output URL | /posts/slug | /slug (root level) |
 
 ## Pre-Publish Checklist
 
@@ -182,50 +147,47 @@ Before running this command, verify:
 - [ ] FAQ section (for SEO pages)
 
 ### Meta
-- [ ] Meta title 50-60 characters
-- [ ] Meta title includes keyword
-- [ ] Meta description 150-160 characters
-- [ ] Meta description includes CTA
+- [ ] Title 50-60 characters
+- [ ] Title includes keyword
+- [ ] Description 150-160 characters
+- [ ] Description includes CTA
 - [ ] URL slug is clean and short
 
 ### Technical
-- [ ] Content scrubbed for AI watermarks
-- [ ] Landing page score ≥75
+- [ ] Content scrubbed for formatting artifacts
+- [ ] Landing page score >=75
 - [ ] No critical issues
 - [ ] Proper markdown formatting
+- [ ] File is in content/pages/ directory
 
 ## Post-Publish Tasks
 
-After publishing to WordPress:
+After deploying:
 
-1. **Review in WordPress**
+1. **Verify Live Page**
    - Check formatting displays correctly
    - Verify all links work
    - Ensure CTAs are prominent
 
 2. **Add Visuals**
-   - Set featured image
-   - Add any hero images
-   - Add trust badges/logos
+   - Add hero images to static/
+   - Add trust badges/logos if needed
+   - Rebuild with `seite build`
 
 3. **Final SEO Check**
-   - Verify Yoast green lights
-   - Check mobile preview
-   - Validate schema if applicable
-
-4. **Publish Live**
-   - Change status from Draft to Published
-   - Clear any caches
-   - Verify live page loads correctly
+   - Verify page appears in sitemap.xml
+   - Check Open Graph tags render correctly
+   - Validate structured data if applicable
 
 ## Rollback
 
-If issues are found after publishing:
+If issues are found after deploying:
 
-1. In WordPress, revert to draft status
-2. Fix issues in the markdown file
-3. Re-run `/landing-audit` to verify score
-4. Re-publish with `/landing-publish`
+1. Add `draft: true` to the page frontmatter
+2. Run `seite build` and `seite deploy` to remove from live site
+3. Fix issues in the markdown file
+4. Re-run `/landing-audit` to verify score
+5. Re-publish with `/landing-publish`
 
 ## Integration with Other Commands
 
@@ -237,15 +199,18 @@ If issues are found after publishing:
 # 2. Create landing page
 /landing-write "product hosting" --type seo --goal trial
 
-# 3. Audit the draft
-/landing-audit landing-pages/product-hosting-2025-12-11.md
+# 3. Move to content/pages/ with proper frontmatter
+# (landing-write saves to landing-pages/, move to content/pages/)
 
-# 4. Fix any issues (if needed)
+# 4. Audit the draft
+/landing-audit content/pages/product-hosting.md
+
+# 5. Fix any issues (if needed)
 # Edit the file manually
 
-# 5. Re-audit until score ≥75
-/landing-audit landing-pages/product-hosting-2025-12-11.md
+# 6. Re-audit until score >=75
+/landing-audit content/pages/product-hosting.md
 
-# 6. Publish
-/landing-publish landing-pages/product-hosting-2025-12-11.md
+# 7. Publish
+/landing-publish content/pages/product-hosting.md
 ```
