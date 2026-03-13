@@ -108,6 +108,7 @@ endpoint = "xpznqkdl"
 ### Versioning
 - Source of truth: `Cargo.toml` (semver). **Every code change must bump version.**
 - PATCH: bug fixes, refactors. MINOR: new features/commands/config. MAJOR: breaking changes.
+- **Always add a changelog entry** in `seite-sh/content/changelog/YYYY-MM-DD-vX-Y-Z.md` when bumping the version. Missing entries crash the deploy (`build.rs` embeds them into the binary).
 
 ### Testing
 - `cargo fmt --all && cargo clippy && cargo test` before every commit
