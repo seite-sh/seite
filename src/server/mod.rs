@@ -355,11 +355,19 @@ fn watch_and_rebuild(
                 while rx.recv_timeout(debounce).is_ok() {}
 
                 human::info("Changes detected, rebuilding...");
-                let opts = BuildOptions { include_drafts };
+                let opts = BuildOptions {
+                    include_drafts,
+                    incremental: true,
+                };
                 match build::build_site(config, paths, &opts) {
                     Ok(result) => {
-                        build_version.fetch_add(1, Ordering::Relaxed);
-                        human::success(&result.stats.human_display());
+                        // Skip version bump if nothing actually changed (incremental no-op)
+                        if result.stats.duration_ms > 0 || !result.stats.incremental {
+                            build_version.fetch_add(1, Ordering::Relaxed);
+                        }
+                        if result.stats.duration_ms > 0 {
+                            human::success(&result.stats.human_display());
+                        }
                     }
                     Err(e) => {
                         human::error(&format!("Rebuild failed: {e}"));

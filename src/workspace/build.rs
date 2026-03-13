@@ -56,6 +56,7 @@ pub fn build_workspace(
 
         let build_opts = BuildOptions {
             include_drafts: opts.include_drafts,
+            incremental: false,
         };
 
         let result = build::build_site(&config, &paths, &build_opts)?;

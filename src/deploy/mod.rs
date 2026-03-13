@@ -688,6 +688,7 @@ pub fn execute_fix(
             human::info("Building site...");
             let opts = crate::build::BuildOptions {
                 include_drafts: false,
+                incremental: false,
             };
             match crate::build::build_site(config, paths, &opts) {
                 Ok(result) => {

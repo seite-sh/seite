@@ -199,6 +199,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         };
         let opts = BuildOptions {
             include_drafts: false,
+            incremental: false,
         };
         let result = build::build_site(&build_config, &paths, &opts)?;
         human::success(&result.stats.human_display());
