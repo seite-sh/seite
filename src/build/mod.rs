@@ -453,9 +453,12 @@ fn build_site_inner(
 
     // Determine if this is an incremental build that can skip the clean step.
     // Incremental means: changeset exists, no full rebuild needed, and output dir exists.
-    let is_incremental = changeset
-        .as_ref()
-        .is_some_and(|cs| !cs.needs_full_rebuild && paths.output.exists());
+    // Incremental requires no deletions: we can't know the output paths for deleted items
+    // without re-parsing them (frontmatter slug overrides). Fall back to full rebuild so
+    // dist/ is cleaned and stale HTML files don't linger.
+    let is_incremental = changeset.as_ref().is_some_and(|cs| {
+        !cs.needs_full_rebuild && cs.deleted_content.is_empty() && paths.output.exists()
+    });
     // Step 1: Clean output directory (skip for incremental builds)
     progress.step("Cleaning output directory");
     let step_start = Instant::now();
@@ -893,15 +896,25 @@ fn build_site_inner(
                 map
             };
 
+            // If any item in this collection changed, re-render the whole collection.
+            // This keeps prev/next links and translation links correct: those values
+            // depend on sibling items, so a change to one post can affect its neighbors.
+            let collection_has_changes = changed_content_paths.as_ref().is_some_and(|changed| {
+                items.iter().any(|item| changed.contains(&item.source_path))
+            });
+
             let render_results: Vec<std::result::Result<Option<(PathBuf, String)>, PageError>> =
                 items
                     .par_iter()
                     .map(|item| {
-                        // In incremental mode, skip rendering items whose source hasn't changed.
-                        // The previous HTML is already in dist/.
-                        if let Some(ref changed) = changed_content_paths {
-                            if !changed.contains(&item.source_path) {
-                                return Ok(None);
+                        // In incremental mode, skip rendering items whose source hasn't changed,
+                        // UNLESS any sibling in this collection changed (which can affect
+                        // prev/next links and translation links for all items in the collection).
+                        if !collection_has_changes {
+                            if let Some(ref changed) = changed_content_paths {
+                                if !changed.contains(&item.source_path) {
+                                    return Ok(None);
+                                }
                             }
                         }
 
@@ -2214,7 +2227,7 @@ fn build_site_inner(
         let total: usize = items_built.values().sum();
         let changed = changeset
             .as_ref()
-            .map(|cs| cs.changed_content.len() + cs.deleted_content.len())
+            .map(|cs| cs.changed_content.len())
             .unwrap_or(0);
         total.saturating_sub(changed)
     } else {
