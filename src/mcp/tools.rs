@@ -175,7 +175,10 @@ fn call_build(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let opts = build::BuildOptions { include_drafts };
+    let opts = build::BuildOptions {
+        include_drafts,
+        incremental: false,
+    };
 
     match build::build_site(config, paths, &opts) {
         Ok(result) => {

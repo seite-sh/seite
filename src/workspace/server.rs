@@ -385,6 +385,7 @@ fn watch_and_rebuild_workspace(
                         if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
                             let opts = BuildOptions {
                                 include_drafts: true,
+                                incremental: true,
                             };
                             match build::build_site(&config, &paths, &opts) {
                                 Ok(result) => {
@@ -404,6 +405,7 @@ fn watch_and_rebuild_workspace(
                         if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
                             let opts = BuildOptions {
                                 include_drafts: true,
+                                incremental: true,
                             };
                             match build::build_site(&config, &paths, &opts) {
                                 Ok(result) => {

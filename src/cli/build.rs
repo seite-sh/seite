@@ -59,6 +59,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
     let opts = BuildOptions {
         include_drafts: args.drafts,
+        incremental: false,
     };
 
     let result = build::build_site(&config, &paths, &opts)?;

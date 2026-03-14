@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod base_path;
+pub mod cache;
 pub mod code_copy;
 pub mod discovery;
 pub mod feed;
@@ -27,6 +28,9 @@ use crate::templates;
 
 pub struct BuildOptions {
     pub include_drafts: bool,
+    /// Enable incremental builds: only rebuild changed content items.
+    /// Templates, data, and config changes still trigger full rebuilds.
+    pub incremental: bool,
 }
 
 pub struct BuildResult {
@@ -55,6 +59,10 @@ pub struct BuildStats {
     pub duration_ms: u64,
     /// Per-step timing: (step_name, duration_ms)
     pub step_timings: Vec<(String, f64)>,
+    /// Whether this was an incremental build.
+    pub incremental: bool,
+    /// Number of content items skipped (unchanged).
+    pub items_skipped: usize,
 }
 
 impl CommandOutput for BuildStats {
@@ -65,8 +73,13 @@ impl CommandOutput for BuildStats {
             .iter()
             .map(|(name, count)| format!("{count} {name}"))
             .collect();
+        let build_type = if self.incremental {
+            "Incremental build"
+        } else {
+            "Built"
+        };
         let mut out = format!(
-            "Built {} in {:.1}s ({} static files copied",
+            "{build_type} {} in {:.1}s ({} static files copied",
             parts.join(", "),
             self.duration_ms as f64 / 1000.0,
             self.static_files_copied
@@ -79,6 +92,9 @@ impl CommandOutput for BuildStats {
         }
         if self.data_files_loaded > 0 {
             out.push_str(&format!(", {} data files loaded", self.data_files_loaded));
+        }
+        if self.incremental && self.items_skipped > 0 {
+            out.push_str(&format!(", {} items unchanged", self.items_skipped));
         }
         out.push(')');
         if !self.step_timings.is_empty() {
@@ -238,6 +254,51 @@ pub fn build_site(
     paths: &ResolvedPaths,
     opts: &BuildOptions,
 ) -> Result<BuildResult> {
+    // Incremental build: check what changed and potentially skip the build entirely
+    let config_path = paths.root.join("seite.toml");
+    let mut changeset = None;
+    if opts.incremental {
+        let build_cache = cache::BuildCache::load(&paths.root);
+        let cs = build_cache.diff(
+            &config_path,
+            &paths.content,
+            &paths.templates,
+            &paths.data_dir,
+            &paths.static_dir,
+        );
+        if cs.is_empty() {
+            // Nothing changed — return a no-op result
+            return Ok(BuildResult {
+                collections: HashMap::new(),
+                stats: BuildStats {
+                    items_built: HashMap::new(),
+                    static_files_copied: 0,
+                    public_files_copied: 0,
+                    data_files_loaded: 0,
+                    duration_ms: 0,
+                    step_timings: Vec::new(),
+                    incremental: true,
+                    items_skipped: cs.total_content,
+                },
+                link_check: links::LinkCheckResult {
+                    total_links_checked: 0,
+                    broken_links: Vec::new(),
+                },
+                subdomain_builds: Vec::new(),
+            });
+        }
+        if let Some(ref reason) = cs.full_rebuild_reason {
+            tracing::debug!("Full rebuild required: {reason}");
+        } else {
+            tracing::debug!(
+                "Incremental build: {} changed, {} deleted",
+                cs.changed_content.len(),
+                cs.deleted_content.len()
+            );
+        }
+        changeset = Some(cs);
+    }
+
     // If there are subdomain collections, build a filtered config for the main site
     // that excludes them. Subdomain collections are built separately at the end.
     let has_subdomains = config.has_subdomains();
@@ -274,7 +335,7 @@ pub fn build_site(
         Some(&main_rewrites)
     };
 
-    let result = build_site_inner(effective_config, paths, opts, rewrites_ref)?;
+    let result = build_site_inner(effective_config, paths, opts, rewrites_ref, &changeset)?;
 
     // Build subdomain collections into their own output directories
     let subdomain_builds = if has_subdomains {
@@ -282,6 +343,20 @@ pub fn build_site(
     } else {
         Vec::new()
     };
+
+    // Save build cache after successful build
+    if opts.incremental {
+        let new_cache = cache::BuildCache::snapshot(
+            &config_path,
+            &paths.content,
+            &paths.templates,
+            &paths.data_dir,
+            &paths.static_dir,
+        );
+        if let Err(e) = new_cache.save(&paths.root) {
+            tracing::warn!("Failed to save build cache: {e}");
+        }
+    }
 
     Ok(BuildResult {
         collections: result.collections,
@@ -327,7 +402,13 @@ fn build_subdomain_sites(
         // resolve to absolute URLs on the main site (or other subdomains)
         let reverse_rewrites = config.reverse_subdomain_rewrite_map(&collection.name);
 
-        let sub_result = build_site_inner(&sub_config, &sub_paths, opts, Some(&reverse_rewrites))?;
+        let sub_result = build_site_inner(
+            &sub_config,
+            &sub_paths,
+            opts,
+            Some(&reverse_rewrites),
+            &None,
+        )?;
 
         results.push(SubdomainBuildInfo {
             collection_name: collection.name.clone(),
@@ -357,20 +438,34 @@ fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> b
 ///
 /// `subdomain_rewrites_override`: if `Some`, used instead of computing from config.
 /// This allows subdomain builds to receive reverse-rewrite maps (subdomain→main site links).
+///
+/// `changeset`: if `Some`, used for incremental builds to skip unchanged content.
 fn build_site_inner(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
     subdomain_rewrites_override: Option<&HashMap<String, String>>,
+    changeset: &Option<cache::ChangeSet>,
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
     let mut progress = crate::progress::BuildProgress::new();
 
-    // Step 1: Clean output directory
+    // Determine if this is an incremental build that can skip the clean step.
+    // Incremental means: changeset exists, no full rebuild needed, and output dir exists.
+    // Incremental requires no deletions: we can't know the output paths for deleted items
+    // without re-parsing them (frontmatter slug overrides). Fall back to full rebuild so
+    // dist/ is cleaned and stale HTML files don't linger.
+    let is_incremental = changeset.as_ref().is_some_and(|cs| {
+        !cs.needs_full_rebuild && cs.deleted_content.is_empty() && paths.output.exists()
+    });
+    // Step 1: Clean output directory (skip for incremental builds)
     progress.step("Cleaning output directory");
     let step_start = Instant::now();
-    if paths.output.exists() {
+    if is_incremental {
+        // Keep existing output — only changed items will be re-rendered
+        tracing::debug!("Incremental build: keeping existing output directory");
+    } else if paths.output.exists() {
         fs::remove_dir_all(&paths.output)?;
     }
     fs::create_dir_all(&paths.output)?;
@@ -445,6 +540,20 @@ fn build_site_inner(
     progress.step("Processing content");
     let step_start = Instant::now();
     let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
+
+    // For incremental builds, track changed content paths to skip re-rendering unchanged items.
+    // We still parse all items (needed for indexes/feeds), but skip writing unchanged pages.
+    let changed_content_paths: Option<HashSet<PathBuf>> = if is_incremental {
+        changeset.as_ref().map(|cs| {
+            // Use absolute paths for matching against source_path
+            cs.changed_content
+                .iter()
+                .map(|rel| paths.content.join(rel))
+                .collect()
+        })
+    } else {
+        None
+    };
 
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = serde_json::json!({
@@ -787,96 +896,120 @@ fn build_site_inner(
                 map
             };
 
-            let render_results: Vec<std::result::Result<(PathBuf, String), PageError>> = items
-                .par_iter()
-                .map(|item| {
-                    let site_ctx_for_item =
-                        site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
-                            site_ctx_cache
-                                .get(default_lang.as_str())
-                                .expect("default language missing from site context cache")
-                        });
+            // If any item in this collection changed, re-render the whole collection.
+            // This keeps prev/next links and translation links correct: those values
+            // depend on sibling items, so a change to one post can affect its neighbors.
+            let collection_has_changes = changed_content_paths.as_ref().is_some_and(|changed| {
+                items.iter().any(|item| changed.contains(&item.source_path))
+            });
 
-                    let mut ctx = build_page_context(site_ctx_for_item, item, &data);
+            let render_results: Vec<std::result::Result<Option<(PathBuf, String)>, PageError>> =
+                items
+                    .par_iter()
+                    .map(|item| {
+                        // In incremental mode, skip rendering items whose source hasn't changed,
+                        // UNLESS any sibling in this collection changed (which can affect
+                        // prev/next links and translation links for all items in the collection).
+                        if !collection_has_changes {
+                            if let Some(ref changed) = changed_content_paths {
+                                if !changed.contains(&item.source_path) {
+                                    return Ok(None);
+                                }
+                            }
+                        }
 
-                    // Inject adjacent post links (prev_post / next_post).
-                    // Always insert both keys so Tera templates can check them without errors.
-                    let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
-                    let (prev, next) = adjacent_posts
-                        .get(&(item.lang.clone(), item.slug.clone()))
-                        .unwrap_or(&empty);
-                    ctx.insert("prev_post", prev);
-                    ctx.insert("next_post", next);
+                        let site_ctx_for_item =
+                            site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
+                                site_ctx_cache
+                                    .get(default_lang.as_str())
+                                    .expect("default language missing from site context cache")
+                            });
 
-                    if collection.nested {
-                        if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
-                            let mut nav = base_nav.clone();
-                            if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
-                                if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
-                                    if let Some(sections) = nav.as_array_mut() {
-                                        if let Some(section) = sections.get_mut(sec_idx) {
-                                            if let Some(items_arr) = section
-                                                .get_mut("items")
-                                                .and_then(|i| i.as_array_mut())
-                                            {
-                                                if let Some(nav_item) = items_arr.get_mut(item_idx)
+                        let mut ctx = build_page_context(site_ctx_for_item, item, &data);
+
+                        // Inject adjacent post links (prev_post / next_post).
+                        // Always insert both keys so Tera templates can check them without errors.
+                        let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
+                        let (prev, next) = adjacent_posts
+                            .get(&(item.lang.clone(), item.slug.clone()))
+                            .unwrap_or(&empty);
+                        ctx.insert("prev_post", prev);
+                        ctx.insert("next_post", next);
+
+                        if collection.nested {
+                            if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
+                                let mut nav = base_nav.clone();
+                                if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
+                                    if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
+                                        if let Some(sections) = nav.as_array_mut() {
+                                            if let Some(section) = sections.get_mut(sec_idx) {
+                                                if let Some(items_arr) = section
+                                                    .get_mut("items")
+                                                    .and_then(|i| i.as_array_mut())
                                                 {
-                                                    nav_item["active"] =
-                                                        serde_json::Value::Bool(true);
+                                                    if let Some(nav_item) =
+                                                        items_arr.get_mut(item_idx)
+                                                    {
+                                                        nav_item["active"] =
+                                                            serde_json::Value::Bool(true);
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                ctx.insert("nav", &nav);
                             }
-                            ctx.insert("nav", &nav);
+                        } else {
+                            ctx.insert("nav", &empty_nav_value);
                         }
-                    } else {
-                        ctx.insert("nav", &empty_nav_value);
-                    }
-                    ctx.insert("lang", &item.lang);
-                    if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
-                        insert_i18n_context_cached(&mut ctx, cached_i18n);
-                    } else {
-                        insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
-                    }
-                    insert_build_flags(&mut ctx, config);
-
-                    let empty_translations: Vec<TranslationLink> = Vec::new();
-                    let translations = translation_map
-                        .get(&(collection.name.clone(), item.slug.clone()))
-                        .filter(|t| t.len() > 1)
-                        .map(|t| t.as_slice())
-                        .unwrap_or(&empty_translations);
-                    ctx.insert("translations", &translations);
-
-                    let template_name = item
-                        .frontmatter
-                        .template
-                        .as_deref()
-                        .unwrap_or(&collection.default_template);
-                    let html = tera.render(template_name, &ctx).map_err(|e| {
-                        use std::error::Error as _;
-                        let mut source_chain = String::new();
-                        let mut source: Option<&dyn std::error::Error> = e.source();
-                        while let Some(s) = source {
-                            source_chain.push_str(&format!("\n  Caused by: {s}"));
-                            source = s.source();
+                        ctx.insert("lang", &item.lang);
+                        if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
+                            insert_i18n_context_cached(&mut ctx, cached_i18n);
+                        } else {
+                            insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
                         }
-                        PageError::Build(format!("rendering '{}': {e}{source_chain}", item.slug))
-                    })?;
+                        insert_build_flags(&mut ctx, config);
 
-                    let output_path = url_to_output_path(&paths.output, &item.url);
-                    Ok((output_path, html))
-                })
-                .collect();
+                        let empty_translations: Vec<TranslationLink> = Vec::new();
+                        let translations = translation_map
+                            .get(&(collection.name.clone(), item.slug.clone()))
+                            .filter(|t| t.len() > 1)
+                            .map(|t| t.as_slice())
+                            .unwrap_or(&empty_translations);
+                        ctx.insert("translations", &translations);
+
+                        let template_name = item
+                            .frontmatter
+                            .template
+                            .as_deref()
+                            .unwrap_or(&collection.default_template);
+                        let html = tera.render(template_name, &ctx).map_err(|e| {
+                            use std::error::Error as _;
+                            let mut source_chain = String::new();
+                            let mut source: Option<&dyn std::error::Error> = e.source();
+                            while let Some(s) = source {
+                                source_chain.push_str(&format!("\n  Caused by: {s}"));
+                                source = s.source();
+                            }
+                            PageError::Build(format!(
+                                "rendering '{}': {e}{source_chain}",
+                                item.slug
+                            ))
+                        })?;
+
+                        let output_path = url_to_output_path(&paths.output, &item.url);
+                        Ok(Some((output_path, html)))
+                    })
+                    .collect();
 
             for result in render_results {
-                let (output_path, html) = result?;
-                if let Some(parent) = output_path.parent() {
-                    fs::create_dir_all(parent)?;
+                if let Some((output_path, html)) = result? {
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::write(&output_path, html)?;
                 }
-                fs::write(&output_path, html)?;
             }
         }
     }
@@ -2089,6 +2222,18 @@ fn build_site_inner(
         .map(|(name, items)| (name.clone(), items.len()))
         .collect();
 
+    // Calculate items skipped in incremental mode
+    let items_skipped = if is_incremental {
+        let total: usize = items_built.values().sum();
+        let changed = changeset
+            .as_ref()
+            .map(|cs| cs.changed_content.len())
+            .unwrap_or(0);
+        total.saturating_sub(changed)
+    } else {
+        0
+    };
+
     let data_files_count = crate::data::count_data_files(&paths.data_dir);
     let stats = BuildStats {
         items_built,
@@ -2097,6 +2242,8 @@ fn build_site_inner(
         data_files_loaded: data_files_count,
         duration_ms: start.elapsed().as_millis() as u64,
         step_timings,
+        incremental: is_incremental,
+        items_skipped,
     };
 
     Ok(BuildResult {
@@ -3370,6 +3517,8 @@ mod tests {
             data_files_loaded: 0,
             duration_ms: 1500,
             step_timings: vec![],
+            incremental: false,
+            items_skipped: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("5 posts"));
@@ -3388,6 +3537,8 @@ mod tests {
             data_files_loaded: 4,
             duration_ms: 250,
             step_timings: vec![],
+            incremental: false,
+            items_skipped: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("2 public files copied"));
@@ -3403,11 +3554,35 @@ mod tests {
             data_files_loaded: 0,
             duration_ms: 100,
             step_timings: vec![("Fast step".into(), 0.5), ("Slow step".into(), 15.3)],
+            incremental: false,
+            items_skipped: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("Timings:"));
         assert!(display.contains("Fast step: <1ms"));
         assert!(display.contains("Slow step: 15.3ms"));
+    }
+
+    #[test]
+    fn test_build_stats_human_display_incremental() {
+        let stats = BuildStats {
+            items_built: {
+                let mut m = HashMap::new();
+                m.insert("posts".into(), 20);
+                m
+            },
+            static_files_copied: 3,
+            public_files_copied: 0,
+            data_files_loaded: 0,
+            duration_ms: 300,
+            step_timings: vec![],
+            incremental: true,
+            items_skipped: 18,
+        };
+        let display = stats.human_display();
+        assert!(display.contains("Incremental build"));
+        assert!(display.contains("18 items unchanged"));
+        assert!(!display.contains("Built ")); // Should say "Incremental build" not "Built"
     }
 
     // ── SiteContext ─────────────────────────────────────────────────────

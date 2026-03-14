@@ -136,6 +136,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::info("Building site...");
         let opts = BuildOptions {
             include_drafts: true,
+            incremental: false,
         };
         let result = build::build_site(&config, &paths, &opts)?;
         human::success(&result.stats.human_display());
@@ -234,7 +235,10 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "build" => {
             let include_drafts = args.iter().any(|a| a == "--drafts");
-            let opts = BuildOptions { include_drafts };
+            let opts = BuildOptions {
+                include_drafts,
+                incremental: false,
+            };
             match build::build_site(config, paths, &opts) {
                 Ok(result) => human::success(&result.stats.human_display()),
                 Err(e) => human::error(&format!("Build failed: {e}")),
@@ -314,6 +318,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                                 human::info("Rebuilding site...");
                                 let opts = BuildOptions {
                                     include_drafts: true,
+                                    incremental: false,
                                 };
                                 match build::build_site(config, paths, &opts) {
                                     Ok(result) => human::success(&result.stats.human_display()),

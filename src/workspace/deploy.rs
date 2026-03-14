@@ -92,6 +92,7 @@ pub fn deploy_workspace(
             };
             let build_opts = BuildOptions {
                 include_drafts: false,
+                incremental: false,
             };
             let result = build::build_site(&build_config, &paths, &build_opts)?;
             human::success(&result.stats.human_display());
