@@ -38,7 +38,7 @@ cookie_consent = true      # show consent banner and gate analytics on acceptanc
 
 Analytics scripts are injected into all HTML files at build time. When `cookie_consent = true`, a banner is shown and analytics only load after the user accepts. Consent is stored in `localStorage`.
 
-For new Plausible installations, retrieve your unique snippet URL from Plausible → Settings → Installation and set it as `script_url`. The `extensions` field uses the legacy filename-based approach (e.g., `script.tagged-events.js`) which still works but won't receive new Plausible features. See the [Plausible script update guide](https://plausible.io/docs/script-update-guide).
+For new Plausible installations, retrieve your unique snippet URL from Plausible → Settings → Installation and set it as `script_url`. seite generates the correct `async` script tag and `plausible.init()` bootstrapper for custom event support. The legacy `extensions` field (e.g., `script.tagged-events.js`) still works but is deprecated. See the [Plausible script update guide](https://plausible.io/docs/script-update-guide).
 
 ### Subdomain Deploys
 
