@@ -259,13 +259,13 @@ provider = "plausible"
 id = "example.com"
 ```
 
-For new installations, Plausible now provides a **unique snippet per site** from your dashboard (Settings → Installation). Use `script_url` to point to it — features like tagged events, outbound links, and file downloads are toggled in your Plausible site settings and automatically included:
+For new installations, Plausible now provides a **unique snippet per site** from your dashboard (Settings → Installation). Use `script_url` to point to it — features like tagged events, outbound links, and file downloads are toggled in your Plausible site settings and automatically included. seite generates the correct `async` script tag plus the `plausible.init()` bootstrapper for custom event support:
 
 ```toml
 [analytics]
 provider = "plausible"
 id = "example.com"
-script_url = "https://plausible.io/js/script.XXXXXXXX.js"
+script_url = "https://plausible.io/js/pa-XXXXXXXXXX.js"
 ```
 
 **Legacy: Plausible with extensions (pre-October 2025 script)**

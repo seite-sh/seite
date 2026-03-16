@@ -37,11 +37,23 @@ fn analytics_script(config: &AnalyticsSection) -> String {
         }
         AnalyticsProvider::Plausible => {
             let src = plausible_script_url(config);
-            format!(
-                r#"<script defer data-domain="{id}" src="{src}"></script>"#,
-                id = config.id,
-                src = src,
-            )
+            if config.script_url.is_some() {
+                // New Plausible snippet format (unique URL per site, Oct 2025+).
+                // The domain is encoded in the URL — no data-domain needed.
+                // The init script sets up the plausible() function for custom events.
+                format!(
+                    r#"<script async src="{src}"></script>
+<script>window.plausible=window.plausible||function(){{(plausible.q=plausible.q||[]).push(arguments)}},plausible.init=plausible.init||function(i){{plausible.o=i||{{}}}};plausible.init()</script>"#,
+                    src = src,
+                )
+            } else {
+                // Legacy Plausible snippet (defer + data-domain).
+                format!(
+                    r#"<script defer data-domain="{id}" src="{src}"></script>"#,
+                    id = config.id,
+                    src = src,
+                )
+            }
         }
         AnalyticsProvider::Fathom => {
             let src = config
@@ -86,11 +98,20 @@ fn analytics_loader_js(config: &AnalyticsSection) -> String {
         }
         AnalyticsProvider::Plausible => {
             let src = plausible_script_url(config);
-            format!(
-                r#"var s=document.createElement('script');s.defer=true;s.setAttribute('data-domain','{id}');s.src='{src}';document.head.appendChild(s)"#,
-                id = config.id,
-                src = src,
-            )
+            if config.script_url.is_some() {
+                // New Plausible snippet: async, no data-domain, plus init script.
+                format!(
+                    r#"var s=document.createElement('script');s.async=true;s.src='{src}';document.head.appendChild(s);window.plausible=window.plausible||function(){{(plausible.q=plausible.q||[]).push(arguments)}},plausible.init=plausible.init||function(i){{plausible.o=i||{{}}}};plausible.init()"#,
+                    src = src,
+                )
+            } else {
+                // Legacy Plausible snippet: defer + data-domain.
+                format!(
+                    r#"var s=document.createElement('script');s.defer=true;s.setAttribute('data-domain','{id}');s.src='{src}';document.head.appendChild(s)"#,
+                    id = config.id,
+                    src = src,
+                )
+            }
         }
         AnalyticsProvider::Fathom => {
             let src = config
@@ -417,6 +438,62 @@ mod tests {
         let result = inject_analytics(SIMPLE_HTML, &config);
         assert!(result.contains("proxy.example.com/js/script.js"));
         assert!(!result.contains("tagged-events"));
+        // New format: async instead of defer, no data-domain, has init script
+        assert!(result.contains("async"));
+        assert!(!result.contains("data-domain"));
+        assert!(result.contains("plausible.init()"));
+    }
+
+    #[test]
+    fn test_plausible_unique_snippet_url() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: false,
+            script_url: Some("https://plausible.io/js/pa-OJfj4Th8cNkDRd_c7LB8I.js".into()),
+            extensions: vec![],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("pa-OJfj4Th8cNkDRd_c7LB8I.js"));
+        assert!(result.contains("<script async"));
+        assert!(!result.contains("defer"));
+        assert!(!result.contains("data-domain"));
+        assert!(result.contains("plausible.init()"));
+        assert!(result.contains("plausible.q"));
+    }
+
+    #[test]
+    fn test_plausible_unique_snippet_with_consent() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: true,
+            script_url: Some("https://plausible.io/js/pa-OJfj4Th8cNkDRd_c7LB8I.js".into()),
+            extensions: vec![],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("seite-cookie-banner"));
+        assert!(result.contains("pa-OJfj4Th8cNkDRd_c7LB8I.js"));
+        assert!(result.contains("plausible.init()"));
+        // Script should NOT be in <head> (consent-gated)
+        let head_end = result.find("</head>").unwrap();
+        let head_section = &result[..head_end];
+        assert!(!head_section.contains("plausible.io/js/pa-"));
+    }
+
+    #[test]
+    fn test_plausible_legacy_still_uses_defer_and_data_domain() {
+        let config = AnalyticsSection {
+            provider: AnalyticsProvider::Plausible,
+            id: "example.com".to_string(),
+            cookie_consent: false,
+            script_url: None,
+            extensions: vec![],
+        };
+        let result = inject_analytics(SIMPLE_HTML, &config);
+        assert!(result.contains("defer"));
+        assert!(result.contains("data-domain=\"example.com\""));
+        assert!(!result.contains("plausible.init()"));
     }
 
     #[test]

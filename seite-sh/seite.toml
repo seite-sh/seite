@@ -74,6 +74,6 @@ domain = "seite.sh"
 [analytics]
 provider = "plausible"
 id = "seite.sh"
-extensions = ["tagged-events", "outbound-links", "file-downloads"]
+script_url = "https://plausible.io/js/pa-OJfj4Th8cNkDRd_c7LB8I.js"
 
 [languages]
