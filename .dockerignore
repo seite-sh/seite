@@ -1,0 +1,6 @@
+target/
+dist/
+dist-subdomains/
+node_modules/
+.git/
+*.mcpb
