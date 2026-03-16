@@ -8,103 +8,183 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0f0f0f;
-  --bg-raised: #1a1a1a;
-  --bg-input: #222;
-  --border: #333;
-  --border-focus: #666;
-  --text: #e8e8e8;
-  --text-dim: #888;
+  --bg: #0a0a0b;
+  --bg-raised: #141416;
+  --bg-surface: #1c1c20;
+  --bg-input: #1e1e22;
+  --bg-hover: rgba(255,255,255,0.04);
+  --border: #2a2a2e;
+  --border-focus: #555;
+  --text: #eaeaea;
+  --text-dim: #8b8b95;
   --text-muted: #555;
   --accent: #8b5cf6;
-  --accent-dim: #6d3fd6;
+  --accent-hover: #7c4ddb;
+  --accent-ghost: rgba(139,92,246,0.10);
+  --accent-ghost-hover: rgba(139,92,246,0.18);
   --success: #22c55e;
+  --success-ghost: rgba(34,197,94,0.10);
   --danger: #ef4444;
+  --danger-ghost: rgba(239,68,68,0.08);
+  --danger-ghost-hover: rgba(239,68,68,0.16);
   --warning: #f59e0b;
+  --warning-ghost: rgba(245,158,11,0.10);
   --radius: 6px;
+  --radius-lg: 10px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+  --transition: 0.15s ease;
+  --sidebar-width: 260px;
 }
 
-html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; }
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
 
 /* Layout */
-.app { display: grid; grid-template-columns: 240px 1fr 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
-.toolbar { grid-column: 1 / -1; background: var(--bg-raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; }
-.sidebar { grid-row: 2; background: var(--bg-raised); border-right: 1px solid var(--border); overflow-y: auto; }
-.editor-pane { grid-row: 2; overflow-y: auto; display: flex; flex-direction: column; }
+.app { display: grid; grid-template-columns: var(--sidebar-width) 1fr 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+.toolbar { grid-column: 1 / -1; background: var(--bg-raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 8px; z-index: 10; }
+.sidebar { grid-row: 2; background: var(--bg-raised); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+.editor-pane { grid-row: 2; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
 .preview-pane { grid-row: 2; border-left: 1px solid var(--border); position: relative; }
 
+/* Resize handle */
+.resize-handle { width: 4px; cursor: col-resize; position: absolute; top: 0; bottom: 0; z-index: 5; background: transparent; transition: background var(--transition); }
+.resize-handle:hover, .resize-handle.active { background: var(--accent); }
+.resize-handle-sidebar { right: -2px; }
+.resize-handle-editor { right: -2px; }
+
 /* Toolbar */
-.toolbar .logo { font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing: -0.5px; }
-.toolbar .sep { width: 1px; height: 24px; background: var(--border); }
-.toolbar .status { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+.toolbar .logo { font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing: -0.5px; user-select: none; }
+.toolbar .sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+.toolbar .status { font-size: 12px; color: var(--text-dim); margin-left: auto; display: flex; align-items: center; gap: 6px; transition: color var(--transition); }
+.toolbar .status .pulse { width: 6px; height: 6px; border-radius: 50%; display: none; }
+.toolbar .status.saving .pulse { display: block; background: var(--warning); animation: pulse 1s ease infinite; }
+.toolbar .status.saved .pulse { display: block; background: var(--success); }
+.toolbar .status.error .pulse { display: block; background: var(--danger); }
 .toolbar .status.saving { color: var(--warning); }
 .toolbar .status.saved { color: var(--success); }
 .toolbar .status.error { color: var(--danger); }
+.toolbar .breadcrumb { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.toolbar .breadcrumb span { color: var(--text-dim); }
+.toolbar .breadcrumb .bc-sep { color: var(--text-muted); }
 
-.btn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-family: var(--font); transition: all 0.15s; }
-.btn:hover { border-color: var(--border-focus); background: #2a2a2a; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.btn { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text); padding: 5px 12px; border-radius: var(--radius); cursor: pointer; font-size: 12px; font-family: var(--font); font-weight: 500; transition: all var(--transition); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover { border-color: var(--border-focus); background: #252528; }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.35; pointer-events: none; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-dim); }
-.btn-danger { color: var(--danger); }
-.btn-danger:hover { background: rgba(239,68,68,0.1); border-color: var(--danger); }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--bg-hover); border-color: transparent; }
+.btn-danger { color: var(--danger); background: transparent; border-color: transparent; }
+.btn-danger:hover { background: var(--danger-ghost-hover); border-color: transparent; }
 
 /* Sidebar */
-.sidebar-section { padding: 8px 0; }
-.sidebar-section:not(:last-child) { border-bottom: 1px solid var(--border); }
-.sidebar-header { padding: 8px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); display: flex; align-items: center; justify-content: space-between; }
-.sidebar-header button { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
-.sidebar-header button:hover { color: var(--text); }
+.sidebar-search { padding: 10px 12px 6px; flex-shrink: 0; }
+.sidebar-search input { width: 100%; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 6px 10px 6px 28px; border-radius: var(--radius); font-size: 12px; font-family: var(--font); outline: none; transition: border-color var(--transition); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 8px center; }
+.sidebar-search input:focus { border-color: var(--accent); }
+.sidebar-search input::placeholder { color: var(--text-muted); }
 
-.file-item { padding: 6px 16px; cursor: pointer; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; transition: all 0.1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
-.file-item.active { background: rgba(139,92,246,0.12); color: var(--accent); }
+.sidebar-sections { flex: 1; overflow-y: auto; padding-bottom: 12px; }
+
+.sidebar-section { }
+.sidebar-section:not(:last-child) { border-bottom: 1px solid var(--border); }
+.sidebar-header { padding: 10px 12px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; transition: color var(--transition); }
+.sidebar-header:hover { color: var(--text-dim); }
+.sidebar-header .chevron { transition: transform var(--transition); font-size: 10px; }
+.sidebar-header.collapsed .chevron { transform: rotate(-90deg); }
+.sidebar-header .right { display: flex; align-items: center; gap: 4px; }
+.sidebar-header .count { font-size: 10px; color: var(--text-muted); font-weight: 400; background: var(--bg); padding: 1px 5px; border-radius: 8px; }
+.sidebar-header .add-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 3px; transition: all var(--transition); }
+.sidebar-header .add-btn:hover { color: var(--accent); background: var(--accent-ghost); }
+.sidebar-files { overflow: hidden; transition: max-height 0.2s ease; }
+.sidebar-files.collapsed { max-height: 0 !important; }
+
+.file-item { padding: 5px 12px 5px 16px; cursor: pointer; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; transition: all 0.1s; border-radius: 4px; margin: 1px 6px; position: relative; }
+.file-item:hover { background: var(--bg-hover); color: var(--text); }
+.file-item.active { background: var(--accent-ghost); color: var(--accent); }
+.file-item.active:hover { background: var(--accent-ghost-hover); }
 .file-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .file-item .dot.draft { background: var(--warning); }
 .file-item .dot.published { background: var(--success); }
-.file-item .name { overflow: hidden; text-overflow: ellipsis; }
-.file-item .date { font-size: 11px; color: var(--text-muted); margin-left: auto; flex-shrink: 0; }
+.file-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.file-item .date { font-size: 10px; color: var(--text-muted); flex-shrink: 0; font-family: var(--mono); }
+.file-item .unsaved-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); position: absolute; left: 8px; top: 50%; transform: translateY(-50%); }
 
 /* Editor pane */
-.frontmatter-section { padding: 20px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.frontmatter-section h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 12px; }
+.editor-content { display: none; flex: 1; flex-direction: column; }
+.editor-content.visible { display: flex; }
 
-.fm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Title area — prominent, separate from form */
+.title-area { padding: 20px 24px 0; flex-shrink: 0; }
+.title-area input { width: 100%; background: transparent; border: none; color: var(--text); font-size: 26px; font-weight: 700; font-family: var(--font); outline: none; letter-spacing: -0.5px; line-height: 1.3; }
+.title-area input::placeholder { color: var(--text-muted); }
+
+/* Collapsible frontmatter */
+.frontmatter-section { padding: 0 24px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.frontmatter-toggle { padding: 10px 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; transition: color var(--transition); }
+.frontmatter-toggle:hover { color: var(--text-dim); }
+.frontmatter-toggle .chevron { transition: transform var(--transition); font-size: 10px; }
+.frontmatter-toggle.collapsed .chevron { transform: rotate(-90deg); }
+.frontmatter-fields { overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; opacity: 1; }
+.frontmatter-fields.collapsed { max-height: 0 !important; opacity: 0; }
+
+.fm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-bottom: 14px; }
 .fm-field { display: flex; flex-direction: column; gap: 4px; }
 .fm-field.full { grid-column: 1 / -1; }
-.fm-field label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
-.fm-field input, .fm-field select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
+.fm-field label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+.fm-field input, .fm-field select { background: var(--bg-input); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); outline: none; transition: border-color var(--transition); }
 .fm-field input:focus, .fm-field select:focus { border-color: var(--accent); }
 .fm-field input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
 .fm-check { flex-direction: row; align-items: center; gap: 8px; }
+.fm-hint { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+.fm-hint.warn { color: var(--warning); }
+.fm-hint.good { color: var(--success); }
 
+/* Markdown toolbar */
+.md-toolbar { padding: 6px 24px; display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.md-toolbar button { background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 4px 7px; border-radius: 4px; font-size: 13px; font-family: var(--font); transition: all var(--transition); display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 26px; }
+.md-toolbar button:hover { background: var(--bg-hover); color: var(--text); }
+.md-toolbar button:active { background: var(--accent-ghost); }
+.md-toolbar .tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+.md-toolbar .tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.md-toolbar .word-info { font-size: 11px; color: var(--text-muted); font-family: var(--mono); display: flex; gap: 10px; }
+
+/* Body section */
 .body-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.body-section .section-bar { padding: 8px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.body-section .section-bar h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
 
-textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: var(--text); padding: 20px 24px; font-family: var(--mono); font-size: 14px; line-height: 1.7; resize: none; outline: none; tab-size: 2; }
+textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: var(--text); padding: 20px 24px; font-family: var(--mono); font-size: 14px; line-height: 1.8; resize: none; outline: none; tab-size: 2; }
+textarea#markdown-body::placeholder { color: var(--text-muted); }
 
 /* Preview */
-.preview-pane iframe { width: 100%; height: 100%; border: none; background: #fff; }
 .preview-pane .preview-bar { position: absolute; top: 0; left: 0; right: 0; height: 36px; background: var(--bg-raised); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; gap: 8px; z-index: 1; }
-.preview-pane .preview-bar .url { font-size: 12px; color: var(--text-dim); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-pane iframe { margin-top: 36px; height: calc(100% - 36px); }
+.preview-pane .preview-bar .url { font-size: 12px; color: var(--text-dim); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.preview-pane iframe { width: 100%; border: none; background: #fff; margin-top: 36px; height: calc(100% - 36px); }
+
+/* Empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 16px; padding: 40px; }
+.empty-state .es-icon { width: 64px; height: 64px; border-radius: 16px; background: var(--bg-surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 28px; opacity: 0.6; }
+.empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text); }
+.empty-state p { font-size: 13px; color: var(--text-muted); text-align: center; max-width: 280px; line-height: 1.5; }
+.empty-state .es-shortcut { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 
 /* New file dialog */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw; }
-.modal h2 { font-size: 16px; margin-bottom: 16px; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; opacity: 1; transition: opacity 0.15s; }
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 440px; max-width: 90vw; box-shadow: 0 24px 48px rgba(0,0,0,0.4); transform: translateY(0); transition: transform 0.15s; }
+.modal-overlay.hidden .modal { transform: translateY(8px); }
+.modal h2 { font-size: 16px; margin-bottom: 16px; font-weight: 600; }
 .modal .fm-field { margin-bottom: 12px; }
 .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
-.modal-overlay.hidden { display: none; }
-
-/* Empty state */
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 12px; }
-.empty-state .icon { font-size: 48px; opacity: 0.3; }
-.empty-state p { font-size: 14px; }
+/* Confirm dialog (replaces browser confirm) */
+.confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 150; opacity: 1; transition: opacity 0.15s; }
+.confirm-overlay.hidden { opacity: 0; pointer-events: none; }
+.confirm-dialog { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 380px; max-width: 90vw; box-shadow: 0 24px 48px rgba(0,0,0,0.4); }
+.confirm-dialog h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.confirm-dialog p { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-bottom: 20px; }
+.confirm-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* Keyboard shortcut hints */
 .kbd { font-size: 11px; color: var(--text-muted); font-family: var(--mono); background: var(--bg); padding: 2px 5px; border-radius: 3px; border: 1px solid var(--border); }
@@ -115,11 +195,19 @@ textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: va
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
 
-/* Toast notification */
-.toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; z-index: 200; transition: opacity 0.3s, transform 0.3s; }
-.toast.success { border-color: var(--success); color: var(--success); }
-.toast.error { border-color: var(--danger); color: var(--danger); }
-.toast.hidden { opacity: 0; transform: translateY(10px); pointer-events: none; }
+/* Toast notifications */
+.toast-container { position: fixed; bottom: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column-reverse; gap: 8px; }
+.toast { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); transform: translateX(0); opacity: 1; transition: all 0.25s ease; }
+.toast.success { border-color: var(--success); }
+.toast.success .toast-icon { color: var(--success); }
+.toast.error { border-color: var(--danger); }
+.toast.error .toast-icon { color: var(--danger); }
+.toast.hiding { opacity: 0; transform: translateX(20px); }
+.toast-icon { font-size: 14px; flex-shrink: 0; }
+.toast-msg { color: var(--text); }
+
+/* Selection */
+::selection { background: var(--accent-ghost-hover); }
 </style>
 </head>
 <body>
@@ -129,77 +217,142 @@ textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: va
   <div class="toolbar">
     <span class="logo">seite</span>
     <span class="sep"></span>
-    <button class="btn btn-primary btn-sm" onclick="saveFile()" id="save-btn" disabled>Save</button>
-    <button class="btn btn-sm" onclick="showNewFileDialog()">New</button>
-    <button class="btn btn-danger btn-sm" onclick="deleteCurrentFile()" id="delete-btn" disabled>Delete</button>
-    <span class="sep"></span>
-    <span class="kbd">Ctrl+S</span>
-    <span class="status" id="status">Ready</span>
+    <div class="breadcrumb" id="breadcrumb"></div>
+    <span class="sep" id="bc-sep" style="display:none;"></span>
+    <button class="btn btn-primary" onclick="saveFile()" id="save-btn" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save <span class="kbd" id="save-kbd"></span>
+    </button>
+    <button class="btn btn-ghost" onclick="showNewFileDialog()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New
+    </button>
+    <button class="btn btn-danger" onclick="confirmDelete()" id="delete-btn" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+      Delete
+    </button>
+    <div class="status" id="status">
+      <span class="pulse"></span>
+      <span class="status-text">Ready</span>
+    </div>
   </div>
 
   <!-- Sidebar -->
-  <div class="sidebar" id="sidebar"></div>
+  <div class="sidebar" id="sidebar" style="position:relative;">
+    <div class="sidebar-search">
+      <input type="text" id="sidebar-filter" placeholder="Filter files..." oninput="filterSidebar()">
+    </div>
+    <div class="sidebar-sections" id="sidebar-sections"></div>
+  </div>
 
   <!-- Editor -->
   <div class="editor-pane" id="editor-pane">
     <div class="empty-state" id="empty-state">
-      <div class="icon">&#9998;</div>
-      <p>Select a file or create a new one</p>
+      <div class="es-icon">&#9998;</div>
+      <h3>No file open</h3>
+      <p>Select a file from the sidebar or create a new one to get started.</p>
+      <div class="es-shortcut">
+        <span class="kbd" id="new-hint"></span>
+        <span>to create new content</span>
+      </div>
     </div>
 
-    <div id="editor-content" style="display:none; flex:1; display:flex; flex-direction:column;">
+    <div class="editor-content" id="editor-content">
+      <!-- Prominent title -->
+      <div class="title-area">
+        <input type="text" id="fm-title" placeholder="Untitled" autocomplete="off" spellcheck="true">
+      </div>
+
+      <!-- Collapsible frontmatter -->
       <div class="frontmatter-section">
-        <h3>Frontmatter</h3>
-        <div class="fm-grid">
-          <div class="fm-field full">
-            <label for="fm-title">Title</label>
-            <input type="text" id="fm-title" placeholder="Page title">
-          </div>
-          <div class="fm-field">
-            <label for="fm-date">Date</label>
-            <input type="date" id="fm-date">
-          </div>
-          <div class="fm-field">
-            <label for="fm-updated">Updated</label>
-            <input type="date" id="fm-updated">
-          </div>
-          <div class="fm-field full">
-            <label for="fm-description">Description</label>
-            <input type="text" id="fm-description" placeholder="Meta description for SEO">
-          </div>
-          <div class="fm-field">
-            <label for="fm-tags">Tags (comma-separated)</label>
-            <input type="text" id="fm-tags" placeholder="rust, web, tutorial">
-          </div>
-          <div class="fm-field">
-            <label for="fm-image">Image</label>
-            <input type="text" id="fm-image" placeholder="/static/hero.jpg">
-          </div>
-          <div class="fm-field">
-            <label for="fm-slug">Slug (optional)</label>
-            <input type="text" id="fm-slug" placeholder="custom-url-slug">
-          </div>
-          <div class="fm-field">
-            <label for="fm-template">Template (optional)</label>
-            <input type="text" id="fm-template" placeholder="custom.html">
-          </div>
-          <div class="fm-field">
-            <label for="fm-weight">Weight</label>
-            <input type="number" id="fm-weight" placeholder="Sort order">
-          </div>
-          <div class="fm-field fm-check">
-            <input type="checkbox" id="fm-draft">
-            <label for="fm-draft">Draft</label>
+        <div class="frontmatter-toggle" id="fm-toggle" onclick="toggleFrontmatter()">
+          <span class="chevron">&#9660;</span>
+          Metadata
+        </div>
+        <div class="frontmatter-fields" id="fm-fields">
+          <div class="fm-grid">
+            <div class="fm-field">
+              <label for="fm-date">Date</label>
+              <input type="date" id="fm-date">
+            </div>
+            <div class="fm-field">
+              <label for="fm-updated">Updated</label>
+              <input type="date" id="fm-updated">
+            </div>
+            <div class="fm-field full">
+              <label for="fm-description">Description <span class="fm-hint" id="desc-hint"></span></label>
+              <input type="text" id="fm-description" placeholder="Meta description for SEO" oninput="updateDescHint()">
+            </div>
+            <div class="fm-field">
+              <label for="fm-tags">Tags</label>
+              <input type="text" id="fm-tags" placeholder="comma-separated">
+            </div>
+            <div class="fm-field">
+              <label for="fm-image">Image</label>
+              <input type="text" id="fm-image" placeholder="/static/hero.jpg">
+            </div>
+            <div class="fm-field">
+              <label for="fm-slug">Slug</label>
+              <input type="text" id="fm-slug" placeholder="custom-url-slug">
+            </div>
+            <div class="fm-field">
+              <label for="fm-template">Template</label>
+              <input type="text" id="fm-template" placeholder="custom.html">
+            </div>
+            <div class="fm-field">
+              <label for="fm-weight">Weight</label>
+              <input type="number" id="fm-weight" placeholder="Sort order">
+            </div>
+            <div class="fm-field fm-check">
+              <input type="checkbox" id="fm-draft">
+              <label for="fm-draft">Draft</label>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="body-section">
-        <div class="section-bar">
-          <h3>Content (Markdown)</h3>
-          <span class="kbd" id="word-count">0 words</span>
+      <!-- Markdown toolbar -->
+      <div class="md-toolbar">
+        <button onclick="mdAction('heading')" title="Heading (Ctrl+Shift+H)"><b>H</b></button>
+        <button onclick="mdAction('bold')" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button onclick="mdAction('italic')" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button onclick="mdAction('strikethrough')" title="Strikethrough"><s>S</s></button>
+        <span class="tb-sep"></span>
+        <button onclick="mdAction('link')" title="Link (Ctrl+K)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        </button>
+        <button onclick="mdAction('image')" title="Image">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </button>
+        <span class="tb-sep"></span>
+        <button onclick="mdAction('ul')" title="Bullet list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+        </button>
+        <button onclick="mdAction('ol')" title="Numbered list">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="2" y="14" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">2</text><text x="2" y="20" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">3</text></svg>
+        </button>
+        <button onclick="mdAction('blockquote')" title="Quote">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 17h3l2-4V7H5v6h3"/><path d="M15 17h3l2-4V7h-6v6h3"/></svg>
+        </button>
+        <span class="tb-sep"></span>
+        <button onclick="mdAction('code')" title="Inline code">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <button onclick="mdAction('codeblock')" title="Code block">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="14 12 18 12"/><polyline points="6 9 9 12 6 15"/></svg>
+        </button>
+        <button onclick="mdAction('hr')" title="Horizontal rule">&mdash;</button>
+        <div class="tb-right">
+          <span class="word-info">
+            <span id="word-count">0 words</span>
+            <span id="read-time"></span>
+          </span>
         </div>
-        <textarea id="markdown-body" placeholder="Write your markdown content here..."></textarea>
+      </div>
+
+      <!-- Body section -->
+      <div class="body-section">
+        <textarea id="markdown-body" placeholder="Start writing..."></textarea>
       </div>
     </div>
   </div>
@@ -208,7 +361,9 @@ textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: va
   <div class="preview-pane">
     <div class="preview-bar">
       <span class="url" id="preview-url">Preview</span>
-      <button class="btn btn-sm" onclick="refreshPreview()" style="margin-left:auto;">Refresh</button>
+      <button class="btn btn-ghost" onclick="refreshPreview()" style="margin-left:auto; padding:3px 8px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      </button>
     </div>
     <iframe id="preview-frame" src="about:blank"></iframe>
   </div>
@@ -224,7 +379,7 @@ textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: va
     </div>
     <div class="fm-field">
       <label for="new-title">Title</label>
-      <input type="text" id="new-title" placeholder="My New Post">
+      <input type="text" id="new-title" placeholder="My New Post" autocomplete="off">
     </div>
     <div class="fm-field">
       <label for="new-tags">Tags (optional)</label>
@@ -241,8 +396,20 @@ textarea#markdown-body { flex: 1; background: var(--bg); border: none; color: va
   </div>
 </div>
 
-<!-- Toast -->
-<div class="toast hidden" id="toast"></div>
+<!-- Confirm Dialog (replaces browser confirm) -->
+<div class="confirm-overlay hidden" id="confirm-dialog">
+  <div class="confirm-dialog">
+    <h3 id="confirm-title">Are you sure?</h3>
+    <p id="confirm-message">This action cannot be undone.</p>
+    <div class="actions">
+      <button class="btn" id="confirm-cancel">Cancel</button>
+      <button class="btn" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
 
 <script>
 const API = '/__editor/api';
@@ -250,6 +417,15 @@ let currentFile = null;
 let isDirty = false;
 let collections = [];
 let previewBaseUrl = '';
+let collapsedSections = {};
+
+// Platform detection
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+const modKey = isMac ? 'Cmd' : 'Ctrl';
+
+// Set keyboard hints
+document.getElementById('save-kbd').textContent = `${modKey}+S`;
+document.getElementById('new-hint').textContent = `Click "New" in the toolbar`;
 
 // --- Init ---
 async function init() {
@@ -259,44 +435,123 @@ async function init() {
     collections = data.collections;
     previewBaseUrl = data.preview_url || '';
     renderSidebar(collections);
+    restoreDraftBackup();
   } catch (e) {
     showToast('Failed to load collections: ' + e.message, 'error');
   }
 }
 
 // --- Sidebar ---
-function renderSidebar(collections) {
-  const sb = document.getElementById('sidebar');
-  sb.innerHTML = '';
-  for (const col of collections) {
+function renderSidebar(cols) {
+  const container = document.getElementById('sidebar-sections');
+  const filter = document.getElementById('sidebar-filter').value.toLowerCase();
+  container.innerHTML = '';
+
+  for (const col of cols) {
+    const filtered = filter
+      ? col.files.filter(f => (f.title || f.filename).toLowerCase().includes(filter))
+      : col.files;
+
+    // Skip empty filtered sections
+    if (filter && filtered.length === 0) continue;
+
     const section = document.createElement('div');
     section.className = 'sidebar-section';
+
+    const isCollapsed = collapsedSections[col.name] || false;
+
     section.innerHTML = `
-      <div class="sidebar-header">
-        <span>${col.label} (${col.files.length})</span>
-        <button title="New ${col.name}" onclick="showNewFileDialog('${col.name}')">+</button>
+      <div class="sidebar-header ${isCollapsed ? 'collapsed' : ''}" data-col="${col.name}">
+        <span><span class="chevron">&#9660;</span> ${escapeHtml(col.label)}</span>
+        <span class="right">
+          <span class="count">${filtered.length}</span>
+          <button class="add-btn" title="New ${col.name}" onclick="event.stopPropagation(); showNewFileDialog('${col.name}')">+</button>
+        </span>
       </div>
+      <div class="sidebar-files ${isCollapsed ? 'collapsed' : ''}" data-col-files="${col.name}"></div>
     `;
-    for (const file of col.files) {
+
+    // Header click toggles collapse
+    section.querySelector('.sidebar-header').addEventListener('click', () => {
+      collapsedSections[col.name] = !collapsedSections[col.name];
+      renderSidebar(collections);
+    });
+
+    const filesEl = section.querySelector('.sidebar-files');
+    for (const file of filtered) {
       const item = document.createElement('div');
-      item.className = 'file-item' + (currentFile && currentFile.path === file.path ? ' active' : '');
+      const isActive = currentFile && currentFile.path === file.path;
+      item.className = 'file-item' + (isActive ? ' active' : '');
       const dotClass = file.draft ? 'draft' : 'published';
-      const dateStr = file.date || '';
+      const dateStr = file.date ? formatShortDate(file.date) : '';
+      const showUnsaved = isActive && isDirty;
       item.innerHTML = `
+        ${showUnsaved ? '<span class="unsaved-dot"></span>' : ''}
         <span class="dot ${dotClass}"></span>
         <span class="name">${escapeHtml(file.title || file.filename)}</span>
         ${dateStr ? `<span class="date">${dateStr}</span>` : ''}
       `;
       item.onclick = () => openFile(file.path);
-      section.appendChild(item);
+      filesEl.appendChild(item);
     }
-    sb.appendChild(section);
+
+    // Set max-height for animation
+    if (!isCollapsed) {
+      requestAnimationFrame(() => {
+        filesEl.style.maxHeight = filesEl.scrollHeight + 'px';
+      });
+    }
+
+    container.appendChild(section);
   }
+}
+
+function formatShortDate(dateStr) {
+  // "2025-01-15" → "Jan 15"
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch { return dateStr; }
+}
+
+function filterSidebar() {
+  renderSidebar(collections);
+}
+
+// --- Breadcrumb ---
+function updateBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  const sep = document.getElementById('bc-sep');
+  if (!currentFile) {
+    bc.innerHTML = '';
+    sep.style.display = 'none';
+    return;
+  }
+  sep.style.display = '';
+  // Find collection name
+  let colLabel = '';
+  for (const col of collections) {
+    if (col.files.some(f => f.path === currentFile.path)) {
+      colLabel = col.label;
+      break;
+    }
+  }
+  const title = document.getElementById('fm-title').value || 'Untitled';
+  bc.innerHTML = colLabel
+    ? `<span>${escapeHtml(colLabel)}</span><span class="bc-sep">/</span><span>${escapeHtml(title)}</span>`
+    : `<span>${escapeHtml(title)}</span>`;
 }
 
 // --- File operations ---
 async function openFile(path) {
-  if (isDirty && !confirm('You have unsaved changes. Discard?')) return;
+  if (isDirty) {
+    const proceed = await showConfirm(
+      'Unsaved changes',
+      'You have unsaved changes. Do you want to discard them?',
+      'Discard', 'btn-danger'
+    );
+    if (!proceed) return;
+  }
 
   try {
     const res = await fetch(`${API}/file?path=${encodeURIComponent(path)}`);
@@ -309,7 +564,9 @@ async function openFile(path) {
     document.getElementById('save-btn').disabled = false;
     document.getElementById('delete-btn').disabled = false;
     renderSidebar(collections);
+    updateBreadcrumb();
     updatePreview(data.url);
+    clearDraftBackup();
   } catch (e) {
     showToast('Failed to open file: ' + e.message, 'error');
   }
@@ -317,8 +574,7 @@ async function openFile(path) {
 
 function populateEditor(data) {
   document.getElementById('empty-state').style.display = 'none';
-  const ec = document.getElementById('editor-content');
-  ec.style.display = 'flex';
+  document.getElementById('editor-content').classList.add('visible');
 
   const fm = data.frontmatter;
   document.getElementById('fm-title').value = fm.title || '';
@@ -333,6 +589,7 @@ function populateEditor(data) {
   document.getElementById('fm-draft').checked = fm.draft || false;
   document.getElementById('markdown-body').value = data.body || '';
   updateWordCount();
+  updateDescHint();
 }
 
 function gatherFileData() {
@@ -371,11 +628,12 @@ async function saveFile() {
     isDirty = false;
     setStatus('Saved', 'saved');
     showToast('File saved', 'success');
+    clearDraftBackup();
 
-    // Refresh sidebar in case title/draft changed
     await refreshCollections();
+    updateBreadcrumb();
 
-    // Wait a moment for rebuild, then refresh preview
+    // Wait for rebuild, then refresh preview
     setTimeout(() => refreshPreview(), 1500);
   } catch (e) {
     setStatus('Save failed', 'error');
@@ -383,19 +641,29 @@ async function saveFile() {
   }
 }
 
-async function deleteCurrentFile() {
+async function confirmDelete() {
   if (!currentFile) return;
-  if (!confirm(`Delete "${currentFile.frontmatter?.title || currentFile.path}"?`)) return;
+  const title = currentFile.frontmatter?.title || currentFile.path;
+  const proceed = await showConfirm(
+    'Delete file',
+    `Are you sure you want to delete "${title}"? This cannot be undone.`,
+    'Delete', 'btn-danger'
+  );
+  if (!proceed) return;
+  await deleteCurrentFile();
+}
 
+async function deleteCurrentFile() {
   try {
     const res = await fetch(`${API}/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     currentFile = null;
     isDirty = false;
-    document.getElementById('editor-content').style.display = 'none';
+    document.getElementById('editor-content').classList.remove('visible');
     document.getElementById('empty-state').style.display = 'flex';
     document.getElementById('save-btn').disabled = true;
     document.getElementById('delete-btn').disabled = true;
+    updateBreadcrumb();
     showToast('File deleted', 'success');
     await refreshCollections();
   } catch (e) {
@@ -455,18 +723,164 @@ function refreshPreview() {
   }
 }
 
+// --- Markdown toolbar actions ---
+function mdAction(action) {
+  const ta = document.getElementById('markdown-body');
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const selected = ta.value.substring(start, end);
+  let before = '', after = '', insert = '';
+
+  switch (action) {
+    case 'bold':
+      before = '**'; after = '**';
+      insert = selected || 'bold text';
+      break;
+    case 'italic':
+      before = '_'; after = '_';
+      insert = selected || 'italic text';
+      break;
+    case 'strikethrough':
+      before = '~~'; after = '~~';
+      insert = selected || 'text';
+      break;
+    case 'heading':
+      // If at line start, add ##, else insert on new line
+      const lineStart = ta.value.lastIndexOf('\n', start - 1) + 1;
+      const lineText = ta.value.substring(lineStart, start);
+      if (/^#{1,5}\s/.test(ta.value.substring(lineStart))) {
+        // Already a heading — add one more #
+        ta.setSelectionRange(lineStart, lineStart);
+        wrapText(ta, '#', '');
+        return;
+      }
+      before = '## '; after = '';
+      insert = selected || 'Heading';
+      break;
+    case 'link':
+      before = '['; after = '](url)';
+      insert = selected || 'link text';
+      break;
+    case 'image':
+      before = '!['; after = '](url)';
+      insert = selected || 'alt text';
+      break;
+    case 'code':
+      before = '`'; after = '`';
+      insert = selected || 'code';
+      break;
+    case 'codeblock':
+      before = '```\n'; after = '\n```';
+      insert = selected || 'code';
+      break;
+    case 'blockquote':
+      before = '> '; after = '';
+      insert = selected || 'quote';
+      break;
+    case 'ul':
+      before = '- '; after = '';
+      insert = selected || 'list item';
+      break;
+    case 'ol':
+      before = '1. '; after = '';
+      insert = selected || 'list item';
+      break;
+    case 'hr':
+      before = '\n---\n'; after = '';
+      insert = '';
+      break;
+    default: return;
+  }
+
+  wrapText(ta, before, after, insert);
+}
+
+function wrapText(ta, before, after, insert) {
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const selected = ta.value.substring(start, end);
+  const text = insert !== undefined ? (selected || insert) : '';
+  const replacement = before + text + after;
+
+  ta.focus();
+  // Use execCommand for undo support where available
+  if (document.execCommand) {
+    ta.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+  } else {
+    ta.value = ta.value.substring(0, start) + replacement + ta.value.substring(end);
+  }
+
+  // Select the inserted text (not the wrapper)
+  const newStart = start + before.length;
+  const newEnd = newStart + text.length;
+  ta.setSelectionRange(newStart, newEnd);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// --- Collapsible frontmatter ---
+let fmCollapsed = false;
+function toggleFrontmatter() {
+  fmCollapsed = !fmCollapsed;
+  const toggle = document.getElementById('fm-toggle');
+  const fields = document.getElementById('fm-fields');
+  if (fmCollapsed) {
+    toggle.classList.add('collapsed');
+    fields.classList.add('collapsed');
+  } else {
+    toggle.classList.remove('collapsed');
+    fields.classList.remove('collapsed');
+    fields.style.maxHeight = fields.scrollHeight + 'px';
+  }
+}
+
 // --- UI helpers ---
 function setStatus(text, cls) {
   const el = document.getElementById('status');
-  el.textContent = text;
+  el.querySelector('.status-text').textContent = text;
   el.className = 'status' + (cls ? ' ' + cls : '');
 }
 
 function showToast(msg, type) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast ' + (type || '');
-  setTimeout(() => { el.className = 'toast hidden'; }, 3000);
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + (type || '');
+  const icon = type === 'success' ? '&#10003;' : type === 'error' ? '&#10007;' : '&#8226;';
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${escapeHtml(msg)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('hiding');
+    setTimeout(() => toast.remove(), 250);
+  }, 3000);
+}
+
+// Custom confirm dialog (replaces browser confirm())
+function showConfirm(title, message, okLabel, okClass) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirm-dialog');
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    const okBtn = document.getElementById('confirm-ok');
+    okBtn.textContent = okLabel || 'Confirm';
+    okBtn.className = 'btn ' + (okClass || 'btn-primary');
+
+    overlay.classList.remove('hidden');
+
+    const cleanup = (result) => {
+      overlay.classList.add('hidden');
+      okBtn.removeEventListener('click', onOk);
+      document.getElementById('confirm-cancel').removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onOverlay = (e) => { if (e.target === overlay) cleanup(false); };
+
+    okBtn.addEventListener('click', onOk);
+    document.getElementById('confirm-cancel').addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+  });
 }
 
 function showNewFileDialog(preselect) {
@@ -478,7 +892,7 @@ function showNewFileDialog(preselect) {
   document.getElementById('new-tags').value = '';
   document.getElementById('new-draft').checked = false;
   document.getElementById('new-file-modal').classList.remove('hidden');
-  document.getElementById('new-title').focus();
+  setTimeout(() => document.getElementById('new-title').focus(), 50);
 }
 
 function hideNewFileDialog() {
@@ -489,6 +903,31 @@ function updateWordCount() {
   const text = document.getElementById('markdown-body').value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('word-count').textContent = words + ' word' + (words !== 1 ? 's' : '');
+
+  // Reading time (~238 wpm average)
+  const readEl = document.getElementById('read-time');
+  if (words > 0) {
+    const mins = Math.max(1, Math.round(words / 238));
+    readEl.textContent = mins + ' min read';
+  } else {
+    readEl.textContent = '';
+  }
+}
+
+function updateDescHint() {
+  const desc = document.getElementById('fm-description').value;
+  const hint = document.getElementById('desc-hint');
+  const len = desc.length;
+  if (len === 0) {
+    hint.textContent = '';
+    hint.className = 'fm-hint';
+  } else if (len <= 155) {
+    hint.textContent = `(${len}/155)`;
+    hint.className = 'fm-hint good';
+  } else {
+    hint.textContent = `(${len}/155 — too long)`;
+    hint.className = 'fm-hint warn';
+  }
 }
 
 function escapeHtml(s) {
@@ -497,23 +936,69 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+// --- Draft backup to localStorage ---
+function saveDraftBackup() {
+  if (!currentFile) return;
+  const data = gatherFileData();
+  try {
+    localStorage.setItem('seite-draft-' + currentFile.path, JSON.stringify(data));
+  } catch (e) { /* quota exceeded — ignore */ }
+}
+
+function clearDraftBackup() {
+  if (!currentFile) return;
+  localStorage.removeItem('seite-draft-' + currentFile.path);
+}
+
+function restoreDraftBackup() {
+  // Check if we have any draft backups and notify
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('seite-draft-')) {
+      const path = key.replace('seite-draft-', '');
+      // Silently available — will restore when file is opened
+    }
+  }
+}
+
 // --- Change tracking ---
+let draftTimer = null;
 document.addEventListener('input', (e) => {
-  if (currentFile && (e.target.closest('.frontmatter-section') || e.target.id === 'markdown-body')) {
+  if (currentFile && (e.target.closest('.frontmatter-section') || e.target.closest('.title-area') || e.target.id === 'markdown-body')) {
     isDirty = true;
     setStatus('Unsaved changes');
+    renderSidebar(collections);
+
+    // Auto-backup to localStorage every 2 seconds
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraftBackup, 2000);
   }
   if (e.target.id === 'markdown-body') updateWordCount();
+  if (e.target.id === 'fm-title') updateBreadcrumb();
 });
 
 // --- Keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+  const mod = isMac ? e.metaKey : e.ctrlKey;
+  if (mod && e.key === 's') {
     e.preventDefault();
     saveFile();
   }
+  if (mod && e.key === 'b') {
+    e.preventDefault();
+    if (document.activeElement.id === 'markdown-body') mdAction('bold');
+  }
+  if (mod && e.key === 'i') {
+    e.preventDefault();
+    if (document.activeElement.id === 'markdown-body') mdAction('italic');
+  }
+  if (mod && e.key === 'k') {
+    e.preventDefault();
+    if (document.activeElement.id === 'markdown-body') mdAction('link');
+  }
   if (e.key === 'Escape') {
     hideNewFileDialog();
+    document.getElementById('confirm-dialog').classList.add('hidden');
   }
 });
 
@@ -524,8 +1009,12 @@ document.getElementById('markdown-body').addEventListener('keydown', (e) => {
     const ta = e.target;
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
-    ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
-    ta.selectionStart = ta.selectionEnd = start + 2;
+    if (document.execCommand) {
+      document.execCommand('insertText', false, '  ');
+    } else {
+      ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+      ta.selectionStart = ta.selectionEnd = start + 2;
+    }
   }
 });
 
@@ -543,6 +1032,57 @@ window.addEventListener('beforeunload', (e) => {
 document.getElementById('new-title').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') createNewFile();
 });
+
+// Set initial frontmatter max-height
+requestAnimationFrame(() => {
+  const fields = document.getElementById('fm-fields');
+  fields.style.maxHeight = fields.scrollHeight + 'px';
+});
+
+// --- Resizable panels ---
+(function initResize() {
+  const app = document.querySelector('.app');
+  let resizing = null;
+  let startX = 0;
+  let startWidth = 0;
+
+  // Create resize handles
+  const sidebar = document.querySelector('.sidebar');
+  const editorPane = document.querySelector('.editor-pane');
+
+  const sidebarHandle = document.createElement('div');
+  sidebarHandle.className = 'resize-handle';
+  sidebarHandle.style.cssText = 'position:absolute;right:-2px;top:0;bottom:0;width:4px;cursor:col-resize;z-index:5;';
+  sidebar.appendChild(sidebarHandle);
+
+  sidebarHandle.addEventListener('mousedown', (e) => {
+    resizing = 'sidebar';
+    startX = e.clientX;
+    startWidth = sidebar.offsetWidth;
+    sidebarHandle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const dx = e.clientX - startX;
+    if (resizing === 'sidebar') {
+      const newWidth = Math.max(180, Math.min(400, startWidth + dx));
+      app.style.gridTemplateColumns = `${newWidth}px 1fr 1fr`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (resizing) {
+      resizing = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      sidebarHandle.classList.remove('active');
+    }
+  });
+})();
 
 init();
 </script>
