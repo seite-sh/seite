@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.3",
+  "name": "seite",
+  "display_name": "seite \u2014 AI-native Static Site Generator",
+  "version": "VERSION_PLACEHOLDER",
+  "description": "Build and manage static sites via MCP. Create content, apply themes, search, and deploy.",
+  "long_description": "seite is a Rust-powered static site generator with a built-in MCP server. It exposes site content, configuration, themes, and build tools to any AI agent. Ships with Claude Code integration, CLAUDE.md scaffolding, and llms.txt generation.",
+  "author": {
+    "name": "seite-sh",
+    "url": "https://seite.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seite-sh/seite.git"
+  },
+  "homepage": "https://seite.sh",
+  "documentation": "https://seite.sh/docs",
+  "support": "https://github.com/seite-sh/seite/issues",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/seite",
+    "mcp_config": {
+      "command": "${__dirname}/server/seite",
+      "args": ["mcp"]
+    }
+  },
+  "tools": [
+    { "name": "seite_build", "description": "Build the site to the output directory" },
+    { "name": "seite_create_content", "description": "Create a new content file with frontmatter" },
+    { "name": "seite_search", "description": "Search site content by keywords" },
+    { "name": "seite_apply_theme", "description": "Apply a bundled or installed theme" },
+    { "name": "seite_lookup_docs", "description": "Look up seite documentation by topic or keyword" }
+  ],
+  "keywords": ["static-site-generator", "mcp", "rust", "claude-code", "ai-agent", "llms-txt"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"]
+  }
+}

@@ -179,6 +179,122 @@ jobs:
       base64-subjects: "${{ needs.release.outputs.digests }}"
       upload-assets: true
 
+  publish-mcpb:
+    name: Publish MCPB bundles & MCP Registry
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve tag and version
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Build MCPB bundles
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+
+          # Prepare manifest with real version
+          sed "s/VERSION_PLACEHOLDER/$VERSION/g" mcp/manifest.json > /tmp/manifest.json
+
+          # Map targets to MCPB platform names
+          declare -A PLATFORMS=(
+            ["aarch64-apple-darwin"]="darwin-arm64"
+            ["x86_64-apple-darwin"]="darwin-x64"
+            ["x86_64-unknown-linux-gnu"]="linux-x64"
+            ["aarch64-unknown-linux-gnu"]="linux-arm64"
+          )
+
+          mkdir -p mcpb-out
+
+          for TARGET in "${!PLATFORMS[@]}"; do
+            PLATFORM="${PLATFORMS[$TARGET]}"
+            BUNDLE="seite-${PLATFORM}.mcpb"
+            WORKDIR=$(mktemp -d)
+
+            cp /tmp/manifest.json "$WORKDIR/manifest.json"
+            mkdir -p "$WORKDIR/server"
+
+            # Extract binary from release artifact
+            tar xzf "artifacts/seite-${TARGET}.tar.gz" -C "$WORKDIR/server/"
+            chmod +x "$WORKDIR/server/seite"
+
+            # Create .mcpb (ZIP archive)
+            (cd "$WORKDIR" && zip -r "/tmp/${BUNDLE}" manifest.json server/)
+            mv "/tmp/${BUNDLE}" "mcpb-out/${BUNDLE}"
+            rm -rf "$WORKDIR"
+
+            echo "Built ${BUNDLE}"
+          done
+
+          # Windows x86_64
+          WORKDIR=$(mktemp -d)
+          cp /tmp/manifest.json "$WORKDIR/manifest.json"
+          mkdir -p "$WORKDIR/server"
+          unzip -o "artifacts/seite-x86_64-pc-windows-msvc.zip" -d "$WORKDIR/server/"
+          (cd "$WORKDIR" && zip -r /tmp/seite-windows-x64.mcpb manifest.json server/)
+          mv /tmp/seite-windows-x64.mcpb mcpb-out/
+          rm -rf "$WORKDIR"
+          echo "Built seite-windows-x64.mcpb"
+
+          ls -la mcpb-out/
+
+      - name: Upload MCPB bundles to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          for BUNDLE in mcpb-out/*.mcpb; do
+            gh release upload "$TAG" "$BUNDLE" --clobber
+          done
+
+      - name: Publish to MCP Registry
+        env:
+          MCP_REGISTRY_KEY: ${{ secrets.MCP_REGISTRY_KEY }}
+        run: |
+          if [ -z "$MCP_REGISTRY_KEY" ]; then
+            echo "MCP_REGISTRY_KEY not set, skipping MCP Registry publish"
+            exit 0
+          fi
+
+          VERSION="${{ steps.tag.outputs.version }}"
+
+          # Compute SHA-256 of primary bundle (darwin-arm64)
+          SHA=$(sha256sum mcpb-out/seite-darwin-arm64.mcpb | cut -d' ' -f1)
+
+          # Generate server.json from template
+          sed -e "s/VERSION_PLACEHOLDER/$VERSION/g" \
+              -e "s/SHA_PLACEHOLDER/$SHA/g" \
+              mcp/server.json > /tmp/server.json
+
+          cat /tmp/server.json
+
+          # Install mcp-publisher
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+          # Write key file for DNS auth
+          echo "$MCP_REGISTRY_KEY" > /tmp/key.pem
+
+          # Publish to MCP Registry
+          ./mcp-publisher publish --server-json /tmp/server.json --key /tmp/key.pem
+
+          rm -f /tmp/key.pem
+
   publish-crate:
     name: Publish to crates.io
     needs: release

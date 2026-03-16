@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "sh.seite/seite",
+  "title": "seite",
+  "description": "AI-native static site generator \u2014 build sites, create content, apply themes, search, and deploy via MCP",
+  "repository": {
+    "url": "https://github.com/seite-sh/seite",
+    "source": "github"
+  },
+  "version": "VERSION_PLACEHOLDER",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/seite-sh/seite/releases/download/vVERSION_PLACEHOLDER/seite-darwin-arm64.mcpb",
+      "fileSha256": "SHA_PLACEHOLDER",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
