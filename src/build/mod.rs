@@ -555,6 +555,17 @@ fn build_site_inner(
         None
     };
 
+    // Pre-compute i18n strings per language for shortcode templates.
+    // Built before the collection loop so the cache can be captured by par_iter closures.
+    let sc_i18n_cache: HashMap<String, serde_json::Value> = config
+        .all_languages()
+        .into_iter()
+        .map(|lang| {
+            let t = ui_strings_for_lang(&lang, &data);
+            (lang, t)
+        })
+        .collect();
+
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = serde_json::json!({
         "title": &config.site.title,
@@ -623,8 +634,10 @@ fn build_site_inner(
                         "collection": &collection.name,
                         "tags": &fm.tags,
                     });
+                    let empty_i18n = serde_json::json!({});
+                    let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&empty_i18n);
                     let expanded_body =
-                        shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site)?;
+                        shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site, sc_i18n)?;
                     let excerpt = content::extract_excerpt(&expanded_body);
                     let html_input = if config.build.math {
                         math::render_math(&expanded_body)
@@ -2726,7 +2739,11 @@ fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Valu
         "contact_email": "Email",
         "contact_message": "Message",
         "contact_submit": "Send Message",
-        "documentation": "Documentation"
+        "documentation": "Documentation",
+        "callout_info": "Info",
+        "callout_tip": "Tip",
+        "callout_warning": "Warning",
+        "callout_danger": "Danger"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults
@@ -4302,6 +4319,11 @@ mod tests {
             "contact_email",
             "contact_message",
             "contact_submit",
+            "documentation",
+            "callout_info",
+            "callout_tip",
+            "callout_warning",
+            "callout_danger",
         ];
         for key in expected_keys {
             assert!(obj.contains_key(key), "Missing UI string key: {key}");

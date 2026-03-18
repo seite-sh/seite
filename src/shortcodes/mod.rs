@@ -80,12 +80,16 @@ impl ShortcodeRegistry {
     /// where the `body` variable contains the raw markdown body content.
     ///
     /// Shortcodes inside code blocks are left untouched.
+    ///
+    /// The `i18n` parameter provides translated UI strings as `{{ t }}` inside
+    /// shortcode templates, matching the convention used by page templates.
     pub fn expand(
         &self,
         input: &str,
         source_path: &Path,
         page_context: &serde_json::Value,
         site_context: &serde_json::Value,
+        i18n: &serde_json::Value,
     ) -> Result<String> {
         let calls = parser::parse_shortcodes(input, source_path)?;
 
@@ -113,7 +117,8 @@ impl ShortcodeRegistry {
         // Replace spans back-to-front so byte offsets stay valid
         let mut output = input.to_string();
         for call in calls.iter().rev() {
-            let rendered = self.render_shortcode(call, source_path, page_context, site_context)?;
+            let rendered =
+                self.render_shortcode(call, source_path, page_context, site_context, i18n)?;
             output.replace_range(call.span.0..call.span.1, &rendered);
         }
 
@@ -127,6 +132,7 @@ impl ShortcodeRegistry {
         source_path: &Path,
         page_context: &serde_json::Value,
         site_context: &serde_json::Value,
+        i18n: &serde_json::Value,
     ) -> Result<String> {
         let template_name = format!("shortcodes/{}.html", call.name);
         let mut ctx = tera::Context::new();
@@ -144,6 +150,9 @@ impl ShortcodeRegistry {
         // Insert page and site context
         ctx.insert("page", page_context);
         ctx.insert("site", site_context);
+
+        // Insert i18n translations (matches `{{ t }}` convention in page templates)
+        ctx.insert("t", i18n);
 
         self.tera
             .render(&template_name, &ctx)
@@ -176,17 +185,21 @@ mod tests {
         ShortcodeRegistry::new(&PathBuf::from("/nonexistent")).unwrap()
     }
 
-    fn empty_contexts() -> (serde_json::Value, serde_json::Value) {
-        (serde_json::json!({}), serde_json::json!({}))
+    fn empty_contexts() -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+        (
+            serde_json::json!({}),
+            serde_json::json!({}),
+            serde_json::json!({}),
+        )
     }
 
     #[test]
     fn test_expand_youtube_shortcode() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< youtube(id="dQw4w9WgXcQ") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("youtube.com/embed/dQw4w9WgXcQ"));
         assert!(result.contains("video-embed"));
@@ -195,10 +208,10 @@ mod tests {
     #[test]
     fn test_expand_vimeo_shortcode() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< vimeo(id="123456") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("player.vimeo.com/video/123456"));
     }
@@ -206,10 +219,10 @@ mod tests {
     #[test]
     fn test_expand_gist_shortcode() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< gist(user="octocat", id="abc123") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("gist.github.com/octocat/abc123.js"));
     }
@@ -217,10 +230,10 @@ mod tests {
     #[test]
     fn test_expand_callout_body_shortcode() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = "{{% callout(type=\"warning\") %}}\nThis is **important**\n{{% end %}}";
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("callout-warning"));
         assert!(result.contains("This is **important**"));
@@ -229,10 +242,10 @@ mod tests {
     #[test]
     fn test_expand_figure_shortcode() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< figure(src="/static/img.jpg", caption="A photo", alt="Photo") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("<figure"));
         assert!(result.contains("src=\"/static/img.jpg\""));
@@ -243,9 +256,9 @@ mod tests {
     #[test]
     fn test_expand_unknown_shortcode_errors() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< nonexistent(x="y") >}}"#;
-        let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site);
+        let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site, &i18n);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown shortcode `nonexistent`"));
@@ -254,10 +267,10 @@ mod tests {
     #[test]
     fn test_expand_no_shortcodes_returns_input() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = "Just regular markdown.";
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert_eq!(result, input);
     }
@@ -265,10 +278,10 @@ mod tests {
     #[test]
     fn test_expand_preserves_surrounding_content() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"Before {{< youtube(id="test") >}} after"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.starts_with("Before "));
         assert!(result.ends_with(" after"));
@@ -278,10 +291,10 @@ mod tests {
     #[test]
     fn test_expand_preserves_code_blocks() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = "```\n{{< youtube(id=\"test\") >}}\n```";
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert_eq!(result, input);
     }
@@ -289,12 +302,12 @@ mod tests {
     #[test]
     fn test_expand_multiple_shortcodes() {
         let registry = test_registry();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< youtube(id="a") >}}
 
 {{< vimeo(id="b") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("youtube.com/embed/a"));
         assert!(result.contains("player.vimeo.com/video/b"));
@@ -308,10 +321,10 @@ mod tests {
         std::fs::write(sc_dir.join("youtube.html"), "<custom>{{ id }}</custom>").unwrap();
 
         let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< youtube(id="test") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("<custom>test</custom>"));
         assert!(!result.contains("youtube.com"));
@@ -351,10 +364,10 @@ mod tests {
         std::fs::write(sc_dir.join("custom.html"), "<div>{{ text }}</div>").unwrap();
 
         let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< custom(text="hello") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("<div>hello</div>"));
     }
@@ -364,10 +377,11 @@ mod tests {
         let registry = test_registry();
         let page = serde_json::json!({"title": "My Page"});
         let site = serde_json::json!({"base_url": "https://example.com"});
+        let i18n = serde_json::json!({});
         // youtube shortcode doesn't use page context, but the rendering shouldn't fail
         let input = r#"{{< youtube(id="abc") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("youtube.com/embed/abc"));
     }
@@ -382,8 +396,9 @@ mod tests {
                 "endpoint": "xpznqkdl"
             }
         });
+        let i18n = serde_json::json!({});
         let input = r#"{{< contact_form() >}}"#;
-        let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site);
+        let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site, &i18n);
         // Contact form renders even without provider — it just won't have an action URL
         assert!(result.is_ok());
     }
@@ -401,6 +416,65 @@ mod tests {
     }
 
     #[test]
+    fn test_callout_uses_i18n_translations() {
+        let registry = test_registry();
+        let page = serde_json::json!({});
+        let site = serde_json::json!({});
+        let i18n = serde_json::json!({
+            "callout_tip": "Tipp",
+            "callout_warning": "Warnung",
+            "callout_danger": "Gefahr",
+            "callout_info": "Hinweis"
+        });
+        let input = "{{% callout(type=\"tip\") %}}\nSome text\n{{% end %}}";
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
+            .unwrap();
+        assert!(
+            result.contains("Tipp"),
+            "Expected translated 'Tipp' in: {result}"
+        );
+        assert!(
+            !result.contains(">Tip<"),
+            "Should not contain English 'Tip'"
+        );
+    }
+
+    #[test]
+    fn test_callout_title_arg_overrides_i18n() {
+        let registry = test_registry();
+        let page = serde_json::json!({});
+        let site = serde_json::json!({});
+        let i18n = serde_json::json!({"callout_tip": "Tipp"});
+        let input = "{{% callout(type=\"tip\", title=\"Custom Title\") %}}\nText\n{{% end %}}";
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
+            .unwrap();
+        assert!(
+            result.contains("Custom Title"),
+            "Expected custom title in: {result}"
+        );
+        assert!(
+            !result.contains("Tipp"),
+            "i18n should be overridden by title arg"
+        );
+    }
+
+    #[test]
+    fn test_callout_falls_back_to_english_without_i18n() {
+        let registry = test_registry();
+        let (page, site, i18n) = empty_contexts();
+        let input = "{{% callout(type=\"tip\") %}}\nText\n{{% end %}}";
+        let result = registry
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
+            .unwrap();
+        assert!(
+            result.contains(">Tip<"),
+            "Expected English fallback 'Tip' in: {result}"
+        );
+    }
+
+    #[test]
     fn test_user_shortcode_non_html_skipped() {
         let tmp = tempfile::TempDir::new().unwrap();
         let sc_dir = tmp.path().join("shortcodes");
@@ -410,10 +484,10 @@ mod tests {
 
         let registry = ShortcodeRegistry::new(&sc_dir).unwrap();
         // "readme" should not be registered, "valid" should
-        let (page, site) = empty_contexts();
+        let (page, site, i18n) = empty_contexts();
         let input = r#"{{< valid(text="ok") >}}"#;
         let result = registry
-            .expand(input, &PathBuf::from("test.md"), &page, &site)
+            .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("<p>ok</p>"));
     }
