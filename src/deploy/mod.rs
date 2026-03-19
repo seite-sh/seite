@@ -1751,7 +1751,13 @@ pub fn generate_netlify_workflow(config: &SiteConfig) -> String {
         if let Some(ref _deploy_proj) = col.deploy_project {
             // Use uppercase collection name for the secret name convention:
             // NETLIFY_SITE_ID_DOCS for a collection named "docs"
-            let secret_suffix = col.name.to_uppercase();
+            // Sanitize to valid GitHub secret name chars (A-Z0-9_)
+            let secret_suffix: String = col
+                .name
+                .to_uppercase()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
             subdomain_steps.push_str(&format!(
                 r#"
       - name: Deploy {name} to Netlify

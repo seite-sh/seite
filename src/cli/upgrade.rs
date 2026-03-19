@@ -165,12 +165,12 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             check: check_atom_autodiscovery_template,
         },
         UpgradeStep {
-            introduced_in: (0, 11, 0),
+            introduced_in: (0, 12, 0),
             label: "Remove pinned VERSION from deploy workflows (use latest)",
             check: check_deploy_version_unpinning,
         },
         UpgradeStep {
-            introduced_in: (0, 11, 0),
+            introduced_in: (0, 12, 0),
             label: "Subdomain collection deploy steps in CI workflow",
             check: check_subdomain_workflow,
         },
@@ -1085,17 +1085,13 @@ fn check_subdomain_workflow(root: &Path) -> Vec<UpgradeAction> {
     }
 
     // Check if any subdomain collections have deploy_project configured
-    let subdomain_deploy_projects: Vec<_> = config
+    let subdomain_collections: Vec<_> = config
         .subdomain_collections()
         .into_iter()
-        .filter_map(|c| {
-            c.deploy_project
-                .as_deref()
-                .map(|p| (c.name.clone(), p.to_string()))
-        })
+        .filter(|c| c.deploy_project.is_some())
         .collect();
 
-    if subdomain_deploy_projects.is_empty() {
+    if subdomain_collections.is_empty() {
         return vec![];
     }
 
@@ -1106,19 +1102,20 @@ fn check_subdomain_workflow(root: &Path) -> Vec<UpgradeAction> {
 
     let content = fs::read_to_string(&workflow_path).unwrap_or_default();
 
-    // Check if all subdomain deploy projects are already referenced in the workflow
-    let all_present = subdomain_deploy_projects
+    // Check if all subdomain collections have deploy steps by looking for
+    // `dist-subdomains/{name}` which appears in both Cloudflare and Netlify workflows
+    let all_present = subdomain_collections
         .iter()
-        .all(|(_, project)| content.contains(project));
+        .all(|c| content.contains(&format!("dist-subdomains/{}", c.name)));
 
     if all_present {
         return vec![];
     }
 
-    let missing: Vec<_> = subdomain_deploy_projects
+    let missing: Vec<_> = subdomain_collections
         .iter()
-        .filter(|(_, project)| !content.contains(project.as_str()))
-        .map(|(name, _)| name.as_str())
+        .filter(|c| !content.contains(&format!("dist-subdomains/{}", c.name)))
+        .map(|c| c.name.as_str())
         .collect();
 
     let new_workflow = match &config.deploy.target {
@@ -1901,11 +1898,7 @@ mod tests {
         fs::write(tmp.path().join("seite.toml"), toml).unwrap();
         let wf_dir = tmp.path().join(".github/workflows");
         fs::create_dir_all(&wf_dir).unwrap();
-        fs::write(
-            wf_dir.join("deploy.yml"),
-            "steps:\n  - run: seite build\n",
-        )
-        .unwrap();
+        fs::write(wf_dir.join("deploy.yml"), "steps:\n  - run: seite build\n").unwrap();
         let actions = check_subdomain_workflow(tmp.path());
         assert_eq!(actions.len(), 1);
         match &actions[0] {
