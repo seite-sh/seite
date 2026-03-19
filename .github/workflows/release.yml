@@ -276,12 +276,12 @@ jobs:
           # Compute SHA-256 of primary bundle (darwin-arm64)
           SHA=$(sha256sum mcpb-out/seite-darwin-arm64.mcpb | cut -d' ' -f1)
 
-          # Generate server.json from template
+          # Generate server.json from template (mcp-publisher expects it in cwd)
           sed -e "s/VERSION_PLACEHOLDER/$VERSION/g" \
               -e "s/SHA_PLACEHOLDER/$SHA/g" \
-              mcp/server.json > /tmp/server.json
+              mcp/server.json > server.json
 
-          cat /tmp/server.json
+          cat server.json
 
           # Install mcp-publisher
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
@@ -291,7 +291,7 @@ jobs:
           echo "$MCP_REGISTRY_KEY" > /tmp/key.pem
 
           # Publish to MCP Registry
-          ./mcp-publisher publish --server-json /tmp/server.json --key /tmp/key.pem
+          ./mcp-publisher publish --key /tmp/key.pem
 
           rm -f /tmp/key.pem
 
