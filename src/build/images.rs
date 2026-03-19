@@ -14,7 +14,7 @@ use crate::config::{ImageSection, ResolvedPaths};
 use crate::error::{PageError, Result};
 
 /// Supported input image extensions.
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "avif"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
 
 /// An entry in the image manifest mapping original paths to processed outputs.
 #[derive(Debug, Clone)]
