@@ -565,6 +565,7 @@ fn build_site_inner(
             (lang, t)
         })
         .collect();
+    let sc_i18n_empty = serde_json::json!({});
 
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = serde_json::json!({
@@ -634,8 +635,7 @@ fn build_site_inner(
                         "collection": &collection.name,
                         "tags": &fm.tags,
                     });
-                    let empty_i18n = serde_json::json!({});
-                    let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&empty_i18n);
+                    let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
                     let expanded_body =
                         shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site, sc_i18n)?;
                     let excerpt = content::extract_excerpt(&expanded_body);
