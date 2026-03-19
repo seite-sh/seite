@@ -1616,7 +1616,6 @@ pub fn update_collection_deploy_project(
 /// Generate a GitHub Actions workflow YAML for building and deploying with GitHub Pages.
 pub fn generate_github_actions_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
-    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"name: Deploy to GitHub Pages
 
@@ -1641,7 +1640,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1666,6 +1665,9 @@ jobs:
 }
 
 /// Generate a GitHub Actions workflow for Cloudflare Pages deployment.
+///
+/// When the config has collections with `subdomain` + `deploy_project`, additional
+/// deploy steps are generated for each subdomain collection.
 pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
     let project = config
@@ -1673,7 +1675,24 @@ pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
         .project
         .as_deref()
         .unwrap_or("your-project-name");
-    let version = env!("CARGO_PKG_VERSION");
+
+    let mut subdomain_steps = String::new();
+    for col in config.subdomain_collections() {
+        if let Some(ref deploy_proj) = col.deploy_project {
+            subdomain_steps.push_str(&format!(
+                r#"
+      - name: Deploy {name} to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{{{ secrets.CLOUDFLARE_API_TOKEN }}}}
+          accountId: ${{{{ secrets.CLOUDFLARE_ACCOUNT_ID }}}}
+          command: pages deploy dist-subdomains/{name} --project-name {deploy_proj}
+"#,
+                name = col.name,
+            ));
+        }
+    }
+
     format!(
         r#"name: Deploy to Cloudflare Pages
 
@@ -1689,7 +1708,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1700,17 +1719,16 @@ jobs:
           apiToken: ${{{{ secrets.CLOUDFLARE_API_TOKEN }}}}
           accountId: ${{{{ secrets.CLOUDFLARE_ACCOUNT_ID }}}}
           command: pages deploy {output_dir} --project-name {project}
-"#
+{subdomain_steps}"#
     )
 }
 
 /// Generate a Netlify configuration file (netlify.toml).
 pub fn generate_netlify_config(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
-    let version = env!("CARGO_PKG_VERSION");
     format!(
         r#"[build]
-  command = "VERSION={version} curl -fsSL https://seite.sh/install.sh | sh && seite build"
+  command = "curl -fsSL https://seite.sh/install.sh | sh && seite build"
   publish = "{output_dir}"
 
 [[redirects]]
@@ -1722,9 +1740,40 @@ pub fn generate_netlify_config(config: &SiteConfig) -> String {
 }
 
 /// Generate a GitHub Actions workflow for Netlify deployment.
+///
+/// When the config has collections with `subdomain` + `deploy_project`, additional
+/// deploy steps are generated for each subdomain collection using separate site IDs.
 pub fn generate_netlify_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
-    let version = env!("CARGO_PKG_VERSION");
+
+    let mut subdomain_steps = String::new();
+    for col in config.subdomain_collections() {
+        if let Some(ref _deploy_proj) = col.deploy_project {
+            // Use uppercase collection name for the secret name convention:
+            // NETLIFY_SITE_ID_DOCS for a collection named "docs"
+            // Sanitize to valid GitHub secret name chars (A-Z0-9_)
+            let secret_suffix: String = col
+                .name
+                .to_uppercase()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            subdomain_steps.push_str(&format!(
+                r#"
+      - name: Deploy {name} to Netlify
+        uses: nwtgck/actions-netlify@v3
+        with:
+          publish-dir: dist-subdomains/{name}
+          production-deploy: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{{{ secrets.NETLIFY_AUTH_TOKEN }}}}
+          NETLIFY_SITE_ID: ${{{{ secrets.NETLIFY_SITE_ID_{secret_suffix} }}}}
+"#,
+                name = col.name,
+            ));
+        }
+    }
+
     format!(
         r#"name: Deploy to Netlify
 
@@ -1740,7 +1789,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install seite
-        run: VERSION={version} curl -fsSL https://seite.sh/install.sh | sh
+        run: curl -fsSL https://seite.sh/install.sh | sh
 
       - name: Build site
         run: seite build
@@ -1753,7 +1802,7 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{{{ secrets.NETLIFY_AUTH_TOKEN }}}}
           NETLIFY_SITE_ID: ${{{{ secrets.NETLIFY_SITE_ID }}}}
-"#
+{subdomain_steps}"#
     )
 }
 
@@ -3757,11 +3806,11 @@ target = "github-pages"
     // -----------------------------------------------------------------------
 
     #[test]
-    fn test_generate_github_actions_workflow_contains_version() {
+    fn test_generate_github_actions_workflow_no_version_pin() {
         let config = test_config("https://example.com");
         let workflow = generate_github_actions_workflow(&config);
-        let version = env!("CARGO_PKG_VERSION");
-        assert!(workflow.contains(version));
+        assert!(!workflow.contains("VERSION="));
+        assert!(workflow.contains("curl -fsSL https://seite.sh/install.sh | sh"));
     }
 
     #[test]
@@ -3781,11 +3830,11 @@ target = "github-pages"
     }
 
     #[test]
-    fn test_generate_cloudflare_workflow_contains_version() {
+    fn test_generate_cloudflare_workflow_no_version_pin() {
         let config = test_config("https://example.com");
         let workflow = generate_cloudflare_workflow(&config);
-        let version = env!("CARGO_PKG_VERSION");
-        assert!(workflow.contains(version));
+        assert!(!workflow.contains("VERSION="));
+        assert!(workflow.contains("curl -fsSL https://seite.sh/install.sh | sh"));
     }
 
     #[test]
@@ -3799,11 +3848,11 @@ target = "github-pages"
     }
 
     #[test]
-    fn test_generate_netlify_config_contains_version() {
+    fn test_generate_netlify_config_no_version_pin() {
         let config = test_config("https://example.com");
         let netlify = generate_netlify_config(&config);
-        let version = env!("CARGO_PKG_VERSION");
-        assert!(workflow_contains_substr(&netlify, version));
+        assert!(!netlify.contains("VERSION="));
+        assert!(netlify.contains("curl -fsSL https://seite.sh/install.sh | sh && seite build"));
     }
 
     #[test]
@@ -3815,11 +3864,11 @@ target = "github-pages"
     }
 
     #[test]
-    fn test_generate_netlify_workflow_contains_version() {
+    fn test_generate_netlify_workflow_no_version_pin() {
         let config = test_config("https://example.com");
         let workflow = generate_netlify_workflow(&config);
-        let version = env!("CARGO_PKG_VERSION");
-        assert!(workflow.contains(version));
+        assert!(!workflow.contains("VERSION="));
+        assert!(workflow.contains("curl -fsSL https://seite.sh/install.sh | sh"));
     }
 
     #[test]
@@ -3856,9 +3905,6 @@ target = "github-pages"
     }
 
     // Helper for the test above to avoid name collision with "workflow.contains"
-    fn workflow_contains_substr(s: &str, sub: &str) -> bool {
-        s.contains(sub)
-    }
 
     // -----------------------------------------------------------------------
     // update_deploy_config — additional edge cases
@@ -5591,5 +5637,130 @@ target = "github-pages"
             "passed message should include the output path: {}",
             check.message
         );
+    }
+
+    fn config_with_subdomain() -> SiteConfig {
+        SiteConfig {
+            site: crate::config::SiteSection {
+                title: "Test".into(),
+                description: "".into(),
+                base_url: "https://example.com".into(),
+                language: "en".into(),
+                author: "".into(),
+            },
+            collections: vec![
+                crate::config::CollectionConfig {
+                    name: "posts".into(),
+                    label: "Posts".into(),
+                    directory: "posts".into(),
+                    has_date: true,
+                    has_rss: true,
+                    listed: true,
+                    nested: false,
+                    url_prefix: "/posts".into(),
+                    default_template: "post.html".into(),
+                    subdomain: None,
+                    subdomain_base_url: None,
+                    deploy_project: None,
+                    paginate: None,
+                },
+                crate::config::CollectionConfig {
+                    name: "docs".into(),
+                    label: "Docs".into(),
+                    directory: "docs".into(),
+                    has_date: false,
+                    has_rss: true,
+                    listed: true,
+                    nested: true,
+                    url_prefix: "/docs".into(),
+                    default_template: "doc.html".into(),
+                    subdomain: Some("docs".into()),
+                    subdomain_base_url: Some("https://docs.example.com".into()),
+                    deploy_project: Some("my-docs".into()),
+                    paginate: None,
+                },
+            ],
+            build: Default::default(),
+            deploy: crate::config::DeploySection {
+                target: crate::config::DeployTarget::Cloudflare,
+                auto_commit: true,
+                project: Some("my-site".into()),
+                repo: None,
+                domain: None,
+            },
+            languages: Default::default(),
+            images: Default::default(),
+            analytics: None,
+            trust: None,
+            contact: None,
+        }
+    }
+
+    #[test]
+    fn test_cloudflare_workflow_includes_subdomain_deploy() {
+        let config = config_with_subdomain();
+        let workflow = generate_cloudflare_workflow(&config);
+        // Should have the main deploy step
+        assert!(workflow.contains("--project-name my-site"));
+        // Should have the subdomain deploy step
+        assert!(workflow.contains("--project-name my-docs"));
+        assert!(workflow.contains("dist-subdomains/docs"));
+        assert!(workflow.contains("Deploy docs to Cloudflare Pages"));
+    }
+
+    #[test]
+    fn test_cloudflare_workflow_no_subdomain() {
+        let mut config = config_with_subdomain();
+        // Remove subdomain collection
+        config.collections.retain(|c| c.subdomain.is_none());
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("--project-name my-site"));
+        assert!(!workflow.contains("dist-subdomains"));
+    }
+
+    #[test]
+    fn test_netlify_workflow_includes_subdomain_deploy() {
+        let mut config = config_with_subdomain();
+        config.deploy.target = crate::config::DeployTarget::Netlify;
+        let workflow = generate_netlify_workflow(&config);
+        // Should have the main deploy step
+        assert!(workflow.contains("NETLIFY_SITE_ID"));
+        // Should have the subdomain deploy step with uppercase secret
+        assert!(workflow.contains("NETLIFY_SITE_ID_DOCS"));
+        assert!(workflow.contains("dist-subdomains/docs"));
+        assert!(workflow.contains("Deploy docs to Netlify"));
+    }
+
+    #[test]
+    fn test_netlify_workflow_no_subdomain() {
+        let mut config = config_with_subdomain();
+        config.deploy.target = crate::config::DeployTarget::Netlify;
+        config.collections.retain(|c| c.subdomain.is_none());
+        let workflow = generate_netlify_workflow(&config);
+        assert!(workflow.contains("NETLIFY_SITE_ID"));
+        assert!(!workflow.contains("NETLIFY_SITE_ID_DOCS"));
+        assert!(!workflow.contains("dist-subdomains"));
+    }
+
+    #[test]
+    fn test_github_pages_workflow_unchanged() {
+        let mut config = config_with_subdomain();
+        config.deploy.target = crate::config::DeployTarget::GithubPages;
+        let workflow = generate_github_actions_workflow(&config);
+        // GitHub Pages can't handle subdomain deploys, so no subdomain steps
+        assert!(!workflow.contains("dist-subdomains"));
+        assert!(workflow.contains("deploy-pages@v4"));
+    }
+
+    #[test]
+    fn test_netlify_workflow_sanitizes_secret_suffix() {
+        let mut config = config_with_subdomain();
+        config.deploy.target = crate::config::DeployTarget::Netlify;
+        // Rename collection to have a hyphen
+        config.collections[1].name = "api-docs".into();
+        let workflow = generate_netlify_workflow(&config);
+        // Hyphen should be replaced with underscore in secret name
+        assert!(workflow.contains("NETLIFY_SITE_ID_API_DOCS"));
+        assert!(workflow.contains("dist-subdomains/api-docs"));
     }
 }

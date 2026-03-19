@@ -289,7 +289,7 @@ jobs:
 
           # Authenticate via DNS (key is Ed25519 PEM stored in secret)
           echo "$MCP_REGISTRY_KEY" > /tmp/key.pem
-          PRIVATE_KEY="$(openssl pkey -in /tmp/key.pem -noout -text 2>/dev/null | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')"
+          PRIVATE_KEY="$(openssl pkey -in /tmp/key.pem -noout -text 2>/dev/null | grep -A5 "priv:" | tail -n +2 | tr -d ' :\n' | head -c 64)"
           rm -f /tmp/key.pem
           ./mcp-publisher login dns --domain "seite.sh" --private-key "$PRIVATE_KEY"
 
