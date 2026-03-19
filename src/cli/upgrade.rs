@@ -1930,4 +1930,56 @@ mod tests {
         let actions = check_deploy_version_unpinning(tmp.path());
         assert_eq!(actions.len(), 2);
     }
+
+    fn valid_seite_toml_cloudflare() -> &'static str {
+        "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"http://localhost\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[deploy]\ntarget = \"cloudflare\"\nproject = \"my-site\"\n"
+    }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_cloudflare() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("seite.toml"), valid_seite_toml_cloudflare()).unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "run: VERSION=0.10.0 curl -fsSL https://seite.sh/install.sh | sh\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { content, .. } => {
+                assert!(!content.contains("VERSION="));
+                assert!(content.contains("Cloudflare"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_github_pages() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            valid_seite_toml_with_deploy(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "run: VERSION=0.10.0 curl -fsSL https://seite.sh/install.sh | sh\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { content, .. } => {
+                assert!(!content.contains("VERSION="));
+                assert!(content.contains("GitHub Pages"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
 }

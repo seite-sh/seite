@@ -5751,4 +5751,16 @@ target = "github-pages"
         assert!(!workflow.contains("dist-subdomains"));
         assert!(workflow.contains("deploy-pages@v4"));
     }
+
+    #[test]
+    fn test_netlify_workflow_sanitizes_secret_suffix() {
+        let mut config = config_with_subdomain();
+        config.deploy.target = crate::config::DeployTarget::Netlify;
+        // Rename collection to have a hyphen
+        config.collections[1].name = "api-docs".into();
+        let workflow = generate_netlify_workflow(&config);
+        // Hyphen should be replaced with underscore in secret name
+        assert!(workflow.contains("NETLIFY_SITE_ID_API_DOCS"));
+        assert!(workflow.contains("dist-subdomains/api-docs"));
+    }
 }
