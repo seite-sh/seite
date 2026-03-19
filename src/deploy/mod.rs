@@ -3899,9 +3899,6 @@ target = "github-pages"
     }
 
     // Helper for the test above to avoid name collision with "workflow.contains"
-    fn workflow_contains_substr(s: &str, sub: &str) -> bool {
-        s.contains(sub)
-    }
 
     // -----------------------------------------------------------------------
     // update_deploy_config — additional edge cases

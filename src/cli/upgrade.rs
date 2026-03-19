@@ -1859,4 +1859,82 @@ mod tests {
         let actions = check_subdomain_workflow(tmp.path());
         assert!(actions.is_empty());
     }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_netlify_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let toml = "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[deploy]\ntarget = \"netlify\"\n";
+        fs::write(tmp.path().join("seite.toml"), toml).unwrap();
+        fs::write(
+            tmp.path().join("netlify.toml"),
+            "[build]\n  command = \"VERSION=0.10.0 curl -fsSL https://seite.sh/install.sh | sh && seite build\"\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { content, .. } => {
+                assert!(!content.contains("VERSION="));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_no_seite_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_no_seite_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_netlify_target() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let toml = "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[[collections]]\nname = \"docs\"\nlabel = \"Docs\"\ndirectory = \"docs\"\nhas_date = false\nhas_rss = true\nlisted = true\nnested = true\nurl_prefix = \"/docs\"\ndefault_template = \"doc.html\"\nsubdomain = \"docs\"\nsubdomain_base_url = \"https://docs.example.com\"\ndeploy_project = \"my-docs\"\n\n[deploy]\ntarget = \"netlify\"\n";
+        fs::write(tmp.path().join("seite.toml"), toml).unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - run: seite build\n",
+        )
+        .unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { content, .. } => {
+                assert!(content.contains("NETLIFY_SITE_ID_DOCS"));
+                assert!(content.contains("dist-subdomains/docs"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_both_workflow_and_netlify() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let toml = "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[deploy]\ntarget = \"netlify\"\n";
+        fs::write(tmp.path().join("seite.toml"), toml).unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "run: VERSION=0.10.0 curl -fsSL https://seite.sh/install.sh | sh\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("netlify.toml"),
+            "command = \"VERSION=0.10.0 curl -fsSL https://seite.sh/install.sh | sh\"\n",
+        )
+        .unwrap();
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert_eq!(actions.len(), 2);
+    }
 }
