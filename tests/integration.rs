@@ -6307,8 +6307,8 @@ jobs:
         "upgrade should use shell installer"
     );
     assert!(
-        content.contains(&format!("VERSION={}", env!("CARGO_PKG_VERSION"))),
-        "upgrade should pin seite version"
+        !content.contains("VERSION="),
+        "upgrade should not pin seite version (installs latest)"
     );
     assert!(
         content.contains("seite build"),

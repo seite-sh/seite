@@ -164,6 +164,16 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Atom autodiscovery in custom templates",
             check: check_atom_autodiscovery_template,
         },
+        UpgradeStep {
+            introduced_in: (0, 11, 0),
+            label: "Remove pinned VERSION from deploy workflows (use latest)",
+            check: check_deploy_version_unpinning,
+        },
+        UpgradeStep {
+            introduced_in: (0, 11, 0),
+            label: "Subdomain collection deploy steps in CI workflow",
+            check: check_subdomain_workflow,
+        },
     ]
 }
 
@@ -637,60 +647,11 @@ fn check_deploy_workflows(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
-/// Fix deploy workflows that use an unpinned `install.sh` (no VERSION= env var).
-///
-/// Projects created before version pinning was introduced will have workflows
-/// that always download the latest seite binary. This regenerates them with
-/// the current binary version pinned.
-fn check_deploy_version_pinning(root: &Path) -> Vec<UpgradeAction> {
-    let mut actions = Vec::new();
-
-    let config_path = root.join("seite.toml");
-    let config = match crate::config::SiteConfig::load(&config_path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    // Check .github/workflows/deploy.yml
-    let workflow_path = root.join(".github/workflows/deploy.yml");
-    if workflow_path.exists() {
-        let content = fs::read_to_string(&workflow_path).unwrap_or_default();
-        if content.contains("install.sh | sh") && !content.contains("VERSION=") {
-            let new_workflow = match &config.deploy.target {
-                crate::config::DeployTarget::GithubPages => {
-                    crate::deploy::generate_github_actions_workflow(&config)
-                }
-                crate::config::DeployTarget::Cloudflare => {
-                    crate::deploy::generate_cloudflare_workflow(&config)
-                }
-                crate::config::DeployTarget::Netlify => {
-                    crate::deploy::generate_netlify_workflow(&config)
-                }
-            };
-            actions.push(UpgradeAction::Create {
-                path: workflow_path,
-                content: new_workflow,
-                description: ".github/workflows/deploy.yml (pin seite version in install command)"
-                    .into(),
-            });
-        }
-    }
-
-    // Check netlify.toml
-    let netlify_path = root.join("netlify.toml");
-    if netlify_path.exists() {
-        let content = fs::read_to_string(&netlify_path).unwrap_or_default();
-        if content.contains("install.sh | sh") && !content.contains("VERSION=") {
-            let new_config = crate::deploy::generate_netlify_config(&config);
-            actions.push(UpgradeAction::Create {
-                path: netlify_path,
-                content: new_config,
-                description: "netlify.toml (pin seite version in install command)".into(),
-            });
-        }
-    }
-
-    actions
+/// Previously pinned VERSION in deploy workflows. Now a no-op because we
+/// switched to always installing latest (the install script resolves latest
+/// via version.txt). Kept as a no-op to avoid breaking the upgrade step chain.
+fn check_deploy_version_pinning(_root: &Path) -> Vec<UpgradeAction> {
+    vec![]
 }
 
 /// Ensure CLAUDE.md has an MCP server section.
@@ -1044,6 +1005,137 @@ fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
              ```html\n{snippet}\n```\n"
         ),
         description: "CLAUDE.md (Atom autodiscovery hint for custom template)".into(),
+    }]
+}
+
+/// Remove hardcoded `VERSION=x.y.z` from deploy workflows so they always install
+/// the latest seite release. The install script resolves latest via `version.txt`.
+///
+/// Previously, workflows pinned to the version that generated them, which meant
+/// projects never got seite updates in CI without manually editing the workflow
+/// or running `seite upgrade` (which itself required the new binary).
+fn check_deploy_version_unpinning(root: &Path) -> Vec<UpgradeAction> {
+    let mut actions = Vec::new();
+
+    let config_path = root.join("seite.toml");
+    let config = match crate::config::SiteConfig::load(&config_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Check .github/workflows/deploy.yml
+    let workflow_path = root.join(".github/workflows/deploy.yml");
+    if workflow_path.exists() {
+        let content = fs::read_to_string(&workflow_path).unwrap_or_default();
+        if content.contains("VERSION=") {
+            let new_workflow = match &config.deploy.target {
+                crate::config::DeployTarget::GithubPages => {
+                    crate::deploy::generate_github_actions_workflow(&config)
+                }
+                crate::config::DeployTarget::Cloudflare => {
+                    crate::deploy::generate_cloudflare_workflow(&config)
+                }
+                crate::config::DeployTarget::Netlify => {
+                    crate::deploy::generate_netlify_workflow(&config)
+                }
+            };
+            actions.push(UpgradeAction::Create {
+                path: workflow_path,
+                content: new_workflow,
+                description:
+                    ".github/workflows/deploy.yml (removed VERSION pin, now installs latest)"
+                        .into(),
+            });
+        }
+    }
+
+    // Check netlify.toml
+    let netlify_path = root.join("netlify.toml");
+    if netlify_path.exists() {
+        let content = fs::read_to_string(&netlify_path).unwrap_or_default();
+        if content.contains("VERSION=") {
+            let new_config = crate::deploy::generate_netlify_config(&config);
+            actions.push(UpgradeAction::Create {
+                path: netlify_path,
+                content: new_config,
+                description: "netlify.toml (removed VERSION pin, now installs latest)".into(),
+            });
+        }
+    }
+
+    actions
+}
+
+/// Regenerate the deploy workflow when subdomain collections have `deploy_project`
+/// but the workflow doesn't include their deploy steps.
+fn check_subdomain_workflow(root: &Path) -> Vec<UpgradeAction> {
+    let config_path = root.join("seite.toml");
+    let config = match crate::config::SiteConfig::load(&config_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Only relevant for Cloudflare/Netlify (GitHub Pages can't do multi-project)
+    let is_github_pages = matches!(
+        config.deploy.target,
+        crate::config::DeployTarget::GithubPages
+    );
+    if is_github_pages {
+        return vec![];
+    }
+
+    // Check if any subdomain collections have deploy_project configured
+    let subdomain_deploy_projects: Vec<_> = config
+        .subdomain_collections()
+        .into_iter()
+        .filter_map(|c| {
+            c.deploy_project
+                .as_deref()
+                .map(|p| (c.name.clone(), p.to_string()))
+        })
+        .collect();
+
+    if subdomain_deploy_projects.is_empty() {
+        return vec![];
+    }
+
+    let workflow_path = root.join(".github/workflows/deploy.yml");
+    if !workflow_path.exists() {
+        return vec![];
+    }
+
+    let content = fs::read_to_string(&workflow_path).unwrap_or_default();
+
+    // Check if all subdomain deploy projects are already referenced in the workflow
+    let all_present = subdomain_deploy_projects
+        .iter()
+        .all(|(_, project)| content.contains(project));
+
+    if all_present {
+        return vec![];
+    }
+
+    let missing: Vec<_> = subdomain_deploy_projects
+        .iter()
+        .filter(|(_, project)| !content.contains(project.as_str()))
+        .map(|(name, _)| name.as_str())
+        .collect();
+
+    let new_workflow = match &config.deploy.target {
+        crate::config::DeployTarget::Cloudflare => {
+            crate::deploy::generate_cloudflare_workflow(&config)
+        }
+        crate::config::DeployTarget::Netlify => crate::deploy::generate_netlify_workflow(&config),
+        crate::config::DeployTarget::GithubPages => unreachable!(),
+    };
+
+    vec![UpgradeAction::Create {
+        path: workflow_path,
+        content: new_workflow,
+        description: format!(
+            ".github/workflows/deploy.yml (added deploy steps for subdomain collections: {})",
+            missing.join(", ")
+        ),
     }]
 }
 
@@ -1478,7 +1570,15 @@ mod tests {
     }
 
     #[test]
-    fn test_check_deploy_version_pinning_already_pinned() {
+    fn test_check_deploy_version_pinning_is_noop() {
+        // check_deploy_version_pinning is now a no-op (we no longer pin versions)
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_deploy_version_pinning(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_deploy_version_unpinning_removes_version() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join("seite.toml"),
@@ -1489,15 +1589,22 @@ mod tests {
         fs::create_dir_all(&wf_dir).unwrap();
         fs::write(
             wf_dir.join("deploy.yml"),
-            "steps:\n  - run: VERSION=0.2.0 install.sh | sh\n",
+            "steps:\n  - run: VERSION=0.2.0 curl -fsSL https://seite.sh/install.sh | sh\n",
         )
         .unwrap();
-        let actions = check_deploy_version_pinning(tmp.path());
-        assert!(actions.is_empty());
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create { content, .. } => {
+                assert!(!content.contains("VERSION="));
+                assert!(content.contains("curl -fsSL https://seite.sh/install.sh | sh"));
+            }
+            _ => panic!("expected Create action"),
+        }
     }
 
     #[test]
-    fn test_check_deploy_version_pinning_needs_pin() {
+    fn test_check_deploy_version_unpinning_already_unpinned() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join("seite.toml"),
@@ -1511,8 +1618,8 @@ mod tests {
             "steps:\n  - run: curl -fsSL https://seite.sh/install.sh | sh\n",
         )
         .unwrap();
-        let actions = check_deploy_version_pinning(tmp.path());
-        assert_eq!(actions.len(), 1);
+        let actions = check_deploy_version_unpinning(tmp.path());
+        assert!(actions.is_empty());
     }
 
     #[test]
@@ -1657,5 +1764,99 @@ mod tests {
             }
             _ => panic!("expected Append action"),
         }
+    }
+
+    fn seite_toml_with_subdomain_collection() -> &'static str {
+        "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[[collections]]\nname = \"docs\"\nlabel = \"Docs\"\ndirectory = \"docs\"\nhas_date = false\nhas_rss = true\nlisted = true\nnested = true\nurl_prefix = \"/docs\"\ndefault_template = \"doc.html\"\nsubdomain = \"docs\"\nsubdomain_base_url = \"https://docs.example.com\"\ndeploy_project = \"my-docs\"\n\n[deploy]\ntarget = \"cloudflare\"\nproject = \"my-site\"\n"
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_no_workflow() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            seite_toml_with_subdomain_collection(),
+        )
+        .unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert!(actions.is_empty()); // no workflow file to upgrade
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_already_has_steps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            seite_toml_with_subdomain_collection(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        // Workflow already references the deploy project
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - command: pages deploy dist --project-name my-site\n  - command: pages deploy dist-subdomains/docs --project-name my-docs\n",
+        )
+        .unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_missing_steps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("seite.toml"),
+            seite_toml_with_subdomain_collection(),
+        )
+        .unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        // Workflow only has main site deploy, no subdomain step
+        fs::write(
+            wf_dir.join("deploy.yml"),
+            "steps:\n  - command: pages deploy dist --project-name my-site\n",
+        )
+        .unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            UpgradeAction::Create {
+                description,
+                content,
+                ..
+            } => {
+                assert!(description.contains("docs"));
+                assert!(content.contains("my-docs"));
+                assert!(content.contains("dist-subdomains/docs"));
+            }
+            _ => panic!("expected Create action"),
+        }
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_github_pages_skipped() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // GitHub Pages config with subdomain collection — should be skipped
+        let toml = "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"docs\"\nlabel = \"Docs\"\ndirectory = \"docs\"\nhas_date = false\nhas_rss = true\nlisted = true\nnested = true\nurl_prefix = \"/docs\"\ndefault_template = \"doc.html\"\nsubdomain = \"docs\"\ndeploy_project = \"my-docs\"\n\n[deploy]\ntarget = \"github-pages\"\n";
+        fs::write(tmp.path().join("seite.toml"), toml).unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(wf_dir.join("deploy.yml"), "steps:\n").unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_check_subdomain_workflow_no_deploy_project() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Subdomain collection without deploy_project — should not trigger upgrade
+        let toml = "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"https://example.com\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"docs\"\nlabel = \"Docs\"\ndirectory = \"docs\"\nhas_date = false\nhas_rss = true\nlisted = true\nnested = true\nurl_prefix = \"/docs\"\ndefault_template = \"doc.html\"\nsubdomain = \"docs\"\n\n[deploy]\ntarget = \"cloudflare\"\nproject = \"my-site\"\n";
+        fs::write(tmp.path().join("seite.toml"), toml).unwrap();
+        let wf_dir = tmp.path().join(".github/workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(wf_dir.join("deploy.yml"), "steps:\n").unwrap();
+        let actions = check_subdomain_workflow(tmp.path());
+        assert!(actions.is_empty());
     }
 }
