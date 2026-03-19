@@ -287,13 +287,14 @@ jobs:
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           chmod +x mcp-publisher
 
-          # Write key file for DNS auth
+          # Authenticate via DNS (key is Ed25519 PEM stored in secret)
           echo "$MCP_REGISTRY_KEY" > /tmp/key.pem
+          PRIVATE_KEY="$(openssl pkey -in /tmp/key.pem -noout -text 2>/dev/null | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')"
+          rm -f /tmp/key.pem
+          ./mcp-publisher login dns --domain "seite.sh" --private-key "$PRIVATE_KEY"
 
           # Publish to MCP Registry
-          ./mcp-publisher publish --key /tmp/key.pem
-
-          rm -f /tmp/key.pem
+          ./mcp-publisher publish
 
   publish-docker:
     name: Publish Docker image
