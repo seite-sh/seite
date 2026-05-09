@@ -55,7 +55,7 @@ tiny_http = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Parallelism
-rayon = "1.10"
+rayon = "1.12"
 
 # File system utilities
 walkdir = "2"
