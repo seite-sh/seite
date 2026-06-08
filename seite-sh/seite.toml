@@ -68,7 +68,7 @@ static_dir = "static"
 
 [deploy]
 target = "cloudflare"
-project = "site"
+project = "seite-sh"
 domain = "seite.sh"
 
 [analytics]
