@@ -68,7 +68,7 @@ pub struct BuildStats {
 impl CommandOutput for BuildStats {
     fn human_display(&self) -> String {
         let mut sorted_items: Vec<(&String, &usize)> = self.items_built.iter().collect();
-        sorted_items.sort_by(|(a, _), (b, _)| a.cmp(b));
+        sorted_items.sort_by_key(|(a, _)| *a);
         let parts: Vec<String> = sorted_items
             .iter()
             .map(|(name, count)| format!("{count} {name}"))
@@ -687,7 +687,7 @@ fn build_site_inner(
 
         // Sort: date-based collections by date desc, others by weight then title
         if collection.has_date {
-            items.sort_by(|a, b| b.frontmatter.date.cmp(&a.frontmatter.date));
+            items.sort_by_key(|b| std::cmp::Reverse(b.frontmatter.date));
         } else {
             items.sort_by(|a, b| match (a.frontmatter.weight, b.frontmatter.weight) {
                 (Some(wa), Some(wb)) => wa
