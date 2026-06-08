@@ -55,7 +55,7 @@ tiny_http = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Parallelism
-rayon = "1.10"
+rayon = "1.12"
 
 # File system utilities
 walkdir = "2"
@@ -71,7 +71,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # RSS / Sitemap generation
-quick-xml = { version = "0.39", features = ["serialize"] }
+quick-xml = { version = "0.40", features = ["serialize"] }
 
 # Slug generation
 slug = "0.1"
