@@ -59,6 +59,9 @@ mod tests {
         assert_eq!(parse_flag("1"), Some(true));
         assert_eq!(parse_flag("on"), Some(true));
         assert_eq!(parse_flag("garbage"), None);
+        assert_eq!(parse_flag(" on "), Some(true));
+        assert_eq!(parse_flag("enable"), Some(true));
+        assert_eq!(parse_flag("disable"), Some(false));
     }
 
     #[test]
@@ -84,5 +87,7 @@ mod tests {
         assert!(Decision::EnabledByConfig.is_enabled());
         assert!(!Decision::DisabledByCi.is_enabled());
         assert!(!Decision::DisabledByDoNotTrack.is_enabled());
+        assert!(!Decision::DisabledByEnv.is_enabled());
+        assert!(!Decision::DisabledByConfig.is_enabled());
     }
 }
