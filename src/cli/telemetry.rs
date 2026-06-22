@@ -21,14 +21,14 @@ pub fn run(args: &TelemetryArgs) -> anyhow::Result<()> {
         TelemetryCommand::Status => {
             println!("{}", crate::telemetry::status_line());
         }
-        TelemetryCommand::On => {
-            crate::telemetry::set_enabled(true);
-            println!("Telemetry enabled.");
-        }
-        TelemetryCommand::Off => {
-            crate::telemetry::set_enabled(false);
-            println!("Telemetry disabled.");
-        }
+        TelemetryCommand::On => match crate::telemetry::set_enabled(true) {
+            Some(()) => println!("Telemetry enabled."),
+            None => eprintln!("Could not save telemetry preference (could not write ~/.seite/telemetry.json)."),
+        },
+        TelemetryCommand::Off => match crate::telemetry::set_enabled(false) {
+            Some(()) => println!("Telemetry disabled."),
+            None => eprintln!("Could not save telemetry preference (could not write ~/.seite/telemetry.json)."),
+        },
     }
     Ok(())
 }

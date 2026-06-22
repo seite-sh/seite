@@ -90,11 +90,12 @@ try {
     # Disable with $env:DO_NOT_TRACK or $env:SEITE_TELEMETRY=0.
     if (-not $env:DO_NOT_TRACK -and ($env:SEITE_TELEMETRY -notin @('0','off','false','no'))) {
         $TelemetryEndpoint = if ($env:SEITE_TELEMETRY_ENDPOINT) { $env:SEITE_TELEMETRY_ENDPOINT } else { 'https://who.seite.sh/api/event' }
+        $TelemetryArch = ($Target -split '-')[0]
         $TelemetryBody = @{
             name   = 'install'
             domain = 'cli.seite.sh'
             url    = 'https://cli.seite.sh/install'
-            props  = @{ version = $Version; os = 'windows'; arch = "$Target"; source = 'install.ps1' }
+            props  = @{ version = $Version; os = 'windows'; arch = $TelemetryArch; source = 'install.ps1' }
         } | ConvertTo-Json -Compress
         Start-Job -ScriptBlock {
             param($u, $b)

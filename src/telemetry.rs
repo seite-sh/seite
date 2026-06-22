@@ -308,6 +308,8 @@ mod tests {
         assert_eq!(duration_bucket(Duration::from_secs(3)), "1-5s");
         assert_eq!(duration_bucket(Duration::from_secs(20)), "5-30s");
         assert_eq!(duration_bucket(Duration::from_secs(120)), "30s+");
+        assert_eq!(duration_bucket(Duration::from_secs(5)), "5-30s");
+        assert_eq!(duration_bucket(Duration::from_secs(30)), "30s+");
     }
 
     #[test]

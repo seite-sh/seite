@@ -349,7 +349,7 @@ export SEITE_TELEMETRY=0   # disable via env var
 export DO_NOT_TRACK=1      # respects the universal DO_NOT_TRACK standard
 ```
 
-Telemetry is also automatically disabled in CI environments (when `CI=true` or equivalent is set). Check your current status:
+Telemetry is also automatically disabled in CI (when the `CI` environment variable is set to any non-empty value). Check your current status:
 
 ```bash
 seite telemetry status
