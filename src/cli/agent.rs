@@ -45,6 +45,9 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
             if !status.success() {
                 return Err(PageError::Agent("claude exited with non-zero status".into()).into());
             }
+            human::success(
+                "Agent finished. Preview with `seite serve` or generate with `seite build`.",
+            );
         }
         Some(prompt) => {
             // Chat mode starting with a prompt — stream output with live feedback

@@ -87,17 +87,33 @@ pub fn parse_content_file(path: &Path) -> Result<(Frontmatter, String)> {
 
 fn split_frontmatter(raw: &str) -> Option<(&str, &str)> {
     let trimmed = raw.trim_start();
-    if !trimmed.starts_with("---") {
+    let after_first = trimmed.strip_prefix("---")?;
+    // The opening `---` must be the entire first line (allow a trailing CR).
+    if !after_first.lines().next().unwrap_or("").trim().is_empty() {
         return None;
     }
-    let after_first = &trimmed[3..];
-    let end = after_first.find("---")?;
-    let fm = &after_first[..end];
-    let body = &after_first[end + 3..];
-    Some((
-        fm.trim(),
-        body.trim_start_matches('\n').trim_start_matches('\r'),
-    ))
+    // Find the closing `---` delimiter, which must appear on its own line.
+    // Anchoring on `\n---` (rather than a bare substring search) avoids
+    // matching a `---` that appears inside a YAML value such as
+    // `description: "before --- after"`, which would truncate the frontmatter.
+    let mut offset = 0;
+    while let Some(rel) = after_first[offset..].find("\n---") {
+        let dash_start = offset + rel + 1; // index of the first `-`
+                                           // The remainder of the delimiter line must be empty (only `---`).
+        if after_first[dash_start + 3..]
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+        {
+            let fm = &after_first[..dash_start];
+            let body = &after_first[dash_start + 3..];
+            return Some((fm.trim(), body.trim_start_matches(['\r', '\n'])));
+        }
+        offset = dash_start + 3;
+    }
+    None
 }
 
 /// Serialize frontmatter back to a YAML string wrapped in `---` delimiters.
@@ -303,6 +319,28 @@ mod tests {
         let raw = "---\ntitle: Test\n---\n\n\nBody with leading newlines";
         let (_, body) = split_frontmatter(raw).unwrap();
         assert_eq!(body, "Body with leading newlines");
+    }
+
+    #[test]
+    fn test_split_frontmatter_triple_dash_in_value() {
+        // A `---` inside a quoted YAML value must not terminate the frontmatter.
+        let raw = "---\ntitle: Hello\ndescription: \"Before --- After\"\n---\nBody.";
+        let (fm, body) = split_frontmatter(raw).unwrap();
+        assert!(fm.contains("description: \"Before --- After\""));
+        assert_eq!(body, "Body.");
+        // And the recovered frontmatter must parse as valid YAML.
+        let parsed: Frontmatter = serde_yaml_ng::from_str(fm).unwrap();
+        assert_eq!(parsed.description.as_deref(), Some("Before --- After"));
+    }
+
+    #[test]
+    fn test_split_frontmatter_horizontal_rule_in_body() {
+        // A markdown horizontal rule in the body is fine; the first on-its-own
+        // line `---` after the opening closes the frontmatter.
+        let raw = "---\ntitle: Test\n---\nIntro\n\n---\n\nMore body.";
+        let (fm, body) = split_frontmatter(raw).unwrap();
+        assert_eq!(fm, "title: Test");
+        assert_eq!(body, "Intro\n\n---\n\nMore body.");
     }
 
     #[test]

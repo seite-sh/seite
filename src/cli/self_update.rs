@@ -218,48 +218,37 @@ fn verify_checksum(
     Ok(())
 }
 
-/// Minimal SHA256 implementation (we already have the primitives via image crate deps,
-/// but to avoid adding a heavy dependency, use a simple pure-Rust implementation).
+/// SHA256 hasher backed by the pure-Rust `sha2` crate.
 ///
-/// In production, you might replace this with the `sha2` crate.
+/// Computing the digest in-process (rather than shelling out to `sha256sum` /
+/// `shasum`) means integrity verification works everywhere — including Windows,
+/// where those tools are typically absent — and can never silently produce an
+/// empty digest or panic on a missing temp directory.
 struct Sha256 {
-    data: Vec<u8>,
+    inner: sha2::Sha256,
 }
 
 impl Sha256 {
     fn new() -> Self {
-        Self { data: Vec::new() }
+        use sha2::Digest;
+        Self {
+            inner: sha2::Sha256::new(),
+        }
     }
 
     fn update(&mut self, bytes: &[u8]) {
-        self.data.extend_from_slice(bytes);
+        use sha2::Digest;
+        self.inner.update(bytes);
     }
 
-    /// Compute SHA256 and return hex string.
-    /// Uses the system `sha256sum` or `shasum` command (same approach as install.sh).
+    /// Finalize and return the lowercase hex digest.
     fn hex_digest(self) -> String {
-        // Write data to a temp file and use system sha256 tool
-        let tmp = tempfile::NamedTempFile::new().expect("failed to create temp file for checksum");
-        fs::write(tmp.path(), &self.data).expect("failed to write temp file for checksum");
-
-        // Try sha256sum first, then shasum -a 256
-        let output = std::process::Command::new("sha256sum")
-            .arg(tmp.path())
-            .output()
-            .or_else(|_| {
-                std::process::Command::new("shasum")
-                    .args(["-a", "256"])
-                    .arg(tmp.path())
-                    .output()
-            });
-
-        match output {
-            Ok(out) if out.status.success() => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                stdout.split_whitespace().next().unwrap_or("").to_string()
-            }
-            _ => String::new(),
-        }
+        use sha2::Digest;
+        self.inner
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 }
 
@@ -614,6 +603,38 @@ mod tests {
         let digest = hasher.hex_digest();
         assert!(!digest.is_empty());
         assert_eq!(digest.len(), 64); // SHA-256 is 64 hex chars
+    }
+
+    #[test]
+    fn test_sha256_known_vectors() {
+        // NIST/RFC test vectors — verifies the digest is real SHA-256, not just
+        // a deterministic 64-char string.
+        let mut h = Sha256::new();
+        h.update(b"abc");
+        assert_eq!(
+            h.hex_digest(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+
+        let empty = Sha256::new();
+        assert_eq!(
+            empty.hex_digest(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn test_sha256_incremental_matches_oneshot() {
+        let mut once = Sha256::new();
+        once.update(b"the quick brown fox");
+        let d_once = once.hex_digest();
+
+        let mut inc = Sha256::new();
+        inc.update(b"the quick ");
+        inc.update(b"brown fox");
+        let d_inc = inc.hex_digest();
+
+        assert_eq!(d_once, d_inc);
     }
 
     #[test]

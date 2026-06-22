@@ -426,20 +426,26 @@ fn call_search(
 /// Extract a ~200 character excerpt around the first occurrence of the query.
 fn extract_excerpt(body: &str, query_lower: &str) -> String {
     let body_lower = body.to_lowercase();
-    if let Some(pos) = body_lower.find(query_lower) {
-        let start = pos.saturating_sub(100);
-        let end = (pos + query_lower.len() + 100).min(body.len());
-        let mut excerpt = body[start..end].to_string();
-        if start > 0 {
-            excerpt = format!("...{excerpt}");
-        }
-        if end < body.len() {
-            excerpt = format!("{excerpt}...");
-        }
-        excerpt
-    } else {
-        first_paragraph(body)
+    let Some(byte_pos) = body_lower.find(query_lower) else {
+        return first_paragraph(body);
+    };
+    // `byte_pos` is an offset into `body_lower`, whose byte layout can differ
+    // from `body` (lowercasing can change byte lengths, e.g. `İ`). Work in
+    // character units so the slice always lands on a char boundary and never
+    // panics on multibyte content (accents, CJK, emoji).
+    let chars: Vec<char> = body.chars().collect();
+    let char_pos = body_lower[..byte_pos].chars().count().min(chars.len());
+    let query_chars = query_lower.chars().count();
+    let start = char_pos.saturating_sub(100);
+    let end = (char_pos + query_chars + 100).min(chars.len());
+    let mut excerpt: String = chars[start..end].iter().collect();
+    if start > 0 {
+        excerpt = format!("...{excerpt}");
     }
+    if end < chars.len() {
+        excerpt = format!("{excerpt}...");
+    }
+    excerpt
 }
 
 /// Get the first paragraph of markdown content as an excerpt.
@@ -753,6 +759,35 @@ mod tests {
         let result = extract_excerpt(&body, "deploy");
         assert!(result.contains("deploy"));
         assert!(result.starts_with("..."));
+    }
+
+    #[test]
+    fn test_extract_excerpt_multibyte_no_panic() {
+        // Multibyte chars surrounding the match previously caused a byte-offset
+        // slice to split a char boundary and panic, crashing the MCP server.
+        let prefix = "Café société — naïve façade résumé 日本語 ".repeat(5);
+        let body = format!("{prefix}the SEARCHME keyword 🚀 and more 日本語 text after it here.");
+        let result = extract_excerpt(&body, "searchme");
+        assert!(result.contains("SEARCHME"));
+    }
+
+    #[test]
+    fn test_extract_excerpt_multibyte_at_boundary() {
+        // Match immediately adjacent to multibyte characters on both sides.
+        let body = "日本語テキスト searchme 日本語テキスト";
+        let result = extract_excerpt(body, "searchme");
+        assert!(result.contains("searchme"));
+    }
+
+    #[test]
+    fn test_extract_excerpt_emoji_window_edges() {
+        // Emoji exactly at the 100-char window edges must not split.
+        let pad = "🚀".repeat(150);
+        let body = format!("{pad} searchme {pad}");
+        let result = extract_excerpt(&body, "searchme");
+        assert!(result.contains("searchme"));
+        assert!(result.starts_with("..."));
+        assert!(result.ends_with("..."));
     }
 
     #[test]

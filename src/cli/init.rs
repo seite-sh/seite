@@ -446,6 +446,10 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "  seite serve             {} start dev server with live reload",
         console::style("←").dim()
     );
+    println!(
+        "  seite agent             {} write content & themes with Claude Code",
+        console::style("←").dim()
+    );
 
     Ok(())
 }

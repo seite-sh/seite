@@ -2181,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "seite"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2203,6 +2203,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sha2",
  "slug",
  "strsim",
  "syntect",

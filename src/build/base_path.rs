@@ -74,23 +74,24 @@ fn rewrite_tag_attrs(tag: &str, base_path: &str) -> String {
 
     while !remaining.is_empty() {
         // Find the next URL attribute
-        if let Some((attr, _attr_pos, value_start)) = find_next_attr_in_tag(remaining) {
+        if let Some((attr, _attr_pos, value_start, quote)) = find_next_attr_in_tag(remaining) {
             // Copy everything before the attribute value
             result.push_str(&remaining[..value_start]);
 
             let after_value_start = &remaining[value_start..];
+            let quote_char = quote as char;
 
-            // Find the closing quote
-            if let Some(end_quote) = after_value_start[1..].find('"') {
+            // Find the closing quote, matching the opening quote style
+            if let Some(end_quote) = after_value_start[1..].find(quote_char) {
                 let value = &after_value_start[1..1 + end_quote];
 
-                result.push('"');
+                result.push(quote_char);
                 if attr == "srcset" {
                     result.push_str(&rewrite_srcset(value, base_path));
                 } else {
                     result.push_str(&rewrite_url(value, base_path));
                 }
-                result.push('"');
+                result.push(quote_char);
 
                 remaining = &after_value_start[1 + end_quote + 1..];
             } else {
@@ -108,24 +109,24 @@ fn rewrite_tag_attrs(tag: &str, base_path: &str) -> String {
 }
 
 /// Find the next URL attribute in a tag fragment.
-/// Returns (attr_name, attr_position, position_of_opening_quote).
-fn find_next_attr_in_tag(tag: &str) -> Option<(&str, usize, usize)> {
-    let mut best: Option<(&str, usize, usize)> = None;
+/// Returns (attr_name, attr_position, position_of_opening_quote, quote_byte).
+/// Handles both double- and single-quoted attribute values.
+fn find_next_attr_in_tag(tag: &str) -> Option<(&str, usize, usize, u8)> {
+    let mut best: Option<(&str, usize, usize, u8)> = None;
 
     for &attr in URL_ATTRS {
-        // Build pattern: ` attr="` (space-prefixed to avoid partial matches)
-        let pattern = format!(" {attr}=\"");
-        if let Some(pos) = tag.find(&pattern) {
-            let value_quote_pos = pos + pattern.len() - 1; // position of the opening "
-
-            match best {
-                Some((_, _, best_pos)) if value_quote_pos < best_pos => {
-                    best = Some((attr, pos, value_quote_pos));
+        for &quote in b"\"'" {
+            // Build pattern: ` attr="` or ` attr='` (space-prefixed to avoid partial matches)
+            let pattern = format!(" {attr}={}", quote as char);
+            if let Some(pos) = tag.find(&pattern) {
+                let value_quote_pos = pos + pattern.len() - 1; // position of the opening quote
+                let is_closer = match best {
+                    Some((_, _, best_pos, _)) => value_quote_pos < best_pos,
+                    None => true,
+                };
+                if is_closer {
+                    best = Some((attr, pos, value_quote_pos, quote));
                 }
-                None => {
-                    best = Some((attr, pos, value_quote_pos));
-                }
-                _ => {}
             }
         }
     }
@@ -259,6 +260,28 @@ mod tests {
         assert_eq!(
             result,
             r#"<a href="/repo/posts/hello">link</a><img src="/repo/static/photo.jpg">"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_html_single_quoted_attrs() {
+        // Single-quoted attributes (e.g. from custom templates) must also be
+        // rewritten on subpath deployments, not silently passed through.
+        let html = r#"<a href='/posts/hello'>link</a><img src='/static/photo.jpg'>"#;
+        let result = rewrite_html_urls(html, "/repo");
+        assert_eq!(
+            result,
+            r#"<a href='/repo/posts/hello'>link</a><img src='/repo/static/photo.jpg'>"#
+        );
+    }
+
+    #[test]
+    fn test_rewrite_html_mixed_quotes() {
+        let html = r#"<link rel='canonical' href='/page'><a href="/other">x</a>"#;
+        let result = rewrite_html_urls(html, "/repo");
+        assert_eq!(
+            result,
+            r#"<link rel='canonical' href='/repo/page'><a href="/repo/other">x</a>"#
         );
     }
 

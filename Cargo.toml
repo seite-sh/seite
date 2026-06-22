@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.12.1"
+version = "0.12.2"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -88,6 +88,9 @@ urlencoding = "2"
 
 # Temp files (for self-update checksum verification)
 tempfile = "3"
+
+# SHA-256 (in-process checksum verification for self-update)
+sha2 = "0.10"
 
 [features]
 default = ["math"]

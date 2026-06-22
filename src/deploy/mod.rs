@@ -1148,7 +1148,9 @@ pub fn deploy_github_pages(
     run(&["config", "user.email", "seite-deploy@localhost"])?;
     run(&["config", "user.name", "seite deploy"])?;
 
-    run(&["checkout", "-b", "gh-pages"])?;
+    // `-B` resets/creates the branch so a re-deploy over a stale `.git` in the
+    // output dir doesn't fail with "branch 'gh-pages' already exists".
+    run(&["checkout", "-B", "gh-pages"])?;
     run(&["add", "-A"])?;
 
     // Include timestamp in commit message
