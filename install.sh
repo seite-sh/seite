@@ -127,6 +127,20 @@ resolve_version() {
   echo "$TAG"
 }
 
+# --- Anonymous install telemetry (best-effort; never blocks or fails) ---
+# Disable with DO_NOT_TRACK=1 or SEITE_TELEMETRY=0.
+send_telemetry() {
+  [ -n "${DO_NOT_TRACK:-}" ] && return 0
+  case "${SEITE_TELEMETRY:-}" in 0|off|false|no) return 0 ;; esac
+  _ep="${SEITE_TELEMETRY_ENDPOINT:-https://who.seite.sh/api/event}"
+  _body="{\"name\":\"install\",\"domain\":\"cli.seite.sh\",\"url\":\"https://cli.seite.sh/install\",\"props\":{\"version\":\"${VERSION_TAG}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"source\":\"install.sh\"}}"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 2 -A "seite-installer/${VERSION_TAG}" -H 'Content-Type: application/json' -d "$_body" "$_ep" >/dev/null 2>&1 || true
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 2 -U "seite-installer/${VERSION_TAG}" --header='Content-Type: application/json' --post-data="$_body" -O /dev/null "$_ep" >/dev/null 2>&1 || true
+  fi
+}
+
 # --- Main ---
 
 main() {
@@ -170,6 +184,8 @@ main() {
   chmod +x "${INSTALL_DIR}/${BINARY}"
 
   info "Installed seite to ${INSTALL_DIR}/${BINARY}"
+
+  ( send_telemetry & ) >/dev/null 2>&1
 
   # Check PATH
   case ":${PATH}:" in
