@@ -2,6 +2,7 @@
 //! never blocks the command, never affects the exit code.
 
 use std::path::Path;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -124,6 +125,57 @@ fn resolve(dnt: bool, env_flag: Option<bool>, ci: bool, cfg: Option<bool>) -> De
     Decision::EnabledByDefault
 }
 
+const SITE: &str = "cli.seite.sh";
+/// Default `who` ingestion endpoint. Confirm/replace with the real deployment
+/// URL before release; overridable via `SEITE_TELEMETRY_ENDPOINT` (build or run).
+const DEFAULT_ENDPOINT: &str = "https://who.seite.sh/api/event";
+
+/// Coarse duration bucket — never a raw timing.
+fn duration_bucket(d: Duration) -> &'static str {
+    match d.as_secs() {
+        0 => "<1s",
+        1..=4 => "1-5s",
+        5..=29 => "5-30s",
+        _ => "30s+",
+    }
+}
+
+fn resolve_endpoint(runtime: Option<String>, compiled: Option<&str>) -> String {
+    runtime
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| compiled.map(|s| s.to_string()))
+        .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string())
+}
+
+fn endpoint() -> String {
+    resolve_endpoint(
+        std::env::var("SEITE_TELEMETRY_ENDPOINT").ok(),
+        option_env!("SEITE_TELEMETRY_ENDPOINT"),
+    )
+}
+
+fn build_command_payload(
+    command: &str,
+    success: bool,
+    duration: Duration,
+    version: &str,
+    os: &str,
+    arch: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "name": "command",
+        "domain": SITE,
+        "url": format!("https://{SITE}/cmd/{command}"),
+        "props": {
+            "version": version,
+            "os": os,
+            "arch": arch,
+            "success": success,
+            "duration_bucket": duration_bucket(duration),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +246,38 @@ mod tests {
         // Pure-ish: just assert it renders a sentence containing "Telemetry is".
         let s = status_line();
         assert!(s.starts_with("Telemetry is "));
+    }
+
+    #[test]
+    fn duration_bucket_is_coarse() {
+        use std::time::Duration;
+        assert_eq!(duration_bucket(Duration::from_millis(200)), "<1s");
+        assert_eq!(duration_bucket(Duration::from_secs(3)), "1-5s");
+        assert_eq!(duration_bucket(Duration::from_secs(20)), "5-30s");
+        assert_eq!(duration_bucket(Duration::from_secs(120)), "30s+");
+    }
+
+    #[test]
+    fn endpoint_prefers_runtime_then_compiled_then_default() {
+        assert_eq!(resolve_endpoint(Some("https://rt".into()), Some("https://ct")), "https://rt");
+        assert_eq!(resolve_endpoint(Some("  ".into()), Some("https://ct")), "https://ct");
+        assert_eq!(resolve_endpoint(None, Some("https://ct")), "https://ct");
+        assert_eq!(resolve_endpoint(None, None), DEFAULT_ENDPOINT);
+    }
+
+    #[test]
+    fn command_payload_has_only_allowed_fields() {
+        use std::time::Duration;
+        let v = build_command_payload("build", true, Duration::from_secs(2), "0.12.2", "linux", "x86_64");
+        assert_eq!(v["name"], "command");
+        assert_eq!(v["domain"], "cli.seite.sh");
+        assert_eq!(v["url"], "https://cli.seite.sh/cmd/build");
+        let props = v["props"].as_object().unwrap();
+        let mut keys: Vec<&String> = props.keys().collect();
+        keys.sort();
+        assert_eq!(keys, vec!["arch", "duration_bucket", "os", "success", "version"]);
+        assert_eq!(props["version"], "0.12.2");
+        assert_eq!(props["success"], true);
+        assert_eq!(props["duration_bucket"], "1-5s");
     }
 }
