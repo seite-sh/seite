@@ -1,6 +1,83 @@
 //! Opt-out CLI telemetry. Mirrors `update_check.rs`: best-effort, never panics,
 //! never blocks the command, never affects the exit code.
 
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+use crate::platform;
+
+const TELEMETRY_DIR: &str = ".seite";
+const TELEMETRY_FILE: &str = "telemetry.json";
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TelemetryConfig {
+    /// `None` = user never set a preference (opt-out default applies).
+    enabled: Option<bool>,
+    /// Whether the one-time first-run notice has been shown.
+    notice_shown: bool,
+}
+
+fn config_path() -> Option<std::path::PathBuf> {
+    platform::home_dir().map(|home| home.join(TELEMETRY_DIR).join(TELEMETRY_FILE))
+}
+
+fn load_config(path: &Path) -> TelemetryConfig {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_config(path: &Path, cfg: &TelemetryConfig) -> Option<()> {
+    let parent = path.parent()?;
+    std::fs::create_dir_all(parent).ok()?;
+    let json = serde_json::to_string_pretty(cfg).ok()?;
+    std::fs::write(path, json).ok()?;
+    Some(())
+}
+
+fn env_nonempty(key: &str) -> bool {
+    std::env::var(key).map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+/// Full opt-out decision using real env + saved config.
+pub fn decision() -> Decision {
+    let cfg = config_path().map(|p| load_config(&p)).unwrap_or_default();
+    resolve(
+        env_nonempty("DO_NOT_TRACK"),
+        std::env::var("SEITE_TELEMETRY").ok().and_then(|v| parse_flag(&v)),
+        env_nonempty("CI"),
+        cfg.enabled,
+    )
+}
+
+pub fn is_enabled() -> bool {
+    decision().is_enabled()
+}
+
+/// Persist an explicit on/off preference (`seite telemetry on|off`).
+pub fn set_enabled(on: bool) -> Option<()> {
+    let path = config_path()?;
+    let mut cfg = load_config(&path);
+    cfg.enabled = Some(on);
+    write_config(&path, &cfg)
+}
+
+/// One-line human status for `seite telemetry status`.
+pub fn status_line() -> String {
+    let d = decision();
+    let state = if d.is_enabled() { "enabled" } else { "disabled" };
+    let reason = match d {
+        Decision::DisabledByDoNotTrack => "DO_NOT_TRACK is set",
+        Decision::EnabledByEnv | Decision::DisabledByEnv => "SEITE_TELEMETRY env override",
+        Decision::DisabledByCi => "CI environment detected",
+        Decision::EnabledByConfig | Decision::DisabledByConfig => "saved preference",
+        Decision::EnabledByDefault => "default (opt-out)",
+    };
+    format!("Telemetry is {state} ({reason}).")
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Decision {
     DisabledByDoNotTrack,
@@ -89,5 +166,33 @@ mod tests {
         assert!(!Decision::DisabledByDoNotTrack.is_enabled());
         assert!(!Decision::DisabledByEnv.is_enabled());
         assert!(!Decision::DisabledByConfig.is_enabled());
+    }
+
+    #[test]
+    fn config_roundtrips_through_a_file() {
+        let dir = std::env::temp_dir().join(format!("seite-tel-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("telemetry.json");
+
+        // Missing file -> default config (enabled None, notice not shown).
+        let cfg = load_config(&path);
+        assert_eq!(cfg.enabled, None);
+        assert!(!cfg.notice_shown);
+
+        // Write then read back.
+        let written = TelemetryConfig { enabled: Some(false), notice_shown: true };
+        write_config(&path, &written).unwrap();
+        let read = load_config(&path);
+        assert_eq!(read.enabled, Some(false));
+        assert!(read.notice_shown);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn status_line_reports_state() {
+        // Pure-ish: just assert it renders a sentence containing "Telemetry is".
+        let s = status_line();
+        assert!(s.starts_with("Telemetry is "));
     }
 }
