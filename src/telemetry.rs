@@ -1,6 +1,7 @@
 //! Opt-out CLI telemetry. Mirrors `update_check.rs`: best-effort, never panics,
 //! never blocks the command, never affects the exit code.
 
+use std::io::IsTerminal;
 use std::path::Path;
 use std::time::Duration;
 
@@ -152,6 +153,58 @@ fn endpoint() -> String {
         std::env::var("SEITE_TELEMETRY_ENDPOINT").ok(),
         option_env!("SEITE_TELEMETRY_ENDPOINT"),
     )
+}
+
+const HTTP_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn send(payload: serde_json::Value) {
+    let agent = ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .timeout_global(Some(HTTP_TIMEOUT))
+            .build(),
+    );
+    let ua = format!("seite-cli/{}", env!("CARGO_PKG_VERSION"));
+    let _ = agent
+        .post(&endpoint())
+        .header("User-Agent", &ua)
+        .send_json(&payload);
+}
+
+/// Show the one-time opt-out notice on an interactive stderr, then mark it shown.
+fn maybe_show_notice() {
+    let Some(path) = config_path() else { return };
+    let mut cfg = load_config(&path);
+    if cfg.notice_shown || !std::io::stderr().is_terminal() {
+        return;
+    }
+    eprintln!(
+        "seite collects anonymous usage telemetry (command name, version, OS) to improve the tool.\n\
+         No paths, content, or personal data are sent. Disable with `seite telemetry off` or DO_NOT_TRACK=1.\n\
+         Details: https://seite.sh/telemetry"
+    );
+    cfg.notice_shown = true;
+    let _ = write_config(&path, &cfg);
+}
+
+/// Record one command invocation. Best-effort, detached; never blocks meaningfully.
+pub fn maybe_record_command(command: &str, success: bool, duration: Duration) {
+    if !is_enabled() {
+        return;
+    }
+    maybe_show_notice();
+    let payload = build_command_payload(
+        command,
+        success,
+        duration,
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    );
+    // Detached: do not join. A very fast command may exit before the send
+    // completes — acceptable for rough metrics.
+    let _ = std::thread::Builder::new()
+        .name("seite-telemetry".into())
+        .spawn(move || send(payload));
 }
 
 fn build_command_payload(
