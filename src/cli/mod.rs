@@ -11,6 +11,7 @@ pub mod perf;
 pub mod self_update;
 pub mod serve;
 pub mod skill;
+pub mod telemetry;
 pub mod theme;
 pub mod upgrade;
 pub mod workspace;
@@ -98,6 +99,9 @@ pub enum Command {
 
     /// Generate shell completions
     Completions(completions::CompletionsArgs),
+
+    /// Manage anonymous usage telemetry
+    Telemetry(telemetry::TelemetryArgs),
 }
 
 /// Build the clap Command (used by shell completion generation).

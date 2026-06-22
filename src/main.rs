@@ -46,6 +46,7 @@ fn main() -> Result<()> {
         Command::Mcp(args) => seite::cli::mcp::run(args)?,
         Command::Perf(args) => seite::cli::perf::run(args)?,
         Command::Completions(args) => seite::cli::completions::run(args)?,
+        Command::Telemetry(args) => seite::cli::telemetry::run(args)?,
     }
 
     // Check for available updates (skip for self-update, mcp, and completions — stdout must stay clean)
