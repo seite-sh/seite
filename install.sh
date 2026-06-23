@@ -9,14 +9,16 @@
 #   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
-#   VERSION     Pin to a specific release (e.g., VERSION=v0.1.0)
-#   INSTALL_DIR Override install location (default: ~/.local/bin)
+#   VERSION        Pin to a specific release (e.g., VERSION=v0.1.0)
+#   INSTALL_DIR    Override install location (default: ~/.local/bin)
+#   DOWNLOAD_BASE  Override download base URL (default: https://seite.sh/download)
 
 set -eu
 
 REPO="seite-sh/seite"
 BINARY="seite"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+DOWNLOAD_BASE="${DOWNLOAD_BASE:-https://seite.sh/download}"
 
 # --- Colors (only when stdout is a terminal) ---
 
@@ -111,6 +113,20 @@ resolve_version() {
   fi
 
   info "Fetching latest release..."
+
+  # Try domain version endpoint first
+  TMPFILE=$(mktemp)
+  if download "https://seite.sh/version.txt" "$TMPFILE" 2>/dev/null; then
+    TAG=$(tr -d '[:space:]' < "$TMPFILE")
+    rm -f "$TMPFILE"
+    if [ -n "$TAG" ]; then
+      echo "$TAG"
+      return
+    fi
+  fi
+  rm -f "$TMPFILE"
+
+  # Fallback to GitHub API
   LATEST_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
   TMPFILE=$(mktemp)
@@ -148,8 +164,8 @@ main() {
 
   VERSION_TAG=$(resolve_version)
   ARCHIVE="seite-${TARGET}.tar.gz"
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION_TAG}/${ARCHIVE}"
-  CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION_TAG}/checksums-sha256.txt"
+  DOWNLOAD_URL="${DOWNLOAD_BASE}/${VERSION_TAG}/${ARCHIVE}"
+  CHECKSUMS_URL="${DOWNLOAD_BASE}/${VERSION_TAG}/checksums-sha256.txt"
 
   info "Installing seite ${VERSION_TAG} for ${TARGET}"
 
@@ -185,6 +201,7 @@ main() {
 
   info "Installed seite to ${INSTALL_DIR}/${BINARY}"
 
+  # Anonymous install ping (backgrounded; never blocks or fails the install).
   ( send_telemetry & ) >/dev/null 2>&1
 
   # Check PATH
