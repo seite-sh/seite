@@ -15,6 +15,7 @@ pub mod platform;
 pub mod progress;
 pub mod server;
 pub mod shortcodes;
+pub mod telemetry;
 pub mod templates;
 pub mod themes;
 pub mod update_check;

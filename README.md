@@ -317,6 +317,45 @@ target = "cloudflare"    # or "github-pages" or "netlify"
 
 `seite init` auto-generates the CI workflow for your chosen target.
 
+## Telemetry
+
+seite collects **anonymous, opt-out** usage telemetry to understand which commands are used and whether they succeed. No personal data, no file paths, no content.
+
+**What is collected:**
+
+| Field | Example |
+|-------|---------|
+| Command name | `build` |
+| seite version | `0.12.2` |
+| OS / architecture | `macos` / `aarch64` |
+| Success (exit 0?) | `true` |
+| Coarse duration bucket | `1-5s` |
+| Install source | `shell` / `cargo` |
+
+**What is never collected:** file paths, site domains or URLs, page content, command arguments or flag values, environment variables, usernames, or any stable identifier.
+
+Data is sent to the `cli.seite.sh` partition — a dedicated namespace that is completely separate from your site's own analytics. Full details: **[seite.sh/telemetry](https://seite.sh/telemetry)**
+
+**Opt out at any time:**
+
+```bash
+seite telemetry off        # persisted preference (survives shell restarts)
+```
+
+Or set an environment variable for one run or in your shell profile:
+
+```bash
+export SEITE_TELEMETRY=0   # disable via env var
+export DO_NOT_TRACK=1      # respects the universal DO_NOT_TRACK standard
+```
+
+Telemetry is also automatically disabled in CI (when the `CI` environment variable is set to any non-empty value). Check your current status:
+
+```bash
+seite telemetry status
+seite telemetry on         # re-enable if you opted out
+```
+
 ## Documentation
 
 Full docs at **[seite.sh/docs](https://seite.sh/docs/getting-started)**

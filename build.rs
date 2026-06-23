@@ -19,6 +19,13 @@ fn main() {
     // Rerun when changelog entries are added, removed, or modified.
     println!("cargo:rerun-if-changed=seite-sh/content/changelog");
 
+    // Telemetry endpoint baked at build time; overridable at runtime via the
+    // SEITE_TELEMETRY_ENDPOINT env var. Falls back to the module default if unset.
+    if let Ok(ep) = std::env::var("SEITE_TELEMETRY_ENDPOINT") {
+        println!("cargo:rustc-env=SEITE_TELEMETRY_ENDPOINT={ep}");
+    }
+    println!("cargo:rerun-if-env-changed=SEITE_TELEMETRY_ENDPOINT");
+
     let mut output = String::from(
         "---\n\
          title: \"Releases\"\n\

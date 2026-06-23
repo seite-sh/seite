@@ -20,6 +20,7 @@ fn main() -> Result<()> {
         std::env::set_current_dir(dir)?;
     }
 
+    let site = cli.site.clone();
     let command = match cli.command {
         Some(cmd) => cmd,
         None => {
@@ -29,34 +30,78 @@ fn main() -> Result<()> {
         }
     };
 
-    match &command {
-        Command::Init(args) => seite::cli::init::run(args)?,
-        Command::New(args) => seite::cli::new::run(args)?,
-        Command::Build(args) => seite::cli::build::run(args, cli.site.as_deref())?,
-        Command::Serve(args) => seite::cli::serve::run(args, cli.site.as_deref())?,
-        Command::Deploy(args) => seite::cli::deploy::run(args, cli.site.as_deref())?,
-        Command::Agent(args) => seite::cli::agent::run(args)?,
-        Command::Collection(args) => seite::cli::collection::run(args)?,
-        Command::Contact(args) => seite::cli::contact::run(args)?,
-        Command::Skill(args) => seite::cli::skill::run(args)?,
-        Command::Theme(args) => seite::cli::theme::run(args)?,
-        Command::Workspace(args) => seite::cli::workspace::run(args)?,
-        Command::Upgrade(args) => seite::cli::upgrade::run(args)?,
-        Command::SelfUpdate(args) => seite::cli::self_update::run(args)?,
-        Command::Mcp(args) => seite::cli::mcp::run(args)?,
-        Command::Perf(args) => seite::cli::perf::run(args)?,
-        Command::Completions(args) => seite::cli::completions::run(args)?,
-    }
+    use std::time::Instant;
 
-    // Check for available updates (skip for self-update, mcp, and completions — stdout must stay clean)
-    if !matches!(
+    let cmd_name = command_name(&command);
+    let started = Instant::now();
+    let result = dispatch(site.as_deref(), &command);
+    let elapsed = started.elapsed();
+    let success = result.is_ok();
+
+    // Telemetry + update check share the same exclusion list (stdout/stderr must
+    // stay clean for these commands). The `telemetry` command is also excluded
+    // so it doesn't report itself.
+    let skip = matches!(
         &command,
-        Command::SelfUpdate(_) | Command::Mcp(_) | Command::Perf(_) | Command::Completions(_)
-    ) {
+        Command::SelfUpdate(_)
+            | Command::Mcp(_)
+            | Command::Perf(_)
+            | Command::Completions(_)
+            | Command::Telemetry(_)
+    );
+    if !skip {
+        seite::telemetry::maybe_record_command(cmd_name, success, elapsed);
         seite::update_check::maybe_notify();
     }
 
-    Ok(())
+    result
+}
+
+/// Dispatch a parsed command. Returns the command's result so `main` can record
+/// success/failure for telemetry before propagating.
+fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
+    match command {
+        Command::Init(args) => seite::cli::init::run(args),
+        Command::New(args) => seite::cli::new::run(args),
+        Command::Build(args) => seite::cli::build::run(args, site),
+        Command::Serve(args) => seite::cli::serve::run(args, site),
+        Command::Deploy(args) => seite::cli::deploy::run(args, site),
+        Command::Agent(args) => seite::cli::agent::run(args),
+        Command::Collection(args) => seite::cli::collection::run(args),
+        Command::Contact(args) => seite::cli::contact::run(args),
+        Command::Skill(args) => seite::cli::skill::run(args),
+        Command::Theme(args) => seite::cli::theme::run(args),
+        Command::Workspace(args) => seite::cli::workspace::run(args),
+        Command::Upgrade(args) => seite::cli::upgrade::run(args),
+        Command::SelfUpdate(args) => seite::cli::self_update::run(args),
+        Command::Mcp(args) => seite::cli::mcp::run(args),
+        Command::Perf(args) => seite::cli::perf::run(args),
+        Command::Completions(args) => seite::cli::completions::run(args),
+        Command::Telemetry(args) => seite::cli::telemetry::run(args),
+    }
+}
+
+/// Map a command to its stable telemetry name (the clap subcommand string).
+fn command_name(command: &Command) -> &'static str {
+    match command {
+        Command::Init(_) => "init",
+        Command::New(_) => "new",
+        Command::Build(_) => "build",
+        Command::Serve(_) => "serve",
+        Command::Deploy(_) => "deploy",
+        Command::Agent(_) => "agent",
+        Command::Collection(_) => "collection",
+        Command::Contact(_) => "contact",
+        Command::Skill(_) => "skill",
+        Command::Theme(_) => "theme",
+        Command::Workspace(_) => "workspace",
+        Command::Upgrade(_) => "upgrade",
+        Command::SelfUpdate(_) => "self-update",
+        Command::Mcp(_) => "mcp",
+        Command::Perf(_) => "perf",
+        Command::Completions(_) => "completions",
+        Command::Telemetry(_) => "telemetry",
+    }
 }
 
 /// Show a friendly welcome screen when no subcommand is given.
