@@ -47,6 +47,14 @@ pub struct CollectionConfig {
     pub has_rss: bool,
     #[serde(default)]
     pub listed: bool,
+    /// Keep this collection out of every public discovery surface (sitemap,
+    /// llms.txt, llms-full.txt, search index, feeds, and the homepage listing)
+    /// while still building its hub and item pages — for content placed behind
+    /// Cloudflare Access / HTTP auth. Stamps `noindex, nofollow` on every page.
+    /// Independent of `listed`: the hub renders even when the collection is
+    /// hidden from the homepage.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub private: bool,
     #[serde(default)]
     pub url_prefix: String,
     #[serde(default)]
@@ -88,6 +96,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -106,6 +115,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -124,6 +134,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -142,6 +153,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -160,6 +172,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -178,6 +191,7 @@ impl CollectionConfig {
             subdomain: None,
             subdomain_base_url: None,
             deploy_project: None,
+            private: false,
         }
     }
 
@@ -708,6 +722,29 @@ mod tests {
         let mut c = CollectionConfig::preset_docs();
         c.subdomain = Some("docs".into());
         c
+    }
+
+    #[test]
+    fn test_collection_private_defaults_false() {
+        assert!(!CollectionConfig::preset_trust().private);
+        let toml =
+            "name = \"x\"\nlabel = \"X\"\ndirectory = \"x\"\ndefault_template = \"t.html\"\n";
+        let c: CollectionConfig = toml::from_str(toml).unwrap();
+        assert!(!c.private);
+    }
+
+    #[test]
+    fn test_collection_private_parses_from_toml() {
+        let toml = "name = \"trust\"\nlabel = \"Trust\"\ndirectory = \"trust\"\ndefault_template = \"trust-item.html\"\nprivate = true\n";
+        let c: CollectionConfig = toml::from_str(toml).unwrap();
+        assert!(c.private);
+    }
+
+    #[test]
+    fn test_collection_private_false_is_not_serialized() {
+        // Byte-identical seite.toml: `private = false` must be omitted.
+        let toml = toml::to_string(&CollectionConfig::preset_posts()).unwrap();
+        assert!(!toml.contains("private"), "serialized: {toml}");
     }
 
     #[test]

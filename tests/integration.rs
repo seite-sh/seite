@@ -7299,6 +7299,193 @@ fn init_trust_site(tmp: &TempDir, name: &str) {
         .success();
 }
 
+/// Helper: insert a TOML line into the [[collections]] block whose `name` matches.
+fn add_collection_line(site_dir: &std::path::Path, collection: &str, line: &str) {
+    let toml_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&toml_path).unwrap();
+    let needle = format!("name = \"{collection}\"");
+    let replaced = config.replacen(&needle, &format!("{needle}\n{line}"), 1);
+    assert_ne!(
+        config, replaced,
+        "collection '{collection}' not found in seite.toml"
+    );
+    fs::write(&toml_path, replaced).unwrap();
+}
+
+/// Helper: add plain-string subprocessor + FAQ data so the trust hub renders all
+/// of its data-driven sections.
+fn write_plain_trust_sections(site_dir: &std::path::Path) {
+    let trust_dir = site_dir.join("data/trust");
+    fs::create_dir_all(&trust_dir).unwrap();
+    fs::write(
+        trust_dir.join("subprocessors.yaml"),
+        "- name: AWS\n  purpose: Cloud infrastructure\n  location: United States\n  dpa: true\n",
+    )
+    .unwrap();
+    fs::write(
+        trust_dir.join("faq.yaml"),
+        "- question: Where is data stored?\n  answer: Data is stored in the EU.\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_private_collection_hub_renders_but_excluded_from_discovery() {
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "de", "Vertrauen");
+    add_collection_line(&site_dir, "trust", "private = true");
+    write_plain_trust_sections(&site_dir);
+
+    // German translation of the scaffolded trust item so /de/trust/ has content too.
+    let overview = fs::read_to_string(site_dir.join("content/trust/security-overview.md")).unwrap();
+    fs::write(
+        site_dir.join("content/trust/security-overview.de.md"),
+        overview,
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+
+    // 1. Hub renders its data-driven sections AND carries noindex — both languages.
+    for hub in ["trust/index.html", "de/trust/index.html"] {
+        let html = fs::read_to_string(dist.join(hub)).unwrap();
+        assert!(
+            html.contains("AWS"),
+            "{hub}: hub missing subprocessor section"
+        );
+        assert!(
+            html.contains("Where is data stored?"),
+            "{hub}: hub missing FAQ section"
+        );
+        assert!(
+            html.contains(r#"<meta name="robots" content="noindex, nofollow">"#),
+            "{hub}: missing noindex robots meta"
+        );
+    }
+
+    // 2. Item pages + .md alternates still build, with noindex.
+    for p in [
+        "trust/security-overview.html",
+        "de/trust/security-overview.html",
+    ] {
+        let html = fs::read_to_string(dist.join(p)).unwrap();
+        assert!(
+            html.contains(r#"<meta name="robots" content="noindex, nofollow">"#),
+            "{p}: missing noindex robots meta"
+        );
+    }
+    assert!(dist.join("trust/security-overview.md").exists());
+    assert!(dist.join("de/trust/security-overview.md").exists());
+
+    // 3. ZERO trust URLs/content in any public discovery surface (default + /de/).
+    for f in [
+        "llms.txt",
+        "llms-full.txt",
+        "sitemap.xml",
+        "search-index.json",
+        "index.html",
+        "de/llms.txt",
+        "de/llms-full.txt",
+        "de/search-index.json",
+        "de/index.html",
+    ] {
+        let content = fs::read_to_string(dist.join(f)).unwrap();
+        assert!(!content.contains("/trust"), "{f} leaks a /trust URL");
+        assert!(
+            !content.contains("Security Overview"),
+            "{f} leaks the private page title"
+        );
+    }
+}
+
+#[test]
+fn test_private_collection_hub_renders_even_when_unlisted() {
+    // private is independent of listed: hub builds even when hidden from the
+    // homepage. (listed = false alone would suppress the hub entirely.)
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+    let site_dir = tmp.path().join("site");
+
+    let toml_path = site_dir.join("seite.toml");
+    let cfg = fs::read_to_string(&toml_path).unwrap();
+    let cfg = cfg.replace(
+        "listed = true\nurl_prefix = \"/trust\"",
+        "listed = false\nurl_prefix = \"/trust\"",
+    );
+    fs::write(&toml_path, cfg).unwrap();
+    add_collection_line(&site_dir, "trust", "private = true");
+    write_plain_trust_sections(&site_dir);
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+
+    // Hub still renders despite listed = false.
+    let hub = fs::read_to_string(dist.join("trust/index.html")).unwrap();
+    assert!(
+        hub.contains("AWS"),
+        "hub did not render with listed=false + private=true"
+    );
+    // Still excluded from discovery.
+    assert!(!fs::read_to_string(dist.join("sitemap.xml"))
+        .unwrap()
+        .contains("/trust"));
+    assert!(!fs::read_to_string(dist.join("index.html"))
+        .unwrap()
+        .contains("/trust"));
+}
+
+#[test]
+fn test_collection_without_private_appears_in_discovery() {
+    // Backward compatibility: absent `private` keeps the collection discoverable.
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+    let site_dir = tmp.path().join("site");
+    write_plain_trust_sections(&site_dir);
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+
+    assert!(
+        fs::read_to_string(dist.join("sitemap.xml"))
+            .unwrap()
+            .contains("/trust"),
+        "non-private collection should appear in the sitemap"
+    );
+    assert!(fs::read_to_string(dist.join("llms.txt"))
+        .unwrap()
+        .contains("/trust"));
+}
+
+#[test]
+fn test_private_collection_logs_excluded_count() {
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "trust", "private = true");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("private").and(predicate::str::contains("excluded")));
+}
+
 #[test]
 fn test_mcp_resources_list_with_trust() {
     let tmp = TempDir::new().unwrap();

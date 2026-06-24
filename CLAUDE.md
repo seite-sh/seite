@@ -68,6 +68,7 @@ language = "en"
 [[collections]]
 name = "posts"
 # subdomain = "blog"     # optional: deploy separately
+# private = true         # optional: build hub+pages but exclude from all discovery (Cloudflare Access)
 
 [build]
 output_dir = "dist"
