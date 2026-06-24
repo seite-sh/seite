@@ -172,6 +172,18 @@ copyright: "2026 My Company"
 
 The build will error if two data files share the same stem (e.g., `authors.yaml` and `authors.json`) or if a file and directory conflict (e.g., `nav.yaml` and `nav/main.yaml`). Unknown file extensions are skipped with a warning.
 
+### Per-language values
+
+On a multi-language site, any data value may be a **language map** — a mapping keyed by your configured language codes — and it resolves to the page's language at build time:
+
+```yaml
+purpose:
+  en: "Cloud infrastructure"
+  de: "Cloud-Infrastruktur"
+```
+
+Plain values are unchanged; only maps whose keys are *all* configured language codes are resolved. See [Per-Language Data Values](/docs/i18n#per-language-data-values).
+
 ## [deploy]
 
 | Field | Type | Default | Description |

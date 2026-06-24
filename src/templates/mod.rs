@@ -407,8 +407,8 @@ pub const DEFAULT_TRUST_ITEM: &str = r##"{% extends "base.html" %}
         <span class="cert-status cert-status--{{ cert.status }}">
             {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
         </span>
-        {% if cert.auditor %}<div class="cert-meta"><strong>{{ t.auditor }}:</strong> {{ cert.auditor }}</div>{% endif %}
-        {% if cert.scope %}<div class="cert-meta"><strong>{{ t.scope }}:</strong> {{ cert.scope }}</div>{% endif %}
+        {% if cert.auditor %}<div class="cert-meta"><strong>{{ t.auditor }}:</strong> {{ cert.auditor | i18n(lang=lang) }}</div>{% endif %}
+        {% if cert.scope %}<div class="cert-meta"><strong>{{ t.scope }}:</strong> {{ cert.scope | i18n(lang=lang) }}</div>{% endif %}
         {% if cert.issued %}<div class="cert-meta"><strong>{{ t.issued }}:</strong> {{ cert.issued }}</div>{% endif %}
         {% if cert.expires %}<div class="cert-meta"><strong>{{ t.expires }}:</strong> {{ cert.expires }}</div>{% endif %}
     </div>
@@ -440,8 +440,8 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
                         {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
                     </span>
                 </div>
-                <h3 class="cert-card__title">{{ cert.name }}</h3>
-                {% if cert.description %}<p class="cert-card__desc">{{ cert.description }}</p>{% endif %}
+                <h3 class="cert-card__title">{{ cert.name | i18n(lang=lang) }}</h3>
+                {% if cert.description %}<p class="cert-card__desc">{{ cert.description | i18n(lang=lang) }}</p>{% endif %}
                 {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link">{{ t.learn_more }} &rarr;</a>{% endif %}
             </div>
             {% endfor %}
@@ -474,9 +474,9 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
             <tbody>
             {% for sp in data.trust.subprocessors %}
             <tr>
-                <td>{{ sp.name }}</td>
-                <td>{{ sp.purpose | default(value="") }}</td>
-                <td>{{ sp.location | default(value="") }}</td>
+                <td>{{ sp.name | i18n(lang=lang) }}</td>
+                <td>{{ sp.purpose | default(value="") | i18n(lang=lang) }}</td>
+                <td>{{ sp.location | default(value="") | i18n(lang=lang) }}</td>
                 <td>{% if sp.dpa %}{{ t.yes }}{% else %}{{ t.no }}{% endif %}</td>
             </tr>
             {% endfor %}
@@ -491,8 +491,8 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
         <h2>{{ t.faq }}</h2>
         {% for item in data.trust.faq %}
         <details class="faq-item">
-            <summary>{{ item.question }}</summary>
-            <div class="faq-answer">{{ item.answer }}</div>
+            <summary>{{ item.question | i18n(lang=lang) }}</summary>
+            <div class="faq-answer">{{ item.answer | i18n(lang=lang) }}</div>
         </details>
         {% endfor %}
     </section>
