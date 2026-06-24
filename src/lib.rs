@@ -8,6 +8,7 @@ pub mod data;
 pub mod deploy;
 pub mod docs;
 pub mod error;
+pub mod i18n;
 pub mod mcp;
 pub mod meta;
 pub mod output;

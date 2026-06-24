@@ -169,7 +169,21 @@ seite build
 
 ## Multi-language Support
 
-Data files (`data/trust/*.yaml`) are language-neutral: structured data like dates, statuses, and vendor names don't change per language.
+Structured data like dates, statuses, and vendor names is language-neutral. **Prose fields can be translated** by writing a [language map](/docs/i18n#per-language-data-values) — a value keyed by your configured language codes:
+
+```yaml
+# data/trust/subprocessors.yaml
+- name: "AWS"                         # language-neutral
+  purpose:                            # language map → resolves per page
+    en: "Cloud infrastructure and hosting"
+    de: "Cloud-Infrastruktur und Hosting"
+  location:
+    en: "United States"
+    de: "Vereinigte Staaten"
+  dpa: true
+```
+
+The bundled `trust-index.html` and `trust-item.html` templates resolve language maps automatically for certification `name`/`description`/`scope`/`auditor`, subprocessor `name`/`purpose`/`location`, and FAQ `question`/`answer`. Plain single-language strings are rendered unchanged, so existing data needs no migration. See [Per-Language Data Values](/docs/i18n#per-language-data-values) for the full rules.
 
 Content pages get translated using the standard i18n filename convention:
 

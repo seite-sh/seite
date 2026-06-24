@@ -38,6 +38,7 @@ src/
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               15-step build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
+  i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
   cli/                 16 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions, perf
@@ -127,7 +128,7 @@ endpoint = "xpznqkdl"
 6. CLAUDE.md → update this file
 7. Tests → unit + integration
 8. Deploy fixtures → update `src/deploy/mod.rs` if SiteConfig changed
-9. i18n → `{{ t.key }}` for UI text, `{{ lang_prefix }}` for links
+9. i18n → `{{ t.key }}` for UI text, `{{ lang_prefix }}` for links, `{{ value | i18n(lang=lang) }}` for per-language data prose (language maps; see `src/i18n.rs`)
 
 ### Generated Site Structure
 - `seite init` creates lean CLAUDE.md + `.claude/rules/*.md` (path-scoped context)

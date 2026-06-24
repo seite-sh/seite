@@ -40,7 +40,9 @@ fn write_config(path: &Path, cfg: &TelemetryConfig) -> Option<()> {
 }
 
 fn env_nonempty(key: &str) -> bool {
-    std::env::var(key).map(|v| !v.trim().is_empty()).unwrap_or(false)
+    std::env::var(key)
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
 }
 
 /// Full opt-out decision using real env + saved config.
@@ -48,7 +50,9 @@ pub fn decision() -> Decision {
     let cfg = config_path().map(|p| load_config(&p)).unwrap_or_default();
     resolve(
         env_nonempty("DO_NOT_TRACK"),
-        std::env::var("SEITE_TELEMETRY").ok().and_then(|v| parse_flag(&v)),
+        std::env::var("SEITE_TELEMETRY")
+            .ok()
+            .and_then(|v| parse_flag(&v)),
         env_nonempty("CI"),
         cfg.enabled,
     )
@@ -69,7 +73,11 @@ pub fn set_enabled(on: bool) -> Option<()> {
 /// One-line human status for `seite telemetry status`.
 pub fn status_line() -> String {
     let d = decision();
-    let state = if d.is_enabled() { "enabled" } else { "disabled" };
+    let state = if d.is_enabled() {
+        "enabled"
+    } else {
+        "disabled"
+    };
     let reason = match d {
         Decision::DisabledByDoNotTrack => "DO_NOT_TRACK is set",
         Decision::EnabledByEnv | Decision::DisabledByEnv => "SEITE_TELEMETRY env override",
@@ -115,13 +123,21 @@ fn resolve(dnt: bool, env_flag: Option<bool>, ci: bool, cfg: Option<bool>) -> De
         return Decision::DisabledByDoNotTrack;
     }
     if let Some(v) = env_flag {
-        return if v { Decision::EnabledByEnv } else { Decision::DisabledByEnv };
+        return if v {
+            Decision::EnabledByEnv
+        } else {
+            Decision::DisabledByEnv
+        };
     }
     if ci {
         return Decision::DisabledByCi;
     }
     if let Some(v) = cfg {
-        return if v { Decision::EnabledByConfig } else { Decision::DisabledByConfig };
+        return if v {
+            Decision::EnabledByConfig
+        } else {
+            Decision::DisabledByConfig
+        };
     }
     Decision::EnabledByDefault
 }
@@ -249,17 +265,38 @@ mod tests {
     #[test]
     fn resolve_precedence() {
         // DO_NOT_TRACK wins over everything.
-        assert_eq!(resolve(true, Some(true), false, Some(true)), Decision::DisabledByDoNotTrack);
+        assert_eq!(
+            resolve(true, Some(true), false, Some(true)),
+            Decision::DisabledByDoNotTrack
+        );
         // env flag beats CI and config.
-        assert_eq!(resolve(false, Some(false), false, Some(true)), Decision::DisabledByEnv);
-        assert_eq!(resolve(false, Some(true), true, Some(false)), Decision::EnabledByEnv);
+        assert_eq!(
+            resolve(false, Some(false), false, Some(true)),
+            Decision::DisabledByEnv
+        );
+        assert_eq!(
+            resolve(false, Some(true), true, Some(false)),
+            Decision::EnabledByEnv
+        );
         // CI beats config.
-        assert_eq!(resolve(false, None, true, Some(true)), Decision::DisabledByCi);
+        assert_eq!(
+            resolve(false, None, true, Some(true)),
+            Decision::DisabledByCi
+        );
         // config beats default.
-        assert_eq!(resolve(false, None, false, Some(false)), Decision::DisabledByConfig);
-        assert_eq!(resolve(false, None, false, Some(true)), Decision::EnabledByConfig);
+        assert_eq!(
+            resolve(false, None, false, Some(false)),
+            Decision::DisabledByConfig
+        );
+        assert_eq!(
+            resolve(false, None, false, Some(true)),
+            Decision::EnabledByConfig
+        );
         // default is enabled (opt-out).
-        assert_eq!(resolve(false, None, false, None), Decision::EnabledByDefault);
+        assert_eq!(
+            resolve(false, None, false, None),
+            Decision::EnabledByDefault
+        );
     }
 
     #[test]
@@ -285,7 +322,10 @@ mod tests {
         assert!(!cfg.notice_shown);
 
         // Write then read back.
-        let written = TelemetryConfig { enabled: Some(false), notice_shown: true };
+        let written = TelemetryConfig {
+            enabled: Some(false),
+            notice_shown: true,
+        };
         write_config(&path, &written).unwrap();
         let read = load_config(&path);
         assert_eq!(read.enabled, Some(false));
@@ -314,8 +354,14 @@ mod tests {
 
     #[test]
     fn endpoint_prefers_runtime_then_compiled_then_default() {
-        assert_eq!(resolve_endpoint(Some("https://rt".into()), Some("https://ct")), "https://rt");
-        assert_eq!(resolve_endpoint(Some("  ".into()), Some("https://ct")), "https://ct");
+        assert_eq!(
+            resolve_endpoint(Some("https://rt".into()), Some("https://ct")),
+            "https://rt"
+        );
+        assert_eq!(
+            resolve_endpoint(Some("  ".into()), Some("https://ct")),
+            "https://ct"
+        );
         assert_eq!(resolve_endpoint(None, Some("https://ct")), "https://ct");
         assert_eq!(resolve_endpoint(None, None), DEFAULT_ENDPOINT);
     }
@@ -323,14 +369,24 @@ mod tests {
     #[test]
     fn command_payload_has_only_allowed_fields() {
         use std::time::Duration;
-        let v = build_command_payload("build", true, Duration::from_secs(2), "0.12.2", "linux", "x86_64");
+        let v = build_command_payload(
+            "build",
+            true,
+            Duration::from_secs(2),
+            "0.12.2",
+            "linux",
+            "x86_64",
+        );
         assert_eq!(v["name"], "command");
         assert_eq!(v["domain"], "cli.seite.sh");
         assert_eq!(v["url"], "https://cli.seite.sh/cmd/build");
         let props = v["props"].as_object().unwrap();
         let mut keys: Vec<&String> = props.keys().collect();
         keys.sort();
-        assert_eq!(keys, vec!["arch", "duration_bucket", "os", "success", "version"]);
+        assert_eq!(
+            keys,
+            vec!["arch", "duration_bucket", "os", "success", "version"]
+        );
         assert_eq!(props["version"], "0.12.2");
         assert_eq!(props["success"], true);
         assert_eq!(props["duration_bucket"], "1-5s");

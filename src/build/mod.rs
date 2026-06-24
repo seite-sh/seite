@@ -506,7 +506,7 @@ fn build_site_inner(
     // Step 2: Load templates (collection-aware)
     progress.step("Loading templates");
     let step_start = Instant::now();
-    let tera = templates::load_templates(&paths.templates, &config.collections)?;
+    let mut tera = templates::load_templates(&paths.templates, &config.collections)?;
     step_timings.push((
         "Load templates".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -535,6 +535,16 @@ fn build_site_inner(
     let configured_langs = config.configured_lang_codes();
     let is_multilingual = config.is_multilingual();
     let default_lang = &config.site.language;
+
+    // Register the i18n filter so templates can resolve per-language "language
+    // maps" in data values (e.g. `{{ cert.description | i18n(lang=lang) }}`).
+    // Then warn about partial language maps (some configured languages missing).
+    let lang_codes: std::collections::HashSet<String> =
+        config.all_languages().into_iter().collect();
+    crate::i18n::register_filters(&mut tera, default_lang, &lang_codes);
+    for warning in crate::i18n::partial_language_map_warnings(&data, &lang_codes) {
+        eprintln!("⚠ Warning: {warning}");
+    }
 
     // Step 3: Process each collection
     progress.step("Processing content");

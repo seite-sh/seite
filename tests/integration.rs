@@ -765,6 +765,196 @@ fn test_i18n_backward_compat_single_language() {
     assert!(!sitemap.contains("xmlns:xhtml"));
 }
 
+/// Helper: write the three bundled Trust Center data files with per-language
+/// "language map" values for prose fields, plus a plain-string field.
+fn write_bilingual_trust_data(site_dir: &std::path::Path) {
+    let trust_dir = site_dir.join("data/trust");
+    fs::create_dir_all(&trust_dir).unwrap();
+
+    fs::write(
+        trust_dir.join("certifications.yaml"),
+        "- name: ISO 27001\n\
+         \x20 framework: iso27001\n\
+         \x20 status: active\n\
+         \x20 slug: iso27001\n\
+         \x20 description:\n\
+         \x20   en: Information security management.\n\
+         \x20   de: Informationssicherheitsmanagement.\n\
+         \x20 scope:\n\
+         \x20   en: All production systems.\n\
+         \x20   de: Alle Produktionssysteme.\n",
+    )
+    .unwrap();
+
+    fs::write(
+        trust_dir.join("subprocessors.yaml"),
+        "- name: AWS\n\
+         \x20 dpa: true\n\
+         \x20 purpose:\n\
+         \x20   en: Cloud infrastructure\n\
+         \x20   de: Cloud-Infrastruktur\n\
+         \x20 location:\n\
+         \x20   en: United States\n\
+         \x20   de: Vereinigte Staaten\n",
+    )
+    .unwrap();
+
+    fs::write(
+        trust_dir.join("faq.yaml"),
+        "- question:\n\
+         \x20   en: Where is data stored?\n\
+         \x20   de: Wo werden Daten gespeichert?\n\
+         \x20 answer:\n\
+         \x20   en: Data is stored in the EU.\n\
+         \x20   de: Daten werden in der EU gespeichert.\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_i18n_data_language_maps_resolve_per_language() {
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "de", "Vertrauen");
+    write_bilingual_trust_data(&site_dir);
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Default language (en) at /trust/
+    let en = fs::read_to_string(site_dir.join("dist/trust/index.html")).unwrap();
+    // Language maps must never leak through as raw objects.
+    assert!(
+        !en.contains("[object]"),
+        "en trust index has unresolved map"
+    );
+    // Certification description, subprocessor purpose/location, FAQ Q&A → English
+    assert!(en.contains("Information security management."));
+    assert!(en.contains("Cloud infrastructure"));
+    assert!(en.contains("United States"));
+    assert!(en.contains("Where is data stored?"));
+    assert!(en.contains("Data is stored in the EU."));
+    // Plain-string field renders verbatim
+    assert!(en.contains("ISO 27001"));
+    assert!(en.contains("AWS"));
+    // German variants must NOT appear on the English page
+    assert!(!en.contains("Informationssicherheitsmanagement."));
+    assert!(!en.contains("Cloud-Infrastruktur"));
+    assert!(!en.contains("Daten werden in der EU gespeichert."));
+
+    // Secondary language (de) at /de/trust/
+    let de = fs::read_to_string(site_dir.join("dist/de/trust/index.html")).unwrap();
+    assert!(
+        !de.contains("[object]"),
+        "de trust index has unresolved map"
+    );
+    assert!(de.contains("Informationssicherheitsmanagement."));
+    assert!(de.contains("Cloud-Infrastruktur"));
+    assert!(de.contains("Vereinigte Staaten"));
+    assert!(de.contains("Wo werden Daten gespeichert?"));
+    assert!(de.contains("Daten werden in der EU gespeichert."));
+    // English variants must NOT appear on the German page
+    assert!(!de.contains("Information security management."));
+    assert!(!de.contains("Cloud infrastructure"));
+    assert!(!de.contains("Data is stored in the EU."));
+}
+
+#[test]
+fn test_i18n_data_plain_values_render_verbatim() {
+    // A single-language site with plain-string data must render byte-for-byte
+    // the same prose — the i18n filter is a no-op on scalars (no regression).
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+
+    let site_dir = tmp.path().join("site");
+    let trust_dir = site_dir.join("data/trust");
+    fs::create_dir_all(&trust_dir).unwrap();
+    fs::write(
+        trust_dir.join("faq.yaml"),
+        "- question: How is data encrypted?\n  answer: AES-256 at rest and TLS in transit.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/trust/index.html")).unwrap();
+    assert!(!html.contains("[object]"));
+    assert!(html.contains("How is data encrypted?"));
+    assert!(html.contains("AES-256 at rest and TLS in transit."));
+}
+
+#[test]
+fn test_i18n_data_partial_language_map_warns() {
+    // A value present in some but not all configured languages should emit a
+    // build warning flagging the missing translation.
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "de", "Vertrauen");
+
+    let trust_dir = site_dir.join("data/trust");
+    fs::create_dir_all(&trust_dir).unwrap();
+    fs::write(
+        trust_dir.join("faq.yaml"),
+        "- question:\n    en: English only?\n    de: Nur Englisch?\n  answer:\n    en: This answer has no German translation.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stderr(
+            predicate::str::contains("missing translation").and(predicate::str::contains("de")),
+        );
+}
+
+#[test]
+fn test_i18n_data_trust_item_resolves_cert_scope_per_language() {
+    // The cert-detail block in trust-item.html must resolve language-map prose
+    // (scope) for the page's own language, on both the default and /de/ pages.
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "de", "Vertrauen");
+    write_bilingual_trust_data(&site_dir);
+
+    // A certification detail page (default + German translation) that triggers
+    // the cert-detail block via extra.type/extra.framework.
+    let cert_dir = site_dir.join("content/trust/certifications");
+    fs::create_dir_all(&cert_dir).unwrap();
+    let fm = "---\ntitle: ISO 27001\nextra:\n  type: certification\n  framework: iso27001\n---\n\nDetails.\n";
+    fs::write(cert_dir.join("iso27001.md"), fm).unwrap();
+    fs::write(cert_dir.join("iso27001.de.md"), fm).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let en = fs::read_to_string(site_dir.join("dist/trust/certifications/iso27001.html")).unwrap();
+    assert!(en.contains("All production systems."));
+    assert!(!en.contains("Alle Produktionssysteme."));
+
+    let de =
+        fs::read_to_string(site_dir.join("dist/de/trust/certifications/iso27001.html")).unwrap();
+    assert!(de.contains("Alle Produktionssysteme."));
+    assert!(!de.contains("All production systems."));
+}
+
 #[test]
 fn test_new_with_lang_flag() {
     let tmp = TempDir::new().unwrap();
