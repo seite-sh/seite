@@ -81,6 +81,7 @@ default_template = "post.html"
 has_date = true
 has_rss = true
 listed = true
+private = false             # optional: gate behind Cloudflare Access / HTTP auth
 nested = false
 paginate = 10
 subdomain = "blog"          # optional: deploy to blog.example.com
@@ -89,6 +90,31 @@ deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
 ```
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), its own base URL (`https://{subdomain}.{base_domain}`), and its own sitemap, RSS, robots.txt, llms.txt, and search index. The collection is excluded from the main site build. Use `subdomain_base_url` to override the auto-derived URL (useful when `base_url` contains `www`). See [Collections](/docs/collections) for details.
+
+### Private collections
+
+Set `private = true` to keep a collection **out of every public discovery surface** while still building its hub and pages — the flag for content placed behind **Cloudflare Access** or HTTP auth (for example, a Trust Center served at a gated `/trust*` path).
+
+```toml
+[[collections]]
+name = "trust"
+private = true
+url_prefix = "/trust"
+default_template = "trust-item.html"
+```
+
+When `private = true`:
+
+- **The collection builds fully** — every item page *and* its auto-generated hub/index page render (with the collection's index template and `data.*` context), for the default language and every `/{lang}/` variant. Unlike `listed = false`, the hub is **not** suppressed.
+- **Its pages are excluded** from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds, and tag pages.
+- **Every page is stamped** `<meta name="robots" content="noindex, nofollow">` unless it sets its own `robots` frontmatter.
+- **Internal links still resolve** and the `.md` alternates keep generating (they live under the gated path).
+
+`private` is independent of `listed` (the hub renders even when the collection is hidden from the homepage) and composes with `subdomain`, `paginate`, and the rest. The build logs how many pages were excluded, e.g. `12 private pages excluded from discovery`. Absent or `false`, behavior is unchanged.
+
+{{% callout(type="warning") %}}
+`private` keeps content out of seite's own discovery files — it does **not** enforce access control. Pair it with Cloudflare Access, HTTP basic auth, or similar on the gated path to actually restrict who can load the pages.
+{{% end %}}
 
 ## [build]
 

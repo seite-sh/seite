@@ -948,7 +948,8 @@ fn build_site_inner(
                                     .expect("default language missing from site context cache")
                             });
 
-                        let mut ctx = build_page_context(site_ctx_for_item, item, &data);
+                        let mut ctx =
+                            build_page_context(site_ctx_for_item, item, &data, collection.private);
 
                         // Inject adjacent post links (prev_post / next_post).
                         // Always insert both keys so Tera templates can check them without errors.
@@ -1100,7 +1101,7 @@ fn build_site_inner(
         let collections_ctx: Vec<CollectionContext> = config
             .collections
             .iter()
-            .filter(|c| c.listed)
+            .filter(|c| c.listed && !c.private)
             .map(|c| {
                 let items = all_collections
                     .get(&c.name)
@@ -1294,7 +1295,7 @@ fn build_site_inner(
     // Page N → dist/{url_prefix}/page/N/index.html  (URL: /{url_prefix}/page/N/)
     for lang in &config.all_languages() {
         let lang_site_ctx = SiteContext::for_lang(config, lang);
-        for c in config.collections.iter().filter(|c| c.listed) {
+        for c in config.collections.iter().filter(|c| c.listed || c.private) {
             let page_size = match c.paginate {
                 Some(n) if n > 0 => n,
                 _ => continue,
@@ -1416,7 +1417,7 @@ fn build_site_inner(
                             tags: ci.frontmatter.tags.clone(),
                             url: page_url(page_num),
                             collection: c.name.clone(),
-                            robots: ci.frontmatter.robots.clone(),
+                            robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                             word_count: ci.word_count,
                             reading_time: ci.reading_time,
                             excerpt: ci.excerpt_html.clone(),
@@ -1435,7 +1436,7 @@ fn build_site_inner(
                             tags: Vec::new(),
                             url: page_url(page_num),
                             collection: String::new(),
-                            robots: None,
+                            robots: effective_robots(None, c.private),
                             word_count: 0,
                             reading_time: 0,
                             excerpt: String::new(),
@@ -1498,7 +1499,7 @@ fn build_site_inner(
         for c in config
             .collections
             .iter()
-            .filter(|c| c.listed && c.paginate.is_none() && !c.url_prefix.is_empty())
+            .filter(|c| (c.listed || c.private) && c.paginate.is_none() && !c.url_prefix.is_empty())
         {
             let url_prefix_trimmed = c.url_prefix.trim_start_matches('/');
             let collection_url = if *lang == *default_lang {
@@ -1596,7 +1597,7 @@ fn build_site_inner(
                         tags: ci.frontmatter.tags.clone(),
                         url: collection_url.clone(),
                         collection: c.name.clone(),
-                        robots: ci.frontmatter.robots.clone(),
+                        robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                         word_count: ci.word_count,
                         reading_time: ci.reading_time,
                         excerpt: ci.excerpt_html.clone(),
@@ -1615,7 +1616,7 @@ fn build_site_inner(
                         tags: Vec::new(),
                         url: collection_url.clone(),
                         collection: c.name.clone(),
-                        robots: None,
+                        robots: effective_robots(None, c.private),
                         word_count: 0,
                         reading_time: 0,
                         excerpt: String::new(),
@@ -1734,6 +1735,10 @@ fn build_site_inner(
             // Gather all tags and their items for this language
             let mut tag_map: HashMap<String, Vec<ItemSummary>> = HashMap::new();
             for c in &config.collections {
+                // Private collections never contribute to public tag pages.
+                if c.private {
+                    continue;
+                }
                 if let Some(items) = all_collections.get(&c.name) {
                     for item in items.iter().filter(|i| i.lang == *lang) {
                         let summary = ItemSummary {
@@ -1885,7 +1890,7 @@ fn build_site_inner(
     let default_feed_items: Vec<&ContentItem> = config
         .collections
         .iter()
-        .filter(|c| c.has_rss)
+        .filter(|c| c.has_rss && !c.private)
         .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
         .filter(|item| item.lang == *default_lang)
         .collect();
@@ -1900,7 +1905,7 @@ fn build_site_inner(
             let lang_feed_items: Vec<&ContentItem> = config
                 .collections
                 .iter()
-                .filter(|c| c.has_rss)
+                .filter(|c| c.has_rss && !c.private)
                 .flat_map(|c| all_collections.get(&c.name).into_iter().flatten())
                 .filter(|item| item.lang == *lang)
                 .collect();
@@ -1924,10 +1929,35 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 6: Generate sitemap (all items, all languages)
+    // Private collections (e.g. behind Cloudflare Access) are kept out of every
+    // public discovery surface below, even though their pages were fully built.
+    let private_collections: std::collections::HashSet<&str> = config
+        .collections
+        .iter()
+        .filter(|c| c.private)
+        .map(|c| c.name.as_str())
+        .collect();
+    if !private_collections.is_empty() {
+        let excluded: usize = all_collections
+            .iter()
+            .filter(|(name, _)| private_collections.contains(name.as_str()))
+            .map(|(_, items)| items.len())
+            .sum();
+        if excluded > 0 {
+            crate::output::human::info(&format!(
+                "{excluded} private pages excluded from discovery"
+            ));
+        }
+    }
+
+    // Step 6: Generate sitemap (all non-private items, all languages)
     progress.step("Generating sitemap");
     let step_start = Instant::now();
-    let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
+    let all_items: Vec<&ContentItem> = all_collections
+        .iter()
+        .filter(|(name, _)| !private_collections.contains(name.as_str()))
+        .flat_map(|(_, items)| items)
+        .collect();
     let sitemap_xml =
         sitemap::generate_sitemap(config, &all_items, &translation_map, &tag_page_urls)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
@@ -1946,6 +1976,7 @@ fn build_site_inner(
     let default_discovery_collections: Vec<(String, Vec<&ContentItem>)> = config
         .collections
         .iter()
+        .filter(|c| !c.private)
         .map(|c| {
             let items: Vec<&ContentItem> = all_collections
                 .get(&c.name)
@@ -1967,6 +1998,7 @@ fn build_site_inner(
             let lang_collections: Vec<(String, Vec<&ContentItem>)> = config
                 .collections
                 .iter()
+                .filter(|c| !c.private)
                 .map(|c| {
                     let items: Vec<&ContentItem> = all_collections
                         .get(&c.name)
@@ -2629,10 +2661,17 @@ fn generate_redirect_html(target_url: &str) -> String {
     )
 }
 
+/// Robots directive for a page: the page's own `robots` frontmatter if set,
+/// otherwise `noindex, nofollow` when its collection is `private`, else `None`.
+fn effective_robots(own: Option<String>, collection_private: bool) -> Option<String> {
+    own.or_else(|| collection_private.then(|| "noindex, nofollow".to_string()))
+}
+
 fn build_page_context(
     site: &SiteContext,
     item: &ContentItem,
     data: &serde_json::Value,
+    collection_private: bool,
 ) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
@@ -2650,7 +2689,7 @@ fn build_page_context(
             tags: item.frontmatter.tags.clone(),
             url: item.url.clone(),
             collection: item.collection.clone(),
-            robots: item.frontmatter.robots.clone(),
+            robots: effective_robots(item.frontmatter.robots.clone(), collection_private),
             word_count: item.word_count,
             reading_time: item.reading_time,
             excerpt: item.excerpt_html.clone(),
@@ -2809,10 +2848,11 @@ fn insert_build_flags(ctx: &mut tera::Context, config: &SiteConfig) {
 /// Build a JSON search index from a slice of content items.
 /// Only items from `listed: true` collections are included.
 fn generate_search_index(items: &[&ContentItem], config: &SiteConfig) -> String {
+    // Listed, non-private collections only: private content stays out of search.
     let listed: std::collections::HashSet<&str> = config
         .collections
         .iter()
-        .filter(|c| c.listed)
+        .filter(|c| c.listed && !c.private)
         .map(|c| c.name.as_str())
         .collect();
 
@@ -2856,6 +2896,26 @@ mod tests {
     use crate::content::Frontmatter;
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn test_effective_robots() {
+        // A page's own robots frontmatter always wins, private or not.
+        assert_eq!(
+            effective_robots(Some("noindex".into()), false),
+            Some("noindex".into())
+        );
+        assert_eq!(
+            effective_robots(Some("all".into()), true),
+            Some("all".into())
+        );
+        // Private pages without their own robots get noindex, nofollow.
+        assert_eq!(
+            effective_robots(None, true),
+            Some("noindex, nofollow".into())
+        );
+        // Public pages without their own robots get nothing.
+        assert_eq!(effective_robots(None, false), None);
+    }
 
     // ── Helper: minimal SiteConfig ──────────────────────────────────────
     fn minimal_config() -> SiteConfig {
@@ -3757,7 +3817,7 @@ mod tests {
             excerpt_html: "<p>Some body</p>".into(),
         };
 
-        let ctx = build_page_context(&site, &item, &data);
+        let ctx = build_page_context(&site, &item, &data, false);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert_eq!(page["title"], "My Post");
@@ -3799,7 +3859,7 @@ mod tests {
             excerpt_html: String::new(),
         };
 
-        let ctx = build_page_context(&site, &item, &data);
+        let ctx = build_page_context(&site, &item, &data, false);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert!(page["image"].is_null());

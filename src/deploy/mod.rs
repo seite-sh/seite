@@ -5665,6 +5665,7 @@ target = "github-pages"
                     subdomain_base_url: None,
                     deploy_project: None,
                     paginate: None,
+                    private: false,
                 },
                 crate::config::CollectionConfig {
                     name: "docs".into(),
@@ -5680,6 +5681,7 @@ target = "github-pages"
                     subdomain_base_url: Some("https://docs.example.com".into()),
                     deploy_project: Some("my-docs".into()),
                     paginate: None,
+                    private: false,
                 },
             ],
             build: Default::default(),
