@@ -38,13 +38,13 @@ pub fn resolve_value(
 ) -> Value {
     if let Value::Object(obj) = value {
         if is_language_map(obj, lang_codes) {
-            if let Some(v) = obj.get(lang) {
-                return v.clone();
-            }
-            if let Some(v) = obj.get(default_lang) {
-                return v.clone();
-            }
-            if let Some((_, v)) = obj.iter().next() {
+            // Requested language, then the default, then any entry.
+            // `is_language_map` guarantees a non-empty map, so this always yields.
+            if let Some(v) = obj
+                .get(lang)
+                .or_else(|| obj.get(default_lang))
+                .or_else(|| obj.values().next())
+            {
                 return v.clone();
             }
         }
@@ -57,6 +57,7 @@ pub fn resolve_value(
 /// configured languages. Only meaningful for multilingual sites.
 pub fn partial_language_map_warnings(data: &Value, lang_codes: &HashSet<String>) -> Vec<String> {
     let mut warnings = Vec::new();
+    // `data` is always a JSON object (the data dir loads into a root map).
     if lang_codes.len() > 1 {
         if let Value::Object(obj) = data {
             for (key, value) in obj {
@@ -68,8 +69,6 @@ pub fn partial_language_map_warnings(data: &Value, lang_codes: &HashSet<String>)
                 }
                 collect_partial(value, &format!("data.{key}"), lang_codes, &mut warnings);
             }
-        } else {
-            collect_partial(data, "data", lang_codes, &mut warnings);
         }
     }
     warnings
