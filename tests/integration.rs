@@ -7487,6 +7487,64 @@ fn test_private_collection_logs_excluded_count() {
 }
 
 #[test]
+fn test_private_paginated_collection_hub_renders_but_excluded() {
+    // `private` composes with `paginate`: the paginated hub pages render (and
+    // carry noindex) while the collection stays out of every discovery surface.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Paginated Private", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_pagination(&site_dir, "posts", 1);
+    add_collection_line(&site_dir, "posts", "private = true");
+
+    // init scaffolds one post; add a second so paginate = 1 yields two pages.
+    fs::write(
+        site_dir.join("content/posts/2025-02-01-second.md"),
+        "---\ntitle: Second Secret Post\ndate: 2025-02-01\ndescription: Gated.\n---\n\nConfidential body.\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+
+    // Both paginated hub pages render, each with noindex.
+    for hub in ["posts/index.html", "posts/page/2/index.html"] {
+        let html = fs::read_to_string(dist.join(hub)).unwrap();
+        assert!(
+            html.contains(r#"<meta name="robots" content="noindex, nofollow">"#),
+            "{hub}: missing noindex robots meta"
+        );
+    }
+
+    // The item page still builds, also with noindex.
+    let item = fs::read_to_string(dist.join("posts/second.html")).unwrap();
+    assert!(item.contains(r#"<meta name="robots" content="noindex, nofollow">"#));
+
+    // Excluded from every public discovery surface.
+    for f in [
+        "llms.txt",
+        "llms-full.txt",
+        "sitemap.xml",
+        "search-index.json",
+        "index.html",
+        "feed.xml",
+    ] {
+        let content = fs::read_to_string(dist.join(f)).unwrap();
+        assert!(
+            !content.contains("/posts/second"),
+            "{f} leaks a private post URL"
+        );
+        assert!(
+            !content.contains("Second Secret Post"),
+            "{f} leaks the private post title"
+        );
+    }
+}
+
+#[test]
 fn test_mcp_resources_list_with_trust() {
     let tmp = TempDir::new().unwrap();
     init_trust_site(&tmp, "mcptrust");
