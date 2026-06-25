@@ -217,7 +217,7 @@ To customize what appears at the subdomain root (e.g., `docs.example.com/`), cre
 content/docs/index.md    → docs.example.com/  (subdomain root)
 ```
 
-The `index.md` content is injected into the index template as `{{ page.content }}`, exactly like `content/pages/index.md` works for the main site homepage. This lets you add a custom hero, introduction, or landing page above the collection listing. Without an `index.md`, the subdomain root shows a plain collection listing.
+The subdomain root renders with the collection's **own index template** and context — exactly like the collection's index page on the main domain (e.g. a `trust` subdomain root renders `trust-index.html` with its cert grid, subprocessor table, and FAQ; a `docs` subdomain root renders `docs-index.html`). Adding `content/{collection}/index.md` injects its content into that template as `{{ page.content }}`, exactly like `content/pages/index.md` works for the main site homepage — useful for a custom hero or intro above the listing.
 
 If your `base_url` contains `www` (e.g., `https://www.example.com`), the auto-derived URL would be `docs.www.example.com`. Use `subdomain_base_url` to set an explicit override:
 

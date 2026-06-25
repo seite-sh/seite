@@ -1097,12 +1097,32 @@ fn build_site_inner(
         insert_i18n_context(&mut index_ctx, lang, default_lang, &data);
         insert_build_flags(&mut index_ctx, config);
 
-        // Filter collections for this language
-        let collections_ctx: Vec<CollectionContext> = config
-            .collections
+        // A collection that serves at the site root (empty url_prefix) and has its
+        // own index template is a subdomain hub. Render it exactly like the
+        // main-domain collection index — the collection's own template, with its
+        // own collection in `collections` (unfiltered by listed/private) — instead
+        // of the generic site index template.
+        let subdomain_hub = config.collections.iter().find(|c| {
+            c.url_prefix.is_empty() && tera.get_template(&format!("{}-index.html", c.name)).is_ok()
+        });
+        let index_template = match subdomain_hub {
+            Some(c) => format!("{}-index.html", c.name),
+            None => "index.html".to_string(),
+        };
+
+        // Collections for this language: the hub's own collection for a subdomain
+        // root, otherwise the listed, non-private collections.
+        let index_collections: Vec<&CollectionConfig> = match subdomain_hub {
+            Some(hub) => vec![hub],
+            None => config
+                .collections
+                .iter()
+                .filter(|c| c.listed && !c.private)
+                .collect(),
+        };
+        let collections_ctx: Vec<CollectionContext> = index_collections
             .iter()
-            .filter(|c| c.listed && !c.private)
-            .map(|c| {
+            .map(|&c| {
                 let items = all_collections
                     .get(&c.name)
                     .cloned()
@@ -1130,6 +1150,15 @@ fn build_site_inner(
                 }
             })
             .collect();
+        // The main-domain collection index also exposes `items`; mirror it so
+        // listing-style hubs (e.g. docs) render identically on a subdomain.
+        if subdomain_hub.is_some() {
+            let hub_items: Vec<ItemSummary> = collections_ctx
+                .first()
+                .map(|c| c.items.clone())
+                .unwrap_or_default();
+            index_ctx.insert("items", &hub_items);
+        }
         index_ctx.insert("collections", &collections_ctx);
 
         // For subdomain builds (single collection with empty url_prefix), pass the nav
@@ -1276,7 +1305,7 @@ fn build_site_inner(
             };
             generate_redirect_html(&target_url)
         } else {
-            tera.render("index.html", &index_ctx)
+            tera.render(&index_template, &index_ctx)
                 .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?
         };
 
