@@ -7545,6 +7545,51 @@ fn test_private_paginated_collection_hub_renders_but_excluded() {
 }
 
 #[test]
+fn test_subdomain_collection_hub_uses_collection_index_template() {
+    // A subdomain collection's root must render with the collection's own index
+    // template + context (data-driven hub), not the generic site index template.
+    let tmp = TempDir::new().unwrap();
+    init_trust_site(&tmp, "site");
+    let site_dir = tmp.path().join("site");
+    add_language(&site_dir, "de", "Vertrauen");
+    write_plain_trust_sections(&site_dir);
+    add_collection_line(&site_dir, "trust", "subdomain = \"trust\"");
+    add_collection_line(
+        &site_dir,
+        "trust",
+        "subdomain_base_url = \"https://trust.example.com\"",
+    );
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // The subdomain root (default + per-language) renders the trust hub: the
+    // subprocessor table and FAQ come only from trust-index.html, never the
+    // generic index template.
+    for hub in [
+        "dist-subdomains/trust/index.html",
+        "dist-subdomains/trust/de/index.html",
+    ] {
+        let html = fs::read_to_string(site_dir.join(hub)).unwrap();
+        assert!(
+            html.contains("AWS"),
+            "{hub}: hub missing subprocessor table"
+        );
+        assert!(
+            html.contains("Where is data stored?"),
+            "{hub}: hub missing FAQ section"
+        );
+        assert!(
+            html.contains("Trust Center"),
+            "{hub}: not rendered with trust-index.html (generic index template used)"
+        );
+    }
+}
+
+#[test]
 fn test_mcp_resources_list_with_trust() {
     let tmp = TempDir::new().unwrap();
     init_trust_site(&tmp, "mcptrust");
@@ -10057,33 +10102,24 @@ fn test_subdomain_root_has_sidebar_nav() {
     )
     .unwrap();
 
-    // Create a collection index page for the subdomain root
-    fs::write(
-        site_dir.join("content/docs/index.md"),
-        "---\ntitle: Documentation\ndescription: All docs\n---\nWelcome to **docs**.\n",
-    )
-    .unwrap();
-
     page_cmd()
         .args(["build"])
         .current_dir(&site_dir)
         .assert()
         .success();
 
-    // Subdomain root should have the index content and list nav items
+    // The subdomain root renders with the collection's own index template
+    // (docs-index.html) — the same template + nav context the docs index uses on
+    // the main domain — so it lists the docs, not the generic site index.
     let subdomain_index =
         fs::read_to_string(site_dir.join("dist-subdomains/docs/index.html")).unwrap();
     assert!(
-        subdomain_index.contains("Welcome to"),
-        "subdomain root should have index.md content"
-    );
-    assert!(
         subdomain_index.contains("Overview"),
-        "subdomain root should have nav item Overview"
+        "subdomain root should list doc Overview via docs-index.html"
     );
     assert!(
         subdomain_index.contains("Setup Guide"),
-        "subdomain root should have nav item Setup Guide"
+        "subdomain root should list doc Setup Guide via docs-index.html"
     );
 }
 
