@@ -907,6 +907,13 @@ fn generate_rules_files(
             include_str!("../scaffold/design-prompts.md"),
         ),
     )?;
+    fs::write(
+        rules_dir.join("private-collections.md"),
+        rules_file(
+            &["seite.toml", "content/**"],
+            include_str!("../scaffold/private-collections.md"),
+        ),
+    )?;
 
     // Conditional rules
     if has_contact {

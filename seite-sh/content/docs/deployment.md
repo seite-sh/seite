@@ -197,6 +197,20 @@ deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
 GitHub Pages does not support per-collection subdomains. Use Cloudflare Pages or Netlify for subdomain deploys.
 {{% end %}}
 
+### Custom domain for a subdomain
+
+`seite deploy --setup` auto-creates the Cloudflare Pages **project** for each subdomain collection, and `seite deploy` pushes to it (the project gets a `*.pages.dev` URL automatically). Attaching the **custom domain** (e.g. `docs.example.com`) to that project is a **one-time manual step** — seite only auto-attaches the *main* site's domain, not a subdomain's. In the Cloudflare dashboard, open the subdomain's Pages project → **Custom domains** → add the host. If the zone is on the same Cloudflare account, Cloudflare creates the DNS record for you.
+
+### Gating a subdomain behind Cloudflare Access
+
+[`private = true`](/docs/configuration#private-collections) keeps a collection out of discovery and stamps `noindex`, but it does **not** authenticate requests — the pages are still publicly fetchable. To actually restrict access, put **Cloudflare Access** in front of the subdomain (seite does not configure this for you):
+
+1. Cloudflare dashboard → **Zero Trust → Access → Applications → Add an application → Self-hosted**.
+2. Set the application domain to the subdomain (e.g. `trust.example.com`).
+3. Add an **access policy** (allow by email domain, Google/Okta SSO, one-time PIN, etc.).
+
+The full gated pattern: `private = true` + `subdomain` + a Cloudflare Access application on the subdomain.
+
 ## Override Target
 
 Override the configured target on the command line:
