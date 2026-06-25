@@ -4218,6 +4218,53 @@ fn test_upgrade_adds_mcp_to_existing_project() {
 }
 
 #[test]
+fn test_init_includes_private_collections_rule() {
+    // New sites get the .claude/rules guidance so the agent knows private +
+    // Cloudflare Access are possible (and that private != access control).
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Gated", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let rule = fs::read_to_string(site_dir.join(".claude/rules/private-collections.md")).unwrap();
+    assert!(
+        rule.contains("private = true"),
+        "rule should cover the flag"
+    );
+    assert!(
+        rule.contains("Cloudflare Access"),
+        "rule should point at Cloudflare Access for the actual lock"
+    );
+    assert!(
+        rule.contains("does not authenticate"),
+        "rule must be explicit that private does not enforce access control"
+    );
+}
+
+#[test]
+fn test_upgrade_installs_private_collections_rule() {
+    // Existing sites get the rule when they run `seite upgrade`.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Gated Upgrade", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Simulate a project from before the rule existed.
+    fs::remove_file(site_dir.join(".claude/rules/private-collections.md")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(
+        site_dir
+            .join(".claude/rules/private-collections.md")
+            .exists(),
+        "upgrade should install the private-collections rule"
+    );
+}
+
+#[test]
 fn test_upgrade_appends_mcp_section_to_claude_md() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "CLAUDE.md Upgrade", "posts,pages");

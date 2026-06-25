@@ -174,7 +174,32 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Subdomain collection deploy steps in CI workflow",
             check: check_subdomain_workflow,
         },
+        UpgradeStep {
+            introduced_in: (0, 16, 0),
+            label: "Private collections + Cloudflare Access guidance (.claude/rules)",
+            check: check_private_collections_rule,
+        },
     ]
+}
+
+/// Install the `.claude/rules/private-collections.md` context file so the project's
+/// agent knows about `private` collections, subdomain hubs, and that gating access
+/// (Cloudflare Access) is a separate, manual step. Created only if missing.
+fn check_private_collections_rule(root: &Path) -> Vec<UpgradeAction> {
+    use crate::cli::init::rules_file;
+
+    let path = root.join(".claude/rules/private-collections.md");
+    if path.exists() {
+        return Vec::new();
+    }
+    vec![UpgradeAction::Create {
+        content: rules_file(
+            &["seite.toml", "content/**"],
+            include_str!("../scaffold/private-collections.md"),
+        ),
+        path,
+        description: ".claude/rules/private-collections.md".to_string(),
+    }]
 }
 
 pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
