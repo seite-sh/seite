@@ -138,6 +138,21 @@ The hub page at `/trust/` is rendered using `trust-index.html` and displays:
 
 All sections are conditional: if a data file is empty or missing, the section doesn't render.
 
+### Deploying to a subdomain
+
+The trust center can be served from its own subdomain (e.g. `trust.example.com`) by setting `subdomain` on the collection. The subdomain root renders the **full hub** — the same `trust-index.html` template and context (cert grid, subprocessor table, FAQ) as `/trust/` on the main domain — for the default language and every `/{lang}/` variant:
+
+```toml
+[[collections]]
+name = "trust"
+url_prefix = "/trust"
+default_template = "trust-item.html"
+subdomain = "trust"
+subdomain_base_url = "https://trust.example.com"
+```
+
+Pair it with [`private = true`](/docs/configuration#private-collections) to keep the trust content out of your main site's discovery files (sitemap, llms.txt, search index) and stamp `noindex, nofollow` on every page — the right combination for content gated behind **Cloudflare Access** or HTTP auth.
+
 ## Configuration
 
 The `[trust]` section in `seite.toml` stores trust center metadata:
