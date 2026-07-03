@@ -63,6 +63,8 @@ pub struct BuildStats {
     pub incremental: bool,
     /// Number of content items skipped (unchanged).
     pub items_skipped: usize,
+    /// Number of original images that had EXIF filtered in-place.
+    pub exif_files_modified: usize,
 }
 
 impl CommandOutput for BuildStats {
@@ -92,6 +94,12 @@ impl CommandOutput for BuildStats {
         }
         if self.data_files_loaded > 0 {
             out.push_str(&format!(", {} data files loaded", self.data_files_loaded));
+        }
+        if self.exif_files_modified > 0 {
+            out.push_str(&format!(
+                ", {} images EXIF filtered",
+                self.exif_files_modified
+            ));
         }
         if self.incremental && self.items_skipped > 0 {
             out.push_str(&format!(", {} items unchanged", self.items_skipped));
@@ -279,6 +287,7 @@ pub fn build_site(
                     step_timings: Vec::new(),
                     incremental: true,
                     items_skipped: cs.total_content,
+                    exif_files_modified: 0,
                 },
                 link_check: links::LinkCheckResult {
                     total_links_checked: 0,
@@ -2222,6 +2231,19 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
+    // Step 10b: Apply EXIF data policy to original images
+    let exif_step_start = Instant::now();
+    let mut exif_files_modified = 0;
+    if let Some(ref images_config) = config.images {
+        exif_files_modified = images::apply_exif_policy_to_originals(paths, images_config)?;
+        if exif_files_modified > 0 {
+            step_timings.push((
+                "Filter EXIF on originals".to_string(),
+                exif_step_start.elapsed().as_secs_f64() * 1000.0,
+            ));
+        }
+    }
+
     // Step 11: Process images (resize, WebP, srcset)
     progress.step("Processing images");
     let step_start = Instant::now();
@@ -2328,6 +2350,7 @@ fn build_site_inner(
         step_timings,
         incremental: is_incremental,
         items_skipped,
+        exif_files_modified,
     };
 
     Ok(BuildResult {
@@ -3635,6 +3658,7 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            exif_files_modified: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("5 posts"));
@@ -3655,6 +3679,7 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            exif_files_modified: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("2 public files copied"));
@@ -3672,6 +3697,7 @@ mod tests {
             step_timings: vec![("Fast step".into(), 0.5), ("Slow step".into(), 15.3)],
             incremental: false,
             items_skipped: 0,
+            exif_files_modified: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("Timings:"));
@@ -3694,6 +3720,7 @@ mod tests {
             step_timings: vec![],
             incremental: true,
             items_skipped: 18,
+            exif_files_modified: 0,
         };
         let display = stats.human_display();
         assert!(display.contains("Incremental build"));

@@ -7,14 +7,22 @@ use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder};
 use image::imageops::FilterType;
 use image::{ImageEncoder, ImageFormat};
+use little_exif::exif_tag::ExifTag;
+use little_exif::metadata::Metadata;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::config::{ImageSection, ResolvedPaths};
+use crate::config::{ExifDataAllow, ImageSection, ResolvedPaths};
 use crate::error::{PageError, Result};
 
-/// Supported input image extensions.
+/// Supported input image extensions for variant generation.
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// Broader list of extensions for original EXIF filtering — covers all formats
+/// `little_exif` can read/write, including formats we don't generate variants for.
+const EXIF_FILTER_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "avif", "heic", "heif", "tiff", "tif",
+];
 
 /// An entry in the image manifest mapping original paths to processed outputs.
 #[derive(Debug, Clone)]
@@ -86,6 +94,202 @@ pub fn process_images(
     Ok(manifest)
 }
 
+/// Read EXIF metadata from a file, catching both errors and panics.
+/// little_exif 0.6.23 docs state `new_from_path` "currently panics" on read failure.
+/// Use `catch_unwind` to ensure a malformed image never crashes the build.
+fn read_metadata_safely(path: &Path) -> Option<Metadata> {
+    let path_owned = path.to_path_buf();
+    std::panic::catch_unwind(|| Metadata::new_from_path(&path_owned))
+        .ok()
+        .and_then(|r| r.ok())
+}
+
+/// Parse the allow-list into a set of variant names and a set of hex tag IDs.
+/// Entries that look like hex IDs (e.g. "0x0112", "0xC62F") are parsed into u16.
+/// Everything else is treated as a variant name (e.g. "DateTimeOriginal").
+fn parse_allow_list(
+    allow: &ExifDataAllow,
+) -> (
+    std::collections::HashSet<String>,
+    std::collections::HashSet<u16>,
+) {
+    let mut names = std::collections::HashSet::new();
+    let mut hex_ids = std::collections::HashSet::new();
+    if let ExifDataAllow::Allow(fields) = allow {
+        for field in fields {
+            let trimmed = field.trim();
+            if let Some(hex_part) = trimmed
+                .strip_prefix("0x")
+                .or_else(|| trimmed.strip_prefix("0X"))
+            {
+                if let Ok(id) = u16::from_str_radix(hex_part, 16) {
+                    hex_ids.insert(id);
+                    continue;
+                }
+            }
+            names.insert(trimmed.to_lowercase());
+        }
+    }
+    (names, hex_ids)
+}
+
+/// Check whether a tag is in the allow-list, matching by variant name or hex tag ID.
+fn is_allowed(
+    tag: &ExifTag,
+    allow_names: &std::collections::HashSet<String>,
+    allow_hex_ids: &std::collections::HashSet<u16>,
+) -> bool {
+    // 1. Check by variant name: Debug-format yields e.g. `Make("TestCamera")`.
+    //    Extract the variant name before any `(` character.
+    let debug_str = format!("{:?}", tag);
+    let variant_name = debug_str.split('(').next().unwrap_or(&debug_str);
+    if allow_names.contains(variant_name.to_lowercase().as_str()) {
+        return true;
+    }
+    // 2. Check by hex tag ID (for custom/unknown tags, and as a fallback for named tags)
+    let hex_id = tag.as_u16();
+    allow_hex_ids.contains(&hex_id)
+}
+
+/// Read EXIF from a source file, apply the allow-list, and return filtered `Metadata`.
+/// Used for both originals and variant propagation.
+/// Returns `None` if there's no EXIF to propagate (e.g. `None` policy or source has no EXIF).
+fn filter_exif(source: &Path, config: &ImageSection) -> Option<Metadata> {
+    match &config.exif_data_allow {
+        ExifDataAllow::All => {
+            // "ALL" — read EXIF as-is, no filtering
+            read_metadata_safely(source)
+        }
+        ExifDataAllow::None => {
+            // "NONE" — don't propagate any EXIF to variants
+            None
+        }
+        ExifDataAllow::Allow(_) => {
+            let mut metadata = read_metadata_safely(source)?;
+
+            let (allow_names, allow_hex_ids) = parse_allow_list(&config.exif_data_allow);
+
+            // Remove non-allowed tags. Collect first (cloning from references),
+            // then remove, because `remove_tag` takes ownership and we can't
+            // mutate while borrowing.
+            let to_remove: Vec<ExifTag> = (&metadata)
+                .into_iter()
+                .filter(|tag| !is_allowed(tag, &allow_names, &allow_hex_ids))
+                .cloned()
+                .collect();
+            for tag in to_remove {
+                metadata.remove_tag(tag);
+            }
+            Some(metadata)
+        }
+    }
+}
+
+/// Remove dimension fields from a `Metadata` struct.
+/// These reflect the original dimensions and would be stale on resized variants.
+/// `remove_tag` matches by hex value + group, not by data, so dummy vec values are fine.
+fn strip_dimensions(metadata: &mut Metadata) {
+    for tag in [
+        ExifTag::ImageWidth(vec![0u32]),
+        ExifTag::ImageHeight(vec![0u32]),
+        ExifTag::ExifImageWidth(vec![0u32]),
+        ExifTag::ExifImageHeight(vec![0u32]),
+    ] {
+        metadata.remove_tag(tag);
+    }
+}
+
+/// Write filtered EXIF to a variant file. Non-fatal on error.
+fn write_exif_to_file(metadata: &Metadata, path: &Path) {
+    if let Err(e) = metadata.write_to_file(path) {
+        tracing::warn!("Failed to write EXIF to {}: {e}", path.display());
+    }
+}
+
+/// Filter EXIF metadata on original images in `dist/static/` per policy.
+/// Only runs when `exif_data_allow` is not `All` (All = preserve everything as-is).
+/// `None` strips all EXIF. A field list preserves only those fields.
+/// Modifies files in-place — only the EXIF segment is touched.
+pub fn apply_exif_policy_to_originals(
+    paths: &ResolvedPaths,
+    config: &ImageSection,
+) -> Result<usize> {
+    // Early return — "ALL" means preserve everything as-is
+    if config.exif_data_allow == ExifDataAllow::All {
+        return Ok(0);
+    }
+
+    let static_output = paths.output.join("static");
+    if !static_output.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+    for entry in WalkDir::new(&static_output)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let ext = entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+
+        if !EXIF_FILTER_EXTENSIONS.contains(&ext.as_str()) {
+            continue;
+        }
+
+        let path = entry.path();
+
+        match &config.exif_data_allow {
+            ExifDataAllow::None => {
+                // Strip all EXIF — use little_exif's file_clear_metadata
+                let path_owned = path.to_path_buf();
+                let result =
+                    std::panic::catch_unwind(|| Metadata::file_clear_metadata(&path_owned));
+                match result {
+                    Ok(Ok(())) => count += 1,
+                    Ok(Err(e)) => {
+                        tracing::warn!("Failed to strip EXIF from {}: {e}", path.display());
+                    }
+                    Err(_) => {
+                        tracing::warn!("Failed to strip EXIF from {} (panic)", path.display());
+                    }
+                }
+            }
+            ExifDataAllow::Allow(_) => {
+                // Filter to allow-list
+                if let Some(filtered) = filter_exif(path, config) {
+                    // Write the filtered metadata back (replaces existing EXIF)
+                    write_exif_to_file(&filtered, path);
+                    count += 1;
+                } else {
+                    // No EXIF in source, or read failed — try to clear any existing EXIF
+                    let path_owned = path.to_path_buf();
+                    let result =
+                        std::panic::catch_unwind(|| Metadata::file_clear_metadata(&path_owned));
+                    match result {
+                        Ok(Ok(())) => count += 1,
+                        Ok(Err(e)) => {
+                            tracing::warn!("Failed to clear EXIF from {}: {e}", path.display());
+                        }
+                        Err(_) => {
+                            tracing::warn!("Failed to clear EXIF from {} (panic)", path.display());
+                        }
+                    }
+                }
+            }
+            ExifDataAllow::All => {
+                // Already handled by early return above
+            }
+        }
+    }
+
+    Ok(count)
+}
+
 fn process_single_image(
     source: &Path,
     rel: &Path,
@@ -99,6 +303,13 @@ fn process_single_image(
 
     let original_width = img.width();
     let original_height = img.height();
+
+    // Read and filter EXIF from the source image for propagation to variants.
+    // Dimension fields are stripped — they'd be stale after resizing.
+    let variant_exif: Option<Metadata> = filter_exif(source, config).map(|mut m| {
+        strip_dimensions(&mut m);
+        m
+    });
 
     let stem = source
         .file_stem()
@@ -143,6 +354,9 @@ fn process_single_image(
         let resized_name = format!("{stem}-{width}w.{ext}");
         let resized_path = output_base.join(&resized_name);
         save_image(&resized, &resized_path, save_format, config.quality)?;
+        if let Some(ref exif) = variant_exif {
+            write_exif_to_file(exif, &resized_path);
+        }
 
         let url = if rel_dir_str.is_empty() {
             format!("/static/{resized_name}")
@@ -156,6 +370,9 @@ fn process_single_image(
             let webp_name = format!("{stem}-{width}w.webp");
             let webp_path = output_base.join(&webp_name);
             save_image(&resized, &webp_path, ImageFormat::WebP, config.quality)?;
+            if let Some(ref exif) = variant_exif {
+                write_exif_to_file(exif, &webp_path);
+            }
 
             let webp_url = if rel_dir_str.is_empty() {
                 format!("/static/{webp_name}")
@@ -170,6 +387,9 @@ fn process_single_image(
             let avif_name = format!("{stem}-{width}w.avif");
             let avif_path = output_base.join(&avif_name);
             save_image(&resized, &avif_path, ImageFormat::Avif, avif_quality)?;
+            if let Some(ref exif) = variant_exif {
+                write_exif_to_file(exif, &avif_path);
+            }
 
             let avif_url = if rel_dir_str.is_empty() {
                 format!("/static/{avif_name}")
@@ -189,6 +409,9 @@ fn process_single_image(
         let webp_name = format!("{stem}.webp");
         let webp_path = output_base.join(&webp_name);
         save_image(&img, &webp_path, ImageFormat::WebP, config.quality)?;
+        if let Some(ref exif) = variant_exif {
+            write_exif_to_file(exif, &webp_path);
+        }
 
         let webp_url = if rel_dir_str.is_empty() {
             format!("/static/{webp_name}")
@@ -203,6 +426,9 @@ fn process_single_image(
         let avif_name = format!("{stem}.avif");
         let avif_path = output_base.join(&avif_name);
         save_image(&img, &avif_path, ImageFormat::Avif, avif_quality)?;
+        if let Some(ref exif) = variant_exif {
+            write_exif_to_file(exif, &avif_path);
+        }
 
         let avif_url = if rel_dir_str.is_empty() {
             format!("/static/{avif_name}")
@@ -240,13 +466,13 @@ fn save_image(
             })?;
             let writer = BufWriter::new(file);
             let encoder = JpegEncoder::new_with_quality(writer, quality);
-            let rgba = img.to_rgba8();
+            let rgb = img.to_rgb8();
             encoder
                 .write_image(
-                    rgba.as_raw(),
+                    rgb.as_raw(),
                     img.width(),
                     img.height(),
-                    image::ExtendedColorType::Rgba8,
+                    image::ExtendedColorType::Rgb8,
                 )
                 .map_err(|e| {
                     PageError::Build(format!("failed to encode JPEG '{}': {e}", path.display()))
@@ -530,6 +756,7 @@ fn add_lazy_loading(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_extract_attr() {
@@ -1936,5 +2163,537 @@ mod tests {
         let result = rewrite_html_images(html, &manifest, false);
         assert!(result.ends_with("trailing text here"));
         assert!(result.contains("srcset="));
+    }
+
+    // ── EXIF tests ───────────────────────────────────────────────────────
+
+    /// Helper: create a small JPEG with known EXIF tags in a tempdir.
+    /// Tags injected: Make, Model, DateTimeOriginal, Orientation, ImageWidth, ImageHeight.
+    fn create_test_jpeg_with_exif(dir: &Path, name: &str) -> PathBuf {
+        let img = image::ImageBuffer::from_pixel(40, 40, image::Rgb([255, 0, 0]));
+        let path = dir.join(name);
+        image::save_buffer(&path, &img, 40, 40, image::ExtendedColorType::Rgb8).unwrap();
+
+        let mut metadata = Metadata::new();
+        metadata.set_tag(ExifTag::Make("TestCamera".to_string()));
+        metadata.set_tag(ExifTag::Model("TestModel".to_string()));
+        metadata.set_tag(ExifTag::DateTimeOriginal("2026:01:15 12:00:00".to_string()));
+        metadata.set_tag(ExifTag::Orientation(vec![1u16]));
+        metadata.set_tag(ExifTag::ImageWidth(vec![40u32]));
+        metadata.set_tag(ExifTag::ImageHeight(vec![40u32]));
+        metadata.write_to_file(&path).unwrap();
+
+        path
+    }
+
+    /// Helper: create a small JPEG with no EXIF.
+    fn create_test_jpeg_no_exif(dir: &Path, name: &str) -> PathBuf {
+        let img = image::ImageBuffer::from_pixel(40, 40, image::Rgb([0, 255, 0]));
+        let path = dir.join(name);
+        image::save_buffer(&path, &img, 40, 40, image::ExtendedColorType::Rgb8).unwrap();
+        path
+    }
+
+    /// Helper: build ResolvedPaths for a tempdir.
+    fn make_paths(tmp: &Path) -> ResolvedPaths {
+        ResolvedPaths {
+            root: tmp.to_path_buf(),
+            output: tmp.join("dist"),
+            content: tmp.join("content"),
+            templates: tmp.join("templates"),
+            static_dir: tmp.join("static"),
+            data_dir: tmp.join("data"),
+            public_dir: tmp.join("public"),
+        }
+    }
+
+    #[test]
+    fn test_filter_exif_all_preserves_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        let filtered = filter_exif(&source, &config).expect("should have metadata");
+        let tags: Vec<_> = (&filtered).into_iter().collect();
+        assert_eq!(tags.len(), 6, "ALL should preserve all 6 tags");
+    }
+
+    #[test]
+    fn test_filter_exif_allow_list_strips_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::Allow(vec!["DateTimeOriginal".to_string()]),
+            ..Default::default()
+        };
+        let filtered = filter_exif(&source, &config).expect("should have metadata");
+
+        let tag_names: Vec<String> = (&filtered)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert_eq!(tag_names, vec!["DateTimeOriginal"]);
+    }
+
+    #[test]
+    fn test_filter_exif_empty_list_strips_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::Allow(vec![]),
+            ..Default::default()
+        };
+        let filtered = filter_exif(&source, &config).expect("should have metadata (empty)");
+        let tags: Vec<_> = (&filtered).into_iter().collect();
+        assert!(tags.is_empty(), "empty allow-list should strip all tags");
+    }
+
+    #[test]
+    fn test_filter_exif_none_returns_no_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::None,
+            ..Default::default()
+        };
+        assert!(filter_exif(&source, &config).is_none());
+    }
+
+    #[test]
+    fn test_filter_exif_custom_hex_tag() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+
+        // 0x010F is the hex for Make
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::Allow(vec!["0x010F".to_string()]),
+            ..Default::default()
+        };
+        let filtered = filter_exif(&source, &config).expect("should have metadata");
+
+        let tag_names: Vec<String> = (&filtered)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert_eq!(tag_names, vec!["Make"]);
+    }
+
+    #[test]
+    fn test_strip_dimensions_removes_four_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = create_test_jpeg_with_exif(tmp.path(), "photo.jpg");
+        let mut metadata = Metadata::new_from_path(&source).expect("should read metadata");
+
+        strip_dimensions(&mut metadata);
+
+        let tag_names: Vec<String> = (&metadata)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert!(!tag_names.contains(&"ImageWidth".to_string()));
+        assert!(!tag_names.contains(&"ImageHeight".to_string()));
+        assert!(!tag_names.contains(&"ExifImageWidth".to_string()));
+        assert!(!tag_names.contains(&"ExifImageHeight".to_string()));
+        // Make, Model, DateTimeOriginal, Orientation should remain
+        assert!(tag_names.contains(&"Make".to_string()));
+        assert_eq!(tag_names.len(), 4);
+    }
+
+    #[test]
+    fn test_apply_exif_policy_to_originals_no_exif_image_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let static_out = paths.output.join("static");
+        fs::create_dir_all(&static_out).unwrap();
+
+        // Image with no EXIF
+        create_test_jpeg_no_exif(&static_out, "clean.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::Allow(vec!["Make".to_string()]),
+            ..Default::default()
+        };
+        let count = apply_exif_policy_to_originals(&paths, &config).unwrap();
+        // No EXIF to filter — should succeed, may or may not count
+        // The key assertion is that it doesn't error
+        let _ = count;
+    }
+
+    #[test]
+    fn test_apply_exif_policy_to_originals_corrupt_image_warns() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let static_out = paths.output.join("static");
+        fs::create_dir_all(&static_out).unwrap();
+
+        // Write a corrupt "jpeg" — just random bytes with .jpg extension
+        fs::write(static_out.join("corrupt.jpg"), b"not a real jpeg").unwrap();
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::None,
+            ..Default::default()
+        };
+        // Should not panic or error — build continues
+        let result = apply_exif_policy_to_originals(&paths, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_apply_exif_policy_to_originals_preserves_pixel_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let static_out = paths.output.join("static");
+        fs::create_dir_all(&static_out).unwrap();
+
+        // Create image with EXIF in the output dir
+        let path = create_test_jpeg_with_exif(&static_out, "photo.jpg");
+
+        // Read pixel data before filtering
+        let before = image::open(&path).unwrap();
+        let before_rgba = before.to_rgba8();
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::Allow(vec!["Make".to_string()]),
+            ..Default::default()
+        };
+        apply_exif_policy_to_originals(&paths, &config).unwrap();
+
+        // Read pixel data after filtering — should be identical
+        let after = image::open(&path).unwrap();
+        let after_rgba = after.to_rgba8();
+        assert_eq!(before_rgba.as_raw(), after_rgba.as_raw());
+
+        // Verify EXIF was filtered — only Make should remain
+        let read_meta = Metadata::new_from_path(&path).unwrap();
+        let tag_names: Vec<String> = (&read_meta)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert_eq!(tag_names, vec!["Make"]);
+    }
+
+    #[test]
+    fn test_apply_exif_policy_to_originals_none_strips_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        let static_out = paths.output.join("static");
+        fs::create_dir_all(&static_out).unwrap();
+
+        create_test_jpeg_with_exif(&static_out, "photo.jpg");
+        let path = static_out.join("photo.jpg");
+
+        let config = ImageSection {
+            exif_data_allow: ExifDataAllow::None,
+            ..Default::default()
+        };
+        apply_exif_policy_to_originals(&paths, &config).unwrap();
+
+        // Verify EXIF was stripped — reading back should fail or return empty
+        let read_meta = Metadata::new_from_path(&path);
+        match read_meta {
+            Ok(m) => {
+                let count = (&m).into_iter().count();
+                assert_eq!(count, 0, "all EXIF should be stripped");
+            }
+            Err(_) => {
+                // Acceptable: file_clear_metadata may make it unreadable as EXIF
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_single_image_propagates_exif_to_jpeg_variants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_with_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: false,
+            avif: false,
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        // Check the resized JPEG variant
+        let variant = paths.output.join("static").join("photo-20w.jpg");
+        assert!(variant.exists());
+        let read_meta = Metadata::new_from_path(&variant).expect("should have EXIF");
+        let tag_names: Vec<String> = (&read_meta)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+
+        // Make, Model, DateTimeOriginal, Orientation should be present
+        assert!(tag_names.contains(&"Make".to_string()));
+        assert!(tag_names.contains(&"Orientation".to_string()));
+        // Dimensions should be stripped
+        assert!(!tag_names.contains(&"ImageWidth".to_string()));
+        assert!(!tag_names.contains(&"ImageHeight".to_string()));
+    }
+
+    #[test]
+    fn test_process_single_image_propagates_exif_to_webp_variants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_with_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: true,
+            avif: false,
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        // Check the resized WebP variant
+        let variant = paths.output.join("static").join("photo-20w.webp");
+        assert!(variant.exists());
+        let read_meta = Metadata::new_from_path(&variant).expect("WebP should have EXIF");
+        let tag_names: Vec<String> = (&read_meta)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert!(tag_names.contains(&"Make".to_string()));
+        assert!(!tag_names.contains(&"ImageWidth".to_string()));
+    }
+
+    #[test]
+    fn test_process_single_image_propagates_exif_to_avif_variants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_with_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: false,
+            avif: true,
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        // Check the resized AVIF variant
+        let variant = paths.output.join("static").join("photo-20w.avif");
+        assert!(variant.exists());
+        let read_meta = Metadata::new_from_path(&variant).expect("AVIF should have EXIF");
+        let tag_names: Vec<String> = (&read_meta)
+            .into_iter()
+            .map(|t| {
+                let s = format!("{:?}", t);
+                s.split('(').next().unwrap_or(&s).to_string()
+            })
+            .collect();
+        assert!(tag_names.contains(&"Make".to_string()));
+        assert!(!tag_names.contains(&"ImageWidth".to_string()));
+    }
+
+    #[test]
+    fn test_process_single_image_no_exif_source_no_variant_exif() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_no_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: false,
+            avif: false,
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        let variant = paths.output.join("static").join("photo-20w.jpg");
+        assert!(variant.exists());
+        // Should either fail to read EXIF (no EXIF) or return empty
+        match Metadata::new_from_path(&variant) {
+            Ok(m) => {
+                let count = (&m).into_iter().count();
+                assert_eq!(count, 0, "no EXIF should be present on variant");
+            }
+            Err(_) => { /* acceptable — no EXIF means nothing to read */ }
+        }
+    }
+
+    #[test]
+    fn test_process_single_image_none_no_variant_exif() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_with_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: false,
+            avif: false,
+            exif_data_allow: ExifDataAllow::None,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        let variant = paths.output.join("static").join("photo-20w.jpg");
+        assert!(variant.exists());
+        match Metadata::new_from_path(&variant) {
+            Ok(m) => {
+                let count = (&m).into_iter().count();
+                assert_eq!(count, 0, "NONE should produce no EXIF on variants");
+            }
+            Err(_) => { /* acceptable */ }
+        }
+    }
+
+    #[test]
+    fn test_process_single_image_dimensions_stripped_from_variants() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = make_paths(tmp.path());
+        fs::create_dir_all(&paths.static_dir).unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+
+        let source = create_test_jpeg_with_exif(&paths.static_dir, "photo.jpg");
+        let rel = Path::new("photo.jpg");
+
+        let config = ImageSection {
+            widths: vec![20],
+            quality: 80,
+            webp: true,
+            avif: true,
+            exif_data_allow: ExifDataAllow::All,
+            ..Default::default()
+        };
+        process_single_image(&source, rel, &paths.output, &config, "jpg").unwrap();
+
+        // Check all variant types for absence of dimension fields
+        for variant_name in &[
+            "photo-20w.jpg",
+            "photo-20w.webp",
+            "photo-20w.avif",
+            "photo.webp",
+            "photo.avif",
+        ] {
+            let variant = paths.output.join("static").join(variant_name);
+            if !variant.exists() {
+                continue;
+            }
+            if let Ok(meta) = Metadata::new_from_path(&variant) {
+                let tag_names: Vec<String> = (&meta)
+                    .into_iter()
+                    .map(|t| {
+                        let s = format!("{:?}", t);
+                        s.split('(').next().unwrap_or(&s).to_string()
+                    })
+                    .collect();
+                assert!(
+                    !tag_names.contains(&"ImageWidth".to_string()),
+                    "{variant_name} should not have ImageWidth"
+                );
+                assert!(
+                    !tag_names.contains(&"ImageHeight".to_string()),
+                    "{variant_name} should not have ImageHeight"
+                );
+                assert!(
+                    !tag_names.contains(&"ExifImageWidth".to_string()),
+                    "{variant_name} should not have ExifImageWidth"
+                );
+                assert!(
+                    !tag_names.contains(&"ExifImageHeight".to_string()),
+                    "{variant_name} should not have ExifImageHeight"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_allowed_variant_name_matching() {
+        let mut names = std::collections::HashSet::new();
+        names.insert("make".to_string());
+        let hex_ids = std::collections::HashSet::new();
+
+        // A Make tag should match by name
+        let tag = ExifTag::Make("Canon".to_string());
+        assert!(is_allowed(&tag, &names, &hex_ids));
+
+        // A Model tag should not match
+        let tag = ExifTag::Model("EOS".to_string());
+        assert!(!is_allowed(&tag, &names, &hex_ids));
+    }
+
+    #[test]
+    fn test_is_allowed_case_insensitive_name_matching() {
+        // parse_allow_list normalizes names to lowercase; is_allowed compares case-insensitively.
+        // So a user writing "datetimEoriginal" should still match DateTimeOriginal.
+        let (names, _hex) =
+            parse_allow_list(&ExifDataAllow::Allow(vec!["datetimEoriginal".to_string()]));
+        let hex_ids = std::collections::HashSet::new();
+
+        let tag = ExifTag::DateTimeOriginal("2026:01:01 00:00:00".to_string());
+        assert!(is_allowed(&tag, &names, &hex_ids));
+
+        // Non-matching tag should still be rejected
+        let tag = ExifTag::Make("Canon".to_string());
+        assert!(!is_allowed(&tag, &names, &hex_ids));
+    }
+
+    #[test]
+    fn test_is_allowed_hex_id_matching() {
+        let names = std::collections::HashSet::new();
+        let mut hex_ids = std::collections::HashSet::new();
+        // 0x010F = hex for Make
+        hex_ids.insert(0x010Fu16);
+
+        let tag = ExifTag::Make("Canon".to_string());
+        assert!(is_allowed(&tag, &names, &hex_ids));
+
+        let tag = ExifTag::Model("EOS".to_string());
+        assert!(!is_allowed(&tag, &names, &hex_ids));
     }
 }

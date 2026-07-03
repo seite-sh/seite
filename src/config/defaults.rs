@@ -42,6 +42,10 @@ pub fn avif_quality() -> u8 {
     70
 }
 
+pub fn exif_data_allow() -> crate::config::ExifDataAllow {
+    crate::config::ExifDataAllow::All
+}
+
 pub fn bool_true() -> bool {
     true
 }

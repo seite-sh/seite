@@ -246,8 +246,29 @@ Optional. When this section is present, `seite` automatically processes images i
 | `avif` | bool | `false` | Generate AVIF variants alongside originals (better compression than WebP) |
 | `avif_quality` | int | `70` | AVIF quality (1-100). Lower than WebP is fine — AVIF compresses better |
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
+| `exif_data_allow` | string or array | `"ALL"` | Controls which EXIF metadata fields are preserved and propagated to image variants. `"ALL"` preserves everything (default). `"NONE"` strips all EXIF from originals and adds none to variants. A list of field names preserves only those fields. Dimension fields are always stripped from variants. Field names match ExifTag variant names (e.g. `"DateTimeOriginal"`, `"Orientation"`, `"Make"`, `"Model"`). Custom tags use hex IDs (e.g. `"0xC62F"`) |
 
 When configured, images in `static/` are resized to each width, optionally converted to WebP and/or AVIF, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. AVIF sources appear first in the `<picture>` element so browsers that support AVIF use it (best compression), falling back to WebP, then the original format. To disable image processing, remove the `[images]` section entirely.
+
+EXIF metadata from source images is preserved and propagated to all generated variants (resized JPEG, WebP, AVIF, and full-size WebP/AVIF copies). Dimension fields (`ImageWidth`, `ImageHeight`, `ExifImageWidth`, `ExifImageHeight`) are always stripped from variants since they would be stale after resizing. Originals in `dist/static/` keep their full EXIF when `exif_data_allow = "ALL"` (the default).
+
+```toml
+# Preserve only camera info and capture date, propagate to all variants
+[images]
+exif_data_allow = ["DateTimeOriginal", "Orientation", "Make", "Model"]
+
+# Preserve a custom tag added by your workflow (hex ID)
+[images]
+exif_data_allow = ["DateTimeOriginal", "0xC62F"]
+
+# Strip all EXIF from originals and variants
+[images]
+exif_data_allow = "NONE"
+
+# Preserve everything, propagate to all variants (default)
+[images]
+exif_data_allow = "ALL"
+```
 
 ## [analytics]
 

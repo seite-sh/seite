@@ -312,7 +312,64 @@ pub enum DeployTarget {
     Netlify,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Controls which EXIF metadata fields are preserved and propagated to image variants.
+///
+/// Field names match `little_exif::exif_tag::ExifTag` variant names (e.g.
+/// `"DateTimeOriginal"`, `"Orientation"`, `"Make"`, `"Model"`, `"GPSLatitude"`).
+/// Custom/unknown tags use hex IDs as strings (e.g. `"0xC62F"`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExifDataAllow {
+    /// Preserve all EXIF fields and propagate to variants. Default behavior.
+    All,
+    /// Strip all EXIF from originals, don't add EXIF to variants.
+    None,
+    /// Preserve only the listed fields, strip everything else.
+    Allow(Vec<String>),
+}
+
+impl<'de> Deserialize<'de> for ExifDataAllow {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let v: toml::Value = Deserialize::deserialize(deserializer)?;
+        match &v {
+            toml::Value::String(s) if s.eq_ignore_ascii_case("ALL") => Ok(ExifDataAllow::All),
+            toml::Value::String(s) if s.eq_ignore_ascii_case("NONE") => Ok(ExifDataAllow::None),
+            toml::Value::Array(arr) => {
+                let fields: Vec<String> = arr
+                    .iter()
+                    .map(|item| match item {
+                        toml::Value::String(s) => Ok(s.clone()),
+                        _ => Err(D::Error::custom(
+                            "exif_data_allow array must contain only strings",
+                        )),
+                    })
+                    .collect::<std::result::Result<_, _>>()?;
+                Ok(ExifDataAllow::Allow(fields))
+            }
+            _ => Err(D::Error::custom(
+                "exif_data_allow must be \"ALL\", \"NONE\", or an array of field names",
+            )),
+        }
+    }
+}
+
+impl Serialize for ExifDataAllow {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ExifDataAllow::All => serializer.serialize_str("ALL"),
+            ExifDataAllow::None => serializer.serialize_str("NONE"),
+            ExifDataAllow::Allow(fields) => fields.serialize(serializer),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageSection {
     /// Generate resized copies at these widths (pixels). Default: [480, 800, 1200].
     #[serde(default = "defaults::image_widths")]
@@ -332,6 +389,12 @@ pub struct ImageSection {
     /// AVIF quality (1-100). Default: 70 (AVIF compresses better than WebP, so lower is OK).
     #[serde(default = "defaults::avif_quality")]
     pub avif_quality: u8,
+    /// Which EXIF fields to preserve and propagate to image variants. "ALL" preserves
+    /// everything (default). "NONE" strips all EXIF from originals and adds none to variants.
+    /// A list of field names preserves only those fields. Dimension fields are always
+    /// stripped from variants since they'd be stale after resizing.
+    #[serde(default = "defaults::exif_data_allow")]
+    pub exif_data_allow: ExifDataAllow,
 }
 
 impl Default for ImageSection {
@@ -343,6 +406,7 @@ impl Default for ImageSection {
             webp: true,
             avif: false,
             avif_quality: defaults::avif_quality(),
+            exif_data_allow: defaults::exif_data_allow(),
         }
     }
 }
@@ -924,5 +988,219 @@ deploy_project = "my-docs"
             paths.subdomain_output("docs"),
             PathBuf::from("/project/dist-subdomains/docs")
         );
+    }
+
+    // ── ExifDataAllow tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_exif_data_allow_all_deserialize() {
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "ALL"
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.images.unwrap().exif_data_allow, ExifDataAllow::All);
+    }
+
+    #[test]
+    fn test_exif_data_allow_none_deserialize() {
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "NONE"
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.images.unwrap().exif_data_allow, ExifDataAllow::None);
+    }
+
+    #[test]
+    fn test_exif_data_allow_case_insensitive() {
+        // Lowercase "all" and "none" should also be accepted
+        let toml_all = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "all"
+"#;
+        let config: SiteConfig = toml::from_str(toml_all).unwrap();
+        assert_eq!(config.images.unwrap().exif_data_allow, ExifDataAllow::All);
+
+        let toml_none = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "none"
+"#;
+        let config: SiteConfig = toml::from_str(toml_none).unwrap();
+        assert_eq!(config.images.unwrap().exif_data_allow, ExifDataAllow::None);
+    }
+
+    #[test]
+    fn test_exif_data_allow_list_deserialize() {
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = ["DateTimeOriginal", "Orientation"]
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.images.unwrap().exif_data_allow,
+            ExifDataAllow::Allow(vec!["DateTimeOriginal".into(), "Orientation".into()])
+        );
+    }
+
+    #[test]
+    fn test_exif_data_allow_empty_list_deserialize() {
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = []
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.images.unwrap().exif_data_allow,
+            ExifDataAllow::Allow(vec![])
+        );
+    }
+
+    #[test]
+    fn test_exif_data_allow_default_is_all() {
+        assert_eq!(ImageSection::default().exif_data_allow, ExifDataAllow::All);
+    }
+
+    #[test]
+    fn test_exif_data_allow_full_toml_roundtrip() {
+        // Test with list including hex tag
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = ["DateTimeOriginal", "0xC62F"]
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.images.unwrap().exif_data_allow,
+            ExifDataAllow::Allow(vec!["DateTimeOriginal".into(), "0xC62F".into()])
+        );
+
+        // Test ALL
+        let toml_all = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "ALL"
+"#;
+        let config_all: SiteConfig = toml::from_str(toml_all).unwrap();
+        assert_eq!(
+            config_all.images.unwrap().exif_data_allow,
+            ExifDataAllow::All
+        );
+
+        // Test NONE
+        let toml_none = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+
+[images]
+exif_data_allow = "NONE"
+"#;
+        let config_none: SiteConfig = toml::from_str(toml_none).unwrap();
+        assert_eq!(
+            config_none.images.unwrap().exif_data_allow,
+            ExifDataAllow::None
+        );
+    }
+
+    #[test]
+    fn test_exif_data_allow_no_images_section_unchanged() {
+        let toml_str = r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+default_template = "post.html"
+"#;
+        let config: SiteConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.images.is_none());
     }
 }

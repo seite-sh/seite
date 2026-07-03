@@ -10604,3 +10604,260 @@ fn test_completions_stdout_is_clean() {
         "update notification must not appear on stdout"
     );
 }
+
+// ── EXIF integration tests ─────────────────────────────────────────────
+
+/// Helper: create a small JPEG with known EXIF tags in a site's static dir.
+fn create_exif_jpeg(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    use little_exif::exif_tag::ExifTag;
+    use little_exif::metadata::Metadata;
+
+    let img = image::ImageBuffer::from_pixel(40, 40, image::Rgb([255, 0, 0]));
+    let path = dir.join(name);
+    image::save_buffer(&path, &img, 40, 40, image::ExtendedColorType::Rgb8).unwrap();
+
+    let mut metadata = Metadata::new();
+    metadata.set_tag(ExifTag::Make("TestCamera".to_string()));
+    metadata.set_tag(ExifTag::Model("TestModel".to_string()));
+    metadata.set_tag(ExifTag::DateTimeOriginal("2026:01:15 12:00:00".to_string()));
+    metadata.set_tag(ExifTag::Orientation(vec![1u16]));
+    metadata.set_tag(ExifTag::ImageWidth(vec![40u32]));
+    metadata.set_tag(ExifTag::ImageHeight(vec![40u32]));
+    metadata.write_to_file(&path).unwrap();
+
+    path
+}
+
+/// Helper: read EXIF tag names from a file (returns sorted vector of variant names).
+fn read_exif_tag_names(path: &std::path::Path) -> Vec<String> {
+    use little_exif::metadata::Metadata;
+
+    match Metadata::new_from_path(path) {
+        Ok(meta) => {
+            let mut names: Vec<String> = (&meta)
+                .into_iter()
+                .map(|t| {
+                    let s = format!("{:?}", t);
+                    s.split('(').next().unwrap_or(&s).to_string()
+                })
+                .collect();
+            names.sort();
+            names
+        }
+        Err(_) => vec![],
+    }
+}
+
+/// Helper: replace the [images] section in seite.toml (or append if not present).
+fn add_images_config(site_dir: &std::path::Path, config: &str) {
+    let toml_path = site_dir.join("seite.toml");
+    let content = std::fs::read_to_string(&toml_path).unwrap();
+
+    // Find and replace the existing [images] section, or append if not present.
+    // The [images] section runs from "[images]" to the next section header
+    // (a line starting with "[") or end of file.
+    let new_section = format!("[images]\n{}\n", config);
+
+    let updated = if let Some(start) = content.find("[images]") {
+        // Find the end of the images section — next section header or EOF
+        let after_images = &content[start..];
+        let end_offset = after_images[1..]
+            .find("\n[")
+            .map(|pos| start + 1 + pos + 1) // +1 to skip the \n before [
+            .unwrap_or(content.len());
+
+        let before = &content[..start];
+        let after = if end_offset < content.len() {
+            &content[end_offset..]
+        } else {
+            ""
+        };
+        format!("{before}{new_section}\n{after}")
+    } else {
+        format!("{content}\n{new_section}")
+    };
+
+    std::fs::write(&toml_path, updated).unwrap();
+}
+
+#[test]
+fn test_build_with_exif_propagation() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "EXIF Test", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    let static_dir = site_dir.join("static");
+    std::fs::create_dir_all(&static_dir).unwrap();
+    create_exif_jpeg(&static_dir, "photo.jpg");
+
+    // Configure with allow-list: only Orientation
+    add_images_config(
+        &site_dir,
+        "widths = [20]\nquality = 80\nexif_data_allow = [\"Orientation\"]\n",
+    );
+
+    // Build
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist/static");
+
+    // Original should have only Orientation
+    let orig_tags = read_exif_tag_names(&dist.join("photo.jpg"));
+    assert_eq!(
+        orig_tags,
+        vec!["Orientation"],
+        "original should have only Orientation, got: {orig_tags:?}"
+    );
+
+    // JPEG variant should have Orientation (no dimensions)
+    let variant_tags = read_exif_tag_names(&dist.join("photo-20w.jpg"));
+    assert!(
+        variant_tags.contains(&"Orientation".to_string()),
+        "JPEG variant should have Orientation, got: {variant_tags:?}"
+    );
+    assert!(
+        !variant_tags.contains(&"ImageWidth".to_string()),
+        "JPEG variant should not have ImageWidth"
+    );
+
+    // WebP variant should have Orientation
+    let webp_tags = read_exif_tag_names(&dist.join("photo-20w.webp"));
+    assert!(
+        webp_tags.contains(&"Orientation".to_string()),
+        "WebP variant should have Orientation, got: {webp_tags:?}"
+    );
+}
+
+#[test]
+fn test_build_without_exif_config_unchanged() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "EXIF Default", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    let static_dir = site_dir.join("static");
+    std::fs::create_dir_all(&static_dir).unwrap();
+    create_exif_jpeg(&static_dir, "photo.jpg");
+
+    // No exif_data_allow — default is "ALL"
+    add_images_config(&site_dir, "widths = [20]\nquality = 80\n");
+
+    // Build
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist/static");
+
+    // Original should keep ALL EXIF tags
+    let orig_tags = read_exif_tag_names(&dist.join("photo.jpg"));
+    assert!(
+        orig_tags.contains(&"Make".to_string()),
+        "original should have Make (ALL default), got: {orig_tags:?}"
+    );
+    assert!(
+        orig_tags.contains(&"DateTimeOriginal".to_string()),
+        "original should have DateTimeOriginal"
+    );
+    assert!(
+        orig_tags.contains(&"ImageWidth".to_string()),
+        "original should have ImageWidth (originals keep dimensions)"
+    );
+
+    // JPEG variant should have EXIF but no dimensions
+    let variant_tags = read_exif_tag_names(&dist.join("photo-20w.jpg"));
+    assert!(
+        variant_tags.contains(&"Make".to_string()),
+        "JPEG variant should have Make (ALL default), got: {variant_tags:?}"
+    );
+    assert!(
+        !variant_tags.contains(&"ImageWidth".to_string()),
+        "JPEG variant should not have ImageWidth"
+    );
+    assert!(
+        !variant_tags.contains(&"ImageHeight".to_string()),
+        "JPEG variant should not have ImageHeight"
+    );
+}
+
+#[test]
+fn test_build_no_images_section_unchanged() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Images", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    let static_dir = site_dir.join("static");
+    std::fs::create_dir_all(&static_dir).unwrap();
+    create_exif_jpeg(&static_dir, "photo.jpg");
+
+    // No [images] section at all
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist/static");
+
+    // Original should keep ALL EXIF (byte-for-byte copy)
+    let orig_tags = read_exif_tag_names(&dist.join("photo.jpg"));
+    assert!(
+        orig_tags.contains(&"Make".to_string()),
+        "original should have Make (no images section), got: {orig_tags:?}"
+    );
+    assert!(
+        orig_tags.contains(&"ImageWidth".to_string()),
+        "original should have ImageWidth"
+    );
+
+    // No variants should exist
+    assert!(
+        !dist.join("photo-20w.jpg").exists(),
+        "no variants should be generated without [images] section"
+    );
+}
+
+#[test]
+fn test_build_with_exif_none_strips_all() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "EXIF None", "posts,pages");
+
+    let site_dir = tmp.path().join("site");
+    let static_dir = site_dir.join("static");
+    std::fs::create_dir_all(&static_dir).unwrap();
+    create_exif_jpeg(&static_dir, "photo.jpg");
+
+    // Strip all EXIF
+    add_images_config(
+        &site_dir,
+        "widths = [20]\nquality = 80\nexif_data_allow = \"NONE\"\n",
+    );
+
+    // Build
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist/static");
+
+    // Original should have no EXIF
+    let orig_tags = read_exif_tag_names(&dist.join("photo.jpg"));
+    assert!(
+        orig_tags.is_empty(),
+        "original should have no EXIF (NONE), got: {orig_tags:?}"
+    );
+
+    // JPEG variant should have no EXIF
+    let variant_tags = read_exif_tag_names(&dist.join("photo-20w.jpg"));
+    assert!(
+        variant_tags.is_empty(),
+        "JPEG variant should have no EXIF (NONE), got: {variant_tags:?}"
+    );
+}
