@@ -129,8 +129,23 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&cwd);
+
+    // Resolve the port we'll actually serve on *before* building, then point
+    // base_url at that live address. Otherwise absolute URLs (og:image,
+    // canonical, sitemap, feeds, JSON-LD) bake in the configured base_url —
+    // defaulting to localhost:3000 — and silently ignore --host/--port. This
+    // mirrors `hugo server` / `zola serve`, which rewrite the base URL to the
+    // address being served. (#86)
+    let port = args.port.unwrap_or(DEFAULT_PORT);
+    let auto_increment = args.port.is_none();
+    let effective_port = if auto_increment {
+        server::find_available_port(host, port).unwrap_or(port)
+    } else {
+        port
+    };
+    config.site.base_url = server::dev_base_url(host, effective_port);
 
     if args.build {
         human::info("Building site...");
@@ -142,8 +157,6 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::success(&result.stats.human_display());
     }
 
-    let port = args.port.unwrap_or(DEFAULT_PORT);
-    let auto_increment = args.port.is_none();
     let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
 
     human::info("Type \"help\" for commands, \"stop\" to quit");

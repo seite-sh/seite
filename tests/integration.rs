@@ -1825,6 +1825,41 @@ fn test_deploy_dry_run_warns_localhost_base_url() {
         .stdout(predicate::str::contains("localhost"));
 }
 
+/// Regression test for #86: `seite serve` must bake the address it actually
+/// serves on into absolute URLs, not the hardcoded default localhost:3000.
+#[test]
+fn test_serve_bakes_actual_port_into_absolute_urls() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Serve URLs", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Grab a free port, then serve on it explicitly.
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+
+    // `stop` on stdin makes the interactive REPL exit after the initial build.
+    page_cmd()
+        .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+        .current_dir(&site_dir)
+        .write_stdin("stop\n")
+        .assert()
+        .success();
+
+    // The sitemap always emits absolute URLs derived from base_url.
+    let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+    assert!(
+        sitemap.contains(&format!("http://127.0.0.1:{port}")),
+        "sitemap should use the actual serve address, got:\n{sitemap}"
+    );
+    assert!(
+        !sitemap.contains("localhost:3000"),
+        "sitemap must not fall back to the hardcoded localhost:3000"
+    );
+}
+
 #[test]
 fn test_deploy_dry_run_with_base_url_override() {
     let tmp = TempDir::new().unwrap();
