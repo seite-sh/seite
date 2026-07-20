@@ -1825,6 +1825,59 @@ fn test_deploy_dry_run_warns_localhost_base_url() {
         .stdout(predicate::str::contains("localhost"));
 }
 
+/// Regression test for #86: `seite serve` must bake the address it actually
+/// serves on into absolute URLs, not the hardcoded default localhost:3000.
+#[test]
+fn test_serve_bakes_actual_port_into_absolute_urls() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Serve URLs", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // There's an unavoidable TOCTOU gap between picking a free ephemeral port
+    // and `serve` binding it, so a busy/parallel host can steal it (serve uses
+    // an explicit --port and errors rather than auto-incrementing). Retry across
+    // a few fresh ports before giving up.
+    for attempt in 0..5 {
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+
+        // `stop` on stdin makes the interactive REPL exit after the initial build.
+        let output = page_cmd()
+            .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+            .current_dir(&site_dir)
+            .write_stdin("stop\n")
+            .output()
+            .unwrap();
+
+        if !output.status.success() {
+            // Most likely the port was raced away between selection and bind, so
+            // retry on a fresh one — but surface the real stderr once we exhaust
+            // the attempts, so a genuine failure isn't hidden as a "port race".
+            assert!(
+                attempt < 4,
+                "serve failed to start on 5 ephemeral ports; last stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            continue;
+        }
+
+        // The sitemap always emits absolute URLs derived from base_url.
+        let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+        assert!(
+            sitemap.contains(&format!("http://127.0.0.1:{port}")),
+            "sitemap should use the actual serve address, got:\n{sitemap}"
+        );
+        assert!(
+            !sitemap.contains("localhost:3000"),
+            "sitemap must not fall back to the hardcoded localhost:3000"
+        );
+        return;
+    }
+}
+
 #[test]
 fn test_deploy_dry_run_with_base_url_override() {
     let tmp = TempDir::new().unwrap();
@@ -7925,6 +7978,79 @@ fn test_workspace_build_with_site_filter() {
         .current_dir(tmp.path())
         .assert()
         .success();
+}
+
+/// Regression follow-up to #86: `serve --site` in a workspace must bake the
+/// live dev address into that site's absolute URLs, not localhost:3000.
+#[test]
+fn test_workspace_serve_site_bakes_actual_port() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "ws-serve"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "foo",
+            "--title",
+            "Foo",
+            "--collections",
+            "posts,pages",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Retry across ephemeral ports (TOCTOU between selection and the child bind).
+    for attempt in 0..5 {
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+
+        let output = page_cmd()
+            .args([
+                "serve",
+                "--site",
+                "foo",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &port.to_string(),
+            ])
+            .current_dir(tmp.path())
+            .write_stdin("stop\n")
+            .output()
+            .unwrap();
+
+        if !output.status.success() {
+            // Retry on a fresh port for a likely race, but surface the real
+            // stderr on exhaustion so a genuine failure isn't hidden.
+            assert!(
+                attempt < 4,
+                "serve --site failed to start on 5 ephemeral ports; last stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            continue;
+        }
+
+        let sitemap = fs::read_to_string(tmp.path().join("sites/foo/dist/sitemap.xml")).unwrap();
+        assert!(
+            sitemap.contains(&format!("http://127.0.0.1:{port}")),
+            "workspace --site sitemap should use the actual serve address, got:\n{sitemap}"
+        );
+        assert!(
+            !sitemap.contains("localhost:3000"),
+            "workspace --site sitemap must not fall back to localhost:3000"
+        );
+        return;
+    }
 }
 
 // --- self-update ---

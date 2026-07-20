@@ -399,7 +399,7 @@ fn port_is_available(host: &str, port: u16) -> bool {
 }
 
 fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
-    for port in start_port..start_port.saturating_add(100) {
+    for port in start_port..=start_port.saturating_add(99) {
         if !port_is_available(host, port) {
             continue;
         }
@@ -409,6 +409,17 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
         }
     }
     Err(PageError::Server("no available port found".into()))
+}
+
+/// Find the first available port at or above `start_port`, scanning the same
+/// range as `try_bind_auto`. Lets `serve` learn the port it will actually
+/// bind *before* the build runs, so absolute URLs match the served address.
+/// Returns `None` if the whole range is occupied.
+pub fn find_available_port(host: &str, start_port: u16) -> Option<u16> {
+    // Inclusive upper bound so a `start_port` near u16::MAX — where
+    // `saturating_add` would otherwise collapse the range to empty — still
+    // probes `start_port` itself, honoring the "at or above" contract.
+    (start_port..=start_port.saturating_add(99)).find(|&port| port_is_available(host, port))
 }
 
 /// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
@@ -436,6 +447,20 @@ fn format_local_url(host: &str, port: u16) -> String {
         format!("http://[{display_host}]:{port}/")
     } else {
         format!("http://{display_host}:{port}/")
+    }
+}
+
+/// The base URL the dev server bakes into absolute links (og:image, canonical,
+/// sitemap, feeds, JSON-LD), derived from the address it actually serves on.
+///
+/// `0.0.0.0`/`::` are bind-only wildcards, so they map to `localhost` — matching
+/// the server banner. No trailing slash, matching the `base_url` convention.
+pub fn dev_base_url(host: &str, port: u16) -> String {
+    let display_host = resolve_display_host(host);
+    if display_host.contains(':') {
+        format!("http://[{display_host}]:{port}")
+    } else {
+        format!("http://{display_host}:{port}")
     }
 }
 
@@ -579,6 +604,66 @@ mod tests {
             stop.load(Ordering::Relaxed),
             "calling stop twice should still be stopped"
         );
+    }
+
+    // =========================================================================
+    // dev_base_url — the address the dev server bakes into absolute URLs
+    // =========================================================================
+
+    #[test]
+    fn test_dev_base_url_uses_host_and_port() {
+        assert_eq!(dev_base_url("127.0.0.1", 4000), "http://127.0.0.1:4000");
+    }
+
+    #[test]
+    fn test_dev_base_url_maps_all_interfaces_to_localhost() {
+        // 0.0.0.0 / :: are bind addresses, not reachable hostnames — use localhost
+        // in generated URLs, matching the server banner.
+        assert_eq!(dev_base_url("0.0.0.0", 4000), "http://localhost:4000");
+        assert_eq!(dev_base_url("::", 8080), "http://localhost:8080");
+    }
+
+    #[test]
+    fn test_dev_base_url_has_no_trailing_slash() {
+        // base_url convention (see config defaults) carries no trailing slash.
+        assert!(!dev_base_url("localhost", 3000).ends_with('/'));
+    }
+
+    #[test]
+    fn test_dev_base_url_brackets_ipv6_literal() {
+        assert_eq!(dev_base_url("::1", 3000), "http://[::1]:3000");
+    }
+
+    // =========================================================================
+    // find_available_port — resolve the real port before the build runs
+    // =========================================================================
+
+    #[test]
+    fn test_find_available_port_returns_a_free_port() {
+        // Derive the start port from an ephemeral bind we immediately release,
+        // instead of hard-coding a range a busy/parallel CI host might occupy.
+        let start = TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let port = find_available_port("127.0.0.1", start);
+        assert!(
+            port.is_some(),
+            "should find a free port at or above a just-released one"
+        );
+    }
+
+    #[test]
+    fn test_find_available_port_skips_occupied_port() {
+        // Hold a bound listener so its port stays occupied during the scan.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let occupied = listener.local_addr().unwrap().port();
+
+        let found = find_available_port("127.0.0.1", occupied)
+            .expect("should find a free port above the occupied one");
+        assert_ne!(found, occupied, "must not return the occupied port");
+        assert!(found > occupied, "should scan upward from the start port");
     }
 
     // =========================================================================

@@ -2412,10 +2412,9 @@ fn extract_url_from_output(output: &str) -> Option<String> {
 fn parse_url_for_http(url: &str) -> Option<(String, u16, String)> {
     let (scheme, rest) = if let Some(r) = url.strip_prefix("https://") {
         ("https", r)
-    } else if let Some(r) = url.strip_prefix("http://") {
-        ("http", r)
     } else {
-        return None;
+        let r = url.strip_prefix("http://")?;
+        ("http", r)
     };
 
     let default_port: u16 = if scheme == "https" { 443 } else { 80 };

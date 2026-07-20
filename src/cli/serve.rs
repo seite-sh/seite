@@ -42,27 +42,39 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
         let ws_config = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
-        // Build all sites first
-        if args.build {
-            human::info("Building workspace...");
-            let build_opts = workspace::build::WorkspaceBuildOptions {
-                include_drafts: true,
-                strict: false,
-                site_filter: site_filter.map(String::from),
-            };
-            workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
-        }
-
-        let port = args.port.unwrap_or(DEFAULT_PORT);
-        let auto_increment = args.port.is_none();
-
-        // If --site is specified, serve only that site in standalone mode
+        // Single-site serve: build and serve just that site standalone, baking
+        // the live dev address into its base_url (mirrors non-workspace serve).
+        // Resolve the port up front so even the first build is correct, then
+        // hand that exact port to the server with auto-increment off. (#86)
         if let Some(site_name) = site_filter {
             let ws_site = ws_config
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
-            let (config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
-            let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
+            let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+
+            let port = match args.port {
+                Some(p) => p,
+                None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no available port found in {}-{}",
+                        DEFAULT_PORT,
+                        DEFAULT_PORT.saturating_add(99)
+                    )
+                })?,
+            };
+            config.site.base_url = server::dev_base_url(host, port);
+
+            if args.build {
+                human::info(&format!("Building site '{site_name}'..."));
+                let opts = BuildOptions {
+                    include_drafts: true,
+                    incremental: false,
+                };
+                let result = build::build_site(&config, &paths, &opts)?;
+                human::success(&result.stats.human_display());
+            }
+
+            let handle = server::start(&config, &paths, host, port, true, false)?;
 
             human::info(&format!(
                 "Serving site '{site_name}'. Type \"help\" for commands, \"stop\" to quit (port {})",
@@ -73,7 +85,19 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             return Ok(());
         }
 
-        // Workspace dev server (all sites)
+        // Multi-site dev server: build every site (each keeps its base_url) and serve.
+        if args.build {
+            human::info("Building workspace...");
+            let build_opts = workspace::build::WorkspaceBuildOptions {
+                include_drafts: true,
+                strict: false,
+                site_filter: None,
+            };
+            workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
+        }
+
+        let port = args.port.unwrap_or(DEFAULT_PORT);
+        let auto_increment = args.port.is_none();
         let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
 
         human::info(&format!(
@@ -129,8 +153,31 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&cwd);
+
+    // Resolve the exact port we'll bind *before* building, then point base_url
+    // at that live address. Otherwise absolute URLs (og:image, canonical,
+    // sitemap, feeds, JSON-LD) bake in the configured base_url — defaulting to
+    // localhost:3000 — and silently ignore --host/--port. Mirrors `hugo server`
+    // / `zola serve`, which rewrite the base URL to the address served. (#86)
+    //
+    // The port is resolved once here (auto-incrementing past a busy default),
+    // then handed to `server::start` with auto-increment disabled — so the
+    // bound port is exactly the one baked into base_url, or startup fails
+    // loudly, instead of the two independent scans drifting apart and serving
+    // on a different port than the URLs advertise.
+    let port = match args.port {
+        Some(p) => p,
+        None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no available port found in {}-{}",
+                DEFAULT_PORT,
+                DEFAULT_PORT.saturating_add(99)
+            )
+        })?,
+    };
+    config.site.base_url = server::dev_base_url(host, port);
 
     if args.build {
         human::info("Building site...");
@@ -142,9 +189,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::success(&result.stats.human_display());
     }
 
-    let port = args.port.unwrap_or(DEFAULT_PORT);
-    let auto_increment = args.port.is_none();
-    let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
+    let handle = server::start(&config, &paths, host, port, true, false)?;
 
     human::info("Type \"help\" for commands, \"stop\" to quit");
 
