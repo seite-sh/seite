@@ -8030,9 +8030,12 @@ fn test_workspace_serve_site_bakes_actual_port() {
             .unwrap();
 
         if !output.status.success() {
+            // Retry on a fresh port for a likely race, but surface the real
+            // stderr on exhaustion so a genuine failure isn't hidden.
             assert!(
                 attempt < 4,
-                "serve --site failed to start on 5 ephemeral ports"
+                "serve --site failed to start on 5 ephemeral ports; last stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
             );
             continue;
         }
