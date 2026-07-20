@@ -18,6 +18,14 @@ ignore = [
     # core2 is unmaintained (all versions yanked) but pulled in transitively
     # by rav1e (AVIF encoder) via bitstream-io; no safe upgrade available
     "RUSTSEC-2026-0105",
+    # quick-xml < 0.41: quadratic parse of duplicate attribute names (0194) and
+    # unbounded namespace-declaration allocation in NsReader (0195). Both are in
+    # the XML *reader*. seite only *serializes* XML (sitemap/RSS via the
+    # `serialize` feature) and never parses untrusted input, so it is not
+    # exposed. The vulnerable 0.38.4 copy is also transitive via syntect -> plist
+    # and cannot be bumped from our manifest; revisit when syntect updates plist.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 [licenses]
