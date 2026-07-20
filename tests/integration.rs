@@ -1833,31 +1833,43 @@ fn test_serve_bakes_actual_port_into_absolute_urls() {
     init_site(&tmp, "site", "Serve URLs", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Grab a free port, then serve on it explicitly.
-    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    // There's an unavoidable TOCTOU gap between picking a free ephemeral port
+    // and `serve` binding it, so a busy/parallel host can steal it (serve uses
+    // an explicit --port and errors rather than auto-incrementing). Retry across
+    // a few fresh ports before giving up.
+    for attempt in 0..5 {
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
 
-    // `stop` on stdin makes the interactive REPL exit after the initial build.
-    page_cmd()
-        .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
-        .current_dir(&site_dir)
-        .write_stdin("stop\n")
-        .assert()
-        .success();
+        // `stop` on stdin makes the interactive REPL exit after the initial build.
+        let output = page_cmd()
+            .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+            .current_dir(&site_dir)
+            .write_stdin("stop\n")
+            .output()
+            .unwrap();
 
-    // The sitemap always emits absolute URLs derived from base_url.
-    let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
-    assert!(
-        sitemap.contains(&format!("http://127.0.0.1:{port}")),
-        "sitemap should use the actual serve address, got:\n{sitemap}"
-    );
-    assert!(
-        !sitemap.contains("localhost:3000"),
-        "sitemap must not fall back to the hardcoded localhost:3000"
-    );
+        if !output.status.success() {
+            // Port likely raced away between selection and bind — try a fresh one.
+            assert!(attempt < 4, "serve failed to start on 5 ephemeral ports");
+            continue;
+        }
+
+        // The sitemap always emits absolute URLs derived from base_url.
+        let sitemap = fs::read_to_string(site_dir.join("dist/sitemap.xml")).unwrap();
+        assert!(
+            sitemap.contains(&format!("http://127.0.0.1:{port}")),
+            "sitemap should use the actual serve address, got:\n{sitemap}"
+        );
+        assert!(
+            !sitemap.contains("localhost:3000"),
+            "sitemap must not fall back to the hardcoded localhost:3000"
+        );
+        return;
+    }
 }
 
 #[test]
