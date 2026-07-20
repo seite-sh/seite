@@ -126,12 +126,30 @@ When `private = true`:
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
+| `mermaid` | bool | `false` | Render fenced ` ```mermaid ` blocks as [Mermaid](https://mermaid.js.org/) diagrams (client-side) |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
 {{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
+
+### Mermaid diagrams
+
+Set `mermaid = true` under `[build]` to render [Mermaid](https://mermaid.js.org/) diagrams from ordinary fenced code blocks — no shortcode required:
+
+````markdown
+```mermaid
+graph TD
+  A[Start] --> B{Works?}
+  B -->|Yes| C[Ship it]
+  B -->|No| A
+```
+````
+
+Each ` ```mermaid ` block is emitted as `<div class="mermaid">…</div>`, and a small Mermaid loader (from a CDN) is injected **only on pages that contain a diagram** — pages without one pay nothing. Diagrams render in the browser, so they work with any theme.
+
+When `mermaid = false` (the default), a ` ```mermaid ` block is treated like any other unrecognized language and rendered as a plain code block.
 
 ### CSS processing
 

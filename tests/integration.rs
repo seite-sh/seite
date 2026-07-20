@@ -2406,6 +2406,66 @@ fn test_build_math_enabled_renders_katex() {
     );
 }
 
+#[test]
+fn test_build_mermaid_enabled_renders_diagram() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Mermaid On", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Diagram Page\n---\n\n```mermaid\ngraph TD\n  A-->B\n```\n";
+    fs::write(site_dir.join("content/pages/diagram.md"), page_content).unwrap();
+
+    set_build_option(&site_dir, "mermaid", "true");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/diagram.html")).unwrap();
+    assert!(
+        html.contains(r#"<div class="mermaid">"#),
+        "mermaid fence should render as a mermaid div: {html}"
+    );
+    assert!(html.contains("graph TD"));
+    assert!(
+        html.contains("mermaid.esm.min.mjs"),
+        "should inject the mermaid loader: {html}"
+    );
+}
+
+#[test]
+fn test_build_mermaid_disabled_plain_code() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Mermaid Off", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let page_content = "---\ntitle: Diagram Page\n---\n\n```mermaid\ngraph TD\n  A-->B\n```\n";
+    fs::write(site_dir.join("content/pages/diagram.md"), page_content).unwrap();
+
+    // mermaid defaults to off — no config change
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let html = fs::read_to_string(site_dir.join("dist/diagram.html")).unwrap();
+    assert!(
+        !html.contains(r#"class="mermaid""#),
+        "no mermaid div when disabled: {html}"
+    );
+    assert!(
+        !html.contains("mermaid.esm.min.mjs"),
+        "no loader when disabled"
+    );
+    assert!(
+        html.contains("<pre><code>"),
+        "unknown language should fall back to plain code: {html}"
+    );
+}
+
 // ── Reading time + word count ──
 
 #[test]

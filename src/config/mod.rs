@@ -258,6 +258,9 @@ pub struct BuildSection {
     /// Enable math/LaTeX rendering ($inline$ and $$display$$ blocks). Default: false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub math: bool,
+    /// Render fenced ```mermaid blocks as client-side Mermaid diagrams. Default: false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mermaid: bool,
 }
 
 impl Default for BuildSection {
@@ -272,6 +275,7 @@ impl Default for BuildSection {
             minify: false,
             fingerprint: false,
             math: false,
+            mermaid: false,
         }
     }
 }
