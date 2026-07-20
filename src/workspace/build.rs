@@ -9,9 +9,6 @@ pub struct WorkspaceBuildOptions {
     pub include_drafts: bool,
     pub strict: bool,
     pub site_filter: Option<String>,
-    /// Override each built site's `base_url` (used by single-site `serve` to
-    /// bake the live dev address). `None` keeps the configured `base_url`.
-    pub base_url_override: Option<String>,
 }
 
 pub struct WorkspaceBuildResult {
@@ -55,10 +52,7 @@ pub fn build_workspace(
             ws_site.name
         ));
 
-        let (mut config, paths) = load_site_in_workspace(ws_root, ws_site)?;
-        if let Some(ref base_url) = opts.base_url_override {
-            config.site.base_url = base_url.clone();
-        }
+        let (config, paths) = load_site_in_workspace(ws_root, ws_site)?;
 
         let build_opts = BuildOptions {
             include_drafts: opts.include_drafts,
