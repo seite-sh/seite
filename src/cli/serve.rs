@@ -132,20 +132,22 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&cwd);
 
-    // Resolve the port we'll actually serve on *before* building, then point
-    // base_url at that live address. Otherwise absolute URLs (og:image,
-    // canonical, sitemap, feeds, JSON-LD) bake in the configured base_url —
-    // defaulting to localhost:3000 — and silently ignore --host/--port. This
-    // mirrors `hugo server` / `zola serve`, which rewrite the base URL to the
-    // address being served. (#86)
-    let port = args.port.unwrap_or(DEFAULT_PORT);
-    let auto_increment = args.port.is_none();
-    let effective_port = if auto_increment {
-        server::find_available_port(host, port).unwrap_or(port)
-    } else {
-        port
+    // Resolve the exact port we'll bind *before* building, then point base_url
+    // at that live address. Otherwise absolute URLs (og:image, canonical,
+    // sitemap, feeds, JSON-LD) bake in the configured base_url — defaulting to
+    // localhost:3000 — and silently ignore --host/--port. Mirrors `hugo server`
+    // / `zola serve`, which rewrite the base URL to the address served. (#86)
+    //
+    // The port is resolved once here (auto-incrementing past a busy default),
+    // then handed to `server::start` with auto-increment disabled — so the
+    // bound port is exactly the one baked into base_url, or startup fails
+    // loudly, instead of the two independent scans drifting apart and serving
+    // on a different port than the URLs advertise.
+    let port = match args.port {
+        Some(p) => p,
+        None => server::find_available_port(host, DEFAULT_PORT).unwrap_or(DEFAULT_PORT),
     };
-    config.site.base_url = server::dev_base_url(host, effective_port);
+    config.site.base_url = server::dev_base_url(host, port);
 
     if args.build {
         human::info("Building site...");
@@ -157,7 +159,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::success(&result.stats.human_display());
     }
 
-    let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
+    let handle = server::start(&config, &paths, host, port, true, false)?;
 
     human::info("Type \"help\" for commands, \"stop\" to quit");
 
