@@ -42,6 +42,26 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
         let ws_config = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
+        // For single-site serve, bake the live dev address into that site's
+        // base_url (mirrors standalone). Resolve its port up front so even the
+        // first build is correct, then hand that exact port to the server with
+        // auto-increment off. The multi-site server below keeps each site's own
+        // configured base_url — a per-site rewrite there is a separate design. (#86)
+        let single_site_port = match site_filter {
+            Some(_) => Some(match args.port {
+                Some(p) => p,
+                None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no available port found in {}-{}",
+                        DEFAULT_PORT,
+                        DEFAULT_PORT.saturating_add(99)
+                    )
+                })?,
+            }),
+            None => None,
+        };
+        let dev_base_url = single_site_port.map(|p| server::dev_base_url(host, p));
+
         // Build all sites first
         if args.build {
             human::info("Building workspace...");
@@ -49,20 +69,22 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 include_drafts: true,
                 strict: false,
                 site_filter: site_filter.map(String::from),
+                base_url_override: dev_base_url.clone(),
             };
             workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
         }
-
-        let port = args.port.unwrap_or(DEFAULT_PORT);
-        let auto_increment = args.port.is_none();
 
         // If --site is specified, serve only that site in standalone mode
         if let Some(site_name) = site_filter {
             let ws_site = ws_config
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
-            let (config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
-            let handle = server::start(&config, &paths, host, port, true, auto_increment)?;
+            let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+            if let Some(ref url) = dev_base_url {
+                config.site.base_url = url.clone();
+            }
+            let port = single_site_port.expect("resolved above when site_filter is set");
+            let handle = server::start(&config, &paths, host, port, true, false)?;
 
             human::info(&format!(
                 "Serving site '{site_name}'. Type \"help\" for commands, \"stop\" to quit (port {})",
@@ -73,7 +95,9 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             return Ok(());
         }
 
-        // Workspace dev server (all sites)
+        // Workspace dev server (all sites) — each site keeps its configured base_url.
+        let port = args.port.unwrap_or(DEFAULT_PORT);
+        let auto_increment = args.port.is_none();
         let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
 
         human::info(&format!(
