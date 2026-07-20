@@ -43,6 +43,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             include_drafts: args.drafts,
             strict: args.strict,
             site_filter: site_filter.map(String::from),
+            base_url_override: None,
         };
 
         workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;

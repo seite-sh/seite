@@ -7980,6 +7980,76 @@ fn test_workspace_build_with_site_filter() {
         .success();
 }
 
+/// Regression follow-up to #86: `serve --site` in a workspace must bake the
+/// live dev address into that site's absolute URLs, not localhost:3000.
+#[test]
+fn test_workspace_serve_site_bakes_actual_port() {
+    let tmp = TempDir::new().unwrap();
+
+    page_cmd()
+        .args(["workspace", "init", "ws-serve"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "foo",
+            "--title",
+            "Foo",
+            "--collections",
+            "posts,pages",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // Retry across ephemeral ports (TOCTOU between selection and the child bind).
+    for attempt in 0..5 {
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+
+        let output = page_cmd()
+            .args([
+                "serve",
+                "--site",
+                "foo",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &port.to_string(),
+            ])
+            .current_dir(tmp.path())
+            .write_stdin("stop\n")
+            .output()
+            .unwrap();
+
+        if !output.status.success() {
+            assert!(
+                attempt < 4,
+                "serve --site failed to start on 5 ephemeral ports"
+            );
+            continue;
+        }
+
+        let sitemap = fs::read_to_string(tmp.path().join("sites/foo/dist/sitemap.xml")).unwrap();
+        assert!(
+            sitemap.contains(&format!("http://127.0.0.1:{port}")),
+            "workspace --site sitemap should use the actual serve address, got:\n{sitemap}"
+        );
+        assert!(
+            !sitemap.contains("localhost:3000"),
+            "workspace --site sitemap must not fall back to localhost:3000"
+        );
+        return;
+    }
+}
+
 // --- self-update ---
 
 #[test]
