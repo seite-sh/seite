@@ -1853,8 +1853,14 @@ fn test_serve_bakes_actual_port_into_absolute_urls() {
             .unwrap();
 
         if !output.status.success() {
-            // Port likely raced away between selection and bind — try a fresh one.
-            assert!(attempt < 4, "serve failed to start on 5 ephemeral ports");
+            // Most likely the port was raced away between selection and bind, so
+            // retry on a fresh one — but surface the real stderr once we exhaust
+            // the attempts, so a genuine failure isn't hidden as a "port race".
+            assert!(
+                attempt < 4,
+                "serve failed to start on 5 ephemeral ports; last stderr:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             continue;
         }
 
