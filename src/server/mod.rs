@@ -412,7 +412,7 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
 }
 
 /// Find the first available port at or above `start_port`, scanning the same
-/// range as [`try_bind_auto`]. Lets `serve` learn the port it will actually
+/// range as `try_bind_auto`. Lets `serve` learn the port it will actually
 /// bind *before* the build runs, so absolute URLs match the served address.
 /// Returns `None` if the whole range is occupied.
 pub fn find_available_port(host: &str, start_port: u16) -> Option<u16> {
