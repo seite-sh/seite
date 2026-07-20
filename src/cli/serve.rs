@@ -145,7 +145,13 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     // on a different port than the URLs advertise.
     let port = match args.port {
         Some(p) => p,
-        None => server::find_available_port(host, DEFAULT_PORT).unwrap_or(DEFAULT_PORT),
+        None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no available port found in {}-{}",
+                DEFAULT_PORT,
+                DEFAULT_PORT.saturating_add(99)
+            )
+        })?,
     };
     config.site.base_url = server::dev_base_url(host, port);
 

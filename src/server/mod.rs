@@ -399,7 +399,7 @@ fn port_is_available(host: &str, port: u16) -> bool {
 }
 
 fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
-    for port in start_port..start_port.saturating_add(100) {
+    for port in start_port..=start_port.saturating_add(99) {
         if !port_is_available(host, port) {
             continue;
         }
@@ -416,7 +416,10 @@ fn try_bind_auto(host: &str, start_port: u16) -> Result<(Server, u16)> {
 /// bind *before* the build runs, so absolute URLs match the served address.
 /// Returns `None` if the whole range is occupied.
 pub fn find_available_port(host: &str, start_port: u16) -> Option<u16> {
-    (start_port..start_port.saturating_add(100)).find(|&port| port_is_available(host, port))
+    // Inclusive upper bound so a `start_port` near u16::MAX — where
+    // `saturating_add` would otherwise collapse the range to empty — still
+    // probes `start_port` itself, honoring the "at or above" contract.
+    (start_port..=start_port.saturating_add(99)).find(|&port| port_is_available(host, port))
 }
 
 /// Build a TCP listen address, bracketing IPv6 literals so they form a valid `SocketAddr`.
@@ -637,8 +640,18 @@ mod tests {
 
     #[test]
     fn test_find_available_port_returns_a_free_port() {
-        let port = find_available_port("127.0.0.1", 49200);
-        assert!(port.is_some(), "a high start port should yield a free port");
+        // Derive the start port from an ephemeral bind we immediately release,
+        // instead of hard-coding a range a busy/parallel CI host might occupy.
+        let start = TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let port = find_available_port("127.0.0.1", start);
+        assert!(
+            port.is_some(),
+            "should find a free port at or above a just-released one"
+        );
     }
 
     #[test]
