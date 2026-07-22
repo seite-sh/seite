@@ -233,6 +233,21 @@ fn save_image(
     format: ImageFormat,
     quality: u8,
 ) -> Result<()> {
+    let result = save_image_inner(img, path, format, quality);
+    if result.is_err() {
+        // A failed encode may have already created (and left) a 0-byte or
+        // partial file — remove it so dist/ never ships a broken image. (#92)
+        let _ = fs::remove_file(path);
+    }
+    result
+}
+
+fn save_image_inner(
+    img: &image::DynamicImage,
+    path: &Path,
+    format: ImageFormat,
+    quality: u8,
+) -> Result<()> {
     match format {
         ImageFormat::Jpeg => {
             let file = fs::File::create(path).map_err(|e| {
@@ -240,13 +255,15 @@ fn save_image(
             })?;
             let writer = BufWriter::new(file);
             let encoder = JpegEncoder::new_with_quality(writer, quality);
-            let rgba = img.to_rgba8();
+            // JPEG has no alpha channel — drop it, or the encoder rejects the
+            // RGBA buffer the decoder hands back after a resize. (#92)
+            let rgb = img.to_rgb8();
             encoder
                 .write_image(
-                    rgba.as_raw(),
+                    rgb.as_raw(),
                     img.width(),
                     img.height(),
-                    image::ExtendedColorType::Rgba8,
+                    image::ExtendedColorType::Rgb8,
                 )
                 .map_err(|e| {
                     PageError::Build(format!("failed to encode JPEG '{}': {e}", path.display()))
@@ -530,6 +547,46 @@ fn add_lazy_loading(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_save_image_jpeg_from_rgba_source() {
+        // Regression for #92: after resize the `image` crate hands back an
+        // RGBA buffer, but JPEG has no alpha channel. Encoding must drop alpha
+        // (to_rgb8) and produce a valid, non-empty JPEG — not error out and
+        // leave a 0-byte file.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("out.jpg");
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(32, 24));
+
+        save_image(&img, &path, ImageFormat::Jpeg, 80).expect("JPEG encode should succeed");
+
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.is_empty(), "JPEG variant must not be 0 bytes");
+        let decoded = image::load_from_memory(&bytes).expect("output must be a valid JPEG");
+        assert_eq!((decoded.width(), decoded.height()), (32, 24));
+    }
+
+    #[test]
+    fn test_save_image_removes_partial_file_on_error() {
+        // Defense-in-depth for #92: if an encoder fails, no 0-byte/partial file
+        // should be left in dist/. AVIF rejects a zero-sized image, which lets
+        // us exercise the cleanup path deterministically.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("broken.avif");
+        let empty = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
+
+        let result = save_image(&empty, &path, ImageFormat::Avif, 50);
+
+        assert!(
+            result.is_err(),
+            "expected the encode to fail for a 0x0 image"
+        );
+        assert!(
+            !path.exists(),
+            "a failed encode must not leave a file behind"
+        );
+    }
 
     #[test]
     fn test_extract_attr() {
