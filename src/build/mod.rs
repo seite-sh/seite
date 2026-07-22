@@ -8,6 +8,7 @@ pub mod images;
 pub mod links;
 pub mod markdown;
 pub mod math;
+pub mod mermaid;
 pub mod redirects;
 pub mod sitemap;
 
@@ -654,7 +655,8 @@ fn build_site_inner(
                     } else {
                         expanded_body
                     };
-                    let (html_body, toc) = markdown::markdown_to_html(&html_input);
+                    let (html_body, toc) =
+                        markdown::markdown_to_html_with(&html_input, config.build.mermaid);
 
                     let base_url = build_url(&collection.url_prefix, &slug);
                     let url = if lang != *default_lang {
@@ -2270,6 +2272,7 @@ fn build_site_inner(
         subdomain_rewrites,
         base_path: &site_base_path,
         analytics: config.analytics.as_ref(),
+        mermaid: config.build.mermaid,
     };
     let link_check = post_process_html_files(&paths.output, &post_ctx)?;
     step_timings.push((
@@ -2346,6 +2349,7 @@ struct HtmlPostProcessContext<'a> {
     subdomain_rewrites: &'a HashMap<String, String>,
     base_path: &'a str,
     analytics: Option<&'a AnalyticsSection>,
+    mermaid: bool,
 }
 
 /// Walk all `.html` files once, apply all post-processing transforms in memory, write once.
@@ -2405,12 +2409,17 @@ fn post_process_html_files(
                     html = analytics::inject_analytics(&html, analytics_config);
                 }
 
+                // 6. Mermaid loader injection (no-op unless the page has a diagram)
+                if ctx.mermaid {
+                    html = mermaid::inject_mermaid(&html);
+                }
+
                 // Only write if something changed
                 if html != original {
                     fs::write(entry.path(), &html).map_err(PageError::from)?;
                 }
 
-                // 6. Extract internal links from final HTML for validation
+                // 7. Extract internal links from final HTML for validation
                 let internal_links = links::extract_internal_links(&html);
                 let link_count = internal_links.len();
                 let rel_path = entry

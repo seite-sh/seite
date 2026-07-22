@@ -36,7 +36,7 @@ src/
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               15-step build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math
+  build/               15-step build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
@@ -75,6 +75,7 @@ output_dir = "dist"
 minify = true
 fingerprint = true
 math = true              # KaTeX
+mermaid = true           # Mermaid diagrams (```mermaid fences, client-side)
 
 [deploy]
 target = "github-pages"  # or "cloudflare" or "netlify"

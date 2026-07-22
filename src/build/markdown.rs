@@ -59,6 +59,13 @@ fn slugify_heading(text: &str) -> String {
 }
 
 pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
+    markdown_to_html_with(markdown, false)
+}
+
+/// Like [`markdown_to_html`], but when `mermaid` is true, fenced ` ```mermaid `
+/// blocks are emitted as `<div class="mermaid">` containers for client-side
+/// rendering instead of being syntax-highlighted or dumped as plain code.
+pub fn markdown_to_html_with(markdown: &str, mermaid: bool) -> (String, Vec<TocEntry>) {
     let ss = syntax_set();
     let ts = theme_set();
     let theme = &ts.themes["base16-ocean.dark"];
@@ -148,23 +155,41 @@ pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
-                let mut highlighted = false;
 
-                if let Some(ref lang) = code_lang {
-                    let resolved = resolve_lang_alias(lang);
-                    if let Some(syntax) = ss.find_syntax_by_token(resolved) {
-                        if let Ok(html) = highlighted_html_for_string(&code_buf, ss, syntax, theme)
-                        {
-                            html_output.push_str(&html);
-                            highlighted = true;
+                // Mermaid diagrams: emit a passthrough container for client-side
+                // rendering rather than syntax-highlighting the source as code.
+                // A <div> (not <pre>) keeps the code-copy button + syntax
+                // highlighter from touching it. The source is HTML-escaped; the
+                // browser un-escapes it via textContent for Mermaid.
+                let is_mermaid = mermaid
+                    && code_lang
+                        .as_deref()
+                        .is_some_and(|l| l.eq_ignore_ascii_case("mermaid"));
+
+                if is_mermaid {
+                    html_output.push_str("<div class=\"mermaid\">");
+                    html_output.push_str(&html_escape(&code_buf));
+                    html_output.push_str("</div>\n");
+                } else {
+                    let mut highlighted = false;
+
+                    if let Some(ref lang) = code_lang {
+                        let resolved = resolve_lang_alias(lang);
+                        if let Some(syntax) = ss.find_syntax_by_token(resolved) {
+                            if let Ok(html) =
+                                highlighted_html_for_string(&code_buf, ss, syntax, theme)
+                            {
+                                html_output.push_str(&html);
+                                highlighted = true;
+                            }
                         }
                     }
-                }
 
-                if !highlighted {
-                    html_output.push_str("<pre><code>");
-                    html_output.push_str(&html_escape(&code_buf));
-                    html_output.push_str("</code></pre>\n");
+                    if !highlighted {
+                        html_output.push_str("<pre><code>");
+                        html_output.push_str(&html_escape(&code_buf));
+                        html_output.push_str("</code></pre>\n");
+                    }
                 }
             }
             _ if in_code_block => { /* skip non-text events inside code blocks */ }
@@ -234,6 +259,41 @@ mod tests {
         assert!(html.contains("fn"));
         assert!(html.contains("main"));
         assert!(html.contains("style=\""));
+    }
+
+    #[test]
+    fn test_mermaid_fence_emits_div_when_enabled() {
+        let md = "```mermaid\ngraph TD\n  A-->B\n```";
+        let (html, _) = markdown_to_html_with(md, true);
+        assert!(
+            html.contains(r#"<div class="mermaid">"#),
+            "mermaid fence should become a mermaid div, got: {html}"
+        );
+        assert!(html.contains("graph TD"));
+        // It must NOT be wrapped in a <pre> (so the code-copy button + syntax
+        // highlighter both leave it alone).
+        assert!(
+            !html.contains("<pre"),
+            "mermaid block should not be a <pre>: {html}"
+        );
+    }
+
+    #[test]
+    fn test_mermaid_fence_escapes_source() {
+        let md = "```mermaid\nflowchart LR\n  A[\"<b>x</b>\"]\n```";
+        let (html, _) = markdown_to_html_with(md, true);
+        // Angle brackets in the source are HTML-escaped inside the div;
+        // the browser un-escapes them via textContent for Mermaid.
+        assert!(html.contains("&lt;b&gt;"), "got: {html}");
+    }
+
+    #[test]
+    fn test_mermaid_fence_plain_when_disabled() {
+        let md = "```mermaid\ngraph TD\n  A-->B\n```";
+        let (html, _) = markdown_to_html_with(md, false);
+        // With mermaid off, an unknown language falls back to plain <pre><code>.
+        assert!(!html.contains(r#"class="mermaid""#));
+        assert!(html.contains("<pre><code>"));
     }
 
     #[test]
