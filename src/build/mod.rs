@@ -2419,7 +2419,7 @@ fn post_process_html_files(
                     fs::write(entry.path(), &html).map_err(PageError::from)?;
                 }
 
-                // 6. Extract internal links from final HTML for validation
+                // 7. Extract internal links from final HTML for validation
                 let internal_links = links::extract_internal_links(&html);
                 let link_count = internal_links.len();
                 let rel_path = entry

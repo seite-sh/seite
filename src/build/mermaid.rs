@@ -14,10 +14,14 @@
 pub const MERMAID_CLASS: &str = "mermaid";
 
 /// Client-side loader: import Mermaid from a CDN and render every `.mermaid`
-/// block. `startOnLoad: false` + an explicit `run()` keeps control predictable.
+/// block. `startOnLoad: false` + an explicit `run()` keeps control predictable,
+/// and `securityLevel: 'strict'` is set explicitly rather than relying on the
+/// library default (which could change across versions). The CDN URL is pinned
+/// to an exact version for deterministic, reproducible builds — matching how
+/// `math.rs` pins KaTeX. Bump the version here to upgrade Mermaid.
 const MERMAID_SCRIPT: &str = r#"<script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-mermaid.initialize({ startOnLoad: false });
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs';
+mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
 await mermaid.run({ querySelector: '.mermaid' });
 </script>"#;
 
@@ -92,5 +96,24 @@ A--&gt;B</div>
     fn test_uses_module_script() {
         let result = inject_mermaid(HTML_WITH_DIAGRAM);
         assert!(result.contains(r#"<script type="module">"#));
+    }
+
+    #[test]
+    fn test_loader_is_version_pinned_and_strict() {
+        // Deterministic builds: the CDN URL must pin an exact version, not a
+        // floating major range. Security: strict mode is set explicitly rather
+        // than relying on the library default.
+        assert!(
+            MERMAID_SCRIPT.contains("mermaid@11.16.0"),
+            "Mermaid CDN URL should pin an exact version"
+        );
+        assert!(
+            !MERMAID_SCRIPT.contains("mermaid@11/"),
+            "Mermaid CDN URL should not use a floating major range"
+        );
+        assert!(
+            MERMAID_SCRIPT.contains("securityLevel: 'strict'"),
+            "Mermaid should be initialized with explicit strict security"
+        );
     }
 }
