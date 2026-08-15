@@ -46,7 +46,7 @@ syntect = "5"
 katex-rs = { version = "0.2", optional = true }
 
 # Templating
-tera = "1.20"
+tera = "2.1"
 
 # Web server
 tiny_http = "0.12"
@@ -71,7 +71,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # RSS / Sitemap generation
-quick-xml = { version = "0.40", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 
 # Slug generation
 slug = "0.1"
@@ -90,7 +90,7 @@ urlencoding = "2"
 tempfile = "3"
 
 # SHA-256 (in-process checksum verification for self-update)
-sha2 = "0.10"
+sha2 = "0.11"
 
 [features]
 default = ["math"]
