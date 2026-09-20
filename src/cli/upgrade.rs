@@ -242,6 +242,11 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         );
     }
 
+    // Historical upgrade steps can append to the project instructions before
+    // the v0.19 migration runs. Reject symlinks and other non-file entries up
+    // front so no action can write through a path outside the project.
+    crate::cli::agent_instructions::validate_paths(&root)?;
+
     let project_ver = meta::project_version(&root);
     let binary_ver = meta::binary_version();
 

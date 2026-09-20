@@ -4319,6 +4319,42 @@ fn test_upgrade_rejects_agents_md_directory_without_stamping_version() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn test_upgrade_rejects_symlinked_instructions_before_applying_actions() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Symlinked Agent Instructions", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let external_instructions = tmp.path().join("external-instructions.md");
+    let original_instructions = "# External instructions\n";
+    fs::write(&external_instructions, original_instructions).unwrap();
+
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join("CLAUDE.md")).unwrap();
+    symlink(&external_instructions, site_dir.join("CLAUDE.md")).unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.7.0");
+    fs::write(&meta_path, &outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+
+    assert_eq!(
+        fs::read_to_string(&external_instructions).unwrap(),
+        original_instructions,
+        "upgrade must reject a symlink before older actions can write through it"
+    );
+    assert!(!site_dir.join("AGENTS.md").exists());
+    assert_eq!(fs::read_to_string(meta_path).unwrap(), outdated);
+}
+
 #[test]
 fn test_init_creates_landing_page_skill() {
     let tmp = TempDir::new().unwrap();

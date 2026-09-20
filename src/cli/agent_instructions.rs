@@ -16,6 +16,22 @@ fn entry_exists(path: &Path) -> bool {
     }
 }
 
+pub(crate) fn validate_paths(root: &Path) -> anyhow::Result<()> {
+    for path in [root.join("AGENTS.md"), root.join("CLAUDE.md")] {
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if !metadata.file_type().is_file() => {
+                anyhow::bail!("{} is not a regular file", path.display());
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to inspect {}", path.display()));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn canonical_path(root: &Path) -> PathBuf {
     let agents_path = root.join("AGENTS.md");
     if entry_exists(&agents_path) {
@@ -86,7 +102,7 @@ pub(crate) fn needs_migration(root: &Path) -> bool {
     let agents_exists = entry_exists(&agents_path);
     let claude_exists = entry_exists(&claude_path);
 
-    if (agents_exists && !agents_path.is_file()) || (claude_exists && !claude_path.is_file()) {
+    if validate_paths(root).is_err() {
         return true;
     }
 
@@ -108,11 +124,7 @@ pub(crate) fn migrate(root: &Path) -> anyhow::Result<bool> {
     let agents_exists = entry_exists(&agents_path);
     let claude_exists = entry_exists(&claude_path);
 
-    for (path, exists) in [(&agents_path, agents_exists), (&claude_path, claude_exists)] {
-        if exists && !path.is_file() {
-            anyhow::bail!("{} is not a regular file", path.display());
-        }
-    }
+    validate_paths(root)?;
 
     match (agents_exists, claude_exists) {
         (false, false) => Ok(false),
