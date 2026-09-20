@@ -61,7 +61,7 @@ Secondary CTA: "View on GitHub" → https://github.com/...
 
 Key messages (these become feature cards or sections):
 1. "Sub-second builds" — Single binary, no dependencies, no node_modules
-2. "Your agent already knows this" — .claude/CLAUDE.md is generated on init
+2. "Your agent already knows this" — AGENTS.md is generated on init
 3. "Found by people and models" — SEO + llms.txt + markdown output
 
 Closing CTA: "Your coding agent can handle your website."

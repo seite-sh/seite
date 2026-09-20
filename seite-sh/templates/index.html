@@ -974,7 +974,7 @@
                     <div class="terminal-body">
                         <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite init myblog <span class="t-flag">--title "My Blog"</span></span></div>
                         <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
-                        <div class="t-line"><span class="t-ok">✓ Scaffolded .claude/CLAUDE.md</span></div>
+                        <div class="t-line"><span class="t-ok">✓ Scaffolded AGENTS.md</span></div>
                         <div class="t-gap"></div>
                         <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite agent <span class="t-flag">"write a v1.2 release post"</span></span></div>
                         <div class="t-line"><span class="t-dim">spawning Claude Code…</span></div>
@@ -1018,7 +1018,7 @@
         <div class="section-header reveal">
             <p class="section-eyebrow">// built for ai</p>
             <h2 class="section-title">Your agent reads the schema.<br>Then writes the content.</h2>
-            <p class="section-sub">Every <code style="font-family:var(--mono);font-size:0.85em;border:1px solid var(--green-border);padding:0.1em 0.35em;border-radius:4px;color:var(--green);">seite init</code> scaffolds a CLAUDE.md so your coding agent knows the project inside out.</p>
+            <p class="section-sub">Every <code style="font-family:var(--mono);font-size:0.85em;border:1px solid var(--green-border);padding:0.1em 0.35em;border-radius:4px;color:var(--green);">seite init</code> scaffolds an AGENTS.md so your coding agent knows the project inside out.</p>
         </div>
 
         <div class="agent-grid">
@@ -1027,7 +1027,7 @@
                     <span class="flow-num">1</span>
                     <div class="flow-body">
                         <h4>Agent reads context</h4>
-                        <p>CLAUDE.md contains your site config, collection schemas, frontmatter format, and template variables. The MCP server exposes content inventory and docs.</p>
+                        <p>AGENTS.md contains your site config, collection schemas, frontmatter format, and template variables. The MCP server exposes content inventory and docs.</p>
                     </div>
                 </div>
                 <div class="flow-step">
@@ -1067,7 +1067,7 @@
                     </div>
                     <div class="agent-file" style="opacity:0.6">
                         <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        .claude/CLAUDE.md
+                        AGENTS.md
                         <span class="agent-file-auto">auto-scaffolded</span>
                     </div>
                 </div>
@@ -1242,7 +1242,7 @@
                     <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_2_title | default(value="Scaffold your site") }}</strong>
-                        <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
+                        <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>AGENTS.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">

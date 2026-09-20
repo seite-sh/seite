@@ -154,9 +154,17 @@ Other static site generators require you to set up AI workflows yourself: connec
 
 seite's agent understands your project natively. It knows the [configuration](/docs/configuration) format, the collection types, your existing content, and the template system. The system prompt is generated from your actual `seite.toml` and content directory, not a generic "you are a helpful assistant" preamble. This means the agent produces files that build on the first try, use your existing tag taxonomy, and follow your site's established patterns.
 
-## Claude Code Scaffolding
+## Agent instruction scaffolding
 
-When you run `seite init`, it creates `.claude/settings.json` with pre-configured permissions and a `CLAUDE.md` with site-specific instructions for the agent. This means Claude Code immediately understands your site's structure and conventions.
+When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions and a one-line `CLAUDE.md` that imports it. This keeps one canonical instruction file for Claude Code, OpenCode, Codex, and other compatible agents. Seite also creates `.claude/settings.json` with pre-configured Claude Code permissions and MCP access.
+
+Existing sites can migrate without losing their custom instructions:
+
+```bash
+seite upgrade
+```
+
+The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import.
 
 ## Next Steps
 

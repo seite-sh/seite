@@ -94,7 +94,7 @@ Tests that require a real browser or deployed environment and can't be covered b
 - [ ] Run `seite init site --collections posts,pages,trust --trust-company "Acme" --trust-frameworks soc2,iso27001 --trust-sections overview,certifications,subprocessors,faq,disclosure` — no prompts
 - [ ] Verify same directory structure as interactive mode
 - [ ] Verify `seite.toml` has `[trust]` section with company and frameworks
-- [ ] Verify CLAUDE.md has `## Trust Center` section with correct company name
+- [ ] Verify AGENTS.md has `## Trust Center` section with correct company name
 
 ### Build and render
 

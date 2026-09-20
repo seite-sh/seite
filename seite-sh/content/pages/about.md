@@ -23,7 +23,7 @@ seite is what came out of that experiment. It was built with Claude Code, iterat
 
 **Replace the stack, not add to it.** Your landing page, docs, blog, changelog, and roadmap shouldn't each live in a separate tool. They're all structured content that renders as HTML. seite handles all of them with collection presets: one repo, one CLI, one deploy command.
 
-**Give your coding agent the right foundation.** Every `seite init` generates a `.claude/CLAUDE.md` context file so Claude Code (and other agents) can orient themselves immediately. The agent reads your schema, your templates, and your existing content before it writes anything. The output is reviewable and maintainable because it follows your conventions, not ones it invented.
+**Give your coding agent the right foundation.** Every `seite init` generates an `AGENTS.md` context file plus a `CLAUDE.md` compatibility import, so Claude Code and other agents can orient themselves immediately. The agent reads your schema, your templates, and your existing content before it writes anything. The output is reviewable and maintainable because it follows your conventions, not ones it invented.
 
 **Make every page discoverable by people and models.** Every build generates clean semantic HTML for browsers, `llms.txt` and `llms-full.txt` for language models, and structured data for search engines. Traditional SEO and GEO handled in one pipeline, automatically.
 

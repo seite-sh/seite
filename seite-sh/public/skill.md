@@ -79,13 +79,14 @@ After `seite init`, your project includes:
 - `content/` — markdown content directories per collection
 - `templates/` — Tera (Jinja2-compatible) HTML templates
 - `static/` — static assets (copied as-is to output)
-- `CLAUDE.md` — full project documentation for AI agents
+- `AGENTS.md` — canonical project documentation for AI agents
+- `CLAUDE.md` — compatibility import of `AGENTS.md` for Claude Code
 - `.claude/settings.json` — MCP server config + tool permissions (auto-loaded by Claude Code)
 - `.claude/rules/` — path-scoped context files (SEO, templates, i18n, etc.)
 - `.claude/skills/` — bundled skills (theme-builder, brand-identity, landing-page)
 
-The `.claude/` directory means Claude Code is immediately productive — MCP connects automatically,
-rules load contextually, and CLAUDE.md provides full project docs.
+The `.claude/` directory means Claude Code is immediately productive — MCP connects automatically
+and rules load contextually. `AGENTS.md` provides the shared project guidance.
 
 ---
 

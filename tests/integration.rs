@@ -4104,6 +4104,222 @@ fn test_init_creates_mcp_server_config() {
 }
 
 #[test]
+fn test_init_uses_agents_md_as_canonical_instructions() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Agent Instructions", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        agents_md.contains("## Commands"),
+        "AGENTS.md should contain the generated project instructions"
+    );
+    assert!(
+        agents_md.contains("## MCP Server"),
+        "AGENTS.md should contain the generated MCP guidance"
+    );
+
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert_eq!(
+        claude_md, "@AGENTS.md\n",
+        "CLAUDE.md should only import the canonical AGENTS.md"
+    );
+}
+
+#[test]
+fn test_upgrade_migrates_claude_md_to_agents_md() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Instruction Migration", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let legacy_instructions = "# Legacy site\n\nKeep this custom instruction.\n";
+
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::write(site_dir.join("CLAUDE.md"), legacy_instructions).unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.17.1");
+    fs::write(&meta_path, outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(site_dir.join("AGENTS.md")).unwrap(),
+        legacy_instructions,
+        "upgrade should preserve all existing project instructions"
+    );
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n",
+        "upgrade should replace the migrated file with an import shim"
+    );
+}
+
+#[test]
+fn test_upgrade_preserves_claude_specific_instructions_when_agents_md_exists() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Instruction Compatibility", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let canonical = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    fs::write(
+        site_dir.join("CLAUDE.md"),
+        "# Claude-specific\n\nKeep this Claude-only instruction.\n",
+    )
+    .unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.17.1");
+    fs::write(&meta_path, outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(site_dir.join("AGENTS.md")).unwrap(),
+        canonical,
+        "upgrade should not overwrite an existing canonical file"
+    );
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert!(claude_md.starts_with("@AGENTS.md\n"));
+    assert!(claude_md.contains("Keep this Claude-only instruction."));
+    assert_eq!(claude_md.matches("@AGENTS.md").count(), 1);
+}
+
+#[test]
+fn test_upgrade_creates_claude_shim_when_only_agents_md_exists() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Instruction Shim", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("CLAUDE.md")).unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.17.1");
+    fs::write(&meta_path, outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+}
+
+#[test]
+fn test_upgrade_normalizes_duplicate_agents_imports() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Instruction Normalization", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join("CLAUDE.md"),
+        "@AGENTS.md\n\nKeep this Claude-only instruction.\n@AGENTS.md\n",
+    )
+    .unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.17.1");
+    fs::write(&meta_path, outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert_eq!(claude_md.matches("@AGENTS.md").count(), 1);
+    assert!(claude_md.contains("Keep this Claude-only instruction."));
+}
+
+#[test]
+fn test_upgrade_migrates_instructions_created_by_an_older_step() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Late Instruction Migration", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join("CLAUDE.md")).unwrap();
+    fs::write(
+        site_dir.join("templates/base.html"),
+        "<!doctype html><html><head></head><body></body></html>",
+    )
+    .unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.7.0");
+    fs::write(&meta_path, outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("Custom Template: Atom Autodiscovery"));
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+}
+
+#[test]
+fn test_upgrade_does_not_stamp_version_when_instruction_migration_fails() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Failed Instruction Migration", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join("CLAUDE.md")).unwrap();
+    fs::create_dir(site_dir.join("CLAUDE.md")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+
+    assert!(
+        !site_dir.join(".seite/config.json").exists(),
+        "the version marker must only be written after every upgrade succeeds"
+    );
+}
+
+#[test]
+fn test_upgrade_rejects_agents_md_directory_without_stamping_version() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Invalid Agent Instructions", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::create_dir(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+
+    assert!(
+        !site_dir.join(".seite/config.json").exists(),
+        "an invalid AGENTS.md path must not be stamped as migrated"
+    );
+}
+
+#[test]
 fn test_init_creates_landing_page_skill() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Skill Test", "posts,pages");
@@ -4379,23 +4595,24 @@ fn test_upgrade_installs_private_collections_rule() {
 }
 
 #[test]
-fn test_upgrade_appends_mcp_section_to_claude_md() {
+fn test_upgrade_adds_mcp_section_before_migrating_to_agents_md() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "CLAUDE.md Upgrade", "posts,pages");
     let site_dir = tmp.path().join("site");
 
     // init now includes MCP section, so verify it's there
-    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(
-        claude_md.contains("## MCP Server"),
-        "init-generated CLAUDE.md should include MCP section"
+        agents_md.contains("## MCP Server"),
+        "init-generated AGENTS.md should include MCP section"
     );
     assert!(
-        claude_md.contains("## Commands"),
-        "CLAUDE.md should have Commands section from init"
+        agents_md.contains("## Commands"),
+        "AGENTS.md should have Commands section from init"
     );
 
-    // Simulate an older CLAUDE.md that doesn't have the MCP section
+    // Simulate an older project whose CLAUDE.md doesn't have the MCP section.
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
     let older_md = "# My Site\n\n## Commands\n\n```bash\nseite build\n```\n";
     fs::write(site_dir.join("CLAUDE.md"), older_md).unwrap();
 
@@ -4408,15 +4625,19 @@ fn test_upgrade_appends_mcp_section_to_claude_md() {
         .assert()
         .success();
 
-    let updated = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    let updated = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(
         updated.contains("## MCP Server"),
-        "upgrade should append MCP Server section to CLAUDE.md"
+        "upgrade should retain MCP guidance added before migration"
     );
     // Original content should still be there
     assert!(
         updated.contains("## Commands"),
-        "upgrade should preserve existing CLAUDE.md content"
+        "upgrade should preserve existing project instructions"
+    );
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
     );
 }
 
@@ -6251,10 +6472,10 @@ fn test_init_with_trust_collection() {
     assert!(config.contains("soc2"));
     assert!(config.contains("iso27001"));
 
-    // Verify CLAUDE.md has brief trust section
-    let claude_md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
-    assert!(claude_md.contains("## Trust Center"));
-    assert!(claude_md.contains("Acme Corp"));
+    // Verify AGENTS.md has brief trust section
+    let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("## Trust Center"));
+    assert!(agents_md.contains("Acme Corp"));
 
     // Detailed trust content now lives in .claude/rules/trust-center.md
     let trust_rules = fs::read_to_string(root.join(".claude/rules/trust-center.md")).unwrap();
@@ -6399,8 +6620,8 @@ fn test_init_without_trust_has_no_trust_config() {
     let config = fs::read_to_string(tmp.path().join("site/seite.toml")).unwrap();
     assert!(!config.contains("[trust]"));
 
-    let claude_md = fs::read_to_string(tmp.path().join("site/CLAUDE.md")).unwrap();
-    assert!(!claude_md.contains("## Trust Center"));
+    let agents_md = fs::read_to_string(tmp.path().join("site/AGENTS.md")).unwrap();
+    assert!(!agents_md.contains("## Trust Center"));
 }
 
 // --- Context Rules (.claude/rules/) ---
@@ -6437,35 +6658,35 @@ fn test_init_creates_rules_files() {
 }
 
 #[test]
-fn test_init_lean_claude_md() {
+fn test_init_lean_agents_md() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Lean Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
 
-    // Detail content should NOT be in CLAUDE.md (now in rules)
+    // Detail content should NOT be in AGENTS.md (now in rules)
     assert!(
-        !claude_md.contains("### Every page `<head>` MUST include"),
-        "SEO requirements detail should be in rules, not CLAUDE.md"
+        !agents_md.contains("### Every page `<head>` MUST include"),
+        "SEO requirements detail should be in rules, not AGENTS.md"
     );
     assert!(
-        !claude_md.contains("### Template Variables"),
-        "Template variables table should be in rules, not CLAUDE.md"
+        !agents_md.contains("### Template Variables"),
+        "Template variables table should be in rules, not AGENTS.md"
     );
 
     // Essential sections should still be present
-    assert!(claude_md.contains("## Commands"));
-    assert!(claude_md.contains("## Collections"));
-    assert!(claude_md.contains("## Content Format"));
-    assert!(claude_md.contains("## Key Conventions"));
-    assert!(claude_md.contains(".claude/rules/"));
+    assert!(agents_md.contains("## Commands"));
+    assert!(agents_md.contains("## Collections"));
+    assert!(agents_md.contains("## Content Format"));
+    assert!(agents_md.contains("## Key Conventions"));
+    assert!(agents_md.contains(".claude/rules/"));
 
     // Line count should be well under 250
-    let line_count = claude_md.lines().count();
+    let line_count = agents_md.lines().count();
     assert!(
         line_count < 250,
-        "CLAUDE.md should be under 250 lines, got {line_count}"
+        "AGENTS.md should be under 250 lines, got {line_count}"
     );
 }
 
@@ -6514,15 +6735,15 @@ fn test_init_creates_theme_builder_skill_without_pages() {
 }
 
 #[test]
-fn test_init_claude_md_has_theme_builder_pointer() {
+fn test_init_agents_md_has_theme_builder_pointer() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Pointer Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(
-        claude_md.contains("/theme-builder"),
-        "CLAUDE.md should mention /theme-builder skill"
+        agents_md.contains("/theme-builder"),
+        "AGENTS.md should mention /theme-builder skill"
     );
 }
 

@@ -327,7 +327,8 @@ seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 
 Upgrade is **additive and non-destructive**:
 - Merges into `.claude/settings.json`: adds new entries, never removes yours
-- Appends to `CLAUDE.md`: adds new sections, never modifies existing content
+- Migrates project guidance to `AGENTS.md` while preserving existing instructions
+- Keeps `CLAUDE.md` as a compatibility import of `AGENTS.md`
 - Creates `.seite/config.json` if missing: tracks the project's config version
 - Each upgrade step is version-gated, so running it on a current project is a fast no-op
 

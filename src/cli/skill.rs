@@ -411,7 +411,7 @@ Instead of WordPress REST API, use:
 ### Site context
 - Read `seite.toml` for site configuration (title, collections, base_url, language)
 - Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
-- Read `CLAUDE.md` for full site documentation
+- Read `AGENTS.md` for full site documentation
 "#
 }
 
@@ -595,26 +595,40 @@ fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()>
 }
 
 // ---------------------------------------------------------------------------
-// CLAUDE.md integration
+// AGENTS.md integration
 // ---------------------------------------------------------------------------
 
-const CLAUDE_MD_MARKER_START: &str = "<!-- seite-seomachine-start -->";
-const CLAUDE_MD_MARKER_END: &str = "<!-- seite-seomachine-end -->";
+const AGENTS_MD_MARKER_START: &str = "<!-- seite-seomachine-start -->";
+const AGENTS_MD_MARKER_END: &str = "<!-- seite-seomachine-end -->";
 
-fn append_claude_md_section(root: &Path) -> anyhow::Result<()> {
+fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
+    crate::cli::agent_instructions::migrate(root)?;
+
+    // Pack versions installed before AGENTS.md may have left a managed copy in
+    // Claude-specific instructions. Remove it so Claude does not load both the
+    // stale legacy section and the freshly generated canonical section.
     let claude_md_path = root.join("CLAUDE.md");
-    let existing = if claude_md_path.exists() {
-        fs::read_to_string(&claude_md_path)?
+    if claude_md_path.is_file() {
+        let claude_content = fs::read_to_string(&claude_md_path)?;
+        let cleaned = remove_agent_instructions_section(&claude_content);
+        if cleaned != claude_content {
+            crate::cli::agent_instructions::write_atomic(&claude_md_path, &cleaned)?;
+        }
+    }
+
+    let agents_md_path = root.join("AGENTS.md");
+    let existing = if agents_md_path.exists() {
+        fs::read_to_string(&agents_md_path)?
     } else {
         String::new()
     };
 
     // Remove any existing SEOMachine section
-    let cleaned = remove_claude_md_section(&existing);
+    let cleaned = remove_agent_instructions_section(&existing);
 
     let section = format!(
         r#"
-{CLAUDE_MD_MARKER_START}
+{AGENTS_MD_MARKER_START}
 ### SEOMachine Integration
 
 This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) installed for SEO content research, writing, and optimization.
@@ -635,7 +649,7 @@ This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) inst
 **Publishing:** Use `/publish-draft <file>` to remove draft status, build, and deploy. This replaces SEOMachine's WordPress integration with seite's native deploy.
 
 {seite_preamble}
-{CLAUDE_MD_MARKER_END}
+{AGENTS_MD_MARKER_END}
 "#,
         seite_preamble = seite_context_preamble()
     );
@@ -646,16 +660,17 @@ This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) inst
     }
     result.push_str(&section);
 
-    fs::write(&claude_md_path, result)?;
+    crate::cli::agent_instructions::write_atomic(&agents_md_path, &result)?;
+    crate::cli::agent_instructions::migrate(root)?;
     Ok(())
 }
 
-fn remove_claude_md_section(content: &str) -> String {
+fn remove_agent_instructions_section(content: &str) -> String {
     if let (Some(start), Some(end)) = (
-        content.find(CLAUDE_MD_MARKER_START),
-        content.find(CLAUDE_MD_MARKER_END),
+        content.find(AGENTS_MD_MARKER_START),
+        content.find(AGENTS_MD_MARKER_END),
     ) {
-        let end_pos = end + CLAUDE_MD_MARKER_END.len();
+        let end_pos = end + AGENTS_MD_MARKER_END.len();
         // Also strip trailing newline after marker
         let end_pos = if content[end_pos..].starts_with('\n') {
             end_pos + 1
@@ -953,8 +968,8 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
     let links_map = generate_internal_links_map(root);
     fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
 
-    // Append to CLAUDE.md
-    append_claude_md_section(root)?;
+    // Append to the canonical cross-agent instructions.
+    append_agent_instructions_section(root)?;
 
     // Save manifest
     let mut manifest = load_manifest(root);
@@ -1140,12 +1155,17 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
             }
         }
 
-        // Remove CLAUDE.md section
-        let claude_md_path = root.join("CLAUDE.md");
-        if claude_md_path.exists() {
-            let content = fs::read_to_string(&claude_md_path)?;
-            let cleaned = remove_claude_md_section(&content);
-            fs::write(&claude_md_path, cleaned)?;
+        // Remove generated sections from canonical and legacy locations so
+        // packs installed before the AGENTS.md migration are cleaned up too.
+        for filename in ["AGENTS.md", "CLAUDE.md"] {
+            let path = root.join(filename);
+            if path.exists() && path.is_file() {
+                let content = fs::read_to_string(&path)?;
+                let cleaned = remove_agent_instructions_section(&content);
+                if cleaned != content {
+                    crate::cli::agent_instructions::write_atomic(&path, &cleaned)?;
+                }
+            }
         }
 
         save_manifest(root, &manifest)?;
@@ -1342,19 +1362,19 @@ mod tests {
     }
 
     #[test]
-    fn test_claude_md_section_add_and_remove() {
+    fn test_agents_md_section_add_and_remove() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\n").unwrap();
-        append_claude_md_section(tmp.path()).unwrap();
+        fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
+        append_agent_instructions_section(tmp.path()).unwrap();
 
-        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
-        assert!(content.contains(CLAUDE_MD_MARKER_START));
-        assert!(content.contains(CLAUDE_MD_MARKER_END));
+        assert!(content.contains(AGENTS_MD_MARKER_START));
+        assert!(content.contains(AGENTS_MD_MARKER_END));
         assert!(content.contains("# My Project")); // Original content preserved
 
         // Remove
-        let cleaned = remove_claude_md_section(&content);
+        let cleaned = remove_agent_instructions_section(&content);
         assert!(!cleaned.contains("SEOMachine Integration"));
         assert!(cleaned.contains("# My Project"));
     }
@@ -1473,35 +1493,82 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_claude_md_section_no_markers() {
+    fn test_remove_agent_instructions_section_no_markers() {
         let content = "# My Project\n\nSome content here.\n";
-        let result = remove_claude_md_section(content);
+        let result = remove_agent_instructions_section(content);
         assert_eq!(result, content);
     }
 
     #[test]
-    fn test_append_claude_md_no_existing_file() {
+    fn test_append_agent_instructions_no_existing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
-        // No CLAUDE.md exists
-        append_claude_md_section(tmp.path()).unwrap();
-        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        // No AGENTS.md exists
+        append_agent_instructions_section(tmp.path()).unwrap();
+        let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
-        assert!(content.contains(CLAUDE_MD_MARKER_START));
+        assert!(content.contains(AGENTS_MD_MARKER_START));
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap(),
+            "@AGENTS.md\n"
+        );
     }
 
     #[test]
-    fn test_append_claude_md_idempotent() {
+    fn test_append_agent_instructions_migrates_legacy_claude_file() {
         let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(tmp.path().join("CLAUDE.md"), "# My Project\n").unwrap();
+        fs::write(
+            tmp.path().join("CLAUDE.md"),
+            "# Legacy project\n\nKeep this instruction.\n",
+        )
+        .unwrap();
+
+        append_agent_instructions_section(tmp.path()).unwrap();
+
+        let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        assert!(agents.contains("# Legacy project"));
+        assert!(agents.contains("Keep this instruction."));
+        assert!(agents.contains("SEOMachine Integration"));
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap(),
+            "@AGENTS.md\n"
+        );
+    }
+
+    #[test]
+    fn test_append_agent_instructions_removes_legacy_claude_managed_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("AGENTS.md"), "# Canonical project\n").unwrap();
+        fs::write(
+            tmp.path().join("CLAUDE.md"),
+            format!(
+                "@AGENTS.md\n\n# Claude only\n{AGENTS_MD_MARKER_START}\nOld pack content\n{AGENTS_MD_MARKER_END}\n"
+            ),
+        )
+        .unwrap();
+
+        append_agent_instructions_section(tmp.path()).unwrap();
+
+        let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        assert_eq!(agents.matches(AGENTS_MD_MARKER_START).count(), 1);
+        let claude = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        assert!(claude.contains("# Claude only"));
+        assert!(!claude.contains("Old pack content"));
+        assert!(!claude.contains(AGENTS_MD_MARKER_START));
+    }
+
+    #[test]
+    fn test_append_agent_instructions_idempotent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
 
         // Call twice
-        append_claude_md_section(tmp.path()).unwrap();
-        append_claude_md_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path()).unwrap();
 
-        let content = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         // Should have exactly one section
         assert_eq!(
-            content.matches(CLAUDE_MD_MARKER_START).count(),
+            content.matches(AGENTS_MD_MARKER_START).count(),
             1,
             "should not duplicate section"
         );
@@ -1629,6 +1696,14 @@ mod tests {
     fn test_remove_pack_cleans_files_and_manifest() {
         let tmp = tempfile::TempDir::new().unwrap();
 
+        fs::write(
+            tmp.path().join("AGENTS.md"),
+            format!(
+                "# Project\n\n{AGENTS_MD_MARKER_START}\nSEOMachine Integration\n{AGENTS_MD_MARKER_END}\n"
+            ),
+        )
+        .unwrap();
+
         // Create a fake installed pack with a few files
         let agent_dir = tmp.path().join(".claude").join("agents");
         fs::create_dir_all(&agent_dir).unwrap();
@@ -1663,6 +1738,10 @@ mod tests {
         // Manifest should no longer have the pack
         let updated = load_manifest(tmp.path());
         assert!(!updated.packs.contains_key("test-pack"));
+
+        let instructions = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
+        assert!(instructions.contains("# Project"));
+        assert!(!instructions.contains("SEOMachine Integration"));
     }
 
     #[test]

@@ -8,7 +8,7 @@
 - **Conversion Angle**: "Install in 10 seconds. Build your site in under 1 second."
 
 ### 2. **AI-Native Architecture**
-- **Feature**: Every project auto-generates `.claude/CLAUDE.md` and MCP server config. `seite agent` spawns Claude Code with full site context.
+- **Feature**: Every project auto-generates `AGENTS.md`, a `CLAUDE.md` compatibility import, and MCP server config. `seite agent` spawns Claude Code with full site context.
 - **Benefit**: Your AI coding agent understands your site schema, content, and commands from minute one.
 - **Conversion Angle**: "Your coding agent can handle your website. Give it the right structure and it will."
 
