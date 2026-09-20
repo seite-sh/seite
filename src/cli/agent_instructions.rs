@@ -9,35 +9,46 @@ use anyhow::Context;
 pub(crate) const CLAUDE_IMPORT: &str = "@AGENTS.md";
 pub(crate) const CLAUDE_SHIM: &str = "@AGENTS.md\n";
 
+fn entry_exists(path: &Path) -> bool {
+    match fs::symlink_metadata(path) {
+        Ok(_) => true,
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
 pub(crate) fn canonical_path(root: &Path) -> PathBuf {
     let agents_path = root.join("AGENTS.md");
-    if agents_path.exists() {
+    if entry_exists(&agents_path) {
         agents_path
     } else {
         root.join("CLAUDE.md")
     }
 }
 
-pub(crate) fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
-    let parent = path
-        .parent()
-        .context("instruction file path has no parent directory")?;
-    fs::create_dir_all(parent)?;
-
-    let existing_permissions = match fs::metadata(path) {
+fn validate_write_target(path: &Path) -> anyhow::Result<Option<fs::Permissions>> {
+    match fs::symlink_metadata(path) {
         Ok(metadata) => {
-            if !metadata.is_file() {
+            if !metadata.file_type().is_file() {
                 anyhow::bail!("{} is not a regular file", path.display());
             }
             let permissions = metadata.permissions();
             if permissions.readonly() {
                 anyhow::bail!("{} is read-only", path.display());
             }
-            Some(permissions)
+            Ok(Some(permissions))
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
-    };
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn prepare_atomic_write(path: &Path, content: &str) -> anyhow::Result<tempfile::NamedTempFile> {
+    let parent = path
+        .parent()
+        .context("instruction file path has no parent directory")?;
+    fs::create_dir_all(parent)?;
+
+    let existing_permissions = validate_write_target(path)?;
 
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(content.as_bytes())?;
@@ -53,6 +64,10 @@ pub(crate) fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
                 .set_permissions(fs::Permissions::from_mode(0o644))?;
         }
     }
+    Ok(temporary)
+}
+
+fn persist_atomic_write(temporary: tempfile::NamedTempFile, path: &Path) -> anyhow::Result<()> {
     temporary
         .persist(path)
         .map_err(|error| error.error)
@@ -60,17 +75,22 @@ pub(crate) fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub(crate) fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
+    let temporary = prepare_atomic_write(path, content)?;
+    persist_atomic_write(temporary, path)
+}
+
 pub(crate) fn needs_migration(root: &Path) -> bool {
     let agents_path = root.join("AGENTS.md");
     let claude_path = root.join("CLAUDE.md");
+    let agents_exists = entry_exists(&agents_path);
+    let claude_exists = entry_exists(&claude_path);
 
-    if (agents_path.exists() && !agents_path.is_file())
-        || (claude_path.exists() && !claude_path.is_file())
-    {
+    if (agents_exists && !agents_path.is_file()) || (claude_exists && !claude_path.is_file()) {
         return true;
     }
 
-    match (agents_path.exists(), claude_path.exists()) {
+    match (agents_exists, claude_exists) {
         (false, false) => false,
         (false, true) | (true, false) => true,
         (true, true) => match fs::read_to_string(&claude_path) {
@@ -85,14 +105,16 @@ pub(crate) fn needs_migration(root: &Path) -> bool {
 pub(crate) fn migrate(root: &Path) -> anyhow::Result<bool> {
     let agents_path = root.join("AGENTS.md");
     let claude_path = root.join("CLAUDE.md");
+    let agents_exists = entry_exists(&agents_path);
+    let claude_exists = entry_exists(&claude_path);
 
-    for path in [&agents_path, &claude_path] {
-        if path.exists() && !path.is_file() {
+    for (path, exists) in [(&agents_path, agents_exists), (&claude_path, claude_exists)] {
+        if exists && !path.is_file() {
             anyhow::bail!("{} is not a regular file", path.display());
         }
     }
 
-    match (agents_path.exists(), claude_path.exists()) {
+    match (agents_exists, claude_exists) {
         (false, false) => Ok(false),
         (false, true) => {
             let legacy = fs::read_to_string(&claude_path)?;
@@ -109,8 +131,13 @@ pub(crate) fn migrate(root: &Path) -> anyhow::Result<bool> {
                 format!("{trimmed}\n")
             };
 
-            write_atomic(&agents_path, &canonical)?;
-            write_atomic(&claude_path, CLAUDE_SHIM)?;
+            // Prepare both replacements before changing either destination so
+            // validation or temporary-file failures cannot leave a partial
+            // migration behind.
+            let agents_write = prepare_atomic_write(&agents_path, &canonical)?;
+            let claude_write = prepare_atomic_write(&claude_path, CLAUDE_SHIM)?;
+            persist_atomic_write(agents_write, &agents_path)?;
+            persist_atomic_write(claude_write, &claude_path)?;
             Ok(true)
         }
         (true, false) => {
@@ -186,6 +213,42 @@ mod tests {
         assert_eq!(
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o640
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_does_not_create_agents_when_claude_cannot_be_replaced() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_path = tmp.path().join("CLAUDE.md");
+        fs::write(&claude_path, "# Legacy instructions\n").unwrap();
+        fs::set_permissions(&claude_path, fs::Permissions::from_mode(0o444)).unwrap();
+
+        assert!(migrate(tmp.path()).is_err());
+        assert!(!tmp.path().join("AGENTS.md").exists());
+        assert_eq!(
+            fs::read_to_string(&claude_path).unwrap(),
+            "# Legacy instructions\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_rejects_dangling_instruction_path_without_changing_claude() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_path = tmp.path().join("CLAUDE.md");
+        fs::write(&claude_path, "# Legacy instructions\n").unwrap();
+        symlink("missing-instructions.md", tmp.path().join("AGENTS.md")).unwrap();
+
+        assert!(migrate(tmp.path()).is_err());
+        assert!(tmp.path().join("AGENTS.md").is_symlink());
+        assert_eq!(
+            fs::read_to_string(&claude_path).unwrap(),
+            "# Legacy instructions\n"
         );
     }
 }
