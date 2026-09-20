@@ -68,7 +68,12 @@ language = "en"
 [[collections]]
 name = "posts"
 # subdomain = "blog"     # optional: deploy separately
-# private = true         # optional: build hub+pages but exclude from all discovery (Cloudflare Access)
+# private = true         # optional: exclude from discovery
+# access_group = "members" # optional: password group when [access] is enabled
+
+[access]                 # optional; Cloudflare Pages only
+mode = "password"
+session_hours = 168
 
 [build]
 output_dir = "dist"

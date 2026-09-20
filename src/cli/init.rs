@@ -164,6 +164,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         analytics: None,
         trust: None,
         contact: None,
+        access: None,
     };
 
     // If trust collection is included, run trust center scaffolding

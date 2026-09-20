@@ -33,6 +33,10 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
     // 2. base_url is not localhost
     checks.push(check_base_url(config));
 
+    if config.access.is_some() {
+        checks.push(check_password_access_target(target));
+    }
+
     // 3. Target-specific checks
     match target {
         "github-pages" => {
@@ -60,6 +64,24 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
     }
 
     checks
+}
+
+fn check_password_access_target(target: &str) -> PreflightCheck {
+    if target == "cloudflare" {
+        PreflightCheck {
+            name: "Password access".into(),
+            passed: true,
+            message: "supported by Cloudflare Pages".into(),
+        }
+    } else {
+        PreflightCheck {
+            name: "Password access".into(),
+            passed: false,
+            message: format!(
+                "password access is only supported on Cloudflare Pages; deploy target is '{target}'"
+            ),
+        }
+    }
 }
 
 fn check_output_dir(paths: &ResolvedPaths) -> PreflightCheck {
@@ -2508,6 +2530,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         };
 
         // Override takes precedence
@@ -2541,6 +2564,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2570,6 +2594,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         }
     }
 
@@ -2755,6 +2780,22 @@ mod tests {
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "github-pages");
         assert!(checks.len() >= 2); // output dir + base url + git checks
+    }
+
+    #[test]
+    fn test_password_access_preflight_accepts_cloudflare() {
+        let check = check_password_access_target("cloudflare");
+        assert!(check.passed);
+        assert!(check.message.contains("Cloudflare Pages"));
+    }
+
+    #[test]
+    fn test_password_access_preflight_rejects_other_targets() {
+        for target in ["github-pages", "netlify"] {
+            let check = check_password_access_target(target);
+            assert!(!check.passed, "{target} must not accept password access");
+            assert!(check.message.contains("only supported on Cloudflare Pages"));
+        }
     }
 
     fn test_paths(dir: &std::path::Path) -> ResolvedPaths {
@@ -5665,6 +5706,7 @@ target = "github-pages"
                     deploy_project: None,
                     paginate: None,
                     private: false,
+                    access_group: None,
                 },
                 crate::config::CollectionConfig {
                     name: "docs".into(),
@@ -5681,6 +5723,7 @@ target = "github-pages"
                     deploy_project: Some("my-docs".into()),
                     paginate: None,
                     private: false,
+                    access_group: None,
                 },
             ],
             build: Default::default(),
@@ -5696,6 +5739,7 @@ target = "github-pages"
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         }
     }
 

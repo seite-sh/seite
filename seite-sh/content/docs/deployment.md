@@ -201,15 +201,33 @@ GitHub Pages does not support per-collection subdomains. Use Cloudflare Pages or
 
 `seite deploy --setup` auto-creates the Cloudflare Pages **project** for each subdomain collection, and `seite deploy` pushes to it (the project gets a `*.pages.dev` URL automatically). Attaching the **custom domain** (e.g. `docs.example.com`) to that project is a **one-time manual step** — seite only auto-attaches the *main* site's domain, not a subdomain's. In the Cloudflare dashboard, open the subdomain's Pages project → **Custom domains** → add the host. If the zone is on the same Cloudflare account, Cloudflare creates the DNS record for you.
 
-### Gating a subdomain behind Cloudflare Access
+### Password-protecting paths and subdomains
 
-[`private = true`](/docs/configuration#private-collections) keeps a collection out of discovery and stamps `noindex`, but it does **not** authenticate requests — the pages are still publicly fetchable. To actually restrict access, put **Cloudflare Access** in front of the subdomain (seite does not configure this for you):
+Cloudflare Pages can enforce seite's built-in password access. Configure `[access]`, mark collections `private = true`, and assign `access_group` values when scopes need different passwords. A main-site collection protects its `url_prefix`; a private subdomain collection protects its entire Pages project.
 
-1. Cloudflare dashboard → **Zero Trust → Access → Applications → Add an application → Self-hosted**.
-2. Set the application domain to the subdomain (e.g. `trust.example.com`).
-3. Add an **access policy** (allow by email domain, Google/Okta SSO, one-time PIN, etc.).
+```toml
+[access]
+mode = "password"
+session_hours = 168
 
-The full gated pattern: `private = true` + `subdomain` + a Cloudflare Access application on the subdomain.
+[[collections]]
+name = "docs"
+private = true
+access_group = "staff"
+subdomain = "docs"
+deploy_project = "my-docs"
+```
+
+After the Pages projects exist, upload each password:
+
+```bash
+seite access groups
+seite access set-password staff
+seite build
+seite deploy
+```
+
+The generated `_worker.js` uses Cloudflare secret bindings and signed, secure session cookies. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
 
 ## Override Target
 

@@ -4332,8 +4332,8 @@ fn test_upgrade_adds_mcp_to_existing_project() {
 
 #[test]
 fn test_init_includes_private_collections_rule() {
-    // New sites get the .claude/rules guidance so the agent knows private +
-    // Cloudflare Access are possible (and that private != access control).
+    // New sites get guidance for discovery-only private collections and the
+    // optional Cloudflare Pages password layer.
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Gated", "posts,pages");
     let site_dir = tmp.path().join("site");
@@ -4343,13 +4343,14 @@ fn test_init_includes_private_collections_rule() {
         "rule should cover the flag"
     );
     assert!(
-        rule.contains("Cloudflare Access"),
-        "rule should point at Cloudflare Access for the actual lock"
+        rule.contains("[access]"),
+        "rule should cover password access"
     );
     assert!(
-        rule.contains("does not authenticate"),
-        "rule must be explicit that private does not enforce access control"
+        rule.contains("seite access set-password"),
+        "rule should explain secure password setup"
     );
+    assert!(rule.contains("Cloudflare Pages"));
 }
 
 #[test]
@@ -7470,6 +7471,120 @@ fn add_collection_line(site_dir: &std::path::Path, collection: &str, line: &str)
         "collection '{collection}' not found in seite.toml"
     );
     fs::write(&toml_path, replaced).unwrap();
+}
+
+/// Helper: enable Cloudflare password access for private collections.
+fn enable_password_access(site_dir: &std::path::Path) {
+    let toml_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&toml_path).unwrap();
+    config.push_str("\n[access]\nmode = \"password\"\nsession_hours = 24\n");
+    fs::write(&toml_path, config).unwrap();
+}
+
+#[test]
+fn test_password_access_builds_path_worker_and_private_assets() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Private Access", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+    add_collection_line(&site_dir, "posts", "access_group = \"members\"");
+    enable_password_access(&site_dir);
+
+    let private_assets = site_dir.join("static/private/members");
+    fs::create_dir_all(&private_assets).unwrap();
+    fs::write(private_assets.join("notice.txt"), "private asset").unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist");
+    let worker = fs::read_to_string(dist.join("_worker.js")).unwrap();
+    assert!(worker.contains(r#""prefix":"/posts""#));
+    assert!(worker.contains("SEITE_PASSWORD_MEMBERS"));
+    assert!(dist.join("private-assets/members/notice.txt").exists());
+    assert!(!dist.join("static/private/members/notice.txt").exists());
+}
+
+#[test]
+fn test_private_collection_without_access_keeps_existing_build_behavior() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Private Metadata", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(!site_dir.join("dist/_worker.js").exists());
+}
+
+#[test]
+fn test_access_groups_lists_separate_path_password_groups() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Access Groups", "posts,docs,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+    add_collection_line(&site_dir, "posts", "access_group = \"members\"");
+    add_collection_line(&site_dir, "docs", "private = true");
+    add_collection_line(&site_dir, "docs", "access_group = \"staff\"");
+    enable_password_access(&site_dir);
+
+    page_cmd()
+        .args(["access", "groups"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("members")
+                .and(predicate::str::contains("path /posts"))
+                .and(predicate::str::contains("staff"))
+                .and(predicate::str::contains("path /docs")),
+        );
+}
+
+#[test]
+fn test_password_access_protects_an_entire_subdomain_output() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = init_subdomain_site(&tmp, "site");
+    add_collection_line(&site_dir, "docs", "private = true");
+    add_collection_line(&site_dir, "docs", "access_group = \"docs-team\"");
+    enable_password_access(&site_dir);
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(!site_dir.join("dist/_worker.js").exists());
+    let worker = fs::read_to_string(site_dir.join("dist-subdomains/docs/_worker.js")).unwrap();
+    assert!(worker.contains(r#""prefix":"/""#));
+    assert!(worker.contains("SEITE_PASSWORD_DOCS_TEAM"));
+}
+
+#[test]
+fn test_password_access_rejects_custom_worker_conflict() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Worker Conflict", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+    enable_password_access(&site_dir);
+    fs::write(site_dir.join("public/_worker.js"), "export default {};").unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "password access cannot generate _worker.js",
+        ));
 }
 
 /// Helper: add plain-string subprocessor + FAQ data so the trust hub renders all

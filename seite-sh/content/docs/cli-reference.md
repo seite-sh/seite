@@ -12,7 +12,7 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has sixteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
+`seite` has seventeen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
@@ -25,6 +25,7 @@ Run `seite <command> --help` for quick inline help on any command.
 | `deploy`| Deploy to hosting platforms |
 | `collection` | Add or list collections |
 | `contact` | Set up contact forms |
+| `access` | Manage Cloudflare Pages password groups |
 | `skill` | Manage skill packs |
 | `workspace` | Manage multi-site workspaces |
 | `mcp` | MCP server for AI tool integration |
@@ -167,6 +168,28 @@ seite collection add changelog    # Add changelog collection
 seite collection add roadmap      # Add roadmap collection
 seite collection list             # Show all configured collections
 ```
+
+## seite access
+
+Inspect password-protected scopes and securely upload their secrets to Cloudflare Pages.
+
+```bash
+seite access <subcommand>
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `groups` | List password groups, protected paths/subdomains, and Pages projects |
+| `set-password [GROUP]` | Prompt for and upload a group's password; the group is inferred when only one exists |
+
+`set-password` sends the password to Wrangler over stdin. It also creates a random session-signing secret; neither secret is stored in `seite.toml`, printed, or passed as a process argument.
+
+```bash
+seite access groups
+seite access set-password staff
+```
+
+See [Private collections](/docs/configuration#private-collections) for path, whole-domain, subdomain, and protected-asset configuration.
 
 ## seite theme
 

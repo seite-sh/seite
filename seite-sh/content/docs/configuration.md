@@ -81,7 +81,8 @@ default_template = "post.html"
 has_date = true
 has_rss = true
 listed = true
-private = false             # optional: gate behind Cloudflare Access / HTTP auth
+private = false             # optional: exclude from discovery; password-protect with [access]
+access_group = "members"    # optional: password group (defaults to collection name)
 nested = false
 paginate = 10
 subdomain = "blog"          # optional: deploy to blog.example.com
@@ -93,14 +94,15 @@ When `subdomain` is set on a collection, it gets its own output directory (`dist
 
 ### Private collections
 
-Set `private = true` to keep a collection **out of every public discovery surface** while still building its hub and pages — the flag for content placed behind **Cloudflare Access** or HTTP auth (for example, a Trust Center served at a gated `/trust*` path).
+Set `private = true` to keep a collection **out of every public discovery surface** while still building its hub and pages. Add `[access]` to enforce password authentication on Cloudflare Pages.
 
 ```toml
 [[collections]]
-name = "trust"
+name = "docs"
 private = true
-url_prefix = "/trust"
-default_template = "trust-item.html"
+access_group = "staff"
+url_prefix = "/docs"
+default_template = "doc.html"
 ```
 
 When `private = true`:
@@ -112,9 +114,42 @@ When `private = true`:
 
 `private` is independent of `listed` (the hub renders even when the collection is hidden from the homepage) and composes with `subdomain`, `paginate`, and the rest. The build logs how many pages were excluded, e.g. `12 private pages excluded from discovery`. Absent or `false`, behavior is unchanged.
 
-{{% callout(type="warning") %}}
-`private` keeps content out of seite's own discovery files — it does **not** enforce access control. Pair it with Cloudflare Access, HTTP basic auth, or similar on the gated path to actually restrict who can load the pages.
-{{% end %}}
+Without `[access]`, `private` remains a discovery-only setting and does not restrict who can load a URL. This preserves existing configurations.
+
+## [access]
+
+Enable password protection for all `private = true` collections:
+
+```toml
+[access]
+mode = "password"
+session_hours = 168
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | required | Access mode; currently `"password"` |
+| `session_hours` | integer | `168` | How long an authenticated browser session remains valid (1–8760) |
+
+Password access currently supports **Cloudflare Pages only**. During `seite build`, seite generates an advanced-mode `_worker.js` that checks the password before serving protected files. Missing secrets fail closed with a service-unavailable response.
+
+The protected scope comes from the collection:
+
+- A non-empty `url_prefix` protects that path and its descendants.
+- An empty prefix protects the entire main domain.
+- A private collection with `subdomain` protects the entire subdomain output.
+- When scopes overlap, the most-specific path wins.
+
+Each private collection's password group defaults to its `name`. Set `access_group` to let multiple collections share one password or to give different paths different passwords. Group names may contain ASCII letters, numbers, `_`, and `-`.
+
+```bash
+seite access groups
+seite access set-password staff
+```
+
+The command prompts for the password, then uploads it and a separate signing secret to each relevant Cloudflare Pages project through Wrangler. Secrets are not stored in the config, source tree, logs, or command arguments.
+
+Ordinary `static/` files stay public. For protected downloads, place files under `static/private/<group>/`; they are emitted at `/private-assets/<group>/` and gated by that group.
 
 ## [build]
 

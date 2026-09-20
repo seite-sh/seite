@@ -42,6 +42,10 @@ pub fn avif_quality() -> u8 {
     70
 }
 
+pub fn access_session_hours() -> u32 {
+    168
+}
+
 pub fn bool_true() -> bool {
     true
 }
