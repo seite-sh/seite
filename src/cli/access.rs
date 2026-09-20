@@ -5,7 +5,10 @@ use std::process::Stdio;
 
 use clap::{Args, Subcommand};
 
-use crate::config::{password_secret_binding, session_secret_binding, DeployTarget, SiteConfig};
+use crate::config::{
+    normalize_access_prefix, password_secret_binding, session_secret_binding, DeployTarget,
+    SiteConfig,
+};
 use crate::output::human;
 use crate::platform::npm_cmd;
 
@@ -60,11 +63,7 @@ fn collect_access_groups(config: &SiteConfig) -> Vec<AccessGroup> {
                 collection.deploy_project.as_deref(),
             )
         } else {
-            let path = if collection.url_prefix.trim_matches('/').is_empty() {
-                "/"
-            } else {
-                collection.url_prefix.as_str()
-            };
+            let path = normalize_access_prefix(&collection.url_prefix);
             (format!("path {path}"), config.deploy.project.as_deref())
         };
 
@@ -167,8 +166,9 @@ fn set_password(
     let password_key = password_secret_binding(&group.name);
     let session_key = session_secret_binding(&group.name);
     for project in &group.projects {
-        // Rotate this group's signing secret first so a partially failed update
-        // fails closed without invalidating sessions for other groups.
+        // Rotate only this group's signing secret before its password. If the
+        // password upload fails, existing sessions are invalidated but the
+        // previous password remains active until the command is rerun.
         let session_secret = random_secret()?;
         put_pages_secret(project, &session_key, &session_secret)?;
         put_pages_secret(project, &password_key, &password)?;
@@ -270,6 +270,17 @@ mode = "password"
             .scopes
             .iter()
             .any(|scope| scope.contains("/members")));
+    }
+
+    #[test]
+    fn access_groups_normalize_path_scopes() {
+        let mut config = grouped_config();
+        config.collections.truncate(1);
+        config.collections[0].url_prefix = "members/".into();
+
+        let groups = collect_access_groups(&config);
+
+        assert_eq!(groups[0].scopes, vec!["path /members"]);
     }
 
     #[test]

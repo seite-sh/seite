@@ -45,7 +45,7 @@ The password is prompted securely and uploaded to the relevant Cloudflare Pages 
 
 ### Protected assets
 
-Ordinary files under `static/` stay public. Put sensitive files under `static/private/<group>/`; seite emits them at `/private-assets/<group>/` behind the same password group.
+Ordinary files under `static/` stay public. With `[access]` enabled, put sensitive files under `static/private/<group>/`; seite emits them at `/private-assets/<group>/` behind the same password group. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
 
 ### Private subdomains
 
