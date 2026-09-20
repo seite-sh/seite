@@ -136,6 +136,7 @@ Password access currently supports **Cloudflare Pages only**. During `seite buil
 The protected scope comes from the collection:
 
 - A non-empty `url_prefix` protects that path and its descendants.
+- Translated versions of that collection are protected under each configured language prefix.
 - An empty prefix protects the entire main domain.
 - A private collection with `subdomain` protects the entire subdomain output.
 - When scopes overlap, the most-specific path wins.
@@ -145,11 +146,14 @@ Each private collection's password group defaults to its `name`. Set `access_gro
 ```bash
 seite access groups
 seite access set-password staff
+seite deploy
 ```
 
-The command prompts for the password, then uploads it and a separate signing secret to each relevant Cloudflare Pages project through Wrangler. Secrets are not stored in the config, source tree, logs, or command arguments.
+The command prompts for the password, then stages it and separate signing secrets for both production and preview on each relevant Cloudflare Pages project through Wrangler. Secrets are not stored in the config, source tree, logs, or command arguments. Deploy from the Pages project's configured production branch to activate production; projects created by seite use `main`. Run `seite deploy --preview` to activate preview.
 
-Ordinary `static/` files stay public. With `[access]` enabled, place protected downloads under `static/private/<group>/`; they are emitted at `/private-assets/<group>/` and gated by that group. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
+Ordinary `static/` files stay public. With `[access]` enabled, place protected downloads under `static/private/<group>/`; they are emitted at `/private-assets/<group>/` and gated by that group. Image optimization is skipped for this protected tree so derivatives cannot escape into public `/static`, and the legacy `/static/private/` URL namespace is denied. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
+
+Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. Remove custom versions from `public/` before enabling it; a conflicting file fails the build rather than risking an authentication bypass.
 
 ## [build]
 

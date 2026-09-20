@@ -24,6 +24,8 @@ session_hours = 168
 
 With `[access]` present, every `private = true` collection is password protected by the generated Cloudflare Pages Worker. A collection's `url_prefix` protects that path. An empty prefix protects the whole main domain. A private collection with `subdomain` protects its entire subdomain output.
 
+Translated collection pages are protected under every configured language prefix. Password access owns the generated `_worker.js` and `_routes.json`; remove custom versions from `public/` before enabling it.
+
 Each private collection has a password group. It defaults to the collection name; set `access_group` explicitly to share a password or give paths separate passwords:
 
 ```toml
@@ -39,13 +41,14 @@ Inspect and set groups with:
 ```bash
 seite access groups
 seite access set-password staff
+seite deploy
 ```
 
-The password is prompted securely and uploaded to the relevant Cloudflare Pages project. It is never stored in the repository or passed as a command-line argument. Password access currently supports Cloudflare Pages only.
+The password is prompted securely and staged for production and preview on the relevant Cloudflare Pages project. It is never stored in the repository or passed as a command-line argument. Deploy from the Pages project's configured production branch to activate production; projects created by seite use `main`. Run `seite deploy --preview` to activate preview. Password access currently supports Cloudflare Pages only.
 
 ### Protected assets
 
-Ordinary files under `static/` stay public. With `[access]` enabled, put sensitive files under `static/private/<group>/`; seite emits them at `/private-assets/<group>/` behind the same password group. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
+Ordinary files under `static/` stay public. With `[access]` enabled, put sensitive files under `static/private/<group>/`; seite emits them at `/private-assets/<group>/` behind the same password group. Image optimization is skipped for protected files so generated variants cannot become public, and the legacy `/static/private/` URL namespace is denied. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
 
 ### Private subdomains
 
@@ -61,4 +64,4 @@ subdomain_base_url = "https://docs.example.com"
 deploy_project = "my-docs"
 ```
 
-`seite deploy --setup` creates the Pages project, while attaching a custom subdomain remains a one-time Cloudflare dashboard step. Run `seite access set-password staff` after the project exists.
+`seite deploy --setup` creates the Pages project, while attaching a custom subdomain remains a one-time Cloudflare dashboard step. After the project exists, run `seite access set-password staff`, then deploy to activate it.
