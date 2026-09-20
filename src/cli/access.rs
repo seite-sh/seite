@@ -5,7 +5,7 @@ use std::process::Stdio;
 
 use clap::{Args, Subcommand};
 
-use crate::config::{password_secret_binding, DeployTarget, SiteConfig};
+use crate::config::{password_secret_binding, session_secret_binding, DeployTarget, SiteConfig};
 use crate::output::human;
 use crate::platform::npm_cmd;
 
@@ -165,11 +165,12 @@ fn set_password(
     }
 
     let password_key = password_secret_binding(&group.name);
+    let session_key = session_secret_binding(&group.name);
     for project in &group.projects {
-        // Rotate the signing secret first so a partially failed update fails
-        // closed by invalidating existing sessions.
+        // Rotate this group's signing secret first so a partially failed update
+        // fails closed without invalidating sessions for other groups.
         let session_secret = random_secret()?;
-        put_pages_secret(project, "SEITE_SESSION_SECRET", &session_secret)?;
+        put_pages_secret(project, &session_key, &session_secret)?;
         put_pages_secret(project, &password_key, &password)?;
         human::success(&format!(
             "Updated password for '{}' on Cloudflare Pages project '{}'",

@@ -230,6 +230,17 @@ impl CollectionConfig {
     }
 }
 
+pub(crate) fn normalize_access_prefix(prefix: &str) -> String {
+    let trimmed = prefix.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".into()
+    } else if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
+    }
+}
+
 /// Find a collection by name, supporting singular→plural normalization.
 pub fn find_collection<'a>(
     name: &str,
@@ -332,7 +343,16 @@ pub struct AccessSection {
 
 /// Cloudflare secret binding used for one password group.
 pub fn password_secret_binding(group: &str) -> String {
-    let suffix: String = group
+    format!("SEITE_PASSWORD_{}", secret_binding_suffix(group))
+}
+
+/// Cloudflare secret binding used to sign sessions for one password group.
+pub fn session_secret_binding(group: &str) -> String {
+    format!("SEITE_SESSION_SECRET_{}", secret_binding_suffix(group))
+}
+
+fn secret_binding_suffix(group: &str) -> String {
+    group
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
@@ -341,8 +361,7 @@ pub fn password_secret_binding(group: &str) -> String {
                 '_'
             }
         })
-        .collect();
-    format!("SEITE_PASSWORD_{suffix}")
+        .collect()
 }
 
 impl Default for AccessSection {
@@ -578,6 +597,7 @@ impl SiteConfig {
         }
 
         let mut bindings = std::collections::HashMap::<String, String>::new();
+        let mut main_paths = std::collections::HashMap::<String, (String, String)>::new();
         for collection in &self.collections {
             let Some(group) = collection.resolved_access_group() else {
                 continue;
@@ -602,6 +622,21 @@ impl SiteConfig {
                             "access groups '{previous}' and '{group}' map to the same Cloudflare secret binding '{binding}'; rename one group"
                         ),
                     });
+                }
+            }
+            if collection.subdomain.is_none() {
+                let prefix = normalize_access_prefix(&collection.url_prefix);
+                if let Some((previous_group, previous_collection)) = main_paths.get(&prefix) {
+                    if previous_group != group {
+                        return Err(PageError::ConfigInvalid {
+                            message: format!(
+                                "collections '{previous_collection}' and '{}' assign the same password-protected path '{prefix}' to different access groups ('{previous_group}' and '{group}')",
+                                collection.name
+                            ),
+                        });
+                    }
+                } else {
+                    main_paths.insert(prefix, (group.to_string(), collection.name.clone()));
                 }
             }
         }
@@ -964,6 +999,41 @@ access_group = "staff"
 
         let err = config.validate_access().unwrap_err();
         assert!(err.to_string().contains("same Cloudflare secret binding"));
+    }
+
+    #[test]
+    fn test_access_validation_rejects_conflicting_main_site_prefixes() {
+        let mut first = CollectionConfig::preset_posts();
+        first.private = true;
+        first.url_prefix = "/members/".into();
+        first.access_group = Some("members".into());
+        let mut second = CollectionConfig::preset_docs();
+        second.private = true;
+        second.url_prefix = "members".into();
+        second.access_group = Some("staff".into());
+        let mut config = make_config("https://example.com", vec![first, second]);
+        config.access = Some(AccessSection::default());
+
+        let err = config.validate_access().unwrap_err();
+        assert!(err.to_string().contains("same password-protected path"));
+    }
+
+    #[test]
+    fn test_access_validation_allows_same_prefix_for_separate_subdomains() {
+        let mut first = CollectionConfig::preset_posts();
+        first.private = true;
+        first.url_prefix = "/members".into();
+        first.access_group = Some("members".into());
+        first.subdomain = Some("members".into());
+        let mut second = CollectionConfig::preset_docs();
+        second.private = true;
+        second.url_prefix = "/members".into();
+        second.access_group = Some("staff".into());
+        second.subdomain = Some("staff".into());
+        let mut config = make_config("https://example.com", vec![first, second]);
+        config.access = Some(AccessSection::default());
+
+        assert!(config.validate_access().is_ok());
     }
 
     #[test]

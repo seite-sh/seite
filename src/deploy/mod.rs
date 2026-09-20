@@ -33,7 +33,7 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
     // 2. base_url is not localhost
     checks.push(check_base_url(config));
 
-    if config.access.is_some() {
+    if !config.password_access_groups().is_empty() {
         checks.push(check_password_access_target(target));
     }
 
@@ -2796,6 +2796,20 @@ mod tests {
             assert!(!check.passed, "{target} must not accept password access");
             assert!(check.message.contains("only supported on Cloudflare Pages"));
         }
+    }
+
+    #[test]
+    fn test_password_access_preflight_ignores_unused_access_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        std::fs::create_dir_all(&paths.output).unwrap();
+        std::fs::write(paths.output.join("index.html"), "ok").unwrap();
+        let mut config = test_config("https://example.com");
+        config.access = Some(crate::config::AccessSection::default());
+
+        let checks = preflight(&config, &paths, "github-pages");
+
+        assert!(checks.iter().all(|check| check.name != "Password access"));
     }
 
     fn test_paths(dir: &std::path::Path) -> ResolvedPaths {
