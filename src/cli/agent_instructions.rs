@@ -26,8 +26,8 @@ pub(crate) fn validate_paths(root: &Path) -> anyhow::Result<()> {
                 anyhow::bail!("{} is read-only", path.display());
             }
             Ok(_) => {
-                fs::File::open(&path)
-                    .with_context(|| format!("{} is not readable", path.display()))?;
+                fs::read_to_string(&path)
+                    .with_context(|| format!("{} is not readable UTF-8 text", path.display()))?;
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {

@@ -1142,6 +1142,7 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
     // Check if it's an installed pack
     if let Some(entry) = manifest.packs.remove(name) {
+        crate::cli::agent_instructions::validate_paths(root)?;
         human::info(&format!("Removing skill pack '{}'...", name));
 
         for file in &entry.files {
@@ -1742,6 +1743,50 @@ mod tests {
         let instructions = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(instructions.contains("# Project"));
         assert!(!instructions.contains("SEOMachine Integration"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_remove_pack_rejects_symlinked_instructions_before_deleting_files() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let external = tmp.path().join("external-agents.md");
+        let original_instructions = format!(
+            "# External\n\n{AGENTS_MD_MARKER_START}\nPack instructions\n{AGENTS_MD_MARKER_END}\n"
+        );
+        fs::write(&external, &original_instructions).unwrap();
+        symlink(&external, tmp.path().join("AGENTS.md")).unwrap();
+
+        let pack_file = tmp
+            .path()
+            .join(".claude")
+            .join("agents")
+            .join("test-agent.md");
+        fs::create_dir_all(pack_file.parent().unwrap()).unwrap();
+        fs::write(&pack_file, "# Agent").unwrap();
+
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "test-pack".to_string(),
+            PackEntry {
+                source: "github:user/repo".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![".claude/agents/test-agent.md".to_string()],
+            },
+        );
+        save_manifest(tmp.path(), &manifest).unwrap();
+
+        let result = remove_from(tmp.path(), "test-pack");
+
+        assert!(result.is_err());
+        assert!(
+            pack_file.exists(),
+            "pack files must remain after preflight fails"
+        );
+        assert!(load_manifest(tmp.path()).packs.contains_key("test-pack"));
+        assert_eq!(fs::read_to_string(external).unwrap(), original_instructions);
     }
 
     #[test]
