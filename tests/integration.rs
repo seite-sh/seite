@@ -4355,6 +4355,44 @@ fn test_upgrade_rejects_symlinked_instructions_before_applying_actions() {
     assert_eq!(fs::read_to_string(meta_path).unwrap(), outdated);
 }
 
+#[cfg(unix)]
+#[test]
+fn test_upgrade_rejects_read_only_instructions_before_applying_actions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Read-only Agent Instructions", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let claude_path = site_dir.join("CLAUDE.md");
+    let original_instructions = "# Legacy instructions\n";
+
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::write(&claude_path, original_instructions).unwrap();
+    fs::set_permissions(&claude_path, fs::Permissions::from_mode(0o444)).unwrap();
+    fs::remove_file(site_dir.join(".claude/settings.json")).unwrap();
+
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    let outdated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.0.9");
+    fs::write(&meta_path, &outdated).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+
+    assert_eq!(
+        fs::read_to_string(&claude_path).unwrap(),
+        original_instructions
+    );
+    assert!(
+        !site_dir.join(".claude/settings.json").exists(),
+        "upgrade must reject read-only instructions before applying unrelated actions"
+    );
+    assert_eq!(fs::read_to_string(meta_path).unwrap(), outdated);
+}
+
 #[test]
 fn test_init_creates_landing_page_skill() {
     let tmp = TempDir::new().unwrap();

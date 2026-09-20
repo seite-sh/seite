@@ -76,7 +76,7 @@ Hugo builds your site. Then it stops. Getting that site online is your problem.
 
 You need a separate deploy pipeline: a GitHub Actions workflow, a Netlify config file, a Vercel project. For many developers, wiring this up takes longer than building the site itself.
 
-And Hugo has no awareness that AI agents exist. There's no CLAUDE.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/blog/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself. For the full picture of what website AI discoverability requires and the architecture behind triple output, see [why your website needs to speak AI](/blog/website-ai-discoverability).
+And Hugo has no awareness that AI agents exist. There's no AGENTS.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/blog/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself. For the full picture of what website AI discoverability requires and the architecture behind triple output, see [why your website needs to speak AI](/blog/website-ai-discoverability).
 
 Want to see how AI integration actually works? [Read about AI-native static site generators](/blog/ai-static-site-generator) and what that architecture looks like.
 
@@ -100,7 +100,7 @@ The tradeoff in a Hugo vs Eleventy comparison: it still requires Node.js. And El
 
 [Zola](https://www.getzola.org/) is the closest thing to Hugo in spirit: a single Rust binary, sub-second builds, markdown content with TOML frontmatter. If you just want a faster, simpler Hugo without Go templates, Zola is worth a look.
 
-The tradeoff: Zola's ecosystem is much smaller. Fewer themes, fewer community resources, fewer people to ask when you get stuck. And like Hugo, Zola has no AI awareness. No CLAUDE.md, no MCP server, no llms.txt. It's a traditional SSG built well, but built for 2020.
+The tradeoff: Zola's ecosystem is much smaller. Fewer themes, fewer community resources, fewer people to ask when you get stuck. And like Hugo, Zola has no AI awareness. No AGENTS.md, no MCP server, no llms.txt. It's a traditional SSG built well, but built for 2020.
 
 ### Jekyll: The Original, Showing Its Age
 
@@ -147,7 +147,7 @@ Here's how this Hugo alternative compares feature by feature.
 | Template debugging | Silent failures | Clear error messages |
 | Built-in deploy | No | GitHub Pages, Cloudflare, Netlify |
 | Bundled themes | Community (download) | 6 compiled into binary |
-| AI context file | No | Auto-generated CLAUDE.md |
+| AI context file | No | Auto-generated AGENTS.md |
 | MCP server | No | Built-in |
 | llms.txt output | No | Every build |
 | Markdown output per page | No | Every build |
@@ -275,7 +275,7 @@ Both deliver sub-second builds for typical sites. Hugo has an edge on extremely 
 
 ### What static site generators work with AI?
 
-Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite is the first static site generator with AI built into the architecture: an MCP server for structured AI access, a CLAUDE.md context file for coding agents, `seite agent` for AI-powered content creation, and `llms.txt` output for AI search engines.
+Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite is the first static site generator with AI built into the architecture: an MCP server for structured AI access, an AGENTS.md context file for coding agents, `seite agent` for AI-powered content creation, and `llms.txt` output for AI search engines.
 
 ## Hugo Is Fast. The Web Moved Faster.
 
@@ -289,7 +289,7 @@ Three things to take away from this Hugo alternative comparison:
 
 1. **Hugo's strengths are real but no longer unique.** Single binary, sub-second builds, zero dependencies: seite matches all of these in Rust.
 2. **The template tax is avoidable.** Tera gives you Jinja2 syntax with clear error messages. You shouldn't need Go knowledge to build a website.
-3. **AI integration isn't optional anymore.** llms.txt, CLAUDE.md, MCP server, agent integration: these aren't nice-to-haves. They're how your site stays visible as search evolves.
+3. **AI integration isn't optional anymore.** llms.txt, AGENTS.md, MCP server, agent integration: these aren't nice-to-haves. They're how your site stays visible as search evolves.
 
 Install seite and see what a Hugo alternative looks like in 2026:
 

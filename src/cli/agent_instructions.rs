@@ -22,6 +22,9 @@ pub(crate) fn validate_paths(root: &Path) -> anyhow::Result<()> {
             Ok(metadata) if !metadata.file_type().is_file() => {
                 anyhow::bail!("{} is not a regular file", path.display());
             }
+            Ok(metadata) if metadata.permissions().readonly() => {
+                anyhow::bail!("{} is read-only", path.display());
+            }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
