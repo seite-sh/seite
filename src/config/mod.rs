@@ -25,6 +25,8 @@ pub struct SiteConfig {
     pub trust: Option<TrustSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contact: Option<ContactSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<AccessSection>,
 }
 
 /// Per-language overrides for site metadata.
@@ -49,12 +51,17 @@ pub struct CollectionConfig {
     pub listed: bool,
     /// Keep this collection out of every public discovery surface (sitemap,
     /// llms.txt, llms-full.txt, search index, feeds, and the homepage listing)
-    /// while still building its hub and item pages — for content placed behind
-    /// Cloudflare Access / HTTP auth. Stamps `noindex, nofollow` on every page.
+    /// while still building its hub and item pages. Site-level password access
+    /// can gate it on Cloudflare Pages. Stamps `noindex, nofollow` on every page.
     /// Independent of `listed`: the hub renders even when the collection is
     /// hidden from the homepage.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub private: bool,
+    /// Password credential group used when site-level password access is enabled.
+    /// Private collections default to their collection name. Collections sharing
+    /// a group share a password and authentication cookie.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_group: Option<String>,
     #[serde(default)]
     pub url_prefix: String,
     #[serde(default)]
@@ -97,6 +104,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -116,6 +124,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -135,6 +144,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -154,6 +164,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -173,6 +184,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -192,6 +204,7 @@ impl CollectionConfig {
             subdomain_base_url: None,
             deploy_project: None,
             private: false,
+            access_group: None,
         }
     }
 
@@ -205,6 +218,26 @@ impl CollectionConfig {
             "trust" => Some(Self::preset_trust()),
             _ => None,
         }
+    }
+
+    /// Access group for a private collection. Public collections never resolve
+    /// to a group, even if an unused `access_group` value was configured.
+    pub fn resolved_access_group(&self) -> Option<&str> {
+        if !self.private {
+            return None;
+        }
+        Some(self.access_group.as_deref().unwrap_or(&self.name))
+    }
+}
+
+pub(crate) fn normalize_access_prefix(prefix: &str) -> String {
+    let trimmed = prefix.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".into()
+    } else if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
     }
 }
 
@@ -293,6 +326,51 @@ pub struct DeploySection {
     /// Auto-commit and push before deploying. Default: true.
     #[serde(default = "crate::config::defaults::bool_true")]
     pub auto_commit: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AccessMode {
+    Password,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AccessSection {
+    pub mode: AccessMode,
+    #[serde(default = "defaults::access_session_hours")]
+    pub session_hours: u32,
+}
+
+/// Cloudflare secret binding used for one password group.
+pub fn password_secret_binding(group: &str) -> String {
+    format!("SEITE_PASSWORD_{}", secret_binding_suffix(group))
+}
+
+/// Cloudflare secret binding used to sign sessions for one password group.
+pub fn session_secret_binding(group: &str) -> String {
+    format!("SEITE_SESSION_SECRET_{}", secret_binding_suffix(group))
+}
+
+fn secret_binding_suffix(group: &str) -> String {
+    group
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+impl Default for AccessSection {
+    fn default() -> Self {
+        Self {
+            mode: AccessMode::Password,
+            session_hours: defaults::access_session_hours(),
+        }
+    }
 }
 
 impl Default for DeploySection {
@@ -503,7 +581,81 @@ impl SiteConfig {
                 message: e.to_string(),
             })?;
         config.validate_subdomains()?;
+        config.validate_access()?;
         Ok(config)
+    }
+
+    fn validate_access(&self) -> Result<()> {
+        let Some(access) = &self.access else {
+            return Ok(());
+        };
+
+        if !(1..=8760).contains(&access.session_hours) {
+            return Err(PageError::ConfigInvalid {
+                message: "access.session_hours must be between 1 and 8760".into(),
+            });
+        }
+
+        let mut bindings = std::collections::HashMap::<String, String>::new();
+        let mut main_paths = std::collections::HashMap::<String, (String, String)>::new();
+        for collection in &self.collections {
+            let Some(group) = collection.resolved_access_group() else {
+                continue;
+            };
+            if group.is_empty()
+                || !group
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
+                return Err(PageError::ConfigInvalid {
+                    message: format!(
+                        "access_group '{group}' on collection '{}' must contain only ASCII letters, digits, '_' or '-'",
+                        collection.name
+                    ),
+                });
+            }
+            let binding = password_secret_binding(group);
+            if let Some(previous) = bindings.insert(binding.clone(), group.to_string()) {
+                if previous != group {
+                    return Err(PageError::ConfigInvalid {
+                        message: format!(
+                            "access groups '{previous}' and '{group}' map to the same Cloudflare secret binding '{binding}'; rename one group"
+                        ),
+                    });
+                }
+            }
+            if collection.subdomain.is_none() {
+                let prefix = normalize_access_prefix(&collection.url_prefix);
+                if let Some((previous_group, previous_collection)) = main_paths.get(&prefix) {
+                    if previous_group != group {
+                        return Err(PageError::ConfigInvalid {
+                            message: format!(
+                                "collections '{previous_collection}' and '{}' assign the same password-protected path '{prefix}' to different access groups ('{previous_group}' and '{group}')",
+                                collection.name
+                            ),
+                        });
+                    }
+                } else {
+                    main_paths.insert(prefix, (group.to_string(), collection.name.clone()));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Sorted, unique password groups used by private collections when access
+    /// control is enabled.
+    pub fn password_access_groups(&self) -> Vec<&str> {
+        if self.access.is_none() {
+            return Vec::new();
+        }
+        self.collections
+            .iter()
+            .filter_map(CollectionConfig::resolved_access_group)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     /// Validate subdomain configuration.
@@ -715,6 +867,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         }
     }
 
@@ -749,6 +902,138 @@ mod tests {
         // Byte-identical seite.toml: `private = false` must be omitted.
         let toml = toml::to_string(&CollectionConfig::preset_posts()).unwrap();
         assert!(!toml.contains("private"), "serialized: {toml}");
+    }
+
+    #[test]
+    fn test_password_access_parses_with_default_session() {
+        let source = r#"
+[site]
+title = "Protected"
+base_url = "https://example.com"
+
+[access]
+mode = "password"
+
+[[collections]]
+name = "members"
+label = "Members"
+directory = "members"
+default_template = "page.html"
+url_prefix = "/members"
+private = true
+access_group = "staff"
+"#;
+
+        let config: SiteConfig = toml::from_str(source).unwrap();
+        let access = config.access.as_ref().unwrap();
+        assert_eq!(access.mode, AccessMode::Password);
+        assert_eq!(access.session_hours, 168);
+        assert_eq!(config.collections[0].resolved_access_group(), Some("staff"));
+    }
+
+    #[test]
+    fn test_private_collection_defaults_access_group_to_collection_name() {
+        let mut collection = CollectionConfig::preset_docs();
+        collection.private = true;
+        assert_eq!(collection.resolved_access_group(), Some("docs"));
+    }
+
+    #[test]
+    fn test_public_collection_has_no_resolved_access_group() {
+        let collection = CollectionConfig::preset_docs();
+        assert_eq!(collection.resolved_access_group(), None);
+    }
+
+    #[test]
+    fn test_password_access_groups_are_unique_and_sorted() {
+        let mut alpha = CollectionConfig::preset_docs();
+        alpha.private = true;
+        alpha.access_group = Some("shared".into());
+        let mut beta = CollectionConfig::preset_posts();
+        beta.private = true;
+        beta.access_group = Some("shared".into());
+        let mut gamma = CollectionConfig::preset_pages();
+        gamma.private = true;
+        gamma.access_group = Some("admin".into());
+
+        let mut config = make_config("https://example.com", vec![alpha, beta, gamma]);
+        config.access = Some(AccessSection::default());
+
+        assert_eq!(config.password_access_groups(), vec!["admin", "shared"]);
+    }
+
+    #[test]
+    fn test_access_validation_rejects_invalid_session_duration() {
+        let mut config = make_config("https://example.com", vec![]);
+        config.access = Some(AccessSection {
+            mode: AccessMode::Password,
+            session_hours: 0,
+        });
+
+        let err = config.validate_access().unwrap_err();
+        assert!(err.to_string().contains("session_hours"));
+    }
+
+    #[test]
+    fn test_access_validation_rejects_unsafe_group_name() {
+        let mut collection = CollectionConfig::preset_docs();
+        collection.private = true;
+        collection.access_group = Some("team alpha".into());
+        let mut config = make_config("https://example.com", vec![collection]);
+        config.access = Some(AccessSection::default());
+
+        let err = config.validate_access().unwrap_err();
+        assert!(err.to_string().contains("access_group"));
+    }
+
+    #[test]
+    fn test_access_validation_rejects_secret_binding_collisions() {
+        let mut first = CollectionConfig::preset_posts();
+        first.private = true;
+        first.access_group = Some("team-alpha".into());
+        let mut second = CollectionConfig::preset_docs();
+        second.private = true;
+        second.access_group = Some("team_alpha".into());
+        let mut config = make_config("https://example.com", vec![first, second]);
+        config.access = Some(AccessSection::default());
+
+        let err = config.validate_access().unwrap_err();
+        assert!(err.to_string().contains("same Cloudflare secret binding"));
+    }
+
+    #[test]
+    fn test_access_validation_rejects_conflicting_main_site_prefixes() {
+        let mut first = CollectionConfig::preset_posts();
+        first.private = true;
+        first.url_prefix = "/members/".into();
+        first.access_group = Some("members".into());
+        let mut second = CollectionConfig::preset_docs();
+        second.private = true;
+        second.url_prefix = "members".into();
+        second.access_group = Some("staff".into());
+        let mut config = make_config("https://example.com", vec![first, second]);
+        config.access = Some(AccessSection::default());
+
+        let err = config.validate_access().unwrap_err();
+        assert!(err.to_string().contains("same password-protected path"));
+    }
+
+    #[test]
+    fn test_access_validation_allows_same_prefix_for_separate_subdomains() {
+        let mut first = CollectionConfig::preset_posts();
+        first.private = true;
+        first.url_prefix = "/members".into();
+        first.access_group = Some("members".into());
+        first.subdomain = Some("members".into());
+        let mut second = CollectionConfig::preset_docs();
+        second.private = true;
+        second.url_prefix = "/members".into();
+        second.access_group = Some("staff".into());
+        second.subdomain = Some("staff".into());
+        let mut config = make_config("https://example.com", vec![first, second]);
+        config.access = Some(AccessSection::default());
+
+        assert!(config.validate_access().is_ok());
     }
 
     #[test]

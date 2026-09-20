@@ -151,7 +151,7 @@ subdomain = "trust"
 subdomain_base_url = "https://trust.example.com"
 ```
 
-Pair it with [`private = true`](/docs/configuration#private-collections) to keep the trust content out of your main site's discovery files (sitemap, llms.txt, search index) and stamp `noindex, nofollow` on every page — the right combination for content gated behind **Cloudflare Access** or HTTP auth.
+Pair it with [`private = true`](/docs/configuration#private-collections) to keep the content out of your main site's discovery files (sitemap, llms.txt, search index) and stamp `noindex, nofollow` on every page. Add `[access]` to enforce built-in password protection on Cloudflare Pages.
 
 ## Configuration
 

@@ -198,6 +198,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         }
     }
 

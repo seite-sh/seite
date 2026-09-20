@@ -1,3 +1,4 @@
+pub mod access;
 pub mod agent;
 pub mod build;
 pub mod collection;
@@ -76,6 +77,9 @@ pub enum Command {
     /// Manage contact form configuration
     Contact(contact::ContactArgs),
 
+    /// Manage private password access on Cloudflare Pages
+    Access(access::AccessArgs),
+
     /// Manage Claude Code skills and skill packs
     Skill(skill::SkillArgs),
 
@@ -127,5 +131,6 @@ mod tests {
         assert!(subcommands.contains(&"build"));
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
+        assert!(subcommands.contains(&"access"));
     }
 }

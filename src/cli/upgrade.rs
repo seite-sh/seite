@@ -176,15 +176,15 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
         },
         UpgradeStep {
             introduced_in: (0, 16, 0),
-            label: "Private collections + Cloudflare Access guidance (.claude/rules)",
+            label: "Private collections + password access guidance (.claude/rules)",
             check: check_private_collections_rule,
         },
     ]
 }
 
 /// Install the `.claude/rules/private-collections.md` context file so the project's
-/// agent knows about `private` collections, subdomain hubs, and that gating access
-/// (Cloudflare Access) is a separate, manual step. Created only if missing.
+/// agent knows about `private` collections, password groups, and subdomain hubs.
+/// Created only if missing.
 fn check_private_collections_rule(root: &Path) -> Vec<UpgradeAction> {
     use crate::cli::init::rules_file;
 

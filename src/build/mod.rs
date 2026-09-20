@@ -1,3 +1,4 @@
+pub mod access;
 pub mod analytics;
 pub mod base_path;
 pub mod cache;
@@ -2138,6 +2139,7 @@ fn build_site_inner(
     // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
     let mut asset_manifest: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
+    let protected_asset_groups = config.password_access_groups();
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
             .into_iter()
@@ -2148,7 +2150,41 @@ fn build_site_inner(
                 .path()
                 .strip_prefix(&paths.static_dir)
                 .unwrap_or(entry.path());
-            let dest = paths.output.join("static").join(rel);
+            let protected_rel = if config.access.is_some()
+                && rel
+                    .components()
+                    .next()
+                    .is_some_and(|part| part.as_os_str() == "private")
+            {
+                let mut parts = rel.components();
+                parts.next();
+                let Some(group) = parts.next().and_then(|part| part.as_os_str().to_str()) else {
+                    continue;
+                };
+                if !protected_asset_groups.contains(&group) {
+                    // A different output (for example, a private subdomain) may own
+                    // this group. Never copy it into a public static directory.
+                    continue;
+                }
+                let mut protected = PathBuf::from(group);
+                protected.extend(parts.map(|part| part.as_os_str()));
+                Some(protected)
+            } else {
+                None
+            };
+            let (dest, url_root, output_rel) = if let Some(protected) = protected_rel {
+                (
+                    paths.output.join("private-assets").join(&protected),
+                    "/private-assets",
+                    protected,
+                )
+            } else {
+                (
+                    paths.output.join("static").join(rel),
+                    "/static",
+                    rel.to_path_buf(),
+                )
+            };
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -2190,8 +2226,11 @@ fn build_site_inner(
                     fs::write(&fp_dest, &processed)?;
 
                     // Record in manifest using Unix-style paths
-                    let orig_url = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
-                    let fp_rel = rel
+                    let orig_url = format!(
+                        "{url_root}/{}",
+                        output_rel.to_string_lossy().replace('\\', "/")
+                    );
+                    let fp_rel = output_rel
                         .parent()
                         .map(|p| {
                             let p = p.to_string_lossy();
@@ -2202,7 +2241,7 @@ fn build_site_inner(
                             }
                         })
                         .unwrap_or_else(|| fp_name.clone());
-                    let fp_url = format!("/static/{fp_rel}");
+                    let fp_url = format!("{url_root}/{fp_rel}");
                     asset_manifest.insert(orig_url, fp_url);
                 }
             } else {
@@ -2279,6 +2318,10 @@ fn build_site_inner(
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 13: Generate the Cloudflare Pages advanced-mode Worker for any
+    // password-protected routes in this output.
+    access::write_worker(config, &paths.output)?;
 
     progress.done();
 
@@ -2973,6 +3016,7 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            access: None,
         }
     }
 
