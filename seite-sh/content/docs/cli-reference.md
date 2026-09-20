@@ -180,13 +180,18 @@ seite access <subcommand>
 | Subcommand | Description |
 |------------|-------------|
 | `groups` | List password groups, protected paths/subdomains, and Pages projects |
-| `set-password [GROUP]` | Prompt for and upload a group's password; the group is inferred when only one exists |
+| `set-password [GROUP]` | Prompt for and stage a group's password for production and preview; the group is inferred when only one exists |
 
-`set-password` sends the password to Wrangler over stdin. It also creates a random session-signing secret; neither secret is stored in `seite.toml`, printed, or passed as a process argument.
+`set-password` sends the password to Wrangler over stdin. It also creates a random session-signing secret; neither secret is stored in `seite.toml`, printed, or passed as a process argument. Cloudflare applies the staged secrets to the next deployment, so deploy after setting or rotating a password. That deployment invalidates sessions signed with the previous secret.
 
 ```bash
 seite access groups
 seite access set-password staff
+# Run this from the Cloudflare Pages production branch
+seite deploy
+
+# The same staged password is available to preview deployments
+seite deploy --preview
 ```
 
 See [Private collections](/docs/configuration#private-collections) for path, whole-domain, subdomain, and protected-asset configuration.

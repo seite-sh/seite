@@ -39,6 +39,17 @@ pub fn process_images(
     paths: &ResolvedPaths,
     config: &ImageSection,
 ) -> Result<HashMap<String, ProcessedImage>> {
+    process_images_with_private_filter(paths, config, false)
+}
+
+/// Process images while keeping password-protected source trees out of public
+/// `/static` derivatives. Protected originals are copied separately by the
+/// build pipeline under `/private-assets/<group>/`.
+pub fn process_images_with_private_filter(
+    paths: &ResolvedPaths,
+    config: &ImageSection,
+    exclude_private: bool,
+) -> Result<HashMap<String, ProcessedImage>> {
     if !paths.static_dir.exists() {
         return Ok(HashMap::new());
     }
@@ -47,7 +58,15 @@ pub fn process_images(
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
+            let relative = e.path().strip_prefix(&paths.static_dir).ok();
+            let is_private = exclude_private
+                && relative.is_some_and(|path| {
+                    path.components()
+                        .next()
+                        .is_some_and(|part| part.as_os_str() == "private")
+                });
+            !is_private
+                && e.file_type().is_file()
                 && e.path()
                     .extension()
                     .and_then(|ext| ext.to_str())
@@ -84,6 +103,20 @@ pub fn process_images(
         .collect();
 
     Ok(manifest)
+}
+
+/// Remove public output left by older builds that generated image variants
+/// beneath `static/private`. This must run even when image processing is now
+/// disabled or the source static directory no longer exists.
+pub(crate) fn clear_private_static_output(paths: &ResolvedPaths) -> Result<()> {
+    let private_output = paths.output.join("static").join("private");
+    match fs::symlink_metadata(&private_output) {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(private_output)?,
+        Ok(_) => fs::remove_file(private_output)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
 }
 
 fn process_single_image(
@@ -1476,6 +1509,32 @@ mod tests {
         let config = ImageSection::default();
         let result = process_images(&paths, &config).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_clear_private_static_output_removes_stale_derivatives() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output = tmp.path().join("dist");
+        let stale_private = output.join("static/private/members");
+        let public_static = output.join("static/images");
+        fs::create_dir_all(&stale_private).unwrap();
+        fs::create_dir_all(&public_static).unwrap();
+        fs::write(stale_private.join("confidential-48w.webp"), "stale").unwrap();
+        fs::write(public_static.join("public.webp"), "public").unwrap();
+        let paths = ResolvedPaths {
+            root: tmp.path().to_path_buf(),
+            output,
+            content: tmp.path().join("content"),
+            templates: tmp.path().join("templates"),
+            static_dir: tmp.path().join("static"),
+            data_dir: tmp.path().join("data"),
+            public_dir: tmp.path().join("public"),
+        };
+
+        clear_private_static_output(&paths).unwrap();
+
+        assert!(!paths.output.join("static/private").exists());
+        assert!(paths.output.join("static/images/public.webp").exists());
     }
 
     #[test]

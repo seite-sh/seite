@@ -7509,6 +7509,68 @@ fn test_password_access_builds_path_worker_and_private_assets() {
 }
 
 #[test]
+fn test_password_access_protects_translated_collection_routes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Translated Access", "docs,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "docs", "private = true");
+    add_collection_line(&site_dir, "docs", "access_group = \"staff\"");
+    enable_password_access(&site_dir);
+    let config_path = site_dir.join("seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("\n[languages.de]\ntitle = \"Intern\"\n");
+    fs::write(config_path, config).unwrap();
+
+    fs::write(
+        site_dir.join("content/docs/secret.de.md"),
+        "---\ntitle: Geheim\n---\nVertraulich.",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let worker = fs::read_to_string(site_dir.join("dist/_worker.js")).unwrap();
+    assert!(worker.contains(r#""prefix":"/de/docs""#));
+    assert!(site_dir.join("dist/de/docs/secret.html").exists());
+}
+
+#[test]
+fn test_password_access_does_not_publish_private_image_variants() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Private Images", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+    add_collection_line(&site_dir, "posts", "access_group = \"members\"");
+    enable_password_access(&site_dir);
+
+    let private_dir = site_dir.join("static/private/members");
+    fs::create_dir_all(&private_dir).unwrap();
+    let image = image::RgbaImage::from_pixel(100, 80, image::Rgba([12, 34, 56, 255]));
+    image.save(private_dir.join("confidential.png")).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let dist = site_dir.join("dist");
+    assert!(dist
+        .join("private-assets/members/confidential.png")
+        .exists());
+    assert!(!dist
+        .join("static/private/members/confidential.webp")
+        .exists());
+    assert!(!dist
+        .join("static/private/members/confidential-48w.webp")
+        .exists());
+}
+
+#[test]
 fn test_private_collection_without_access_keeps_existing_build_behavior() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Private Metadata", "posts,pages");
@@ -7562,7 +7624,8 @@ fn test_password_access_protects_an_entire_subdomain_output() {
         .assert()
         .success();
 
-    assert!(!site_dir.join("dist/_worker.js").exists());
+    let main_worker = fs::read_to_string(site_dir.join("dist/_worker.js")).unwrap();
+    assert!(main_worker.contains(r#"LEGACY_PRIVATE_PREFIX = "/static/private""#));
     let worker = fs::read_to_string(site_dir.join("dist-subdomains/docs/_worker.js")).unwrap();
     assert!(worker.contains(r#""prefix":"/""#));
     assert!(worker.contains("SEITE_PASSWORD_DOCS_TEAM"));

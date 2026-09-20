@@ -256,6 +256,21 @@ pub fn build_site(
     paths: &ResolvedPaths,
     opts: &BuildOptions,
 ) -> Result<BuildResult> {
+    // Subdomain collections are removed from the main output and rebuilt as
+    // independent root-mounted sites.
+    let has_subdomains = config.has_subdomains();
+    let main_config;
+    let effective_config = if has_subdomains {
+        main_config = {
+            let mut c = config.clone();
+            c.collections = config.main_site_collections();
+            c
+        };
+        &main_config
+    } else {
+        config
+    };
+
     // Incremental build: check what changed and potentially skip the build entirely
     let config_path = paths.root.join("seite.toml");
     let mut changeset = None;
@@ -268,8 +283,16 @@ pub fn build_site(
             &paths.data_dir,
             &paths.static_dir,
         );
-        if cs.is_empty() {
-            // Nothing changed — return a no-op result
+        let all_outputs_exist = paths.output.exists()
+            && config
+                .subdomain_collections()
+                .iter()
+                .all(|collection| paths.subdomain_output(&collection.name).exists());
+        if cs.is_empty() && all_outputs_exist {
+            // Even a content no-op must refresh generated access artifacts so
+            // upgrading seite applies security migrations to retained output.
+            refresh_access_artifacts(effective_config, paths)?;
+            refresh_subdomain_access_artifacts(config, paths)?;
             return Ok(BuildResult {
                 collections: HashMap::new(),
                 stats: BuildStats {
@@ -300,21 +323,6 @@ pub fn build_site(
         }
         changeset = Some(cs);
     }
-
-    // If there are subdomain collections, build a filtered config for the main site
-    // that excludes them. Subdomain collections are built separately at the end.
-    let has_subdomains = config.has_subdomains();
-    let main_config;
-    let effective_config = if has_subdomains {
-        main_config = {
-            let mut c = config.clone();
-            c.collections = config.main_site_collections();
-            c
-        };
-        &main_config
-    } else {
-        config
-    };
 
     // Clean subdomain output directories before building
     if has_subdomains {
@@ -366,6 +374,36 @@ pub fn build_site(
         link_check: result.link_check,
         subdomain_builds,
     })
+}
+
+fn refresh_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
+    if config.access.is_some() {
+        access::validate_generated_file_conflicts(&paths.public_dir)?;
+        images::clear_private_static_output(paths)?;
+        access::write_worker(config, &paths.output)?;
+    }
+    Ok(())
+}
+
+fn refresh_subdomain_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
+    if config.access.is_none() {
+        return Ok(());
+    }
+
+    for collection in config.subdomain_collections() {
+        let mut sub_config = config.clone();
+        sub_config.site.base_url = config.subdomain_base_url(collection);
+        let mut sub_collection = collection.clone();
+        sub_collection.url_prefix = String::new();
+        sub_collection.subdomain = None;
+        sub_collection.deploy_project = None;
+        sub_config.collections = vec![sub_collection];
+
+        let mut sub_paths = paths.clone();
+        sub_paths.output = paths.subdomain_output(&collection.name);
+        refresh_access_artifacts(&sub_config, &sub_paths)?;
+    }
+    Ok(())
 }
 
 /// Build each subdomain collection as an independent mini-site.
@@ -2266,9 +2304,16 @@ fn build_site_inner(
     // Step 11: Process images (resize, WebP, srcset)
     progress.step("Processing images");
     let step_start = Instant::now();
+    if config.access.is_some() {
+        images::clear_private_static_output(paths)?;
+    }
     let image_manifest = if let Some(ref images_config) = config.images {
         if !images_config.widths.is_empty() {
-            images::process_images(paths, images_config)?
+            images::process_images_with_private_filter(
+                paths,
+                images_config,
+                config.access.is_some(),
+            )?
         } else {
             HashMap::new()
         }
@@ -2972,7 +3017,8 @@ fn title_case(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::config::{
-        BuildSection, CollectionConfig, DeploySection, LanguageConfig, SiteConfig, SiteSection,
+        AccessSection, BuildSection, CollectionConfig, DeploySection, LanguageConfig, SiteConfig,
+        SiteSection,
     };
     use crate::content::Frontmatter;
     use std::collections::{BTreeMap, HashMap, HashSet};
@@ -3752,6 +3798,96 @@ mod tests {
         assert!(display.contains("Incremental build"));
         assert!(display.contains("18 items unchanged"));
         assert!(!display.contains("Built ")); // Should say "Incremental build" not "Built"
+    }
+
+    #[test]
+    fn test_incremental_noop_refreshes_access_security_artifacts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = minimal_config();
+        config.access = Some(AccessSection::default());
+        config.collections[0].private = true;
+        config.collections[0].access_group = Some("members".into());
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# unchanged\n").unwrap();
+
+        let stale_private = paths.output.join("static/private/members");
+        fs::create_dir_all(&stale_private).unwrap();
+        fs::write(stale_private.join("confidential.webp"), "stale").unwrap();
+        fs::write(
+            paths.output.join("_worker.js"),
+            "// Generated by seite password access. Do not edit.\n// old worker\n",
+        )
+        .unwrap();
+
+        cache::BuildCache::snapshot(
+            &tmp.path().join("seite.toml"),
+            &paths.content,
+            &paths.templates,
+            &paths.data_dir,
+            &paths.static_dir,
+        )
+        .save(tmp.path())
+        .unwrap();
+
+        let result = build_site(
+            &config,
+            &paths,
+            &BuildOptions {
+                include_drafts: false,
+                incremental: true,
+            },
+        )
+        .unwrap();
+
+        assert!(result.stats.incremental);
+        assert!(!paths.output.join("static/private").exists());
+        let worker = fs::read_to_string(paths.output.join("_worker.js")).unwrap();
+        assert!(worker.contains("function decodePath"));
+        assert!(worker.contains("LEGACY_PRIVATE_PREFIX"));
+        assert!(paths.output.join("_routes.json").exists());
+    }
+
+    #[test]
+    fn test_incremental_noop_rejects_new_public_worker_conflict() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = minimal_config();
+        config.access = Some(AccessSection::default());
+        config.collections[0].private = true;
+        config.collections[0].access_group = Some("members".into());
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# unchanged\n").unwrap();
+        fs::create_dir_all(&paths.output).unwrap();
+        cache::BuildCache::snapshot(
+            &tmp.path().join("seite.toml"),
+            &paths.content,
+            &paths.templates,
+            &paths.data_dir,
+            &paths.static_dir,
+        )
+        .save(tmp.path())
+        .unwrap();
+
+        fs::create_dir_all(&paths.public_dir).unwrap();
+        fs::write(
+            paths.public_dir.join("_worker.js"),
+            "export default { fetch() { return new Response('custom'); } };",
+        )
+        .unwrap();
+
+        let result = build_site(
+            &config,
+            &paths,
+            &BuildOptions {
+                include_drafts: false,
+                incremental: true,
+            },
+        );
+        let error = match result {
+            Ok(_) => panic!("custom public Worker should conflict with password access"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains("public/_worker.js already exists"));
     }
 
     // ── SiteContext ─────────────────────────────────────────────────────

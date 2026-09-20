@@ -223,11 +223,12 @@ After the Pages projects exist, upload each password:
 ```bash
 seite access groups
 seite access set-password staff
-seite build
 seite deploy
 ```
 
-The generated `_worker.js` uses Cloudflare secret bindings and signed, secure session cookies. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
+`set-password` stages the password and separate signing secrets for both production and preview. Deploy from the Pages project's configured production branch to activate production; projects created by seite use `main`. Use `seite deploy --preview` to activate preview. That deployment invalidates sessions signed with the environment's previous secret.
+
+The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
 
 ## Override Target
 

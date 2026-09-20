@@ -29,6 +29,21 @@ pub enum AccessCommand {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AccessEnvironment {
+    Production,
+    Preview,
+}
+
+impl AccessEnvironment {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::Preview => "preview",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AccessGroup {
     name: String,
@@ -166,17 +181,22 @@ fn set_password(
     let password_key = password_secret_binding(&group.name);
     let session_key = session_secret_binding(&group.name);
     for project in &group.projects {
-        // Rotate only this group's signing secret before its password. If the
-        // password upload fails, existing sessions are invalidated but the
-        // previous password remains active until the command is rerun.
-        let session_secret = random_secret()?;
-        put_pages_secret(project, &session_key, &session_secret)?;
-        put_pages_secret(project, &password_key, &password)?;
+        // Stage this group's secrets for both Pages environments. Pages applies
+        // them to subsequent deployments, not the currently running deployment.
+        // If any upload fails, rerun the command before deploying.
+        for environment in [AccessEnvironment::Production, AccessEnvironment::Preview] {
+            let session_secret = random_secret()?;
+            put_pages_secret(project, &session_key, &session_secret, environment)?;
+            put_pages_secret(project, &password_key, &password, environment)?;
+        }
         human::success(&format!(
-            "Updated password for '{}' on Cloudflare Pages project '{}'",
+            "Stored password for '{}' on Cloudflare Pages project '{}' (production and preview)",
             group.name, project
         ));
     }
+    human::info(
+        "Deploy this commit from the Cloudflare Pages project's production branch to activate production (seite-created projects use `main`). Run `seite deploy --preview` to activate preview. Existing deployments keep their current password and sessions until redeployed.",
+    );
     Ok(())
 }
 
@@ -187,9 +207,28 @@ fn random_secret() -> anyhow::Result<String> {
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-fn put_pages_secret(project: &str, key: &str, value: &str) -> anyhow::Result<()> {
+fn pages_secret_args(project: &str, key: &str, environment: AccessEnvironment) -> Vec<String> {
+    vec![
+        "pages".into(),
+        "secret".into(),
+        "put".into(),
+        key.into(),
+        "--project-name".into(),
+        project.into(),
+        "--env".into(),
+        environment.as_str().into(),
+    ]
+}
+
+fn put_pages_secret(
+    project: &str,
+    key: &str,
+    value: &str,
+    environment: AccessEnvironment,
+) -> anyhow::Result<()> {
+    let args = pages_secret_args(project, key, environment);
     let mut child = npm_cmd("wrangler")
-        .args(["pages", "secret", "put", key, "--project-name", project])
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -300,6 +339,24 @@ mode = "password"
         config.collections.truncate(1);
         let groups = collect_access_groups(&config);
         assert_eq!(select_group(&groups, None).unwrap().name, "shared");
+    }
+
+    #[test]
+    fn pages_secret_args_target_the_selected_environment() {
+        assert_eq!(
+            pages_secret_args("site", "SEITE_PASSWORD_STAFF", AccessEnvironment::Preview),
+            vec![
+                "pages",
+                "secret",
+                "put",
+                "SEITE_PASSWORD_STAFF",
+                "--project-name",
+                "site",
+                "--env",
+                "preview",
+            ]
+        );
+        assert_eq!(AccessEnvironment::Production.as_str(), "production");
     }
 
     #[test]

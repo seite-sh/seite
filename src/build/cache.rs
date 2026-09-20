@@ -206,6 +206,20 @@ impl BuildCache {
                     }
                 }
             }
+            if !changeset.needs_full_rebuild {
+                for cached_key in self.static_files.keys() {
+                    let rel = PathBuf::from(cached_key);
+                    if !current_static.contains_key(&rel) {
+                        changeset.needs_full_rebuild = true;
+                        changeset.full_rebuild_reason =
+                            Some(format!("static file deleted: {cached_key}"));
+                        break;
+                    }
+                }
+            }
+        } else if !self.static_files.is_empty() && !changeset.needs_full_rebuild {
+            changeset.needs_full_rebuild = true;
+            changeset.full_rebuild_reason = Some("static directory removed".to_string());
         }
 
         changeset
@@ -669,6 +683,43 @@ mod tests {
         assert!(!changeset.needs_full_rebuild);
         assert_eq!(changeset.changed_static.len(), 1);
         assert!(!changeset.is_empty());
+    }
+
+    #[test]
+    fn test_static_file_deletion_triggers_full_rebuild() {
+        let tmp = TempDir::new().unwrap();
+        let config_path = tmp.path().join("seite.toml");
+        let content_dir = tmp.path().join("content");
+        let template_dir = tmp.path().join("templates");
+        let data_dir = tmp.path().join("data");
+        let static_dir = tmp.path().join("static");
+
+        fs::write(&config_path, "[site]\ntitle = \"Test\"").unwrap();
+        let private_dir = static_dir.join("private/members");
+        fs::create_dir_all(&private_dir).unwrap();
+        let private_file = private_dir.join("confidential.pdf");
+        fs::write(&private_file, "private").unwrap();
+        let cache = BuildCache::snapshot(
+            &config_path,
+            &content_dir,
+            &template_dir,
+            &data_dir,
+            &static_dir,
+        );
+
+        fs::remove_file(private_file).unwrap();
+        let changeset = cache.diff(
+            &config_path,
+            &content_dir,
+            &template_dir,
+            &data_dir,
+            &static_dir,
+        );
+
+        assert!(changeset.needs_full_rebuild);
+        let reason = changeset.full_rebuild_reason.unwrap();
+        assert!(reason.contains("static file deleted:"));
+        assert!(reason.contains("confidential.pdf"));
     }
 
     #[test]
