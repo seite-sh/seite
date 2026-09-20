@@ -132,6 +132,7 @@ pub(crate) fn migrate(root: &Path) -> anyhow::Result<bool> {
     match (agents_exists, claude_exists) {
         (false, false) => Ok(false),
         (false, true) => {
+            let legacy_permissions = fs::metadata(&claude_path)?.permissions();
             let legacy = fs::read_to_string(&claude_path)?;
             let (import_count, without_imports) = strip_import_lines(&legacy);
             let canonical = if import_count == 0 {
@@ -150,6 +151,7 @@ pub(crate) fn migrate(root: &Path) -> anyhow::Result<bool> {
             // validation or temporary-file failures cannot leave a partial
             // migration behind.
             let agents_write = prepare_atomic_write(&agents_path, &canonical)?;
+            agents_write.as_file().set_permissions(legacy_permissions)?;
             let claude_write = prepare_atomic_write(&claude_path, CLAUDE_SHIM)?;
             persist_atomic_write(agents_write, &agents_path)?;
             persist_atomic_write(claude_write, &claude_path)?;
@@ -264,6 +266,32 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&claude_path).unwrap(),
             "# Legacy instructions\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_preserves_legacy_permissions_on_new_agents_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_path = tmp.path().join("CLAUDE.md");
+        fs::write(&claude_path, "# Private instructions\n").unwrap();
+        fs::set_permissions(&claude_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        assert!(migrate(tmp.path()).unwrap());
+
+        assert_eq!(
+            fs::metadata(tmp.path().join("AGENTS.md"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(&claude_path).unwrap().permissions().mode() & 0o777,
+            0o600
         );
     }
 }
