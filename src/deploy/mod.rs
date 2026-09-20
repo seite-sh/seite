@@ -678,7 +678,7 @@ pub fn try_fix_check(
             Some(FixAction {
                 prompt: format!("Attach domain '{domain}' to Cloudflare Pages project?"),
                 manual_instructions: vec![
-                    format!("Add the domain in the Cloudflare dashboard under Pages > your project > Custom domains"),
+                    "Add the domain in the Cloudflare dashboard under Pages > your project > Custom domains".to_string(),
                     format!("Or run: seite deploy --domain {domain}"),
                 ],
             })
