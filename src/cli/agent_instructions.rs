@@ -25,7 +25,10 @@ pub(crate) fn validate_paths(root: &Path) -> anyhow::Result<()> {
             Ok(metadata) if metadata.permissions().readonly() => {
                 anyhow::bail!("{} is read-only", path.display());
             }
-            Ok(_) => {}
+            Ok(_) => {
+                fs::File::open(&path)
+                    .with_context(|| format!("{} is not readable", path.display()))?;
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
                 return Err(error).with_context(|| format!("failed to inspect {}", path.display()));

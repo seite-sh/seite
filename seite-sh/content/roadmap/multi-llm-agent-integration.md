@@ -12,7 +12,7 @@ Support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agen
 
 - **Provider abstraction**: `AgentProvider` trait with per-provider implementations for command construction, tool name mapping, streaming JSON parsing, and MCP config generation
 - **`[agent]` config section**: provider selection and optional model override in `seite.toml`
-- **`AGENTS.md` migration**: migrate from `.claude/CLAUDE.md` to the cross-tool `AGENTS.md` standard
+- **`AGENTS.md` migration**: migrate from root `CLAUDE.md` to the cross-tool `AGENTS.md` standard
 - **MCP config generation**: write provider-specific MCP config for all detected tools
 - **CLI detection**: auto-detect installed agent tools during `seite init`
 - **`seite agent switch`**: change default provider
