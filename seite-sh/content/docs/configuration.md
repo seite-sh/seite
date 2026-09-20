@@ -149,7 +149,7 @@ seite access set-password staff
 
 The command prompts for the password, then uploads it and a separate signing secret to each relevant Cloudflare Pages project through Wrangler. Secrets are not stored in the config, source tree, logs, or command arguments.
 
-Ordinary `static/` files stay public. For protected downloads, place files under `static/private/<group>/`; they are emitted at `/private-assets/<group>/` and gated by that group.
+Ordinary `static/` files stay public. With `[access]` enabled, place protected downloads under `static/private/<group>/`; they are emitted at `/private-assets/<group>/` and gated by that group. Without `[access]`, those files remain under `/static/private/<group>/` and are publicly reachable.
 
 ## [build]
 
