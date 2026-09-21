@@ -1,0 +1,10 @@
+baseURL = "http://localhost:3000/"
+languageCode = "en"
+title = "Benchmark Site"
+
+[markup]
+  [markup.highlight]
+    codeFences = false
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
