@@ -51,6 +51,13 @@ enum UpgradeAction {
         value: String,
         description: String,
     },
+    StampProjectVersion {
+        description: String,
+    },
+    MigrateAgentInstructions {
+        root: PathBuf,
+        description: String,
+    },
 }
 
 impl UpgradeAction {
@@ -66,6 +73,23 @@ impl UpgradeAction {
             UpgradeAction::Append { description, .. } => {
                 vec![description.clone()]
             }
+            UpgradeAction::StampProjectVersion { description } => {
+                vec![description.clone()]
+            }
+            UpgradeAction::MigrateAgentInstructions { description, .. } => {
+                vec![description.clone()]
+            }
+        }
+    }
+
+    fn targets_path(&self, target: &Path) -> bool {
+        match self {
+            UpgradeAction::Create { path, .. }
+            | UpgradeAction::MergeJson { path, .. }
+            | UpgradeAction::Append { path, .. }
+            | UpgradeAction::InjectToml { path, .. } => path == target,
+            UpgradeAction::StampProjectVersion { .. }
+            | UpgradeAction::MigrateAgentInstructions { .. } => false,
         }
     }
 }
@@ -96,7 +120,7 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
         },
         UpgradeStep {
             introduced_in: (0, 1, 0),
-            label: "CLAUDE.md MCP documentation",
+            label: "Project instructions MCP documentation",
             check: check_claude_md_mcp,
         },
         UpgradeStep {
@@ -182,6 +206,12 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
     ]
 }
 
+/// Return the canonical project instructions file, falling back to the legacy
+/// Claude-specific file for projects that have not reached the migration step.
+fn project_instructions_path(root: &Path) -> PathBuf {
+    crate::cli::agent_instructions::canonical_path(root)
+}
+
 /// Install the `.claude/rules/private-collections.md` context file so the project's
 /// agent knows about `private` collections, password groups, and subdomain hubs.
 /// Created only if missing.
@@ -212,6 +242,11 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         );
     }
 
+    // Historical upgrade steps can append to the project instructions before
+    // the v0.19 migration runs. Reject symlinks and other non-file entries up
+    // front so no action can write through a path outside the project.
+    crate::cli::agent_instructions::validate_paths(&root)?;
+
     let project_ver = meta::project_version(&root);
     let binary_ver = meta::binary_version();
 
@@ -221,6 +256,24 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         if step.introduced_in > project_ver {
             let step_actions = (step.check)(&root);
             actions.extend(step_actions);
+        }
+    }
+
+    // Decide whether a migration action is needed after seeing every older
+    // action. Some historical steps can create CLAUDE.md in projects where
+    // neither instruction file existed when checks began.
+    if project_ver < (0, 19, 0) {
+        let claude_path = root.join("CLAUDE.md");
+        let older_action_creates_instructions = actions
+            .iter()
+            .any(|action| action.targets_path(&claude_path));
+        if crate::cli::agent_instructions::needs_migration(&root)
+            || older_action_creates_instructions
+        {
+            actions.push(UpgradeAction::MigrateAgentInstructions {
+                root: root.clone(),
+                description: "Canonical AGENTS.md project instructions".into(),
+            });
         }
     }
 
@@ -336,6 +389,15 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
                 fs::write(&path, patched)?;
                 human::success(&format!("Updated {description}"));
             }
+            UpgradeAction::StampProjectVersion { .. } => {
+                // The version marker is the upgrade's commit point and is
+                // written only after every file migration succeeds.
+            }
+            UpgradeAction::MigrateAgentInstructions { root, description } => {
+                if crate::cli::agent_instructions::migrate(&root)? {
+                    human::success(&format!("Updated {description}"));
+                }
+            }
         }
     }
 
@@ -350,15 +412,20 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         meta::format_version(binary_ver)
     ));
 
-    // Hint about trimming CLAUDE.md if rules files were created
+    // Hint about trimming the canonical project instructions if rules files were created.
     if root.join(".claude/rules").exists() {
-        if let Ok(content) = fs::read_to_string(root.join("CLAUDE.md")) {
+        let instructions_path = if root.join("AGENTS.md").exists() {
+            root.join("AGENTS.md")
+        } else {
+            root.join("CLAUDE.md")
+        };
+        if let Ok(content) = fs::read_to_string(instructions_path) {
             if content.lines().count() > 300 {
                 println!();
                 human::info(
                     "Detailed context now lives in .claude/rules/ and loads automatically.",
                 );
-                human::info("You can trim your CLAUDE.md — the rules files have the details.");
+                human::info("You can trim your AGENTS.md — the rules files have the details.");
             }
         }
     }
@@ -377,15 +444,7 @@ fn check_page_meta(root: &Path) -> Vec<UpgradeAction> {
         return vec![];
     }
 
-    let meta = meta::PageMeta {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        initialized_at: None, // existing project, don't fake an init time
-    };
-    let content = serde_json::to_string_pretty(&meta).unwrap_or_default();
-
-    vec![UpgradeAction::Create {
-        path,
-        content,
+    vec![UpgradeAction::StampProjectVersion {
         description: ".seite/config.json (project metadata)".into(),
     }]
 }
@@ -679,9 +738,9 @@ fn check_deploy_version_pinning(_root: &Path) -> Vec<UpgradeAction> {
     vec![]
 }
 
-/// Ensure CLAUDE.md has an MCP server section.
+/// Ensure the project instructions have an MCP server section.
 fn check_claude_md_mcp(root: &Path) -> Vec<UpgradeAction> {
-    let path = root.join("CLAUDE.md");
+    let path = project_instructions_path(root);
     if !path.exists() {
         return vec![];
     }
@@ -721,7 +780,7 @@ raw files.
     vec![UpgradeAction::Append {
         path,
         content: section.to_string(),
-        description: "CLAUDE.md (added MCP Server section)".into(),
+        description: "Project instructions (added MCP Server section)".into(),
     }]
 }
 
@@ -740,9 +799,9 @@ fn check_public_dir(root: &Path) -> Vec<UpgradeAction> {
     }]
 }
 
-/// Ensure CLAUDE.md mentions contact form support.
+/// Ensure the project instructions mention contact form support.
 fn check_contact_form_docs(root: &Path) -> Vec<UpgradeAction> {
-    let path = root.join("CLAUDE.md");
+    let path = project_instructions_path(root);
     if !path.exists() {
         return vec![];
     }
@@ -778,13 +837,13 @@ endpoint = "your-form-id"
     vec![UpgradeAction::Append {
         path,
         content: section.to_string(),
-        description: "CLAUDE.md (added Contact Forms section)".into(),
+        description: "Project instructions (added Contact Forms section)".into(),
     }]
 }
 
-/// Ensure CLAUDE.md mentions subdomain deploy support.
+/// Ensure the project instructions mention subdomain deploy support.
 fn check_subdomain_deploy_docs(root: &Path) -> Vec<UpgradeAction> {
-    let path = root.join("CLAUDE.md");
+    let path = project_instructions_path(root);
     if !path.exists() {
         return vec![];
     }
@@ -822,7 +881,7 @@ deploy_project = "my-site-docs"  # optional, auto-created by deploy --setup
     vec![UpgradeAction::Append {
         path,
         content: section.to_string(),
-        description: "CLAUDE.md (added Subdomain Deploys section)".into(),
+        description: "Project instructions (added Subdomain Deploys section)".into(),
     }]
 }
 
@@ -947,10 +1006,10 @@ fn check_claude_rules(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
-/// Document Atom feed and redirect aliases in CLAUDE.md.
+/// Document Atom feed and redirect aliases in the project instructions.
 /// These features were added in 0.8.0.
 fn check_atom_aliases_docs(root: &Path) -> Vec<UpgradeAction> {
-    let path = root.join("CLAUDE.md");
+    let path = project_instructions_path(root);
     if !path.exists() {
         return vec![];
     }
@@ -989,7 +1048,7 @@ aliases:
     vec![UpgradeAction::Append {
         path,
         content: section.to_string(),
-        description: "CLAUDE.md (added Atom Feeds & Redirect Aliases section)".into(),
+        description: "Project instructions (added Atom Feeds & Redirect Aliases section)".into(),
     }]
 }
 
@@ -1022,14 +1081,14 @@ fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
     let snippet = r#"<link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">"#;
 
     vec![UpgradeAction::Append {
-        path: root.join("CLAUDE.md"),
+        path: project_instructions_path(root),
         content: format!(
             "\n\n### Custom Template: Atom Autodiscovery\n\n\
              Your custom `templates/base.html` does not include Atom feed autodiscovery.\n\
              {hint}:\n\n\
              ```html\n{snippet}\n```\n"
         ),
-        description: "CLAUDE.md (Atom autodiscovery hint for custom template)".into(),
+        description: "Project instructions (Atom autodiscovery hint for custom template)".into(),
     }]
 }
 
@@ -1259,10 +1318,10 @@ mod tests {
         let actions = check_page_meta(tmp.path());
         assert_eq!(actions.len(), 1);
         match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
+            UpgradeAction::StampProjectVersion { description } => {
                 assert!(description.contains("config.json"));
             }
-            _ => panic!("expected Create action"),
+            _ => panic!("expected deferred version stamp action"),
         }
     }
 

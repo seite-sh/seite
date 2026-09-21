@@ -1,5 +1,6 @@
 pub mod access;
 pub mod agent;
+mod agent_instructions;
 pub mod build;
 pub mod collection;
 pub mod completions;

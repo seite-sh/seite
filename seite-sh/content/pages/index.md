@@ -22,7 +22,7 @@ extra:
   feature_1_body: "Single static binary for macOS, Linux, and Windows. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
 
   feature_2_title: "Claude Code is the UI."
-  feature_2_body: "Every <code>seite init</code> generates a <code>.claude/CLAUDE.md</code> context file so Claude Code (and other agents) orient themselves immediately. Run <code>seite agent \"write a post about X\"</code> and it reads your schema, templates, and content before touching anything. No new commands to learn — it already knows how."
+  feature_2_body: "Every <code>seite init</code> generates an <code>AGENTS.md</code> context file so coding agents orient themselves immediately, plus a <code>CLAUDE.md</code> compatibility import. Run <code>seite agent \"write a post about X\"</code> and it reads your schema, templates, and content before touching anything. No new commands to learn — it already knows how."
 
   feature_3_title: "Ship in every language your customers speak."
   feature_3_body: "Filename-based translations with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags. Zero config for single-language sites: it's just there when you need it."
@@ -45,7 +45,7 @@ extra:
   step_1_title: "Install seite"
   step_1_body: "<code>curl -fsSL seite.sh/install.sh | sh</code> on macOS/Linux, <code>irm seite.sh/install.ps1 | iex</code> on Windows. Single static binary, no runtime dependencies. Works on every machine on your team without setup."
   step_2_title: "Scaffold your site"
-  step_2_body: "<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>.claude/CLAUDE.md</code>, so your coding agent is immediately oriented."
+  step_2_body: "<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>AGENTS.md</code>, so your coding agent is immediately oriented."
   step_3_title: "Create content with your agent"
   step_3_body: "<code>seite agent \"write about X\"</code>. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it."
   step_4_title: "Deploy anywhere"

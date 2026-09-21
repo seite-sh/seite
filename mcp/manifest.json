@@ -4,7 +4,7 @@
   "display_name": "seite \u2014 AI-native Static Site Generator",
   "version": "VERSION_PLACEHOLDER",
   "description": "Build and manage static sites via MCP. Create content, apply themes, search, and deploy.",
-  "long_description": "seite is a Rust-powered static site generator with a built-in MCP server. It exposes site content, configuration, themes, and build tools to any AI agent. Ships with Claude Code integration, CLAUDE.md scaffolding, and llms.txt generation.",
+  "long_description": "seite is a Rust-powered static site generator with a built-in MCP server. It exposes site content, configuration, themes, and build tools to any AI agent. Ships with portable AGENTS.md guidance, Claude Code integration, and llms.txt generation.",
   "author": {
     "name": "seite-sh",
     "url": "https://seite.sh"

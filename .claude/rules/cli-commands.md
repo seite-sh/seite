@@ -24,7 +24,7 @@ Multi-site via `seite-workspace.toml`. `workspace::resolve_context()` returns `S
 GitHub Pages (git push), Cloudflare (wrangler), Netlify. `auto_commit = true` by default. Non-main branches auto-use preview. `--dry-run` for preview.
 
 ## Skill Pack System
-`seite skill install|list|remove|update`. Known: `seomachine` (11 agents, 22 commands, 25 skills). Manifest in `.claude/.seite-skill-packs.json`. SEOMachine CLAUDE.md section managed by HTML comment markers.
+`seite skill install|list|remove|update`. Known: `seomachine` (11 agents, 22 commands, 25 skills). Manifest in `.claude/.seite-skill-packs.json`. SEOMachine AGENTS.md section managed by HTML comment markers.
 
 ## Built-in Skills
 `/theme-builder` (4-phase theme creation), `/brand-identity` (5-phase visual identity), `/landing-page` (conditional on pages collection). Scaffolded by init, upgraded with version tracking (`# seite-skill-version: N`).

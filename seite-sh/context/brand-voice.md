@@ -43,7 +43,7 @@ Imagine you're a developer friend who built something useful and is showing it t
 
 ### Core Message: AI-Native, Not AI-Bolted
 - **Concept**: seite doesn't add AI as a feature — AI understands seite from the ground up
-- **Key Points**: Auto-generated CLAUDE.md, MCP server, agent context, skill packs
+- **Key Points**: Auto-generated AGENTS.md, CLAUDE.md compatibility import, MCP server, agent context, skill packs
 - **Usage**: When discussing what makes seite different from other SSGs
 
 ### Core Message: One Tool, Not Five

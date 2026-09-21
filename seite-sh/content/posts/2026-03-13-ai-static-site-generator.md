@@ -84,9 +84,9 @@ The AI doesn't replace your workflow. It plugs into it.
 
 Four architectural decisions separate an AI-first SSG from everything else.
 
-### AI Context: CLAUDE.md and MCP Server
+### AI Context: AGENTS.md and MCP Server
 
-When you run `seite init`, the tool generates a `.claude/CLAUDE.md` file that describes your entire site to AI agents. This file includes your collections, content inventory, frontmatter format, template list, URL patterns, and every available CLI command. An AI agent reads this file once and understands your project.
+When you run `seite init`, the tool generates an `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The canonical file includes your collections, content inventory, frontmatter format, template list, URL patterns, and every available CLI command. An AI agent reads it once and understands your project.
 
 But a static file isn't enough. seite also ships an [MCP server](/docs/mcp-server) that gives AI tools real-time, structured access to your site:
 
@@ -217,7 +217,7 @@ Here's how the major static site generators compare on AI-related capabilities:
 |---------|------|-------|------|-------|
 | Single binary (no runtime) | Yes (Go) | No (Node.js) | Yes (Rust) | Yes (Rust) |
 | Sub-second builds | Yes | Varies | Yes | Yes |
-| AI context file (CLAUDE.md) | No | No | No | Auto-generated |
+| AI context file (AGENTS.md) | No | No | No | Auto-generated |
 | MCP server for AI tools | No | No | No | Built-in |
 | llms.txt output | No | No | No | Every build |
 | Markdown output per page | No | No | No | Every build |
@@ -230,7 +230,7 @@ Here's how the major static site generators compare on AI-related capabilities:
 
 Hugo, Astro, and Zola are strong tools for what they do. The difference is that none of them were designed for a world where AI agents are part of the development workflow and AI search engines are part of the audience.
 
-The difference compounds when you add an AI agent to the workflow. A coding agent working with Hugo has to explore the project, read `config.toml`, figure out the theme structure, and infer your content model. A coding agent working with seite reads `CLAUDE.md`, connects to the MCP server, and starts working immediately with full knowledge of your site's [configuration](/docs/configuration), [collections](/docs/collections), and [templates](/docs/templates).
+The difference compounds when you add an AI agent to the workflow. A coding agent working with Hugo has to explore the project, read `config.toml`, figure out the theme structure, and infer your content model. A coding agent working with seite reads `AGENTS.md`, connects to the MCP server, and starts working immediately with full knowledge of your site's [configuration](/docs/configuration), [collections](/docs/collections), and [templates](/docs/templates).
 
 ## Getting Started with an AI Static Site Generator
 
@@ -260,7 +260,7 @@ Your site now has:
 - [Documentation with sidebar navigation](/blog/build-docs-site-command-line)
 - Static pages
 - Client-side search
-- AI context files (CLAUDE.md, MCP server config)
+- AI context files (AGENTS.md, CLAUDE.md compatibility import, MCP server config)
 - 10 themes to choose from
 
 To [deploy](/docs/deployment):
@@ -279,7 +279,7 @@ An AI static site generator is a CLI tool that builds static websites while givi
 
 ### How is seite different from Hugo or Astro?
 
-Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds AI context files (CLAUDE.md), an MCP server for AI tool integration, triple output (HTML + markdown + llms.txt), and built-in AI agent and theme generation. It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
+Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds portable AI context files (`AGENTS.md` plus a `CLAUDE.md` compatibility import), an MCP server for AI tool integration, triple output (HTML + markdown + llms.txt), and built-in AI agent and theme generation. It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
 
 ### Do I need Node.js to use seite?
 
@@ -313,7 +313,7 @@ The AI static site generator is a new category. It's a tool where AI understands
 
 Three things to remember:
 
-1. **AI context is architecture, not documentation.** A CLAUDE.md file and MCP server aren't nice-to-haves. They determine whether AI agents can work effectively with your site.
+1. **AI context is architecture, not documentation.** An AGENTS.md file and MCP server aren't nice-to-haves. They determine whether AI agents can work effectively with your site.
 2. **Triple output is the new standard.** HTML alone isn't enough. Markdown and llms.txt make your content discoverable by the next generation of search.
 3. **AI should work *with* your workflow, not replace it.** The best AI integration respects git, CLI, and markdown. It doesn't lock you into a cloud dashboard.
 

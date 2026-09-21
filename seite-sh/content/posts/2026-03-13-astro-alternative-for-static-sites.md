@@ -67,11 +67,11 @@ Build times reflect this. A 200-post blog with no interactive components builds 
 
 ### No AI-Native Architecture
 
-This is the gap that matters for 2026. Astro has no native llms.txt output, no markdown copies per page, no CLAUDE.md context file for AI coding agents, and no MCP server for structured AI access to your content. For [AI-native static site generators](/blog/ai-static-site-generator), these are first-class features, not afterthoughts.
+This is the gap that matters for 2026. Astro has no native llms.txt output, no markdown copies per page, no AGENTS.md context file for AI coding agents, and no MCP server for structured AI access to your content. For [AI-native static site generators](/blog/ai-static-site-generator), these are first-class features, not afterthoughts.
 
 When an AI search engine like ChatGPT or Perplexity crawls your Astro site, it gets HTML it has to parse. When it crawls a seite site, it gets clean markdown output, an llms.txt discovery file, and structured metadata from every page. The indexing quality difference is measurable.
 
-This is the gap that [generative engine optimization](/blog/generative-engine-optimization) makes visible: clean markdown output plus llms.txt means your content appears in AI-generated answers. When Sara, a developer who uses Claude Code daily, tried to use her AI coding agent on her existing Astro blog, the agent could read the files but had no structured understanding of Astro's content collections API, no site context, and no typed access to her configuration. Every agent prompt started with a five-paragraph briefing on the site structure. She added a side project on seite. Her agent's first response after opening the project was a complete content plan based on existing posts, with suggested titles, tags, and a slug convention, with no site briefing needed. The CLAUDE.md file seite generates on `seite init` handled the orientation automatically.
+This is the gap that [generative engine optimization](/blog/generative-engine-optimization) makes visible: clean markdown output plus llms.txt means your content appears in AI-generated answers. When Sara, a developer who uses Claude Code daily, tried to use her AI coding agent on her existing Astro blog, the agent could read the files but had no structured understanding of Astro's content collections API, no site context, and no typed access to her configuration. Every agent prompt started with a five-paragraph briefing on the site structure. She added a side project on seite. Her agent's first response after opening the project was a complete content plan based on existing posts, with suggested titles, tags, and a slug convention, with no site briefing needed. The AGENTS.md file seite generates on `seite init` handled the orientation automatically.
 
 ## Astro vs seite: Feature Comparison
 
@@ -92,7 +92,7 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | Markdown copies per page | No | Every build |
 | AI agent integration | No | `seite agent` |
 | MCP server | No | Built-in |
-| CLAUDE.md context | No | Auto-generated |
+| AGENTS.md context | No | Auto-generated |
 | Bundled themes | Via Starlight / community | 6 compiled into binary |
 | AI theme generation | No | `seite theme create` |
 | RSS feed | Integration required | Built-in |
@@ -122,7 +122,7 @@ seite is the right astro alternative for static sites when. As a Rust-based astr
 
 - Every page is markdown. Blog posts, docs pages, a landing page written as markdown. No interactive islands needed.
 - You want zero runtime dependencies. Single binary, curl install, no Node.js, no npm.
-- You use AI coding agents and want your site to be agent-aware out of the box. CLAUDE.md, MCP server, and `seite agent` handle the agent integration automatically.
+- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the CLAUDE.md compatibility import, MCP server, and `seite agent` handle the integration automatically.
 - You want your site content to appear in AI search (ChatGPT, Perplexity, Claude's web browsing). llms.txt, markdown copies, and AI-aware robots.txt handle the GEO layer without configuration.
 - You are a startup that needs blog, docs, landing page, and changelog from one init command. Not four separate tools, not four deploys, not four billing accounts.
 - You want sub-second builds without a Node.js build pipeline.

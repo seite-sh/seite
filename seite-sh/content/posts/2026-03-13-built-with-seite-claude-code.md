@@ -43,13 +43,13 @@ seite agent "write the homepage hero copy, three variations, brand voice is prag
 seite theme create "minimal developer tool aesthetic, dark mode toggle, monospace accents"
 ```
 
-The agent handled first drafts of all 15 documentation pages. It read the project context from the auto-generated `CLAUDE.md` and the MCP server's `seite://config` resource, then produced structured docs with the right frontmatter, correct internal link targets and accurate command syntax. Not perfect, but 80% of the way there on the first pass.
+The agent handled first drafts of all 15 documentation pages. It read the project context from the auto-generated `AGENTS.md` through the `CLAUDE.md` compatibility import and queried the MCP server's `seite://config` resource, then produced structured docs with the right frontmatter, correct internal link targets and accurate command syntax. Not perfect, but 80% of the way there on the first pass.
 
 The changelog entries were genuinely impressive. We ran `seite agent "create changelog entries for v0.1.0 through v0.4.0 from the git log"`, and the agent read the commit history, grouped changes by type, wrote human-readable summaries and formatted them correctly for the changelog collection. That task would have taken two hours manually. It took 12 minutes.
 
 Homepage copy was harder. We ran three full iterations before landing on the current version. The agent's first draft was competent but generic. The second was better but overexplained. The third was close. We edited the third. If you're curious about the workflow behind that process, the [seite agent docs](/docs/agent) go into more detail on how to structure those sessions.
 
-**What the agent got right without prompting:** Internal link structure (it knew the site map through the MCP server), frontmatter field names (it read existing files), and build command syntax (it read `CLAUDE.md`). The context infrastructure worked the way it was supposed to.
+**What the agent got right without prompting:** Internal link structure (it knew the site map through the MCP server), frontmatter field names (it read existing files), and build command syntax (it read `AGENTS.md`). The context infrastructure worked the way it was supposed to.
 
 **What the agent got wrong:** It kept reaching for "simply" and "just" in explanations. We caught this on the second doc page and added a forbidden words list to `context/style-guide.md`. It also defaulted to three heading levels when two were enough, and it occasionally over-explained CLI flags to readers who clearly already know what a flag is.
 

@@ -407,10 +407,12 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     // Write .claude/rules/ files (path-scoped context for Claude)
     generate_rules_files(&root, &collections, config.contact.is_some())?;
 
-    // Write CLAUDE.md with site-specific context
+    // Write cross-agent project instructions and a Claude Code compatibility shim.
+    // Claude Code expands the @AGENTS.md import, while other agents can consume
+    // AGENTS.md directly.
     fs::write(
-        root.join("CLAUDE.md"),
-        generate_claude_md(
+        root.join("AGENTS.md"),
+        generate_agents_md(
             &config,
             &title,
             &description,
@@ -418,6 +420,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             trust_opts.as_ref(),
         ),
     )?;
+    fs::write(root.join("CLAUDE.md"), "@AGENTS.md\n")?;
 
     human::success(&format!("Created new site in '{name}'"));
     println!();
@@ -939,8 +942,8 @@ fn generate_rules_files(
     Ok(())
 }
 
-/// Generate a CLAUDE.md tailored to the site's collections and structure.
-fn generate_claude_md(
+/// Generate an AGENTS.md tailored to the site's collections and structure.
+fn generate_agents_md(
     config: &SiteConfig,
     title: &str,
     description: &str,
@@ -1176,7 +1179,16 @@ fn generate_claude_md(
 
     // Context rules note
     md.push_str("## Context Rules\n\n");
-    md.push_str("Detailed guides for templates, SEO, i18n, data files, shortcodes, configuration, and more are in `.claude/rules/` and load automatically when working with matching files.\n\n");
+    md.push_str("Detailed guides live in `.claude/rules/`. Claude Code loads them automatically for matching files. Other agents should read the relevant guides before editing:\n\n");
+    md.push_str(
+        "- `templates/**`: `templates.md`, `seo-requirements.md`, and `design-prompts.md`\n",
+    );
+    md.push_str("- `content/**` or `templates/shortcodes/**`: `i18n.md`, `shortcodes.md`, and `features.md`\n");
+    md.push_str("- `data/**`: `data-files.md`\n");
+    md.push_str("- `seite.toml`: `config-reference.md` and `private-collections.md`\n");
+    md.push_str(
+        "- Contact or trust-center work: `contact-form.md` or `trust-center.md` when present\n\n",
+    );
 
     // Documentation links
     md.push_str("## Documentation\n\n");

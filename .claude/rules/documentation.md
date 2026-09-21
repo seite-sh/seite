@@ -20,7 +20,7 @@ paths:
 - `trust-center.md` — trust center setup and management
 - `contact-forms.md` — contact form providers and shortcode
 
-## Also update this repo's CLAUDE.md when adding new patterns or architecture.
+## Also update the repo's canonical AGENTS.md instructions when adding new patterns or architecture.
 
 ## Scaffold files (`src/scaffold/`)
-Static markdown sections embedded via `include_str!` into generated CLAUDE.md and `.claude/rules/` for user sites. Edit these when changing the AI agent context.
+Static markdown sections embedded via `include_str!` into generated AGENTS.md and `.claude/rules/` for user sites. Edit these when changing the AI agent context.

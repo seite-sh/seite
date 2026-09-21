@@ -54,7 +54,7 @@ All from Markdown + YAML frontmatter. No JavaScript runtime. No build dependenci
 
 `seite agent` spawns Claude Code with full site context — config, content inventory, templates, and available commands. No API keys, no setup. Uses your existing Claude Code subscription.
 
-`seite init` generates `.claude/CLAUDE.md` with your site's full schema so the agent is oriented before it writes a single character. Output lands in the right directory, with the right frontmatter, following your conventions. You review a diff and ship it.
+`seite init` generates `AGENTS.md` with your site's full schema so compatible coding agents are oriented before they write a single character. A one-line `CLAUDE.md` imports the same instructions for Claude Code. Output lands in the right directory, with the right frontmatter, following your conventions. You review a diff and ship it.
 
 ```bash
 seite agent "write a post about our v1.2 release — here are the notes: ..."
