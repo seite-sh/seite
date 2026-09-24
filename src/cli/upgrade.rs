@@ -1476,6 +1476,53 @@ fn check_mcp_servers_json(root: &Path, rel: &str, agent: &str) -> Vec<UpgradeAct
     }]
 }
 
+/// Create `.cursor/cli.json`, or add seite's allow rules to an existing one
+/// (other rules, and any deny list, are kept).
+fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
+    let rel = ".cursor/cli.json";
+    let path = root.join(rel);
+    if !path.exists() {
+        return vec![UpgradeAction::Create {
+            path,
+            content: harness::pretty_json(&harness::cursor_cli_json()),
+            description: format!("{rel} (Cursor CLI permissions for seite)"),
+        }];
+    }
+    let Some(mut json) = read_json_object(&path) else {
+        human::warning(&format!(
+            "{rel} is not a JSON object; add seite's Cursor permissions to it manually"
+        ));
+        return vec![];
+    };
+    let permissions = json
+        .entry("permissions".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(permissions) = permissions.as_object_mut() else {
+        return vec![];
+    };
+    let allow = permissions
+        .entry("allow".to_string())
+        .or_insert_with(|| serde_json::json!([]));
+    let Some(allow) = allow.as_array_mut() else {
+        return vec![];
+    };
+    let mut additions = Vec::new();
+    for rule in harness::CURSOR_ALLOW {
+        if !allow.iter().any(|v| v == rule) {
+            allow.push(serde_json::json!(rule));
+            additions.push(format!("Added {rule} to {rel}"));
+        }
+    }
+    if additions.is_empty() {
+        return vec![];
+    }
+    vec![UpgradeAction::MergeJson {
+        path,
+        merged: serde_json::Value::Object(json),
+        additions,
+    }]
+}
+
 /// Create `opencode.json`, or merge into an existing one: add `mcp.seite` if
 /// missing, and the permission block only when there's no `permission` key.
 /// Every other key is kept.
@@ -1587,6 +1634,7 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     }
     if agents.contains(&Agent::Cursor) {
         actions.extend(check_mcp_servers_json(root, ".cursor/mcp.json", "Cursor"));
+        actions.extend(check_cursor_cli_json(root));
         actions.extend(missing_rules(
             root,
             ".cursor/rules",
@@ -2580,6 +2628,32 @@ mod tests {
         fs::create_dir_all(tmp.path().join(".codex")).unwrap();
         fs::write(tmp.path().join(".codex/config.toml"), "[broken").unwrap();
         assert!(check_codex_config(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_cursor_cli_json_merges_allow_rules() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".cursor")).unwrap();
+        fs::write(
+            tmp.path().join(".cursor/cli.json"),
+            r#"{"permissions":{"allow":["Shell(git)"],"deny":["Shell(rm)"]},"editor":{"vimMode":true}}"#,
+        )
+        .unwrap();
+        apply_json_actions(check_cursor_cli_json(tmp.path()));
+        let json = read_json(&tmp.path().join(".cursor/cli.json"));
+        let allow = json["permissions"]["allow"].as_array().unwrap();
+        assert_eq!(allow[0], "Shell(git)");
+        assert!(allow.iter().any(|v| v == "Mcp(seite:*)"));
+        assert_eq!(json["permissions"]["deny"][0], "Shell(rm)");
+        assert_eq!(json["editor"]["vimMode"], true);
+        assert!(check_cursor_cli_json(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_cursor_cli_json_creates_missing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let actions = check_cursor_cli_json(tmp.path());
+        assert!(matches!(actions.as_slice(), [UpgradeAction::Create { .. }]));
     }
 
     #[test]
