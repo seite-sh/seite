@@ -15,6 +15,7 @@ cargo fmt --all      # Format — CI enforces this
 cargo clippy         # Lint — must be zero warnings
 cargo run -- init mysite --title "My Site" --collections posts,docs,pages
 cargo run -- build   # Build site from seite.toml
+cargo run -- check   # Validate config/content/templates/links (no dist/ writes)
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
@@ -34,6 +35,7 @@ cargo run -- completions bash  # Generate shell completions
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
+  diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col) for build, check, MCP
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
@@ -41,7 +43,7 @@ src/
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
+  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults
