@@ -1,10 +1,9 @@
-use std::fs;
 use std::path::PathBuf;
 
 use clap::Args;
 
 use crate::config::{self, SiteConfig};
-use crate::content::{self, Frontmatter};
+use crate::content::create::{create_content_file, NewContent};
 use crate::output::human::{self, suggest_match};
 
 #[derive(Args)]
@@ -49,87 +48,51 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
             )
         })?;
 
-    let slug = content::slug_from_title(&args.title);
     let tags_vec: Vec<String> = args
         .tags
         .as_ref()
-        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
-    let date = if collection.has_date {
-        Some(chrono::Local::now().date_naive())
-    } else {
-        None
-    };
-
-    let fm = Frontmatter {
-        title: args.title.clone(),
-        date,
+    let spec = NewContent {
+        title: &args.title,
         tags: tags_vec,
         draft: args.draft,
+        lang: args.lang.as_deref(),
+        body: "Write your content here.",
         ..Default::default()
     };
-
-    // Validate --lang if provided: must be a configured non-default language
-    let lang_suffix = if let Some(ref lang) = args.lang {
-        if *lang == site_config.site.language {
-            // Default language doesn't need a suffix
-            None
-        } else if site_config.languages.contains_key(lang) {
-            Some(lang.as_str())
-        } else {
-            anyhow::bail!(
-                "unknown language '{}'. Configured languages: {}",
-                lang,
-                site_config.all_languages().join(", ")
-            );
-        }
-    } else {
-        None
-    };
-
-    let filename = if collection.has_date {
-        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-        if let Some(lang) = lang_suffix {
-            format!("{date_str}-{slug}.{lang}.md")
-        } else {
-            format!("{date_str}-{slug}.md")
-        }
-    } else if let Some(lang) = lang_suffix {
-        format!("{slug}.{lang}.md")
-    } else {
-        format!("{slug}.md")
-    };
-
-    let filepath = paths.content.join(&collection.directory).join(&filename);
-    fs::create_dir_all(
-        filepath
-            .parent()
-            .expect("content file must have a parent directory"),
+    let created = create_content_file(
+        &site_config,
+        &paths.content,
+        collection,
+        &spec,
+        chrono::Local::now().date_naive(),
     )?;
-    let file_content = format!(
-        "{}\n\nWrite your content here.\n",
-        content::generate_frontmatter(&fm)
-    );
-    fs::write(&filepath, file_content)?;
-    human::success(&format!("Created {}", filepath.display()));
+
+    human::success(&format!("Created {}", created.path.display()));
     crate::human_println!(
         "  {} edit this file and the dev server will auto-reload",
         console::style("→").dim()
     );
 
     let prefix = collection.url_prefix.trim_end_matches('/');
-    let url = match lang_suffix {
-        Some(lang) => format!("/{lang}{prefix}/{slug}"),
-        None => format!("{prefix}/{slug}"),
+    let url = match spec.lang {
+        Some(lang) => format!("/{lang}{prefix}/{}", created.slug),
+        None => format!("{prefix}/{}", created.slug),
     };
     crate::output::json::set_data(serde_json::json!({
-        "path": filepath.display().to_string(),
+        "path": created.path.display().to_string(),
         "collection": collection.name,
-        "slug": slug,
+        "slug": created.slug,
         "url": url,
         "draft": args.draft,
-        "lang": lang_suffix,
+        "lang": spec.lang,
     }));
 
     Ok(())

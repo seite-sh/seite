@@ -526,13 +526,33 @@ fn get_default_template(name: &str) -> Option<&'static str> {
 /// Load Tera templates from the user's template directory, falling back to
 /// embedded defaults for any template not provided.
 pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> Result<tera::Tera> {
+    let (tera, warnings) = load_templates_with_warnings(template_dir, collections)?;
+    for warning in &warnings {
+        eprintln!("⚠ Warning: {warning}");
+    }
+    Ok(tera)
+}
+
+/// Like [`load_templates`], but returns non-fatal problems (e.g. a user
+/// template that failed to parse, causing a fallback to the embedded defaults)
+/// as warnings instead of printing them. Callers decide how to surface them.
+pub fn load_templates_with_warnings(
+    template_dir: &Path,
+    collections: &[CollectionConfig],
+) -> Result<(tera::Tera, Vec<String>)> {
+    let mut warnings = Vec::new();
     #[allow(clippy::manual_unwrap_or_default)]
     let mut tera = if template_dir.exists() {
         let glob_pattern = format!("{}/**/*.html", template_dir.display());
         match tera::Tera::new(&glob_pattern) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("⚠ Warning: failed to parse user templates, using defaults: {e}");
+                warnings.push(format!(
+                    "failed to parse user templates in {}, using built-in defaults \
+                     (your custom templates were ignored): {}",
+                    template_dir.display(),
+                    error_chain(&e)
+                ));
                 tera::Tera::default()
             }
         }
@@ -579,7 +599,23 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
         }
     }
 
-    Ok(tera)
+    Ok((tera, warnings))
+}
+
+/// Render an error and all of its sources (Tera nests the useful detail —
+/// file, line, and the parser message — in the source chain).
+fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(s) = source {
+        let msg = s.to_string();
+        if !out.contains(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        source = s.source();
+    }
+    out
 }
 
 #[cfg(test)]
@@ -684,6 +720,27 @@ mod tests {
         let tera = load_templates(&tpl_dir, &[]).unwrap();
         // Our custom template should be loaded
         assert!(tera.get_template("base.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_warnings_reports_parse_fallback() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        std::fs::create_dir_all(&tpl_dir).unwrap();
+        std::fs::write(tpl_dir.join("base.html"), "<html>{% if %}</html>").unwrap();
+        let (tera, warnings) = load_templates_with_warnings(&tpl_dir, &[]).unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("failed to parse user templates"));
+        assert!(warnings[0].contains("base.html"), "{}", warnings[0]);
+        // Falls back to the embedded default.
+        assert!(tera.get_template("base.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_warnings_clean_dir_has_none() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (_, warnings) = load_templates_with_warnings(&tmp.path().join("missing"), &[]).unwrap();
+        assert!(warnings.is_empty());
     }
 
     #[test]

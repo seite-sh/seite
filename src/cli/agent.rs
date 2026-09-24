@@ -22,6 +22,24 @@ pub struct AgentArgs {
     pub once: bool,
 }
 
+/// Tools the agent may use without prompting. `mcp__seite` allows every tool
+/// of the site's `seite` MCP server.
+const AGENT_ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,Bash,mcp__seite";
+
+/// `--mcp-config .mcp.json` when the project declares MCP servers there, so
+/// the agent gets the seite MCP server without an interactive approval.
+fn mcp_config_args() -> Vec<&'static str> {
+    mcp_config_args_for(std::path::Path::new(".mcp.json"))
+}
+
+fn mcp_config_args_for(mcp_json: &std::path::Path) -> Vec<&'static str> {
+    if mcp_json.is_file() {
+        vec!["--mcp-config", ".mcp.json"]
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
     ensure_claude_installed()?;
 
@@ -29,7 +47,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
     let paths = config.resolve_paths(&std::env::current_dir()?);
     let system_prompt = build_system_prompt(&config, &paths);
 
-    let allowed_tools = "Read,Write,Edit,Glob,Grep,Bash";
+    let allowed_tools = AGENT_ALLOWED_TOOLS;
 
     match &args.prompt {
         Some(prompt) if args.once => {
@@ -39,6 +57,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
                 .args(["-p", prompt])
                 .args(["--append-system-prompt", &system_prompt])
                 .args(["--allowedTools", allowed_tools])
+                .args(mcp_config_args())
                 .status()
                 .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
 
@@ -63,6 +82,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
             let status = npm_cmd("claude")
                 .args(["--append-system-prompt", &system_prompt])
                 .args(["--allowedTools", allowed_tools])
+                .args(mcp_config_args())
                 .status()
                 .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
 
@@ -88,6 +108,7 @@ fn run_streaming(
         .args(["--output-format", "stream-json"])
         .args(["--verbose"])
         .args(["--allowedTools", allowed_tools])
+        .args(mcp_config_args())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
 
@@ -553,6 +574,23 @@ fn list_templates(paths: &ResolvedPaths) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_agent_allows_seite_mcp_tools() {
+        assert!(AGENT_ALLOWED_TOOLS.split(',').any(|t| t == "mcp__seite"));
+    }
+
+    #[test]
+    fn test_mcp_config_args_only_when_file_exists() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join(".mcp.json");
+        assert!(mcp_config_args_for(&path).is_empty());
+        std::fs::write(&path, "{}").unwrap();
+        assert_eq!(
+            mcp_config_args_for(&path),
+            vec!["--mcp-config", ".mcp.json"]
+        );
+    }
 
     #[test]
     fn test_build_system_prompt_contains_site_info() {

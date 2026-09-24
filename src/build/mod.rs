@@ -41,6 +41,10 @@ pub struct BuildResult {
     pub link_check: links::LinkCheckResult,
     /// Per-subdomain build results.
     pub subdomain_builds: Vec<SubdomainBuildInfo>,
+    /// Non-fatal problems that did not stop the build but likely produced
+    /// unexpected output (e.g. user templates that failed to parse and were
+    /// replaced by the built-in defaults). Also printed to stderr.
+    pub warnings: Vec<String>,
 }
 
 /// Build info for a single subdomain collection.
@@ -319,6 +323,7 @@ pub fn build_site(
                     broken_links: Vec::new(),
                 },
                 subdomain_builds: Vec::new(),
+                warnings: Vec::new(),
             });
         }
         if let Some(ref reason) = cs.full_rebuild_reason {
@@ -356,9 +361,11 @@ pub fn build_site(
 
     let result = build_site_inner(effective_config, paths, opts, rewrites_ref, &changeset)?;
 
+    let mut warnings = result.warnings;
+
     // Build subdomain collections into their own output directories
     let subdomain_builds = if has_subdomains {
-        build_subdomain_sites(config, paths, opts)?
+        build_subdomain_sites(config, paths, opts, &mut warnings)?
     } else {
         Vec::new()
     };
@@ -382,6 +389,7 @@ pub fn build_site(
         stats: result.stats,
         link_check: result.link_check,
         subdomain_builds,
+        warnings,
     })
 }
 
@@ -424,6 +432,7 @@ fn build_subdomain_sites(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
+    warnings: &mut Vec<String>,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -458,6 +467,11 @@ fn build_subdomain_sites(
             Some(&reverse_rewrites),
             &None,
         )?;
+        for warning in sub_result.warnings {
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+        }
 
         results.push(SubdomainBuildInfo {
             collection_name: collection.name.clone(),
@@ -555,7 +569,11 @@ fn build_site_inner(
     // Step 2: Load templates (collection-aware)
     progress.step("Loading templates");
     let step_start = Instant::now();
-    let mut tera = templates::load_templates(&paths.templates, &config.collections)?;
+    let (mut tera, mut warnings) =
+        templates::load_templates_with_warnings(&paths.templates, &config.collections)?;
+    for warning in &warnings {
+        eprintln!("⚠ Warning: {warning}");
+    }
     step_timings.push((
         "Load templates".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -580,8 +598,6 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Pre-compute configured language codes for filename detection
-    let configured_langs = config.configured_lang_codes();
     let is_multilingual = config.is_multilingual();
     let default_lang = &config.site.language;
 
@@ -593,6 +609,7 @@ fn build_site_inner(
     crate::i18n::register_filters(&mut tera, default_lang, &lang_codes);
     for warning in crate::i18n::partial_language_map_warnings(&data, &lang_codes) {
         crate::output::human::warning_stderr(&warning);
+        warnings.push(warning);
     }
 
     // Step 3: Process each collection
@@ -670,18 +687,8 @@ fn build_site_inner(
                         return Ok(None);
                     }
 
-                    let file_lang = if is_multilingual {
-                        content::extract_lang_from_filename(path, &configured_langs)
-                    } else {
-                        None
-                    };
-                    let lang = file_lang.as_deref().unwrap_or(default_lang).to_string();
-
-                    let slug = if file_lang.is_some() {
-                        resolve_slug_i18n(&fm, rel, collection, &configured_langs)
-                    } else {
-                        resolve_slug(&fm, rel, collection)
-                    };
+                    let ItemLocation { slug, url, lang } =
+                        resolve_item_location(config, collection, path, rel, &fm);
 
                     let mut fm = fm;
                     if fm.date.is_none() && collection.has_date {
@@ -706,12 +713,6 @@ fn build_site_inner(
                     let (html_body, toc) =
                         markdown::markdown_to_html_with(&html_input, config.build.mermaid);
 
-                    let base_url = build_url(&collection.url_prefix, &slug);
-                    let url = if lang != *default_lang {
-                        format!("/{lang}{base_url}")
-                    } else {
-                        base_url
-                    };
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
                     let word_count = raw_body.split_whitespace().count();
                     let reading_time = if word_count == 0 {
@@ -2435,6 +2436,7 @@ fn build_site_inner(
         stats,
         link_check,
         subdomain_builds: Vec::new(),
+        warnings,
     })
 }
 
@@ -2551,6 +2553,69 @@ fn post_process_html_files(
         total_links_checked: total_checked,
         broken_links: all_broken,
     })
+}
+
+/// Where a content file lands in the built site.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemLocation {
+    pub slug: String,
+    pub url: String,
+    pub lang: String,
+}
+
+/// Resolve the slug, URL, and language of a content file exactly as the build
+/// does (explicit `slug:` frontmatter, date-prefix stripping, nested
+/// directories, and `.{lang}.md` translation suffixes).
+///
+/// `path` is the file path; `rel_path` is the same file relative to the
+/// collection directory. Other tools (e.g. the MCP server) use this so the URLs
+/// they report always match the generated output.
+pub fn resolve_item_location(
+    config: &SiteConfig,
+    collection: &CollectionConfig,
+    path: &Path,
+    rel_path: &Path,
+    fm: &Frontmatter,
+) -> ItemLocation {
+    let default_lang = &config.site.language;
+    let configured_langs = config.configured_lang_codes();
+    let file_lang = if config.is_multilingual() {
+        content::extract_lang_from_filename(path, &configured_langs)
+    } else {
+        None
+    };
+    let lang = file_lang
+        .as_deref()
+        .unwrap_or(default_lang.as_str())
+        .to_string();
+
+    let slug = if file_lang.is_some() {
+        resolve_slug_i18n(fm, rel_path, collection, &configured_langs)
+    } else {
+        resolve_slug(fm, rel_path, collection)
+    };
+
+    let base_url = build_url(&collection.url_prefix, &slug);
+    let url = if lang != *default_lang {
+        format!("/{lang}{base_url}")
+    } else {
+        base_url
+    };
+    ItemLocation { slug, url, lang }
+}
+
+/// Date for a content file: its `date:` frontmatter, or for dated collections
+/// the `YYYY-MM-DD-` filename prefix (as the build does).
+pub fn resolve_item_date(
+    fm: &Frontmatter,
+    path: &Path,
+    collection: &CollectionConfig,
+) -> Option<chrono::NaiveDate> {
+    if fm.date.is_none() && collection.has_date {
+        parse_date_from_filename(path)
+    } else {
+        fm.date
+    }
 }
 
 fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig) -> String {

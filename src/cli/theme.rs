@@ -132,27 +132,27 @@ fn set_apply_data(name: &str, source: &str, template_dir: &std::path::Path) {
 
 fn run_apply(name: &str) -> anyhow::Result<()> {
     // Ensure we're in a page project
-    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    themes::validate_theme_name(name)?;
 
-    let template_dir = PathBuf::from("templates");
-    std::fs::create_dir_all(&template_dir)?;
+    let project_root = std::env::current_dir()?;
+    let paths = config.resolve_paths(&project_root);
 
-    // Check bundled themes first
-    if let Some(theme) = themes::by_name(name) {
-        std::fs::write(template_dir.join("base.html"), theme.base_html)?;
-        human::success(&format!("Applied bundled theme '{}'", name));
+    if themes::by_name(name).is_some() || themes::installed_by_name(&project_root, name).is_some() {
+        let applied = themes::apply_theme(&project_root, &paths.templates, name)?;
+        if let Some(ref backup) = applied.backup {
+            human::info(&format!(
+                "Backed up your customized base.html to {}",
+                backup.display()
+            ));
+        }
+        human::success(&format!(
+            "Applied {} theme '{}'",
+            applied.source.as_str(),
+            name
+        ));
         human::info("Run 'seite build' or the watcher will pick it up automatically.");
-        set_apply_data(name, "bundled", &template_dir);
-        return Ok(());
-    }
-
-    // Check installed themes
-    let project_root = PathBuf::from(".");
-    if let Some(theme) = themes::installed_by_name(&project_root, name) {
-        std::fs::write(template_dir.join("base.html"), &theme.base_html)?;
-        human::success(&format!("Applied installed theme '{}'", name));
-        human::info("Run 'seite build' or the watcher will pick it up automatically.");
-        set_apply_data(name, "installed", &template_dir);
+        set_apply_data(name, applied.source.as_str(), &paths.templates);
         return Ok(());
     }
 
@@ -217,9 +217,9 @@ fn derive_theme_name(url: &str, name_override: Option<&str>) -> String {
 
 /// Validate that a theme name is safe for use as a filename.
 fn validate_theme_name(name: &str) -> anyhow::Result<()> {
-    if name.is_empty() || name.contains(std::path::is_separator) || name.contains("..") {
-        return Err(anyhow::anyhow!("invalid theme name: '{}'", name));
-    }
+    // Same rule as `seite theme apply` / the MCP server, so every installed
+    // theme can later be applied by name.
+    themes::validate_theme_name(name)?;
     Ok(())
 }
 
@@ -502,8 +502,9 @@ mod tests {
     #[test]
     fn test_validate_name_valid() {
         assert!(validate_theme_name("coral-brutalist").is_ok());
-        assert!(validate_theme_name("my_theme").is_ok());
         assert!(validate_theme_name("a").is_ok());
+        assert!(validate_theme_name("my_theme").is_err());
+        assert!(validate_theme_name("/abs/evil").is_err());
     }
 
     #[test]

@@ -376,11 +376,14 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     // Write project metadata (.seite/config.json)
     meta::write(&root, &meta::PageMeta::current())?;
 
-    // Write Claude Code settings (.claude/settings.json)
+    // Write Claude Code settings (.claude/settings.json) and the project MCP
+    // server config (.mcp.json — the only place Claude Code reads project
+    // MCP servers from).
     fs::write(
         root.join(".claude/settings.json"),
         generate_claude_settings(),
     )?;
+    fs::write(root.join(".mcp.json"), generate_mcp_json())?;
 
     // Write Claude Code skills
     if collections.iter().any(|c| c.name == "pages") {
@@ -815,47 +818,69 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     Ok(())
 }
 
-/// Generate .claude/settings.json with pre-approved tools and MCP server config.
-fn generate_claude_settings() -> String {
-    r#"{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "permissions": {
-    "allow": [
-      "Read",
-      "Write(content/**)",
-      "Write(templates/**)",
-      "Write(static/**)",
-      "Write(data/**)",
-      "Edit(content/**)",
-      "Edit(templates/**)",
-      "Edit(data/**)",
-      "Bash(seite build:*)",
-      "Bash(seite build)",
-      "Bash(seite new:*)",
-      "Bash(seite serve:*)",
-      "Bash(seite theme:*)",
-      "Glob",
-      "Grep",
-      "WebSearch"
-    ],
-    "deny": [
-      "Read(.env)",
-      "Read(.env.*)"
-    ]
-  },
-  "mcpServers": {
-    "seite": {
-      "command": "seite",
-      "args": ["mcp"]
-    }
-  }
-}
-"#
-    .to_string()
+/// Permission rules pre-approved in a new site's `.claude/settings.json`.
+///
+/// `mcp__seite` allows every tool of the `seite` MCP server (Claude Code's
+/// server-level MCP permission rule).
+pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
+    "Read",
+    "Write(content/**)",
+    "Write(templates/**)",
+    "Write(static/**)",
+    "Write(data/**)",
+    "Edit(content/**)",
+    "Edit(templates/**)",
+    "Edit(static/**)",
+    "Edit(data/**)",
+    "Edit(seite.toml)",
+    "Bash(seite build:*)",
+    "Bash(seite build)",
+    "Bash(seite new:*)",
+    "Bash(seite serve:*)",
+    "Bash(seite theme:*)",
+    "Glob",
+    "Grep",
+    "WebSearch",
+    "mcp__seite",
+];
+
+/// Allow rules that `seite upgrade` adds to existing projects' settings
+/// (introduced after the original settings template).
+pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] =
+    &["mcp__seite", "Edit(static/**)", "Edit(seite.toml)"];
+
+/// `.claude/settings.json` for a new site: permissions plus
+/// `enabledMcpjsonServers`, which pre-approves the `seite` server declared in
+/// `.mcp.json`. (Claude Code ignores `mcpServers` in settings.json.)
+pub fn claude_settings() -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "https://json.schemastore.org/claude-code-settings.json",
+        "permissions": {
+            "allow": CLAUDE_ALLOWED_TOOLS,
+            "deny": ["Read(.env)", "Read(.env.*)"]
+        },
+        "enabledMcpjsonServers": ["seite"]
+    })
 }
 
-/// The MCP server block that should be present in .claude/settings.json.
-/// Used by upgrade to merge into existing settings.
+/// Generate .claude/settings.json with pre-approved tools.
+fn generate_claude_settings() -> String {
+    let json = serde_json::to_string_pretty(&claude_settings()).unwrap_or_default();
+    format!("{json}\n")
+}
+
+/// `.mcp.json` — the project-scoped MCP server config Claude Code reads.
+pub fn mcp_json() -> serde_json::Value {
+    serde_json::json!({ "mcpServers": mcp_server_block() })
+}
+
+fn generate_mcp_json() -> String {
+    let json = serde_json::to_string_pretty(&mcp_json()).unwrap_or_default();
+    format!("{json}\n")
+}
+
+/// The `mcpServers` entry for the seite server (as used in `.mcp.json`).
+/// Used by upgrade to merge into an existing `.mcp.json`.
 pub fn mcp_server_block() -> serde_json::Value {
     serde_json::json!({
         "seite": {

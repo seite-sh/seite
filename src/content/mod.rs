@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{PageError, Result};
 
+pub mod create;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Frontmatter {
     pub title: String,

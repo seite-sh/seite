@@ -7,8 +7,18 @@ use std::fs;
 
 use walkdir::WalkDir;
 
-use super::{JsonRpcError, ServerState};
+use super::{content_index, JsonRpcError, ServerState};
 use crate::content;
+
+/// Claude Code project files exposed by `seite://mcp-config`.
+const MCP_CONFIG_FILES: [&str; 2] = [".mcp.json", ".claude/settings.json"];
+
+/// Config and paths, or the actionable "why not" message as a JSON-RPC error.
+fn site(
+    state: &ServerState,
+) -> Result<(&crate::config::SiteConfig, &crate::config::ResolvedPaths), JsonRpcError> {
+    state.site().map_err(JsonRpcError::invalid_params)
+}
 
 /// Handle `resources/list` — enumerate all available resources.
 pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
@@ -18,7 +28,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     resources.push(serde_json::json!({
         "uri": "seite://docs",
         "name": "Documentation Index",
-        "description": "List of all page documentation pages",
+        "description": "List of all seite documentation pages",
         "mimeType": "application/json"
     }));
     for doc in crate::docs::all() {
@@ -50,7 +60,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
             resources.push(serde_json::json!({
                 "uri": format!("seite://content/{}", collection.name),
                 "name": format!("{} collection", collection.label),
-                "description": format!("Content items in the {} collection", collection.name),
+                "description": format!("Content items in the {} collection (source path, published URL, language, draft status)", collection.name),
                 "mimeType": "application/json"
             }));
         }
@@ -58,7 +68,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         resources.push(serde_json::json!({
             "uri": "seite://themes",
             "name": "Themes",
-            "description": "Available bundled and installed themes",
+            "description": "Available bundled and installed themes, with the active one flagged",
             "mimeType": "application/json"
         }));
 
@@ -73,12 +83,11 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
         }
 
         // MCP configuration
-        let mcp_config_path = state.cwd.join(".claude/settings.json");
-        if mcp_config_path.exists() {
+        if MCP_CONFIG_FILES.iter().any(|f| state.cwd.join(f).exists()) {
             resources.push(serde_json::json!({
                 "uri": "seite://mcp-config",
                 "name": "MCP Configuration",
-                "description": "Claude Code MCP server configuration (.claude/settings.json)",
+                "description": "Claude Code project configuration: .mcp.json (MCP servers) and .claude/settings.json (permissions)",
                 "mimeType": "application/json"
             }));
         }
@@ -178,7 +187,7 @@ fn read_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let config = state
         .config
         .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project (no seite.toml)"))?;
+        .ok_or_else(|| JsonRpcError::invalid_params(state.no_config_message()))?;
 
     let value = serde_json::to_value(config).map_err(|e| JsonRpcError::internal(e.to_string()))?;
     let text = serde_json::to_string_pretty(&value).unwrap_or_default();
@@ -197,14 +206,7 @@ fn read_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 // ---------------------------------------------------------------------------
 
 fn read_content_overview(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
-    let config = state
-        .config
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
-    let paths = state
-        .paths
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
+    let (config, paths) = site(state)?;
 
     let mut collections = Vec::new();
     for coll in &config.collections {
@@ -251,55 +253,23 @@ fn read_collection(
     state: &ServerState,
     collection_name: &str,
 ) -> Result<serde_json::Value, JsonRpcError> {
-    let config = state
-        .config
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
-    let paths = state
-        .paths
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
+    let (config, paths) = site(state)?;
 
-    let collection = config
-        .collections
-        .iter()
-        .find(|c| c.name == collection_name)
+    let collection = crate::config::find_collection(collection_name, &config.collections)
         .ok_or_else(|| {
-            JsonRpcError::invalid_params(format!("Collection not found: {collection_name}"))
+            let available: Vec<&str> = config.collections.iter().map(|c| c.name.as_str()).collect();
+            JsonRpcError::invalid_params(format!(
+                "Collection not found: {collection_name}. Available collections: {}",
+                available.join(", ")
+            ))
         })?;
 
-    let dir = paths.content.join(&collection.directory);
-    let mut items = Vec::new();
-
-    if dir.exists() {
-        for entry in WalkDir::new(&dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-        {
-            if let Ok((fm, _body)) = content::parse_content_file(entry.path()) {
-                let slug = fm
-                    .slug
-                    .clone()
-                    .unwrap_or_else(|| content::slug_from_title(&fm.title));
-                let url = if collection.url_prefix.is_empty() {
-                    format!("/{slug}")
-                } else {
-                    format!("{}/{slug}", collection.url_prefix)
-                };
-                items.push(serde_json::json!({
-                    "title": fm.title,
-                    "slug": slug,
-                    "url": url,
-                    "date": fm.date.map(|d| d.to_string()),
-                    "tags": fm.tags,
-                    "draft": fm.draft,
-                    "description": fm.description,
-                    "weight": fm.weight,
-                }));
-            }
-        }
-    }
+    let scanned = content_index::scan_collection(config, paths, collection);
+    let (parsed, failed): (Vec<_>, Vec<_>) = scanned.iter().partition(|item| item.parsed.is_ok());
+    let mut items: Vec<serde_json::Value> = parsed
+        .into_iter()
+        .map(content_index::item_summary)
+        .collect();
 
     // Sort: dated items by date descending, otherwise by weight then title
     if collection.has_date {
@@ -319,6 +289,9 @@ fn read_collection(
             })
         });
     }
+    // Unparseable files are listed (after the valid ones) with their error
+    // rather than silently skipped.
+    items.extend(failed.into_iter().map(content_index::item_summary));
 
     let text = serde_json::to_string_pretty(&items).unwrap_or_default();
     Ok(serde_json::json!({
@@ -337,21 +310,46 @@ fn read_collection(
 fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     let mut themes = Vec::new();
 
+    // Which theme templates/base.html currently corresponds to ("custom" if none).
+    let templates_dir = state
+        .paths
+        .as_ref()
+        .map(|p| p.templates.clone())
+        .unwrap_or_else(|| state.cwd.join("templates"));
+    let active = crate::themes::active_theme(&state.cwd, &templates_dir);
+    let mut active_listed = false;
+
     // Bundled themes
     for theme in crate::themes::all() {
+        let is_active = theme.name == active;
+        active_listed |= is_active;
         themes.push(serde_json::json!({
             "name": theme.name,
             "description": theme.description,
             "source": "bundled",
+            "active": is_active,
         }));
     }
 
     // Installed themes (if in a project)
     for theme in crate::themes::installed_themes(&state.cwd) {
+        // A bundled theme with the same content wins the "active" flag.
+        let is_active = !active_listed && theme.name == active;
+        active_listed |= is_active;
         themes.push(serde_json::json!({
             "name": theme.name,
             "description": theme.description,
             "source": "installed",
+            "active": is_active,
+        }));
+    }
+
+    if !active_listed {
+        themes.push(serde_json::json!({
+            "name": "custom",
+            "description": "base.html has been customized and matches no bundled or installed theme",
+            "source": "custom",
+            "active": true,
         }));
     }
 
@@ -370,14 +368,7 @@ fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 // ---------------------------------------------------------------------------
 
 fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
-    let config = state
-        .config
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("Not in a seite project"))?;
-    let paths = state
-        .paths
-        .as_ref()
-        .ok_or_else(|| JsonRpcError::invalid_params("No project paths configured"))?;
+    let (config, paths) = site(state)?;
 
     let mut result = serde_json::json!({});
 
@@ -466,17 +457,31 @@ fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
 // MCP configuration resource
 // ---------------------------------------------------------------------------
 
+/// Returns `{".mcp.json": ..., ".claude/settings.json": ...}` with each file's
+/// parsed JSON (or `{"parse_error": ...}`); missing files are omitted.
 fn read_mcp_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
-    let path = state.cwd.join(".claude/settings.json");
-    let content = fs::read_to_string(&path).map_err(|e| {
-        JsonRpcError::invalid_params(format!("Cannot read .claude/settings.json: {e}"))
-    })?;
+    let mut files = serde_json::Map::new();
+    for rel in MCP_CONFIG_FILES {
+        let Ok(raw) = fs::read_to_string(state.cwd.join(rel)) else {
+            continue;
+        };
+        let value = serde_json::from_str::<serde_json::Value>(&raw)
+            .unwrap_or_else(|e| serde_json::json!({ "parse_error": e.to_string() }));
+        files.insert(rel.to_string(), value);
+    }
+    if files.is_empty() {
+        return Err(JsonRpcError::invalid_params(format!(
+            "Cannot read .mcp.json or .claude/settings.json in {}. Run `seite upgrade` to create them.",
+            state.cwd.display()
+        )));
+    }
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(files)).unwrap_or_default();
 
     Ok(serde_json::json!({
         "contents": [{
             "uri": "seite://mcp-config",
             "mimeType": "application/json",
-            "text": content
+            "text": text
         }]
     }))
 }
@@ -519,6 +524,7 @@ mod tests {
             config: Some(config),
             paths: Some(paths),
             cwd: dir.to_path_buf(),
+            config_error: None,
         }
     }
 
@@ -528,6 +534,7 @@ mod tests {
             config: None,
             paths: None,
             cwd: dir.to_path_buf(),
+            config_error: None,
         }
     }
 
@@ -978,6 +985,7 @@ mod tests {
             config: Some(config),
             paths: None,
             cwd: tmp.path().to_path_buf(),
+            config_error: None,
         };
         let err = read_content_overview(&state).unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1196,6 +1204,7 @@ mod tests {
             config: Some(config),
             paths: None,
             cwd: tmp.path().to_path_buf(),
+            config_error: None,
         };
         let err = read_collection(&state, "posts").unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1505,6 +1514,7 @@ mod tests {
             config: Some(config),
             paths: None,
             cwd: tmp.path().to_path_buf(),
+            config_error: None,
         };
         let err = read_trust(&state).unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1594,7 +1604,8 @@ mod tests {
         let result = read_mcp_config(&state).unwrap();
         let text = result["contents"][0]["text"].as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert!(parsed["mcpServers"]["seite"].is_object());
+        assert!(parsed[".claude/settings.json"]["mcpServers"]["seite"].is_object());
+        assert!(parsed.get(".mcp.json").is_none());
         assert_eq!(result["contents"][0]["uri"], "seite://mcp-config");
         assert_eq!(result["contents"][0]["mimeType"], "application/json");
     }
@@ -1783,5 +1794,143 @@ mod tests {
         assert_eq!(parsed["subprocessors"]["count"], 1);
         assert_eq!(parsed["faq"]["count"], 1);
         assert!(parsed["content_items"].is_array());
+    }
+
+    // -----------------------------------------------------------------------
+    // Real URLs, paths, drafts, parse errors, config errors, active theme
+    // -----------------------------------------------------------------------
+
+    fn read_items(state: &ServerState, collection: &str) -> Vec<serde_json::Value> {
+        let result = read_collection(state, collection).unwrap();
+        let text = result["contents"][0]["text"].as_str().unwrap();
+        serde_json::from_str(text).unwrap()
+    }
+
+    #[test]
+    fn test_read_collection_nested_and_translated_urls() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = make_config(vec![CollectionConfig::preset_docs()]);
+        config
+            .languages
+            .insert("es".into(), crate::config::LanguageConfig::default());
+        let state = make_state(tmp.path(), config);
+        let docs = tmp.path().join("content/docs");
+        write_content(&docs, "guides/intro.md", "Intro Guide", "");
+        write_content(&docs, "getting-started.es.md", "Spanish", "");
+        write_content(
+            &docs,
+            "renamed.md",
+            "A Completely New Title",
+            "draft: true\n",
+        );
+        fs::write(docs.join("broken.md"), "---\ntitle: [oops\n---\n").unwrap();
+
+        let items = read_items(&state, "docs");
+        let by_path = |p: &str| {
+            items
+                .iter()
+                .find(|i| i["path"] == p)
+                .unwrap_or_else(|| panic!("missing {p}: {items:?}"))
+                .clone()
+        };
+        let intro = by_path("content/docs/guides/intro.md");
+        assert_eq!(intro["url"], "/docs/guides/intro");
+        let es = by_path("content/docs/getting-started.es.md");
+        assert_eq!(es["url"], "/es/docs/getting-started");
+        assert_eq!(es["lang"], "es");
+        let renamed = by_path("content/docs/renamed.md");
+        assert_eq!(renamed["url"], "/docs/renamed");
+        assert_eq!(renamed["draft"], true);
+        let broken = by_path("content/docs/broken.md");
+        assert!(broken["parse_error"]
+            .as_str()
+            .unwrap()
+            .contains("broken.md"));
+        // Parse errors are listed last.
+        assert_eq!(items.last().unwrap()["path"], "content/docs/broken.md");
+    }
+
+    #[test]
+    fn test_read_collection_resolves_singular_alias() {
+        let tmp = TempDir::new().unwrap();
+        let config = make_config(vec![CollectionConfig::preset_posts()]);
+        let state = make_state(tmp.path(), config);
+        write_content(
+            &tmp.path().join("content/posts"),
+            "2026-01-01-a.md",
+            "A",
+            "",
+        );
+        let items = read_items(&state, "post");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["url"], "/posts/a");
+        assert_eq!(items[0]["date"], "2026-01-01");
+    }
+
+    #[test]
+    fn test_read_config_surfaces_load_error() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("seite.toml"), "[site\ntitle = 1\n").unwrap();
+        let state = ServerState::load(tmp.path().to_path_buf());
+        let err = read_config(&state).unwrap_err();
+        assert!(err.message.contains("Failed to load"), "{}", err.message);
+        assert!(!err.message.contains("Not in a seite project"));
+        let err = read_collection(&state, "posts").unwrap_err();
+        assert!(err.message.contains("Failed to load"), "{}", err.message);
+    }
+
+    #[test]
+    fn test_read_themes_flags_active_theme() {
+        let tmp = TempDir::new().unwrap();
+        let config = make_config(vec![]);
+        let state = make_state(tmp.path(), config);
+        let themes_of = |state: &ServerState| -> Vec<serde_json::Value> {
+            let result = read_themes(state).unwrap();
+            serde_json::from_str(result["contents"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let active = |themes: &[serde_json::Value]| -> Vec<String> {
+            themes
+                .iter()
+                .filter(|t| t["active"] == true)
+                .map(|t| t["name"].as_str().unwrap().to_string())
+                .collect()
+        };
+
+        // No base.html → the build uses the default theme.
+        assert_eq!(active(&themes_of(&state)), vec!["default"]);
+
+        let tpl = tmp.path().join("templates");
+        fs::create_dir_all(&tpl).unwrap();
+        fs::write(tpl.join("base.html"), crate::themes::dark().base_html).unwrap();
+        assert_eq!(active(&themes_of(&state)), vec!["dark"]);
+
+        fs::write(tpl.join("base.html"), "<html>mine</html>").unwrap();
+        let themes = themes_of(&state);
+        assert_eq!(active(&themes), vec!["custom"]);
+        assert_eq!(themes.last().unwrap()["source"], "custom");
+    }
+
+    #[test]
+    fn test_read_mcp_config_prefers_mcp_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".mcp.json"),
+            r#"{"mcpServers":{"seite":{"command":"seite","args":["mcp"]}}}"#,
+        )
+        .unwrap();
+        let state = make_state(tmp.path(), make_config(vec![]));
+        let listed = list(&state).unwrap();
+        assert!(listed["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["uri"] == "seite://mcp-config"));
+        let result = read_mcp_config(&state).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(result["contents"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            parsed[".mcp.json"]["mcpServers"]["seite"]["command"],
+            "seite"
+        );
     }
 }
