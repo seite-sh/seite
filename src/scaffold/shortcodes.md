@@ -43,3 +43,7 @@ Use in markdown: `{{% alert(level="error") %}}Something went wrong{{% end %}}`
 
 Shortcode templates have access to `{{ page }}` and `{{ site }}` context variables.
 
+### Syntax gotcha
+
+Inline shortcodes self-close — `{{< name(args) >}}` — and body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag; writing one fails the build with `invalid shortcode syntax`.
+

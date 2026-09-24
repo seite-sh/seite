@@ -1013,6 +1013,21 @@ fn generate_agents_md(
     md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
     md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
     md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
+    md.push_str("seite skill install seomachine           # Install a skill pack\n");
+    md.push_str(
+        "seite workspace list                     # List sites in a multi-site workspace\n",
+    );
+    md.push_str(
+        "seite access groups                      # List private-collection password groups\n",
+    );
+    md.push_str("seite upgrade                            # Upgrade project config after a seite version bump\n");
+    md.push_str("seite self-update                        # Update the seite binary itself\n");
+    md.push_str(
+        "seite perf                                # Audit performance via PageSpeed Insights\n",
+    );
+    md.push_str(
+        "seite mcp                                # Start the MCP server (usually auto-started)\n",
+    );
     md.push_str("seite completions bash                   # Generate shell completions\n");
     md.push_str("```\n\n");
 
@@ -1149,9 +1164,14 @@ fn generate_agents_md(
     md.push_str(
         "An MCP server is configured in `.claude/settings.json` and starts automatically.\n",
     );
-    md.push_str(
-        "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`\n",
-    );
+    md.push_str(&format!(
+        "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`, `seite://mcp-config`{}\n",
+        if trust_opts.is_some() {
+            ", `seite://trust`"
+        } else {
+            ""
+        }
+    ));
     md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`\n\n");
 
     // Trust Center (brief — details in .claude/rules/trust-center.md)
@@ -1188,6 +1208,17 @@ fn generate_agents_md(
 
     // Brand identity skill (static)
     md.push_str(include_str!("../scaffold/brand-identity.md"));
+
+    // Verify Your Change (short, static — how an agent should check its work)
+    md.push_str("## Verify Your Change\n\n");
+    md.push_str("After editing content or templates, run a build and check it came out clean:\n\n");
+    md.push_str("```bash\n");
+    md.push_str(
+        "seite build --strict   # fails (non-zero exit) on broken internal links; exit 0 = OK\n",
+    );
+    md.push_str("```\n\n");
+    md.push_str("A broken-link error lists the bad target href and every generated file (relative to `dist/`) that links to it — there are no source line numbers, so grep `content/` for the href to find the source. Check `dist/` for both the `.html` output and its `.md` twin, and that frontmatter parsed (a bad frontmatter field fails the build with the source file path).\n\n");
+    md.push_str("**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.\n\n");
 
     // Key conventions (short, mixed static/dynamic — keep inline)
     md.push_str("## Key Conventions\n\n");

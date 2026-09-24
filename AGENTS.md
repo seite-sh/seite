@@ -36,12 +36,12 @@ src/
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               15-step build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
+  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
   docs.rs              Embedded docs (15 pages from seite-sh/content/docs/)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 16 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self_update, completions, perf
+  cli/                 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults
@@ -147,9 +147,9 @@ endpoint = "xpznqkdl"
 ## Context Rules
 
 Detailed reference guides are in `.claude/rules/` and load automatically when working with matching files:
-- `build-pipeline.md` — 15-step pipeline, content model, data files, shortcodes
+- `build-pipeline.md` — build pipeline steps, content model, data files, shortcodes
 - `seo-guardrails.md` — SEO/GEO meta tags, JSON-LD, robots.txt, i18n in themes
-- `templates-themes.md` — template variables, blocks, 6 bundled themes, gallery
+- `templates-themes.md` — template variables, blocks, 10 bundled themes, gallery
 - `collections-content.md` — 6 presets, i18n, trust center, contact forms, changelog/roadmap
 - `cli-commands.md` — subcommands, agent, dev server, workspace, deploy, skills
 - `mcp-server.md` — resources, tools, architecture
