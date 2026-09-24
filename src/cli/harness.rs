@@ -583,6 +583,30 @@ pub fn opencode_permission() -> serde_json::Value {
     })
 }
 
+/// Allow rules for the Cursor CLI's project `.cursor/cli.json`: seite's MCP
+/// tools, the `seite` command, and writes to site sources. Cursor matches
+/// `Shell(...)` on the command's first token, so this allows every `seite`
+/// subcommand (Cursor still asks before anything not listed here).
+pub const CURSOR_ALLOW: &[&str] = &[
+    "Mcp(seite:*)",
+    "Shell(seite)",
+    "Write(content/**)",
+    "Write(templates/**)",
+    "Write(static/**)",
+    "Write(data/**)",
+    "Write(seite.toml)",
+];
+
+/// `.cursor/cli.json` for a new site (Cursor CLI permissions).
+pub fn cursor_cli_json() -> serde_json::Value {
+    serde_json::json!({
+        "permissions": {
+            "allow": CURSOR_ALLOW,
+            "deny": ["Read(.env)", "Read(.env.*)"]
+        }
+    })
+}
+
 /// The `mcp.seite` entry in `opencode.json`.
 pub fn opencode_mcp_entry() -> serde_json::Value {
     let mut command = vec![MCP_COMMAND];
@@ -636,6 +660,7 @@ pub fn merge_codex_config(existing: &str) -> Result<Option<String>, toml_edit::T
             seite.insert("command", MCP_COMMAND.into());
             let args: Array = MCP_ARGS.iter().copied().collect();
             seite.insert("args", Value::Array(args));
+            seite.insert("default_tools_approval_mode", "approve".into());
             table.insert(MCP_SERVER, Value::InlineTable(seite));
             return Ok(Some(doc.to_string()));
         }
@@ -660,7 +685,11 @@ fn codex_server_table() -> String {
         .map(|a| format!("\"{a}\""))
         .collect::<Vec<_>>()
         .join(", ");
-    format!("[mcp_servers.{MCP_SERVER}]\ncommand = \"{MCP_COMMAND}\"\nargs = [{args}]\n")
+    // `approve` runs seite's tools without a prompt, like `mcp__seite` in
+    // Claude's allowlist; without it `codex exec` refuses the write tools.
+    format!(
+        "[mcp_servers.{MCP_SERVER}]\ncommand = \"{MCP_COMMAND}\"\nargs = [{args}]\ndefault_tools_approval_mode = \"approve\"\n"
+    )
 }
 
 /// `.codex/config.toml` for a new site.
@@ -724,15 +753,15 @@ pub fn mcp_setup_table(agents: &[Agent]) -> String {
         let (config, step) = match agent {
             Agent::Claude => (
                 "`.mcp.json`",
-                "Approve if prompted on first open (pre-approved in `.claude/settings.json`); check with `/mcp`",
+                "Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`)",
             ),
             Agent::Codex => (
                 "`.codex/config.toml`",
-                "Trust the project when Codex asks (untrusted projects ignore it); check with `codex mcp list`",
+                "Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp`",
             ),
             Agent::Cursor => (
-                "`.cursor/mcp.json`",
-                "Approve it in Cursor's MCP settings, or run `cursor-agent mcp enable seite`",
+                "`.cursor/mcp.json` (+ `.cursor/cli.json` permissions)",
+                "Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt)",
             ),
             Agent::Opencode => ("`opencode.json`", "None — it starts automatically"),
         };
@@ -786,6 +815,7 @@ pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
     }
     if has(agents, Agent::Cursor) {
         files.push(file(".cursor/mcp.json", pretty_json(&mcp_json())));
+        files.push(file(".cursor/cli.json", pretty_json(&cursor_cli_json())));
         for r in rules(features) {
             files.push(file(
                 format!(".cursor/rules/{}.mdc", r.name),
@@ -905,6 +935,16 @@ mod tests {
         assert_eq!(rules(ALL_FEATURES).count(), RULES.len());
         assert!(skills(none).all(|s| s.name != "landing-page"));
         assert_eq!(skills(ALL_FEATURES).count(), SKILLS.len());
+    }
+
+    #[test]
+    fn cursor_cli_json_allows_seite_tools_and_denies_env() {
+        let json = cursor_cli_json();
+        let allow = json["permissions"]["allow"].as_array().unwrap();
+        assert!(allow.iter().any(|v| v == "Mcp(seite:*)"));
+        assert!(allow.iter().any(|v| v == "Shell(seite)"));
+        let deny = json["permissions"]["deny"].as_array().unwrap();
+        assert!(deny.iter().any(|v| v == "Read(.env)"));
     }
 
     #[test]
