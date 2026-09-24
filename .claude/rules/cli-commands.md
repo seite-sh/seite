@@ -9,7 +9,7 @@ paths:
 - Interactive prompts use `dialoguer` (only when CLI args not provided)
 
 ## Subcommands
-init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self-update, completions, perf, telemetry
+init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self-update, completions, perf, telemetry
 
 ## Agent System
 `seite agent` spawns Claude Code with system prompt containing site config, content inventory, template list, frontmatter format. Two modes: `seite agent "prompt"` (non-interactive) and `seite agent` (interactive).

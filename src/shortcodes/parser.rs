@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::diagnostics::Diagnostic;
 use crate::error::{PageError, Result};
+
+/// Result type for the parser internals: failures are located diagnostics.
+/// (Boxed: the error path is cold and `Diagnostic` is large.)
+type ParseResult<T> = std::result::Result<T, Box<Diagnostic>>;
 
 /// The kind of shortcode invocation.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +48,41 @@ pub struct ShortcodeCall {
 /// Skips shortcodes inside fenced code blocks and inline code spans.
 /// Returns calls in document order with byte spans for replacement.
 pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<ShortcodeCall>> {
+    parse_shortcodes_diagnostic(input, source_path).map_err(|d| diagnostic_to_error(*d))
+}
+
+/// Convert a shortcode diagnostic into the legacy [`PageError::Shortcode`]
+/// (the hint, when present, is appended to the message).
+pub(crate) fn diagnostic_to_error(d: Diagnostic) -> PageError {
+    let message = match &d.hint {
+        Some(hint) => format!("{}\n  hint: {hint}", d.message),
+        None => d.message.clone(),
+    };
+    PageError::Shortcode {
+        path: d.file.unwrap_or_default(),
+        line: d.line.unwrap_or(0),
+        message,
+    }
+}
+
+/// A `shortcode-syntax` diagnostic at `line` (1-based, relative to the
+/// parsed input) of `source_path`.
+fn syntax_error(source_path: &Path, line: usize, message: impl Into<String>) -> Box<Diagnostic> {
+    Box::new(
+        Diagnostic::error("shortcode-syntax", message)
+            .with_file(source_path)
+            .with_line(line),
+    )
+}
+
+/// Like [`parse_shortcodes`], but returns the first problem as a located
+/// diagnostic (code `shortcode-syntax`) with a hint where one is known, e.g.
+/// for Hugo-style `{{< /name >}}` closing tags or `{{< name key="v" >}}` args.
+/// Line numbers are relative to `input`.
+pub fn parse_shortcodes_diagnostic(
+    input: &str,
+    source_path: &Path,
+) -> ParseResult<Vec<ShortcodeCall>> {
     let bytes = input.as_bytes();
     let len = bytes.len();
     let mut results = Vec::new();
@@ -147,7 +187,13 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
                 let call_start = pos + 3;
                 if let Some(close_offset) = find_inline_close(bytes, call_start) {
                     let call_str = &input[call_start..call_start + close_offset];
-                    let (name, args) = parse_call(call_str.trim(), source_path, line)?;
+                    let (name, args) =
+                        parse_call(call_str.trim(), source_path, line).map_err(|d| {
+                            Box::new(
+                                with_syntax_hint(*d, call_str.trim(), ShortcodeKind::Inline)
+                                    .with_column(column_at(input, start)),
+                            )
+                        })?;
                     let end = call_start + close_offset + 3; // skip past ">}}"
                     results.push(ShortcodeCall {
                         name,
@@ -175,7 +221,13 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
                         continue;
                     }
 
-                    let (name, args) = parse_call(trimmed, source_path, start_line)?;
+                    let (name, args) =
+                        parse_call(trimmed, source_path, start_line).map_err(|d| {
+                            Box::new(
+                                with_syntax_hint(*d, trimmed, ShortcodeKind::Body)
+                                    .with_column(column_at(input, start)),
+                            )
+                        })?;
                     let open_end = call_start + close_offset + 3; // past "%}}"
 
                     // Find matching {{% end %}}
@@ -201,13 +253,26 @@ pub fn parse_shortcodes(input: &str, source_path: &Path) -> Result<Vec<Shortcode
                         pos = total_end;
                         continue;
                     } else {
-                        return Err(PageError::Shortcode {
-                            path: source_path.to_path_buf(),
-                            line: start_line,
-                            message: format!(
-                                "unclosed body shortcode `{name}`. Expected `{{{{% end %}}}}`."
-                            ),
-                        });
+                        let rest = &input[open_end..];
+                        let hugo_close = [format!("{{{{< /{name}"), format!("{{{{% /{name}")];
+                        let hint = if hugo_close.iter().any(|c| rest.contains(c.as_str())) {
+                            "close body shortcodes with `{{% end %}}` \
+                             (Hugo-style `{{< /name >}}` closing tags are not supported)"
+                                .to_string()
+                        } else {
+                            "add `{{% end %}}` after the shortcode body".to_string()
+                        };
+                        return Err(Box::new(
+                            syntax_error(
+                                source_path,
+                                start_line,
+                                format!(
+                                    "unclosed body shortcode `{name}`. Expected `{{{{% end %}}}}`."
+                                ),
+                            )
+                            .with_column(column_at(input, start))
+                            .with_hint(hint),
+                        ));
                     }
                 }
             }
@@ -362,6 +427,81 @@ fn find_end_tag(input: &str, start: usize) -> Option<(usize, usize)> {
     None
 }
 
+/// 1-based column of byte offset `pos` in `input`.
+fn column_at(input: &str, pos: usize) -> usize {
+    crate::diagnostics::line_col_at(input, pos).1
+}
+
+/// Recognise common Hugo-isms in a shortcode call that failed to parse and
+/// attach an actionable hint showing the seite form.
+fn with_syntax_hint(mut d: Diagnostic, call: &str, kind: ShortcodeKind) -> Diagnostic {
+    let (open, close) = match kind {
+        ShortcodeKind::Inline => ("{{<", ">}}"),
+        ShortcodeKind::Body => ("{{%", "%}}"),
+    };
+    if let Some(name) = call.strip_prefix('/') {
+        d.message = format!("Hugo-style closing tag `{open} {call} {close}` is not supported",);
+        d.hint = Some(format!(
+            "close body shortcodes with `{{{{% end %}}}}`, e.g. `{{{{% {} (...) %}}}} ... {{{{% end %}}}}`",
+            name.trim()
+        ));
+        return d;
+    }
+    if call.contains('(') {
+        return d;
+    }
+    let (name, rest) = match call.split_once(char::is_whitespace) {
+        Some((name, rest)) => (name, rest.trim()),
+        None => (call, ""),
+    };
+    if name.is_empty() {
+        return d;
+    }
+    let args = hugo_args_to_seite(rest);
+    let corrected = match &args {
+        Some(args) => format!("{open} {name}({args}) {close}"),
+        None => format!("{open} {name}(key=\"value\") {close}"),
+    };
+    d.hint = Some(if rest.is_empty() || args.is_some() {
+        format!("seite shortcodes take arguments in parentheses: `{corrected}`")
+    } else {
+        format!(
+            "seite shortcodes take named arguments in parentheses (positional arguments are not supported): `{corrected}`"
+        )
+    });
+    d
+}
+
+/// Convert Hugo-style `key="v" n=3` arguments to `key="v", n=3`. Returns
+/// `None` when any argument is positional (has no `key=`).
+fn hugo_args_to_seite(rest: &str) -> Option<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    for ch in rest.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                current.push(ch);
+            }
+            c if c.is_whitespace() && !in_quotes => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            c => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    let all_named = args.iter().all(|a| {
+        a.split_once('=')
+            .is_some_and(|(k, _)| !k.is_empty() && !k.starts_with('"'))
+    });
+    all_named.then(|| args.join(", "))
+}
+
 // ---------------------------------------------------------------------------
 // Argument parsing
 // ---------------------------------------------------------------------------
@@ -372,20 +512,22 @@ fn parse_call(
     input: &str,
     source_path: &Path,
     line: usize,
-) -> Result<(String, HashMap<String, ShortcodeValue>)> {
-    let paren_pos = input.find('(').ok_or_else(|| PageError::Shortcode {
-        path: source_path.to_path_buf(),
-        line,
-        message: format!("invalid shortcode syntax: `{input}`. Expected `name(args...)`"),
+) -> ParseResult<(String, HashMap<String, ShortcodeValue>)> {
+    let paren_pos = input.find('(').ok_or_else(|| {
+        syntax_error(
+            source_path,
+            line,
+            format!("invalid shortcode syntax: `{input}`. Expected `name(args...)`"),
+        )
     })?;
 
     let name = input[..paren_pos].trim().to_string();
     if name.is_empty() {
-        return Err(PageError::Shortcode {
-            path: source_path.to_path_buf(),
+        return Err(syntax_error(
+            source_path,
             line,
-            message: "empty shortcode name".to_string(),
-        });
+            "empty shortcode name".to_string(),
+        ));
     }
 
     // Validate name characters
@@ -393,19 +535,21 @@ fn parse_call(
         .chars()
         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
     {
-        return Err(PageError::Shortcode {
-            path: source_path.to_path_buf(),
+        return Err(syntax_error(
+            source_path,
             line,
-            message: format!(
+            format!(
                 "invalid shortcode name `{name}`. Use only alphanumeric, underscore, or hyphen."
             ),
-        });
+        ));
     }
 
-    let close_paren = input.rfind(')').ok_or_else(|| PageError::Shortcode {
-        path: source_path.to_path_buf(),
-        line,
-        message: format!("unclosed parenthesis in shortcode `{name}`"),
+    let close_paren = input.rfind(')').ok_or_else(|| {
+        syntax_error(
+            source_path,
+            line,
+            format!("unclosed parenthesis in shortcode `{name}`"),
+        )
     })?;
 
     let args_str = input[paren_pos + 1..close_paren].trim();
@@ -424,7 +568,7 @@ fn parse_args(
     source_path: &Path,
     line: usize,
     shortcode_name: &str,
-) -> Result<HashMap<String, ShortcodeValue>> {
+) -> ParseResult<HashMap<String, ShortcodeValue>> {
     let mut args = HashMap::new();
     let mut pos = 0;
     let bytes = input.as_bytes();
@@ -455,13 +599,11 @@ fn parse_args(
 
         // Expect '='
         if pos >= bytes.len() || bytes[pos] != b'=' {
-            return Err(PageError::Shortcode {
-                path: source_path.to_path_buf(),
+            return Err(syntax_error(
+                source_path,
                 line,
-                message: format!(
-                    "expected `=` after argument `{key}` in shortcode `{shortcode_name}`"
-                ),
-            });
+                format!("expected `=` after argument `{key}` in shortcode `{shortcode_name}`"),
+            ));
         }
         pos += 1; // skip '='
 
@@ -472,13 +614,11 @@ fn parse_args(
 
         // Parse value
         if pos >= bytes.len() {
-            return Err(PageError::Shortcode {
-                path: source_path.to_path_buf(),
+            return Err(syntax_error(
+                source_path,
                 line,
-                message: format!(
-                    "missing value for argument `{key}` in shortcode `{shortcode_name}`"
-                ),
-            });
+                format!("missing value for argument `{key}` in shortcode `{shortcode_name}`"),
+            ));
         }
 
         let (value, consumed) =
@@ -498,7 +638,7 @@ fn parse_value(
     line: usize,
     shortcode_name: &str,
     key: &str,
-) -> Result<(ShortcodeValue, usize)> {
+) -> ParseResult<(ShortcodeValue, usize)> {
     let bytes = input.as_bytes();
 
     // String value: "..."
@@ -517,13 +657,11 @@ fn parse_value(
             }
             end += 1;
         }
-        return Err(PageError::Shortcode {
-            path: source_path.to_path_buf(),
+        return Err(syntax_error(
+            source_path,
             line,
-            message: format!(
-                "unclosed string for argument `{key}` in shortcode `{shortcode_name}`"
-            ),
-        });
+            format!("unclosed string for argument `{key}` in shortcode `{shortcode_name}`"),
+        ));
     }
 
     // Boolean: true / false
@@ -560,14 +698,14 @@ fn parse_value(
         }
     }
 
-    Err(PageError::Shortcode {
-        path: source_path.to_path_buf(),
+    Err(syntax_error(
+        source_path,
         line,
-        message: format!(
+        format!(
             "invalid value for argument `{key}` in shortcode `{shortcode_name}`. \
              Expected a quoted string, number, or boolean."
         ),
-    })
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,5 +1146,57 @@ mod tests {
         let (val, consumed) = parse_value("false)", &test_path(), 1, "t", "k").unwrap();
         assert_eq!(val, ShortcodeValue::Boolean(false));
         assert_eq!(consumed, 5);
+    }
+
+    #[test]
+    fn test_hugo_closing_tag_hint() {
+        let err =
+            parse_shortcodes_diagnostic("text\n{{< /callout >}}\n", &test_path()).unwrap_err();
+        assert_eq!(err.code, "shortcode-syntax");
+        assert_eq!(err.line, Some(2));
+        assert_eq!(err.column, Some(1));
+        assert!(err.message.contains("Hugo-style closing tag"), "{err}");
+        assert!(err.hint.unwrap().contains("{{% end %}}"));
+    }
+
+    #[test]
+    fn test_unclosed_body_with_hugo_close_hint() {
+        let input = "{{% callout(type=\"info\") %}}\nHi\n{{% /callout %}}";
+        let err = parse_shortcodes_diagnostic(input, &test_path()).unwrap_err();
+        assert!(err.message.contains("unclosed body shortcode"), "{err}");
+        assert!(err.hint.unwrap().contains("Hugo-style"));
+    }
+
+    #[test]
+    fn test_hugo_args_hint_shows_corrected_form() {
+        let err = parse_shortcodes_diagnostic(r#"{{< youtube id="x" start=5 >}}"#, &test_path())
+            .unwrap_err();
+        assert_eq!(
+            err.hint.as_deref(),
+            Some(
+                r#"seite shortcodes take arguments in parentheses: `{{< youtube(id="x", start=5) >}}`"#
+            )
+        );
+        let err = parse_shortcodes_diagnostic(r#"{{< youtube "x" >}}"#, &test_path()).unwrap_err();
+        assert!(err.hint.unwrap().contains("positional"));
+        let err = parse_shortcodes_diagnostic("{{< toc >}}", &test_path()).unwrap_err();
+        assert!(err.hint.unwrap().contains("`{{< toc() >}}`"));
+    }
+
+    #[test]
+    fn test_hugo_args_to_seite() {
+        assert_eq!(
+            hugo_args_to_seite(r#"a="x y" b=2"#).as_deref(),
+            Some(r#"a="x y", b=2"#)
+        );
+        assert!(hugo_args_to_seite(r#""pos""#).is_none());
+        assert_eq!(hugo_args_to_seite("").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn test_parse_shortcodes_legacy_error_includes_hint() {
+        let err = parse_shortcodes("{{< /callout >}}", &test_path()).unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("hint:"), "{text}");
     }
 }

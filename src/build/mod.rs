@@ -24,9 +24,13 @@ use walkdir::WalkDir;
 
 use crate::config::{AnalyticsSection, CollectionConfig, ResolvedPaths, SiteConfig};
 use crate::content::{self, ContentItem, Frontmatter};
+use crate::diagnostics::{Diagnostic, Diagnostics, Severity};
 use crate::error::{PageError, Result};
 use crate::output::CommandOutput;
 use crate::templates;
+
+/// A rendered page (output path + HTML), or `None` when skipped (incremental).
+type RenderedPage = Option<(PathBuf, String)>;
 
 pub struct BuildOptions {
     pub include_drafts: bool,
@@ -45,6 +49,10 @@ pub struct BuildResult {
     /// unexpected output (e.g. user templates that failed to parse and were
     /// replaced by the built-in defaults). Also printed to stderr.
     pub warnings: Vec<String>,
+    /// The same kind of non-fatal problems as structured, located warnings
+    /// (e.g. `template-parse` with the template file and line). Paths are
+    /// relative to the site root.
+    pub diagnostics: Diagnostics,
 }
 
 /// Build info for a single subdomain collection.
@@ -324,6 +332,7 @@ pub fn build_site(
                 },
                 subdomain_builds: Vec::new(),
                 warnings: Vec::new(),
+                diagnostics: Diagnostics::new(),
             });
         }
         if let Some(ref reason) = cs.full_rebuild_reason {
@@ -362,10 +371,11 @@ pub fn build_site(
     let result = build_site_inner(effective_config, paths, opts, rewrites_ref, &changeset)?;
 
     let mut warnings = result.warnings;
+    let mut diagnostics = result.diagnostics;
 
     // Build subdomain collections into their own output directories
     let subdomain_builds = if has_subdomains {
-        build_subdomain_sites(config, paths, opts, &mut warnings)?
+        build_subdomain_sites(config, paths, opts, &mut warnings, &mut diagnostics)?
     } else {
         Vec::new()
     };
@@ -390,6 +400,7 @@ pub fn build_site(
         link_check: result.link_check,
         subdomain_builds,
         warnings,
+        diagnostics,
     })
 }
 
@@ -433,6 +444,7 @@ fn build_subdomain_sites(
     paths: &ResolvedPaths,
     opts: &BuildOptions,
     warnings: &mut Vec<String>,
+    diagnostics: &mut Diagnostics,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -470,6 +482,11 @@ fn build_subdomain_sites(
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
                 warnings.push(warning);
+            }
+        }
+        for diagnostic in sub_result.diagnostics {
+            if !diagnostics.iter().any(|d| *d == diagnostic) {
+                diagnostics.push(diagnostic);
             }
         }
 
@@ -571,8 +588,29 @@ fn build_site_inner(
     let step_start = Instant::now();
     let (mut tera, mut warnings) =
         templates::load_templates_with_warnings(&paths.templates, &config.collections)?;
+    // Non-fatal, structured problems (paths made relative to the root at the end).
+    let mut diagnostics = Diagnostics::new();
     for warning in &warnings {
         eprintln!("⚠ Warning: {warning}");
+    }
+    if !warnings.is_empty() {
+        // The user templates failed to load and the built-in defaults were
+        // used: point at every broken template (file + line) as warnings.
+        let located = templates::template_parse_diagnostics(&paths.templates);
+        if located.is_empty() {
+            for warning in &warnings {
+                diagnostics.push(
+                    Diagnostic::warning("template-parse", warning.clone())
+                        .with_file(&paths.templates),
+                );
+            }
+        }
+        for mut d in located {
+            d.severity = Severity::Warning;
+            d.message
+                .push_str(" (the built-in templates were used instead)");
+            diagnostics.push(d);
+        }
     }
     step_timings.push((
         "Load templates".to_string(),
@@ -583,7 +621,15 @@ fn build_site_inner(
     progress.step("Loading shortcodes");
     let step_start = Instant::now();
     let shortcodes_dir = paths.templates.join("shortcodes");
-    let shortcode_registry = crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir)?;
+    let shortcode_registry =
+        crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir).map_err(|e| {
+            let located = templates::template_parse_diagnostics(&shortcodes_dir);
+            if located.is_empty() {
+                e
+            } else {
+                PageError::Diagnostics(located.relative_to(&paths.root))
+            }
+        })?;
     step_timings.push((
         "Load shortcodes".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -592,7 +638,18 @@ fn build_site_inner(
     // Step 2.5: Load data files
     progress.step("Loading data files");
     let step_start = Instant::now();
-    let data = crate::data::load_data_dir(&paths.data_dir)?;
+    // Per-file problems that fail the build, collected so every broken data
+    // and content file is reported in one pass.
+    let mut fatal = Diagnostics::new();
+    let data = match crate::data::load_data_dir(&paths.data_dir) {
+        Ok(data) => data,
+        Err(PageError::Diagnostics(d)) => {
+            // Keep going with no data so content errors are reported too.
+            fatal.extend(d);
+            serde_json::Value::Object(serde_json::Map::new())
+        }
+        Err(e) => return Err(e),
+    };
     step_timings.push((
         "Load data files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -609,6 +666,7 @@ fn build_site_inner(
     crate::i18n::register_filters(&mut tera, default_lang, &lang_codes);
     for warning in crate::i18n::partial_language_map_warnings(&data, &lang_codes) {
         crate::output::human::warning_stderr(&warning);
+        diagnostics.push(Diagnostic::warning("i18n-partial", warning.clone()));
         warnings.push(warning);
     }
 
@@ -675,13 +733,18 @@ fn build_site_inner(
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                 .collect();
 
-            let results: Vec<std::result::Result<Option<ContentItem>, PageError>> = entries
+            // Each file either yields an item (or `None` for skipped drafts) or
+            // the diagnostics explaining why it is broken.
+            let results: Vec<std::result::Result<Option<ContentItem>, Vec<Diagnostic>>> = entries
                 .par_iter()
                 .map(|entry| {
                     let path = entry.path();
                     let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
-                    let (fm, raw_body) = content::parse_content_file(path)?;
+                    let parsed = content::parse_content_diagnostic(path).map_err(|d| vec![*d])?;
+                    let body_line = parsed.body_line;
+                    let fm = parsed.frontmatter;
+                    let raw_body = parsed.body;
 
                     if fm.draft && !opts.include_drafts {
                         return Ok(None);
@@ -702,8 +765,19 @@ fn build_site_inner(
                         "tags": &fm.tags,
                     });
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
-                    let expanded_body =
-                        shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site, sc_i18n)?;
+                    let expanded_body = shortcode_registry
+                        .expand_diagnostic(&raw_body, path, &sc_page, &sc_site, sc_i18n)
+                        .map_err(|diags| {
+                            // Shortcode lines are relative to the body; map them
+                            // to file lines.
+                            diags
+                                .into_iter()
+                                .map(|mut d| {
+                                    d.line = d.line.map(|l| body_line + l.saturating_sub(1));
+                                    d
+                                })
+                                .collect::<Vec<_>>()
+                        })?;
                     let excerpt = content::extract_excerpt(&expanded_body);
                     let html_input = if config.build.math {
                         math::render_math(&expanded_body)
@@ -740,8 +814,10 @@ fn build_site_inner(
                 .collect();
 
             for result in results {
-                if let Some(item) = result? {
-                    items.push(item);
+                match result {
+                    Ok(Some(item)) => items.push(item),
+                    Ok(None) => {}
+                    Err(diags) => fatal.extend(diags),
                 }
             }
         }
@@ -769,15 +845,35 @@ fn build_site_inner(
         for items in all_collections.values() {
             for item in items {
                 if let Some(existing) = url_map.insert(&item.url, &item.source_path) {
-                    return Err(PageError::Build(format!(
-                        "URL collision: '{}' is claimed by both '{}' and '{}'",
-                        item.url,
-                        existing.display(),
-                        item.source_path.display()
-                    )));
+                    let existing_rel = existing.strip_prefix(&paths.root).unwrap_or(existing);
+                    fatal.push(
+                        Diagnostic::error(
+                            "url-collision",
+                            format!(
+                                "URL collision: '{}' is claimed by both '{}' and '{}'",
+                                item.url,
+                                existing_rel.display(),
+                                item.source_path
+                                    .strip_prefix(&paths.root)
+                                    .unwrap_or(&item.source_path)
+                                    .display()
+                            ),
+                        )
+                        .with_file(&item.source_path)
+                        .with_hint("give one of the pages a different `slug:` in its frontmatter"),
+                    );
                 }
             }
         }
+    }
+
+    // Stop before rendering when any data or content file is broken, and
+    // report every one of them at once.
+    if fatal.has_errors() {
+        fatal.extend(diagnostics.clone());
+        let mut all = std::mem::take(&mut fatal).relative_to(&paths.root);
+        all.sort();
+        return Err(PageError::Diagnostics(all));
     }
 
     step_timings.push((
@@ -842,6 +938,7 @@ fn build_site_inner(
     // Key: collection name → (lang → serialized nav). Only populated for nested collections.
     let mut collection_nav_cache: HashMap<String, HashMap<String, serde_json::Value>> =
         HashMap::new();
+    let mut render_errors = Diagnostics::new();
 
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
@@ -977,116 +1074,122 @@ fn build_site_inner(
                 items.iter().any(|item| changed.contains(&item.source_path))
             });
 
-            let render_results: Vec<std::result::Result<Option<(PathBuf, String)>, PageError>> =
-                items
-                    .par_iter()
-                    .map(|item| {
-                        // In incremental mode, skip rendering items whose source hasn't changed,
-                        // UNLESS any sibling in this collection changed (which can affect
-                        // prev/next links and translation links for all items in the collection).
-                        if !collection_has_changes {
-                            if let Some(ref changed) = changed_content_paths {
-                                if !changed.contains(&item.source_path) {
-                                    return Ok(None);
-                                }
+            let render_results: Vec<std::result::Result<RenderedPage, Box<Diagnostic>>> = items
+                .par_iter()
+                .map(|item| {
+                    // In incremental mode, skip rendering items whose source hasn't changed,
+                    // UNLESS any sibling in this collection changed (which can affect
+                    // prev/next links and translation links for all items in the collection).
+                    if !collection_has_changes {
+                        if let Some(ref changed) = changed_content_paths {
+                            if !changed.contains(&item.source_path) {
+                                return Ok(None);
                             }
                         }
+                    }
 
-                        let site_ctx_for_item =
-                            site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
-                                site_ctx_cache
-                                    .get(default_lang.as_str())
-                                    .expect("default language missing from site context cache")
-                            });
+                    let site_ctx_for_item =
+                        site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
+                            site_ctx_cache
+                                .get(default_lang.as_str())
+                                .expect("default language missing from site context cache")
+                        });
 
-                        let mut ctx =
-                            build_page_context(site_ctx_for_item, item, &data, collection.private);
+                    let mut ctx =
+                        build_page_context(site_ctx_for_item, item, &data, collection.private);
 
-                        // Inject adjacent post links (prev_post / next_post).
-                        // Always insert both keys so Tera templates can check them without errors.
-                        let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
-                        let (prev, next) = adjacent_posts
-                            .get(&(item.lang.clone(), item.slug.clone()))
-                            .unwrap_or(&empty);
-                        ctx.insert("prev_post", prev);
-                        ctx.insert("next_post", next);
+                    // Inject adjacent post links (prev_post / next_post).
+                    // Always insert both keys so Tera templates can check them without errors.
+                    let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
+                    let (prev, next) = adjacent_posts
+                        .get(&(item.lang.clone(), item.slug.clone()))
+                        .unwrap_or(&empty);
+                    ctx.insert("prev_post", prev);
+                    ctx.insert("next_post", next);
 
-                        if collection.nested {
-                            if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
-                                let mut nav = base_nav.clone();
-                                if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
-                                    if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
-                                        if let Some(sections) = nav.as_array_mut() {
-                                            if let Some(section) = sections.get_mut(sec_idx) {
-                                                if let Some(items_arr) = section
-                                                    .get_mut("items")
-                                                    .and_then(|i| i.as_array_mut())
+                    if collection.nested {
+                        if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
+                            let mut nav = base_nav.clone();
+                            if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
+                                if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
+                                    if let Some(sections) = nav.as_array_mut() {
+                                        if let Some(section) = sections.get_mut(sec_idx) {
+                                            if let Some(items_arr) = section
+                                                .get_mut("items")
+                                                .and_then(|i| i.as_array_mut())
+                                            {
+                                                if let Some(nav_item) = items_arr.get_mut(item_idx)
                                                 {
-                                                    if let Some(nav_item) =
-                                                        items_arr.get_mut(item_idx)
-                                                    {
-                                                        nav_item["active"] =
-                                                            serde_json::Value::Bool(true);
-                                                    }
+                                                    nav_item["active"] =
+                                                        serde_json::Value::Bool(true);
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                ctx.insert("nav", &nav);
                             }
-                        } else {
-                            ctx.insert("nav", &empty_nav_value);
+                            ctx.insert("nav", &nav);
                         }
-                        ctx.insert("lang", &item.lang);
-                        if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
-                            insert_i18n_context_cached(&mut ctx, cached_i18n);
-                        } else {
-                            insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
-                        }
-                        insert_build_flags(&mut ctx, config);
+                    } else {
+                        ctx.insert("nav", &empty_nav_value);
+                    }
+                    ctx.insert("lang", &item.lang);
+                    if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
+                        insert_i18n_context_cached(&mut ctx, cached_i18n);
+                    } else {
+                        insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                    }
+                    insert_build_flags(&mut ctx, config);
 
-                        let empty_translations: Vec<TranslationLink> = Vec::new();
-                        let translations = translation_map
-                            .get(&(collection.name.clone(), item.slug.clone()))
-                            .filter(|t| t.len() > 1)
-                            .map(|t| t.as_slice())
-                            .unwrap_or(&empty_translations);
-                        ctx.insert("translations", &translations);
+                    let empty_translations: Vec<TranslationLink> = Vec::new();
+                    let translations = translation_map
+                        .get(&(collection.name.clone(), item.slug.clone()))
+                        .filter(|t| t.len() > 1)
+                        .map(|t| t.as_slice())
+                        .unwrap_or(&empty_translations);
+                    ctx.insert("translations", &translations);
 
-                        let template_name = item
-                            .frontmatter
-                            .template
-                            .as_deref()
-                            .unwrap_or(&collection.default_template);
-                        let html = tera.render(template_name, &ctx).map_err(|e| {
-                            use std::error::Error as _;
-                            let mut source_chain = String::new();
-                            let mut source: Option<&dyn std::error::Error> = e.source();
-                            while let Some(s) = source {
-                                source_chain.push_str(&format!("\n  Caused by: {s}"));
-                                source = s.source();
-                            }
-                            PageError::Build(format!(
-                                "rendering '{}': {e}{source_chain}",
-                                item.slug
-                            ))
-                        })?;
+                    let template_name = item
+                        .frontmatter
+                        .template
+                        .as_deref()
+                        .unwrap_or(&collection.default_template);
+                    let html = tera.render(template_name, &ctx).map_err(|e| {
+                        Box::new(templates::render_error_diagnostic(
+                            &e,
+                            template_name,
+                            Some(&item.source_path),
+                            &paths.templates,
+                            &paths.root,
+                            &ctx,
+                        ))
+                    })?;
 
-                        let output_path = url_to_output_path(&paths.output, &item.url);
-                        Ok(Some((output_path, html)))
-                    })
-                    .collect();
+                    let output_path = url_to_output_path(&paths.output, &item.url);
+                    Ok(Some((output_path, html)))
+                })
+                .collect();
 
             for result in render_results {
-                if let Some((output_path, html)) = result? {
-                    if let Some(parent) = output_path.parent() {
-                        fs::create_dir_all(parent)?;
+                match result {
+                    Ok(Some((output_path, html))) => {
+                        if let Some(parent) = output_path.parent() {
+                            fs::create_dir_all(parent)?;
+                        }
+                        fs::write(&output_path, html)?;
                     }
-                    fs::write(&output_path, html)?;
+                    Ok(None) => {}
+                    Err(d) => render_errors.push(*d),
                 }
             }
         }
+    }
+
+    // Report every page that failed to render, not just the first.
+    if !render_errors.is_empty() {
+        let mut all = render_errors.relative_to(&paths.root);
+        all.sort();
+        return Err(PageError::Diagnostics(all));
     }
 
     step_timings.push((
@@ -1357,7 +1460,7 @@ fn build_site_inner(
             generate_redirect_html(&target_url)
         } else {
             tera.render(&index_template, &index_ctx)
-                .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?
+                .map_err(|e| render_failure(&e, &index_template, None, paths, &index_ctx))?
         };
 
         if *lang == *default_lang {
@@ -1532,9 +1635,9 @@ fn build_site_inner(
                 } else {
                     "index.html"
                 };
-                let html = tera.render(template_name, &ctx).map_err(|e| {
-                    PageError::Build(format!("rendering {collection_base} page {page_num}: {e}"))
-                })?;
+                let html = tera
+                    .render(template_name, &ctx)
+                    .map_err(|e| render_failure(&e, template_name, None, paths, &ctx))?;
 
                 let out_dir = if *lang == *default_lang {
                     if page_num == 1 {
@@ -1714,7 +1817,7 @@ fn build_site_inner(
             };
             let html = tera
                 .render(template_name, &ctx)
-                .map_err(|e| PageError::Build(format!("rendering {collection_url}: {e}")))?;
+                .map_err(|e| render_failure(&e, template_name, None, paths, &ctx))?;
 
             let out_dir = if *lang == *default_lang {
                 paths.output.join(url_prefix_trimmed)
@@ -1788,7 +1891,7 @@ fn build_site_inner(
             );
             let html_404 = tera
                 .render("404.html", &ctx_404)
-                .map_err(|e| PageError::Build(format!("rendering 404 page ({lang}): {e}")))?;
+                .map_err(|e| render_failure(&e, "404.html", None, paths, &ctx_404))?;
 
             if *lang == *default_lang {
                 fs::write(paths.output.join("404.html"), html_404)?;
@@ -1901,7 +2004,7 @@ fn build_site_inner(
             );
             let tags_html = tera
                 .render("tags.html", &tags_ctx)
-                .map_err(|e| PageError::Build(format!("rendering tags index: {e}")))?;
+                .map_err(|e| render_failure(&e, "tags.html", None, paths, &tags_ctx))?;
             let tags_dir = paths.output.join(tags_base_url.trim_start_matches('/'));
             fs::create_dir_all(&tags_dir)?;
             fs::write(tags_dir.join("index.html"), tags_html)?;
@@ -1944,7 +2047,7 @@ fn build_site_inner(
                 );
                 let tag_html = tera
                     .render("tag.html", &tag_ctx)
-                    .map_err(|e| PageError::Build(format!("rendering tag '{tag}': {e}")))?;
+                    .map_err(|e| render_failure(&e, "tag.html", None, paths, &tag_ctx))?;
                 let tag_dir = paths.output.join(format!(
                     "{}/{tag_slug}",
                     tags_base_url.trim_start_matches('/')
@@ -2437,7 +2540,27 @@ fn build_site_inner(
         link_check,
         subdomain_builds: Vec::new(),
         warnings,
+        diagnostics: diagnostics.relative_to(&paths.root),
     })
+}
+
+/// A `template-render` failure as a located `PageError::Diagnostics`.
+fn render_failure(
+    err: &tera::Error,
+    template: &str,
+    source: Option<&Path>,
+    paths: &ResolvedPaths,
+    ctx: &tera::Context,
+) -> PageError {
+    let d = templates::render_error_diagnostic(
+        err,
+        template,
+        source,
+        &paths.templates,
+        &paths.root,
+        ctx,
+    );
+    PageError::Diagnostics(d.into())
 }
 
 /// All config needed for the unified HTML post-processing pass.

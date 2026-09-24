@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 
 use crate::build::{self, links, BuildOptions, BuildResult};
 use crate::config::SiteConfig;
+use crate::diagnostics::Diagnostics;
 use crate::meta;
 use crate::output::{self, human, json as json_out, CommandOutput};
 use crate::workspace;
@@ -63,7 +64,12 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let (config, config_diagnostics) =
+        SiteConfig::load_with_diagnostics(&PathBuf::from("seite.toml"))?;
+    // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
+    for d in &config_diagnostics {
+        human::warning(&d.to_string());
+    }
     let paths = config.resolve_paths(&cwd);
 
     let opts = BuildOptions {
@@ -72,6 +78,14 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
 
     let result = build::build_site(&config, &paths, &opts)?;
+    // Point at the exact template file/line behind a template fallback warning.
+    for d in result
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "template-parse")
+    {
+        human::warning(&d.to_string());
+    }
     human::success(&result.stats.human_display());
     if output::is_verbose() {
         if let Some(timings) = result.stats.timings_display() {
@@ -130,7 +144,11 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    json_out::set_data(build_data(&result, Some(&paths.output)));
+    let mut diagnostics = Diagnostics::from(config_diagnostics);
+    diagnostics.extend(result.diagnostics.iter().cloned());
+    let mut data = build_data(&result, Some(&paths.output));
+    data["diagnostics"] = serde_json::to_value(&diagnostics).unwrap_or_default();
+    json_out::set_data(data);
     Ok(())
 }
 
@@ -171,5 +189,6 @@ fn build_data(result: &BuildResult, output_dir: Option<&Path>) -> Value {
         "broken_links": broken_links,
         "subdomains": subdomains,
         "warnings": json_out::warnings(),
+        "diagnostics": result.diagnostics,
     })
 }

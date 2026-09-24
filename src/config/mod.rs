@@ -1,4 +1,5 @@
 pub mod defaults;
+pub mod unknown_keys;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -583,6 +584,39 @@ impl SiteConfig {
         config.validate_subdomains()?;
         config.validate_access()?;
         Ok(config)
+    }
+
+    /// Like [`load`](Self::load), but also returns non-fatal problems found in
+    /// the file — currently `config-unknown-key` warnings for keys the schema
+    /// does not know (typos such as `minfy`), each with its line and a
+    /// did-you-mean hint. A TOML syntax/type error is returned as a located
+    /// `config-invalid` diagnostic (`PageError::Diagnostics`).
+    pub fn load_with_diagnostics(
+        path: &Path,
+    ) -> Result<(Self, Vec<crate::diagnostics::Diagnostic>)> {
+        if !path.exists() {
+            return Err(PageError::ConfigNotFound {
+                path: path.to_path_buf(),
+            });
+        }
+        let contents = std::fs::read_to_string(path)?;
+        let file_name = path.file_name().map(Path::new).unwrap_or(path);
+        let config: SiteConfig = toml::from_str(&contents).map_err(|e| {
+            let mut d = crate::diagnostics::Diagnostic::error(
+                "config-invalid",
+                format!("invalid config: {}", e.message().trim()),
+            )
+            .with_file(file_name);
+            if let Some(span) = e.span() {
+                let (line, column) = crate::diagnostics::line_col_at(&contents, span.start);
+                d = d.with_line(line).with_column(column);
+            }
+            PageError::Diagnostics(d.into())
+        })?;
+        config.validate_subdomains()?;
+        config.validate_access()?;
+        let warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        Ok((config, warnings))
     }
 
     fn validate_access(&self) -> Result<()> {

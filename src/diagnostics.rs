@@ -223,6 +223,63 @@ impl fmt::Display for Diagnostics {
     }
 }
 
+/// Suggest the closest candidate for a mistyped name, as a ready-to-use hint
+/// such as ``did you mean `minify`?``. Returns `None` when nothing is close.
+pub fn did_you_mean<'a>(
+    input: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    let mut best: Option<(&str, f64)> = None;
+    for candidate in candidates {
+        if candidate == input {
+            continue;
+        }
+        let score = strsim::jaro_winkler(input, candidate);
+        if score > 0.7 && best.is_none_or(|(_, s)| score > s) {
+            best = Some((candidate, score));
+        }
+    }
+    best.map(|(name, _)| format!("did you mean `{name}`?"))
+}
+
+/// 1-based `(line, column)` of a byte offset in `source`. Columns count
+/// characters, not bytes. Offsets past the end clamp to the last position.
+pub fn line_col_at(source: &str, offset: usize) -> (usize, usize) {
+    let mut offset = offset.min(source.len());
+    while !source.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    let before = &source[..offset];
+    let line = before.matches('\n').count() + 1;
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let column = before[line_start..].chars().count() + 1;
+    (line, column)
+}
+
+impl From<Diagnostic> for Diagnostics {
+    fn from(d: Diagnostic) -> Self {
+        Self(vec![d])
+    }
+}
+
+impl Diagnostics {
+    /// Make every file path relative to `root` (see [`Diagnostic::relative_to`]).
+    pub fn relative_to(self, root: &Path) -> Self {
+        Self(self.0.into_iter().map(|d| d.relative_to(root)).collect())
+    }
+
+    /// Sorted copy converted into a `PageError::Diagnostics` when any error is
+    /// present; `Ok(self)` otherwise (warnings only).
+    pub fn into_result(mut self) -> crate::error::Result<Self> {
+        self.sort();
+        if self.has_errors() {
+            Err(crate::error::PageError::Diagnostics(self))
+        } else {
+            Ok(self)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +338,40 @@ mod tests {
         assert_eq!(v["file"], "a.md");
         assert!(v.get("line").is_none());
         assert!(v.get("hint").is_none());
+    }
+
+    #[test]
+    fn test_did_you_mean_close_and_far() {
+        assert_eq!(
+            did_you_mean("minfy", ["minify", "math", "mermaid"]).as_deref(),
+            Some("did you mean `minify`?")
+        );
+        assert!(did_you_mean("zzzz", ["minify", "math"]).is_none());
+        assert!(did_you_mean("x", std::iter::empty()).is_none());
+    }
+
+    #[test]
+    fn test_line_col_at() {
+        let src = "ab\ncdé\nf";
+        assert_eq!(line_col_at(src, 0), (1, 1));
+        assert_eq!(line_col_at(src, 3), (2, 1));
+        assert_eq!(line_col_at(src, 5), (2, 3));
+        assert_eq!(line_col_at(src, 8), (3, 1));
+        assert_eq!(line_col_at(src, 999), (3, 2));
+    }
+
+    #[test]
+    fn test_into_result_and_relative_to() {
+        let warn: Diagnostics = Diagnostic::warning("w", "w").with_file("/r/a.md").into();
+        let ok = warn.relative_to(Path::new("/r")).into_result().unwrap();
+        assert_eq!(
+            ok.iter().next().unwrap().file.as_deref(),
+            Some(Path::new("a.md"))
+        );
+        let err: Diagnostics = Diagnostic::error("e", "e").into();
+        assert!(matches!(
+            err.into_result(),
+            Err(crate::error::PageError::Diagnostics(_))
+        ));
     }
 }

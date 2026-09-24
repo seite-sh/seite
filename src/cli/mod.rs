@@ -2,6 +2,7 @@ pub mod access;
 pub mod agent;
 mod agent_instructions;
 pub mod build;
+pub mod check;
 pub mod collection;
 pub mod completions;
 pub mod contact;
@@ -74,6 +75,10 @@ pub enum Command {
     /// Build the site
     Build(build::BuildArgs),
 
+    /// Validate config, content, data, templates, and links without building
+    /// (renders into a temporary directory; exit code 1 when problems are found)
+    Check(check::CheckArgs),
+
     /// Start a local development server
     Serve(serve::ServeArgs),
 
@@ -141,6 +146,7 @@ mod tests {
         let subcommands: Vec<&str> = cmd.get_subcommands().map(|s| s.get_name()).collect();
         assert!(subcommands.contains(&"init"));
         assert!(subcommands.contains(&"build"));
+        assert!(subcommands.contains(&"check"));
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
         assert!(subcommands.contains(&"access"));
