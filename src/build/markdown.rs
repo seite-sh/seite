@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 use pulldown_cmark::{html, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -234,6 +236,190 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Maps content source files to their page URLs so that links written as
+/// paths to other markdown files (`[x](../docs/intro.md)`, GitHub-style) can
+/// be rewritten to the generated page.
+#[derive(Debug, Default)]
+pub struct SourceLinkMap {
+    root: PathBuf,
+    content_dir: PathBuf,
+    default_lang: String,
+    urls: HashMap<PathBuf, String>,
+}
+
+/// Outcome of resolving one link against a [`SourceLinkMap`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MdLinkTarget {
+    /// Not a link to a markdown source file; leave it alone.
+    NotSource,
+    /// Rewritten page URL (fragment/query preserved).
+    Resolved(String),
+    /// Looks like a link to a content file, but no content file matches.
+    Unresolved,
+}
+
+impl SourceLinkMap {
+    /// `root` is the site root (for `/content/...md` links) and
+    /// `content_dir` the content directory.
+    pub fn new(root: &Path, content_dir: &Path, default_lang: &str) -> Self {
+        Self {
+            root: normalize_path(root),
+            content_dir: normalize_path(content_dir),
+            default_lang: default_lang.to_string(),
+            urls: HashMap::new(),
+        }
+    }
+
+    /// Register a content file and the URL it renders to. Index pages
+    /// (`/docs/index`, `/index`, `/es/index`) map to their directory URL
+    /// (`/docs/`, `/`, `/es/`), which is where they are served.
+    pub fn insert(&mut self, source: &Path, url: &str) {
+        let url = match url.strip_suffix("index") {
+            Some(dir) if dir.ends_with('/') => dir.to_string(),
+            _ => url.to_string(),
+        };
+        self.urls.insert(normalize_path(source), url);
+    }
+
+    pub fn len(&self) -> usize {
+        self.urls.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.urls.is_empty()
+    }
+
+    /// Resolve `href` as written in `from_source` (a page in language `lang`).
+    ///
+    /// Rewrites relative links ending in `.md` (optionally with `#fragment`
+    /// or `?query`), resolved against the directory of `from_source`, and
+    /// root-relative links into the content directory (`/content/...md`).
+    /// Other root-relative `.md` links (e.g. `/docs/x.md`) are valid links to
+    /// the published markdown copies and are left alone. When the page isn't
+    /// in the default language and the target has a translation in `lang`
+    /// (`intro.es.md`), the translation's URL is used.
+    pub fn resolve(&self, from_source: &Path, href: &str, lang: &str) -> MdLinkTarget {
+        let href = href.trim();
+        let split = href.find(['#', '?']).unwrap_or(href.len());
+        let (path, suffix) = href.split_at(split);
+        if !path.to_ascii_lowercase().ends_with(".md") || path.starts_with("//") {
+            return MdLinkTarget::NotSource;
+        }
+        // Absolute URLs and other schemes (https:, mailto:, ...).
+        if let Some(colon) = path.find(':') {
+            if !path[..colon].contains('/') {
+                return MdLinkTarget::NotSource;
+            }
+        }
+        let decoded = urlencoding::decode(path)
+            .map(|d| d.into_owned())
+            .unwrap_or_else(|_| path.to_string());
+
+        let candidate = if let Some(rest) = decoded.strip_prefix('/') {
+            let candidate = normalize_path(&self.root.join(rest));
+            if !candidate.starts_with(&self.content_dir) {
+                return MdLinkTarget::NotSource;
+            }
+            candidate
+        } else {
+            let base = from_source.parent().unwrap_or(Path::new(""));
+            normalize_path(&base.join(&decoded))
+        };
+
+        match self.lookup(&candidate, lang) {
+            Some(url) => MdLinkTarget::Resolved(format!("{url}{suffix}")),
+            None => MdLinkTarget::Unresolved,
+        }
+    }
+
+    fn lookup(&self, candidate: &Path, lang: &str) -> Option<&String> {
+        if lang != self.default_lang {
+            if let Some(stem) = candidate.file_stem().and_then(|s| s.to_str()) {
+                let already_translated = stem
+                    .rsplit_once('.')
+                    .is_some_and(|(_, suffix)| suffix == lang);
+                if !already_translated {
+                    let translated = candidate.with_file_name(format!("{stem}.{lang}.md"));
+                    if let Some(url) = self.urls.get(&translated) {
+                        return Some(url);
+                    }
+                }
+            }
+        }
+        self.urls.get(candidate)
+    }
+}
+
+/// Lexically normalize a path: drop `.` components and resolve `..` against
+/// preceding components (without touching the filesystem).
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Rewrite `href` attributes in rendered HTML that point at markdown source
+/// files into page URLs (see [`SourceLinkMap::resolve`]).
+///
+/// Returns the rewritten HTML and the hrefs (as authored) that looked like
+/// content-file links but matched no content file, deduplicated in order.
+/// Code blocks are safe: their contents are HTML-escaped, so they contain no
+/// quoted `href=` attributes.
+pub fn rewrite_md_links(
+    html: &str,
+    from_source: &Path,
+    lang: &str,
+    map: &SourceLinkMap,
+) -> (String, Vec<String>) {
+    let mut unresolved: Vec<String> = Vec::new();
+    if !html.contains(".md") {
+        return (html.to_string(), unresolved);
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut pos = 0;
+    while let Some(idx) = html[pos..].find("href=") {
+        let value_start = pos + idx + 5;
+        let quote = match html.as_bytes().get(value_start) {
+            Some(&q) if q == b'"' || q == b'\'' => q as char,
+            _ => {
+                out.push_str(&html[pos..value_start]);
+                pos = value_start;
+                continue;
+            }
+        };
+        let Some(len) = html[value_start + 1..].find(quote) else {
+            break;
+        };
+        let raw = &html[value_start + 1..value_start + 1 + len];
+        out.push_str(&html[pos..=value_start]);
+        let href = raw.replace("&amp;", "&");
+        match map.resolve(from_source, &href, lang) {
+            MdLinkTarget::Resolved(url) => out.push_str(&html_escape(&url)),
+            MdLinkTarget::Unresolved => {
+                if !unresolved.contains(&href) {
+                    unresolved.push(href);
+                }
+                out.push_str(raw);
+            }
+            MdLinkTarget::NotSource => out.push_str(raw),
+        }
+        out.push(quote);
+        pos = value_start + 1 + len + 1;
+    }
+    out.push_str(&html[pos..]);
+    (out, unresolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +608,142 @@ mod tests {
             html.contains("style=\""),
             "powershell block should be syntax-highlighted via bash alias, got: {}",
             html
+        );
+    }
+
+    /// Site at /site with content in /site/content: posts, nested docs, a
+    /// homepage, a docs index, and a Spanish translation.
+    fn link_map() -> SourceLinkMap {
+        let mut map = SourceLinkMap::new(Path::new("/site"), Path::new("/site/content"), "en");
+        for (src, url) in [
+            ("posts/2025-01-01-hello.md", "/posts/hello"),
+            ("posts/other.md", "/posts/other"),
+            ("docs/getting-started.md", "/docs/getting-started"),
+            ("docs/getting-started.es.md", "/es/docs/getting-started"),
+            ("docs/guides/deep.md", "/docs/guides/deep"),
+            ("docs/index.md", "/docs/index"),
+            ("pages/index.md", "/index"),
+            ("pages/index.es.md", "/es/index"),
+        ] {
+            map.insert(&Path::new("/site/content").join(src), url);
+        }
+        map
+    }
+
+    fn render_rewrite(md: &str, from: &str, lang: &str) -> (String, Vec<String>) {
+        let (html, _) = markdown_to_html(md);
+        rewrite_md_links(
+            &html,
+            &Path::new("/site/content").join(from),
+            lang,
+            &link_map(),
+        )
+    }
+
+    #[test]
+    fn test_rewrite_md_links_relative_with_fragment() {
+        let (html, unresolved) = render_rewrite(
+            "[a](./other.md) [b](../docs/getting-started.md#install) [c](../docs/guides/deep.md?x=1)",
+            "posts/2025-01-01-hello.md",
+            "en",
+        );
+        assert!(html.contains(r#"href="/posts/other""#), "{html}");
+        assert!(
+            html.contains(r#"href="/docs/getting-started#install""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"href="/docs/guides/deep?x=1""#), "{html}");
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn test_rewrite_md_links_nested_and_index_pages() {
+        let (html, _) = render_rewrite(
+            "[up](../getting-started.md) [idx](../index.md) [home](../../pages/index.md)",
+            "docs/guides/deep.md",
+            "en",
+        );
+        assert!(html.contains(r#"href="/docs/getting-started""#), "{html}");
+        assert!(html.contains(r#"href="/docs/""#), "{html}");
+        assert!(html.contains(r#"href="/""#), "{html}");
+    }
+
+    #[test]
+    fn test_rewrite_md_links_content_root_and_published_copies() {
+        let (html, unresolved) = render_rewrite(
+            "[src](/content/docs/getting-started.md) [copy](/docs/getting-started.md) [ext](https://example.com/README.md) [mail](mailto:a@b.md)",
+            "posts/other.md",
+            "en",
+        );
+        assert!(html.contains(r#"href="/docs/getting-started""#), "{html}");
+        // Root-relative links outside the content dir point at the published
+        // markdown copies and stay as written.
+        assert!(
+            html.contains(r#"href="/docs/getting-started.md""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"href="https://example.com/README.md""#));
+        assert!(html.contains(r#"href="mailto:a@b.md""#));
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn test_rewrite_md_links_prefers_translation_for_page_language() {
+        let (html, _) = render_rewrite(
+            "[start](../docs/getting-started.md) [home](index.md)",
+            "pages/index.es.md",
+            "es",
+        );
+        assert!(
+            html.contains(r#"href="/es/docs/getting-started""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"href="/es/""#), "{html}");
+
+        // Default-language pages keep the default-language target.
+        let (html, _) = render_rewrite(
+            "[start](../docs/getting-started.md)",
+            "pages/index.md",
+            "en",
+        );
+        assert!(html.contains(r#"href="/docs/getting-started""#), "{html}");
+    }
+
+    #[test]
+    fn test_rewrite_md_links_reports_unresolved() {
+        let (html, unresolved) = render_rewrite(
+            "[bad](./nope.md#x) [bad again](./nope.md#x) [content](/content/posts/gone.md) [plain](./not-markdown.txt)",
+            "posts/other.md",
+            "en",
+        );
+        assert_eq!(unresolved, vec!["./nope.md#x", "/content/posts/gone.md"]);
+        // Unresolved links are left as written.
+        assert!(html.contains(r#"href="./nope.md#x""#), "{html}");
+    }
+
+    #[test]
+    fn test_rewrite_md_links_ignores_code_blocks() {
+        let (html, unresolved) = render_rewrite(
+            "```html\n<a href=\"./other.md\">x</a>\n```\n\n`[x](./other.md)`",
+            "posts/other.md",
+            "en",
+        );
+        assert!(!html.contains(r#"href="/posts/other""#), "{html}");
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn test_source_link_map_relative_paths_are_normalized() {
+        let mut map = SourceLinkMap::new(Path::new("."), Path::new("./content"), "en");
+        map.insert(Path::new("./content/docs/a.md"), "/docs/a");
+        assert_eq!(map.len(), 1);
+        assert_eq!(
+            map.resolve(Path::new("content/posts/x.md"), "../docs/a.md", "en"),
+            MdLinkTarget::Resolved("/docs/a".into())
+        );
+        assert_eq!(
+            map.resolve(Path::new("content/posts/x.md"), "/docs/a.md", "en"),
+            MdLinkTarget::NotSource
         );
     }
 }
