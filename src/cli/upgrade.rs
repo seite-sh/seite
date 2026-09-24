@@ -115,11 +115,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
         },
         UpgradeStep {
             introduced_in: (0, 1, 0),
-            label: "MCP server for AI tools",
-            check: check_mcp_server,
-        },
-        UpgradeStep {
-            introduced_in: (0, 1, 0),
             label: "Project instructions MCP documentation",
             check: check_claude_md_mcp,
         },
@@ -202,6 +197,14 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             introduced_in: (0, 16, 0),
             label: "Private collections + password access guidance (.claude/rules)",
             check: check_private_collections_rule,
+        },
+        UpgradeStep {
+            // Replaces the original (0.1.0) step that wrote `mcpServers` into
+            // .claude/settings.json, which Claude Code never reads. The check
+            // is idempotent, so it is safe for every older project.
+            introduced_in: (0, 20, 0),
+            label: "MCP server for AI tools (.mcp.json + settings migration)",
+            check: check_mcp_server,
         },
     ]
 }
@@ -449,95 +452,161 @@ fn check_page_meta(root: &Path) -> Vec<UpgradeAction> {
     }]
 }
 
-/// Ensure `.claude/settings.json` has the `mcpServers.seite` block.
+/// Read a JSON file whose top level is an object. `None` if unreadable,
+/// malformed, or not an object — callers leave such files untouched.
+fn read_json_object(path: &Path) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let content = fs::read_to_string(path).ok()?;
+    match serde_json::from_str(&content).ok()? {
+        serde_json::Value::Object(map) => Some(map),
+        _ => None,
+    }
+}
+
+fn pretty_json(value: &serde_json::Value) -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    )
+}
+
+/// Configure the seite MCP server the way Claude Code actually loads it.
+///
+/// Claude Code only reads project MCP servers from `.mcp.json`; the
+/// `mcpServers` block older versions wrote into `.claude/settings.json` was
+/// never loaded. This step:
+/// - creates `.mcp.json`, or merges the `seite` server into an existing one
+///   (other servers are preserved);
+/// - moves any legacy `mcpServers` from settings.json into `.mcp.json`
+///   (only when `.mcp.json` can hold them, so nothing is lost);
+/// - pre-approves the server via `enabledMcpjsonServers` and adds the newer
+///   permission rules (`mcp__seite`, `Edit(static/**)`, `Edit(seite.toml)`).
+///
+/// Malformed JSON files are left untouched. Running it again is a no-op.
 fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
-    let path = root.join(".claude/settings.json");
+    use crate::cli::init::{claude_settings, mcp_server_block, CLAUDE_ALLOWED_TOOLS_UPGRADE};
 
-    if !path.exists() {
-        // No Claude settings at all — create the full file
-        let content = crate::cli::init::mcp_server_block();
-        let full_settings = serde_json::json!({
-            "$schema": "https://json.schemastore.org/claude-code-settings.json",
-            "permissions": {
-                "allow": [
-                    "Read",
-                    "Write(content/**)",
-                    "Write(templates/**)",
-                    "Write(static/**)",
-                    "Write(data/**)",
-                    "Edit(content/**)",
-                    "Edit(templates/**)",
-                    "Edit(data/**)",
-                    "Bash(seite build:*)",
-                    "Bash(seite build)",
-                    "Bash(seite new:*)",
-                    "Bash(seite serve:*)",
-                    "Bash(seite theme:*)",
-                    "Glob",
-                    "Grep",
-                    "WebSearch"
-                ],
-                "deny": [
-                    "Read(.env)",
-                    "Read(.env.*)"
-                ]
-            },
-            "mcpServers": content,
+    let settings_path = root.join(".claude/settings.json");
+    let mcp_path = root.join(".mcp.json");
+    let seite_server = mcp_server_block().get("seite").cloned().unwrap_or_default();
+
+    let settings = if settings_path.exists() {
+        read_json_object(&settings_path)
+    } else {
+        None
+    };
+    let legacy_servers: serde_json::Map<String, serde_json::Value> = settings
+        .as_ref()
+        .and_then(|s| s.get("mcpServers"))
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut actions = Vec::new();
+
+    // --- .mcp.json (first, so legacy servers land there before settings.json
+    // drops them) ---
+    let mcp_holds_servers = if !mcp_path.exists() {
+        let mut servers = legacy_servers.clone();
+        servers
+            .entry("seite".to_string())
+            .or_insert_with(|| seite_server.clone());
+        actions.push(UpgradeAction::Create {
+            path: mcp_path,
+            content: pretty_json(&serde_json::json!({ "mcpServers": servers })),
+            description: ".mcp.json (seite MCP server for Claude Code)".into(),
         });
-        let json = serde_json::to_string_pretty(&full_settings).unwrap_or_default();
-        return vec![UpgradeAction::Create {
-            path,
-            content: format!("{json}\n"),
-            description: ".claude/settings.json (with MCP server)".into(),
-        }];
-    }
-
-    // File exists — check if mcpServers.seite is already there
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-    let mut settings: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return vec![], // malformed JSON, don't touch it
-    };
-
-    // Check if mcpServers.seite already exists
-    if settings.pointer("/mcpServers/seite").is_some() {
-        return vec![];
-    }
-
-    // Merge: add mcpServers block
-    let mcp_block = crate::cli::init::mcp_server_block();
-
-    let mut additions = Vec::new();
-
-    if let Some(existing_mcp) = settings.get_mut("mcpServers") {
-        // mcpServers exists but no "seite" key — add it
-        if let Some(obj) = existing_mcp.as_object_mut() {
-            obj.insert(
-                "seite".to_string(),
-                mcp_block.get("seite").cloned().unwrap_or_default(),
-            );
-            additions.push("Added mcpServers.seite to .claude/settings.json".into());
+        true
+    } else if let Some(mut mcp) = read_json_object(&mcp_path) {
+        let servers = mcp
+            .entry("mcpServers".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        match servers.as_object_mut() {
+            Some(map) => {
+                let mut additions = Vec::new();
+                for (name, server) in &legacy_servers {
+                    if !map.contains_key(name) {
+                        map.insert(name.clone(), server.clone());
+                        additions.push(format!(
+                            "Moved MCP server '{name}' from .claude/settings.json to .mcp.json"
+                        ));
+                    }
+                }
+                if !map.contains_key("seite") {
+                    map.insert("seite".to_string(), seite_server.clone());
+                    additions.push("Added mcpServers.seite to .mcp.json".to_string());
+                }
+                if !additions.is_empty() {
+                    actions.push(UpgradeAction::MergeJson {
+                        path: mcp_path,
+                        merged: serde_json::Value::Object(mcp),
+                        additions,
+                    });
+                }
+                true
+            }
+            None => false,
         }
     } else {
-        // No mcpServers at all — add the whole block
-        if let Some(obj) = settings.as_object_mut() {
-            obj.insert("mcpServers".to_string(), mcp_block);
-            additions.push("Added mcpServers.seite to .claude/settings.json".into());
+        false // malformed .mcp.json — don't touch it
+    };
+
+    // --- .claude/settings.json ---
+    if !settings_path.exists() {
+        actions.push(UpgradeAction::Create {
+            path: settings_path,
+            content: pretty_json(&claude_settings()),
+            description: ".claude/settings.json (permissions + MCP server approval)".into(),
+        });
+    } else if let Some(mut settings) = settings {
+        let mut additions = Vec::new();
+
+        if mcp_holds_servers && settings.remove("mcpServers").is_some() {
+            additions.push(
+                "Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)"
+                    .to_string(),
+            );
+        }
+
+        let enabled = settings
+            .entry("enabledMcpjsonServers".to_string())
+            .or_insert_with(|| serde_json::json!([]));
+        if let Some(list) = enabled.as_array_mut() {
+            if !list.iter().any(|v| v == "seite") {
+                list.push(serde_json::json!("seite"));
+                additions.push(
+                    "Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json"
+                        .to_string(),
+                );
+            }
+        }
+
+        let permissions = settings
+            .entry("permissions".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(permissions) = permissions.as_object_mut() {
+            let allow = permissions
+                .entry("allow".to_string())
+                .or_insert_with(|| serde_json::json!([]));
+            if let Some(allow) = allow.as_array_mut() {
+                for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE {
+                    if !allow.iter().any(|v| v == rule) {
+                        allow.push(serde_json::json!(rule));
+                        additions.push(format!("Allowed {rule} in .claude/settings.json"));
+                    }
+                }
+            }
+        }
+
+        if !additions.is_empty() {
+            actions.push(UpgradeAction::MergeJson {
+                path: settings_path,
+                merged: serde_json::Value::Object(settings),
+                additions,
+            });
         }
     }
 
-    if additions.is_empty() {
-        return vec![];
-    }
-
-    vec![UpgradeAction::MergeJson {
-        path,
-        merged: settings,
-        additions,
-    }]
+    actions
 }
 
 /// Ensure `.claude/skills/landing-page/SKILL.md` exists and is up-to-date when
@@ -762,18 +831,20 @@ fn check_claude_md_mcp(root: &Path) -> Vec<UpgradeAction> {
 This project includes an MCP server that AI tools can connect to for structured
 access to site content, documentation, themes, and build tools.
 
-The server is configured in `.claude/settings.json` and starts automatically
-when Claude Code opens this project. No API keys or setup required.
+The server is declared in `.mcp.json` (and pre-approved in
+`.claude/settings.json`). Claude Code starts it when it opens this project;
+the first time, it may ask you to approve the project's MCP server.
+No API keys required.
 
 **Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
 `seite_apply_theme`, `seite_lookup_docs`
 
-**Available resources:** `seite://docs/*` (page documentation),
+**Available resources:** `seite://docs/*` (seite documentation),
 `seite://content/*` (site content), `seite://themes` (themes),
 `seite://config` (site configuration), `seite://mcp-config` (MCP settings)
 
 The MCP server provides typed, structured access to your site — AI tools work
-with page concepts (collections, content items, themes) rather than parsing
+with seite concepts (collections, content items, themes) rather than parsing
 raw files.
 "#;
 
@@ -1426,88 +1497,170 @@ mod tests {
     fn test_check_mcp_server_no_claude_dir() {
         let tmp = tempfile::TempDir::new().unwrap();
         let actions = check_mcp_server(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
+        assert_eq!(actions.len(), 2);
+        match (&actions[0], &actions[1]) {
+            (
+                UpgradeAction::Create {
+                    description: mcp_desc,
+                    content: mcp_content,
+                    ..
+                },
+                UpgradeAction::Create {
+                    description,
+                    content,
+                    ..
+                },
+            ) => {
+                assert!(mcp_desc.contains(".mcp.json"));
+                let mcp: serde_json::Value = serde_json::from_str(mcp_content).unwrap();
+                assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
                 assert!(description.contains("settings.json"));
+                let settings: serde_json::Value = serde_json::from_str(content).unwrap();
+                assert!(settings.get("mcpServers").is_none());
+                assert_eq!(settings["enabledMcpjsonServers"][0], "seite");
             }
-            _ => panic!("expected Create action"),
+            _ => panic!("expected two Create actions"),
         }
     }
 
-    #[test]
-    fn test_check_mcp_server_already_has_seite() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        let settings = serde_json::json!({
-            "mcpServers": {
-                "seite": {
-                    "command": "seite",
-                    "args": ["mcp"]
+    /// Apply Create/MergeJson actions the way `run` does (test helper).
+    fn apply_json_actions(actions: Vec<UpgradeAction>) {
+        for action in actions {
+            match action {
+                UpgradeAction::Create { path, content, .. } => {
+                    fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    fs::write(path, content).unwrap();
                 }
+                UpgradeAction::MergeJson { path, merged, .. } => {
+                    fs::write(path, serde_json::to_string_pretty(&merged).unwrap()).unwrap();
+                }
+                _ => panic!("unexpected action"),
             }
-        });
-        fs::write(
-            claude_dir.join("settings.json"),
-            serde_json::to_string_pretty(&settings).unwrap(),
-        )
-        .unwrap();
-        let actions = check_mcp_server(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_mcp_server_has_mcp_but_no_seite() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        let settings = serde_json::json!({
-            "mcpServers": {
-                "other": { "command": "other" }
-            }
-        });
-        fs::write(
-            claude_dir.join("settings.json"),
-            serde_json::to_string_pretty(&settings).unwrap(),
-        )
-        .unwrap();
-        let actions = check_mcp_server(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::MergeJson { additions, .. } => {
-                assert!(additions[0].contains("mcpServers.seite"));
-            }
-            _ => panic!("expected MergeJson action"),
         }
     }
 
-    #[test]
-    fn test_check_mcp_server_has_settings_no_mcp() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
+    fn write_settings(root: &Path, settings: serde_json::Value) {
+        let claude_dir = root.join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
-        let settings = serde_json::json!({
-            "permissions": { "allow": ["Read"] }
-        });
         fs::write(
             claude_dir.join("settings.json"),
             serde_json::to_string_pretty(&settings).unwrap(),
         )
         .unwrap();
+    }
+
+    fn read_json(path: &Path) -> serde_json::Value {
+        serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn test_check_mcp_server_migrates_legacy_settings() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({
+                "permissions": { "allow": ["Read", "Write(static/**)"], "deny": ["Read(.env)"] },
+                "mcpServers": {
+                    "seite": { "command": "seite", "args": ["mcp"] },
+                    "other": { "command": "other" }
+                }
+            }),
+        );
         let actions = check_mcp_server(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::MergeJson { additions, .. } => {
-                assert!(additions[0].contains("mcpServers.seite"));
-            }
-            _ => panic!("expected MergeJson action"),
+        let descriptions: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
+        assert!(descriptions.iter().any(|d| d.contains(".mcp.json")));
+        assert!(descriptions
+            .iter()
+            .any(|d| d.contains("Removed mcpServers")));
+        assert!(descriptions.iter().any(|d| d.contains("mcp__seite")));
+        apply_json_actions(actions);
+
+        let mcp = read_json(&tmp.path().join(".mcp.json"));
+        assert_eq!(mcp["mcpServers"]["seite"]["args"][0], "mcp");
+        assert_eq!(mcp["mcpServers"]["other"]["command"], "other");
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert!(settings.get("mcpServers").is_none());
+        assert_eq!(
+            settings["enabledMcpjsonServers"],
+            serde_json::json!(["seite"])
+        );
+        let allow: Vec<&str> = settings["permissions"]["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        for rule in [
+            "Read",
+            "Write(static/**)",
+            "mcp__seite",
+            "Edit(static/**)",
+            "Edit(seite.toml)",
+        ] {
+            assert!(allow.contains(&rule), "missing {rule}: {allow:?}");
         }
+        assert_eq!(settings["permissions"]["deny"][0], "Read(.env)");
+
+        // Idempotent: a second run has nothing to do.
+        assert!(check_mcp_server(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_mcp_server_merges_into_existing_mcp_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".mcp.json"),
+            r#"{"mcpServers":{"mine":{"command":"mine"}}}"#,
+        )
+        .unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({ "permissions": { "allow": ["Read"] } }),
+        );
+        apply_json_actions(check_mcp_server(tmp.path()));
+        let mcp = read_json(&tmp.path().join(".mcp.json"));
+        assert_eq!(mcp["mcpServers"]["mine"]["command"], "mine");
+        assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+        assert!(check_mcp_server(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_check_mcp_server_keeps_legacy_servers_if_mcp_json_malformed() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(tmp.path().join(".mcp.json"), "not json").unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({ "mcpServers": { "other": { "command": "other" } } }),
+        );
+        apply_json_actions(check_mcp_server(tmp.path()));
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(".mcp.json")).unwrap(),
+            "not json"
+        );
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert_eq!(settings["mcpServers"]["other"]["command"], "other");
+    }
+
+    #[test]
+    fn test_check_mcp_server_fresh_init_is_noop() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".mcp.json"),
+            serde_json::to_string_pretty(&crate::cli::init::mcp_json()).unwrap(),
+        )
+        .unwrap();
+        write_settings(tmp.path(), crate::cli::init::claude_settings());
+        assert!(check_mcp_server(tmp.path()).is_empty());
     }
 
     #[test]
     fn test_check_mcp_server_malformed_json() {
         let tmp = tempfile::TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(".mcp.json"),
+            serde_json::to_string_pretty(&crate::cli::init::mcp_json()).unwrap(),
+        )
+        .unwrap();
         let claude_dir = tmp.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(claude_dir.join("settings.json"), "not json").unwrap();

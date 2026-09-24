@@ -4075,32 +4075,56 @@ fn test_init_creates_mcp_server_config() {
     init_site(&tmp, "site", "MCP Test", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    let settings_path = site_dir.join(".claude/settings.json");
-    assert!(settings_path.exists());
-
-    let content = fs::read_to_string(&settings_path).unwrap();
-    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    // Should have mcpServers.seite
-    assert!(
-        settings.pointer("/mcpServers/seite").is_some(),
-        "settings should include mcpServers.seite"
-    );
+    // Claude Code reads project MCP servers from .mcp.json only.
+    let mcp_path = site_dir.join(".mcp.json");
+    assert!(mcp_path.exists(), "init should write .mcp.json");
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&mcp_path).unwrap()).unwrap();
     assert_eq!(
-        settings
-            .pointer("/mcpServers/seite/command")
+        mcp.pointer("/mcpServers/seite/command")
             .and_then(|v| v.as_str()),
         Some("seite"),
         "MCP command should be 'seite'"
     );
     assert_eq!(
-        settings
-            .pointer("/mcpServers/seite/args")
+        mcp.pointer("/mcpServers/seite/args")
             .and_then(|v| v.as_array())
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
         Some(vec!["mcp"]),
         "MCP args should be ['mcp']"
     );
+}
+
+#[test]
+fn test_init_settings_json_approves_mcp_without_mcp_servers() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "MCP Settings", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
+    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert!(
+        settings.get("mcpServers").is_none(),
+        "settings.json must not carry mcpServers (Claude Code ignores it there)"
+    );
+    assert_eq!(
+        settings["enabledMcpjsonServers"],
+        serde_json::json!(["seite"])
+    );
+    let allow: Vec<&str> = settings["permissions"]["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for rule in [
+        "mcp__seite",
+        "Edit(static/**)",
+        "Edit(seite.toml)",
+        "Write(static/**)",
+    ] {
+        assert!(allow.contains(&rule), "missing allow rule {rule}");
+    }
 }
 
 #[test]
@@ -4650,6 +4674,7 @@ fn test_upgrade_adds_mcp_to_existing_project() {
 
     // Simulate a pre-MCP project by removing the MCP config and version stamp
     fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+    fs::remove_file(site_dir.join(".mcp.json")).unwrap();
 
     // Write a .claude/settings.json WITHOUT mcpServers
     fs::write(
@@ -4670,15 +4695,19 @@ fn test_upgrade_adds_mcp_to_existing_project() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("mcpServers"));
+        .stdout(predicate::str::contains(".mcp.json"));
 
-    // Verify MCP was added
+    // Verify MCP was added where Claude Code reads it
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".mcp.json")).unwrap()).unwrap();
+    assert!(
+        mcp.pointer("/mcpServers/seite").is_some(),
+        "upgrade should add mcpServers.seite to .mcp.json"
+    );
     let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
     let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert!(
-        settings.pointer("/mcpServers/seite").is_some(),
-        "upgrade should add mcpServers.seite"
-    );
+    assert!(settings.get("mcpServers").is_none());
+    assert_eq!(settings["enabledMcpjsonServers"][0], "seite");
 
     // Verify existing permissions were preserved
     assert!(
@@ -4853,18 +4882,92 @@ fn test_upgrade_preserves_existing_mcp_servers() {
         .assert()
         .success();
 
-    let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
-    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
+    // Both MCP servers end up in .mcp.json (the file Claude Code reads)
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".mcp.json")).unwrap()).unwrap();
+    assert!(
+        mcp.pointer("/mcpServers/seite").is_some(),
+        "upgrade should keep the seite MCP server"
+    );
+    assert_eq!(
+        mcp.pointer("/mcpServers/custom-server/command")
+            .and_then(|v| v.as_str()),
+        Some("my-tool"),
+        "upgrade should move existing MCP servers into .mcp.json"
+    );
+}
 
-    // Both MCP servers should exist
-    assert!(
-        settings.pointer("/mcpServers/seite").is_some(),
-        "upgrade should add seite MCP server"
+#[test]
+fn test_upgrade_migrates_legacy_settings_json() {
+    // Sites created before .mcp.json support carried `mcpServers` in
+    // .claude/settings.json, which Claude Code never loads.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Legacy MCP", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join(".mcp.json")).unwrap();
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta_content = fs::read_to_string(&meta_path).unwrap();
+    fs::write(
+        &meta_path,
+        meta_content.replace(env!("CARGO_PKG_VERSION"), "0.19.0"),
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join(".claude/settings.json"),
+        r#"{
+  "permissions": {
+    "allow": ["Read", "Write(static/**)", "Bash(seite build:*)"],
+    "deny": ["Read(.env)"]
+  },
+  "mcpServers": { "seite": { "command": "seite", "args": ["mcp"] } }
+}
+"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".mcp.json"))
+        .stdout(predicate::str::contains("mcp__seite"));
+
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+
+    let settings: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap())
+            .unwrap();
+    assert!(settings.get("mcpServers").is_none());
+    assert_eq!(
+        settings["enabledMcpjsonServers"],
+        serde_json::json!(["seite"])
     );
-    assert!(
-        settings.pointer("/mcpServers/custom-server").is_some(),
-        "upgrade should preserve existing MCP servers"
-    );
+    let allow: Vec<&str> = settings["permissions"]["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for rule in [
+        "Read",
+        "Bash(seite build:*)",
+        "mcp__seite",
+        "Edit(static/**)",
+        "Edit(seite.toml)",
+    ] {
+        assert!(allow.contains(&rule), "missing {rule}: {allow:?}");
+    }
+    assert_eq!(settings["permissions"]["deny"][0], "Read(.env)");
+
+    // Idempotent: nothing left to migrate.
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
 }
 
 #[test]
@@ -5477,6 +5580,179 @@ fn test_mcp_tool_create_content() {
     assert!(file_content.contains("This is test content."));
 }
 
+/// Helper: call one MCP tool and return (isError, text).
+fn mcp_tool_call(
+    dir: &std::path::Path,
+    name: &str,
+    arguments: serde_json::Value,
+) -> (bool, String) {
+    let responses = mcp_request(
+        dir,
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": name, "arguments": arguments }
+        })],
+    );
+    assert_eq!(responses.len(), 1);
+    assert!(
+        responses[0]["error"].is_null(),
+        "tool failures must not be JSON-RPC errors: {}",
+        responses[0]
+    );
+    let result = &responses[0]["result"];
+    (
+        result["isError"].as_bool().unwrap_or(false),
+        result["content"][0]["text"].as_str().unwrap().to_string(),
+    )
+}
+
+#[test]
+fn test_mcp_create_content_no_overwrite() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpnoover", "No Overwrite", "posts,docs");
+    let site_dir = tmp.path().join("mcpnoover");
+
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_create_content",
+        serde_json::json!({
+            "collection": "docs",
+            "title": "Setup",
+            "tags": ["keep-me"],
+            "body": "Original body."
+        }),
+    );
+    assert!(!is_error, "{text}");
+    let created: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(created["path"], "content/docs/setup.md");
+
+    // Same title again: must refuse and leave the file untouched.
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_create_content",
+        serde_json::json!({ "collection": "docs", "title": "Setup", "body": "Clobbered." }),
+    );
+    assert!(is_error, "second create should fail: {text}");
+    assert!(text.contains("already exists"), "{text}");
+    let on_disk = fs::read_to_string(site_dir.join("content/docs/setup.md")).unwrap();
+    assert!(on_disk.contains("Original body."));
+    assert!(on_disk.contains("keep-me"));
+
+    // Title with no slug-able characters is rejected, not written as `.md`.
+    let (is_error, _) = mcp_tool_call(
+        &site_dir,
+        "seite_create_content",
+        serde_json::json!({ "collection": "docs", "title": "!!!" }),
+    );
+    assert!(is_error);
+    assert!(!site_dir.join("content/docs/.md").exists());
+}
+
+#[test]
+fn test_mcp_build_reports_broken_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcplinks", "Broken Links", "posts");
+    let site_dir = tmp.path().join("mcplinks");
+    fs::write(
+        site_dir.join("content/posts/2025-01-15-linker.md"),
+        "---\ntitle: Linker\n---\n\nSee [gone](/posts/not-a-real-post).\n",
+    )
+    .unwrap();
+
+    let (is_error, text) = mcp_tool_call(&site_dir, "seite_build", serde_json::json!({}));
+    assert!(!is_error, "{text}");
+    let result: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let broken = result["broken_links"].as_array().unwrap();
+    let entry = broken
+        .iter()
+        .find(|b| b["target"] == "/posts/not-a-real-post")
+        .unwrap_or_else(|| panic!("broken link not reported: {result}"));
+    assert!(!entry["sources"].as_array().unwrap().is_empty());
+    assert!(result["warnings"].is_array());
+
+    // strict=true turns the same problems into a tool error.
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_build",
+        serde_json::json!({ "strict": true }),
+    );
+    assert!(is_error);
+    assert!(text.contains("/posts/not-a-real-post"), "{text}");
+}
+
+#[test]
+fn test_mcp_build_reports_template_fallback_warning() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcptplwarn", "Template Warning", "posts");
+    let site_dir = tmp.path().join("mcptplwarn");
+    fs::create_dir_all(site_dir.join("templates")).unwrap();
+    fs::write(
+        site_dir.join("templates/base.html"),
+        "<html>{% if %}</html>",
+    )
+    .unwrap();
+
+    let (is_error, text) = mcp_tool_call(&site_dir, "seite_build", serde_json::json!({}));
+    assert!(!is_error, "{text}");
+    let result: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert!(result["warnings"].as_array().unwrap().iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .contains("failed to parse user templates")));
+}
+
+#[test]
+fn test_mcp_tool_errors_use_is_error_and_surface_config_errors() {
+    let tmp = TempDir::new().unwrap();
+    // No site: actionable tool error, not a JSON-RPC error.
+    let (is_error, text) = mcp_tool_call(tmp.path(), "seite_build", serde_json::json!({}));
+    assert!(is_error);
+    assert!(text.contains("seite init"), "{text}");
+
+    // Broken seite.toml: the real load error, not "not a site".
+    fs::write(tmp.path().join("seite.toml"), "[site\ntitle = \"x\"\n").unwrap();
+    let (is_error, text) = mcp_tool_call(tmp.path(), "seite_build", serde_json::json!({}));
+    assert!(is_error);
+    assert!(text.contains("Failed to load"), "{text}");
+    assert!(!text.contains("Not in a seite project"), "{text}");
+}
+
+#[test]
+fn test_mcp_finds_project_root_from_subdirectory() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpsub", "Subdir Root", "posts");
+    let site_dir = tmp.path().join("mcpsub");
+    let (is_error, text) = mcp_tool_call(
+        &site_dir.join("content/posts"),
+        "seite_search",
+        serde_json::json!({ "query": "hello" }),
+    );
+    assert!(!is_error, "{text}");
+}
+
+#[test]
+fn test_mcp_apply_theme_rejects_path_traversal() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpevil", "Evil Theme", "posts");
+    let site_dir = tmp.path().join("mcpevil");
+    let evil = tmp.path().join("evil");
+    fs::write(tmp.path().join("evil.tera"), "<html>EVIL</html>").unwrap();
+
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_apply_theme",
+        serde_json::json!({ "name": evil.to_string_lossy() }),
+    );
+    assert!(is_error);
+    assert!(text.contains("invalid theme name"), "{text}");
+    let base = site_dir.join("templates/base.html");
+    if base.exists() {
+        assert!(!fs::read_to_string(base).unwrap().contains("EVIL"));
+    }
+}
+
 #[test]
 fn test_mcp_tool_search() {
     let tmp = TempDir::new().unwrap();
@@ -5507,7 +5783,7 @@ fn test_mcp_tool_search() {
     let content = responses[0]["result"]["content"].as_array().unwrap();
     let text = content[0]["text"].as_str().unwrap();
     let result: serde_json::Value = serde_json::from_str(text).unwrap();
-    assert!(result["count"].as_u64().unwrap() >= 1);
+    assert!(result["total"].as_u64().unwrap() >= 1);
     let results = result["results"].as_array().unwrap();
     assert!(results
         .iter()
@@ -6203,21 +6479,39 @@ fn test_new_roadmap_item() {
     let site_dir = tmp.path().join("site");
 
     page_cmd()
-        .args(["new", "roadmap", "Dark Mode", "--tags", "planned"])
+        .args(["new", "roadmap", "Offline Mode", "--tags", "planned"])
         .current_dir(&site_dir)
         .assert()
         .success()
         .stdout(predicate::str::contains("Created"));
 
-    let item_file = site_dir.join("content/roadmap/dark-mode.md");
-    // Note: there may already be one from init, so check the freshly created one exists
+    let item_file = site_dir.join("content/roadmap/offline-mode.md");
+    // init ships a dark-mode.md sample; `seite new` must not clobber it
     assert!(item_file.exists());
 
     let content = fs::read_to_string(item_file).unwrap();
-    assert!(content.contains("title: Dark Mode"));
+    assert!(content.contains("title: Offline Mode"));
     assert!(content.contains("planned"));
     // Roadmap items do NOT have dates (has_date: false)
     assert!(!content.contains("date:"));
+}
+
+#[test]
+fn test_new_refuses_to_overwrite_existing_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Clobber", "roadmap");
+    let site_dir = tmp.path().join("site");
+    let existing = site_dir.join("content/roadmap/dark-mode.md");
+    let before = fs::read_to_string(&existing).unwrap();
+
+    page_cmd()
+        .args(["new", "roadmap", "Dark Mode"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+
+    assert_eq!(fs::read_to_string(&existing).unwrap(), before);
 }
 
 #[test]
@@ -8975,7 +9269,7 @@ fn test_build_with_all_collection_types() {
         .success();
 
     page_cmd()
-        .args(["new", "roadmap", "Dark Mode", "--tags", "planned"])
+        .args(["new", "roadmap", "Offline Mode", "--tags", "planned"])
         .current_dir(&site_dir)
         .assert()
         .success();

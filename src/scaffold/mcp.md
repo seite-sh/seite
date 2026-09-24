@@ -1,6 +1,6 @@
 ## MCP Server
 
-This project includes a built-in MCP (Model Context Protocol) server that starts automatically when Claude Code opens this project. No API keys or setup required. It is configured in `.claude/settings.json`.
+This project includes a built-in MCP (Model Context Protocol) server (`seite mcp`), declared in `.mcp.json` and pre-approved via `enabledMcpjsonServers` in `.claude/settings.json`. Claude Code starts it when it opens this project; the first time, it may ask you to approve the project's MCP server (check with `/mcp`). No API keys required.
 
 Use this file (AGENTS.md) for commands, config options, template syntax, and patterns. Use the MCP server to check **current site state** before creating or modifying content:
 
