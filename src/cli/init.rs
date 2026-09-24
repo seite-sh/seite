@@ -1187,7 +1187,7 @@ fn generate_agents_md(
     // MCP Server (brief — details in embedded docs)
     md.push_str("## MCP Server\n\n");
     md.push_str(
-        "An MCP server is configured in `.claude/settings.json` and starts automatically.\n",
+        "An MCP server is declared in `.mcp.json` and pre-approved in `.claude/settings.json`. Claude Code starts it automatically when it opens this project; the first time, it may still ask you to approve the project's MCP server.\n",
     );
     md.push_str(&format!(
         "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`, `seite://mcp-config`{}\n",
@@ -1241,8 +1241,10 @@ fn generate_agents_md(
     md.push_str(
         "seite build --strict   # fails (non-zero exit) on broken internal links; exit 0 = OK\n",
     );
+    md.push_str("seite --json build     # machine-readable: {\"data\":{\"broken_links\":[...],\"warnings\":[...]}}\n");
     md.push_str("```\n\n");
     md.push_str("A broken-link error lists the bad target href and every generated file (relative to `dist/`) that links to it — there are no source line numbers, so grep `content/` for the href to find the source. Check `dist/` for both the `.html` output and its `.md` twin, and that frontmatter parsed (a bad frontmatter field fails the build with the source file path).\n\n");
+    md.push_str("For a background preview while you keep editing, `seite serve --no-repl &` runs the dev server (with live reload) without an interactive prompt.\n\n");
     md.push_str("**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.\n\n");
 
     // Key conventions (short, mixed static/dynamic — keep inline)
