@@ -8,9 +8,9 @@ Most static site generators treat AI as an afterthought: a plugin, a separate AP
 
 ## Overview
 
-`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context: configuration, content inventory, templates, and available commands. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
+`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's live context: config, collections, content inventory, and templates. Your project's `AGENTS.md` (created by `seite init`) already covers conventions like content format and file naming, so Claude Code loads that on its own — the agent only adds what changes at runtime. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
 
-No API keys needed. It uses your Claude Code subscription directly.
+No API keys needed. It uses your Claude Code subscription directly. You can also point `seite agent` at Codex, opencode, or Cursor with `--with` — see [Other Agent Harnesses](#other-agent-harnesses).
 
 ## Setup
 
@@ -34,13 +34,12 @@ Launch an interactive session:
 seite agent
 ```
 
-Claude receives a rich system prompt containing:
-- Your site config (title, description, base URL, collections)
+Claude receives a system prompt with the live, per-project context it can't get any other way:
+- Site config (title, base URL, language)
+- Collections table (directory, URL prefix, dated, nested)
 - Content inventory (titles, dates, tags of every existing page)
 - Available templates
-- Frontmatter format with examples
-- File naming conventions
-- All `seite` CLI commands
+- A pointer to `AGENTS.md` for everything else (content format, file naming, available commands, shortcodes)
 
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 
@@ -115,6 +114,36 @@ seite theme create "dark mode with neon green accents and brutalist layout"
 
 Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly. For more on themes, see the [theme gallery](/docs/theme-gallery).
 
+## Other Agent Harnesses
+
+`seite agent` defaults to Claude Code, but you can drive other coding agents with the same live site context via `--with`:
+
+```bash
+seite agent --with codex "write a post about our latest release"
+seite agent --with opencode "reorganize the docs into guides/ and reference/"
+seite agent --with cursor "add a testimonials section to the homepage"
+```
+
+Set `SEITE_AGENT` to change the default without passing `--with` every time:
+
+```bash
+export SEITE_AGENT=codex
+seite agent "fix the broken links in my content"
+```
+
+Each harness needs its own CLI installed and on `PATH`:
+
+| Harness | Binary | Install |
+|---|---|---|
+| `claude` (default) | `claude` | `npm install -g @anthropic-ai/claude-code` |
+| `codex` | `codex` | `npm install -g @openai/codex` |
+| `opencode` | `opencode` | `curl -fsSL https://opencode.ai/install \| bash` |
+| `cursor` | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
+
+If the binary isn't found, `seite agent` fails immediately with the install command instead of hanging or falling back silently.
+
+Codex has no system-prompt flag, so for `codex` and `opencode`/`cursor` the site context is prepended to the prompt itself, clearly delimited from your instructions. Auto-approving a harness's own side effects (writes, MCP servers) stays opt-in: pass the global `-y`/`--yes` flag to also pass `opencode run --auto` or `cursor-agent --force --approve-mcps`.
+
 ## REPL Integration
 
 The dev server REPL also supports the agent:
@@ -127,13 +156,16 @@ This is useful for quick content creation while previewing your site.
 
 ## What the Agent Can Do
 
-The agent has access to these tools:
+With Claude Code, the agent has access to these tools, scoped to content and theme work:
 - **Read**: read any file in your project
 - **Write**: create new content files
 - **Edit**: modify existing files
 - **Glob**: find files by pattern
 - **Grep**: search file contents
-- **Bash**: run CLI commands (build, serve, deploy)
+- **`mcp__seite`**: every tool of the [seite MCP server](/docs/mcp-server)
+- **Bash**, limited to `seite <anything>`, `git status`, `git diff`, `git log`, and `ls` — no general shell access
+
+This keeps the agent able to write content, run builds, and inspect git state without handing it an unrestricted shell.
 
 ### Concrete example: writing a blog post
 

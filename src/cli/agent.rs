@@ -5,7 +5,6 @@ use std::process::Stdio;
 use clap::Args;
 use walkdir::WalkDir;
 
-use crate::cli::skill;
 use crate::config::{ResolvedPaths, SiteConfig};
 use crate::content;
 use crate::error::PageError;
@@ -20,82 +19,300 @@ pub struct AgentArgs {
     /// Run a single prompt and exit (no follow-up conversation)
     #[arg(long)]
     pub once: bool,
+
+    /// Coding-agent harness to drive: claude, codex, opencode, or cursor.
+    /// Defaults to `SEITE_AGENT` when set, otherwise claude.
+    #[arg(long, value_name = "HARNESS")]
+    pub with: Option<String>,
 }
 
-/// Tools the agent may use without prompting. `mcp__seite` allows every tool
-/// of the site's `seite` MCP server.
-const AGENT_ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,Bash,mcp__seite";
+/// Tools the agent may use without prompting, scoped to content/theme work.
+/// `mcp__seite` allows every tool of the site's `seite` MCP server. `Bash` is
+/// limited to the `seite` CLI itself and a handful of read-only git/ls
+/// commands — no general shell access.
+const AGENT_ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,mcp__seite,\
+    Bash(seite:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)";
+
+/// Coding-agent harnesses `seite agent --with` can drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Harness {
+    Claude,
+    Codex,
+    Opencode,
+    Cursor,
+}
+
+/// Every harness name `--with`/`SEITE_AGENT` accepts.
+const VALID_HARNESSES: [&str; 4] = ["claude", "codex", "opencode", "cursor"];
+
+/// Extra context each [`Harness`]'s argument builders need, gathered once in
+/// [`run`] and threaded through so the builders stay pure and testable.
+struct HarnessOpts<'a> {
+    /// `--allowedTools` value. Only meaningful to [`Harness::Claude`].
+    allowed_tools: &'a str,
+    /// `--mcp-config .mcp.json`, when present. Only meaningful to
+    /// [`Harness::Claude`].
+    mcp_args: &'a [String],
+    /// The global `--yes` flag: the opt-in for a harness's own auto-approve
+    /// flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`).
+    auto: bool,
+}
+
+impl Harness {
+    fn parse(name: &str) -> Option<Harness> {
+        match name {
+            "claude" => Some(Harness::Claude),
+            "codex" => Some(Harness::Codex),
+            "opencode" => Some(Harness::Opencode),
+            "cursor" => Some(Harness::Cursor),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Harness::Claude => "claude",
+            Harness::Codex => "codex",
+            Harness::Opencode => "opencode",
+            Harness::Cursor => "cursor",
+        }
+    }
+
+    /// The executable to spawn.
+    fn binary(self) -> &'static str {
+        match self {
+            Harness::Claude => "claude",
+            Harness::Codex => "codex",
+            Harness::Opencode => "opencode",
+            Harness::Cursor => "cursor-agent",
+        }
+    }
+
+    /// Install instructions shown when [`binary`](Harness::binary) isn't on `PATH`.
+    fn install_hint(self) -> &'static str {
+        match self {
+            Harness::Claude => {
+                "npm install -g @anthropic-ai/claude-code (https://docs.claude.com/en/docs/claude-code)"
+            }
+            Harness::Codex => "npm install -g @openai/codex (https://github.com/openai/codex)",
+            Harness::Opencode => {
+                "curl -fsSL https://opencode.ai/install | bash (https://opencode.ai/docs)"
+            }
+            Harness::Cursor => {
+                "curl https://cursor.com/install -fsS | bash (https://docs.cursor.com/cli)"
+            }
+        }
+    }
+
+    /// Args to run one prompt non-interactively and exit.
+    fn one_shot_args(self, prompt: &str, context: &str, opts: &HarnessOpts<'_>) -> Vec<String> {
+        match self {
+            Harness::Claude => {
+                let mut args = vec![
+                    "-p".to_string(),
+                    prompt.to_string(),
+                    "--append-system-prompt".to_string(),
+                    context.to_string(),
+                    "--allowedTools".to_string(),
+                    opts.allowed_tools.to_string(),
+                ];
+                args.extend(opts.mcp_args.iter().cloned());
+                args
+            }
+            Harness::Codex => vec![
+                "exec".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+                with_context(context, prompt),
+            ],
+            Harness::Opencode => {
+                let mut args = vec!["run".to_string(), with_context(context, prompt)];
+                if opts.auto {
+                    args.push("--auto".to_string());
+                }
+                args
+            }
+            Harness::Cursor => {
+                let mut args = vec![
+                    "-p".to_string(),
+                    with_context(context, prompt),
+                    "--output-format".to_string(),
+                    "text".to_string(),
+                ];
+                if opts.auto {
+                    args.push("--force".to_string());
+                    args.push("--approve-mcps".to_string());
+                }
+                args
+            }
+        }
+    }
+
+    /// Args to start an interactive session, optionally seeded with an
+    /// initial prompt. `Claude`'s own initial-prompt flow is handled
+    /// separately (streaming chat with session resume), so it ignores
+    /// `prompt` here and only ever runs with `None`.
+    fn interactive_args(
+        self,
+        prompt: Option<&str>,
+        context: &str,
+        opts: &HarnessOpts<'_>,
+    ) -> Vec<String> {
+        match self {
+            Harness::Claude => {
+                let mut args = vec![
+                    "--append-system-prompt".to_string(),
+                    context.to_string(),
+                    "--allowedTools".to_string(),
+                    opts.allowed_tools.to_string(),
+                ];
+                args.extend(opts.mcp_args.iter().cloned());
+                args
+            }
+            Harness::Codex => match prompt {
+                Some(p) => vec![with_context(context, p)],
+                None => Vec::new(),
+            },
+            Harness::Opencode => match prompt {
+                Some(p) => vec!["--prompt".to_string(), with_context(context, p)],
+                None => Vec::new(),
+            },
+            Harness::Cursor => match prompt {
+                Some(p) => vec![with_context(context, p)],
+                None => Vec::new(),
+            },
+        }
+    }
+}
+
+/// Prepend the dynamic site context to a prompt for harnesses with no
+/// system-prompt flag, clearly delimited so it reads as background, not an
+/// instruction from the user.
+fn with_context(context: &str, prompt: &str) -> String {
+    format!("<seite-project-context>\n{context}\n</seite-project-context>\n\n{prompt}")
+}
+
+/// Resolve which harness to drive: `--with`, else `SEITE_AGENT`, else claude.
+fn resolve_harness(cli_value: Option<&str>) -> anyhow::Result<Harness> {
+    resolve_harness_with_env(cli_value, std::env::var("SEITE_AGENT").ok())
+}
+
+fn resolve_harness_with_env(
+    cli_value: Option<&str>,
+    env_value: Option<String>,
+) -> anyhow::Result<Harness> {
+    let name = cli_value
+        .map(str::to_string)
+        .or(env_value)
+        .unwrap_or_else(|| "claude".to_string());
+
+    Harness::parse(&name).ok_or_else(|| {
+        let hint = human::suggest_match(&name, &VALID_HARNESSES);
+        anyhow::anyhow!(
+            "unknown agent harness '{}'. Valid options: {}{}",
+            name,
+            VALID_HARNESSES.join(", "),
+            hint
+        )
+    })
+}
 
 /// `--mcp-config .mcp.json` when the project declares MCP servers there, so
 /// the agent gets the seite MCP server without an interactive approval.
-fn mcp_config_args() -> Vec<&'static str> {
+fn mcp_config_args() -> Vec<String> {
     mcp_config_args_for(std::path::Path::new(".mcp.json"))
 }
 
-fn mcp_config_args_for(mcp_json: &std::path::Path) -> Vec<&'static str> {
+fn mcp_config_args_for(mcp_json: &std::path::Path) -> Vec<String> {
     if mcp_json.is_file() {
-        vec!["--mcp-config", ".mcp.json"]
+        vec!["--mcp-config".to_string(), ".mcp.json".to_string()]
     } else {
         Vec::new()
     }
 }
 
 pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
-    ensure_claude_installed()?;
+    let harness = resolve_harness(args.with.as_deref())?;
+    ensure_installed(harness)?;
 
     let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let paths = config.resolve_paths(&std::env::current_dir()?);
-    let system_prompt = build_system_prompt(&config, &paths);
+    let context = build_dynamic_context(&config, &paths);
 
-    let allowed_tools = AGENT_ALLOWED_TOOLS;
+    let mcp_args = mcp_config_args();
+    let opts = HarnessOpts {
+        allowed_tools: AGENT_ALLOWED_TOOLS,
+        mcp_args: &mcp_args,
+        auto: crate::cli::prompt::assume_yes(),
+    };
 
-    match &args.prompt {
-        Some(prompt) if args.once => {
-            // Single-shot mode: run one prompt and exit (text output, no streaming parse)
-            human::info("Starting agent...");
-            let status = npm_cmd("claude")
-                .args(["-p", prompt])
-                .args(["--append-system-prompt", &system_prompt])
-                .args(["--allowedTools", allowed_tools])
-                .args(mcp_config_args())
-                .status()
-                .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
-
-            if !status.success() {
-                return Err(PageError::Agent("claude exited with non-zero status".into()).into());
-            }
-            human::success(
-                "Agent finished. Preview with `seite serve` or generate with `seite build`.",
-            );
-        }
-        Some(prompt) => {
-            // Chat mode starting with a prompt — stream output with live feedback
-            let session_id = run_streaming(prompt, None, &system_prompt, allowed_tools)?;
+    match (&args.prompt, args.once, harness) {
+        // Claude's non-once prompt path keeps the richer streaming chat loop
+        // with session resume, so follow-up messages stay in the same session.
+        (Some(prompt), false, Harness::Claude) => {
+            let session_id = run_streaming(prompt, None, &context, opts.allowed_tools)?;
             if let Some(sid) = session_id {
-                chat_loop(&sid, allowed_tools)?;
+                chat_loop(&sid, opts.allowed_tools)?;
             }
+            Ok(())
         }
-        None => {
-            // Interactive Claude Code session (full TUI)
-            human::info("Starting interactive agent session...");
+        (Some(prompt), true, _) => {
+            human::info(&format!("Starting {} agent...", harness.name()));
+            let cmd_args = harness.one_shot_args(prompt, &context, &opts);
+            run_to_completion(harness, &cmd_args)
+        }
+        (Some(prompt), false, _) => {
+            human::info(&format!(
+                "Starting interactive {} agent session...",
+                harness.name()
+            ));
+            let cmd_args = harness.interactive_args(Some(prompt), &context, &opts);
+            run_interactive(harness, &cmd_args)
+        }
+        (None, _, _) => {
+            human::info(&format!(
+                "Starting interactive {} agent session...",
+                harness.name()
+            ));
             human::info("The agent has full context about your site. Type your requests.");
-            let status = npm_cmd("claude")
-                .args(["--append-system-prompt", &system_prompt])
-                .args(["--allowedTools", allowed_tools])
-                .args(mcp_config_args())
-                .status()
-                .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
-
-            if !status.success() {
-                human::info("Agent session ended.");
-            }
+            let cmd_args = harness.interactive_args(None, &context, &opts);
+            run_interactive(harness, &cmd_args)
         }
     }
+}
 
+/// Run a harness to completion (one-shot mode) and report the outcome.
+fn run_to_completion(harness: Harness, cmd_args: &[String]) -> anyhow::Result<()> {
+    let status = npm_cmd(harness.binary())
+        .args(cmd_args)
+        .status()
+        .map_err(|e| PageError::Agent(format!("failed to run {}: {e}", harness.binary())))?;
+
+    if !status.success() {
+        return Err(
+            PageError::Agent(format!("{} exited with non-zero status", harness.binary())).into(),
+        );
+    }
+    human::success("Agent finished. Preview with `seite serve` or generate with `seite build`.");
+    Ok(())
+}
+
+/// Hand the terminal to a harness's own interactive session.
+fn run_interactive(harness: Harness, cmd_args: &[String]) -> anyhow::Result<()> {
+    let status = npm_cmd(harness.binary())
+        .args(cmd_args)
+        .status()
+        .map_err(|e| PageError::Agent(format!("failed to run {}: {e}", harness.binary())))?;
+
+    if !status.success() {
+        human::info("Agent session ended.");
+    }
     Ok(())
 }
 
 /// Run a prompt with streaming JSON output, displaying events in real-time.
+/// Claude-only: the other harnesses have no equivalent streaming/session
+/// protocol.
 /// Returns the session ID for follow-up messages.
 fn run_streaming(
     prompt: &str,
@@ -269,13 +486,16 @@ fn chat_loop(session_id: &str, allowed_tools: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn ensure_claude_installed() -> anyhow::Result<()> {
-    match npm_cmd("claude").arg("--version").output() {
+/// Verify the chosen harness's binary is on `PATH` before doing any other
+/// work, so the error names the harness and how to install it.
+fn ensure_installed(harness: Harness) -> anyhow::Result<()> {
+    match npm_cmd(harness.binary()).arg("--version").output() {
         Ok(output) if output.status.success() => Ok(()),
-        _ => Err(PageError::Agent(
-            "Claude Code is not installed. Install it with: npm install -g @anthropic-ai/claude-code"
-                .into(),
-        )
+        _ => Err(PageError::Agent(format!(
+            "{} is not installed or not on PATH. Install it with: {}",
+            harness.binary(),
+            harness.install_hint()
+        ))
         .into()),
     }
 }
@@ -333,42 +553,43 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     }
 }
 
-/// Build a system prompt with full site context for the Claude Code agent.
+/// Build the dynamic, per-site context passed to the coding agent.
 ///
-/// This is public so the REPL in serve.rs can reuse it.
-pub fn build_system_prompt(config: &SiteConfig, paths: &ResolvedPaths) -> String {
-    let mut prompt = String::with_capacity(4096);
+/// This deliberately excludes anything the project's `AGENTS.md` already
+/// covers (content format, file naming conventions, available `seite`
+/// commands, shortcodes, …) — Claude Code and other AGENTS.md-aware harnesses
+/// load that on their own, so repeating it here would just be wasted context
+/// and a second copy that can drift. What's left is context the agent can't
+/// get cheaply any other way: the live site config, collection layout,
+/// existing content, and template list, all read fresh from `seite.toml` and
+/// the content directory.
+///
+/// Public so the REPL in serve.rs can reuse it via `agent::run`.
+pub fn build_dynamic_context(config: &SiteConfig, paths: &ResolvedPaths) -> String {
+    let mut prompt = String::with_capacity(2048);
 
-    // Site overview
     prompt.push_str(&format!(
-        r#"You are an AI assistant helping manage a static site built with the `seite` CLI tool.
-
-## Site Configuration
-- Title: {}
-- Description: {}
-- Base URL: {}
-- Language: {}
-- Author: {}
-
-"#,
-        config.site.title,
-        config.site.description,
-        config.site.base_url,
-        config.site.language,
-        config.site.author,
+        "You are an AI assistant helping manage a static site built with the `seite` CLI tool.\n\n\
+         Project conventions (content format, file naming, available commands, shortcodes) \
+         are in AGENTS.md, already loaded — read it if you haven't.\n\n\
+         ## Site Configuration\n\
+         - Title: {}\n\
+         - Base URL: {}\n\
+         - Language: {}\n\n",
+        config.site.title, config.site.base_url, config.site.language,
     ));
 
-    // Collections
     prompt.push_str("## Collections\n\n");
+    prompt.push_str("| Collection | Directory | URL prefix | Dated | Nested |\n");
+    prompt.push_str("|---|---|---|---|---|\n");
     for c in &config.collections {
         prompt.push_str(&format!(
-            "### {} (\"{}\")\n- Directory: `content/{}/`\n- URL prefix: `{}`\n- Template: `{}`\n- Date-based: {}\n- RSS: {}\n- Nested: {}\n\n",
-            c.label, c.name, c.directory, c.url_prefix, c.default_template,
-            c.has_date, c.has_rss, c.nested,
+            "| {} | `content/{}/` | `{}` | {} | {} |\n",
+            c.label, c.directory, c.url_prefix, c.has_date, c.nested,
         ));
     }
+    prompt.push('\n');
 
-    // Content inventory
     prompt.push_str("## Existing Content\n\n");
     for c in &config.collections {
         let items = scan_collection_content(paths, c);
@@ -382,128 +603,11 @@ pub fn build_system_prompt(config: &SiteConfig, paths: &ResolvedPaths) -> String
         prompt.push('\n');
     }
 
-    // Templates
     prompt.push_str("## Templates\n\n");
     for name in list_templates(paths) {
         prompt.push_str(&format!("- `templates/{name}`\n"));
     }
     prompt.push('\n');
-
-    // Content format
-    prompt.push_str(
-        r#"## Content Format
-
-Content files are markdown with YAML frontmatter delimited by `---`:
-
-```
----
-title: "Post Title"
-date: 2025-01-15        # required for posts, omit for docs/pages
-description: "Optional"  # optional
-tags:                     # optional
-  - rust
-  - web
-draft: true              # optional, omit when false
----
-
-Markdown content here.
-```
-
-## File Naming Conventions
-- Posts: `content/posts/YYYY-MM-DD-slug-here.md` (date prefix required)
-- Docs: `content/docs/slug-here.md` or `content/docs/section/slug-here.md` (nested OK)
-- Pages: `content/pages/slug-here.md` (no date prefix)
-
-## Available Commands
-- `seite build` — Rebuild the site after making changes
-- `seite build --drafts` — Build including draft content
-- `seite new post "Title" --tags tag1,tag2` — Create a new post
-- `seite new doc "Title"` — Create a new doc
-- `seite new page "Title"` — Create a new page
-- `seite theme list` — List available themes
-- `seite theme apply <name>` — Apply a bundled theme
-
-## Shortcodes
-
-Use shortcodes for reusable content components in markdown:
-
-**Inline (raw HTML):** `{{< name(args) >}}`
-**Body (markdown):** `{{% name(args) %}} ... {{% end %}}`
-
-Built-in shortcodes:
-- `{{< youtube(id="VIDEO_ID") >}}` — responsive YouTube embed
-- `{{< vimeo(id="VIDEO_ID") >}}` — responsive Vimeo embed
-- `{{< gist(user="USER", id="GIST_ID") >}}` — GitHub Gist embed
-- `{{< figure(src="/static/img.jpg", caption="Caption", alt="Alt text") >}}` — figure with caption
-- `{{% callout(type="info") %}} Markdown body {{% end %}}` — callout box (types: info, warning, danger, tip)
-
-Custom shortcodes: create Tera templates in `templates/shortcodes/name.html`.
-
-## Important Notes
-- After creating or editing content files, run `seite build` to regenerate the site.
-- Set `draft: true` in frontmatter to exclude content from the default build.
-- The site output goes to the `dist/` directory.
-- Templates use Tera (Jinja2-compatible) syntax and extend `base.html`.
-- Each content file produces both `slug.html` and `slug.md` in the output.
-- URLs are clean (no extension): `/posts/hello-world`
-"#,
-    );
-
-    // Skill packs, context files, and custom skills
-    let summary = skill::gather_skill_summary(&paths.root);
-
-    let has_content = !summary.packs.is_empty()
-        || !summary.context_files.is_empty()
-        || !summary.custom_skills.is_empty();
-
-    if has_content {
-        prompt.push_str("\n## Installed Extensions\n\n");
-
-        for pack in &summary.packs {
-            prompt.push_str(&format!("### {} Pack\n", pack.name));
-            prompt.push_str(&format!("{}\n\n", pack.description));
-
-            if !pack.commands.is_empty() {
-                prompt.push_str("**Commands:** ");
-                let cmds: Vec<String> = pack.commands.iter().map(|c| format!("/{c}")).collect();
-                prompt.push_str(&cmds.join(", "));
-                prompt.push_str("\n\n");
-            }
-
-            if !pack.agents.is_empty() {
-                prompt.push_str(&format!(
-                    "**Agents:** {} specialized agents available\n\n",
-                    pack.agents.len()
-                ));
-            }
-
-            if !pack.skills.is_empty() {
-                prompt.push_str(&format!(
-                    "**Skills:** {} skills available\n\n",
-                    pack.skills.len()
-                ));
-            }
-        }
-
-        if !summary.context_files.is_empty() {
-            prompt.push_str("### Context Files\n\n");
-            prompt.push_str("The `context/` directory contains project-specific guidelines:\n");
-            for name in &summary.context_files {
-                prompt.push_str(&format!("- `context/{name}.md`\n"));
-            }
-            prompt.push_str(
-                "\nRead these files before creating or optimizing content — they define brand voice, target keywords, and style.\n\n",
-            );
-        }
-
-        if !summary.custom_skills.is_empty() {
-            prompt.push_str("### Custom Skills\n\n");
-            for name in &summary.custom_skills {
-                prompt.push_str(&format!("- `/{name}`\n"));
-            }
-            prompt.push('\n');
-        }
-    }
 
     prompt
 }
@@ -575,9 +679,42 @@ fn list_templates(paths: &ResolvedPaths) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn opts<'a>(allowed_tools: &'a str, mcp_args: &'a [String], auto: bool) -> HarnessOpts<'a> {
+        HarnessOpts {
+            allowed_tools,
+            mcp_args,
+            auto,
+        }
+    }
+
+    // --- allowed tools ---
+
     #[test]
     fn test_agent_allows_seite_mcp_tools() {
         assert!(AGENT_ALLOWED_TOOLS.split(',').any(|t| t == "mcp__seite"));
+    }
+
+    #[test]
+    fn test_agent_allowed_tools_has_no_unrestricted_bash() {
+        // "Bash" on its own (unrestricted shell) must never appear as a bare
+        // entry — only scoped `Bash(...)` patterns are allowed.
+        assert!(!AGENT_ALLOWED_TOOLS.split(',').any(|t| t == "Bash"));
+    }
+
+    #[test]
+    fn test_agent_allowed_tools_scopes_bash_to_seite_and_readonly_git() {
+        for pattern in [
+            "Bash(seite:*)",
+            "Bash(git status:*)",
+            "Bash(git diff:*)",
+            "Bash(git log:*)",
+            "Bash(ls:*)",
+        ] {
+            assert!(
+                AGENT_ALLOWED_TOOLS.contains(pattern),
+                "expected {AGENT_ALLOWED_TOOLS} to contain {pattern}"
+            );
+        }
     }
 
     #[test]
@@ -588,38 +725,242 @@ mod tests {
         std::fs::write(&path, "{}").unwrap();
         assert_eq!(
             mcp_config_args_for(&path),
-            vec!["--mcp-config", ".mcp.json"]
+            vec!["--mcp-config".to_string(), ".mcp.json".to_string()]
+        );
+    }
+
+    // --- dynamic context (AGENTS.md dedupe) ---
+
+    fn test_config_and_paths(tmp: &std::path::Path) -> (SiteConfig, ResolvedPaths) {
+        let config_content = "[site]\ntitle = \"Test Site\"\ndescription = \"A test\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\nhas_date = true\nnested = false\nurl_prefix = \"/posts\"\n";
+        std::fs::write(tmp.join("seite.toml"), config_content).unwrap();
+        let config = SiteConfig::load(&tmp.join("seite.toml")).unwrap();
+        let paths = config.resolve_paths(tmp);
+        (config, paths)
+    }
+
+    #[test]
+    fn test_build_dynamic_context_contains_site_and_collection_info() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (config, paths) = test_config_and_paths(tmp.path());
+
+        let prompt = build_dynamic_context(&config, &paths);
+        assert!(prompt.contains("Test Site"));
+        assert!(prompt.contains("## Collections"));
+        assert!(prompt.contains("## Existing Content"));
+        assert!(prompt.contains("## Templates"));
+        // Collection table carries dir/url-prefix/dated/nested.
+        assert!(prompt.contains("content/posts/"));
+        assert!(prompt.contains("/posts"));
+        assert!(prompt.contains("true"));
+    }
+
+    #[test]
+    fn test_build_dynamic_context_points_to_agents_md() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (config, paths) = test_config_and_paths(tmp.path());
+
+        let prompt = build_dynamic_context(&config, &paths);
+        assert!(prompt.contains("AGENTS.md"));
+    }
+
+    #[test]
+    fn test_build_dynamic_context_drops_agents_md_duplicated_sections() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (config, paths) = test_config_and_paths(tmp.path());
+
+        let prompt = build_dynamic_context(&config, &paths);
+        for removed in [
+            "## Content Format",
+            "## File Naming Conventions",
+            "## Available Commands",
+            "## Shortcodes",
+            "## Important Notes",
+            "## Installed Extensions",
+        ] {
+            assert!(
+                !prompt.contains(removed),
+                "expected {removed} to be removed"
+            );
+        }
+    }
+
+    // --- harness resolution ---
+
+    #[test]
+    fn test_harness_parse_all_known_names() {
+        assert_eq!(Harness::parse("claude"), Some(Harness::Claude));
+        assert_eq!(Harness::parse("codex"), Some(Harness::Codex));
+        assert_eq!(Harness::parse("opencode"), Some(Harness::Opencode));
+        assert_eq!(Harness::parse("cursor"), Some(Harness::Cursor));
+        assert_eq!(Harness::parse("bogus"), None);
+    }
+
+    #[test]
+    fn test_harness_binaries() {
+        assert_eq!(Harness::Claude.binary(), "claude");
+        assert_eq!(Harness::Codex.binary(), "codex");
+        assert_eq!(Harness::Opencode.binary(), "opencode");
+        assert_eq!(Harness::Cursor.binary(), "cursor-agent");
+    }
+
+    #[test]
+    fn test_resolve_harness_prefers_cli_flag_over_env() {
+        let harness =
+            resolve_harness_with_env(Some("codex"), Some("opencode".to_string())).unwrap();
+        assert_eq!(harness, Harness::Codex);
+    }
+
+    #[test]
+    fn test_resolve_harness_falls_back_to_env() {
+        let harness = resolve_harness_with_env(None, Some("cursor".to_string())).unwrap();
+        assert_eq!(harness, Harness::Cursor);
+    }
+
+    #[test]
+    fn test_resolve_harness_defaults_to_claude() {
+        let harness = resolve_harness_with_env(None, None).unwrap();
+        assert_eq!(harness, Harness::Claude);
+    }
+
+    #[test]
+    fn test_resolve_harness_unknown_suggests_close_match() {
+        let err = resolve_harness_with_env(Some("claud"), None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown agent harness"));
+        assert!(err.contains("did you mean 'claude'"));
+    }
+
+    // --- claude arg vectors ---
+
+    #[test]
+    fn test_claude_one_shot_args() {
+        let mcp = vec!["--mcp-config".to_string(), ".mcp.json".to_string()];
+        let o = opts("Read,Write", &mcp, false);
+        let args = Harness::Claude.one_shot_args("do it", "CTX", &o);
+        assert_eq!(
+            args,
+            vec![
+                "-p",
+                "do it",
+                "--append-system-prompt",
+                "CTX",
+                "--allowedTools",
+                "Read,Write",
+                "--mcp-config",
+                ".mcp.json",
+            ]
         );
     }
 
     #[test]
-    fn test_build_system_prompt_contains_site_info() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let config_content = "[site]\ntitle = \"Test Site\"\ndescription = \"A test\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\n";
-        std::fs::write(tmp.path().join("seite.toml"), config_content).unwrap();
-        let config = SiteConfig::load(&tmp.path().join("seite.toml")).unwrap();
-        let paths = config.resolve_paths(tmp.path());
+    fn test_claude_interactive_args_ignores_yes() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("Read,Write", &mcp, true);
+        let args = Harness::Claude.interactive_args(None, "CTX", &o);
+        assert_eq!(
+            args,
+            vec![
+                "--append-system-prompt",
+                "CTX",
+                "--allowedTools",
+                "Read,Write"
+            ]
+        );
+    }
 
-        let prompt = build_system_prompt(&config, &paths);
-        assert!(prompt.contains("Test Site"));
-        assert!(prompt.contains("## Collections"));
-        // No skill packs installed, so no extensions section
-        assert!(!prompt.contains("## Installed Extensions"));
+    // --- codex arg vectors ---
+
+    #[test]
+    fn test_codex_one_shot_args_uses_workspace_write_sandbox() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        let args = Harness::Codex.one_shot_args("do it", "CTX", &o);
+        assert_eq!(args[0], "exec");
+        assert_eq!(args[1], "--sandbox");
+        assert_eq!(args[2], "workspace-write");
+        assert!(args[3].contains("CTX"));
+        assert!(args[3].contains("do it"));
     }
 
     #[test]
-    fn test_build_system_prompt_with_context_files() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let config_content = "[site]\ntitle = \"Test Site\"\ndescription = \"A test\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\n";
-        std::fs::write(tmp.path().join("seite.toml"), config_content).unwrap();
-        std::fs::create_dir_all(tmp.path().join("context")).unwrap();
-        std::fs::write(tmp.path().join("context/brand-voice.md"), "# Brand Voice").unwrap();
+    fn test_codex_interactive_args_with_and_without_prompt() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        assert!(Harness::Codex.interactive_args(None, "CTX", &o).is_empty());
 
-        let config = SiteConfig::load(&tmp.path().join("seite.toml")).unwrap();
-        let paths = config.resolve_paths(tmp.path());
+        let with_prompt = Harness::Codex.interactive_args(Some("do it"), "CTX", &o);
+        assert_eq!(with_prompt.len(), 1);
+        assert!(with_prompt[0].contains("CTX"));
+        assert!(with_prompt[0].contains("do it"));
+    }
 
-        let prompt = build_system_prompt(&config, &paths);
-        assert!(prompt.contains("## Installed Extensions"));
-        assert!(prompt.contains("context/brand-voice.md"));
+    // --- opencode arg vectors ---
+
+    #[test]
+    fn test_opencode_one_shot_args_default_no_auto_flag() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        let args = Harness::Opencode.one_shot_args("do it", "CTX", &o);
+        assert_eq!(args[0], "run");
+        assert!(args[1].contains("do it"));
+        assert!(!args.iter().any(|a| a == "--auto"));
+    }
+
+    #[test]
+    fn test_opencode_one_shot_args_yes_adds_auto_flag() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, true);
+        let args = Harness::Opencode.one_shot_args("do it", "CTX", &o);
+        assert!(args.iter().any(|a| a == "--auto"));
+    }
+
+    #[test]
+    fn test_opencode_interactive_args_with_and_without_prompt() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        assert!(Harness::Opencode
+            .interactive_args(None, "CTX", &o)
+            .is_empty());
+
+        let with_prompt = Harness::Opencode.interactive_args(Some("do it"), "CTX", &o);
+        assert_eq!(with_prompt[0], "--prompt");
+        assert!(with_prompt[1].contains("do it"));
+    }
+
+    // --- cursor arg vectors ---
+
+    #[test]
+    fn test_cursor_one_shot_args_default_no_force() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        let args = Harness::Cursor.one_shot_args("do it", "CTX", &o);
+        assert_eq!(args[0], "-p");
+        assert!(args[1].contains("do it"));
+        assert_eq!(args[2], "--output-format");
+        assert_eq!(args[3], "text");
+        assert!(!args.iter().any(|a| a == "--force"));
+        assert!(!args.iter().any(|a| a == "--approve-mcps"));
+    }
+
+    #[test]
+    fn test_cursor_one_shot_args_yes_adds_force_and_approve_mcps() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, true);
+        let args = Harness::Cursor.one_shot_args("do it", "CTX", &o);
+        assert!(args.iter().any(|a| a == "--force"));
+        assert!(args.iter().any(|a| a == "--approve-mcps"));
+    }
+
+    #[test]
+    fn test_cursor_interactive_args_with_and_without_prompt() {
+        let mcp: Vec<String> = Vec::new();
+        let o = opts("", &mcp, false);
+        assert!(Harness::Cursor.interactive_args(None, "CTX", &o).is_empty());
+
+        let with_prompt = Harness::Cursor.interactive_args(Some("do it"), "CTX", &o);
+        assert_eq!(with_prompt.len(), 1);
+        assert!(with_prompt[0].contains("do it"));
     }
 }
