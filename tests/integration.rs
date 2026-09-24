@@ -4171,11 +4171,14 @@ fn test_upgrade_migrates_claude_md_to_agents_md() {
         .assert()
         .success();
 
-    assert_eq!(
-        fs::read_to_string(site_dir.join("AGENTS.md")).unwrap(),
-        legacy_instructions,
-        "upgrade should preserve all existing project instructions"
+    // Existing instructions are kept verbatim; upgrade only appends the
+    // seite-owned per-agent MCP table and rules index after them.
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        agents_md.starts_with(legacy_instructions),
+        "upgrade should preserve all existing project instructions: {agents_md}"
     );
+    assert!(agents_md.contains("<!-- seite:agent-setup -->"));
     assert_eq!(
         fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
         "@AGENTS.md\n",
@@ -5103,6 +5106,361 @@ fn test_upgrade_stamps_version_even_when_no_actions() {
         "2026-01-01T00:00:00+00:00",
         "initialized_at should be preserved from original config"
     );
+}
+
+// ── coding-agent harness files (--agents) ───────────────────────────
+
+fn read_json_file(path: &std::path::Path) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
+fn stored_agents(site_dir: &std::path::Path) -> serde_json::Value {
+    read_json_file(&site_dir.join(".seite/config.json"))["agents"].clone()
+}
+
+fn init_site_with_agents(tmp: &TempDir, name: &str, agents: &str) {
+    page_cmd()
+        .args([
+            "init",
+            name,
+            "--title",
+            "Agents",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,pages",
+            "--agents",
+            agents,
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+/// Every harness file of a site, relative path → content (for idempotency checks).
+fn harness_snapshot(site_dir: &std::path::Path) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    for top in [
+        ".claude",
+        ".cursor",
+        ".codex",
+        ".agents",
+        ".mcp.json",
+        "opencode.json",
+        "AGENTS.md",
+        "CLAUDE.md",
+    ] {
+        let path = site_dir.join(top);
+        if path.is_file() {
+            files.push((top.to_string(), fs::read_to_string(&path).unwrap()));
+        } else if path.is_dir() {
+            for entry in walkdir::WalkDir::new(&path) {
+                let entry = entry.unwrap();
+                if entry.file_type().is_file() {
+                    let rel = entry.path().strip_prefix(site_dir).unwrap();
+                    files.push((
+                        rel.display().to_string(),
+                        fs::read_to_string(entry.path()).unwrap(),
+                    ));
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+#[test]
+fn test_init_agents_default_writes_all_harness_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "All Agents", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    // Claude Code
+    assert_eq!(
+        read_json_file(&site_dir.join(".mcp.json"))["mcpServers"]["seite"]["command"],
+        "seite"
+    );
+    assert!(site_dir.join(".claude/settings.json").exists());
+    assert!(site_dir.join(".claude/rules/templates.md").exists());
+    assert!(site_dir
+        .join(".claude/skills/theme-builder/SKILL.md")
+        .exists());
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+
+    // Cursor: same MCP shape, .mdc rules with globs from the same source
+    assert_eq!(
+        read_json_file(&site_dir.join(".cursor/mcp.json"))["mcpServers"]["seite"]["args"][0],
+        "mcp"
+    );
+    let mdc = fs::read_to_string(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
+    assert!(mdc.contains("globs: \"templates/**\"\nalwaysApply: false\n"));
+    let claude_rule = fs::read_to_string(site_dir.join(".claude/rules/templates.md")).unwrap();
+    let body = |s: &str| s.splitn(3, "---\n").nth(2).unwrap().to_string();
+    assert_eq!(body(&mdc), body(&claude_rule), "rules share one source");
+
+    // Codex
+    let codex: toml::Value =
+        toml::from_str(&fs::read_to_string(site_dir.join(".codex/config.toml")).unwrap()).unwrap();
+    assert_eq!(
+        codex["mcp_servers"]["seite"]["command"].as_str(),
+        Some("seite")
+    );
+
+    // OpenCode
+    let opencode = read_json_file(&site_dir.join("opencode.json"));
+    assert_eq!(opencode["mcp"]["seite"]["type"], "local");
+    assert_eq!(opencode["permission"]["bash"]["seite build*"], "allow");
+
+    // Shared skills for Codex / Cursor / OpenCode
+    assert_eq!(
+        fs::read_to_string(site_dir.join(".agents/skills/theme-builder/SKILL.md")).unwrap(),
+        fs::read_to_string(site_dir.join(".claude/skills/theme-builder/SKILL.md")).unwrap()
+    );
+    assert!(site_dir
+        .join(".agents/skills/landing-page/SKILL.md")
+        .exists());
+
+    // AGENTS.md lists every agent's MCP config and the rules index
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    for needle in [
+        "`.mcp.json`",
+        "`.codex/config.toml`",
+        "`.cursor/mcp.json`",
+        "`opencode.json`",
+        "cursor-agent mcp enable seite",
+        "- `templates/**`: `seo-requirements.md`",
+    ] {
+        assert!(agents_md.contains(needle), "AGENTS.md missing {needle}");
+    }
+
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+}
+
+#[test]
+fn test_init_agents_subset() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "claude-only", "claude");
+    let site_dir = tmp.path().join("claude-only");
+    assert!(site_dir.join(".mcp.json").exists());
+    assert!(site_dir.join(".claude/rules/templates.md").exists());
+    for absent in [".cursor", ".codex", ".agents", "opencode.json"] {
+        assert!(!site_dir.join(absent).exists(), "{absent} should not exist");
+    }
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("`.mcp.json`"));
+    assert!(!agents_md.contains("opencode.json") && !agents_md.contains(".codex/"));
+    assert!(!agents_md.contains("Cursor"));
+    assert_eq!(stored_agents(&site_dir), serde_json::json!(["claude"]));
+
+    // Codex only: no Claude files; rules land in the neutral .agents/rules/
+    init_site_with_agents(&tmp, "codex-only", "codex");
+    let site_dir = tmp.path().join("codex-only");
+    assert!(site_dir.join(".codex/config.toml").exists());
+    assert!(site_dir
+        .join(".agents/skills/theme-builder/SKILL.md")
+        .exists());
+    assert!(site_dir.join(".agents/rules/templates.md").exists());
+    for absent in [
+        ".claude",
+        ".mcp.json",
+        "CLAUDE.md",
+        ".cursor",
+        "opencode.json",
+    ] {
+        assert!(!site_dir.join(absent).exists(), "{absent} should not exist");
+    }
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("Detailed guides live in `.agents/rules/`"));
+    assert!(!agents_md.contains(".claude/"));
+}
+
+#[test]
+fn test_init_agents_unknown_errors() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts",
+            "--agents",
+            "claude,cursr",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown agent 'cursr'"))
+        .stderr(predicate::str::contains("did you mean 'cursor'"));
+    assert!(!tmp.path().join("site").exists());
+}
+
+#[test]
+fn test_upgrade_adds_harness_files_without_clobbering() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+
+    // User-owned configs for the other agents, written before seite manages them.
+    fs::write(
+        site_dir.join("opencode.json"),
+        r#"{"$schema":"https://opencode.ai/config.json","model":"anthropic/claude-x","mcp":{"other":{"type":"local","command":["other"]}},"permission":{"edit":"deny"}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(site_dir.join(".cursor")).unwrap();
+    fs::write(
+        site_dir.join(".cursor/mcp.json"),
+        r#"{"mcpServers":{"other":{"command":"other"}}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(site_dir.join(".codex")).unwrap();
+    let codex_before = "# my codex notes — keep me\nmodel = \"gpt-x\" # pinned\n\n[mcp_servers.other]\ncommand = \"other\"\n";
+    fs::write(site_dir.join(".codex/config.toml"), codex_before).unwrap();
+
+    let output = page_cmd()
+        .args(["--json", "upgrade", "--force", "--agents", "all"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(
+        doc["data"]["agents"],
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+
+    let opencode = read_json_file(&site_dir.join("opencode.json"));
+    assert_eq!(opencode["model"], "anthropic/claude-x");
+    assert_eq!(opencode["mcp"]["other"]["command"][0], "other");
+    assert_eq!(opencode["mcp"]["seite"]["command"][1], "mcp");
+    assert_eq!(
+        opencode["permission"],
+        serde_json::json!({"edit": "deny"}),
+        "an existing permission block must not be replaced"
+    );
+
+    let cursor = read_json_file(&site_dir.join(".cursor/mcp.json"));
+    assert_eq!(cursor["mcpServers"]["other"]["command"], "other");
+    assert_eq!(cursor["mcpServers"]["seite"]["command"], "seite");
+
+    let codex = fs::read_to_string(site_dir.join(".codex/config.toml")).unwrap();
+    assert!(
+        codex.starts_with(codex_before),
+        "codex config rewritten: {codex}"
+    );
+    let parsed: toml::Value = toml::from_str(&codex).unwrap();
+    assert_eq!(
+        parsed["mcp_servers"]["other"]["command"].as_str(),
+        Some("other")
+    );
+    assert_eq!(
+        parsed["mcp_servers"]["seite"]["command"].as_str(),
+        Some("seite")
+    );
+
+    assert!(site_dir.join(".cursor/rules/templates.mdc").exists());
+    assert!(site_dir
+        .join(".agents/skills/brand-identity/SKILL.md")
+        .exists());
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("`.codex/config.toml`"));
+    assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`)"));
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+}
+
+#[test]
+fn test_upgrade_is_idempotent_for_harness_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Idempotent Harness", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let fresh = harness_snapshot(&site_dir);
+
+    // A fresh project needs nothing.
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+
+    // Missing files for selected agents come back exactly as init wrote them;
+    // a second run is a no-op.
+    fs::remove_file(site_dir.join("opencode.json")).unwrap();
+    fs::remove_file(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
+    fs::remove_dir_all(site_dir.join(".codex")).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("opencode.json"));
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+
+    // Sites without a stored selection are treated as "all" and get it recorded.
+    let meta_path = site_dir.join(".seite/config.json");
+    let mut meta = read_json_file(&meta_path);
+    meta.as_object_mut().unwrap().remove("agents");
+    fs::write(&meta_path, meta.to_string()).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+
+    // Deselecting keeps files but stops maintaining them.
+    page_cmd()
+        .args(["upgrade", "--force", "--agents", "claude,codex"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "No longer maintaining files for OpenCode, Cursor",
+        ));
+    assert!(site_dir.join("opencode.json").exists());
+    assert!(site_dir.join(".cursor/mcp.json").exists());
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["claude", "codex"])
+    );
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        !agents_md.contains("`opencode.json`"),
+        "table follows selection"
+    );
+    fs::remove_file(site_dir.join(".cursor/mcp.json")).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert!(!site_dir.join(".cursor/mcp.json").exists());
 }
 
 // ── self-update command ─────────────────────────────────────────────
@@ -11758,6 +12116,10 @@ fn test_init_json_reports_project() {
     assert_eq!(
         doc["data"]["collections"],
         serde_json::json!(["posts", "docs"])
+    );
+    assert_eq!(
+        doc["data"]["agents"],
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
     );
 }
 

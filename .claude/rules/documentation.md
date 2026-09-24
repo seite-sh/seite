@@ -23,4 +23,4 @@ paths:
 ## Also update the repo's canonical AGENTS.md instructions when adding new patterns or architecture.
 
 ## Scaffold files (`src/scaffold/`)
-Static markdown sections embedded via `include_str!` into generated AGENTS.md and `.claude/rules/` for user sites. Edit these when changing the AI agent context.
+Static markdown sections embedded via `include_str!` into generated AGENTS.md and the per-agent rules/skills for user sites (`.claude/rules/*.md`, `.cursor/rules/*.mdc`, `.claude/skills/`, `.agents/skills/`). Register new rules/skills once in `RULES`/`SKILLS` in `src/cli/harness.rs`. Edit these when changing the AI agent context.

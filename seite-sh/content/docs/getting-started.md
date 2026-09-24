@@ -89,9 +89,15 @@ mysite/
 ├── public/        # Root-level files (favicon.ico, .well-known/, _redirects)
 ├── static/        # Static assets (CSS, JS, images) → dist/static/
 ├── seite.toml      # Site configuration
-├── .claude/       # Claude Code agent configuration (includes MCP server)
-└── .seite/         # Project metadata (version tracking)
+├── AGENTS.md      # Instructions for every coding agent
+├── .claude/       # Claude Code rules, skills, permissions (+ .mcp.json, CLAUDE.md)
+├── .cursor/       # Cursor MCP config and .mdc rules
+├── .codex/        # Codex CLI MCP config
+├── .agents/       # Skills for Codex, Cursor, and OpenCode (+ opencode.json)
+└── .seite/         # Project metadata (version tracking, agent selection)
 ```
+
+The agent files cover Claude Code, Codex CLI, OpenCode, and Cursor by default. Pass `--agents claude,cursor` (any subset) to generate only the ones you use; see the [CLI reference](/docs/cli-reference#seite-init).
 
 The [`seite.toml`](/docs/configuration) file controls your site's title, description, base URL, and collections. The defaults work out of the box. You can tune settings later as needed.
 
@@ -234,7 +240,7 @@ After updating, bring your project's config files up to date:
 seite upgrade
 ```
 
-This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive. Your existing settings are preserved.
+This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries) and any missing files for your coding agents. It's additive and non-destructive. Your existing settings are preserved.
 
 ## Next Steps
 

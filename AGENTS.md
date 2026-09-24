@@ -140,11 +140,14 @@ endpoint = "xpznqkdl"
 9. i18n → `{{ t.key }}` for UI text, `{{ lang_prefix }}` for links, `{{ value | i18n(lang=lang) }}` for per-language data prose (language maps; see `src/i18n.rs`)
 
 ### Generated Site Structure
-- `seite init` creates lean AGENTS.md, a CLAUDE.md import shim, and `.claude/rules/*.md` (path-scoped context)
-- `seite upgrade` adds rules files for existing sites (non-destructive)
-- Rules files use YAML frontmatter with `paths:` for automatic loading
-- Skills in `.claude/skills/` (theme-builder, brand-identity, landing-page)
-- `rules_file()` helper in `src/cli/init.rs` wraps scaffold content with frontmatter
+- `seite init --agents claude,codex,opencode,cursor` (default all; stored in `.seite/config.json` `agents`) writes lean AGENTS.md (always) plus per-agent harness files, all rendered from one source in `src/cli/harness.rs` (`RULES`, `SKILLS`, MCP entry):
+  - claude: CLAUDE.md `@AGENTS.md` shim, `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md` (`paths:` frontmatter), `.claude/skills/`
+  - cursor: `.cursor/mcp.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
+  - codex: `.codex/config.toml` (`[mcp_servers.seite]`, trust comment); opencode: `opencode.json` (`mcp.seite` + `permission`)
+  - codex/opencode/cursor: `.agents/skills/`; codex/opencode-only sites: `.agents/rules/` (the AGENTS.md rules index target)
+- AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent MCP table) and `<!-- seite:context-rules -->` (rules index) blocks
+- `seite upgrade [--agents …]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks, and never deletes files of deselected agents
+- Rules files are created only when missing; skills are replaced when the bundled `# seite-skill-version` is newer
 
 ## Context Rules
 
