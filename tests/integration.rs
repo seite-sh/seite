@@ -5177,7 +5177,9 @@ fn test_mcp_initialize() {
     assert_eq!(result["serverInfo"]["name"], "seite");
     assert!(result["capabilities"]["resources"].is_object());
     assert!(result["capabilities"]["tools"].is_object());
-    assert_eq!(result["protocolVersion"], "2024-11-05");
+    // No requested version: the newest initialize-based revision.
+    assert_eq!(result["protocolVersion"], "2025-11-25");
+    assert!(result["instructions"].is_string());
 }
 
 #[test]
@@ -5231,7 +5233,7 @@ fn test_mcp_tools_list() {
 
     assert_eq!(responses.len(), 1);
     let tools = responses[0]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 5);
+    assert!(tools.len() >= 10 && tools.len() <= 12, "{}", tools.len());
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"seite_build"));
     assert!(names.contains(&"seite_create_content"));
@@ -5822,6 +5824,228 @@ fn test_mcp_tool_apply_theme() {
 }
 
 #[test]
+fn test_mcp_initialize_negotiates_2025_06_18_and_gates_tool_fields() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": { "name": "it", "version": "1.0" }
+                }
+            }),
+            serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/templates/list" }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 4, "method": "prompts/list" }),
+        ],
+    );
+    // The notification gets no response.
+    assert_eq!(responses.len(), 4);
+    let init = &responses[0]["result"];
+    assert_eq!(init["protocolVersion"], "2025-06-18");
+    let instructions = init["instructions"].as_str().unwrap();
+    assert!(
+        instructions.contains("seite_create_content"),
+        "{instructions}"
+    );
+    assert!(instructions.contains("seite_build"), "{instructions}");
+    assert!(init["capabilities"].get("prompts").is_none());
+
+    let tools = responses[1]["result"]["tools"].as_array().unwrap();
+    assert!(tools.len() <= 12);
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(format!("mcp__seite__{name}").len() <= 60, "{name}");
+        assert!(tool["title"].is_string(), "{name}");
+        for hint in [
+            "readOnlyHint",
+            "destructiveHint",
+            "idempotentHint",
+            "openWorldHint",
+        ] {
+            assert!(tool["annotations"][hint].is_boolean(), "{name} {hint}");
+        }
+        let schema = &tool["inputSchema"];
+        assert_eq!(schema["type"], "object", "{name}");
+        assert_eq!(schema["additionalProperties"], false, "{name}");
+        for key in ["oneOf", "anyOf", "allOf"] {
+            assert!(schema.get(key).is_none(), "{name}: top-level {key}");
+        }
+        for (prop, def) in schema["properties"].as_object().unwrap() {
+            assert!(def["type"].is_string(), "{name}.{prop} has no type");
+        }
+        if let Some(out) = tool.get("outputSchema") {
+            assert_eq!(out["type"], "object", "{name}");
+        }
+    }
+    let get_page = tools
+        .iter()
+        .find(|t| t["name"] == "seite_get_page")
+        .unwrap();
+    assert_eq!(get_page["annotations"]["readOnlyHint"], true);
+
+    let templates: Vec<&str> = responses[2]["result"]["resourceTemplates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["uriTemplate"].as_str().unwrap())
+        .collect();
+    assert!(templates.contains(&"seite://content/{collection}"));
+    assert!(templates.contains(&"seite://docs/{slug}"));
+    assert_eq!(responses[3]["error"]["code"], -32601);
+}
+
+#[test]
+fn test_mcp_initialize_2024_11_05_omits_newer_fields() {
+    let tmp = TempDir::new().unwrap();
+    let responses = mcp_request(
+        tmp.path(),
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "protocolVersion": "2024-11-05", "capabilities": {} }
+            }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": { "name": "seite_lookup_docs", "arguments": {} }
+            }),
+        ],
+    );
+    assert_eq!(responses[0]["result"]["protocolVersion"], "2024-11-05");
+    for tool in responses[1]["result"]["tools"].as_array().unwrap() {
+        assert!(tool.get("annotations").is_none());
+        assert!(tool.get("outputSchema").is_none());
+        assert!(tool.get("title").is_none());
+    }
+    assert!(responses[2]["result"].get("structuredContent").is_none());
+}
+
+#[test]
+fn test_mcp_modern_discover_and_stateless_request() {
+    let tmp = TempDir::new().unwrap();
+    let meta = serde_json::json!({ "io.modelcontextprotocol/protocolVersion": "2026-07-28" });
+    let responses = mcp_request(
+        tmp.path(),
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": "d1", "method": "server/discover",
+                "params": { "_meta": meta }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                "params": { "_meta": meta, "name": "seite_lookup_docs", "arguments": {} }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 3, "method": "tools/list",
+                "params": { "_meta": { "io.modelcontextprotocol/protocolVersion": "2030-01-01" } }
+            }),
+        ],
+    );
+    let discover = &responses[0]["result"];
+    assert_eq!(responses[0]["id"], "d1");
+    assert_eq!(
+        discover["supportedVersions"],
+        serde_json::json!(["2026-07-28"])
+    );
+    assert_eq!(discover["resultType"], "complete");
+    assert!(discover["instructions"].is_string());
+    let call = &responses[1]["result"];
+    assert_eq!(call["resultType"], "complete");
+    assert!(call["structuredContent"]["available_topics"].is_array());
+    assert_eq!(responses[2]["error"]["code"], -32022);
+    assert_eq!(
+        responses[2]["error"]["data"]["supported"],
+        serde_json::json!(["2026-07-28"])
+    );
+}
+
+#[test]
+fn test_mcp_get_page_nested_doc() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcppage", "Page Test", "posts,docs");
+    let site_dir = tmp.path().join("mcppage");
+    fs::create_dir_all(site_dir.join("content/docs/guides")).unwrap();
+    fs::write(
+        site_dir.join("content/docs/guides/setup.md"),
+        "---\ntitle: Setup Guide\ndescription: How to set up\n---\n## Install\n\nRun **it**.\n",
+    )
+    .unwrap();
+
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_get_page",
+        serde_json::json!({ "url": "/docs/guides/setup" }),
+    );
+    assert!(!is_error, "{text}");
+    let page: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(page["path"], "content/docs/guides/setup.md");
+    assert_eq!(page["collection"], "docs");
+    assert_eq!(page["slug"], "guides/setup");
+    assert_eq!(page["frontmatter"]["description"], "How to set up");
+    assert!(page["html"]
+        .as_str()
+        .unwrap()
+        .contains("<strong>it</strong>"));
+
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_get_page",
+        serde_json::json!({ "path": "../../etc/passwd" }),
+    );
+    assert!(is_error, "{text}");
+}
+
+#[test]
+fn test_mcp_update_frontmatter_round_trip() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mcpfm", "FM Test", "posts");
+    let site_dir = tmp.path().join("mcpfm");
+    let rel = "content/posts/2026-02-03-hello.md";
+    let body = "\nFirst paragraph.\n\n```yaml\n---\nnot: frontmatter\n---\n```\n";
+    fs::write(site_dir.join(rel), format!("---\ntitle: Hello\n---{body}")).unwrap();
+
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_update_frontmatter",
+        serde_json::json!({
+            "path": rel,
+            "set": { "description": "Updated", "tags": ["a", "b"] }
+        }),
+    );
+    assert!(!is_error, "{text}");
+    let out: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(out["changed"], true);
+    assert_eq!(out["frontmatter"]["tags"], serde_json::json!(["a", "b"]));
+    assert!(fs::read_to_string(site_dir.join(rel))
+        .unwrap()
+        .ends_with(body));
+
+    // Read it back through get_page: the build sees the new frontmatter.
+    let (_, text) = mcp_tool_call(
+        &site_dir,
+        "seite_get_page",
+        serde_json::json!({ "path": rel }),
+    );
+    let page: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(page["frontmatter"]["description"], "Updated");
+    assert_eq!(page["date"], "2026-02-03");
+
+    // Path escapes are refused and leave files untouched.
+    let (is_error, text) = mcp_tool_call(
+        &site_dir,
+        "seite_update_frontmatter",
+        serde_json::json!({ "path": "seite.toml", "set": { "title": "x" } }),
+    );
+    assert!(is_error);
+    assert!(text.contains("outside the content directory"), "{text}");
+}
+
+#[test]
 fn test_mcp_tool_unknown_tool() {
     let tmp = TempDir::new().unwrap();
     let responses = mcp_request(
@@ -5894,8 +6118,9 @@ fn test_mcp_full_session() {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "seite");
 
     // tools/list
+    let tool_count = responses[1]["result"]["tools"].as_array().unwrap().len();
+    assert!((10..=12).contains(&tool_count), "{tool_count}");
     assert_eq!(responses[1]["id"], 2);
-    assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 5);
 
     // resources/list
     assert_eq!(responses[2]["id"], 3);

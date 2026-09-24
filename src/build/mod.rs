@@ -2925,7 +2925,7 @@ fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
 ///
 /// Starts with English defaults, then merges any overrides from
 /// `data.i18n.{lang}` (i.e. `data/i18n/{lang}.yaml`).
-fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Value {
+pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Value {
     let defaults = serde_json::json!({
         "search_placeholder": "Search\u{2026}",
         "skip_to_content": "Skip to main content",

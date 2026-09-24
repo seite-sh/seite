@@ -317,8 +317,10 @@ access to site content, documentation, themes, and build tools.
 The server is configured in `.claude/settings.json` and starts automatically
 when Claude Code opens this project. No API keys or setup required.
 
-**Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
-`seite_apply_theme`, `seite_lookup_docs`
+**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
+`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
+`seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
+`seite_lookup_docs`
 
 **Available resources:** `seite://docs/*` (page documentation),
 `seite://content/*` (site content), `seite://themes` (themes),

@@ -1197,7 +1197,7 @@ fn generate_agents_md(
             ""
         }
     ));
-    md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`\n\n");
+    md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_get_page`, `seite_update_frontmatter`, `seite_search`, `seite_content_stats`, `seite_list_templates`, `seite_apply_theme`, `seite_create_collection`, `seite_lookup_docs`\n\n");
 
     // Trust Center (brief — details in .claude/rules/trust-center.md)
     if let Some(opts) = trust_opts {

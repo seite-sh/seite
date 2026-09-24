@@ -500,6 +500,33 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
 </div>
 {% endblock %}"##;
 
+/// Names of every embedded default template (see [`embedded_default`]).
+pub const EMBEDDED_TEMPLATE_NAMES: &[&str] = &[
+    "base.html",
+    "index.html",
+    "post.html",
+    "doc.html",
+    "docs-index.html",
+    "page.html",
+    "trust-item.html",
+    "trust-index.html",
+    "404.html",
+    "tags.html",
+    "tag.html",
+    "changelog-entry.html",
+    "changelog-index.html",
+    "roadmap-item.html",
+    "roadmap-index.html",
+    "roadmap-kanban.html",
+    "roadmap-timeline.html",
+];
+
+/// The embedded default template with this name, if any. The build uses it
+/// whenever the site's template directory does not provide the template.
+pub fn embedded_default(name: &str) -> Option<&'static str> {
+    get_default_template(name)
+}
+
 fn get_default_template(name: &str) -> Option<&'static str> {
     match name {
         "base.html" => Some(default_base()),
@@ -621,6 +648,14 @@ fn error_chain(err: &dyn std::error::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_embedded_template_names_all_resolve() {
+        for name in EMBEDDED_TEMPLATE_NAMES {
+            assert!(embedded_default(name).is_some(), "{name}");
+        }
+        assert!(embedded_default("nope.html").is_none());
+    }
 
     #[test]
     fn test_default_base_is_non_empty() {
