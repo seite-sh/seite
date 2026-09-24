@@ -1184,20 +1184,15 @@ fn generate_agents_md(
         md.push_str(include_str!("../scaffold/landing-page-builder.md"));
     }
 
-    // MCP Server (brief — details in embedded docs)
-    md.push_str("## MCP Server\n\n");
-    md.push_str(
-        "An MCP server is declared in `.mcp.json` and pre-approved in `.claude/settings.json`. Claude Code starts it automatically when it opens this project; the first time, it may still ask you to approve the project's MCP server.\n",
-    );
-    md.push_str(&format!(
-        "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`, `seite://mcp-config`{}\n",
+    // MCP Server
+    md.push_str(&include_str!("../scaffold/mcp.md").replace(
+        "{trust_resource}",
         if trust_opts.is_some() {
-            ", `seite://trust`"
+            ", `seite://trust` (trust center data)"
         } else {
             ""
-        }
+        },
     ));
-    md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`\n\n");
 
     // Trust Center (brief — details in .claude/rules/trust-center.md)
     if let Some(opts) = trust_opts {
