@@ -8,8 +8,8 @@ paths:
 - Each subcommand: `src/cli/{name}.rs` with `{Command}Args` + `pub fn run(args) -> anyhow::Result<()>`
 - Interactive prompts use `dialoguer` (only when CLI args not provided)
 
-## Subcommands (16)
-init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, skill, self-update, completions, perf
+## Subcommands
+init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self-update, completions, perf, telemetry
 
 ## Agent System
 `seite agent` spawns Claude Code with system prompt containing site config, content inventory, template list, frontmatter format. Two modes: `seite agent "prompt"` (non-interactive) and `seite agent` (interactive).

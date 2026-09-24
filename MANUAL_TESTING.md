@@ -60,7 +60,7 @@ Tests that require a real browser or deployed environment and can't be covered b
 - [ ] Focus rings are visible on buttons
 - [ ] Screen reader announces banner as dialog (`role="dialog"`)
 - [ ] Banner works with dark theme applied
-- [ ] Banner works with all 6 bundled themes (default, minimal, dark, docs, brutalist, bento)
+- [ ] Banner works with all 10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic)
 
 ### Edge Cases
 

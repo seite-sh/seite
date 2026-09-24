@@ -37,7 +37,7 @@ Imagine you're a developer friend who built something useful and is showing it t
 
 **Homepage/Landing**: Punchy, benefit-led, shows don't tell
 - "Ship a landing page, docs site, or blog in an afternoon. Not a sprint."
-- "6 bundled themes. Or describe one and let AI build it."
+- "10 bundled themes. Or describe one and let AI build it."
 
 ## Messaging Framework
 

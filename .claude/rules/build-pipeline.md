@@ -2,26 +2,33 @@
 paths:
   - "src/build/**"
 ---
-# Build Pipeline (15 steps)
+# Build Pipeline
 
-1. Clean `dist/`
-1b. Copy `public/` → `dist/` (no prefix, no minification)
-2. Load Tera templates (user + embedded defaults)
+Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numbers below match the `// Step N` comments in that file, kept even where a later step was inserted with a letter suffix):
+
+1. Clean `dist/` (skipped for incremental builds)
+1b. Copy `public/` → `dist/` root (no prefix, no minification)
+2. Load Tera templates (user + embedded defaults, collection-aware)
 2b. Load shortcode registry (built-in + user `templates/shortcodes/`)
 2.5. Load data files (`data/` → `{{ data.filename }}` in templates)
-3. Process collections: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
-3b. Inject i18n context (`lang_prefix`, `default_language`, `t` UI strings)
-4. Render index pages (per-language), paginated/non-paginated collection indexes, 404, tag pages. Docs use `docs-index.html` with sidebar nav
-5. Generate RSS feeds (default + per-language)
-6. Generate sitemap with `xhtml:link` alternates for translations
-7. Generate `llms.txt` and `llms-full.txt` (per-language)
-8. Output raw markdown alongside HTML
-9. Generate search index JSON (per-language)
-10. Copy static files
-11. Process images (resize, WebP, AVIF)
-12. Post-process HTML (srcset, `<picture>`, `loading="lazy"` — skip first image for LCP)
-13. Inject analytics + optional cookie consent
-14. Build subdomain sites (collections with `subdomain` set get own pipeline into `dist-subdomains/`)
+3. Process each collection: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
+4. Render index page(s) per language
+4b. Paginated collection index pages
+4b-extra. Non-paginated collection index pages
+4b. Generate 404 page (per-language for multilingual sites)
+4c. Generate tag pages
+5. Generate RSS and Atom feeds
+6. Generate sitemap (all non-private items, all languages, with `xhtml:link` alternates)
+7. Generate discovery files: `robots.txt`, `llms.txt`, `llms-full.txt`
+8. Output raw markdown alongside HTML for each page
+9. Generate search index JSON
+9b. Generate redirect pages from `aliases:` frontmatter
+10. Copy static files (with optional minification and fingerprinting)
+11. Process images (resize, WebP/AVIF variants, srcset)
+12. Post-process all HTML files in a single pass: image srcset/`<picture>`, `loading="lazy"` (skip first image per page for LCP), code-copy buttons, subdomain/base-path link rewriting, analytics + cookie-consent injection, Mermaid client script injection, and internal-link validation
+13. Generate the Cloudflare Pages advanced-mode Worker for any password-protected routes in this output (see `src/cli/access.rs`)
+
+Collections with `subdomain` set are removed from the main run and built again as independent root-mounted sites into `dist-subdomains/{name}/` (own sitemap, RSS, robots.txt, search index) — see `build_subdomain_sites` in `src/build/mod.rs`.
 
 ## Output Pattern
 
