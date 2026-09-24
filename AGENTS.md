@@ -54,7 +54,7 @@ src/
   output/              CommandOutput trait, human (colored), json
   server/              tiny_http dev server, file watcher, live reload
   templates/           Tera template loading with embedded defaults
-tests/integration.rs   Integration tests (assert_cmd + tempfile)
+tests/integration/     Integration tests, one module per command (assert_cmd + tempfile)
 build.rs               Generates releases.md from changelog at compile time
 ```
 

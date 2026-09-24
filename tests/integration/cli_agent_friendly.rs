@@ -455,3 +455,54 @@ fn test_serve_no_repl_stays_up() {
 fn test_serve_stays_up_when_stdin_closed() {
     assert_serve_stays_up(&[]);
 }
+
+#[test]
+fn test_build_json_keeps_stderr_quiet() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Json Quiet", "posts,pages");
+    let site = tmp.path().join("site");
+    std::fs::write(
+        site.join("content/posts/2025-01-01-link.md"),
+        "---\ntitle: Link\ndate: 2025-01-01\n---\n[gone](/nope)\n",
+    )
+    .unwrap();
+
+    // Success with a warning: the warning is in the document, stderr is empty
+    // (agents often read stdout and stderr merged through a pty).
+    let output = page_cmd()
+        .args(["build", "--json"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let doc = json_stdout(&output);
+    assert_eq!(doc["data"]["broken_links"][0]["target"], "/nope");
+
+    // Failure: the error is in the document only.
+    std::fs::write(site.join("content/posts/bad.md"), "no frontmatter").unwrap();
+    let output = page_cmd()
+        .args(["build", "--json"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(json_stdout(&output)["ok"], false);
+
+    // --verbose brings the human output back on stderr.
+    let output = page_cmd()
+        .args(["build", "--json", "--verbose"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.stderr.is_empty());
+}
