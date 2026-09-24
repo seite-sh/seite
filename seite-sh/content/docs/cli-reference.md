@@ -100,11 +100,15 @@ seite build [options]
 | Flag | Description |
 |------|-------------|
 | `--drafts` | Include draft content in the build |
-| `--strict` | Treat broken internal links as build errors |
+| `--strict` | Treat broken internal links and missing assets as build errors |
 
 The build pipeline cleans the output directory, loads templates, processes each collection, renders pages, generates RSS/sitemap/discovery files (`llms.txt`, `robots.txt`), writes markdown alongside the HTML, builds the search index, copies static files, processes images, and post-processes the generated HTML (srcset, lazy-loading, analytics injection, link validation, ...). Per-step timing is shown with `--verbose` (always included in `--json` output).
 
-After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links (or other warnings) are found: useful in CI pipelines. With `--json`, the result's `data.broken_links` and `data.warnings` give the same information as structured JSON instead of terminal text.
+A full build never writes into `dist/` directly: it renders into a temporary staging directory next to it and only swaps it into place once every step (including any subdomain builds) succeeds. If the build fails partway through, or the process is killed, the previous `dist/` is left exactly as it was — you never end up with a half-written site. Leftover staging directories from a crashed or interrupted build are cleaned up automatically on the next build.
+
+After building, `seite build` validates all internal links and asset references (`img`, `srcset`, `script`, `link rel=stylesheet`, `video`, `audio`, `track`) in the generated HTML. Broken links and missing assets (e.g., links pointing to `/posts/missing-slug`, an `<img>` with no matching file) are reported as warnings by default; `--strict` turns them into errors. Each one is attributed to where it was written — the markdown source file, a template, or a data file, with a line number when it can be found — falling back to naming the generated page when the source can't be traced (e.g. a listing page). A "did you mean" suggestion is included when a close match exists among the site's valid URLs. With `--json`, the result's `data.broken_links` and `data.missing_assets` (each grouped by target, with `source`/`line`/`locations`) and `data.warnings` give the same information as structured JSON instead of terminal text.
+
+Relative links between markdown source files (`[intro](../docs/intro.md)`, or root-relative `/content/docs/intro.md`) are rewritten to the target page's published URL, keeping any `#fragment` or `?query`, preferring a translation in the current page's language when one exists, and respecting `base_path`. A link like this that matches no content file becomes a broken-link warning (or error, with `--strict`) instead of shipping a dead `.md` link. Root-relative links outside the content directory (e.g. `/docs/intro.md`) are left alone: they point at the raw markdown copy published alongside every page.
 
 Problems are reported all at once, one per line, in compiler style (`file:line:col: severity[code]: message`, plus a `hint:` line). A bad shortcode in one post no longer hides a broken frontmatter in another. Unknown keys in `seite.toml` (e.g. `minfy = true`) are warnings with a did-you-mean hint; the build still succeeds. With `--json`, successful builds list warnings in `data.diagnostics`, and failed builds list every problem in `error.diagnostics`.
 
@@ -139,7 +143,8 @@ Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and
 | `template-parse` | error | Template has a syntax error (file, line, column) |
 | `template-render` | error | Page failed to render (names the content file and the template) |
 | `i18n-partial` | warning | A data language map is missing some configured languages |
-| `broken-link` | warning | Internal link with no target |
+| `broken-link` | warning (error with `--strict`) | Internal link, or relative `.md` link between content files, with no matching target (did-you-mean hint when a close match exists) |
+| `missing-asset` | warning (error with `--strict`) | Referenced image, script, stylesheet, or media file doesn't exist in the build output |
 | `build-failed` | error | Any other build failure |
 
 With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`.

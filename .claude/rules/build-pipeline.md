@@ -30,6 +30,22 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 
 Collections with `subdomain` set are removed from the main run and built again as independent root-mounted sites into `dist-subdomains/{name}/` (own sitemap, RSS, robots.txt, search index) — see `build_subdomain_sites` in `src/build/mod.rs`.
 
+## Atomic Output (Staging)
+
+A full build (not an incremental dev-server rebuild) never writes into `dist/` directly: it renders into a sibling `{output}.staging-<pid>` directory (`StagedOutputs::stage` in `src/build/mod.rs`) and only swaps it into place with `StagedOutputs::commit()` after every step — including subdomain builds — succeeds. A failed or killed build leaves the previous `dist/` untouched; `StagedOutputs::drop` removes an uncommitted staging dir. `clean_stale_build_dirs` sweeps `{output}.staging-<pid>` / `{output}.old-<pid>` directories left behind by dead processes on the next build (a liveness check by pid skips ones still running). Incremental rebuilds from the dev server (content-only changes, nothing deleted) update `dist/` in place instead, and the file watcher ignores the staging/old directory names so it doesn't trigger rebuild loops on itself.
+
+## Link and Asset Attribution
+
+`src/build/links.rs` traces every broken link (`<a href>`, `<link rel=alternate>`) and missing asset (`img`/`srcset`/`script`/`stylesheet`/`video`/`audio`/`track`) back to the file it was authored in — the markdown source, a template, or a data file — with a 1-based line number when it can find one; `attribute_sources()` does the tracing, `BrokenLink::location()` formats it, and links that can only be traced to the generated page fall back to `"{page} (from template/listing)"`. `fill_suggestions()` adds a "did you mean" hint using Levenshtein distance against the site's valid URLs. `link_diagnostics()` converts these into `broken-link` / `missing-asset` diagnostics (warnings by default, errors with `--strict`).
+
+## Markdown-to-Markdown Link Rewriting
+
+`SourceLinkMap` (`src/build/markdown.rs`) rewrites relative links between content files — `[x](../docs/intro.md)`, root-relative `/content/docs/intro.md` — into the target page's published URL, preserving `#fragment`/`?query`, preferring a same-language translation file (`intro.es.md`) when the linking page isn't in the default language, and applying `base_path`. Root-relative links outside the content dir (e.g. `/docs/intro.md`) are left alone — they point at the published markdown copy the build writes alongside each page. A `.md` link that looks like a content-file reference but matches nothing becomes a `broken-link` diagnostic (kind `Markdown`) via `rewrite_md_links`'s unresolved list.
+
+## Diagnostics Collection
+
+`src/diagnostics.rs` defines `Diagnostic` (severity, stable `code`, message, optional file/line/column, optional hint) and `Diagnostics`, shared by `seite build`, `seite check`, and the MCP tools. A build (or check) collects every problem across every content/template/data file into one `Diagnostics` list instead of stopping at the first error — a bad shortcode in one post doesn't hide a broken frontmatter in another. `Diagnostic`'s `Display` renders compiler-style `file:line:col: severity[code]: message` plus an indented `hint:` line.
+
 ## Output Pattern
 
 URLs are clean: `/posts/hello-world` → `dist/posts/hello-world.html` + `.md`

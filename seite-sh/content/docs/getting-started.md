@@ -155,6 +155,29 @@ Builds are fast: typically under a second, even with dozens of pages. Every buil
 
 This triple output (HTML + Markdown + LLM files) is what makes seite an AI-native static site generator. Your content is readable by browsers, search engines, and AI models from a single build command.
 
+## Checking Your Site
+
+Before (or instead of) a full build, `seite check` validates your config, frontmatter, shortcodes, data files, templates, and internal links and assets:
+
+```bash
+seite check
+```
+
+It renders the site into a temporary directory to catch real render errors and broken links, then throws that directory away — `dist/` is never created or touched, so it's safe to run at any time, including in an editor or CI as a fast "does this still work" gate. Every problem is reported at once, compiler-style:
+
+```
+content/posts/hello-world.md:8:1: warning[broken-link]: link to `/posts/goodbye-world` does not match any page
+  hint: did you mean `/posts/hello-world`?
+```
+
+Use `--strict` to also fail on warnings (like unknown `seite.toml` keys or broken links), and `--drafts` to include draft content:
+
+```bash
+seite check --strict
+```
+
+`seite build` runs the same link and asset validation as part of a normal build (reported as warnings, or errors with `seite build --strict`), so `seite check` is most useful when you want to validate content without producing output, or want the fastest possible feedback loop while editing.
+
 ## Development Server
 
 Start a dev server with live reload:

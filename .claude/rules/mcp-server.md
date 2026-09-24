@@ -26,9 +26,11 @@ Synchronous read loop on stdin, dispatches methods, writes to stdout. All loggin
 
 ## Tools (`TOOLS` table in `src/mcp/tools.rs`; new tools in `src/mcp/tools/*.rs`)
 - `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`
+- `seite_check` (read-only annotations; renders into a scratch dir like `seite check`) — returns `{ok, summary: {errors, warnings}, diagnostics}`; `ok` is false on any error, or any warning with `strict: true`
 - `seite_get_page` (path or url → resolved frontmatter, body, rendered body HTML, output_path)
 - `seite_update_frontmatter` (set/unset top-level keys; body preserved byte-for-byte; content dir only)
 - `seite_content_stats`, `seite_list_templates`, `seite_create_collection`
+- `seite_build`'s output schema includes `broken_links` and `missing_assets` (each `[{target, sources}]`, grouped by target) plus `diagnostics` (the same `Diagnostic` shape as `seite_check`); `strict: true` fails the call (`isError`) on any warning, broken link, or missing asset
 
 Adding a tool = one `ToolDef` entry (name, title, description, input/output schema fns, annotations, handler). Rules enforced by tests:
 - Tool-execution failures are `isError: true` results (text only); JSON-RPC errors only for protocol problems.
