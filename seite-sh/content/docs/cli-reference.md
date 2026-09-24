@@ -12,7 +12,7 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has seventeen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
+`seite` has eighteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
@@ -33,6 +33,7 @@ Run `seite <command> --help` for quick inline help on any command.
 | `self-update` | Update the seite binary to the latest release |
 | `completions` | Generate shell completion scripts |
 | `perf` | Audit site performance via PageSpeed Insights |
+| `telemetry` | Manage anonymous usage telemetry |
 
 ### Global Flags
 
@@ -41,10 +42,11 @@ These flags work with any command:
 | Flag | Description |
 |------|-------------|
 | `--site <name>` | Target a specific site in a workspace |
-| `--config <path>` | Path to config file |
+| `--config <path>` | Path to the project's `seite.toml` (must be that exact filename) |
 | `--dir <path>` | Project directory |
-| `--verbose` | Enable verbose logging |
-| `--json` | Output results as JSON |
+| `--verbose` | Enable verbose logging (also shows per-step build timings) |
+| `--json` | Print exactly one JSON document on stdout — `{"ok":true,"command":...,"data":...,"warnings":[...]}` or `{"ok":false,"command":...,"error":{"message":...,"chain":[...]}}` — with all human-readable output on stderr. Not supported by `serve`, `agent`, `mcp`, `completions`, or `self-update`, which stream output or take over the terminal |
+| `-y`, `--yes` | Never prompt: accept defaults and answer "yes" to confirmations (also `SEITE_YES=1`). Without a terminal, prompts fall back to their defaults, and any value with no default must be passed as a flag or the command errors naming it |
 
 ## seite init
 
@@ -61,7 +63,7 @@ seite init <name> [options]
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 
-If flags are omitted, `seite init` prompts interactively.
+If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
 ```bash
 # Non-interactive
@@ -84,9 +86,9 @@ seite build [options]
 | `--drafts` | Include draft content in the build |
 | `--strict` | Treat broken internal links as build errors |
 
-The build pipeline runs 12 steps: clean output, load templates, process collections, render pages, generate RSS, sitemap, discovery files, markdown output, search index, copy static files, process images, and post-process HTML. Per-step timing is shown in the output.
+The build pipeline cleans the output directory, loads templates, processes each collection, renders pages, generates RSS/sitemap/discovery files (`llms.txt`, `robots.txt`), writes markdown alongside the HTML, builds the search index, copies static files, processes images, and post-processes the generated HTML (srcset, lazy-loading, analytics injection, link validation, ...). Per-step timing is shown with `--verbose` (always included in `--json` output).
 
-After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links are found: useful in CI pipelines.
+After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links (or other warnings) are found: useful in CI pipelines. With `--json`, the result's `data.broken_links` and `data.warnings` give the same information as structured JSON instead of terminal text.
 
 ## seite serve
 
@@ -99,11 +101,12 @@ seite serve [options]
 | Flag | Description |
 |------|-------------|
 | `--host` | Host to bind to (default: `127.0.0.1`, use `0.0.0.0` for network access) |
-| `--port` | Starting port (default: 3000, auto-increments if taken) |
+| `--port` | Port to serve on (auto-finds an available port if the default is taken; an explicitly passed `--port` that's busy is an error instead) |
+| `--build` | Build the site before serving |
 | `--open` | Open the site in the default browser after starting |
-| `--drafts` | Include drafts |
+| `--no-repl` | Don't read commands from stdin; just serve (with live reload) until interrupted |
 
-The server displays local and network URLs (Vite-style) and injects a live-reload script that polls for changes. An interactive REPL accepts commands:
+The server displays local and network URLs (Vite-style) and injects a live-reload script that polls for changes. Unless `--no-repl` is passed, an interactive REPL accepts commands:
 
 - `new <collection> "Title"`: create content
 - `agent [prompt]`: launch AI agent
@@ -111,6 +114,8 @@ The server displays local and network URLs (Vite-style) and injects a live-reloa
 - `build`: rebuild the site
 - `status`: show server info
 - `stop`: stop the server
+
+The REPL prompt is only printed to a real terminal. If stdin isn't a TTY (piped, redirected from `/dev/null`, or a background job) the server keeps serving instead of exiting when stdin closes.
 
 ## seite new
 
@@ -123,7 +128,10 @@ seite new <collection> "Title" [options]
 | Flag | Description |
 |------|-------------|
 | `--tags` | Comma-separated tags |
+| `--draft` | Mark as draft (excluded from builds unless `seite build --drafts`) |
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
+
+`seite new` refuses to overwrite a file that already exists at the target path.
 
 ```bash
 seite new post "My Post" --tags rust,web
@@ -298,12 +306,12 @@ Start the MCP (Model Context Protocol) server for AI tool integration. Communica
 seite mcp
 ```
 
-This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. It is configured in `.claude/settings.json` during `seite init` and requires no manual invocation.
+This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. `seite init` declares it in `.mcp.json` and pre-approves it in `.claude/settings.json` (`enabledMcpjsonServers`), so it requires no manual invocation.
 
 The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, create content, search, apply theme, lookup docs). See the [MCP Server](/docs/mcp-server) guide for full details.
 
 {{% callout(type="info") %}}
-You don't need to run this command manually. Claude Code starts it automatically when you open a page project. Use `seite upgrade` to add the MCP configuration to existing projects.
+You don't need to run this command manually. Claude Code starts it automatically when you open a page project (it may still ask you to approve the project's MCP server the first time). Use `seite upgrade` to add the `.mcp.json`/`.claude/settings.json` configuration to existing projects — it also migrates any older `mcpServers` block out of `settings.json`, which Claude Code no longer reads.
 {{% end %}}
 
 ## seite upgrade
@@ -326,7 +334,7 @@ seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 ```
 
 Upgrade is **additive and non-destructive**:
-- Merges into `.claude/settings.json`: adds new entries, never removes yours
+- Creates or merges `.mcp.json` (the seite MCP server declaration) and `.claude/settings.json` (permissions + `enabledMcpjsonServers`), adding new entries and never removing yours; any legacy `mcpServers` block in `settings.json` is moved into `.mcp.json`, since Claude Code only reads project MCP servers from there
 - Migrates project guidance to `AGENTS.md` while preserving existing instructions
 - Keeps `CLAUDE.md` as a compatibility import of `AGENTS.md`
 - Creates `.seite/config.json` if missing: tracks the project's config version
@@ -393,4 +401,4 @@ Seite checks for available updates in the background (at most once every 24 hour
 ℹ A new version of seite is available: 0.1.8 → 0.2.0 (run `seite self-update`)
 ```
 
-The check is non-blocking and silently skipped when offline. It does not run during `seite self-update` (which already checks) or `seite mcp` (JSON-RPC over stdio).
+The check is non-blocking and silently skipped when offline. It never runs with `CI`, `DO_NOT_TRACK`, or `SEITE_NO_UPDATE_CHECK` set, when stdout/stderr aren't both a terminal (scripts, agents, piped output), or under `--json`; that also covers `seite self-update` (which already checks) and `seite mcp` (JSON-RPC over stdio).

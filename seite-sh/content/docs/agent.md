@@ -156,7 +156,7 @@ seite's agent understands your project natively. It knows the [configuration](/d
 
 ## Agent instruction scaffolding
 
-When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions and a one-line `CLAUDE.md` that imports it. This keeps one canonical instruction file for Claude Code, OpenCode, Codex, and other compatible agents. Seite also creates `.claude/settings.json` with pre-configured Claude Code permissions and MCP access.
+When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions and a one-line `CLAUDE.md` that imports it. This keeps one canonical instruction file for Claude Code, OpenCode, Codex, and other compatible agents. Seite also creates `.mcp.json` (declares the seite MCP server) and `.claude/settings.json` (pre-configured permissions plus `enabledMcpjsonServers` so that server starts without a prompt).
 
 Existing sites can migrate without losing their custom instructions:
 
