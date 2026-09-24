@@ -109,9 +109,13 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             let (message, chain) = json::error_chain(&err);
             if json_mode {
                 json::emit_document(&json::error_document(cmd_name, &err, json::warnings()));
+                // The document carries the error; only echo it with --verbose.
+                if !seite::output::is_verbose() {
+                    return ExitCode::FAILURE;
+                }
             }
-            // Human-readable error always goes to stderr: every diagnostic on
-            // its own compiler-style line, then the summary.
+            // Human-readable error goes to stderr: every diagnostic on its own
+            // compiler-style line, then the summary.
             if let Some(diagnostics) = json::find_diagnostics(&err) {
                 for diagnostic in diagnostics.iter() {
                     eprintln!("{diagnostic}");
