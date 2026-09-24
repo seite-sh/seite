@@ -318,10 +318,7 @@ pub fn build_site(
                     incremental: true,
                     items_skipped: cs.total_content,
                 },
-                link_check: links::LinkCheckResult {
-                    total_links_checked: 0,
-                    broken_links: Vec::new(),
-                },
+                link_check: links::LinkCheckResult::default(),
                 subdomain_builds: Vec::new(),
                 warnings: Vec::new(),
             });
@@ -338,12 +335,22 @@ pub fn build_site(
         changeset = Some(cs);
     }
 
-    // Clean subdomain output directories before building
-    if has_subdomains {
-        let subdomains_root = paths.root.join("dist-subdomains");
-        if subdomains_root.exists() {
-            fs::remove_dir_all(&subdomains_root)?;
-        }
+    // Full builds write into a staging directory next to the output and are
+    // swapped into place only after every step (including subdomain builds)
+    // succeeded, so a failed build leaves the previous output untouched.
+    // Incremental builds (dev server: only content changed, nothing deleted)
+    // update the existing output in place. They never clean it, so a failure
+    // there can leave a mix of old and freshly rendered pages but never wipes
+    // the site; the next successful build brings it back in sync.
+    clean_stale_build_dirs(&paths.output);
+    let in_place = changeset
+        .as_ref()
+        .is_some_and(|cs| !cs.needs_full_rebuild && cs.deleted_content.is_empty())
+        && paths.output.exists();
+    let mut staged = StagedOutputs::default();
+    let mut main_paths = paths.clone();
+    if !in_place {
+        main_paths.output = staged.stage(&paths.root, &paths.output)?;
     }
 
     // Compute the subdomain rewrite map from the ORIGINAL config (before filtering),
@@ -359,16 +366,30 @@ pub fn build_site(
         Some(&main_rewrites)
     };
 
-    let result = build_site_inner(effective_config, paths, opts, rewrites_ref, &changeset)?;
+    let result = build_site_inner(
+        effective_config,
+        &main_paths,
+        opts,
+        rewrites_ref,
+        &changeset,
+        &paths.output,
+    )?;
 
     let mut warnings = result.warnings;
 
     // Build subdomain collections into their own output directories
     let subdomain_builds = if has_subdomains {
-        build_subdomain_sites(config, paths, opts, &mut warnings)?
+        build_subdomain_sites(config, paths, opts, &mut warnings, &mut staged)?
     } else {
         Vec::new()
     };
+
+    // Everything built: swap staged outputs into place, then drop outputs of
+    // collections that are no longer deployed to a subdomain.
+    staged.commit()?;
+    if has_subdomains {
+        prune_stale_subdomain_outputs(config, paths);
+    }
 
     // Save build cache after successful build
     if opts.incremental {
@@ -391,6 +412,255 @@ pub fn build_site(
         subdomain_builds,
         warnings,
     })
+}
+
+/// Suffix (plus process id) of the directory a full build writes into.
+const STAGING_MARKER: &str = ".staging-";
+/// Suffix (plus process id) the previous output is renamed to during the swap.
+const OLD_OUTPUT_MARKER: &str = ".old-";
+
+/// True for `{output_name}.staging-<pid>` / `{output_name}.old-<pid>`.
+fn is_scratch_output_name(name: &str, output_name: &str) -> bool {
+    let Some(rest) = name.strip_prefix(output_name) else {
+        return false;
+    };
+    let Some(pid) = rest
+        .strip_prefix(STAGING_MARKER)
+        .or_else(|| rest.strip_prefix(OLD_OUTPUT_MARKER))
+    else {
+        return false;
+    };
+    !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Sibling of `output` named `{name}{marker}{pid}`. `None` when `output` has
+/// no parent/name, or is the site root or one of its ancestors (a
+/// misconfiguration we don't try to stage around).
+fn scratch_dir_for(root: &Path, output: &Path, marker: &str) -> Option<PathBuf> {
+    if root.starts_with(output) {
+        return None;
+    }
+    let name = output.file_name()?.to_str()?;
+    let parent = output.parent()?;
+    Some(parent.join(format!("{name}{marker}{}", std::process::id())))
+}
+
+/// Remove staging/old directories left next to `output` by a build that
+/// crashed or was killed. Best-effort: failures are only logged.
+///
+/// This doesn't try to detect a concurrent build of the same site; two
+/// builds writing one output dir already race, and at worst the other build
+/// fails with an I/O error while the published output stays intact.
+fn clean_stale_build_dirs(output: &Path) {
+    let (Some(parent), Some(name)) = (output.parent(), output.file_name()) else {
+        return;
+    };
+    let Some(name) = name.to_str() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let entry_name = entry.file_name();
+        let Some(entry_name) = entry_name.to_str() else {
+            continue;
+        };
+        if is_scratch_output_name(entry_name, name) && entry.path().is_dir() {
+            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                tracing::debug!(
+                    "Failed to remove stale build dir {}: {e}",
+                    entry.path().display()
+                );
+            }
+        }
+    }
+}
+
+/// True when `path` is inside a build output directory (the main output,
+/// `dist-subdomains/`, or a staging/old sibling of the output). The dev
+/// server's file watcher ignores these so builds don't trigger rebuilds.
+pub fn is_build_output_path(paths: &ResolvedPaths, path: &Path) -> bool {
+    let subdomains_root = paths.root.join("dist-subdomains");
+    if path.starts_with(&paths.output) || path.starts_with(&subdomains_root) {
+        return true;
+    }
+    let (Some(parent), Some(name)) = (
+        paths.output.parent(),
+        paths.output.file_name().and_then(|n| n.to_str()),
+    ) else {
+        return false;
+    };
+    path.strip_prefix(parent)
+        .ok()
+        .and_then(|rest| rest.components().next())
+        .and_then(|first| first.as_os_str().to_str())
+        .is_some_and(|first| is_scratch_output_name(first, name))
+}
+
+/// Output directories being built in staging, swapped into place by
+/// [`StagedOutputs::commit`]. Staging directories that were never committed
+/// (the build failed) are removed on drop.
+#[derive(Default)]
+struct StagedOutputs {
+    /// (staging dir, final output dir)
+    dirs: Vec<(PathBuf, PathBuf)>,
+}
+
+impl StagedOutputs {
+    /// Start staging `output`; returns the directory to build into. Falls
+    /// back to building in place when the output can't be staged safely.
+    fn stage(&mut self, root: &Path, output: &Path) -> Result<PathBuf> {
+        let Some(staging) = scratch_dir_for(root, output, STAGING_MARKER) else {
+            return Ok(output.to_path_buf());
+        };
+        if staging.exists() {
+            fs::remove_dir_all(&staging)?;
+        }
+        self.dirs.push((staging.clone(), output.to_path_buf()));
+        Ok(staging)
+    }
+
+    /// Swap every staged directory into place.
+    fn commit(mut self) -> Result<()> {
+        while !self.dirs.is_empty() {
+            let (staging, output) = self.dirs.remove(0);
+            let root = output.parent().unwrap_or(Path::new("")).to_path_buf();
+            if let Err(e) = swap_into_place(&root, &staging, &output) {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for StagedOutputs {
+    fn drop(&mut self) {
+        for (staging, _) in &self.dirs {
+            if staging.exists() {
+                if let Err(e) = fs::remove_dir_all(staging) {
+                    tracing::debug!("Failed to remove staging dir {}: {e}", staging.display());
+                }
+            }
+        }
+    }
+}
+
+/// Replace `output` with `staging`.
+///
+/// Renames the previous output aside, renames staging into place, then
+/// deletes the old copy. Two renames rather than one because renaming onto an
+/// existing directory fails on Windows (and on Unix when it's non-empty). If
+/// the second rename fails the previous output is restored. If the output
+/// itself can't be renamed (a mount point, a symlink, or open handles on
+/// Windows), its contents are replaced instead.
+fn swap_into_place(parent: &Path, staging: &Path, output: &Path) -> Result<()> {
+    let is_symlink = fs::symlink_metadata(output)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+    if !output.exists() && !is_symlink {
+        fs::create_dir_all(parent)?;
+        fs::rename(staging, output)?;
+        return Ok(());
+    }
+
+    if !is_symlink {
+        if let Some(old) = scratch_dir_for(parent, output, OLD_OUTPUT_MARKER) {
+            if old.exists() {
+                fs::remove_dir_all(&old)?;
+            }
+            match fs::rename(output, &old) {
+                Ok(()) => {
+                    if let Err(e) = fs::rename(staging, output) {
+                        // Put the previous output back so nothing is lost.
+                        let _ = fs::rename(&old, output);
+                        return Err(e.into());
+                    }
+                    if let Err(e) = fs::remove_dir_all(&old) {
+                        // Harmless: the next build removes leftovers.
+                        tracing::debug!("Failed to remove {}: {e}", old.display());
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Could not move {} aside ({e}); replacing its contents instead",
+                        output.display()
+                    );
+                }
+            }
+        }
+    }
+
+    replace_dir_contents(staging, output)?;
+    fs::remove_dir_all(staging)?;
+    Ok(())
+}
+
+/// Empty `output` and move (or, across filesystems, copy) everything from
+/// `staging` into it.
+fn replace_dir_contents(staging: &Path, output: &Path) -> Result<()> {
+    for entry in fs::read_dir(output)? {
+        let path = entry?.path();
+        let meta = fs::symlink_metadata(&path)?;
+        if meta.is_dir() {
+            fs::remove_dir_all(&path)?;
+        } else {
+            fs::remove_file(&path)?;
+        }
+    }
+    for entry in fs::read_dir(staging)? {
+        let entry = entry?;
+        let dest = output.join(entry.file_name());
+        if fs::rename(entry.path(), &dest).is_err() {
+            copy_recursively(&entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_recursively(src: &Path, dest: &Path) -> Result<()> {
+    if src.is_file() {
+        fs::copy(src, dest)?;
+        return Ok(());
+    }
+    for entry in WalkDir::new(src).into_iter().filter_map(|e| e.ok()) {
+        let rel = entry.path().strip_prefix(src).unwrap_or(entry.path());
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Remove `dist-subdomains/<name>` directories for collections that are no
+/// longer deployed to a subdomain (previously handled by wiping the whole
+/// directory before every build). Best-effort.
+fn prune_stale_subdomain_outputs(config: &SiteConfig, paths: &ResolvedPaths) {
+    let subdomains_root = paths.root.join("dist-subdomains");
+    let Ok(entries) = fs::read_dir(&subdomains_root) else {
+        return;
+    };
+    let current: HashSet<String> = config
+        .subdomain_collections()
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !current.contains(&name) && entry.path().is_dir() {
+            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                tracing::debug!("Failed to remove {}: {e}", entry.path().display());
+            }
+        }
+    }
 }
 
 fn refresh_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
@@ -433,6 +703,7 @@ fn build_subdomain_sites(
     paths: &ResolvedPaths,
     opts: &BuildOptions,
     warnings: &mut Vec<String>,
+    staged: &mut StagedOutputs,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -453,8 +724,10 @@ fn build_subdomain_sites(
         sub_config.collections = vec![sub_collection];
 
         // Create subdomain-specific paths
+        // Subdomain outputs are always rebuilt from scratch, into staging.
         let mut sub_paths = paths.clone();
-        sub_paths.output = subdomain_output.clone();
+        clean_stale_build_dirs(&subdomain_output);
+        sub_paths.output = staged.stage(&paths.root, &subdomain_output)?;
 
         // Build reverse rewrite map: links from subdomain content to other collections
         // resolve to absolute URLs on the main site (or other subdomains)
@@ -466,6 +739,7 @@ fn build_subdomain_sites(
             opts,
             Some(&reverse_rewrites),
             &None,
+            &subdomain_output,
         )?;
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
@@ -503,12 +777,17 @@ fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> b
 /// This allows subdomain builds to receive reverse-rewrite maps (subdomain→main site links).
 ///
 /// `changeset`: if `Some`, used for incremental builds to skip unchanged content.
+///
+/// `display_output`: the final output directory. `paths.output` may be a
+/// staging directory that is renamed to `display_output` after the build;
+/// reported paths (e.g. broken links on generated pages) use the final one.
 fn build_site_inner(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
     subdomain_rewrites_override: Option<&HashMap<String, String>>,
     changeset: &Option<cache::ChangeSet>,
+    display_output: &Path,
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
@@ -779,6 +1058,14 @@ fn build_site_inner(
             }
         }
     }
+
+    // Rewrite links written as paths to other markdown files
+    // (`[x](../docs/intro.md)`) into page URLs, now that every item's URL is
+    // known. Operates on the already-rendered HTML, so content is parsed once.
+    // Also records which source file each page was rendered from, so broken
+    // links found in the output can be reported against the markdown source.
+    let (page_sources, md_link_problems) =
+        rewrite_source_links(&mut all_collections, paths, default_lang);
 
     step_timings.push((
         "Process collections".to_string(),
@@ -2368,7 +2655,28 @@ fn build_site_inner(
         analytics: config.analytics.as_ref(),
         mermaid: config.build.mermaid,
     };
-    let link_check = post_process_html_files(&paths.output, &post_ctx)?;
+    let mut link_check = post_process_html_files(&paths.output, &post_ctx)?;
+    link_check.broken_links.extend(md_link_problems);
+    {
+        // Report problems against the file they were written in (markdown
+        // source, template, or data file) rather than the generated HTML.
+        let output_display = links::relative_display(&paths.root, display_output);
+        // Links not in a page's own markdown: templates and data (nav) first,
+        // then other content files (post excerpts shown on listing pages).
+        let fallback_dirs = [
+            paths.templates.clone(),
+            paths.data_dir.clone(),
+            paths.content.clone(),
+        ];
+        let attribution = links::SourceAttribution {
+            root: &paths.root,
+            page_sources: &page_sources,
+            fallback_dirs: &fallback_dirs,
+            output_display: &output_display,
+        };
+        links::attribute_sources(&mut link_check.broken_links, &attribution);
+        links::attribute_sources(&mut link_check.missing_assets, &attribution);
+    }
     step_timings.push((
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -2474,85 +2782,76 @@ fn post_process_html_files(
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
         .collect();
 
-    // Per-file result: (link_count, broken_links) or error
-    let results: Vec<std::result::Result<(usize, Vec<links::BrokenLink>), PageError>> =
-        html_entries
-            .par_iter()
-            .map(|entry| {
-                let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
+    // Per-file link check result or error
+    let results: Vec<std::result::Result<links::PageRefCheck, PageError>> = html_entries
+        .par_iter()
+        .map(|entry| {
+            let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
 
-                let mut html = original.clone();
+            let mut html = original.clone();
 
-                // 1. Image srcset rewrite
-                if ctx.needs_image_rewrite && html.contains("<img ") {
-                    html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
-                }
+            // 1. Image srcset rewrite
+            if ctx.needs_image_rewrite && html.contains("<img ") {
+                html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
+            }
 
-                // 2. Code copy button injection
-                if html.contains("<pre") {
-                    html = code_copy::inject_code_copy(&html);
-                }
+            // 2. Code copy button injection
+            if html.contains("<pre") {
+                html = code_copy::inject_code_copy(&html);
+            }
 
-                // 3. Cross-subdomain link rewriting
-                if !ctx.subdomain_rewrites.is_empty() {
-                    html = links::rewrite_subdomain_links(&html, ctx.subdomain_rewrites);
-                }
+            // 3. Cross-subdomain link rewriting
+            if !ctx.subdomain_rewrites.is_empty() {
+                html = links::rewrite_subdomain_links(&html, ctx.subdomain_rewrites);
+            }
 
-                // 4. Base path URL rewriting
-                if !ctx.base_path.is_empty() {
-                    html = base_path::rewrite_html_urls(&html, ctx.base_path);
-                }
+            // 4. Base path URL rewriting
+            if !ctx.base_path.is_empty() {
+                html = base_path::rewrite_html_urls(&html, ctx.base_path);
+            }
 
-                // 5. Analytics injection
-                if let Some(analytics_config) = ctx.analytics {
-                    html = analytics::inject_analytics(&html, analytics_config);
-                }
+            // 5. Analytics injection
+            if let Some(analytics_config) = ctx.analytics {
+                html = analytics::inject_analytics(&html, analytics_config);
+            }
 
-                // 6. Mermaid loader injection (no-op unless the page has a diagram)
-                if ctx.mermaid {
-                    html = mermaid::inject_mermaid(&html);
-                }
+            // 6. Mermaid loader injection (no-op unless the page has a diagram)
+            if ctx.mermaid {
+                html = mermaid::inject_mermaid(&html);
+            }
 
-                // Only write if something changed
-                if html != original {
-                    fs::write(entry.path(), &html).map_err(PageError::from)?;
-                }
+            // Only write if something changed
+            if html != original {
+                fs::write(entry.path(), &html).map_err(PageError::from)?;
+            }
 
-                // 7. Extract internal links from final HTML for validation
-                let internal_links = links::extract_internal_links(&html);
-                let link_count = internal_links.len();
-                let rel_path = entry
-                    .path()
-                    .strip_prefix(output_dir)
-                    .unwrap_or(entry.path())
-                    .to_string_lossy()
-                    .replace('\\', "/");
+            // 7. Validate internal links and asset references in the final HTML
+            let rel_path = entry
+                .path()
+                .strip_prefix(output_dir)
+                .unwrap_or(entry.path())
+                .to_string_lossy()
+                .replace('\\', "/");
+            Ok(links::check_page_refs(
+                &html,
+                &rel_path,
+                &valid_urls,
+                ctx.base_path,
+            ))
+        })
+        .collect();
 
-                let broken: Vec<links::BrokenLink> = internal_links
-                    .into_iter()
-                    .filter(|href| !valid_urls.contains(href.as_str()))
-                    .map(|href| links::BrokenLink {
-                        source_file: rel_path.clone(),
-                        href,
-                    })
-                    .collect();
-
-                Ok((link_count, broken))
-            })
-            .collect();
-
-    let mut all_broken = Vec::new();
-    let mut total_checked = 0;
+    let mut check = links::LinkCheckResult::default();
     for result in results {
-        let (count, broken) = result?;
-        total_checked += count;
-        all_broken.extend(broken);
+        let page = result?;
+        check.total_links_checked += page.checked;
+        check.broken_links.extend(page.broken_links);
+        check.missing_assets.extend(page.missing_assets);
     }
+    links::fill_suggestions(&mut check.broken_links, &valid_urls);
+    links::fill_suggestions(&mut check.missing_assets, &valid_urls);
 
-    Ok(links::LinkCheckResult {
-        total_links_checked: total_checked,
-        broken_links: all_broken,
-    })
+    Ok(check)
 }
 
 /// Where a content file lands in the built site.
@@ -2812,6 +3111,80 @@ fn minify_js(raw: &[u8]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     result
+}
+
+/// Output HTML path of a page URL, relative to the output directory
+/// (`/posts/hello` → `posts/hello.html`, `/docs/index` → `docs/index.html`).
+fn output_rel_html(url: &str) -> String {
+    format!("{}.html", url.trim_matches('/'))
+}
+
+/// Rewrite links to markdown source files in every item's HTML body and
+/// excerpt (see [`markdown::rewrite_md_links`]).
+///
+/// Returns a map of output-relative HTML path → source file for every item
+/// (used to attribute broken links to their markdown source), plus a
+/// `Markdown`-kind broken link for each relative `.md` link that matched no
+/// content file, located at its line in the source file.
+fn rewrite_source_links(
+    all_collections: &mut HashMap<String, Vec<ContentItem>>,
+    paths: &ResolvedPaths,
+    default_lang: &str,
+) -> (HashMap<String, PathBuf>, Vec<links::BrokenLink>) {
+    let mut map = markdown::SourceLinkMap::new(&paths.root, &paths.content, default_lang);
+    let mut page_sources = HashMap::new();
+    for items in all_collections.values() {
+        for item in items {
+            map.insert(&item.source_path, &item.url);
+            page_sources.insert(output_rel_html(&item.url), item.source_path.clone());
+        }
+    }
+
+    let mut problems = Vec::new();
+    for items in all_collections.values_mut() {
+        let per_item: Vec<Vec<links::BrokenLink>> = items
+            .par_iter_mut()
+            .map(|item| {
+                if !item.html_body.contains(".md") && !item.excerpt_html.contains(".md") {
+                    return Vec::new();
+                }
+                let (html, unresolved) = markdown::rewrite_md_links(
+                    &item.html_body,
+                    &item.source_path,
+                    &item.lang,
+                    &map,
+                );
+                item.html_body = html;
+                let (excerpt, _) = markdown::rewrite_md_links(
+                    &item.excerpt_html,
+                    &item.source_path,
+                    &item.lang,
+                    &map,
+                );
+                item.excerpt_html = excerpt;
+                if unresolved.is_empty() {
+                    return Vec::new();
+                }
+                let text = fs::read_to_string(&item.source_path).ok();
+                let source = links::relative_display(&paths.root, &item.source_path);
+                let page = output_rel_html(&item.url);
+                unresolved
+                    .into_iter()
+                    .map(|href| {
+                        let mut link =
+                            links::BrokenLink::new(page.clone(), href, links::LinkKind::Markdown);
+                        link.source = Some(source.clone());
+                        link.line = text
+                            .as_deref()
+                            .and_then(|t| links::find_link_line(t, &link.href));
+                        link
+                    })
+                    .collect()
+            })
+            .collect();
+        problems.extend(per_item.into_iter().flatten());
+    }
+    (page_sources, problems)
 }
 
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
@@ -4738,5 +5111,256 @@ mod tests {
         assert_eq!(json["title"], "No Date");
         assert!(json["date"].is_null());
         assert!(json["description"].is_null());
+    }
+
+    fn staging_siblings(parent: &Path) -> Vec<String> {
+        fs::read_dir(parent)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.contains(".staging-") || n.contains(".old-"))
+            .collect()
+    }
+
+    fn write_post(paths: &ResolvedPaths, name: &str, body: &str) {
+        let dir = paths.content.join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(name), body).unwrap();
+    }
+
+    fn full_build(config: &SiteConfig, paths: &ResolvedPaths) -> Result<BuildResult> {
+        build_site(
+            config,
+            paths,
+            &BuildOptions {
+                include_drafts: false,
+                incremental: false,
+            },
+        )
+    }
+
+    #[test]
+    fn test_is_scratch_output_name() {
+        assert!(is_scratch_output_name("dist.staging-123", "dist"));
+        assert!(is_scratch_output_name("dist.old-9", "dist"));
+        assert!(!is_scratch_output_name("dist.staging-", "dist"));
+        assert!(!is_scratch_output_name("dist.staging-12a", "dist"));
+        assert!(!is_scratch_output_name("dist", "dist"));
+        assert!(!is_scratch_output_name("public.staging-1", "dist"));
+    }
+
+    #[test]
+    fn test_is_build_output_path() {
+        let config = minimal_config();
+        let paths = config.resolve_paths(Path::new("/site"));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist/index.html")
+        ));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist.staging-42/posts/a.html")
+        ));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist-subdomains/docs.staging-1/x.html")
+        ));
+        assert!(!is_build_output_path(
+            &paths,
+            Path::new("/site/content/posts/a.md")
+        ));
+        assert!(!is_build_output_path(
+            &paths,
+            Path::new("/site/distribution/a")
+        ));
+    }
+
+    #[test]
+    fn test_full_build_replaces_output_via_staging() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        fs::create_dir_all(&paths.output).unwrap();
+        fs::write(paths.output.join("stale.html"), "old").unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(paths.output.join("index.html").exists());
+        assert!(paths.output.join("posts/hello.html").exists());
+        assert!(
+            !paths.output.join("stale.html").exists(),
+            "full builds start from a clean output"
+        );
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_failed_full_build_keeps_previous_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        full_build(&config, &paths).unwrap();
+        let index_before = fs::read_to_string(paths.output.join("index.html")).unwrap();
+
+        write_post(&paths, "bad.md", "---\ntitle: [unclosed\n---\nbody\n");
+        assert!(full_build(&config, &paths).is_err());
+
+        assert_eq!(
+            fs::read_to_string(paths.output.join("index.html")).unwrap(),
+            index_before,
+            "a failed build must leave the previous output untouched"
+        );
+        assert!(paths.output.join("posts/hello.html").exists());
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_build_removes_leftover_staging_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        fs::create_dir_all(tmp.path().join("dist.staging-999999/posts")).unwrap();
+        fs::create_dir_all(tmp.path().join("dist.old-999999")).unwrap();
+        fs::create_dir_all(tmp.path().join("dist.staging-notes")).unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(staging_siblings(tmp.path()) == vec!["dist.staging-notes".to_string()]);
+    }
+
+    #[test]
+    fn test_incremental_content_build_updates_output_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# config\n").unwrap();
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        let incremental = BuildOptions {
+            include_drafts: false,
+            incremental: true,
+        };
+        build_site(&config, &paths, &incremental).unwrap();
+        // A file only the previous output has: an in-place build keeps it.
+        fs::write(paths.output.join("marker.txt"), "kept").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nChanged body\n",
+        );
+        let result = build_site(&config, &paths, &incremental).unwrap();
+
+        assert!(result.stats.incremental);
+        assert!(paths.output.join("marker.txt").exists());
+        assert!(fs::read_to_string(paths.output.join("posts/hello.html"))
+            .unwrap()
+            .contains("Changed body"));
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_swap_into_place_without_existing_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("out.staging-1");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("a.html"), "new").unwrap();
+        let output = tmp.path().join("out");
+
+        swap_into_place(tmp.path(), &staging, &output).unwrap();
+
+        assert_eq!(fs::read_to_string(output.join("a.html")).unwrap(), "new");
+        assert!(!staging.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_swap_into_place_keeps_symlinked_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real-out");
+        fs::create_dir_all(real.join("old-dir")).unwrap();
+        fs::write(real.join("old.html"), "old").unwrap();
+        let output = tmp.path().join("out");
+        std::os::unix::fs::symlink(&real, &output).unwrap();
+        let staging = tmp.path().join("out.staging-1");
+        fs::create_dir_all(staging.join("posts")).unwrap();
+        fs::write(staging.join("posts/a.html"), "new").unwrap();
+
+        swap_into_place(tmp.path(), &staging, &output).unwrap();
+
+        assert!(fs::symlink_metadata(&output)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read_to_string(real.join("posts/a.html")).unwrap(),
+            "new"
+        );
+        assert!(!real.join("old.html").exists());
+        assert!(!real.join("old-dir").exists());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn test_build_attributes_broken_links_to_markdown_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "2025-01-01-a.md",
+            "---\ntitle: A\ndate: 2025-01-01\n---\n\nIntro\n\n[gone](/posts/gone)\n\n![x](/static/nope.png)\n\n[b](./2025-01-02-b.md#top) [bad](./missing.md)\n",
+        );
+        write_post(
+            &paths,
+            "2025-01-02-b.md",
+            "---\ntitle: B\ndate: 2025-01-02\n---\nB\n",
+        );
+
+        let result = full_build(&config, &paths).unwrap();
+        let check = &result.link_check;
+
+        let gone = check
+            .broken_links
+            .iter()
+            .find(|l| l.href == "/posts/gone")
+            .expect("broken link reported");
+        assert_eq!(gone.location(), "content/posts/2025-01-01-a.md:8");
+
+        let md = check
+            .broken_links
+            .iter()
+            .find(|l| l.href == "./missing.md")
+            .expect("unresolved .md link reported");
+        assert_eq!(md.kind, links::LinkKind::Markdown);
+        assert_eq!(md.line, Some(12));
+
+        assert_eq!(check.missing_assets.len(), 1);
+        assert_eq!(
+            check.missing_assets[0].location(),
+            "content/posts/2025-01-01-a.md:10"
+        );
+
+        let html = fs::read_to_string(paths.output.join("posts/a.html")).unwrap();
+        assert!(html.contains(r#"href="/posts/b#top""#), "{html}");
     }
 }

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::build::{self, links, BuildOptions, BuildResult};
+use crate::build::{self, BuildOptions, BuildResult};
 use crate::output::{human, CommandOutput};
 
 use super::{load_site_in_workspace, WorkspaceConfig};
@@ -63,43 +63,17 @@ pub fn build_workspace(
         human::success(&result.stats.human_display());
 
         // Link validation results from the post-process pass (no extra file walk)
-        if !result.link_check.broken_links.is_empty() {
-            let grouped = links::group_broken_links(&result.link_check.broken_links);
-            let count = result.link_check.broken_links.len();
-            let target_count = grouped.len();
-
-            let header = format!(
-                "Site '{}': {count} broken internal link{} ({target_count} broken target{})",
+        let problems = crate::cli::build::print_link_report(
+            &result.link_check,
+            opts.strict,
+            Some(&ws_site.name),
+        );
+        if opts.strict && problems > 0 {
+            anyhow::bail!(
+                "Build failed: site '{}' has {}",
                 ws_site.name,
-                if count == 1 { "" } else { "s" },
-                if target_count == 1 { "" } else { "s" },
+                crate::cli::build::problem_summary(&result.link_check),
             );
-
-            if opts.strict {
-                human::error(&header);
-            } else {
-                human::warning(&header);
-            }
-
-            for (href, sources) in &grouped {
-                human::info(&format!(
-                    "  {} (linked from {} file{})",
-                    href,
-                    sources.len(),
-                    if sources.len() == 1 { "" } else { "s" }
-                ));
-                for source in sources {
-                    human::info(&format!("    - {source}"));
-                }
-            }
-
-            if opts.strict {
-                anyhow::bail!(
-                    "Build failed: site '{}' has {count} broken internal link{}",
-                    ws_site.name,
-                    if count == 1 { "" } else { "s" },
-                );
-            }
         }
 
         site_results.push((ws_site.name.clone(), result));
