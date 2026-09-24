@@ -26,6 +26,12 @@ pub struct PageMeta {
     /// ISO 8601 timestamp of when the project was first created.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initialized_at: Option<String>,
+    /// Coding agents the project is set up for (`claude`, `codex`, `opencode`,
+    /// `cursor`), chosen by `seite init --agents` / `seite upgrade --agents`.
+    /// `None` for projects created before the selection existed (treated as
+    /// every agent by `seite upgrade`, which then records it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agents: Option<Vec<String>>,
 }
 
 impl PageMeta {
@@ -34,15 +40,18 @@ impl PageMeta {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             initialized_at: Some(chrono::Utc::now().to_rfc3339()),
+            agents: None,
         }
     }
 
     /// Create a `PageMeta` stamped with the current version but no init timestamp.
-    /// Used when upgrading an existing project (preserves the original init time if present).
+    /// Used when upgrading an existing project (preserves the original init time
+    /// and agent selection if present).
     pub fn stamp_current_version(existing: Option<&PageMeta>) -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             initialized_at: existing.and_then(|m| m.initialized_at.clone()),
+            agents: existing.and_then(|m| m.agents.clone()),
         }
     }
 }
@@ -152,6 +161,29 @@ mod tests {
         let loaded = load(tmp.path()).unwrap();
         assert_eq!(loaded.version, meta.version);
         assert_eq!(loaded.initialized_at, meta.initialized_at);
+        assert!(loaded.agents.is_none());
+    }
+
+    #[test]
+    fn test_agents_roundtrip_and_stamp_preserves_them() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let meta = PageMeta {
+            agents: Some(vec!["claude".into(), "codex".into()]),
+            ..PageMeta::current()
+        };
+        write(tmp.path(), &meta).unwrap();
+        let loaded = load(tmp.path()).unwrap();
+        assert_eq!(loaded.agents, meta.agents);
+        let stamped = PageMeta::stamp_current_version(Some(&loaded));
+        assert_eq!(stamped.agents, meta.agents);
+    }
+
+    #[test]
+    fn test_load_legacy_meta_without_agents() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::create_dir_all(meta_dir(tmp.path())).unwrap();
+        fs::write(meta_path(tmp.path()), r#"{"version":"0.19.0"}"#).unwrap();
+        assert!(load(tmp.path()).unwrap().agents.is_none());
     }
 
     #[test]

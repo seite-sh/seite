@@ -7,6 +7,7 @@ pub mod collection;
 pub mod completions;
 pub mod contact;
 pub mod deploy;
+pub mod harness;
 pub mod init;
 pub mod mcp;
 pub mod new;

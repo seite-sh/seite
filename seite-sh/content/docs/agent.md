@@ -188,7 +188,16 @@ seite's agent understands your project natively. It knows the [configuration](/d
 
 ## Agent instruction scaffolding
 
-When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions and a one-line `CLAUDE.md` that imports it. This keeps one canonical instruction file for Claude Code, OpenCode, Codex, and other compatible agents. Seite also creates `.mcp.json` (declares the seite MCP server) and `.claude/settings.json` (pre-configured permissions plus `enabledMcpjsonServers` so that server starts without a prompt).
+When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions — the one canonical instruction file that Claude Code (through a one-line `CLAUDE.md` import), Codex, OpenCode, and Cursor all read. It then sets the site up for each coding agent you pick with `--agents` (default: all four), generating every agent's files from the same bundled content:
+
+- **Claude Code** — `.mcp.json` (declares the seite MCP server), `.claude/settings.json` (permissions plus `enabledMcpjsonServers`), path-scoped guides in `.claude/rules/`, and skills in `.claude/skills/`
+- **Cursor** — `.cursor/mcp.json` and the same guides as `.cursor/rules/*.mdc` (auto-attached by `globs`)
+- **Codex CLI** — `.codex/config.toml` with `[mcp_servers.seite]`
+- **OpenCode** — `opencode.json` with the MCP server and permission defaults (allow reads, site edits, and `seite build/new/serve/theme`; ask for everything else; deny `.env` reads)
+
+Codex, Cursor, and OpenCode read the bundled skills (`/theme-builder`, `/brand-identity`, `/landing-page`) from `.agents/skills/`. Agents without path-scoped rules (Codex, OpenCode) find the guides through the "Context Rules" index in `AGENTS.md`, and the "MCP Server" section lists each agent's one-time approval step.
+
+`seite agent` itself drives Claude Code; the other agents work in the project directly.
 
 Existing sites can migrate without losing their custom instructions:
 
@@ -196,7 +205,7 @@ Existing sites can migrate without losing their custom instructions:
 seite upgrade
 ```
 
-The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import.
+The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import. It also adds any missing files for the selected agents (older sites are treated as `all`), merging into existing configs rather than replacing them. Change the selection with `seite upgrade --agents claude,cursor`; files of deselected agents are left in place but no longer maintained.
 
 ## Next Steps
 

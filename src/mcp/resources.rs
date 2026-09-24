@@ -10,8 +10,15 @@ use walkdir::WalkDir;
 use super::{content_index, JsonRpcError, ServerState};
 use crate::content;
 
-/// Claude Code project files exposed by `seite://mcp-config`.
-const MCP_CONFIG_FILES: [&str; 2] = [".mcp.json", ".claude/settings.json"];
+/// Coding-agent project config files exposed by `seite://mcp-config`:
+/// Claude Code (`.mcp.json`, `.claude/settings.json`), Cursor, OpenCode, Codex.
+const MCP_CONFIG_FILES: [&str; 5] = [
+    ".mcp.json",
+    ".claude/settings.json",
+    ".cursor/mcp.json",
+    "opencode.json",
+    ".codex/config.toml",
+];
 
 /// Config and paths, or the actionable "why not" message as a JSON-RPC error.
 fn site(
@@ -87,7 +94,7 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
             resources.push(serde_json::json!({
                 "uri": "seite://mcp-config",
                 "name": "MCP Configuration",
-                "description": "Claude Code project configuration: .mcp.json (MCP servers) and .claude/settings.json (permissions)",
+                "description": "Coding-agent project configuration: MCP server and permission files for Claude Code (.mcp.json, .claude/settings.json), Cursor (.cursor/mcp.json), OpenCode (opencode.json), and Codex (.codex/config.toml)",
                 "mimeType": "application/json"
             }));
         }
@@ -465,13 +472,17 @@ fn read_mcp_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcErro
         let Ok(raw) = fs::read_to_string(state.cwd.join(rel)) else {
             continue;
         };
-        let value = serde_json::from_str::<serde_json::Value>(&raw)
-            .unwrap_or_else(|e| serde_json::json!({ "parse_error": e.to_string() }));
+        let parsed = if rel.ends_with(".toml") {
+            toml::from_str::<serde_json::Value>(&raw).map_err(|e| e.to_string())
+        } else {
+            serde_json::from_str::<serde_json::Value>(&raw).map_err(|e| e.to_string())
+        };
+        let value = parsed.unwrap_or_else(|e| serde_json::json!({ "parse_error": e }));
         files.insert(rel.to_string(), value);
     }
     if files.is_empty() {
         return Err(JsonRpcError::invalid_params(format!(
-            "Cannot read .mcp.json or .claude/settings.json in {}. Run `seite upgrade` to create them.",
+            "No coding-agent MCP config (.mcp.json, .cursor/mcp.json, opencode.json, .codex/config.toml) in {}. Run `seite upgrade` to create them.",
             state.cwd.display()
         )));
     }
@@ -1616,7 +1627,32 @@ mod tests {
         let state = make_empty_state(tmp.path());
         let err = read_mcp_config(&state).unwrap_err();
         assert_eq!(err.code, -32602);
-        assert!(err.message.contains("Cannot read"));
+        assert!(err.message.contains("No coding-agent MCP config"));
+    }
+
+    #[test]
+    fn test_read_mcp_config_includes_other_agents() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".codex")).unwrap();
+        fs::write(
+            tmp.path().join(".codex/config.toml"),
+            crate::cli::harness::codex_config_toml(),
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("opencode.json"),
+            crate::cli::harness::pretty_json(&crate::cli::harness::opencode_json()),
+        )
+        .unwrap();
+        let state = make_empty_state(tmp.path());
+        let result = read_mcp_config(&state).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(result["contents"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            parsed[".codex/config.toml"]["mcp_servers"]["seite"]["command"],
+            "seite"
+        );
+        assert_eq!(parsed["opencode.json"]["mcp"]["seite"]["type"], "local");
     }
 
     // -----------------------------------------------------------------------

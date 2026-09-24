@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Args;
 
+use crate::cli::harness::{self, Agent, SiteFeatures};
 use crate::cli::prompt;
 use crate::config::{CollectionConfig, DeployTarget, SiteConfig};
 use crate::content;
@@ -50,6 +51,11 @@ pub struct InitArgs {
     /// Contact form endpoint/ID
     #[arg(long)]
     pub contact_endpoint: Option<String>,
+
+    /// Coding agents to set the site up for (comma-separated: claude,codex,opencode,cursor, or all).
+    /// Default: all
+    #[arg(long, value_name = "LIST")]
+    pub agents: Option<String>,
 }
 
 pub fn run(args: &InitArgs) -> anyhow::Result<()> {
@@ -122,6 +128,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         anyhow::bail!("at least one collection is required");
     }
 
+    // Coding agents to generate config for (AGENTS.md is always written).
+    let agents = harness::resolve_init_agents(args.agents.as_deref())?;
+
     let root = PathBuf::from(&name);
     if root.exists() {
         anyhow::bail!("directory '{}' already exists", name);
@@ -135,7 +144,6 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join("static"))?;
     fs::create_dir_all(root.join("public"))?;
     fs::create_dir_all(root.join("data"))?;
-    fs::create_dir_all(root.join(".claude"))?;
     fs::create_dir_all(root.join(".seite"))?;
 
     // Write .gitignore
@@ -373,52 +381,22 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         }
     }
 
-    // Write project metadata (.seite/config.json)
-    meta::write(&root, &meta::PageMeta::current())?;
-
-    // Write Claude Code settings (.claude/settings.json) and the project MCP
-    // server config (.mcp.json — the only place Claude Code reads project
-    // MCP servers from).
-    fs::write(
-        root.join(".claude/settings.json"),
-        generate_claude_settings(),
+    // Write project metadata (.seite/config.json), recording the agent
+    // selection so `seite upgrade` knows which harness files to maintain.
+    meta::write(
+        &root,
+        &meta::PageMeta {
+            agents: Some(harness::to_ids(&agents)),
+            ..meta::PageMeta::current()
+        },
     )?;
-    fs::write(root.join(".mcp.json"), generate_mcp_json())?;
 
-    // Write Claude Code skills
-    if collections.iter().any(|c| c.name == "pages") {
-        let skill_dir = root.join(".claude/skills/landing-page");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-landing-page.md"),
-        )?;
-    }
+    // Per-agent harness files: MCP server config, permissions, path-scoped
+    // rules, and skills (plus the CLAUDE.md `@AGENTS.md` shim for Claude Code).
+    let features = SiteFeatures::from_config(&config);
+    harness::write_plan(&root, &agents, features)?;
 
-    {
-        let skill_dir = root.join(".claude/skills/theme-builder");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-theme-builder.md"),
-        )?;
-    }
-
-    {
-        let skill_dir = root.join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-brand-identity.md"),
-        )?;
-    }
-
-    // Write .claude/rules/ files (path-scoped context for Claude)
-    generate_rules_files(&root, &collections, config.contact.is_some())?;
-
-    // Write cross-agent project instructions and a Claude Code compatibility shim.
-    // Claude Code expands the @AGENTS.md import, while other agents can consume
-    // AGENTS.md directly.
+    // Cross-agent project instructions, read by every supported agent.
     fs::write(
         root.join("AGENTS.md"),
         generate_agents_md(
@@ -427,9 +405,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             &description,
             &collections,
             trust_opts.as_ref(),
+            &agents,
         ),
     )?;
-    fs::write(root.join("CLAUDE.md"), "@AGENTS.md\n")?;
 
     human::success(&format!("Created new site in '{name}'"));
     crate::human_println!();
@@ -450,6 +428,15 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "  seite agent             {} write content & themes with Claude Code",
         console::style("←").dim()
     );
+    crate::human_println!();
+    human::info(&format!(
+        "Set up for {} — see AGENTS.md → MCP Server for each agent's one-time approval step.",
+        agents
+            .iter()
+            .map(|a| a.label())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
 
     let root_display = std::env::current_dir()
         .map(|cwd| cwd.join(&root))
@@ -461,6 +448,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "collections": collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
         "deploy_target": deploy_target,
         "contact": config.contact.is_some(),
+        "agents": harness::to_ids(&agents),
     }));
 
     Ok(())
@@ -818,181 +806,6 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     Ok(())
 }
 
-/// Permission rules pre-approved in a new site's `.claude/settings.json`.
-///
-/// `mcp__seite` allows every tool of the `seite` MCP server (Claude Code's
-/// server-level MCP permission rule).
-pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
-    "Read",
-    "Write(content/**)",
-    "Write(templates/**)",
-    "Write(static/**)",
-    "Write(data/**)",
-    "Edit(content/**)",
-    "Edit(templates/**)",
-    "Edit(static/**)",
-    "Edit(data/**)",
-    "Edit(seite.toml)",
-    "Bash(seite build:*)",
-    "Bash(seite build)",
-    "Bash(seite new:*)",
-    "Bash(seite serve:*)",
-    "Bash(seite theme:*)",
-    "Glob",
-    "Grep",
-    "WebSearch",
-    "mcp__seite",
-];
-
-/// Allow rules that `seite upgrade` adds to existing projects' settings
-/// (introduced after the original settings template).
-pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] =
-    &["mcp__seite", "Edit(static/**)", "Edit(seite.toml)"];
-
-/// `.claude/settings.json` for a new site: permissions plus
-/// `enabledMcpjsonServers`, which pre-approves the `seite` server declared in
-/// `.mcp.json`. (Claude Code ignores `mcpServers` in settings.json.)
-pub fn claude_settings() -> serde_json::Value {
-    serde_json::json!({
-        "$schema": "https://json.schemastore.org/claude-code-settings.json",
-        "permissions": {
-            "allow": CLAUDE_ALLOWED_TOOLS,
-            "deny": ["Read(.env)", "Read(.env.*)"]
-        },
-        "enabledMcpjsonServers": ["seite"]
-    })
-}
-
-/// Generate .claude/settings.json with pre-approved tools.
-fn generate_claude_settings() -> String {
-    let json = serde_json::to_string_pretty(&claude_settings()).unwrap_or_default();
-    format!("{json}\n")
-}
-
-/// `.mcp.json` — the project-scoped MCP server config Claude Code reads.
-pub fn mcp_json() -> serde_json::Value {
-    serde_json::json!({ "mcpServers": mcp_server_block() })
-}
-
-fn generate_mcp_json() -> String {
-    let json = serde_json::to_string_pretty(&mcp_json()).unwrap_or_default();
-    format!("{json}\n")
-}
-
-/// The `mcpServers` entry for the seite server (as used in `.mcp.json`).
-/// Used by upgrade to merge into an existing `.mcp.json`.
-pub fn mcp_server_block() -> serde_json::Value {
-    serde_json::json!({
-        "seite": {
-            "command": "seite",
-            "args": ["mcp"]
-        }
-    })
-}
-
-/// Wrap scaffold content with `.claude/rules/` YAML frontmatter.
-pub(crate) fn rules_file(paths: &[&str], content: &str) -> String {
-    let mut result = String::with_capacity(content.len() + 128);
-    result.push_str("---\npaths:\n");
-    for p in paths {
-        result.push_str(&format!("  - \"{p}\"\n"));
-    }
-    result.push_str("---\n");
-    result.push_str(content);
-    result
-}
-
-/// Write `.claude/rules/*.md` files with path-scoped context for Claude.
-fn generate_rules_files(
-    root: &Path,
-    collections: &[CollectionConfig],
-    has_contact: bool,
-) -> std::io::Result<()> {
-    let rules_dir = root.join(".claude/rules");
-    fs::create_dir_all(&rules_dir)?;
-
-    // Always-present rules
-    fs::write(
-        rules_dir.join("seo-requirements.md"),
-        rules_file(
-            &["templates/**"],
-            include_str!("../scaffold/seo-requirements.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("templates.md"),
-        rules_file(&["templates/**"], include_str!("../scaffold/templates.md")),
-    )?;
-    fs::write(
-        rules_dir.join("i18n.md"),
-        rules_file(
-            &["content/**", "templates/**", "data/i18n/**"],
-            include_str!("../scaffold/i18n.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("data-files.md"),
-        rules_file(&["data/**"], include_str!("../scaffold/data-files.md")),
-    )?;
-    fs::write(
-        rules_dir.join("shortcodes.md"),
-        rules_file(
-            &["content/**", "templates/shortcodes/**"],
-            include_str!("../scaffold/shortcodes.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("config-reference.md"),
-        rules_file(
-            &["seite.toml"],
-            include_str!("../scaffold/config-reference.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("features.md"),
-        rules_file(
-            &["content/**", "templates/**"],
-            include_str!("../scaffold/features.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("design-prompts.md"),
-        rules_file(
-            &["templates/**"],
-            include_str!("../scaffold/design-prompts.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("private-collections.md"),
-        rules_file(
-            &["seite.toml", "content/**"],
-            include_str!("../scaffold/private-collections.md"),
-        ),
-    )?;
-
-    // Conditional rules
-    if has_contact {
-        fs::write(
-            rules_dir.join("contact-form.md"),
-            rules_file(
-                &["content/**", "templates/**", "seite.toml"],
-                include_str!("../scaffold/contact-form.md"),
-            ),
-        )?;
-    }
-    if collections.iter().any(|c| c.name == "trust") {
-        fs::write(
-            rules_dir.join("trust-center.md"),
-            rules_file(
-                &["content/trust/**", "data/trust/**"],
-                include_str!("../scaffold/rules-trust-center.md"),
-            ),
-        )?;
-    }
-
-    Ok(())
-}
-
 /// Generate an AGENTS.md tailored to the site's collections and structure.
 fn generate_agents_md(
     config: &SiteConfig,
@@ -1000,8 +813,11 @@ fn generate_agents_md(
     description: &str,
     collections: &[CollectionConfig],
     trust_opts: Option<&TrustOptions>,
+    agents: &[Agent],
 ) -> String {
     let mut md = String::with_capacity(8192);
+    let features = SiteFeatures::from_config(config);
+    let (rules_dir, rules_ext) = harness::rules_location(agents);
 
     // Header (dynamic)
     md.push_str(&format!("# {title}\n\n"));
@@ -1184,15 +1000,22 @@ fn generate_agents_md(
         md.push_str(include_str!("../scaffold/landing-page-builder.md"));
     }
 
-    // MCP Server
-    md.push_str(&include_str!("../scaffold/mcp.md").replace(
-        "{trust_resource}",
-        if trust_opts.is_some() {
-            ", `seite://trust` (trust center data)"
-        } else {
-            ""
-        },
-    ));
+    // MCP Server (per-agent config table is a marker block `seite upgrade` refreshes)
+    md.push_str(
+        &include_str!("../scaffold/mcp.md")
+            .replace(
+                "{mcp_setup}",
+                &harness::wrap_block(harness::MCP_SETUP_BLOCK, &harness::mcp_setup_table(agents)),
+            )
+            .replace(
+                "{trust_resource}",
+                if trust_opts.is_some() {
+                    ", `seite://trust` (trust center data)"
+                } else {
+                    ""
+                },
+            ),
+    );
 
     // Trust Center (brief — details in .claude/rules/trust-center.md)
     if let Some(opts) = trust_opts {
@@ -1213,7 +1036,7 @@ fn generate_agents_md(
                 md.push_str(&format!("- **{name}** — {badge}\n"));
             }
         }
-        md.push_str("\nSee `.claude/rules/trust-center.md` for data file formats, management workflows, and MCP integration.\n\n");
+        md.push_str(&format!("\nSee `{rules_dir}/trust-center.{rules_ext}` for data file formats, management workflows, and MCP integration.\n\n"));
     }
 
     // Contact forms (brief — details in .claude/rules/contact-form.md)
@@ -1256,18 +1079,13 @@ fn generate_agents_md(
     md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
     md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
 
-    // Context rules note
+    // Context rules index (generated from the same rule list as the rules files)
     md.push_str("## Context Rules\n\n");
-    md.push_str("Detailed guides live in `.claude/rules/`. Claude Code loads them automatically for matching files. Other agents should read the relevant guides before editing:\n\n");
-    md.push_str(
-        "- `templates/**`: `templates.md`, `seo-requirements.md`, and `design-prompts.md`\n",
-    );
-    md.push_str("- `content/**` or `templates/shortcodes/**`: `i18n.md`, `shortcodes.md`, and `features.md`\n");
-    md.push_str("- `data/**`: `data-files.md`\n");
-    md.push_str("- `seite.toml`: `config-reference.md` and `private-collections.md`\n");
-    md.push_str(
-        "- Contact or trust-center work: `contact-form.md` or `trust-center.md` when present\n\n",
-    );
+    md.push_str(&harness::wrap_block(
+        harness::RULES_INDEX_BLOCK,
+        &harness::rules_index(features, agents),
+    ));
+    md.push('\n');
 
     // Documentation links
     md.push_str("## Documentation\n\n");

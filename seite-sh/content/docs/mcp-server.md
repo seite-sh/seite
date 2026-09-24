@@ -35,7 +35,16 @@ No file parsing. No guessing. The AI tool gets clean data and can focus on what 
 
 ## How It Works
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code only reads project MCP servers from `.mcp.json`:
+The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. `seite init` declares it in the project config of every coding agent you select (`--agents`, default all), and `seite upgrade` adds it to existing projects, merging into configs you already have:
+
+| Agent | Project config | One-time step |
+|-------|----------------|---------------|
+| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` in `.claude/settings.json`) | May ask you to approve the server on first open; check with `/mcp` |
+| Codex CLI | `.codex/config.toml` | Codex only loads project config for trusted projects: accept the trust prompt on first run, then `codex mcp list` shows it |
+| Cursor | `.cursor/mcp.json` | Approve it in Cursor's MCP settings, or run `cursor-agent mcp enable seite` |
+| OpenCode | `opencode.json` | None — it starts automatically |
+
+Claude Code and Cursor share the same JSON shape:
 
 ```json
 {
@@ -48,15 +57,26 @@ The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using
 }
 ```
 
-`.claude/settings.json` pre-approves that server so Claude Code can start it without asking each time:
+Codex (`.codex/config.toml`):
+
+```toml
+[mcp_servers.seite]
+command = "seite"
+args = ["mcp"]
+```
+
+OpenCode (`opencode.json`):
 
 ```json
 {
-  "enabledMcpjsonServers": ["seite"]
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "seite": { "type": "local", "command": ["seite", "mcp"], "enabled": true }
+  }
 }
 ```
 
-Both files are scaffolded by `seite init`; `seite upgrade` adds them to existing projects and migrates any older `mcpServers` block out of `settings.json` (Claude Code never reads MCP servers from there). The first time Claude Code opens the project it may still ask you to approve the server once.
+`seite upgrade` also migrates any older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
 
 ## Resources
 
@@ -70,7 +90,7 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Content overview | `seite://content` | All collections with item counts |
 | Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
 | Themes | `seite://themes` | Available bundled and installed themes |
-| MCP configuration | `seite://mcp-config` | `.mcp.json` (server declaration) and `.claude/settings.json` (approval + permissions) |
+| MCP configuration | `seite://mcp-config` | Each agent's project config that exists: `.mcp.json` and `.claude/settings.json` (Claude Code), `.cursor/mcp.json`, `opencode.json`, `.codex/config.toml` (as JSON) |
 
 Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`) are only available when running inside a page project directory.
 

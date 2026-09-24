@@ -63,6 +63,7 @@ seite init <name> [options]
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
+| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor` or `all` (default: all) |
 
 If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
@@ -70,9 +71,23 @@ If flags are omitted, `seite init` prompts interactively. Without a terminal (or
 # Non-interactive
 seite init mysite --title "My Blog" --deploy-target github-pages --collections posts,pages
 
+# Only set the site up for Claude Code and Codex
+seite init mysite --deploy-target github-pages --agents claude,codex
+
 # Interactive
 seite init mysite
 ```
+
+Every site gets an `AGENTS.md` (read by all four agents). `--agents` decides which agent-specific files are generated from the same bundled content:
+
+| Agent | Files |
+|-------|-------|
+| `claude` (Claude Code) | `CLAUDE.md` (`@AGENTS.md` import), `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md`, `.claude/skills/*/SKILL.md` |
+| `cursor` (Cursor editor + `cursor-agent`) | `.cursor/mcp.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
+| `codex` (Codex CLI) | `.codex/config.toml` (`[mcp_servers.seite]`) |
+| `opencode` (OpenCode) | `opencode.json` (`mcp.seite` + permission defaults) |
+
+Codex, Cursor, and OpenCode also get the bundled skills in `.agents/skills/`. The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 
@@ -345,12 +360,12 @@ Start the MCP (Model Context Protocol) server for AI tool integration. Communica
 seite mcp
 ```
 
-This command is designed to be spawned automatically by Claude Code (or other MCP clients) as a subprocess. `seite init` declares it in `.mcp.json` and pre-approves it in `.claude/settings.json` (`enabledMcpjsonServers`), so it requires no manual invocation.
+This command is designed to be spawned automatically by your coding agent as a subprocess. `seite init` declares it in each selected agent's project config — `.mcp.json` (Claude Code, pre-approved in `.claude/settings.json`), `.cursor/mcp.json` (Cursor), `.codex/config.toml` (Codex), `opencode.json` (OpenCode) — so it requires no manual invocation.
 
 The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, create content, search, apply theme, lookup docs). See the [MCP Server](/docs/mcp-server) guide for full details.
 
 {{% callout(type="info") %}}
-You don't need to run this command manually. Claude Code starts it automatically when you open a page project (it may still ask you to approve the project's MCP server the first time). Use `seite upgrade` to add the `.mcp.json`/`.claude/settings.json` configuration to existing projects — it also migrates any older `mcpServers` block out of `settings.json`, which Claude Code no longer reads.
+You don't need to run this command manually. Agents start it when you open the project, after a one-time approval: Claude Code may ask the first time (`/mcp`), Codex loads project config only once you trust the project, Cursor needs `cursor-agent mcp enable seite` (or approval in its MCP settings), and OpenCode starts it automatically. Use `seite upgrade` to add the configuration to existing projects — it also migrates any older `mcpServers` block out of `.claude/settings.json`, which Claude Code no longer reads.
 {{% end %}}
 
 ## seite upgrade
@@ -365,19 +380,24 @@ seite upgrade [options]
 |------|-------------|
 | `--force` | Apply all upgrades without confirmation |
 | `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
+| `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor` or `all`) |
 
 ```bash
 seite upgrade                # Interactive: shows changes, asks for confirmation
 seite upgrade --force        # Apply all changes without prompting
 seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
+seite upgrade --agents claude,cursor   # Add Cursor files; stop maintaining Codex/OpenCode files
 ```
 
 Upgrade is **additive and non-destructive**:
 - Creates or merges `.mcp.json` (the seite MCP server declaration) and `.claude/settings.json` (permissions + `enabledMcpjsonServers`), adding new entries and never removing yours; any legacy `mcpServers` block in `settings.json` is moved into `.mcp.json`, since Claude Code only reads project MCP servers from there
 - Migrates project guidance to `AGENTS.md` while preserving existing instructions
 - Keeps `CLAUDE.md` as a compatibility import of `AGENTS.md`
-- Creates `.seite/config.json` if missing: tracks the project's config version
-- Each upgrade step is version-gated, so running it on a current project is a fast no-op
+- Adds missing files for the selected coding agents (see [`seite init`](#seite-init)); projects created before agent selection existed are treated as `all`, and the selection is recorded. Existing configs are merged, never replaced: `.cursor/mcp.json` keeps your other servers, `opencode.json` gets `mcp.seite` only if missing and the permission defaults only if it has no `permission` key, and `.codex/config.toml` gets `[mcp_servers.seite]` appended with your comments and tables untouched. Rules files are only created when missing; skills are refreshed when the bundled `seite-skill-version` is newer
+- Refreshes the seite-owned blocks in `AGENTS.md` (per-agent MCP table, rules index) to match the selection
+- Deselecting an agent never deletes its files — they are left in place and no longer maintained
+- Creates `.seite/config.json` if missing: tracks the project's config version and agent selection
+- Version-specific steps are gated, and the agent-file checks are idempotent, so running it on a current project is a fast no-op
 
 {{% callout(type="tip") %}}
 `seite build` will nudge you with a one-liner when your project config is outdated: *"Run `seite upgrade` for new features."* The build still succeeds. The nudge is informational only.
