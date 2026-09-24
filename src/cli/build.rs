@@ -109,8 +109,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     // Link validation results from the post-process pass (no extra file walk)
     let problems = print_link_report(&result.link_check, args.strict, None);
     if args.strict && problems > 0 {
-        json_out::set_data(build_data(&result, Some(&paths.output)));
-        anyhow::bail!("Build failed: {}", problem_summary(&result.link_check));
+        return Err(strict_link_failure(&result.link_check));
     }
 
     let mut diagnostics = Diagnostics::from(config_diagnostics);
@@ -119,6 +118,22 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     data["diagnostics"] = serde_json::to_value(&diagnostics).unwrap_or_default();
     json_out::set_data(data);
     Ok(())
+}
+
+/// The `--strict` failure for broken links / missing assets.
+///
+/// With `--json` the error carries every problem as located diagnostics
+/// (`error.diagnostics` with code, file, line, hint). In human mode the
+/// grouped report was already printed, so the error is just the summary
+/// (`main` would otherwise print each problem a second time).
+pub fn strict_link_failure(check: &links::LinkCheckResult) -> anyhow::Error {
+    let summary = format!("Build failed: {}", problem_summary(check));
+    if output::is_json() {
+        let diagnostics = Diagnostics::from(links::link_diagnostics(check, true));
+        anyhow::Error::new(crate::error::PageError::Diagnostics(diagnostics)).context(summary)
+    } else {
+        anyhow::anyhow!(summary)
+    }
 }
 
 /// Structured build summary for the `--json` envelope.

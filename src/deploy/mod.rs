@@ -2722,6 +2722,7 @@ mod tests {
             output: std::path::PathBuf::from("/nonexistent/dist"),
             data_dir: std::path::PathBuf::from("/nonexistent/data"),
             public_dir: std::path::PathBuf::from("/nonexistent/public"),
+            subdomain_output_root: std::path::PathBuf::from("/nonexistent/dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(!check.passed);
@@ -2741,6 +2742,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(!check.passed);
@@ -2761,6 +2763,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(check.passed);
@@ -2780,6 +2783,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "github-pages");
@@ -2825,6 +2829,7 @@ mod tests {
             output: dir.join("dist"),
             data_dir: dir.join("data"),
             public_dir: dir.join("public"),
+            subdomain_output_root: dir.join("dist-subdomains"),
         }
     }
 
@@ -3748,6 +3753,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "cloudflare");
@@ -3775,6 +3781,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "netlify");
@@ -3801,6 +3808,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "unknown-target");
@@ -3822,6 +3830,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let mut config = test_config("https://example.com");
         config.deploy.domain = Some("example.com".into());
@@ -3844,6 +3853,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let mut config = test_config("https://example.com");
         config.deploy.domain = Some("mysite.com".into());
@@ -4229,6 +4239,7 @@ target = "github-pages"
             output: std::path::PathBuf::from("/nonexistent/dist"),
             data_dir: std::path::PathBuf::from("/nonexistent/data"),
             public_dir: std::path::PathBuf::from("/nonexistent/public"),
+            subdomain_output_root: std::path::PathBuf::from("/nonexistent/dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert_eq!(check.name, "Output directory");
@@ -4725,6 +4736,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         // No domain configured
@@ -4747,6 +4759,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "netlify");
@@ -4772,6 +4785,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "github-pages");
@@ -5620,6 +5634,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         // This will fail at the git init step, but .nojekyll should exist
@@ -5641,6 +5656,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://myblog.com");
         let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
@@ -5664,6 +5680,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://user.github.io");
         let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
@@ -5689,6 +5706,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(check.passed);

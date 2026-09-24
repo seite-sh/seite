@@ -479,3 +479,136 @@ fn test_build_json_broken_links_include_source_and_line() {
     assert_eq!(missing[0]["target"], "/static/ghost.png");
     assert_eq!(missing[0]["line"], 8);
 }
+
+#[test]
+fn test_build_strict_reports_subdomain_broken_links() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(
+        &site,
+        "content/docs/guide.md",
+        "---\ntitle: Guide\n---\n\nIntro.\n\nSee [bad](/nonexistent-page).\n\n![bad](/missing.png)\n",
+    );
+
+    // Non-strict: warnings in the report and the JSON data.
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    let broken = doc["data"]["broken_links"].as_array().unwrap();
+    assert!(
+        broken.iter().any(|b| b["target"] == "/nonexistent-page"
+            && b["source"] == "content/docs/guide.md"
+            && b["line"] == 7),
+        "{doc}"
+    );
+    let missing = doc["data"]["missing_assets"].as_array().unwrap();
+    assert!(
+        missing.iter().any(|b| b["target"] == "/missing.png"),
+        "{doc}"
+    );
+
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "1 broken internal link, 1 missing asset",
+        ))
+        .stdout(predicate::str::contains("/nonexistent-page"))
+        .stdout(predicate::str::contains("content/docs/guide.md:7"))
+        .stdout(predicate::str::contains("/missing.png"));
+}
+
+#[test]
+fn test_build_md_links_across_subdomains() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(
+        &site,
+        "content/docs/intro.md",
+        "---\ntitle: Intro\n---\nBack to [the post](../posts/2025-01-01-hello.md#top).\n",
+    );
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-hello.md",
+        "---\ntitle: Hello\n---\nRead the [intro](../docs/intro.md).\n",
+    );
+
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .success();
+
+    let post = fs::read_to_string(site.join("dist/posts/hello.html")).unwrap();
+    assert!(
+        post.contains(r#"href="https://docs.example.com/intro""#),
+        "main -> subdomain: {post}"
+    );
+    let doc = fs::read_to_string(site.join("dist-subdomains/docs/intro.html")).unwrap();
+    assert!(
+        doc.contains(r#"href="https://example.com/posts/hello#top""#),
+        "subdomain -> main: {doc}"
+    );
+}
+
+#[test]
+fn test_build_strict_json_includes_link_diagnostics() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Strict Json", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-broken.md",
+        "---\ntitle: Broken\n---\n\nSee [gone](/posts/not-here).\n",
+    );
+
+    let output = page_cmd()
+        .args(["--json", "build", "--strict"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    let diagnostics = doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no diagnostics: {doc}"));
+    let first = &diagnostics[0];
+    assert_eq!(first["code"], "broken-link", "{doc}");
+    assert_eq!(first["severity"], "error", "{doc}");
+    assert_eq!(first["file"], "content/posts/2025-01-01-broken.md", "{doc}");
+    assert_eq!(first["line"], 5, "{doc}");
+    assert!(first["message"]
+        .as_str()
+        .unwrap()
+        .contains("/posts/not-here"));
+
+    // Human output: the grouped report plus one summary, not the same
+    // problem repeated as diagnostic lines.
+    let output = page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(all.matches("/posts/not-here").count(), 1, "{all}");
+    assert!(
+        all.contains("content/posts/2025-01-01-broken.md:5"),
+        "{all}"
+    );
+    assert!(
+        all.contains("Error: Build failed: 1 broken internal link"),
+        "{all}"
+    );
+}

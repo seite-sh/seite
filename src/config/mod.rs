@@ -514,12 +514,17 @@ pub struct ResolvedPaths {
     pub static_dir: PathBuf,
     pub data_dir: PathBuf,
     pub public_dir: PathBuf,
+    /// Directory holding each subdomain collection's output
+    /// (`{root}/dist-subdomains`). Kept separate from `root` so an output-only
+    /// redirect (e.g. `seite check` building into a scratch dir) still reads
+    /// sources from the real site.
+    pub subdomain_output_root: PathBuf,
 }
 
 impl ResolvedPaths {
     /// Output directory for a subdomain collection (e.g., `{root}/dist-subdomains/docs/`).
     pub fn subdomain_output(&self, collection_name: &str) -> PathBuf {
-        self.root.join("dist-subdomains").join(collection_name)
+        self.subdomain_output_root.join(collection_name)
     }
 }
 
@@ -876,6 +881,7 @@ impl SiteConfig {
             static_dir: project_root.join(&self.build.static_dir),
             data_dir: project_root.join(&self.build.data_dir),
             public_dir: project_root.join(&self.build.public_dir),
+            subdomain_output_root: project_root.join("dist-subdomains"),
         }
     }
 }
@@ -1242,6 +1248,7 @@ deploy_project = "my-docs"
             static_dir: PathBuf::from("/project/static"),
             data_dir: PathBuf::from("/project/data"),
             public_dir: PathBuf::from("/project/public"),
+            subdomain_output_root: PathBuf::from("/project/dist-subdomains"),
         };
         assert_eq!(
             paths.subdomain_output("docs"),

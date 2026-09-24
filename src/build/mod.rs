@@ -42,6 +42,9 @@ pub struct BuildOptions {
 pub struct BuildResult {
     pub collections: HashMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
+    /// Broken links and missing assets across the whole site: the main
+    /// output plus every subdomain output (each subdomain's own results are
+    /// also on its [`SubdomainBuildInfo`]).
     pub link_check: links::LinkCheckResult,
     /// Per-subdomain build results.
     pub subdomain_builds: Vec<SubdomainBuildInfo>,
@@ -62,6 +65,9 @@ pub struct SubdomainBuildInfo {
     pub output_dir: PathBuf,
     pub base_url: String,
     pub stats: BuildStats,
+    /// Link validation for this subdomain's output (already included in
+    /// [`BuildResult::link_check`]).
+    pub link_check: links::LinkCheckResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -375,6 +381,16 @@ pub fn build_site(
         Some(&main_rewrites)
     };
 
+    // `.md` source links may point at content published on another origin
+    // (main site <-> subdomain). Index every collection's sources once, before
+    // the outputs are split, so each build can resolve them.
+    let site_sources = if has_subdomains {
+        site_source_urls(config, paths, opts)
+    } else {
+        Vec::new()
+    };
+    let main_external = cross_origin_source_urls(config, &site_sources, None);
+
     let result = build_site_inner(
         effective_config,
         &main_paths,
@@ -382,6 +398,7 @@ pub fn build_site(
         rewrites_ref,
         &changeset,
         &paths.output,
+        &main_external,
     )?;
 
     let mut warnings = result.warnings;
@@ -393,6 +410,7 @@ pub fn build_site(
             config,
             paths,
             opts,
+            &site_sources,
             &mut warnings,
             &mut staged,
             &mut diagnostics,
@@ -422,10 +440,15 @@ pub fn build_site(
         }
     }
 
+    let mut link_check = result.link_check;
+    for sub in &subdomain_builds {
+        link_check.merge(&sub.link_check);
+    }
+
     Ok(BuildResult {
         collections: result.collections,
         stats: result.stats,
-        link_check: result.link_check,
+        link_check,
         subdomain_builds,
         warnings,
         diagnostics,
@@ -543,8 +566,8 @@ fn process_running(_pid: u32, path: &Path) -> bool {
 /// `dist-subdomains/`, or a staging/old sibling of the output). The dev
 /// server's file watcher ignores these so builds don't trigger rebuilds.
 pub fn is_build_output_path(paths: &ResolvedPaths, path: &Path) -> bool {
-    let subdomains_root = paths.root.join("dist-subdomains");
-    if path.starts_with(&paths.output) || path.starts_with(&subdomains_root) {
+    let subdomains_root = &paths.subdomain_output_root;
+    if path.starts_with(&paths.output) || path.starts_with(subdomains_root) {
         return true;
     }
     let (Some(parent), Some(name)) = (
@@ -706,8 +729,8 @@ fn copy_recursively(src: &Path, dest: &Path) -> Result<()> {
 /// longer deployed to a subdomain (previously handled by wiping the whole
 /// directory before every build). Best-effort.
 fn prune_stale_subdomain_outputs(config: &SiteConfig, paths: &ResolvedPaths) {
-    let subdomains_root = paths.root.join("dist-subdomains");
-    let Ok(entries) = fs::read_dir(&subdomains_root) else {
+    let subdomains_root = &paths.subdomain_output_root;
+    let Ok(entries) = fs::read_dir(subdomains_root) else {
         return;
     };
     let current: HashSet<String> = config
@@ -764,6 +787,7 @@ fn build_subdomain_sites(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
+    site_sources: &[SiteSource],
     warnings: &mut Vec<String>,
     staged: &mut StagedOutputs,
     diagnostics: &mut Diagnostics,
@@ -795,6 +819,7 @@ fn build_subdomain_sites(
         // Build reverse rewrite map: links from subdomain content to other collections
         // resolve to absolute URLs on the main site (or other subdomains)
         let reverse_rewrites = config.reverse_subdomain_rewrite_map(&collection.name);
+        let external = cross_origin_source_urls(config, site_sources, Some(&collection.name));
 
         let sub_result = build_site_inner(
             &sub_config,
@@ -803,6 +828,7 @@ fn build_subdomain_sites(
             Some(&reverse_rewrites),
             &None,
             &subdomain_output,
+            &external,
         )?;
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
@@ -821,10 +847,94 @@ fn build_subdomain_sites(
             output_dir: subdomain_output,
             base_url: subdomain_base_url,
             stats: sub_result.stats,
+            link_check: sub_result.link_check,
         });
     }
 
     Ok(results)
+}
+
+/// A content file anywhere in the site and the URL it is published at,
+/// relative to its own site's origin (subdomain collections are root-mounted).
+struct SiteSource {
+    collection: String,
+    source: PathBuf,
+    url: String,
+}
+
+/// Every (non-skipped) content file of every collection with its URL, as the
+/// build resolves it. Files that fail to parse are left out: the build that
+/// owns them reports the error.
+fn site_source_urls(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+) -> Vec<SiteSource> {
+    let mut out = Vec::new();
+    for collection in &config.collections {
+        let dir = paths.content.join(&collection.directory);
+        if !dir.exists() {
+            continue;
+        }
+        let url_collection = if collection.subdomain.is_some() {
+            CollectionConfig {
+                url_prefix: String::new(),
+                ..collection.clone()
+            }
+        } else {
+            collection.clone()
+        };
+        for entry in WalkDir::new(&dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+        {
+            let path = entry.path();
+            let Ok((fm, _)) = content::parse_content_file(path) else {
+                continue;
+            };
+            if fm.draft && !opts.include_drafts {
+                continue;
+            }
+            let rel = path.strip_prefix(&dir).unwrap_or(path);
+            let loc = resolve_item_location(config, &url_collection, path, rel, &fm);
+            out.push(SiteSource {
+                collection: collection.name.clone(),
+                source: path.to_path_buf(),
+                url: loc.url,
+            });
+        }
+    }
+    out
+}
+
+/// Absolute URLs of the content published on a different origin than the
+/// site being built: `building` is the subdomain collection being built, or
+/// `None` for the main site. Same-origin content is resolved from the build's
+/// own items (root-relative URLs).
+fn cross_origin_source_urls(
+    config: &SiteConfig,
+    sources: &[SiteSource],
+    building: Option<&str>,
+) -> HashMap<PathBuf, String> {
+    let main_base = config.site.base_url.trim_end_matches('/');
+    let mut origins: HashMap<&str, Option<String>> = HashMap::new();
+    for collection in &config.collections {
+        let origin = match &collection.subdomain {
+            Some(_) if building == Some(collection.name.as_str()) => None,
+            Some(_) => Some(config.subdomain_base_url(collection)),
+            None if building.is_none() => None,
+            None => Some(main_base.to_string()),
+        };
+        origins.insert(collection.name.as_str(), origin);
+    }
+    sources
+        .iter()
+        .filter_map(|s| {
+            let origin = origins.get(s.collection.as_str())?.as_deref()?;
+            Some((s.source.clone(), format!("{origin}{}", s.url)))
+        })
+        .collect()
 }
 
 /// Check whether the Plausible analytics config uses deprecated `extensions` without `script_url`.
@@ -856,6 +966,7 @@ fn build_site_inner(
     subdomain_rewrites_override: Option<&HashMap<String, String>>,
     changeset: &Option<cache::ChangeSet>,
     display_output: &Path,
+    external_sources: &HashMap<PathBuf, String>,
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
@@ -1212,7 +1323,7 @@ fn build_site_inner(
     // Also records which source file each page was rendered from, so broken
     // links found in the output can be reported against the markdown source.
     let (page_sources, md_link_problems) =
-        rewrite_source_links(&mut all_collections, paths, default_lang);
+        rewrite_source_links(&mut all_collections, paths, default_lang, external_sources);
 
     step_timings.push((
         "Process collections".to_string(),
@@ -3294,7 +3405,9 @@ fn output_rel_html(url: &str) -> String {
 }
 
 /// Rewrite links to markdown source files in every item's HTML body and
-/// excerpt (see [`markdown::rewrite_md_links`]).
+/// excerpt (see [`markdown::rewrite_md_links`]). `external_sources` maps
+/// content published on another origin (main site / other subdomains) to its
+/// absolute URL; this build's own items map to root-relative URLs.
 ///
 /// Returns a map of output-relative HTML path → source file for every item
 /// (used to attribute broken links to their markdown source), plus a
@@ -3304,8 +3417,12 @@ fn rewrite_source_links(
     all_collections: &mut HashMap<String, Vec<ContentItem>>,
     paths: &ResolvedPaths,
     default_lang: &str,
+    external_sources: &HashMap<PathBuf, String>,
 ) -> (HashMap<String, PathBuf>, Vec<links::BrokenLink>) {
     let mut map = markdown::SourceLinkMap::new(&paths.root, &paths.content, default_lang);
+    for (source, url) in external_sources {
+        map.insert(source, url);
+    }
     let mut page_sources = HashMap::new();
     for items in all_collections.values() {
         for item in items {

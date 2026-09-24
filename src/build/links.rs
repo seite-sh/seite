@@ -88,7 +88,7 @@ impl BrokenLink {
 }
 
 /// Result of an internal link check across all HTML files in the output directory.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LinkCheckResult {
     /// Total number of internal links and asset references checked.
     pub total_links_checked: usize,
@@ -103,6 +103,14 @@ impl LinkCheckResult {
     /// links and missing assets.
     pub fn problem_count(&self) -> usize {
         distinct_links(&self.broken_links).len() + distinct_links(&self.missing_assets).len()
+    }
+
+    /// Add another site's results (e.g. a subdomain build) to these.
+    pub fn merge(&mut self, other: &LinkCheckResult) {
+        self.total_links_checked += other.total_links_checked;
+        self.broken_links.extend(other.broken_links.iter().cloned());
+        self.missing_assets
+            .extend(other.missing_assets.iter().cloned());
     }
 }
 

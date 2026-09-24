@@ -336,3 +336,71 @@ fn test_check_json_shape() {
     // One per generated page that contains the link (post, index, ...).
     assert!(doc["data"]["summary"]["warnings"].as_u64().unwrap() >= 1);
 }
+
+#[test]
+fn test_check_strict_resolves_content_root_md_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Content Links", "posts,pages");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/pages/target.md",
+        "---\ntitle: Target\n---\nTarget page.\n",
+    );
+    write_site_file(
+        &site,
+        "content/posts/2024-03-01-linker.md",
+        "---\ntitle: Linker\n---\nSee [t](/content/pages/target.md).\n",
+    );
+
+    // The build resolves the source link...
+    page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .success();
+    // ...so check must agree.
+    page_cmd()
+        .args(["check", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No problems found"));
+}
+
+#[test]
+fn test_check_strict_reports_subdomain_broken_links() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(
+        &site,
+        "content/docs/guide.md",
+        "---\ntitle: Guide\n---\n\nIntro.\n\nSee [bad](/nonexistent-page).\n\n![bad](/missing.png)\n",
+    );
+
+    let output = page_cmd()
+        .args(["--json", "check", "--strict"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let doc = json_stdout(&output);
+    let diagnostics = doc["error"]["diagnostics"].as_array().unwrap();
+    let broken = diagnostics
+        .iter()
+        .find(|d| d["code"] == "broken-link")
+        .unwrap_or_else(|| panic!("no broken-link: {doc}"));
+    assert_eq!(broken["file"], "content/docs/guide.md", "{doc}");
+    assert_eq!(broken["line"], 7, "{doc}");
+    assert!(broken["message"]
+        .as_str()
+        .unwrap()
+        .contains("/nonexistent-page"));
+    let missing = diagnostics
+        .iter()
+        .find(|d| d["code"] == "missing-asset")
+        .unwrap_or_else(|| panic!("no missing-asset: {doc}"));
+    assert_eq!(missing["file"], "content/docs/guide.md", "{doc}");
+    assert_eq!(missing["line"], 9, "{doc}");
+    assert!(!site.join("dist-subdomains").exists());
+}

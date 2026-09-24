@@ -141,3 +141,40 @@ fn test_new_post_with_lang_flag() {
         .collect();
     assert!(!entries.is_empty());
 }
+
+#[test]
+fn test_new_lang_json_url_matches_build() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Lang Urls", "posts,pages");
+    let site = tmp.path().join("site");
+    add_language(&site, "es", "Sitio");
+
+    let url_of = |args: &[&str]| {
+        let output = page_cmd().args(args).current_dir(&site).output().unwrap();
+        assert!(output.status.success());
+        json_stdout(&output)["data"]["url"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    // Default language: no prefix.
+    let en = url_of(&["--json", "new", "page", "English Page", "--lang", "en"]);
+    assert_eq!(en, "/english-page");
+    // Non-default language: prefixed.
+    let es = url_of(&["--json", "new", "page", "Pagina Uno", "--lang", "es"]);
+    assert_eq!(es, "/es/pagina-uno");
+    let post = url_of(&["--json", "new", "post", "Hola Mundo", "--lang", "es"]);
+    assert_eq!(post, "/es/posts/hola-mundo");
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    for url in [&en, &es, &post] {
+        let html = site
+            .join("dist")
+            .join(format!("{}.html", url.trim_matches('/')));
+        assert!(html.exists(), "{} missing", html.display());
+    }
+}

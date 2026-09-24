@@ -62,12 +62,14 @@ pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Dia
     all.extend(template_errors.relative_to(root));
 
     // 3. Data + content + render + links: the real pipeline, writing into a
-    //    scratch directory. Pointing `root` at the scratch dir too keeps the
-    //    subdomain output (`<root>/dist-subdomains`) out of the project.
+    //    scratch directory. Only the output locations (main site and
+    //    subdomain sites) move; every source path (root, content, templates,
+    //    data, ...) stays the real site's, so links such as
+    //    `/content/pages/x.md` resolve exactly as they do in `seite build`.
     let scratch = tempfile::Builder::new().prefix("seite-check-").tempdir()?;
     let mut scratch_paths = paths.clone();
-    scratch_paths.root = scratch.path().to_path_buf();
     scratch_paths.output = scratch.path().join("dist");
+    scratch_paths.subdomain_output_root = scratch.path().join("dist-subdomains");
     let opts = BuildOptions {
         include_drafts,
         incremental: false,
@@ -99,9 +101,11 @@ pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Dia
     Ok(unique)
 }
 
-/// Make paths in a diagnostic built against the scratch root relative to the
-/// real site `root`: the `file` field, plus absolute paths quoted in the
-/// message (render errors name the source and template files).
+/// Make paths in a diagnostic relative: sources to the real site `root`, and
+/// generated pages (built into `scratch`) to the scratch dir, so they read as
+/// `dist/...` like in `seite build`. Covers the `file` field plus absolute
+/// paths quoted in the message (render errors name the source and template
+/// files).
 fn relativize(mut d: Diagnostic, root: &Path, scratch: &Path) -> Diagnostic {
     for base in [root, scratch] {
         let prefix = format!("{}{}", base.display(), std::path::MAIN_SEPARATOR);
@@ -109,7 +113,7 @@ fn relativize(mut d: Diagnostic, root: &Path, scratch: &Path) -> Diagnostic {
             d.message = d.message.replace(&prefix, "");
         }
     }
-    d.relative_to(root)
+    d.relative_to(root).relative_to(scratch)
 }
 
 /// Print the result and pick success/failure. On failure the diagnostics
@@ -162,6 +166,11 @@ mod tests {
         let d = relativize(d, root, scratch);
         assert_eq!(d.file.as_deref(), Some(Path::new("content/a.md")));
         assert_eq!(d.message, format!("failed to render content{sep}a.md"));
+
+        // Generated pages live in the scratch output dir.
+        let d = Diagnostic::warning("broken-link", "x").with_file("/tmp/scratch/dist/tags.html");
+        let d = relativize(d, root, scratch);
+        assert_eq!(d.file.as_deref(), Some(Path::new("dist/tags.html")));
     }
 
     #[test]
