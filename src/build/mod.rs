@@ -448,9 +448,8 @@ fn scratch_dir_for(root: &Path, output: &Path, marker: &str) -> Option<PathBuf> 
 /// Remove staging/old directories left next to `output` by a build that
 /// crashed or was killed. Best-effort: failures are only logged.
 ///
-/// This doesn't try to detect a concurrent build of the same site; two
-/// builds writing one output dir already race, and at worst the other build
-/// fails with an I/O error while the published output stays intact.
+/// Directories owned by a build that is still running (e.g. the dev server
+/// rebuilding while an agent runs `seite build`) are left alone.
 fn clean_stale_build_dirs(output: &Path) {
     let (Some(parent), Some(name)) = (output.parent(), output.file_name()) else {
         return;
@@ -466,7 +465,10 @@ fn clean_stale_build_dirs(output: &Path) {
         let Some(entry_name) = entry_name.to_str() else {
             continue;
         };
-        if is_scratch_output_name(entry_name, name) && entry.path().is_dir() {
+        if is_scratch_output_name(entry_name, name)
+            && entry.path().is_dir()
+            && !scratch_owner_running(entry_name, &entry.path())
+        {
             if let Err(e) = fs::remove_dir_all(entry.path()) {
                 tracing::debug!(
                     "Failed to remove stale build dir {}: {e}",
@@ -475,6 +477,48 @@ fn clean_stale_build_dirs(output: &Path) {
             }
         }
     }
+}
+
+/// Whether the build that created scratch dir `name` (`…staging-<pid>` /
+/// `…old-<pid>`) may still be running.
+fn scratch_owner_running(name: &str, path: &Path) -> bool {
+    let Some(pid) = name
+        .rsplit(['-'])
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if pid == std::process::id() {
+        return true;
+    }
+    process_running(pid, path)
+}
+
+#[cfg(unix)]
+fn process_running(pid: u32, _path: &Path) -> bool {
+    let Some(pid) = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+    else {
+        return false;
+    };
+    // Signal 0 only checks existence; EPERM means it exists but isn't ours.
+    match rustix::process::test_kill_process(pid) {
+        Ok(()) => true,
+        Err(e) => e == rustix::io::Errno::PERM,
+    }
+}
+
+/// Without a cheap portable liveness check, treat recently touched scratch
+/// dirs as belonging to a running build.
+#[cfg(not(unix))]
+fn process_running(_pid: u32, path: &Path) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < std::time::Duration::from_secs(3600))
 }
 
 /// True when `path` is inside a build output directory (the main output,
@@ -5241,6 +5285,25 @@ mod tests {
         full_build(&config, &paths).unwrap();
 
         assert!(staging_siblings(tmp.path()) == vec!["dist.staging-notes".to_string()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_build_keeps_staging_dir_of_running_build() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        // A live process other than this one (pid 1 always exists on unix).
+        fs::create_dir_all(tmp.path().join("dist.staging-1/posts")).unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(staging_siblings(tmp.path()) == vec!["dist.staging-1".to_string()]);
     }
 
     #[test]
