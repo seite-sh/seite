@@ -114,7 +114,9 @@ endpoint = "xpznqkdl"
 - CLI commands: `anyhow::Result<()>`
 
 ### Output
-- `output::human::success()`, `info()`, `error()` for terminal. `CommandOutput` trait for `--json`.
+- Human-readable output goes through `output::human::{success,info,warning,error,header}` — never raw `println!`.
+- `--json` mode: set the command's payload with `output::json::set_data()`; the top-level `{"ok","command","data","warnings"}` / `{"ok":false,"error":{...}}` document is assembled and printed by `main.rs`. `CommandOutput` trait covers older per-command JSON.
+- Interactive prompts always go through `src/cli/prompt.rs`, never `dialoguer` directly — it degrades safely under `--yes`/`SEITE_YES=1` or a non-TTY (default if there is one, else an error naming the missing flag).
 
 ### Versioning
 - Source of truth: `Cargo.toml` (semver). **Every code change must bump version.**

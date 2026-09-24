@@ -35,7 +35,7 @@ No file parsing. No guessing. The AI tool gets clean data and can focus on what 
 
 ## How It Works
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in `.claude/settings.json` (created by `seite init` or added with `seite upgrade`: see the [configuration docs](/docs/configuration) for details on `seite.toml`):
+The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code only reads project MCP servers from `.mcp.json`:
 
 ```json
 {
@@ -48,7 +48,15 @@ The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using
 }
 ```
 
-This is scaffolded by `seite init` and can be added to existing projects with `seite upgrade`.
+`.claude/settings.json` pre-approves that server so Claude Code can start it without asking each time:
+
+```json
+{
+  "enabledMcpjsonServers": ["seite"]
+}
+```
+
+Both files are scaffolded by `seite init`; `seite upgrade` adds them to existing projects and migrates any older `mcpServers` block out of `settings.json` (Claude Code never reads MCP servers from there). The first time Claude Code opens the project it may still ask you to approve the server once.
 
 ## Resources
 
@@ -60,15 +68,15 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Documentation page | `seite://docs/{slug}` | Full markdown content of a specific doc page |
 | Site configuration | `seite://config` | Current `seite.toml` serialized as JSON |
 | Content overview | `seite://content` | All collections with item counts |
-| Collection items | `seite://content/{collection}` | Items in a collection with metadata (title, date, tags, slug, url, draft status) |
+| Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
 | Themes | `seite://themes` | Available bundled and installed themes |
-| MCP configuration | `seite://mcp-config` | The `.claude/settings.json` MCP server configuration |
+| MCP configuration | `seite://mcp-config` | `.mcp.json` (server declaration) and `.claude/settings.json` (approval + permissions) |
 
 Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`) are only available when running inside a page project directory.
 
 ## Tools
 
-Tools are actions that AI tools can execute.
+Tools are actions that AI tools can execute. A tool-execution failure (bad arguments, no site found, a failed build, an unknown theme, an existing file without `overwrite`, ...) comes back as a normal result with `isError: true` and an actionable message — only a missing/unknown tool name is a protocol-level error.
 
 ### seite_build
 
@@ -77,33 +85,42 @@ Build the site to the output directory.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `drafts` | boolean | No | Include draft content in the build (default: false) |
+| `strict` | boolean | No | Fail (`isError`) if the build produced warnings or broken internal links (default: false) |
 
-Returns build statistics including pages built per collection, timing, and any errors.
+Returns build statistics, `warnings` (e.g. a custom template that failed to parse and fell back to the built-in default), and `broken_links` (`[{target, sources}]` — internal links pointing at pages that don't exist).
 
 ### seite_create_content
 
-Create a new content file with frontmatter.
+Create a new content file with frontmatter (same rules as `seite new`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `collection` | string | Yes | Collection name (`posts`, `docs`, or `pages`) |
+| `collection` | string | Yes | Collection name, e.g. `posts`, `docs`, `pages`, `changelog`, `roadmap` (singular aliases like `post` work) |
 | `title` | string | Yes | Title of the content |
+| `slug` | string | No | Filename slug (lowercase letters, digits, `-`, `_`); defaults to a slug of the title |
+| `description` | string | No | Frontmatter description (meta description and listings) |
 | `tags` | string[] | No | Tags for the content |
-| `body` | string | No | Markdown body content |
-| `draft` | boolean | No | Create as draft |
+| `body` | string | No | Markdown body content; omit for frontmatter only |
+| `draft` | boolean | No | Create as draft (default: false) |
+| `weight` | integer | No | Ordering weight for non-date collections (lower sorts first) |
+| `extra` | object | No | Arbitrary frontmatter data exposed to templates as `page.extra` |
+| `subdir` | string | No | Sub-directory inside a nested collection, e.g. `guides` (docs only) |
+| `lang` | string | No | Language code for a translation (must be configured under `[languages]`); adds a `.{lang}.md` suffix |
+| `overwrite` | boolean | No | Replace the file if it already exists (default: false — otherwise the call fails) |
 
-Returns the file path, URL, and slug of the created content.
+Returns the source `path` (relative to the site root) and the `url` it will be published at.
 
 ### seite_search
 
-Search site content by keywords.
+Search site content (including drafts) by keyword.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | Yes | Search keywords |
-| `collection` | string | No | Limit search to a specific collection |
+| `query` | string | Yes | Search keywords (case-insensitive substring match) |
+| `collection` | string | No | Limit search to a specific collection (singular aliases work) |
+| `limit` | integer | No | Maximum results to return, 1-100 (default: 20) |
 
-Matches against titles, descriptions, and tags. Returns up to 20 results with metadata.
+Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`.
 
 ### seite_apply_theme
 
@@ -111,7 +128,9 @@ Apply a bundled or installed theme to the site.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, or an installed theme) |
+| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`, or an installed theme) |
+
+If the current `base.html` has been customized (it matches no known theme), it's backed up to `base.html.bak` (or `base.html.bak.N`) before being replaced, and the backup path is returned.
 
 ### seite_lookup_docs
 
