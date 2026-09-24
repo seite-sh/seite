@@ -291,42 +291,59 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
             "Project is up to date (seite {}).",
             meta::format_version(binary_ver)
         ));
+        crate::output::json::set_data(serde_json::json!({
+            "up_to_date": true,
+            "applied": false,
+            "version": meta::format_version(binary_ver),
+            "changes": [],
+        }));
         return Ok(());
     }
 
     // Show what will change
+    let from_label = if project_ver == (0, 0, 0) {
+        "pre-tracking".to_string()
+    } else {
+        meta::format_version(project_ver)
+    };
     human::header(&format!(
         "Upgrading from {} → {}",
-        if project_ver == (0, 0, 0) {
-            "pre-tracking".to_string()
-        } else {
-            meta::format_version(project_ver)
-        },
+        from_label,
         meta::format_version(binary_ver)
     ));
-    println!();
+    crate::human_println!();
 
-    for action in &actions {
-        for line in action.describe() {
-            human::info(&format!("  {line}"));
-        }
+    let changes: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
+    for line in &changes {
+        human::info(&format!("  {line}"));
     }
-    println!();
+    crate::human_println!();
+    let upgrade_data = |applied: bool| {
+        serde_json::json!({
+            "up_to_date": applied,
+            "applied": applied,
+            "from": from_label,
+            "to": meta::format_version(binary_ver),
+            "changes": changes,
+        })
+    };
 
-    // --check mode: just report and exit
+    // --check mode: just report and fail (exit 1 = upgrade needed; useful for CI)
     if args.check {
         human::info("Run `seite upgrade` to apply these changes.");
-        std::process::exit(1);
+        anyhow::bail!(
+            "project needs upgrading: {} pending change{}",
+            changes.len(),
+            if changes.len() == 1 { "" } else { "s" }
+        );
     }
 
     // Confirm unless --force
     if !args.force {
-        let proceed = dialoguer::Confirm::new()
-            .with_prompt("Apply these upgrades?")
-            .default(true)
-            .interact()?;
+        let proceed = crate::cli::prompt::confirm("Apply these upgrades?", true)?;
         if !proceed {
             human::info("Upgrade cancelled.");
+            crate::output::json::set_data(upgrade_data(false));
             return Ok(());
         }
     }
@@ -405,8 +422,9 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
     let existing_meta = meta::load(&root);
     let new_meta = meta::PageMeta::stamp_current_version(existing_meta.as_ref());
     meta::write(&root, &new_meta)?;
+    crate::output::json::set_data(upgrade_data(true));
 
-    println!();
+    crate::human_println!();
     human::success(&format!(
         "Project upgraded to seite {}",
         meta::format_version(binary_ver)
@@ -421,7 +439,7 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         };
         if let Ok(content) = fs::read_to_string(instructions_path) {
             if content.lines().count() > 300 {
-                println!();
+                crate::human_println!();
                 human::info(
                     "Detailed context now lives in .claude/rules/ and loads automatically.",
                 );

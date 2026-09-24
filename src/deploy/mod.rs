@@ -502,14 +502,14 @@ pub fn print_preflight(checks: &[PreflightCheck]) -> bool {
     let mut all_passed = true;
     for check in checks {
         if check.passed {
-            println!(
+            crate::human_println!(
                 "  {} {}: {}",
                 console::style("✓").green(),
                 check.name,
                 check.message
             );
         } else {
-            println!(
+            crate::human_println!(
                 "  {} {}: {}",
                 console::style("✗").red(),
                 check.name,
@@ -518,7 +518,7 @@ pub fn print_preflight(checks: &[PreflightCheck]) -> bool {
             all_passed = false;
         }
     }
-    println!();
+    crate::human_println!();
     all_passed
 }
 
@@ -725,10 +725,12 @@ pub fn execute_fix(
             }
         }
         "Base URL" => {
-            let url: String = dialoguer::Input::new()
-                .with_prompt("Enter your production URL (e.g., https://example.com)")
-                .interact_text()
-                .map_err(|e| PageError::Deploy(format!("input failed: {e}")))?;
+            let url = crate::cli::prompt::input(
+                "Enter your production URL (e.g., https://example.com)",
+                None,
+                "--base-url (or run `seite deploy --domain <domain>`)",
+            )
+            .map_err(|e| PageError::Deploy(format!("input failed: {e}")))?;
             let url = url.trim().to_string();
             if url.is_empty() {
                 return Ok(false);
@@ -1965,20 +1967,22 @@ pub fn print_domain_setup(setup: &DomainSetup) {
         setup.domain, setup.target
     ));
 
-    println!("\n  Add these DNS records at your domain registrar:\n");
-    println!("  {:<8} {:<20} Value", "Type", "Name");
-    println!("  {}", "-".repeat(60));
+    crate::human_println!("\n  Add these DNS records at your domain registrar:\n");
+    crate::human_println!("  {:<8} {:<20} Value", "Type", "Name");
+    crate::human_println!("  {}", "-".repeat(60));
     for record in &setup.dns_records {
-        println!(
+        crate::human_println!(
             "  {:<8} {:<20} {}",
-            record.record_type, record.name, record.value
+            record.record_type,
+            record.name,
+            record.value
         );
     }
-    println!();
+    crate::human_println!();
     for note in &setup.notes {
         human::info(&format!("  {note}"));
     }
-    println!();
+    crate::human_println!();
 }
 
 fn detect_github_username(deploy: &crate::config::DeploySection) -> Option<String> {
@@ -2331,14 +2335,14 @@ pub fn print_verification(results: &[VerifyResult]) {
     human::header("Post-deploy verification");
     for r in results {
         if r.passed {
-            println!(
+            crate::human_println!(
                 "  {} {}: {}",
                 console::style("✓").green(),
                 r.check,
                 r.message
             );
         } else {
-            println!(
+            crate::human_println!(
                 "  {} {}: {}",
                 console::style("✗").yellow(),
                 r.check,
@@ -2346,7 +2350,7 @@ pub fn print_verification(results: &[VerifyResult]) {
             );
         }
     }
-    println!();
+    crate::human_println!();
 }
 
 // ---------------------------------------------------------------------------

@@ -1,18 +1,51 @@
+use std::fmt;
+
 use console::style;
+
+/// Write one line of human-readable output. Goes to stdout normally, and to
+/// stderr in `--json` mode so stdout stays a single machine-readable document.
+pub fn emit_line(args: fmt::Arguments<'_>) {
+    if super::is_json() {
+        eprintln!("{args}");
+    } else {
+        println!("{args}");
+    }
+}
+
+/// `println!` replacement for human-readable command output. Behaves exactly
+/// like `println!` except that it writes to stderr in `--json` mode.
+#[macro_export]
+macro_rules! human_println {
+    () => {
+        $crate::output::human::emit_line(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::output::human::emit_line(format_args!($($arg)*))
+    };
+}
 
 /// Print a success message.
 pub fn success(msg: &str) {
-    println!("{} {}", style("✓").green().bold(), msg);
+    emit_line(format_args!("{} {}", style("✓").green().bold(), msg));
 }
 
 /// Print an info message.
 pub fn info(msg: &str) {
-    println!("{} {}", style("ℹ").blue().bold(), msg);
+    emit_line(format_args!("{} {}", style("ℹ").blue().bold(), msg));
 }
 
-/// Print a warning message.
+/// Print a warning message. Warnings are also collected for the `--json`
+/// envelope (see [`super::json::warnings`]).
 pub fn warning(msg: &str) {
-    println!("{} {}", style("⚠").yellow().bold(), msg);
+    super::json::record_warning(msg);
+    emit_line(format_args!("{} {}", style("⚠").yellow().bold(), msg));
+}
+
+/// Print a warning to stderr (for library code that must keep stdout clean).
+/// Also collected for the `--json` envelope.
+pub fn warning_stderr(msg: &str) {
+    super::json::record_warning(msg);
+    eprintln!("{} {}", style("⚠").yellow().bold(), msg);
 }
 
 /// Print an error message.
@@ -22,7 +55,7 @@ pub fn error(msg: &str) {
 
 /// Print a header/section title.
 pub fn header(msg: &str) {
-    println!("\n{}", style(msg).bold().underlined());
+    emit_line(format_args!("\n{}", style(msg).bold().underlined()));
 }
 
 /// Find the closest match for `input` among `candidates` using string similarity.

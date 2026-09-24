@@ -1,7 +1,35 @@
 pub mod human;
 pub mod json;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde::Serialize;
+
+/// Process-global output flags, set once in `main` from the global CLI flags
+/// so deeply nested code can adapt without threading arguments everywhere.
+static JSON_MODE: AtomicBool = AtomicBool::new(false);
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable machine-readable (`--json`) output mode.
+pub fn set_json_mode(enabled: bool) {
+    JSON_MODE.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether the global `--json` flag is active. In JSON mode, all human-readable
+/// output is routed to stderr so stdout carries exactly one JSON document.
+pub fn is_json() -> bool {
+    JSON_MODE.load(Ordering::Relaxed)
+}
+
+/// Enable or disable verbose (`--verbose`) output.
+pub fn set_verbose(enabled: bool) {
+    VERBOSE.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether the global `--verbose` flag is active.
+pub fn is_verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed)
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum OutputFormat {

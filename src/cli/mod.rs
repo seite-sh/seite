@@ -10,6 +10,7 @@ pub mod init;
 pub mod mcp;
 pub mod new;
 pub mod perf;
+pub mod prompt;
 pub mod self_update;
 pub mod serve;
 pub mod skill;
@@ -31,15 +32,25 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
-    /// Enable verbose logging output
+    /// Verbose output (debug logging, per-step build timings)
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
-    /// Output results as JSON
+    /// Machine-readable output: print exactly one JSON document on stdout
+    /// ({"ok":true,"command":..,"data":..} or {"ok":false,..,"error":{"message":..,"chain":[..]}}),
+    /// with all human output on stderr. Not supported by serve, agent, mcp,
+    /// completions and self-update (they stream output or take over the terminal).
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Path to config file
+    /// Never prompt: accept defaults and answer "yes" to confirmations
+    /// (also enabled by SEITE_YES=1). Without a terminal, prompts use their
+    /// defaults and required values must be passed as flags.
+    #[arg(short = 'y', long, global = true)]
+    pub yes: bool,
+
+    /// Path to the project's seite.toml (runs the command in that file's
+    /// directory; applied after --dir). Custom config file names are not supported.
     #[arg(short, long, global = true)]
     pub config: Option<String>,
 

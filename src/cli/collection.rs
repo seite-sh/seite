@@ -75,6 +75,11 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
     fs::write(&config_path, new_contents)?;
 
     human::success(&format!("Added '{}' collection to seite.toml", args.name));
+    crate::output::json::set_data(serde_json::json!({
+        "added": args.name,
+        "content_dir": content_dir.display().to_string(),
+        "collection": preset,
+    }));
     human::info(&format!("Content directory: {}", content_dir.display()));
     human::info(&format!(
         "Create content with: seite new {} \"My Title\"",
@@ -87,20 +92,28 @@ fn run_add(args: &AddArgs) -> anyhow::Result<()> {
 fn run_list() -> anyhow::Result<()> {
     let config_path = PathBuf::from("seite.toml");
     let site_config = SiteConfig::load(&config_path)?;
+    crate::output::json::set_data(serde_json::json!({
+        "collections": site_config.collections,
+    }));
 
     if site_config.collections.is_empty() {
         human::info("No collections configured.");
         return Ok(());
     }
 
-    println!(
+    crate::human_println!(
         "{:<12} {:<12} {:<6} {:<6} {:<8} {:<8} URL PREFIX",
-        "NAME", "DIRECTORY", "DATED", "RSS", "LISTED", "NESTED"
+        "NAME",
+        "DIRECTORY",
+        "DATED",
+        "RSS",
+        "LISTED",
+        "NESTED"
     );
-    println!("{}", "-".repeat(70));
+    crate::human_println!("{}", "-".repeat(70));
 
     for c in &site_config.collections {
-        println!(
+        crate::human_println!(
             "{:<12} {:<12} {:<6} {:<6} {:<8} {:<8} {}",
             c.name,
             c.directory,

@@ -19,16 +19,16 @@ pub enum TelemetryCommand {
 pub fn run(args: &TelemetryArgs) -> anyhow::Result<()> {
     match args.command {
         TelemetryCommand::Status => {
-            println!("{}", crate::telemetry::status_line());
+            crate::human_println!("{}", crate::telemetry::status_line());
         }
         TelemetryCommand::On => match crate::telemetry::set_enabled(true) {
-            Some(()) => println!("Telemetry enabled."),
+            Some(()) => crate::human_println!("Telemetry enabled."),
             None => eprintln!(
                 "Could not save telemetry preference (could not write ~/.seite/telemetry.json)."
             ),
         },
         TelemetryCommand::Off => match crate::telemetry::set_enabled(false) {
-            Some(()) => println!("Telemetry disabled."),
+            Some(()) => crate::human_println!("Telemetry disabled."),
             None => eprintln!(
                 "Could not save telemetry preference (could not write ~/.seite/telemetry.json)."
             ),

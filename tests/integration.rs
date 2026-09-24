@@ -11340,3 +11340,420 @@ fn test_completions_stdout_is_clean() {
         "update notification must not appear on stdout"
     );
 }
+
+// --- agent-friendly CLI: non-interactive prompts, --json, --config, serve ---
+
+/// Parse the single JSON document a `--json` run prints on stdout.
+fn json_stdout(output: &std::process::Output) -> serde_json::Value {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(stdout.trim()).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not a single JSON document ({e}):\n{stdout}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })
+}
+
+#[test]
+fn test_init_non_interactive_with_minimal_flags() {
+    let tmp = TempDir::new().unwrap();
+    // No --title / --description / --collections and no TTY: defaults apply.
+    page_cmd()
+        .args(["init", "agentsite", "--deploy-target", "netlify"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let toml = fs::read_to_string(tmp.path().join("agentsite/seite.toml")).unwrap();
+    assert!(toml.contains("title = \"agentsite\""), "{toml}");
+    assert!(toml.contains("target = \"netlify\""), "{toml}");
+    assert!(tmp.path().join("agentsite/content/posts").is_dir());
+    assert!(tmp.path().join("agentsite/content/pages").is_dir());
+}
+
+#[test]
+fn test_init_missing_deploy_target_names_flag() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["init", "site", "--title", "T", "--collections", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("missing --deploy-target"))
+        .stderr(predicate::str::contains(
+            "github-pages, cloudflare, netlify",
+        ));
+    assert!(
+        !tmp.path().join("site").exists(),
+        "nothing should be created"
+    );
+}
+
+#[test]
+fn test_init_missing_name_names_argument() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["init", "--deploy-target", "github-pages"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("missing <NAME> argument"));
+}
+
+#[test]
+fn test_init_rejects_unknown_collection() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,blogg",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "unknown collection preset 'blogg'",
+        ));
+}
+
+#[test]
+fn test_init_tree_output_is_aligned() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,pages",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\n  ├── seite.toml"))
+        .stdout(predicate::str::contains("\n  │   ├── posts/"))
+        .stdout(predicate::str::contains("\n  │   └── pages/"))
+        .stdout(predicate::str::contains("\n  └── static/"));
+}
+
+#[test]
+fn test_init_json_reports_project() {
+    let tmp = TempDir::new().unwrap();
+    let output = page_cmd()
+        .args([
+            "--json",
+            "init",
+            "site",
+            "--deploy-target",
+            "cloudflare",
+            "--collections",
+            "posts,docs",
+        ])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["command"], "init");
+    assert_eq!(doc["data"]["deploy_target"], "cloudflare");
+    assert_eq!(
+        doc["data"]["collections"],
+        serde_json::json!(["posts", "docs"])
+    );
+}
+
+#[test]
+fn test_build_json_reports_counts() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Json Build", "posts,pages");
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(tmp.path().join("site"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["command"], "build");
+    let data = &doc["data"];
+    assert_eq!(data["collections"]["posts"], 1);
+    assert!(data["pages_written"].as_u64().unwrap() >= 1);
+    assert!(data["output_dir"].as_str().unwrap().ends_with("dist"));
+    assert!(data["duration_ms"].is_u64());
+    assert!(
+        !data["timings_ms"].as_object().unwrap().is_empty(),
+        "timings belong in the JSON data"
+    );
+    assert!(data["broken_links"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn test_build_json_failure_reports_error() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Json Fail", "posts");
+    let site = tmp.path().join("site");
+    fs::write(
+        site.join("content/posts/bad.md"),
+        "---\ntitle: ok\ndate: notadate\n---\nbody\n",
+    )
+    .unwrap();
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "failed build must exit non-zero");
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["command"], "build");
+    let message = doc["error"]["message"].as_str().unwrap();
+    assert!(message.contains("Frontmatter parse error"), "{message}");
+    assert!(doc["error"]["chain"].is_array());
+}
+
+#[test]
+fn test_build_frontmatter_error_has_no_empty_cause() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Cause", "posts");
+    let site = tmp.path().join("site");
+    fs::write(
+        site.join("content/posts/bad.md"),
+        "---\ntitle: ok\ndate: notadate\n---\nbody\n",
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Frontmatter parse error"))
+        // The cause is already part of the message; no blank/duplicate chain.
+        .stderr(predicate::str::contains("Caused by").not());
+}
+
+#[test]
+fn test_new_json_returns_path() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Json New", "posts");
+    let site = tmp.path().join("site");
+    let output = page_cmd()
+        .args(["--json", "new", "post", "Agent Written"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["data"]["collection"], "posts");
+    assert_eq!(doc["data"]["slug"], "agent-written");
+    assert_eq!(doc["data"]["url"], "/posts/agent-written");
+    let path = doc["data"]["path"].as_str().unwrap();
+    assert!(std::path::Path::new(path).is_file(), "{path} should exist");
+}
+
+#[test]
+fn test_serve_json_is_rejected() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Json Serve", "posts");
+    let output = page_cmd()
+        .args(["--json", "serve"])
+        .current_dir(tmp.path().join("site"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    assert!(doc["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("--json is not supported"));
+}
+
+#[test]
+fn test_build_without_verbose_prints_no_timings() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Quiet", "posts");
+    let site = tmp.path().join("site");
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Built"))
+        .stdout(predicate::str::contains("Timings").not());
+    page_cmd()
+        .args(["--verbose", "build"])
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Timings:"));
+}
+
+#[test]
+fn test_build_update_check_suppressed_under_ci() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Nag", "posts");
+    // Fresh cache claiming a much newer release: without the opt-outs this
+    // would print the "new version" notice.
+    let home = tmp.path().join("home");
+    fs::create_dir_all(home.join(".seite")).unwrap();
+    fs::write(
+        home.join(".seite/update-cache.json"),
+        format!(
+            "{{\"last_check\":\"{}\",\"latest_version\":\"999.0.0\"}}",
+            chrono::Utc::now().to_rfc3339()
+        ),
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(tmp.path().join("site"))
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("CI", "1")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("new version").not())
+        .stderr(predicate::str::contains("new version").not());
+}
+
+#[test]
+fn test_config_flag_runs_in_config_directory() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Config Flag", "posts");
+    page_cmd()
+        .args(["--config", "site/seite.toml", "build"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    assert!(tmp.path().join("site/dist/index.html").exists());
+    assert!(!tmp.path().join("dist").exists());
+}
+
+#[test]
+fn test_config_flag_rejects_custom_file_names() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Config Flag", "posts");
+    fs::copy(
+        tmp.path().join("site/seite.toml"),
+        tmp.path().join("site/other.toml"),
+    )
+    .unwrap();
+    page_cmd()
+        .args(["--config", "site/other.toml", "build"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "custom config file names are not supported",
+        ));
+    page_cmd()
+        .args(["--config", "site/missing/seite.toml", "build"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--config file not found"));
+}
+
+#[test]
+fn test_upgrade_check_json_reports_pending_changes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Upgrade Json", "posts");
+    let site = tmp.path().join("site");
+    // Remove the version stamp so the project looks pre-tracking.
+    fs::remove_file(site.join(".seite/config.json")).unwrap();
+    let output = page_cmd()
+        .args(["--json", "upgrade", "--check"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "--check exits 1 when upgrades are pending"
+    );
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    assert!(doc["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("needs upgrading"));
+}
+
+/// Spawn `seite serve` with the given extra args and stdin closed, and check
+/// it keeps serving HTTP. Retries on a few ephemeral ports (TOCTOU race).
+fn assert_serve_stays_up(extra_args: &[&str]) {
+    use std::io::Read;
+    use std::net::TcpStream;
+    use std::time::{Duration, Instant};
+
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Serve Up", "posts");
+    let site = tmp.path().join("site");
+    let bin = assert_cmd::cargo::cargo_bin!("seite");
+
+    for attempt in 0..5 {
+        let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let mut child = std::process::Command::new(bin)
+            .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+            .args(extra_args)
+            .current_dir(&site)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut response = String::new();
+        while Instant::now() < deadline {
+            if let Ok(Some(_)) = child.try_wait() {
+                break; // exited early: port raced away, or the bug is back
+            }
+            if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                let _ = stream.write_all(b"GET / HTTP/1.0\r\nHost: localhost\r\n\r\n");
+                let _ = stream.read_to_string(&mut response);
+                if !response.is_empty() {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+
+        let exited = child.try_wait().ok().flatten();
+        let _ = child.kill();
+        let output = child.wait_with_output().unwrap();
+        if response.starts_with("HTTP/1.") {
+            assert!(
+                response.contains(" 200 "),
+                "unexpected response: {response}"
+            );
+            assert!(exited.is_none(), "server must still be running");
+            return;
+        }
+        assert!(
+            attempt < 4,
+            "serve never answered on 5 ports; last stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn test_serve_no_repl_stays_up() {
+    assert_serve_stays_up(&["--no-repl"]);
+}
+
+#[test]
+fn test_serve_stays_up_when_stdin_closed() {
+    assert_serve_stays_up(&[]);
+}

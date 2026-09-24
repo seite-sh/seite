@@ -1,4 +1,131 @@
+//! JSON output for the global `--json` flag.
+//!
+//! Every command run with `--json` prints exactly one JSON document on stdout
+//! when it finishes:
+//!
+//! ```json
+//! {"ok":true,"command":"build","data":{...},"warnings":[]}
+//! {"ok":false,"command":"build","error":{"message":"...","chain":["cause"]},"warnings":[]}
+//! ```
+//!
+//! Commands contribute `data` through [`set_data`]; when they don't, `data` is
+//! `null`. All human-readable output is routed to stderr in JSON mode (see
+//! [`redirect_stdout_to_stderr`] and [`super::human::emit_line`]).
+
+use std::fs::File;
+use std::io::Write;
+use std::sync::Mutex;
+
 use serde::Serialize;
+use serde_json::{json, Value};
+
+static DATA: Mutex<Option<Value>> = Mutex::new(None);
+static WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Handle to the original stdout, saved when stdout is redirected to stderr.
+static SAVED_STDOUT: Mutex<Option<File>> = Mutex::new(None);
+
+/// Set the `data` payload of the JSON envelope for the current command.
+/// Later calls replace earlier ones.
+pub fn set_data(value: Value) {
+    *DATA.lock().unwrap_or_else(|e| e.into_inner()) = Some(value);
+}
+
+/// Take the `data` payload set by the current command (if any).
+pub fn take_data() -> Option<Value> {
+    DATA.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+/// Record a warning for the JSON envelope's `warnings` array.
+pub fn record_warning(msg: &str) {
+    WARNINGS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(msg.to_string());
+}
+
+/// Snapshot of the warnings recorded so far.
+pub fn warnings() -> Vec<String> {
+    WARNINGS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Flatten an error into its top-level message plus a de-duplicated cause chain.
+///
+/// Causes whose text is empty, or already contained in the previous message
+/// (common with `thiserror` variants that interpolate their `source`), are
+/// dropped so renderers never show blank or repeated "Caused by" lines.
+pub fn error_chain(error: &anyhow::Error) -> (String, Vec<String>) {
+    let mut iter = error.chain();
+    let message = iter.next().map(|e| e.to_string()).unwrap_or_default();
+    let mut previous = message.clone();
+    let mut chain = Vec::new();
+    for cause in iter {
+        let text = cause.to_string().trim().to_string();
+        if text.is_empty() || previous.contains(&text) {
+            continue;
+        }
+        previous = text.clone();
+        chain.push(text);
+    }
+    (message, chain)
+}
+
+/// Build the success envelope for `command`.
+pub fn success_document(command: &str, data: Option<Value>, warnings: Vec<String>) -> Value {
+    json!({
+        "ok": true,
+        "command": command,
+        "data": data.unwrap_or(Value::Null),
+        "warnings": warnings,
+    })
+}
+
+/// Build the failure envelope for `command`.
+pub fn error_document(command: &str, error: &anyhow::Error, warnings: Vec<String>) -> Value {
+    let (message, chain) = error_chain(error);
+    json!({
+        "ok": false,
+        "command": command,
+        "error": { "message": message, "chain": chain },
+        "warnings": warnings,
+    })
+}
+
+/// Point the process's stdout (fd 1) at stderr, keeping a private handle to
+/// the original stdout for the final JSON document. This guarantees stdout
+/// stays pure JSON even for stray `println!`s and inherited child-process
+/// output (git, wrangler, …). No-op on non-Unix platforms, where human output
+/// is still routed to stderr by [`super::human::emit_line`].
+pub fn redirect_stdout_to_stderr() {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd;
+        let _ = std::io::stdout().flush();
+        let Ok(saved) = rustix::io::dup(std::io::stdout().as_fd()) else {
+            return;
+        };
+        if rustix::stdio::dup2_stdout(std::io::stderr().as_fd()).is_ok() {
+            *SAVED_STDOUT.lock().unwrap_or_else(|e| e.into_inner()) = Some(File::from(saved));
+        }
+    }
+}
+
+/// Write the final JSON document (one line) to the real stdout.
+pub fn emit_document(doc: &Value) {
+    let line = format!("{doc}\n");
+    let _ = std::io::stdout().flush();
+    let mut saved = SAVED_STDOUT.lock().unwrap_or_else(|e| e.into_inner());
+    match saved.as_mut() {
+        Some(file) => {
+            let _ = file.write_all(line.as_bytes());
+            let _ = file.flush();
+        }
+        None => {
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(line.as_bytes());
+            let _ = out.flush();
+        }
+    }
+}
 
 /// Wrap any serializable value in a standard JSON envelope.
 #[derive(Serialize)]
@@ -33,6 +160,62 @@ impl JsonEnvelope<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("outer failed: {source}")]
+    struct Outer {
+        source: std::io::Error,
+    }
+
+    #[test]
+    fn test_success_document_shape() {
+        let doc = success_document("build", Some(json!({"pages": 3})), vec!["w".into()]);
+        assert_eq!(doc["ok"], true);
+        assert_eq!(doc["command"], "build");
+        assert_eq!(doc["data"]["pages"], 3);
+        assert_eq!(doc["warnings"], json!(["w"]));
+        assert!(doc.get("error").is_none());
+    }
+
+    #[test]
+    fn test_success_document_null_data() {
+        let doc = success_document("new", None, vec![]);
+        assert!(doc["data"].is_null());
+        assert_eq!(doc["warnings"], json!([]));
+    }
+
+    #[test]
+    fn test_error_document_shape() {
+        let err = anyhow::anyhow!("root cause").context("top level");
+        let doc = error_document("build", &err, vec![]);
+        assert_eq!(doc["ok"], false);
+        assert_eq!(doc["command"], "build");
+        assert_eq!(doc["error"]["message"], "top level");
+        assert_eq!(doc["error"]["chain"], json!(["root cause"]));
+        assert!(doc.get("data").is_none());
+    }
+
+    #[test]
+    fn test_error_chain_drops_duplicated_source() {
+        // thiserror variants that interpolate `{source}` repeat it in the chain.
+        let err = anyhow::Error::new(Outer {
+            source: std::io::Error::other("disk on fire"),
+        });
+        let (message, chain) = error_chain(&err);
+        assert_eq!(message, "outer failed: disk on fire");
+        assert!(
+            chain.is_empty(),
+            "duplicate cause should be dropped: {chain:?}"
+        );
+    }
+
+    #[test]
+    fn test_error_chain_drops_empty_causes() {
+        let err = anyhow::anyhow!("").context("something failed");
+        let (message, chain) = error_chain(&err);
+        assert_eq!(message, "something failed");
+        assert!(chain.is_empty());
+    }
 
     #[test]
     fn test_success_envelope() {

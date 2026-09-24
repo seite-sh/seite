@@ -64,9 +64,7 @@ pub fn run(args: &WorkspaceArgs) -> anyhow::Result<()> {
 fn run_init(args: &WorkspaceInitArgs) -> anyhow::Result<()> {
     let name = match &args.name {
         Some(n) => n.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Workspace name")
-            .interact_text()?,
+        None => crate::cli::prompt::input("Workspace name", None, "<NAME> argument")?,
     };
 
     let ws_file = PathBuf::from("seite-workspace.toml");
@@ -270,7 +268,7 @@ fn run_status() -> anyhow::Result<()> {
         human::info(&format!("  Shared templates: {templates}"));
     }
 
-    println!();
+    crate::human_println!();
     for site in &ws_config.sites {
         let site_root = ws_root.join(&site.path);
         let has_config = site_root.join("seite.toml").exists();

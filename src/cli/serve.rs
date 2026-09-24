@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 use clap::Args;
@@ -29,6 +29,34 @@ pub struct ServeArgs {
     /// Open the site in the default browser after starting
     #[arg(long)]
     pub open: bool,
+
+    /// Don't read commands from stdin; serve (with live reload) until
+    /// interrupted (Ctrl-C / SIGTERM). Without it, the server also keeps running
+    /// when stdin closes (e.g. `</dev/null` or a background job).
+    #[arg(long)]
+    pub no_repl: bool,
+}
+
+/// Fail fast (before building) when an explicitly requested port is taken.
+fn ensure_port_free(host: &str, port: u16) -> anyhow::Result<u16> {
+    if server::find_available_port(host, port) != Some(port) {
+        anyhow::bail!(
+            "port {port} is already in use on {host} (omit --port to pick a free port automatically)"
+        );
+    }
+    Ok(port)
+}
+
+/// Keep serving until the process is interrupted. The server, file watcher and
+/// live reload run on background threads; the default SIGINT/SIGTERM handling
+/// terminates the process.
+fn serve_until_interrupted(port: u16) -> ! {
+    human::info(&format!(
+        "Serving on port {port} until interrupted (Ctrl-C / SIGTERM to stop)"
+    ));
+    loop {
+        std::thread::park();
+    }
 }
 
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -53,7 +81,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
 
             let port = match args.port {
-                Some(p) => p,
+                Some(p) => ensure_port_free(host, p)?,
                 None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
                     anyhow::anyhow!(
                         "no available port found in {}-{}",
@@ -76,12 +104,18 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
             let handle = server::start(&config, &paths, host, port, true, false)?;
 
+            if args.no_repl {
+                serve_until_interrupted(handle.port());
+            }
+
             human::info(&format!(
                 "Serving site '{site_name}'. Type \"help\" for commands, \"stop\" to quit (port {})",
                 handle.port()
             ));
 
-            run_repl(&config, &paths, &handle)?;
+            if !run_repl(&config, &paths, &handle)? {
+                serve_until_interrupted(handle.port());
+            }
             return Ok(());
         }
 
@@ -100,6 +134,10 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         let auto_increment = args.port.is_none();
         let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
 
+        if args.no_repl {
+            serve_until_interrupted(handle.port());
+        }
+
         human::info(&format!(
             "Type \"stop\" to quit (server on port {})",
             handle.port()
@@ -109,6 +147,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         let reader = stdin.lock();
         print_prompt();
 
+        let mut stopped = false;
         for line in reader.lines() {
             let line = match line {
                 Ok(l) => l,
@@ -124,6 +163,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 "stop" | "quit" | "exit" => {
                     handle.stop();
                     human::info("Server stopped");
+                    stopped = true;
                     break;
                 }
                 "status" => {
@@ -145,6 +185,10 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             print_prompt();
         }
 
+        // stdin closed without "stop" (e.g. </dev/null): keep serving.
+        if !stopped {
+            serve_until_interrupted(handle.port());
+        }
         return Ok(());
     }
 
@@ -168,7 +212,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     // loudly, instead of the two independent scans drifting apart and serving
     // on a different port than the URLs advertise.
     let port = match args.port {
-        Some(p) => p,
+        Some(p) => ensure_port_free(host, p)?,
         None => server::find_available_port(host, DEFAULT_PORT).ok_or_else(|| {
             anyhow::anyhow!(
                 "no available port found in {}-{}",
@@ -191,7 +235,9 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 
     let handle = server::start(&config, &paths, host, port, true, false)?;
 
-    human::info("Type \"help\" for commands, \"stop\" to quit");
+    if !args.no_repl {
+        human::info("Type \"help\" for commands, \"stop\" to quit");
+    }
 
     if args.open {
         let display_host = match host {
@@ -208,16 +254,20 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
-    run_repl(&config, &paths, &handle)?;
+    if args.no_repl || !run_repl(&config, &paths, &handle)? {
+        serve_until_interrupted(handle.port());
+    }
 
     Ok(())
 }
 
+/// Read REPL commands from stdin. Returns `true` when the user stopped the
+/// server, `false` when stdin closed (the caller then keeps serving).
 fn run_repl(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
     handle: &server::ServerHandle,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let stdin = io::stdin();
     let reader = stdin.lock();
     print_prompt();
@@ -238,16 +288,20 @@ fn run_repl(
             LoopAction::Stop => {
                 handle.stop();
                 human::info("Server stopped");
-                break;
+                return Ok(true);
             }
         }
         print_prompt();
     }
 
-    Ok(())
+    Ok(false)
 }
 
 fn print_prompt() {
+    // Only show the prompt to a human; piped stdin gets clean logs.
+    if !io::stdin().is_terminal() {
+        return;
+    }
     print!("seite> ");
     let _ = io::stdout().flush();
 }

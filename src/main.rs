@@ -1,40 +1,76 @@
-use anyhow::Result;
+use std::path::Path;
+use std::process::ExitCode;
+
+use anyhow::{Context, Result};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use seite::cli::{Cli, Command};
+use seite::output::json;
 
-fn main() -> Result<()> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    // Set up logging
+    // Process-global flags, readable from deep inside commands.
+    seite::output::set_json_mode(cli.json);
+    seite::output::set_verbose(cli.verbose);
+    seite::cli::prompt::set_assume_yes(cli.yes);
+    if cli.json {
+        // stdout carries exactly one JSON document; everything else → stderr.
+        console::set_colors_enabled(false);
+        console::set_colors_enabled_stderr(false);
+        json::redirect_stdout_to_stderr();
+    }
+
+    // Set up logging (always on stderr so stdout stays parseable)
     let filter = if cli.verbose {
         EnvFilter::new("debug")
     } else {
         EnvFilter::new("info")
     };
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
 
+    let cmd_name = cli.command.as_ref().map(command_name).unwrap_or("seite");
+    let result = run(&cli);
+    finish(cmd_name, result)
+}
+
+/// Apply global flags, then dispatch the subcommand (with telemetry and the
+/// update check).
+fn run(cli: &Cli) -> Result<()> {
     // Change working directory if --dir is specified
     if let Some(ref dir) = cli.dir {
-        std::env::set_current_dir(dir)?;
+        std::env::set_current_dir(dir)
+            .with_context(|| format!("cannot change to --dir '{dir}'"))?;
+    }
+    if let Some(ref config) = cli.config {
+        apply_config_flag(config)?;
     }
 
-    let site = cli.site.clone();
-    let command = match cli.command {
-        Some(cmd) => cmd,
-        None => {
-            // No subcommand: show welcome or help
-            print_welcome();
-            return Ok(());
+    let Some(command) = cli.command.as_ref() else {
+        if cli.json {
+            anyhow::bail!("no command given (run `seite --help` to see commands)");
         }
+        // No subcommand: show welcome or help
+        print_welcome();
+        return Ok(());
     };
+
+    if cli.json && !supports_json(command) {
+        anyhow::bail!(
+            "--json is not supported by `seite {}` (it streams output or takes over the terminal)",
+            command_name(command)
+        );
+    }
 
     use std::time::Instant;
 
-    let cmd_name = command_name(&command);
+    let cmd_name = command_name(command);
     let started = Instant::now();
-    let result = dispatch(site.as_deref(), &command);
+    let result = dispatch(cli.site.as_deref(), command);
     let elapsed = started.elapsed();
     let success = result.is_ok();
 
@@ -42,7 +78,7 @@ fn main() -> Result<()> {
     // stay clean for these commands). The `telemetry` command is also excluded
     // so it doesn't report itself.
     let skip = matches!(
-        &command,
+        command,
         Command::SelfUpdate(_)
             | Command::Mcp(_)
             | Command::Perf(_)
@@ -55,6 +91,68 @@ fn main() -> Result<()> {
     }
 
     result
+}
+
+/// Render the command's outcome (JSON envelope or human error) and pick the
+/// process exit code.
+fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
+    let json_mode = seite::output::is_json();
+    match result {
+        Ok(()) => {
+            if json_mode {
+                let doc = json::success_document(cmd_name, json::take_data(), json::warnings());
+                json::emit_document(&doc);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let (message, chain) = json::error_chain(&err);
+            if json_mode {
+                json::emit_document(&json::error_document(cmd_name, &err, json::warnings()));
+            }
+            // Human-readable error always goes to stderr.
+            eprintln!("Error: {message}");
+            if !chain.is_empty() {
+                eprintln!("\nCaused by:");
+                for cause in &chain {
+                    eprintln!("    {cause}");
+                }
+            }
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Commands that stream output or take over the terminal can't produce a
+/// single JSON document, so `--json` is rejected for them.
+fn supports_json(command: &Command) -> bool {
+    !matches!(
+        command,
+        Command::Serve(_)
+            | Command::Agent(_)
+            | Command::Mcp(_)
+            | Command::Completions(_)
+            | Command::SelfUpdate(_)
+    )
+}
+
+/// `--config <path>`: only `seite.toml` files are supported. Run the command
+/// from that file's directory (after `--dir` has been applied).
+fn apply_config_flag(config: &str) -> Result<()> {
+    let path = Path::new(config);
+    if !path.is_file() {
+        anyhow::bail!("--config file not found: {config}");
+    }
+    if path.file_name().and_then(|n| n.to_str()) != Some("seite.toml") {
+        anyhow::bail!(
+            "custom config file names are not supported; point --config at a seite.toml or use --dir"
+        );
+    }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::env::set_current_dir(parent)
+            .with_context(|| format!("cannot change to directory of --config '{config}'"))?;
+    }
+    Ok(())
 }
 
 /// Dispatch a parsed command. Returns the command's result so `main` can record

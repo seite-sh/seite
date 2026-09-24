@@ -113,10 +113,24 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
     );
     fs::write(&filepath, file_content)?;
     human::success(&format!("Created {}", filepath.display()));
-    println!(
+    crate::human_println!(
         "  {} edit this file and the dev server will auto-reload",
         console::style("→").dim()
     );
+
+    let prefix = collection.url_prefix.trim_end_matches('/');
+    let url = match lang_suffix {
+        Some(lang) => format!("/{lang}{prefix}/{slug}"),
+        None => format!("{prefix}/{slug}"),
+    };
+    crate::output::json::set_data(serde_json::json!({
+        "path": filepath.display().to_string(),
+        "collection": collection.name,
+        "slug": slug,
+        "url": url,
+        "draft": args.draft,
+        "lang": lang_suffix,
+    }));
 
     Ok(())
 }

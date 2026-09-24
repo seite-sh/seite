@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Args;
 
+use crate::cli::prompt;
 use crate::config::{CollectionConfig, DeployTarget, SiteConfig};
 use crate::content;
 use crate::meta;
@@ -22,7 +23,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub description: Option<String>,
 
-    /// Deploy target (github-pages, cloudflare)
+    /// Deploy target (github-pages, cloudflare, netlify); required when not interactive
     #[arg(long)]
     pub deploy_target: Option<String>,
 
@@ -54,38 +55,40 @@ pub struct InitArgs {
 pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let name = match &args.name {
         Some(n) => n.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site name (directory)")
-            .interact_text()?,
+        None => prompt::input("Site name (directory)", None, "<NAME> argument")?,
     };
 
     let title = match &args.title {
         Some(t) => t.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site title")
-            .default(name.clone())
-            .interact_text()?,
+        None => prompt::input("Site title", Some(&name), "--title")?,
     };
 
     let description = match &args.description {
         Some(d) => d.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site description")
-            .default(String::new())
-            .allow_empty(true)
-            .interact_text()?,
+        None => prompt::input("Site description", Some(""), "--description")?,
     };
 
+    const DEPLOY_TARGETS: [&str; 3] = ["github-pages", "cloudflare", "netlify"];
     let deploy_target = match &args.deploy_target {
-        Some(t) => t.clone(),
+        Some(t) => {
+            if !DEPLOY_TARGETS.contains(&t.as_str()) {
+                anyhow::bail!(
+                    "unknown deploy target '{t}'. Valid targets: {}",
+                    DEPLOY_TARGETS.join(", ")
+                );
+            }
+            t.clone()
+        }
         None => {
-            let options = ["github-pages", "cloudflare", "netlify"];
-            let selection = dialoguer::Select::new()
-                .with_prompt("Deploy target")
-                .items(options)
-                .default(0)
-                .interact()?;
-            options[selection].to_string()
+            // No silent default: the target decides which CI workflow is generated.
+            let selection = prompt::select(
+                "Deploy target",
+                &DEPLOY_TARGETS,
+                None,
+                "--deploy-target",
+                &DEPLOY_TARGETS,
+            )?;
+            DEPLOY_TARGETS[selection].to_string()
         }
     };
 
@@ -93,16 +96,21 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let collections: Vec<CollectionConfig> = match &args.collections {
         Some(list) => list
             .split(',')
-            .filter_map(|name| CollectionConfig::from_preset(name.trim()))
-            .collect(),
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(|name| {
+                CollectionConfig::from_preset(name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "unknown collection preset '{name}'. Available: posts, docs, pages, changelog, roadmap, trust"
+                    )
+                })
+            })
+            .collect::<anyhow::Result<_>>()?,
         None => {
             let preset_names = ["posts", "docs", "pages", "changelog", "roadmap", "trust"];
             let defaults = &[true, false, true, false, false, false]; // posts + pages on by default
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Collections to include")
-                .items(preset_names)
-                .defaults(defaults)
-                .interact()?;
+            let selections =
+                prompt::multi_select("Collections to include", &preset_names, defaults)?;
             selections
                 .into_iter()
                 .filter_map(|i| CollectionConfig::from_preset(preset_names[i]))
@@ -195,10 +203,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         )?);
     } else if args.name.is_none() {
         // Interactive mode (no --name given = user is in interactive init flow)
-        let add_contact = dialoguer::Confirm::new()
-            .with_prompt("Add a contact form?")
-            .default(false)
-            .interact()?;
+        let add_contact =
+            prompt::is_interactive() && prompt::confirm("Add a contact form?", false)?;
         if add_contact {
             let setup_args = crate::cli::contact::SetupArgs {
                 provider: None,
@@ -423,39 +429,67 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::write(root.join("CLAUDE.md"), "@AGENTS.md\n")?;
 
     human::success(&format!("Created new site in '{name}'"));
-    println!();
+    crate::human_println!();
 
     // Show project structure so users know what was created
-    let collection_dirs: Vec<String> = collections
-        .iter()
-        .map(|c| format!("  │   └── {}/", c.directory))
-        .collect();
-    println!(
-        "  {name}/\n\
-         ├── seite.toml          {}\n\
-         ├── content/\n\
-         {}\n\
-         ├── templates/base.html {}\n\
-         └── static/             {}",
-        console::style("← site config").dim(),
-        collection_dirs.join("\n"),
-        console::style("← theme template").dim(),
-        console::style("← CSS, images, etc.").dim(),
-    );
+    for line in project_tree_lines(&name, &collections) {
+        crate::human_println!("{line}");
+    }
 
-    println!();
+    crate::human_println!();
     human::info("Next steps:");
-    println!("  cd {name}");
-    println!(
+    crate::human_println!("  cd {name}");
+    crate::human_println!(
         "  seite serve             {} start dev server with live reload",
         console::style("←").dim()
     );
-    println!(
+    crate::human_println!(
         "  seite agent             {} write content & themes with Claude Code",
         console::style("←").dim()
     );
 
+    let root_display = std::env::current_dir()
+        .map(|cwd| cwd.join(&root))
+        .unwrap_or_else(|_| root.clone());
+    crate::output::json::set_data(serde_json::json!({
+        "path": root_display.display().to_string(),
+        "name": name,
+        "title": title,
+        "collections": collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        "deploy_target": deploy_target,
+        "contact": config.contact.is_some(),
+    }));
+
     Ok(())
+}
+
+/// Lines of the "what was created" tree shown after `seite init`.
+fn project_tree_lines(name: &str, collections: &[CollectionConfig]) -> Vec<String> {
+    let mut lines = vec![
+        format!("  {name}/"),
+        format!(
+            "  ├── seite.toml          {}",
+            console::style("← site config").dim()
+        ),
+        "  ├── content/".to_string(),
+    ];
+    for (i, c) in collections.iter().enumerate() {
+        let branch = if i + 1 == collections.len() {
+            "└──"
+        } else {
+            "├──"
+        };
+        lines.push(format!("  │   {branch} {}/", c.directory));
+    }
+    lines.push(format!(
+        "  ├── templates/base.html {}",
+        console::style("← theme template").dim()
+    ));
+    lines.push(format!(
+        "  └── static/             {}",
+        console::style("← CSS, images, etc.").dim()
+    ));
+    lines
 }
 
 /// Trust center framework metadata.
@@ -519,10 +553,7 @@ pub struct TrustOptions {
 fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOptions> {
     let company = match &args.trust_company {
         Some(c) => c.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Trust center company name")
-            .default(title.to_string())
-            .interact_text()?,
+        None => prompt::input("Trust center company name", Some(title), "--trust-company")?,
     };
 
     let frameworks: Vec<String> = match &args.trust_frameworks {
@@ -530,11 +561,7 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
         None => {
             let names: Vec<&str> = FRAMEWORKS.iter().map(|f| f.name).collect();
             let defaults = &[true, false, false, false, false, false, false];
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Compliance frameworks")
-                .items(names)
-                .defaults(defaults)
-                .interact()?;
+            let selections = prompt::multi_select("Compliance frameworks", &names, defaults)?;
             selections
                 .into_iter()
                 .map(|i| FRAMEWORKS[i].slug.to_string())
@@ -564,11 +591,8 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
                 "changelog",
             ];
             let defaults = &[true, true, true, true, true, false, false];
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Trust center sections")
-                .items(section_names)
-                .defaults(defaults)
-                .interact()?;
+            let selections =
+                prompt::multi_select("Trust center sections", &section_names, defaults)?;
             selections
                 .into_iter()
                 .map(|i| section_slugs[i].to_string())
@@ -581,8 +605,8 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
     for fw_slug in &frameworks {
         let fw = framework_by_slug(fw_slug);
         let fw_name = fw.map(|f| f.name).unwrap_or(fw_slug.as_str());
-        let status = if args.trust_frameworks.is_some() {
-            // Non-interactive: default to "in_progress"
+        let status = if args.trust_frameworks.is_some() || !prompt::is_interactive() {
+            // Non-interactive: default to "in_progress" (never claim certification)
             "in_progress".to_string()
         } else {
             let options = [
@@ -590,11 +614,13 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
                 "In Progress (pursuing)",
                 "Planned (on roadmap)",
             ];
-            let selection = dialoguer::Select::new()
-                .with_prompt(format!("{fw_name} status"))
-                .items(options)
-                .default(0)
-                .interact()?;
+            let selection = prompt::select(
+                &format!("{fw_name} status"),
+                &options,
+                Some(0),
+                "--trust-frameworks",
+                &[],
+            )?;
             match selection {
                 0 => "active",
                 1 => "in_progress",

@@ -131,20 +131,31 @@ fn select_group<'a>(
 }
 
 fn print_groups(groups: &[AccessGroup]) -> anyhow::Result<()> {
+    crate::output::json::set_data(serde_json::json!({
+        "groups": groups
+            .iter()
+            .map(|g| serde_json::json!({
+                "name": g.name,
+                "scopes": g.scopes,
+                "projects": g.projects,
+                "missing_projects": g.missing_projects,
+            }))
+            .collect::<Vec<_>>(),
+    }));
     if groups.is_empty() {
         human::info("No private collections are configured.");
         return Ok(());
     }
 
-    println!("{:<20} {:<30} CLOUDFLARE PROJECTS", "GROUP", "SCOPES");
-    println!("{}", "-".repeat(76));
+    crate::human_println!("{:<20} {:<30} CLOUDFLARE PROJECTS", "GROUP", "SCOPES");
+    crate::human_println!("{}", "-".repeat(76));
     for group in groups {
         let projects = if group.missing_projects {
             "(project not configured)".to_string()
         } else {
             group.projects.join(", ")
         };
-        println!(
+        crate::human_println!(
             "{:<20} {:<30} {}",
             group.name,
             group.scopes.join(", "),
@@ -170,10 +181,11 @@ fn set_password(
         );
     }
 
-    let password = dialoguer::Password::new()
-        .with_prompt(format!("Password for access group '{}'", group.name))
-        .with_confirmation("Confirm password", "Passwords do not match")
-        .interact()?;
+    let password = crate::cli::prompt::password(
+        &format!("Password for access group '{}'", group.name),
+        Some("Confirm password"),
+        "run `seite access set-password` from an interactive terminal (passwords are never read from flags)",
+    )?;
     if password.is_empty() {
         anyhow::bail!("password cannot be empty");
     }

@@ -99,17 +99,26 @@ impl CommandOutput for BuildStats {
             out.push_str(&format!(", {} items unchanged", self.items_skipped));
         }
         out.push(')');
-        if !self.step_timings.is_empty() {
-            out.push_str("\n  Timings:");
-            for (name, ms) in &self.step_timings {
-                if *ms >= 1.0 {
-                    out.push_str(&format!("\n    {name}: {ms:.1}ms"));
-                } else {
-                    out.push_str(&format!("\n    {name}: <1ms"));
-                }
+        out
+    }
+}
+
+impl BuildStats {
+    /// Per-step timing breakdown for `--verbose` output. `None` when no step
+    /// timings were recorded.
+    pub fn timings_display(&self) -> Option<String> {
+        if self.step_timings.is_empty() {
+            return None;
+        }
+        let mut out = String::from("  Timings:");
+        for (name, ms) in &self.step_timings {
+            if *ms >= 1.0 {
+                out.push_str(&format!("\n    {name}: {ms:.1}ms"));
+            } else {
+                out.push_str(&format!("\n    {name}: <1ms"));
             }
         }
-        out
+        Some(out)
     }
 }
 
@@ -583,7 +592,7 @@ fn build_site_inner(
         config.all_languages().into_iter().collect();
     crate::i18n::register_filters(&mut tera, default_lang, &lang_codes);
     for warning in crate::i18n::partial_language_map_warnings(&data, &lang_codes) {
-        eprintln!("⚠ Warning: {warning}");
+        crate::output::human::warning_stderr(&warning);
     }
 
     // Step 3: Process each collection
@@ -3772,10 +3781,27 @@ mod tests {
             incremental: false,
             items_skipped: 0,
         };
-        let display = stats.human_display();
-        assert!(display.contains("Timings:"));
-        assert!(display.contains("Fast step: <1ms"));
-        assert!(display.contains("Slow step: 15.3ms"));
+        // Timings are verbose-only: not part of the summary line.
+        assert!(!stats.human_display().contains("Timings:"));
+        let timings = stats.timings_display().expect("timings recorded");
+        assert!(timings.contains("Timings:"));
+        assert!(timings.contains("Fast step: <1ms"));
+        assert!(timings.contains("Slow step: 15.3ms"));
+    }
+
+    #[test]
+    fn test_build_stats_timings_display_empty() {
+        let stats = BuildStats {
+            items_built: HashMap::new(),
+            static_files_copied: 0,
+            public_files_copied: 0,
+            data_files_loaded: 0,
+            duration_ms: 1,
+            step_timings: vec![],
+            incremental: false,
+            items_skipped: 0,
+        };
+        assert!(stats.timings_display().is_none());
     }
 
     #[test]

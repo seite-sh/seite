@@ -2179,6 +2179,7 @@ dependencies = [
  "pulldown-cmark",
  "quick-xml 0.40.1",
  "rayon",
+ "rustix",
  "serde",
  "serde_json",
  "serde_yaml_ng",

@@ -79,14 +79,14 @@ fn run_list() -> anyhow::Result<()> {
     let all_themes = themes::all();
     let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
     for theme in &all_themes {
-        println!(
+        crate::human_println!(
             "  {}  {}",
             console::style(format!("{:<max_len$}", theme.name)).bold(),
             theme.description,
         );
     }
-    println!();
-    println!(
+    crate::human_println!();
+    crate::human_println!(
         "  {} {}",
         console::style("Preview all:").dim(),
         console::style("https://seite.sh/docs/theme-gallery")
@@ -96,11 +96,21 @@ fn run_list() -> anyhow::Result<()> {
 
     let project_root = PathBuf::from(".");
     let installed = themes::installed_themes(&project_root);
+    crate::output::json::set_data(serde_json::json!({
+        "bundled": all_themes
+            .iter()
+            .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
+            .collect::<Vec<_>>(),
+        "installed": installed
+            .iter()
+            .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
+            .collect::<Vec<_>>(),
+    }));
     if !installed.is_empty() {
-        println!();
+        crate::human_println!();
         human::header("Installed themes");
         for theme in &installed {
-            println!(
+            crate::human_println!(
                 "  {} - {}",
                 console::style(&theme.name).bold().cyan(),
                 theme.description
@@ -109,6 +119,15 @@ fn run_list() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// JSON envelope data for `theme apply`.
+fn set_apply_data(name: &str, source: &str, template_dir: &std::path::Path) {
+    crate::output::json::set_data(serde_json::json!({
+        "theme": name,
+        "source": source,
+        "written": template_dir.join("base.html").display().to_string(),
+    }));
 }
 
 fn run_apply(name: &str) -> anyhow::Result<()> {
@@ -123,6 +142,7 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
         std::fs::write(template_dir.join("base.html"), theme.base_html)?;
         human::success(&format!("Applied bundled theme '{}'", name));
         human::info("Run 'seite build' or the watcher will pick it up automatically.");
+        set_apply_data(name, "bundled", &template_dir);
         return Ok(());
     }
 
@@ -132,6 +152,7 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
         std::fs::write(template_dir.join("base.html"), &theme.base_html)?;
         human::success(&format!("Applied installed theme '{}'", name));
         human::info("Run 'seite build' or the watcher will pick it up automatically.");
+        set_apply_data(name, "installed", &template_dir);
         return Ok(());
     }
 

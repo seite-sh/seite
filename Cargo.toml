@@ -93,6 +93,10 @@ tempfile = "3"
 sha2 = "0.10"
 getrandom = "0.3"
 
+# Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["stdio"] }
+
 [features]
 default = ["math"]
 math = ["dep:katex-rs"]
