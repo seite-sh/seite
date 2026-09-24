@@ -507,6 +507,8 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
     "Edit(seite.toml)",
     "Bash(seite build:*)",
     "Bash(seite build)",
+    "Bash(seite check:*)",
+    "Bash(seite check)",
     "Bash(seite new:*)",
     "Bash(seite serve:*)",
     "Bash(seite theme:*)",
@@ -518,14 +520,25 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
 
 /// Allow rules that `seite upgrade` adds to existing projects' settings
 /// (introduced after the original settings template).
-pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] =
-    &["mcp__seite", "Edit(static/**)", "Edit(seite.toml)"];
+pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] = &[
+    "mcp__seite",
+    "Edit(static/**)",
+    "Edit(seite.toml)",
+    "Bash(seite check:*)",
+    "Bash(seite check)",
+];
 
 /// Paths the agent may edit without asking (Claude `Write/Edit(...)`,
 /// OpenCode `edit` rules).
 const EDITABLE_PATHS: &[&str] = &["content/", "templates/", "static/", "data/"];
 /// `seite` subcommands the agent may run without asking.
-const ALLOWED_COMMANDS: &[&str] = &["seite build", "seite new", "seite serve", "seite theme"];
+const ALLOWED_COMMANDS: &[&str] = &[
+    "seite build",
+    "seite check",
+    "seite new",
+    "seite serve",
+    "seite theme",
+];
 
 /// `.claude/settings.json` for a new site: permissions plus
 /// `enabledMcpjsonServers`, which pre-approves the `seite` server declared in

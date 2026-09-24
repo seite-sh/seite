@@ -925,8 +925,10 @@ The server is declared in `.mcp.json` (and pre-approved in
 the first time, it may ask you to approve the project's MCP server.
 No API keys required.
 
-**Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
-`seite_apply_theme`, `seite_lookup_docs`
+**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
+`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
+`seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
+`seite_lookup_docs`
 
 **Available resources:** `seite://docs/*` (seite documentation),
 `seite://content/*` (site content), `seite://themes` (themes),

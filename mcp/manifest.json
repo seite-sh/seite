@@ -27,8 +27,13 @@
   "tools": [
     { "name": "seite_build", "description": "Build the site to the output directory" },
     { "name": "seite_create_content", "description": "Create a new content file with frontmatter" },
+    { "name": "seite_get_page", "description": "Inspect one page: resolved frontmatter, URL, body, and rendered HTML" },
+    { "name": "seite_update_frontmatter", "description": "Edit a content file's frontmatter, preserving its body" },
     { "name": "seite_search", "description": "Search site content by keywords" },
+    { "name": "seite_content_stats", "description": "Content health: drafts, missing descriptions, tags, and translations" },
+    { "name": "seite_list_templates", "description": "Templates, blocks, context variables, shortcodes, and data keys" },
     { "name": "seite_apply_theme", "description": "Apply a bundled or installed theme" },
+    { "name": "seite_create_collection", "description": "Add a preset collection to the site" },
     { "name": "seite_lookup_docs", "description": "Look up seite documentation by topic or keyword" }
   ],
   "keywords": ["static-site-generator", "mcp", "rust", "claude-code", "ai-agent", "llms-txt"],
