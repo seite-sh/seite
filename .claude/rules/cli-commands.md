@@ -12,6 +12,9 @@ paths:
 ## Subcommands
 init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self-update, completions, perf, telemetry
 
+## seite check
+`src/cli/check.rs` runs config, frontmatter, shortcode, data-file, template, render, link, and asset validation via `check_site()` — the real build pipeline (`build::build_site`), but rendered into a `tempfile` scratch dir that's always discarded, so `dist/`/`dist-subdomains/` are never touched. Diagnostics come back as one sorted, deduplicated `Diagnostics` list (see `src/diagnostics.rs`); paths are relativized back to the site root (`relativize()` strips the scratch prefix from both `file` and any absolute paths quoted in the message). `--strict` also fails on warnings (e.g. `config-unknown-key`, `broken-link`); `--drafts` includes draft content. Exit 0 (no errors, or in `--strict` no diagnostics at all) / 1 otherwise; `--json` shape is `{"diagnostics": [...], "summary": {"errors", "warnings"}}` on success and `error.diagnostics` on failure. Output is compiler-style: `file:line:col: severity[code]: message` + an indented `hint:` line.
+
 ## Agent System
 `seite agent` spawns Claude Code with system prompt containing site config, content inventory, template list, frontmatter format. Two modes: `seite agent "prompt"` (non-interactive) and `seite agent` (interactive).
 

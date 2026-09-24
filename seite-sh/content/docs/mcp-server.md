@@ -115,7 +115,7 @@ A successful result is compact JSON text; clients on `2025-06-18` or newer also 
 
 | Tool | Changes files? |
 |------|----------------|
-| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs` | No (read-only) |
+| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check` | No (read-only — `seite_check` renders into a temporary directory that's discarded, never touching `dist/`) |
 | `seite_build` | Writes the output directory |
 | `seite_create_content` | Creates a content file (replaces one only with `overwrite: true`) |
 | `seite_update_frontmatter` | Rewrites one file's frontmatter |
@@ -131,7 +131,18 @@ Build the site to the output directory.
 | `drafts` | boolean | No | Include draft content in the build (default: false) |
 | `strict` | boolean | No | Fail (`isError`) if the build produced warnings or broken internal links (default: false) |
 
-Returns build statistics, `warnings` (e.g. a custom template that failed to parse and fell back to the built-in default), and `broken_links` (`[{target, sources}]` — internal links pointing at pages that don't exist).
+Returns build statistics, `warnings` (e.g. a custom template that failed to parse and fell back to the built-in default), `broken_links` and `missing_assets` (each `[{target, sources}]` — internal links pointing at pages that don't exist, and asset references with no matching file), and `diagnostics` (the same structured list `seite_check` returns: severity, stable `code`, message, and source `file`/`line` when known).
+
+### seite_check
+
+Report every problem in the site without touching the output directory — the same checks as `seite check`: config syntax and unknown keys, frontmatter, shortcodes, data files, templates, a full render, broken internal links, and missing assets.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `drafts` | boolean | No | Also check draft content (default: false) |
+| `strict` | boolean | No | Treat warnings as failures too (default: false) |
+
+Returns `ok` (false when there are errors, or any warning with `strict: true`), `summary` (`{errors, warnings}` counts), and `diagnostics` — each with `severity`, a stable `code` (e.g. `frontmatter-parse`, `broken-link`, `config-unknown-key`), `message`, and `file`/`line`/`column`/`hint` when known. Run it after making changes to catch problems before building.
 
 ### seite_create_content
 

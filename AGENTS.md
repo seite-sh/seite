@@ -46,7 +46,7 @@ src/
   cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
-  config/              SiteConfig, CollectionConfig, defaults
+  config/              SiteConfig, CollectionConfig, defaults; unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
   data/                Data file loading (YAML/JSON/TOML)
   content/             Frontmatter parsing, ContentItem, slug generation
   deploy/              GitHub Pages + Cloudflare + Netlify
