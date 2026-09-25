@@ -343,3 +343,111 @@ fn test_workspace_build_strict_json_includes_link_diagnostics() {
         "{all}"
     );
 }
+
+/// Add a `minfy` typo under `[build]` in a workspace site; returns its line.
+fn add_unknown_key(site: &std::path::Path) -> usize {
+    let config = fs::read_to_string(site.join("seite.toml")).unwrap();
+    let config = config.replacen("[build]\n", "[build]\nminfy = true\n", 1);
+    fs::write(site.join("seite.toml"), &config).unwrap();
+    config.lines().position(|l| l.starts_with("minfy")).unwrap() + 1
+}
+
+#[test]
+fn test_workspace_build_warns_on_unknown_config_key() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["alpha"]);
+    let line = add_unknown_key(&tmp.path().join("sites/alpha"));
+
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "unknown keys must not fail");
+    let doc = json_stdout(&output);
+    let diagnostics = doc["data"]["sites"]["alpha"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{doc}"));
+    let d = diagnostics
+        .iter()
+        .find(|d| d["code"] == "config-unknown-key")
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert_eq!(d["severity"], "warning");
+    assert_eq!(d["file"], "seite.toml", "site-relative within sites.alpha");
+    assert_eq!(d["line"], line);
+    assert_eq!(d["hint"], "did you mean `minify`?");
+    assert!(doc["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w.as_str().unwrap().contains("minfy")));
+
+    page_cmd()
+        .arg("build")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "sites/alpha/seite.toml:{line}:1: warning[config-unknown-key]"
+        )));
+}
+
+#[test]
+fn test_workspace_check_reports_each_site() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["alpha", "beta"]);
+    let line = add_unknown_key(&tmp.path().join("sites/alpha"));
+    write_site_file(
+        &tmp.path().join("sites/beta"),
+        "content/posts/2025-01-01-broken.md",
+        "---\ntitle: Broken\n---\n\nSee [gone](/posts/not-here).\n",
+    );
+
+    // Whole workspace from its root: both sites, workspace-relative files.
+    let output = page_cmd()
+        .args(["--json", "check"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "warnings only");
+    let doc = json_stdout(&output);
+    let diagnostics = doc["data"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert!(
+        diagnostics.iter().any(|d| d["code"] == "config-unknown-key"
+            && d["file"] == "sites/alpha/seite.toml"
+            && d["line"] == line),
+        "{doc}"
+    );
+    assert!(
+        diagnostics.iter().any(|d| d["code"] == "broken-link"
+            && d["file"] == "sites/beta/content/posts/2025-01-01-broken.md"
+            && d["line"] == 5),
+        "{doc}"
+    );
+
+    // --site limits the check to one site.
+    let output = page_cmd()
+        .args(["--json", "--site", "beta", "check", "--strict"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let doc = json_stdout(&output);
+    let diagnostics = doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert!(diagnostics
+        .iter()
+        .all(|d| d["code"] != "config-unknown-key"));
+    assert!(diagnostics.iter().any(|d| d["code"] == "broken-link"));
+
+    // Unknown site names are an error.
+    page_cmd()
+        .args(["--site", "nope", "check"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown site 'nope'"));
+}

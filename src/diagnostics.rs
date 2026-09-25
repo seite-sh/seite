@@ -103,6 +103,18 @@ impl Diagnostic {
         self
     }
 
+    /// Prefix a relative `file` with `dir` (e.g. a workspace site's path, so
+    /// `seite.toml` becomes `sites/blog/seite.toml`). Absolute paths and
+    /// diagnostics without a file are left alone.
+    pub fn under(mut self, dir: &Path) -> Self {
+        if let Some(file) = &self.file {
+            if file.is_relative() {
+                self.file = Some(dir.join(file));
+            }
+        }
+        self
+    }
+
     pub fn is_error(&self) -> bool {
         self.severity == Severity::Error
     }
@@ -283,6 +295,21 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_under_prefixes_relative_files_only() {
+        let d = Diagnostic::error("broken-link", "x")
+            .with_file("content/a.md")
+            .under(Path::new("sites/blog"));
+        assert_eq!(d.file, Some(PathBuf::from("sites/blog/content/a.md")));
+        let d = Diagnostic::error("broken-link", "x").under(Path::new("s"));
+        assert_eq!(d.file, None);
+        let abs = std::env::temp_dir().join("a.md");
+        let d = Diagnostic::error("x", "x")
+            .with_file(abs.clone())
+            .under(Path::new("s"));
+        assert_eq!(d.file, Some(abs));
+    }
 
     #[test]
     fn test_display_with_location_and_hint() {

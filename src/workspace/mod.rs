@@ -190,7 +190,36 @@ pub fn load_site_in_workspace(
     ws_site: &WorkspaceSite,
 ) -> Result<(SiteConfig, ResolvedPaths)> {
     let site_root = ws_root.join(&ws_site.path);
-    let mut config = SiteConfig::load(&site_root.join("seite.toml"))?;
+    let config = SiteConfig::load(&site_root.join("seite.toml"))?;
+    Ok(apply_site_overrides(ws_root, ws_site, config))
+}
+
+/// Like [`load_site_in_workspace`], but loads the config with
+/// [`SiteConfig::load_with_diagnostics`] and also returns its non-fatal
+/// problems (`config-unknown-key` warnings). Diagnostic files are relative to
+/// the site root (`seite.toml`); callers prefix them with the site path when
+/// they need workspace-relative locations.
+pub fn load_site_in_workspace_with_diagnostics(
+    ws_root: &Path,
+    ws_site: &WorkspaceSite,
+) -> Result<(
+    SiteConfig,
+    ResolvedPaths,
+    Vec<crate::diagnostics::Diagnostic>,
+)> {
+    let site_root = ws_root.join(&ws_site.path);
+    let (config, warnings) = SiteConfig::load_with_diagnostics(&site_root.join("seite.toml"))?;
+    let (config, paths) = apply_site_overrides(ws_root, ws_site, config);
+    Ok((config, paths, warnings))
+}
+
+/// Apply a workspace site's `base_url` / `output_dir` overrides.
+fn apply_site_overrides(
+    ws_root: &Path,
+    ws_site: &WorkspaceSite,
+    mut config: SiteConfig,
+) -> (SiteConfig, ResolvedPaths) {
+    let site_root = ws_root.join(&ws_site.path);
 
     // Apply workspace-level overrides
     if let Some(ref base_url) = ws_site.base_url {
@@ -204,7 +233,7 @@ pub fn load_site_in_workspace(
         paths.output = ws_root.join(output_dir);
     }
 
-    Ok((config, paths))
+    (config, paths)
 }
 
 #[cfg(test)]

@@ -1,10 +1,11 @@
 use std::path::Path;
 
 use crate::build::{self, links, BuildOptions, BuildResult};
-use crate::diagnostics::{Diagnostic, Diagnostics};
+use crate::diagnostics::Diagnostics;
+use crate::error::PageError;
 use crate::output::{human, CommandOutput};
 
-use super::{load_site_in_workspace, WorkspaceConfig};
+use super::{load_site_in_workspace_with_diagnostics, WorkspaceConfig};
 
 pub struct WorkspaceBuildOptions {
     pub include_drafts: bool,
@@ -13,6 +14,8 @@ pub struct WorkspaceBuildOptions {
 }
 
 pub struct WorkspaceBuildResult {
+    /// Per-site results. Each result's `diagnostics` starts with the site's
+    /// config warnings (`config-unknown-key`), with site-relative files.
     pub site_results: Vec<(String, BuildResult)>,
 }
 
@@ -34,10 +37,13 @@ impl WorkspaceBuildResult {
 
 /// Build all (or filtered) sites in a workspace.
 ///
-/// With `strict`, every site is still built so one run reports all sites'
-/// broken links / missing assets; the build then fails once at the end with
-/// the problems as diagnostics whose files are workspace-relative
-/// (`sites/blog/content/...`), mirroring single-site `build --strict`.
+/// Each site's `seite.toml` is loaded with diagnostics, so unknown keys are
+/// warned about (as `sites/<name>/seite.toml:line:col: warning[...]`) like in
+/// a single-site build. With `strict`, every site is still built so one run
+/// reports all sites' broken links / missing assets; the build then fails
+/// once at the end with the problems as diagnostics whose files are
+/// workspace-relative (`sites/blog/content/...`), mirroring single-site
+/// `build --strict`.
 pub fn build_workspace(
     ws_config: &WorkspaceConfig,
     ws_root: &Path,
@@ -60,14 +66,33 @@ pub fn build_workspace(
             ws_site.name
         ));
 
-        let (config, paths) = load_site_in_workspace(ws_root, ws_site)?;
+        let site_dir = Path::new(&ws_site.path);
+        let (config, paths, config_diagnostics) =
+            load_site_in_workspace_with_diagnostics(ws_root, ws_site).map_err(|e| match e {
+                // Locate config syntax errors in this site's seite.toml.
+                PageError::Diagnostics(d) => PageError::Diagnostics(Diagnostics::from(
+                    d.into_iter().map(|d| d.under(site_dir)).collect::<Vec<_>>(),
+                )),
+                other => other,
+            })?;
+        // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
+        for d in &config_diagnostics {
+            human::warning(&d.clone().under(site_dir).to_string());
+        }
 
         let build_opts = BuildOptions {
             include_drafts: opts.include_drafts,
             incremental: false,
         };
 
-        let result = build::build_site(&config, &paths, &build_opts)?;
+        let mut result = build::build_site(&config, &paths, &build_opts)?;
+        for d in result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "template-parse")
+        {
+            human::warning(&d.to_string());
+        }
         human::success(&result.stats.human_display());
 
         // Link validation results from the post-process pass (no extra file walk)
@@ -82,14 +107,16 @@ pub fn build_workspace(
                 ws_site.name,
                 crate::cli::build::problem_summary(&result.link_check),
             ));
-            let site_dir = Path::new(&ws_site.path);
             strict_diagnostics.extend(
                 links::link_diagnostics(&result.link_check, true)
                     .into_iter()
-                    .map(|d| prefix_file(d, site_dir)),
+                    .map(|d| d.under(site_dir)),
             );
         }
 
+        let mut diagnostics = Diagnostics::from(config_diagnostics);
+        diagnostics.extend(result.diagnostics.iter().cloned());
+        result.diagnostics = diagnostics;
         site_results.push((ws_site.name.clone(), result));
     }
 
@@ -105,34 +132,4 @@ pub fn build_workspace(
     human::success(&ws_result.stats_summary());
 
     Ok(ws_result)
-}
-
-/// Prefix a site-relative diagnostic file with the site's workspace path so
-/// files stay unambiguous across sites.
-pub(crate) fn prefix_file(mut d: Diagnostic, site_dir: &Path) -> Diagnostic {
-    if let Some(file) = d.file.take() {
-        d.file = Some(if file.is_absolute() {
-            file
-        } else {
-            site_dir.join(file)
-        });
-    }
-    d
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_prefix_file_joins_site_path() {
-        let d = prefix_file(
-            Diagnostic::error("broken-link", "x").with_file("content/a.md"),
-            Path::new("sites/blog"),
-        );
-        assert_eq!(d.file, Some(PathBuf::from("sites/blog/content/a.md")));
-        let d = prefix_file(Diagnostic::error("broken-link", "x"), Path::new("s"));
-        assert_eq!(d.file, None);
-    }
 }

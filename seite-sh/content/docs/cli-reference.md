@@ -355,7 +355,10 @@ When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by 
 seite build --site blog               # Build only the blog
 seite serve --site docs               # Serve only the docs
 seite deploy --site blog --dry-run    # Preview blog deploy
+seite check --site blog               # Check only the blog
 ```
+
+Workspace builds report each site's unknown `seite.toml` keys like a single-site build (`sites/blog/seite.toml:12:1: warning[config-unknown-key]`; in `--json`, under `data.sites.<name>.diagnostics`). `seite build --strict` builds every site, then fails once with every site's broken links and missing assets; with `--json` they are in `error.diagnostics`, with file paths relative to the workspace root (`sites/blog/content/...`). `seite check` run from the workspace root (or with `--site`) checks the workspace's sites the same way, with workspace-relative paths.
 
 ## seite mcp
 

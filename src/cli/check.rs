@@ -17,6 +17,7 @@ use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::error::PageError;
 use crate::output::{human, json as json_out};
 use crate::templates;
+use crate::workspace;
 
 #[derive(Args)]
 pub struct CheckArgs {
@@ -29,20 +30,66 @@ pub struct CheckArgs {
     pub drafts: bool,
 }
 
-pub fn run(args: &CheckArgs) -> anyhow::Result<()> {
-    let root = std::env::current_dir()?;
-    let diagnostics = check_site(&root, args.drafts)?;
+/// Check the site in the current directory. In a workspace, `--site <name>`
+/// (or running from the workspace root, which has no `seite.toml`) checks
+/// the workspace's sites instead, with workspace-relative file paths.
+pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+    if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
+        if site_filter.is_some() || !cwd.join("seite.toml").exists() {
+            let ws_config =
+                workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
+            let diagnostics = check_workspace(&ws_config, &ws_root, site_filter, args.drafts)?;
+            return report(diagnostics, args.strict);
+        }
+    }
+    if site_filter.is_some() {
+        human::warning("--site flag ignored (not in a workspace)");
+    }
+    let diagnostics = check_site(&cwd, args.drafts)?;
     report(diagnostics, args.strict)
+}
+
+/// Check every (or the `site_filter`) site of a workspace. Each site is
+/// checked like a standalone site (with the workspace's `base_url`
+/// override); diagnostic files are prefixed with the site's path so they are
+/// relative to the workspace root (`sites/blog/seite.toml`).
+pub fn check_workspace(
+    ws_config: &workspace::WorkspaceConfig,
+    ws_root: &Path,
+    site_filter: Option<&str>,
+    include_drafts: bool,
+) -> crate::error::Result<Diagnostics> {
+    let mut all = Diagnostics::new();
+    for ws_site in ws_config.sites_to_operate(site_filter)? {
+        let site_dir = Path::new(&ws_site.path);
+        let found = check_site_with(
+            &ws_root.join(site_dir),
+            include_drafts,
+            ws_site.base_url.as_deref(),
+        )?;
+        all.extend(found.into_iter().map(|d| d.under(site_dir)));
+    }
+    Ok(all)
 }
 
 /// Collect every problem in the site at `root` as diagnostics (paths relative
 /// to `root`, sorted). Only returns `Err` when checking cannot start at all
 /// (e.g. there is no `seite.toml`).
 pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Diagnostics> {
+    check_site_with(root, include_drafts, None)
+}
+
+/// [`check_site`] with an optional `base_url` override (workspace sites).
+fn check_site_with(
+    root: &Path,
+    include_drafts: bool,
+    base_url: Option<&str>,
+) -> crate::error::Result<Diagnostics> {
     let mut all = Diagnostics::new();
 
     // 1. Config: syntax/type errors stop the check (nothing else can load).
-    let (config, config_warnings) =
+    let (mut config, config_warnings) =
         match SiteConfig::load_with_diagnostics(&root.join("seite.toml")) {
             Ok(loaded) => loaded,
             Err(PageError::Diagnostics(d)) => return Ok(d),
@@ -52,6 +99,9 @@ pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Dia
             }
             Err(e) => return Err(e),
         };
+    if let Some(base_url) = base_url {
+        config.site.base_url = base_url.to_string();
+    }
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
 

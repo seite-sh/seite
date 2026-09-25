@@ -173,7 +173,7 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Init(args) => seite::cli::init::run(args),
         Command::New(args) => seite::cli::new::run(args),
         Command::Build(args) => seite::cli::build::run(args, site),
-        Command::Check(args) => seite::cli::check::run(args),
+        Command::Check(args) => seite::cli::check::run(args, site),
         Command::Serve(args) => seite::cli::serve::run(args, site),
         Command::Deploy(args) => seite::cli::deploy::run(args, site),
         Command::Agent(args) => seite::cli::agent::run(args),
