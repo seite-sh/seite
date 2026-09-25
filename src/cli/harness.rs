@@ -3,15 +3,16 @@
 //! A seite site can be set up for several coding agents at once: Claude Code,
 //! OpenAI Codex CLI, OpenCode, and Cursor (editor + `cursor-agent`). Each one
 //! reads project context from different places, so this module declares every
-//! rules file, skill, and the MCP server entry **once** and renders them into
-//! each agent's format:
+//! rules file, skill, and the MCP server entry **once**, and every per-agent
+//! difference as a row of [`PROVIDERS`] (with the reason and source for each
+//! quirk), then renders them into each agent's format:
 //!
-//! | Agent    | MCP config           | Path-scoped rules        | Skills            |
-//! |----------|----------------------|--------------------------|-------------------|
-//! | claude   | `.mcp.json`          | `.claude/rules/*.md`     | `.claude/skills/` |
-//! | cursor   | `.cursor/mcp.json`   | `.cursor/rules/*.mdc`    | `.agents/skills/` |
-//! | codex    | `.codex/config.toml` | (index in AGENTS.md)     | `.agents/skills/` |
-//! | opencode | `opencode.json`      | (index in AGENTS.md)     | `.agents/skills/` |
+//! | Agent    | MCP config           | Path-scoped rules        | Skills            | `/seite` |
+//! |----------|----------------------|--------------------------|-------------------|----------|
+//! | claude   | `.mcp.json`          | `.claude/rules/*.md`     | `.claude/skills/` | skill    |
+//! | cursor   | `.cursor/mcp.json`   | `.cursor/rules/*.mdc`    | `.agents/skills/` | skill    |
+//! | codex    | `.codex/config.toml` | (index in AGENTS.md)     | `.agents/skills/` | `$seite` |
+//! | opencode | `opencode.json`      | (index in AGENTS.md)     | `.agents/skills/` | `.opencode/commands/seite.md` |
 //!
 //! `seite init` writes [`plan`]; `seite upgrade` merges the same content into
 //! existing projects (see `cli::upgrade`).
@@ -39,30 +40,296 @@ impl Agent {
     /// Every supported agent, in canonical order.
     pub const ALL: [Agent; 4] = [Agent::Claude, Agent::Codex, Agent::Opencode, Agent::Cursor];
 
+    /// This agent's row in [`PROVIDERS`].
+    pub fn spec(self) -> &'static AgentSpec {
+        match self {
+            Agent::Claude => &PROVIDERS[0],
+            Agent::Codex => &PROVIDERS[1],
+            Agent::Opencode => &PROVIDERS[2],
+            Agent::Cursor => &PROVIDERS[3],
+        }
+    }
+
     /// The identifier used by `--agents` and stored in `.seite/config.json`.
     pub fn id(self) -> &'static str {
-        match self {
-            Agent::Claude => "claude",
-            Agent::Codex => "codex",
-            Agent::Opencode => "opencode",
-            Agent::Cursor => "cursor",
-        }
+        self.spec().id
     }
 
     /// Human-readable product name.
     pub fn label(self) -> &'static str {
-        match self {
-            Agent::Claude => "Claude Code",
-            Agent::Codex => "Codex CLI",
-            Agent::Opencode => "OpenCode",
-            Agent::Cursor => "Cursor",
-        }
+        self.spec().label
     }
 
     pub fn from_id(id: &str) -> Option<Agent> {
         Agent::ALL.into_iter().find(|a| a.id() == id)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Provider table: every per-agent difference, as data
+// ---------------------------------------------------------------------------
+
+/// How an agent's MCP config file is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpFormat {
+    /// `{"mcpServers": {"seite": {"command", "args"}}}` ([`mcp_json`]).
+    McpServersJson,
+    /// A `[mcp_servers.seite]` TOML table ([`codex_config_toml`]).
+    CodexToml,
+    /// `mcp.seite` (`type: local`, `command: [...]`) plus the `permission`
+    /// block ([`opencode_json`]).
+    OpencodeJson,
+}
+
+impl McpFormat {
+    /// The config file a new site gets.
+    pub fn render(self) -> String {
+        match self {
+            McpFormat::McpServersJson => pretty_json(&mcp_json()),
+            McpFormat::CodexToml => codex_config_toml(),
+            McpFormat::OpencodeJson => pretty_json(&opencode_json()),
+        }
+    }
+}
+
+/// Every agent's MCP config path (for `seite://mcp-config`).
+pub fn mcp_config_paths() -> impl Iterator<Item = &'static str> {
+    PROVIDERS.iter().map(|p| p.mcp_config)
+}
+
+/// How an agent's native path-scoped rules are rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RulesFormat {
+    /// Markdown with a `paths:` list in the frontmatter ([`claude_rule`]).
+    ClaudePaths,
+    /// Cursor MDC: `description` / `globs` / `alwaysApply` ([`cursor_rule`]).
+    CursorMdc,
+}
+
+impl RulesFormat {
+    pub fn render(self, rule: &Rule) -> String {
+        match self {
+            RulesFormat::ClaudePaths => claude_rule(rule),
+            RulesFormat::CursorMdc => cursor_rule(rule),
+        }
+    }
+}
+
+/// Where an agent loads path-scoped rules from natively.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RulesDir {
+    pub dir: &'static str,
+    pub ext: &'static str,
+    pub format: RulesFormat,
+}
+
+/// The neutral rules copy for sites with no agent that has native rules
+/// (Codex/OpenCode read these on demand via the AGENTS.md index).
+pub const SHARED_RULES: RulesDir = RulesDir {
+    dir: ".agents/rules",
+    ext: "md",
+    format: RulesFormat::ClaudePaths,
+};
+
+/// Which SKILL.md frontmatter keys a skills directory may carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillFrontmatter {
+    /// `name` + `description` only (the Agent Skills spec subset every agent
+    /// accepts). The seite version stays a YAML comment
+    /// (`# seite-skill-version: N`), which no validator sees as a key.
+    Portable,
+    /// Portable plus Claude Code's `argument-hint` (shown in the `/` menu).
+    ClaudeCode,
+}
+
+/// Slash-command wrappers that route `/<skill> <args>` to a skill, for agents
+/// without a native command→skill bridge.
+#[derive(Debug, Clone, Copy)]
+pub struct CommandFiles {
+    /// Directory the agent reads command files from.
+    pub dir: &'static str,
+    /// Renders `<dir>/<skill>.md` for a skill that has a command table
+    /// (`None` for skills that don't get a wrapper).
+    pub render: fn(&Skill) -> Option<String>,
+}
+
+/// Builds the JSON of a config file a new site gets.
+pub type JsonTemplate = fn() -> serde_json::Value;
+
+/// Everything seite needs to know to set a site up for one coding agent.
+///
+/// Each quirk carries a short "why" and its source, so the table can be
+/// re-checked when an agent changes its conventions.
+#[derive(Debug)]
+pub struct AgentSpec {
+    pub agent: Agent,
+    /// `--agents` id, stored in `.seite/config.json`.
+    pub id: &'static str,
+    pub label: &'static str,
+    /// Project MCP config file, relative to the site root.
+    pub mcp_config: &'static str,
+    pub mcp_format: McpFormat,
+    /// How the MCP config appears in the AGENTS.md setup table.
+    pub mcp_config_display: &'static str,
+    /// Native path-scoped rules, if the agent has them. Agents without read
+    /// the guides on demand via the AGENTS.md rules index.
+    pub rules: Option<RulesDir>,
+    /// The skills directory seite writes for this agent.
+    pub skills_dir: &'static str,
+    pub skill_frontmatter: SkillFrontmatter,
+    /// Project permissions file (other than the MCP config), if separate,
+    /// and the JSON a new site gets.
+    pub permissions_file: Option<(&'static str, JsonTemplate)>,
+    /// Slash-command wrappers for skills, if the agent needs them.
+    pub command_files: Option<CommandFiles>,
+    /// A per-agent instructions file that only imports AGENTS.md.
+    pub instructions_shim: Option<&'static str>,
+    /// One-time step before the MCP server / permissions take effect
+    /// (shown in the AGENTS.md setup table).
+    pub setup_step: &'static str,
+    /// Other quirks worth knowing.
+    pub notes: &'static [&'static str],
+    /// CLI names on `PATH` that mean the agent is installed.
+    pub binaries: &'static [&'static str],
+    /// Config directories under `$HOME` that mean the agent has been used.
+    pub home_dirs: &'static [&'static str],
+}
+
+/// Directory for Claude Code skills.
+pub const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
+/// Shared skills directory read by Codex, Cursor, and OpenCode.
+pub const SHARED_SKILLS_DIR: &str = ".agents/skills";
+
+/// The provider table, in [`Agent::ALL`] order.
+pub const PROVIDERS: [AgentSpec; 4] = [
+    AgentSpec {
+        agent: Agent::Claude,
+        id: "claude",
+        label: "Claude Code",
+        // Claude Code reads project MCP servers only from `.mcp.json`;
+        // `mcpServers` in `.claude/settings.json` is never loaded.
+        // https://code.claude.com/docs/en/mcp
+        mcp_config: ".mcp.json",
+        mcp_format: McpFormat::McpServersJson,
+        mcp_config_display: "`.mcp.json`",
+        // https://code.claude.com/docs/en/memory (path-scoped `.claude/rules`)
+        rules: Some(RulesDir {
+            dir: ".claude/rules",
+            ext: "md",
+            format: RulesFormat::ClaudePaths,
+        }),
+        skills_dir: CLAUDE_SKILLS_DIR,
+        // Claude Code skills take `argument-hint` and are slash commands
+        // already (`/seite check`), so no wrapper file.
+        // https://code.claude.com/docs/en/skills
+        skill_frontmatter: SkillFrontmatter::ClaudeCode,
+        permissions_file: Some((".claude/settings.json", claude_settings)),
+        command_files: None,
+        // Claude Code reads AGENTS.md itself only from v2.1.277, only when no
+        // CLAUDE.md exists, and not in every session; a CLAUDE.md that imports
+        // it works everywhere. https://code.claude.com/docs/en/memory#agents-md
+        instructions_shim: Some("CLAUDE.md"),
+        // Claude ignores project permissions until the workspace is trusted
+        // (claude -p warns "Ignoring N permissions.allow entries ... not trusted").
+        // https://code.claude.com/docs/en/settings
+        setup_step: "Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`)",
+        notes: &["`enabledMcpjsonServers` in .claude/settings.json pre-approves the .mcp.json server."],
+        binaries: &["claude"],
+        home_dirs: &[".claude"],
+    },
+    AgentSpec {
+        agent: Agent::Codex,
+        id: "codex",
+        label: "Codex CLI",
+        // https://developers.openai.com/codex/mcp
+        mcp_config: ".codex/config.toml",
+        mcp_format: McpFormat::CodexToml,
+        mcp_config_display: "`.codex/config.toml`",
+        // No path-scoped rules; Codex reads AGENTS.md.
+        rules: None,
+        // Codex discovers repo skills only in `.agents/skills` (cwd up to the
+        // repo root); `$seite` or `/skills` invokes one.
+        // https://learn.chatgpt.com/docs/build-skills
+        skills_dir: SHARED_SKILLS_DIR,
+        // Codex's skill validator is reported to reject unknown top-level
+        // frontmatter keys, so impeccable moves `version` under `metadata`
+        // for Codex (https://github.com/pbakaus/impeccable/blob/main/scripts/lib/transformers/providers.js).
+        // codex-cli 0.154 still listed a probe skill with `argument-hint`,
+        // but the shared directory stays on the spec subset every reader
+        // accepts; seite's version is a YAML comment, not a key.
+        skill_frontmatter: SkillFrontmatter::Portable,
+        permissions_file: None,
+        command_files: None,
+        instructions_shim: None,
+        // Codex loads a project's .codex/config.toml only once the project is
+        // trusted. https://learn.chatgpt.com/docs/config-file/config-basic
+        setup_step: "Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp`",
+        notes: &["`default_tools_approval_mode = \"approve\"` lets `codex exec` call seite's write tools."],
+        binaries: &["codex"],
+        home_dirs: &[".codex"],
+    },
+    AgentSpec {
+        agent: Agent::Opencode,
+        id: "opencode",
+        label: "OpenCode",
+        // https://opencode.ai/docs/mcp-servers
+        mcp_config: "opencode.json",
+        mcp_format: McpFormat::OpencodeJson,
+        mcp_config_display: "`opencode.json`",
+        rules: None,
+        // OpenCode reads `.opencode/skills`, `.claude/skills`, and
+        // `.agents/skills`, keeping only name/description/license/
+        // compatibility/metadata. https://opencode.ai/docs/skills
+        skills_dir: SHARED_SKILLS_DIR,
+        skill_frontmatter: SkillFrontmatter::Portable,
+        // Permissions live in opencode.json's `permission` block.
+        permissions_file: None,
+        // OpenCode has no slash-command→skill bridge (skills load through its
+        // `skill` tool), so `/seite` is a command file whose body calls the
+        // skill with $ARGUMENTS. https://opencode.ai/docs/commands — impeccable
+        // ships the same wrapper in .opencode/commands/impeccable.md.
+        command_files: Some(CommandFiles {
+            dir: ".opencode/commands",
+            render: opencode_command,
+        }),
+        instructions_shim: None,
+        setup_step: "None — it starts automatically",
+        notes: &["With Claude Code also selected, OpenCode finds each skill in both .claude/skills and .agents/skills."],
+        binaries: &["opencode"],
+        home_dirs: &[".config/opencode"],
+    },
+    AgentSpec {
+        agent: Agent::Cursor,
+        id: "cursor",
+        label: "Cursor",
+        // https://cursor.com/docs/context/mcp
+        mcp_config: ".cursor/mcp.json",
+        mcp_format: McpFormat::McpServersJson,
+        mcp_config_display: "`.cursor/mcp.json` (+ `.cursor/cli.json` permissions)",
+        // Cursor reads `.cursor/rules/*.mdc` and ignores `.claude/rules`.
+        // https://cursor.com/docs/context/rules
+        rules: Some(RulesDir {
+            dir: ".cursor/rules",
+            ext: "mdc",
+            format: RulesFormat::CursorMdc,
+        }),
+        // Cursor loads `.agents/skills` natively and runs skills as `/name`;
+        // its slash commands were folded into skills (`/migrate-to-skills`),
+        // so no command file. https://cursor.com/docs/context/skills
+        skills_dir: SHARED_SKILLS_DIR,
+        skill_frontmatter: SkillFrontmatter::Portable,
+        // https://cursor.com/docs/cli/reference/permissions
+        permissions_file: Some((".cursor/cli.json", cursor_cli_json)),
+        command_files: None,
+        instructions_shim: None,
+        setup_step: "Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt)",
+        notes: &["cursor-agent matches `Shell(...)` permissions on the command's first token."],
+        // The Cursor CLI installs as `cursor-agent` (newer builds also as
+        // `agent`); the editor adds a `cursor` shell command.
+        binaries: &["cursor-agent", "cursor", "agent"],
+        home_dirs: &[".cursor"],
+    },
+];
 
 /// Comma-separated list of every agent id (for help and error messages).
 pub fn all_ids() -> String {
@@ -101,18 +368,62 @@ pub fn parse_agent_list(list: &str) -> anyhow::Result<Vec<Agent>> {
     Ok(agents)
 }
 
+/// Agents that look installed on this machine: one of the agent's CLIs is on
+/// `path` (a `PATH`-style list), or its config directory exists under `home`.
+/// Returned in canonical order.
+pub fn detect_installed_agents(path: Option<&std::ffi::OsStr>, home: Option<&Path>) -> Vec<Agent> {
+    let dirs: Vec<std::path::PathBuf> = path
+        .map(|p| std::env::split_paths(p).collect())
+        .unwrap_or_default();
+    let on_path = |bin: &str| {
+        dirs.iter().any(|dir| {
+            dir.join(bin).is_file()
+                || (cfg!(windows)
+                    && ["exe", "cmd"]
+                        .iter()
+                        .any(|ext| dir.join(format!("{bin}.{ext}")).is_file()))
+        })
+    };
+    Agent::ALL
+        .into_iter()
+        .filter(|agent| {
+            let spec = agent.spec();
+            spec.binaries.iter().any(|b| on_path(b))
+                || home.is_some_and(|h| spec.home_dirs.iter().any(|d| h.join(d).is_dir()))
+        })
+        .collect()
+}
+
+/// Preselection for the interactive agent picker: the detected agents, or
+/// every agent when none is detected.
+pub fn interactive_defaults(detected: &[Agent]) -> Vec<bool> {
+    if detected.is_empty() {
+        return vec![true; Agent::ALL.len()];
+    }
+    Agent::ALL.iter().map(|a| detected.contains(a)).collect()
+}
+
 /// Resolve the agent selection for `seite init`: the `--agents` flag, else an
-/// interactive multi-select with everything preselected, else (not
-/// interactive) every agent.
+/// interactive multi-select with the agents installed on this machine
+/// preselected (all when none is found), else (not interactive) every agent —
+/// so scripted runs stay deterministic.
 pub fn resolve_init_agents(flag: Option<&str>) -> anyhow::Result<Vec<Agent>> {
     if let Some(list) = flag {
         return parse_agent_list(list);
     }
     let labels: Vec<&str> = Agent::ALL.iter().map(|a| a.label()).collect();
+    let defaults = if prompt::is_interactive() {
+        interactive_defaults(&detect_installed_agents(
+            std::env::var_os("PATH").as_deref(),
+            crate::platform::home_dir().as_deref(),
+        ))
+    } else {
+        vec![true; Agent::ALL.len()]
+    };
     let selected = prompt::multi_select(
-        "Coding agents to set up (space toggles)",
+        "Coding agents to set up (space toggles; detected agents preselected)",
         &labels,
-        &[true; Agent::ALL.len()],
+        &defaults,
     )?;
     if selected.is_empty() {
         anyhow::bail!(
@@ -144,27 +455,38 @@ fn has(agents: &[Agent], agent: Agent) -> bool {
 /// Whether the shared `.agents/skills/` directory is needed (Codex reads only
 /// that; Cursor reads it natively; OpenCode reads it alongside `.claude/skills`).
 pub fn uses_shared_skills(agents: &[Agent]) -> bool {
-    has(agents, Agent::Codex) || has(agents, Agent::Opencode) || has(agents, Agent::Cursor)
+    agents
+        .iter()
+        .any(|a| a.spec().skills_dir == SHARED_SKILLS_DIR)
+}
+
+/// Selected agents' native rules directories, in canonical order.
+fn native_rules(agents: &[Agent]) -> impl Iterator<Item = (Agent, RulesDir)> + '_ {
+    Agent::ALL
+        .into_iter()
+        .filter(|a| has(agents, *a))
+        .filter_map(|a| a.spec().rules.map(|r| (a, r)))
+}
+
+/// The rules directory AGENTS.md's index points at: the first selected
+/// agent's native rules (Claude's `.claude/rules/`, else Cursor's
+/// `.cursor/rules/`), else the neutral [`SHARED_RULES`] copy.
+pub fn index_rules(agents: &[Agent]) -> RulesDir {
+    native_rules(agents)
+        .map(|(_, r)| r)
+        .next()
+        .unwrap_or(SHARED_RULES)
 }
 
 /// Where the rules files that AGENTS.md points at live, and their extension.
-///
-/// Claude's `.claude/rules/` when Claude is selected, else Cursor's
-/// `.cursor/rules/`, else a neutral `.agents/rules/` (Codex/OpenCode have no
-/// path-scoped rules, so they read these on demand via the AGENTS.md index).
 pub fn rules_location(agents: &[Agent]) -> (&'static str, &'static str) {
-    if has(agents, Agent::Claude) {
-        (".claude/rules", "md")
-    } else if has(agents, Agent::Cursor) {
-        (".cursor/rules", "mdc")
-    } else {
-        (".agents/rules", "md")
-    }
+    let rules = index_rules(agents);
+    (rules.dir, rules.ext)
 }
 
 /// Whether the neutral `.agents/rules/` copy is the index target.
 pub fn uses_shared_rules(agents: &[Agent]) -> bool {
-    rules_location(agents).0 == ".agents/rules"
+    index_rules(agents) == SHARED_RULES
 }
 
 // ---------------------------------------------------------------------------
@@ -394,14 +716,15 @@ pub fn rules_index(features: SiteFeatures, agents: &[Agent]) -> String {
         }
     }
 
-    let auto: Vec<&str> = [Agent::Claude, Agent::Cursor]
-        .into_iter()
-        .filter(|a| has(agents, *a))
-        .map(Agent::label)
-        .collect();
+    let auto: Vec<&str> = native_rules(agents).map(|(a, _)| a.label()).collect();
     let mut md = format!("Detailed guides live in `{dir}/`");
-    if has(agents, Agent::Claude) && has(agents, Agent::Cursor) {
-        md.push_str(" (Cursor: same guides as `.cursor/rules/*.mdc`)");
+    for (agent, rules) in native_rules(agents).filter(|(_, r)| r.dir != dir) {
+        md.push_str(&format!(
+            " ({}: same guides as `{}/*.{}`)",
+            agent.label(),
+            rules.dir,
+            rules.ext
+        ));
     }
     if auto.is_empty() {
         md.push_str(". Before editing, read the guides for the files you touch:\n\n");
@@ -429,27 +752,142 @@ pub fn rules_index(features: SiteFeatures, agents: &[Agent]) -> String {
 #[derive(Debug)]
 pub struct Skill {
     pub name: &'static str,
+    /// Portable SKILL.md (frontmatter: `name`, `description`, and the
+    /// `# seite-skill-version` comment).
     pub content: &'static str,
     pub needs: Needs,
+    /// `argument-hint` for agents whose skills take one
+    /// ([`SkillFrontmatter::ClaudeCode`]). Skills with a hint are verb
+    /// dispatchers and also get command wrappers ([`CommandFiles`]).
+    pub argument_hint: Option<&'static str>,
 }
 
 pub const SKILLS: &[Skill] = &[
     Skill {
+        name: "seite",
+        content: include_str!("../scaffold/skill-seite.md"),
+        needs: Needs::Always,
+        argument_hint: Some("[check | new <type> \"<title>\" | preview | build | deploy | theme [name] | collection [preset]]"),
+    },
+    Skill {
         name: "landing-page",
         content: include_str!("../scaffold/skill-landing-page.md"),
         needs: Needs::Pages,
+        argument_hint: None,
     },
     Skill {
         name: "theme-builder",
         content: include_str!("../scaffold/skill-theme-builder.md"),
         needs: Needs::Always,
+        argument_hint: None,
     },
     Skill {
         name: "brand-identity",
         content: include_str!("../scaffold/skill-brand-identity.md"),
         needs: Needs::Always,
+        argument_hint: None,
     },
 ];
+
+impl Skill {
+    /// SKILL.md as written into a skills directory with `frontmatter` rules.
+    pub fn render(&self, frontmatter: SkillFrontmatter) -> String {
+        match (frontmatter, self.argument_hint) {
+            (SkillFrontmatter::ClaudeCode, Some(hint)) => insert_after_description(
+                self.content,
+                &format!("argument-hint: {}", yaml_quote(hint)),
+            ),
+            _ => self.content.to_string(),
+        }
+    }
+
+    /// The `description:` value from the frontmatter.
+    pub fn description(&self) -> &'static str {
+        frontmatter_lines(self.content)
+            .find_map(|line| line.strip_prefix("description:"))
+            .map(str::trim)
+            .unwrap_or_default()
+    }
+
+    /// The `# seite-skill-version: N` value (0 when missing).
+    pub fn version(&self) -> u32 {
+        extract_version(self.content)
+    }
+}
+
+/// How a skills directory's SKILL.md frontmatter is rendered: Claude's own
+/// directory takes `argument-hint`; the shared `.agents/skills` stays portable
+/// because Codex, Cursor, and OpenCode all read it.
+pub fn skill_frontmatter_for(dir: &str) -> SkillFrontmatter {
+    PROVIDERS
+        .iter()
+        .find(|p| p.skills_dir == dir)
+        .map_or(SkillFrontmatter::Portable, |p| p.skill_frontmatter)
+}
+
+/// Extract the `# seite-skill-version: N` value from a skill or command file.
+/// Returns 0 if not found.
+pub fn extract_version(content: &str) -> u32 {
+    content
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("# seite-skill-version:"))
+        .find_map(|rest| rest.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Lines between the opening and closing `---` of a frontmatter block.
+fn frontmatter_lines(content: &str) -> impl Iterator<Item = &str> {
+    content
+        .strip_prefix("---\n")
+        .unwrap_or_default()
+        .lines()
+        .take_while(|line| *line != "---")
+}
+
+/// `content` with `line` inserted after the frontmatter's `description:` line.
+fn insert_after_description(content: &str, line: &str) -> String {
+    let mut out = String::with_capacity(content.len() + line.len() + 1);
+    let mut inserted = false;
+    for l in content.split_inclusive('\n') {
+        out.push_str(l);
+        if !inserted && l.starts_with("description:") {
+            out.push_str(line);
+            out.push('\n');
+            inserted = true;
+        }
+    }
+    out
+}
+
+/// OpenCode `.opencode/commands/<skill>.md`: `/seite <args>` loads the skill
+/// through OpenCode's `skill` tool and hands it the arguments. No `agent` or
+/// `subtask`, so it runs in the current agent (a deploy confirmation must
+/// reach the user).
+fn opencode_command(skill: &Skill) -> Option<String> {
+    skill.argument_hint?;
+    Some(format!(
+        "---\ndescription: {}\n# seite-skill-version: {}\n---\nLoad the `{name}` skill (call skill({{ name: \"{name}\" }})) and follow its dispatch rule and Commands table for: $ARGUMENTS\n",
+        yaml_quote(skill.description()),
+        skill.version(),
+        name = skill.name,
+    ))
+}
+
+/// A command wrapper file planned for `agents`: (relative path, content).
+pub fn command_files(agents: &[Agent], features: SiteFeatures) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    for agent in agents {
+        let Some(cmds) = agent.spec().command_files else {
+            continue;
+        };
+        for s in skills(features) {
+            if let Some(content) = (cmds.render)(s) {
+                files.push((format!("{}/{}.md", cmds.dir, s.name), content));
+            }
+        }
+    }
+    files
+}
 
 /// The skills that apply to a site with `features`.
 pub fn skills(features: SiteFeatures) -> impl Iterator<Item = &'static Skill> {
@@ -460,11 +898,6 @@ pub fn skills(features: SiteFeatures) -> impl Iterator<Item = &'static Skill> {
 pub fn skill(name: &str) -> Option<&'static Skill> {
     SKILLS.iter().find(|s| s.name == name)
 }
-
-/// Directory for Claude Code skills.
-pub const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
-/// Shared skills directory read by Codex, Cursor, and OpenCode.
-pub const SHARED_SKILLS_DIR: &str = ".agents/skills";
 
 // ---------------------------------------------------------------------------
 // MCP server + agent settings
@@ -750,22 +1183,11 @@ pub fn replace_block(content: &str, id: &str, body: &str) -> Option<String> {
 pub fn mcp_setup_table(agents: &[Agent]) -> String {
     let mut md = String::from("| Agent | MCP config | One-time step |\n|---|---|---|\n");
     for agent in agents {
-        let (config, step) = match agent {
-            Agent::Claude => (
-                "`.mcp.json`",
-                "Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`)",
-            ),
-            Agent::Codex => (
-                "`.codex/config.toml`",
-                "Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp`",
-            ),
-            Agent::Cursor => (
-                "`.cursor/mcp.json` (+ `.cursor/cli.json` permissions)",
-                "Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt)",
-            ),
-            Agent::Opencode => ("`opencode.json`", "None — it starts automatically"),
-        };
-        md.push_str(&format!("| {} | {config} | {step} |\n", agent.label()));
+        let spec = agent.spec();
+        md.push_str(&format!(
+            "| {} | {} | {} |\n",
+            spec.label, spec.mcp_config_display, spec.setup_step
+        ));
     }
     md
 }
@@ -793,49 +1215,36 @@ fn file(path: impl Into<String>, content: impl Into<String>) -> PlannedFile {
 pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
     let mut files = Vec::new();
 
-    if has(agents, Agent::Claude) {
-        files.push(file(
-            "CLAUDE.md",
-            crate::cli::agent_instructions::CLAUDE_SHIM,
-        ));
-        files.push(file(
-            ".claude/settings.json",
-            pretty_json(&claude_settings()),
-        ));
-        files.push(file(".mcp.json", pretty_json(&mcp_json())));
-        for s in skills(features) {
-            files.push(file(
-                format!("{CLAUDE_SKILLS_DIR}/{}/SKILL.md", s.name),
-                s.content,
-            ));
+    let mut skill_dirs: Vec<&str> = Vec::new();
+    for spec in PROVIDERS.iter().filter(|p| has(agents, p.agent)) {
+        if let Some(shim) = spec.instructions_shim {
+            files.push(file(shim, crate::cli::agent_instructions::CLAUDE_SHIM));
         }
-        for r in rules(features) {
-            files.push(file(format!(".claude/rules/{}.md", r.name), claude_rule(r)));
+        if let Some((path, permissions)) = spec.permissions_file {
+            files.push(file(path, pretty_json(&permissions())));
         }
-    }
-    if has(agents, Agent::Cursor) {
-        files.push(file(".cursor/mcp.json", pretty_json(&mcp_json())));
-        files.push(file(".cursor/cli.json", pretty_json(&cursor_cli_json())));
-        for r in rules(features) {
-            files.push(file(
-                format!(".cursor/rules/{}.mdc", r.name),
-                cursor_rule(r),
-            ));
+        files.push(file(spec.mcp_config, spec.mcp_format.render()));
+        if let Some(native) = spec.rules {
+            for r in rules(features) {
+                files.push(file(
+                    format!("{}/{}.{}", native.dir, r.name, native.ext),
+                    native.format.render(r),
+                ));
+            }
+        }
+        // `.agents/skills` is shared by several agents; write it once.
+        if !skill_dirs.contains(&spec.skills_dir) {
+            skill_dirs.push(spec.skills_dir);
+            for s in skills(features) {
+                files.push(file(
+                    format!("{}/{}/SKILL.md", spec.skills_dir, s.name),
+                    s.render(spec.skill_frontmatter),
+                ));
+            }
         }
     }
-    if has(agents, Agent::Codex) {
-        files.push(file(".codex/config.toml", codex_config_toml()));
-    }
-    if has(agents, Agent::Opencode) {
-        files.push(file("opencode.json", pretty_json(&opencode_json())));
-    }
-    if uses_shared_skills(agents) {
-        for s in skills(features) {
-            files.push(file(
-                format!("{SHARED_SKILLS_DIR}/{}/SKILL.md", s.name),
-                s.content,
-            ));
-        }
+    for (path, content) in command_files(agents, features) {
+        files.push(file(path, content));
     }
     if uses_shared_rules(agents) {
         for r in rules(features) {
@@ -1082,5 +1491,205 @@ mod tests {
         assert!(paths
             .iter()
             .all(|p| !p.starts_with(".claude") && p != "CLAUDE.md"));
+    }
+
+    #[test]
+    fn provider_table_matches_agent_order() {
+        for (i, agent) in Agent::ALL.into_iter().enumerate() {
+            assert_eq!(PROVIDERS[i].agent, agent);
+            assert_eq!(agent.spec().agent, agent);
+        }
+        let paths: Vec<_> = mcp_config_paths().collect();
+        assert_eq!(
+            paths,
+            [
+                ".mcp.json",
+                ".codex/config.toml",
+                "opencode.json",
+                ".cursor/mcp.json"
+            ]
+        );
+    }
+
+    /// Split a SKILL.md into (frontmatter YAML, body).
+    fn split_frontmatter(content: &str) -> (serde_yaml_ng::Mapping, &str) {
+        let (fm, body) = content
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---\n"))
+            .expect("frontmatter");
+        (serde_yaml_ng::from_str(fm).unwrap(), body)
+    }
+
+    fn keys(map: &serde_yaml_ng::Mapping) -> Vec<&str> {
+        map.keys().filter_map(|k| k.as_str()).collect()
+    }
+
+    #[test]
+    fn every_skill_is_portable_in_the_shared_dir() {
+        // Codex rejects unknown top-level keys; the version is a YAML comment.
+        for skill in SKILLS {
+            let (fm, _) = split_frontmatter(&skill.render(SkillFrontmatter::Portable));
+            assert_eq!(keys(&fm), ["name", "description"], "{}", skill.name);
+            assert_eq!(fm["name"].as_str(), Some(skill.name));
+            assert_eq!(fm["description"].as_str(), Some(skill.description()));
+            assert!(skill.version() >= 1, "{}", skill.name);
+        }
+    }
+
+    #[test]
+    fn seite_skill_gets_argument_hint_only_for_claude() {
+        let seite = skill("seite").unwrap();
+        let rendered = seite.render(SkillFrontmatter::ClaudeCode);
+        let (fm, body) = split_frontmatter(&rendered);
+        assert_eq!(keys(&fm), ["name", "description", "argument-hint"]);
+        assert!(fm["argument-hint"]
+            .as_str()
+            .unwrap()
+            .starts_with("[check | new"));
+        assert_eq!(
+            extract_version(&seite.render(SkillFrontmatter::ClaudeCode)),
+            1
+        );
+        // Other skills are identical in both directories.
+        let theme = skill("theme-builder").unwrap();
+        assert_eq!(theme.render(SkillFrontmatter::ClaudeCode), theme.content);
+        assert!(body.contains("## Commands"));
+    }
+
+    #[test]
+    fn seite_skill_dispatches_commands_and_stays_small() {
+        let seite = skill("seite").unwrap();
+        assert!(
+            seite.content.len() < 5 * 1024,
+            "seite skill is {} bytes",
+            seite.content.len()
+        );
+        assert!(seite.content.contains("`/seite <command> <args>`"));
+        assert!(seite.content.contains("AGENTS.md"));
+        for cmd in [
+            "check",
+            "new",
+            "preview",
+            "build",
+            "deploy",
+            "theme",
+            "collection",
+        ] {
+            assert!(
+                seite.content.contains(&format!("| [{cmd}](#{cmd}) |")),
+                "row for {cmd}"
+            );
+            assert!(
+                seite.content.contains(&format!("\n## {cmd}\n")),
+                "section for {cmd}"
+            );
+        }
+        for tool in ["seite_check", "seite_create_content", "seite_build"] {
+            assert!(seite.content.contains(tool), "{tool}");
+        }
+        assert!(seite.content.contains("seite deploy --dry-run"));
+        assert!(seite.content.contains("seite serve --no-repl"));
+    }
+
+    #[test]
+    fn opencode_command_wraps_the_seite_skill() {
+        let files = command_files(&Agent::ALL, SiteFeatures::default());
+        assert_eq!(files.len(), 1, "{files:?}");
+        let (path, content) = &files[0];
+        assert_eq!(path, ".opencode/commands/seite.md");
+        let (fm, body) = split_frontmatter(content);
+        assert_eq!(keys(&fm), ["description"]);
+        assert_eq!(
+            fm["description"].as_str(),
+            Some(skill("seite").unwrap().description())
+        );
+        assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
+        assert!(body.contains("$ARGUMENTS"));
+        assert_eq!(extract_version(content), 1);
+        assert!(
+            command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
+        );
+    }
+
+    #[test]
+    fn plan_writes_seite_skill_for_every_agent() {
+        for agent in Agent::ALL {
+            let files = plan(&[agent], SiteFeatures::default());
+            let dir = agent.spec().skills_dir;
+            let skill = files
+                .iter()
+                .find(|f| f.path == format!("{dir}/seite/SKILL.md"))
+                .unwrap_or_else(|| panic!("{agent:?}"));
+            assert_eq!(
+                skill.content.contains("argument-hint:"),
+                agent == Agent::Claude
+            );
+            assert_eq!(
+                files
+                    .iter()
+                    .any(|f| f.path == ".opencode/commands/seite.md"),
+                agent == Agent::Opencode
+            );
+        }
+        // No path is planned twice.
+        let files = plan(&Agent::ALL, ALL_FEATURES);
+        let mut paths: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
+        let n = paths.len();
+        paths.sort();
+        paths.dedup();
+        assert_eq!(paths.len(), n);
+    }
+
+    fn touch(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "").unwrap();
+    }
+
+    #[test]
+    fn detect_installed_agents_from_path_and_home() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin_a = tmp.path().join("bin-a");
+        let bin_b = tmp.path().join("bin-b");
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let path = std::env::join_paths([&bin_a, &bin_b]).unwrap();
+
+        assert!(detect_installed_agents(Some(&path), Some(&home)).is_empty());
+        assert!(detect_installed_agents(None, None).is_empty());
+
+        touch(&bin_b.join("codex"));
+        touch(&bin_a.join("cursor-agent"));
+        assert_eq!(
+            detect_installed_agents(Some(&path), Some(&home)),
+            vec![Agent::Codex, Agent::Cursor]
+        );
+
+        // Config dirs count too; a plain file named like one does not.
+        std::fs::create_dir_all(home.join(".config/opencode")).unwrap();
+        touch(&home.join(".claude"));
+        assert_eq!(
+            detect_installed_agents(Some(&path), Some(&home)),
+            vec![Agent::Codex, Agent::Opencode, Agent::Cursor]
+        );
+        std::fs::remove_file(home.join(".claude")).unwrap();
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        assert_eq!(
+            detect_installed_agents(None, Some(&home)),
+            vec![Agent::Claude, Agent::Opencode]
+        );
+        // A directory named like a binary is not a binary.
+        let other = tmp.path().join("bin-c");
+        std::fs::create_dir_all(other.join("claude")).unwrap();
+        let other_path = std::env::join_paths([&other]).unwrap();
+        assert!(detect_installed_agents(Some(&other_path), None).is_empty());
+    }
+
+    #[test]
+    fn interactive_defaults_fall_back_to_all() {
+        assert_eq!(interactive_defaults(&[]), vec![true; 4]);
+        assert_eq!(
+            interactive_defaults(&[Agent::Claude, Agent::Cursor]),
+            vec![true, false, false, true]
+        );
     }
 }

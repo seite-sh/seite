@@ -825,6 +825,7 @@ fn generate_agents_md(
         md.push_str(&format!("{description}\n\n"));
     }
     md.push_str("This is a static site built with the `seite` CLI tool.\n\n");
+    md.push_str("Workflow shortcut: `/seite <command>` (`check`, `new`, `preview`, `build`, `deploy`, `theme`, `collection`; `$seite` in Codex) runs the bundled `seite` skill, which picks the right commands below.\n\n");
 
     // Commands (dynamic — iterates collections)
     md.push_str("## Commands\n\n");

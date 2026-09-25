@@ -193,9 +193,27 @@ When you run `seite init`, it creates an `AGENTS.md` with site-specific instruct
 - **Claude Code** — `.mcp.json` (declares the seite MCP server), `.claude/settings.json` (permissions plus `enabledMcpjsonServers`), path-scoped guides in `.claude/rules/`, and skills in `.claude/skills/`
 - **Cursor** — `.cursor/mcp.json` and the same guides as `.cursor/rules/*.mdc` (auto-attached by `globs`)
 - **Codex CLI** — `.codex/config.toml` with `[mcp_servers.seite]`
-- **OpenCode** — `opencode.json` with the MCP server and permission defaults (allow reads, site edits, and `seite build/new/serve/theme`; ask for everything else; deny `.env` reads)
+- **OpenCode** — `opencode.json` with the MCP server and permission defaults (allow reads, site edits, and `seite build/new/serve/theme`; ask for everything else; deny `.env` reads), plus `.opencode/commands/seite.md` so `/seite` works there too
 
-Codex, Cursor, and OpenCode read the bundled skills (`/theme-builder`, `/brand-identity`, `/landing-page`) from `.agents/skills/`. Agents without path-scoped rules (Codex, OpenCode) find the guides through the "Context Rules" index in `AGENTS.md`, and the "MCP Server" section lists each agent's one-time approval step.
+Codex, Cursor, and OpenCode read the bundled skills (`/seite`, `/theme-builder`, `/brand-identity`, `/landing-page`) from `.agents/skills/`. Agents without path-scoped rules (Codex, OpenCode) find the guides through the "Context Rules" index in `AGENTS.md`, and the "MCP Server" section lists each agent's one-time approval step.
+
+When you run `seite init` interactively, the agent picker preselects the agents it finds on your machine (their CLI on `PATH`, or a config directory like `~/.claude`, `~/.codex`, `~/.config/opencode`, `~/.cursor`). Without a terminal, the default stays all four.
+
+### The `/seite` workflow skill
+
+Every agent gets one entry point for everyday site work. Type `/seite <command>` (in Codex, `$seite <command>`), or just describe the task and the agent picks the command:
+
+| Command | What the agent does |
+|---------|---------------------|
+| `check` | Runs `seite check` (or the `seite_check` MCP tool), fixes every error at its source file and line, and re-runs until clean |
+| `new <type> "<title>"` | Creates the file with `seite new` / `seite_create_content`, writes it, then checks it |
+| `preview` | Starts `seite serve --no-repl` in the background and reports the URL |
+| `build` | Runs `seite build --json` and reports broken links, missing assets, and diagnostics |
+| `deploy` | Checks, runs `seite deploy --dry-run`, and asks you before a real deploy |
+| `theme` | Lists or applies a bundled theme, or hands off to `/theme-builder` for a custom design |
+| `collection` | Lists collections or adds a preset |
+
+The skill points at `AGENTS.md` for the details rather than repeating them, and `seite upgrade` keeps it current.
 
 `seite agent` itself drives Claude Code; the other agents work in the project directly.
 
