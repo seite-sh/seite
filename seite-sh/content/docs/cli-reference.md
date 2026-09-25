@@ -124,6 +124,7 @@ seite check [options]
 |------|-------------|
 | `--strict` | Fail on warnings too (unknown config keys, broken links, ...) |
 | `--drafts` | Include draft content |
+| `--hook <agent>` | Run as a coding agent's turn-end hook (`claude`, `codex`, `cursor`, `opencode`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Stop hooks](/docs/agent#stop-hooks) |
 
 Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on:
 

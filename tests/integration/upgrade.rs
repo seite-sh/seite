@@ -959,7 +959,9 @@ fn test_upgrade_is_idempotent_for_harness_files() {
     // a second run is a no-op.
     fs::remove_file(site_dir.join("opencode.json")).unwrap();
     fs::remove_file(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
-    fs::remove_dir_all(site_dir.join(".codex")).unwrap();
+    // (Not `.codex/hooks.json`: a deleted stop hook stays deleted, see
+    // test_upgrade_stop_hooks_respect_opt_out.)
+    fs::remove_file(site_dir.join(".codex/config.toml")).unwrap();
     page_cmd()
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
@@ -1103,4 +1105,144 @@ fn test_upgrade_force() {
         .current_dir(&site_dir)
         .assert()
         .success();
+}
+
+fn stop_hook_ids(site_dir: &std::path::Path) -> serde_json::Value {
+    read_json_file(&site_dir.join(".seite/config.json"))["hooks_installed"].clone()
+}
+
+#[test]
+fn test_init_writes_stop_hooks_for_selected_agents() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site_dir = tmp.path().join("site");
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
+    assert_eq!(
+        settings["hooks"]["Stop"][0]["hooks"][0]["command"],
+        "seite check --hook claude"
+    );
+    let codex = read_json_file(&site_dir.join(".codex/hooks.json"));
+    assert_eq!(
+        codex["hooks"]["Stop"][0]["hooks"][0]["command"],
+        "seite check --hook codex"
+    );
+    let cursor = read_json_file(&site_dir.join(".cursor/hooks.json"));
+    assert_eq!(cursor["version"], 1);
+    assert_eq!(
+        cursor["hooks"]["stop"][0]["command"],
+        "seite check --hook cursor"
+    );
+    let plugin = fs::read_to_string(site_dir.join(".opencode/plugins/seite-check.js")).unwrap();
+    assert!(plugin.contains("seite check --hook opencode"));
+    assert_eq!(
+        stop_hook_ids(&site_dir),
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("`seite check --hook <agent>`"));
+
+    init_site_with_agents(&tmp, "codex-only", "codex");
+    let site_dir = tmp.path().join("codex-only");
+    assert!(site_dir.join(".codex/hooks.json").exists());
+    assert!(!site_dir.join(".cursor").exists() && !site_dir.join(".opencode").exists());
+    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["codex"]));
+}
+
+#[test]
+fn test_upgrade_adds_stop_hooks_to_existing_project() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site_dir = tmp.path().join("site");
+    let fresh = harness_snapshot(&site_dir);
+
+    // A project from before hooks: no record, no hook files, a user-owned
+    // Cursor hook config and Claude settings without hooks.
+    let meta_path = site_dir.join(".seite/config.json");
+    let mut meta = read_json_file(&meta_path);
+    meta.as_object_mut().unwrap().remove("hooks_installed");
+    fs::write(&meta_path, meta.to_string()).unwrap();
+    let settings_path = site_dir.join(".claude/settings.json");
+    let mut settings = read_json_file(&settings_path);
+    settings.as_object_mut().unwrap().remove("hooks");
+    fs::write(
+        &settings_path,
+        format!("{}\n", serde_json::to_string_pretty(&settings).unwrap()),
+    )
+    .unwrap();
+    fs::remove_file(site_dir.join(".codex/hooks.json")).unwrap();
+    fs::remove_dir_all(site_dir.join(".opencode")).unwrap();
+    fs::write(
+        site_dir.join(".cursor/hooks.json"),
+        r#"{"version":1,"hooks":{"afterFileEdit":[{"command":"fmt"}]}}"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stop hook"));
+
+    let cursor = read_json_file(&site_dir.join(".cursor/hooks.json"));
+    assert_eq!(cursor["hooks"]["afterFileEdit"][0]["command"], "fmt");
+    assert_eq!(
+        cursor["hooks"]["stop"][0]["command"],
+        "seite check --hook cursor"
+    );
+    assert_eq!(
+        stop_hook_ids(&site_dir),
+        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+    );
+    // Everything except the user's own Cursor hook file matches a fresh init
+    // (the Claude hook lands in settings.json exactly where init puts it).
+    let without_cursor_hooks = |files: Vec<(String, String)>| {
+        files
+            .into_iter()
+            .filter(|(p, _)| p != ".cursor/hooks.json")
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        without_cursor_hooks(harness_snapshot(&site_dir)),
+        without_cursor_hooks(fresh)
+    );
+
+    // Idempotent.
+    let before = harness_snapshot(&site_dir);
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(harness_snapshot(&site_dir), before);
+}
+
+#[test]
+fn test_upgrade_stop_hooks_respect_opt_out() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site_dir = tmp.path().join("site");
+
+    // The user removes two hooks.
+    let settings_path = site_dir.join(".claude/settings.json");
+    let mut settings = read_json_file(&settings_path);
+    settings.as_object_mut().unwrap().remove("hooks");
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+    fs::remove_file(site_dir.join(".cursor/hooks.json")).unwrap();
+    let before = harness_snapshot(&site_dir);
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(harness_snapshot(&site_dir), before);
+    assert!(read_json_file(&settings_path).get("hooks").is_none());
+    assert!(!site_dir.join(".cursor/hooks.json").exists());
 }

@@ -387,6 +387,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         &root,
         &meta::PageMeta {
             agents: Some(harness::to_ids(&agents)),
+            hooks_installed: Some(harness::to_ids(&agents)),
             ..meta::PageMeta::current()
         },
     )?;
@@ -1063,6 +1064,7 @@ fn generate_agents_md(
     md.push_str("seite build --json     # one JSON document on stdout: {\"ok\",\"data\":{\"broken_links\",\"missing_assets\",\"diagnostics\"}}\n");
     md.push_str("```\n\n");
     md.push_str("`seite check` never touches `dist/`, and a failed `seite build` leaves the previous `dist/` in place. Diagnostics point at the source file and line (the `.md`, template, or `seite.toml`), not the generated HTML. Link between content files with relative `.md` paths (`[intro](../docs/intro.md)`) — the build rewrites them to page URLs and reports ones that don't resolve.\n\n");
+    md.push_str(&crate::cli::harness_hooks::verify_note(agents));
     md.push_str("For a background preview while you keep editing, `seite serve --no-repl &` runs the dev server (with live reload) without an interactive prompt.\n\n");
     md.push_str("**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.\n\n");
 

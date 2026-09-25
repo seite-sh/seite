@@ -147,6 +147,7 @@ endpoint = "xpznqkdl"
   - cursor: `.cursor/mcp.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
   - codex: `.codex/config.toml` (`[mcp_servers.seite]`, trust comment); opencode: `opencode.json` (`mcp.seite` + `permission`)
   - codex/opencode/cursor: `.agents/skills/`; codex/opencode-only sites: `.agents/rules/` (the AGENTS.md rules index target)
+- Turn-end stop hooks running `seite check --hook <agent>` (`src/cli/harness_hooks.rs`; only errors block, one continuation per turn, always exit 0): claude `.claude/settings.json` `hooks.Stop`, codex `.codex/hooks.json`, cursor `.cursor/hooks.json`, opencode `.opencode/plugins/seite-check.js`. `.seite/config.json` `hooks_installed` records them; `seite upgrade` only adds hooks for unrecorded agents, so a user-deleted hook stays deleted
 - AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent MCP table) and `<!-- seite:context-rules -->` (rules index) blocks
 - `seite upgrade [--agents …]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks, and never deletes files of deselected agents
 - Rules files are created only when missing; skills are replaced when the bundled `# seite-skill-version` is newer

@@ -12,6 +12,8 @@ use clap::Args;
 use serde_json::json;
 
 use crate::build::{self, links, BuildOptions};
+use crate::cli::harness::Agent;
+use crate::cli::harness_hooks;
 use crate::config::SiteConfig;
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::error::PageError;
@@ -27,9 +29,26 @@ pub struct CheckArgs {
     /// Include draft content in the check
     #[arg(long)]
     pub drafts: bool,
+
+    /// Run as a coding agent's turn-end hook: read the hook input on stdin
+    /// and, only when there are errors, answer in that agent's hook protocol
+    /// so it fixes them before stopping (see `seite init --agents`)
+    #[arg(
+        long,
+        value_name = "AGENT",
+        value_parser = ["claude", "codex", "cursor", "opencode"],
+        conflicts_with = "strict"
+    )]
+    pub hook: Option<String>,
 }
 
 pub fn run(args: &CheckArgs) -> anyhow::Result<()> {
+    if let Some(agent) = args.hook.as_deref().and_then(Agent::from_id) {
+        if crate::output::is_json() {
+            anyhow::bail!("--hook prints its own protocol output; drop --json");
+        }
+        return harness_hooks::run(agent, args.drafts);
+    }
     let root = std::env::current_dir()?;
     let diagnostics = check_site(&root, args.drafts)?;
     report(diagnostics, args.strict)

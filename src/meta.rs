@@ -32,6 +32,12 @@ pub struct PageMeta {
     /// every agent by `seite upgrade`, which then records it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agents: Option<Vec<String>>,
+    /// Agents whose turn-end `seite check` hook seite has installed (see
+    /// `cli::harness_hooks`). `seite upgrade` only installs hooks for agents
+    /// missing here, so a hook the user deleted is not re-added. `None` for
+    /// projects from before hooks existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks_installed: Option<Vec<String>>,
 }
 
 impl PageMeta {
@@ -41,6 +47,7 @@ impl PageMeta {
             version: env!("CARGO_PKG_VERSION").to_string(),
             initialized_at: Some(chrono::Utc::now().to_rfc3339()),
             agents: None,
+            hooks_installed: None,
         }
     }
 
@@ -52,6 +59,7 @@ impl PageMeta {
             version: env!("CARGO_PKG_VERSION").to_string(),
             initialized_at: existing.and_then(|m| m.initialized_at.clone()),
             agents: existing.and_then(|m| m.agents.clone()),
+            hooks_installed: existing.and_then(|m| m.hooks_installed.clone()),
         }
     }
 }
