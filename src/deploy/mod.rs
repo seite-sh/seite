@@ -779,6 +779,7 @@ pub fn execute_fix(
                     "repo", "create", repo_name, "--public", "--source", ".", "--push",
                 ])
                 .current_dir(&paths.root)
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
             if result.success() {
@@ -793,6 +794,7 @@ pub fn execute_fix(
             human::info("Opening Cloudflare login...");
             let result = npm_cmd("wrangler")
                 .args(["login"])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
             Ok(result.success())
@@ -801,6 +803,7 @@ pub fn execute_fix(
             human::info("Opening Netlify login...");
             let result = npm_cmd("netlify")
                 .args(["login"])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
             Ok(result.success())
@@ -823,6 +826,7 @@ pub fn execute_fix(
                     "--production-branch",
                     "main",
                 ])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
             if result.success() {
@@ -857,6 +861,7 @@ pub fn execute_fix(
                 let _ = npm_cmd("netlify")
                     .args(["link", "--name", site_name])
                     .current_dir(&paths.root)
+                    .stdout(crate::output::child_stdout())
                     .status();
                 Ok(true)
             } else {
@@ -866,6 +871,7 @@ pub fn execute_fix(
                     let link_result = npm_cmd("netlify")
                         .args(["link", "--name", site_name])
                         .current_dir(&paths.root)
+                        .stdout(crate::output::child_stdout())
                         .status()
                         .map_err(|e| PageError::Deploy(format!("netlify link failed: {e}")))?;
                     Ok(link_result.success())
@@ -912,6 +918,7 @@ pub fn execute_fix(
             let result = npm_cmd("netlify")
                 .args(["domains:add", domain])
                 .current_dir(&paths.root)
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
             if result.success() {
@@ -982,6 +989,7 @@ fn run_install_command(cmd: &str, args: &[&str], label: &str) -> Result<bool> {
     human::info(&format!("Installing {label}..."));
     let result = npm_cmd(cmd)
         .args(args)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("{cmd} failed: {e}")))?;
     if result.success() {
@@ -1380,6 +1388,7 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
                 "repo", "create", repo_name, "--public", "--source", ".", "--push",
             ])
             .current_dir(&paths.root)
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
 
@@ -1446,6 +1455,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
         human::info("Logging in to Cloudflare...");
         let login = npm_cmd("wrangler")
             .args(["login"])
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
         if !login.success() {
@@ -1473,6 +1483,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
             "--production-branch",
             "main",
         ])
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
 
@@ -1511,6 +1522,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
         human::info("Logging in to Netlify...");
         let login = npm_cmd("netlify")
             .args(["login"])
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
         if !login.success() {
@@ -1543,6 +1555,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
     let _ = npm_cmd("netlify")
         .args(["link", "--name", &site_name])
         .current_dir(&paths.root)
+        .stdout(crate::output::child_stdout())
         .status();
 
     Ok(site_name)
@@ -1565,6 +1578,7 @@ pub fn deploy_init_cloudflare_project(project_name: &str) -> Result<String> {
             "--production-branch",
             "main",
         ])
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
 
@@ -2156,6 +2170,7 @@ pub fn netlify_add_domain(paths: &ResolvedPaths, domain: &str) -> Result<bool> {
     let result = npm_cmd("netlify")
         .args(["domains:add", domain])
         .current_dir(&paths.root)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
     Ok(result.success())
@@ -2722,6 +2737,7 @@ mod tests {
             output: std::path::PathBuf::from("/nonexistent/dist"),
             data_dir: std::path::PathBuf::from("/nonexistent/data"),
             public_dir: std::path::PathBuf::from("/nonexistent/public"),
+            subdomain_output_root: std::path::PathBuf::from("/nonexistent/dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(!check.passed);
@@ -2741,6 +2757,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(!check.passed);
@@ -2761,6 +2778,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(check.passed);
@@ -2780,6 +2798,7 @@ mod tests {
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "github-pages");
@@ -2825,6 +2844,7 @@ mod tests {
             output: dir.join("dist"),
             data_dir: dir.join("data"),
             public_dir: dir.join("public"),
+            subdomain_output_root: dir.join("dist-subdomains"),
         }
     }
 
@@ -3748,6 +3768,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "cloudflare");
@@ -3775,6 +3796,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "netlify");
@@ -3801,6 +3823,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "unknown-target");
@@ -3822,6 +3845,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let mut config = test_config("https://example.com");
         config.deploy.domain = Some("example.com".into());
@@ -3844,6 +3868,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let mut config = test_config("https://example.com");
         config.deploy.domain = Some("mysite.com".into());
@@ -4229,6 +4254,7 @@ target = "github-pages"
             output: std::path::PathBuf::from("/nonexistent/dist"),
             data_dir: std::path::PathBuf::from("/nonexistent/data"),
             public_dir: std::path::PathBuf::from("/nonexistent/public"),
+            subdomain_output_root: std::path::PathBuf::from("/nonexistent/dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert_eq!(check.name, "Output directory");
@@ -4725,6 +4751,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         // No domain configured
@@ -4747,6 +4774,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "netlify");
@@ -4772,6 +4800,7 @@ target = "github-pages"
             output: dist,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         let checks = preflight(&config, &paths, "github-pages");
@@ -5620,6 +5649,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://example.com");
         // This will fail at the git init step, but .nojekyll should exist
@@ -5641,6 +5671,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://myblog.com");
         let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
@@ -5664,6 +5695,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = test_config("https://user.github.io");
         let _ = deploy_github_pages(&config, &paths, Some("https://github.com/user/repo"));
@@ -5689,6 +5721,7 @@ target = "github-pages"
             output: dist.clone(),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let check = check_output_dir(&paths);
         assert!(check.passed);

@@ -349,6 +349,17 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
     extend_dedup(&mut actions, check_agent_harness(&root, &agents));
+    // Turn-end `seite check` hooks, once per agent: merged into (or next to)
+    // the actions above, and skipped for agents recorded as done so a hook
+    // the user deleted stays deleted.
+    let stored_hooks = meta::load(&root).and_then(|m| m.hooks_installed);
+    let hooks_installed = add_stop_hooks(
+        &root,
+        &agents,
+        stored_hooks.as_deref().unwrap_or_default(),
+        &mut actions,
+    );
+    let record_hooks = stored_hooks.as_ref() != Some(&hooks_installed);
 
     let agent_ids = harness::to_ids(&agents);
     let deselected_ids = harness::to_ids(&deselected);
@@ -356,6 +367,7 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         let existing = meta::load(&root);
         let mut new_meta = meta::PageMeta::stamp_current_version(existing.as_ref());
         new_meta.agents = Some(agent_ids.clone());
+        new_meta.hooks_installed = Some(hooks_installed.clone());
         meta::write(&root, &new_meta)?;
         Ok(())
     };
@@ -365,8 +377,8 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         // This handles the case where upgrade steps exist but their checks found
         // nothing to do (files already present), or where the binary was bumped
         // without adding new upgrade steps (e.g. 0.4.0 → 0.4.3 with only bug fixes).
-        // Likewise record a new or first-time agent selection.
-        if !args.check && (project_ver < binary_ver || record_agents) {
+        // Likewise record a new or first-time agent (or hook) selection.
+        if !args.check && (project_ver < binary_ver || record_agents || record_hooks) {
             write_meta()?;
         }
         report_deselected(&deselected);
@@ -745,28 +757,55 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
 /// without requiring the user to manually diff skill files. A file at the same
 /// or a higher version is left alone.
 fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Option<UpgradeAction> {
-    let bundled_version = extract_skill_version(skill.content);
-    let rel = format!("{dir}/{}/SKILL.md", skill.name);
-    let skill_path = root.join(&rel);
+    let content = skill.render(harness::skill_frontmatter_for(dir));
+    check_versioned_file(
+        root,
+        format!("{dir}/{}/SKILL.md", skill.name),
+        content,
+        &format!("/{} command", skill.name),
+    )
+}
 
-    if skill_path.exists() {
-        let existing = fs::read_to_string(&skill_path).unwrap_or_default();
+/// Create `rel`, or replace it when its `# seite-skill-version` is older than
+/// the bundled `content`'s. Same-or-newer files are left alone.
+fn check_versioned_file(
+    root: &Path,
+    rel: String,
+    content: String,
+    what: &str,
+) -> Option<UpgradeAction> {
+    let bundled_version = extract_skill_version(&content);
+    let path = root.join(&rel);
+
+    if path.exists() {
+        let existing = fs::read_to_string(&path).unwrap_or_default();
         let existing_version = extract_skill_version(&existing);
         if existing_version >= bundled_version {
             return None;
         }
         return Some(UpgradeAction::Create {
-            path: skill_path,
-            content: skill.content.to_string(),
+            path,
+            content,
             description: format!("{rel} (updated v{existing_version} → v{bundled_version})"),
         });
     }
 
     Some(UpgradeAction::Create {
-        path: skill_path,
-        content: skill.content.to_string(),
-        description: format!("{rel} (/{} command)", skill.name),
+        path,
+        content,
+        description: format!("{rel} ({what})"),
     })
+}
+
+/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`) for the
+/// selected agents, created or refreshed by version like skills.
+fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+    harness::command_files(agents, SiteFeatures::detect(root))
+        .into_iter()
+        .filter_map(|(rel, content)| {
+            check_versioned_file(root, rel, content, "slash command → skill")
+        })
+        .collect()
 }
 
 /// A bundled Claude Code skill by name, as an upgrade action.
@@ -821,15 +860,7 @@ fn check_brand_identity_skill(root: &Path) -> Vec<UpgradeAction> {
 /// Extract the `# seite-skill-version: N` value from a SKILL.md file.
 /// Returns 0 if not found.
 fn extract_skill_version(content: &str) -> u32 {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("# seite-skill-version:") {
-            if let Ok(v) = rest.trim().parse::<u32>() {
-                return v;
-            }
-        }
-    }
-    0
+    harness::extract_version(content)
 }
 
 /// Fix deploy workflows that use `cargo install --path .` instead of the shell installer.
@@ -925,8 +956,10 @@ The server is declared in `.mcp.json` (and pre-approved in
 the first time, it may ask you to approve the project's MCP server.
 No API keys required.
 
-**Available tools:** `seite_build`, `seite_create_content`, `seite_search`,
-`seite_apply_theme`, `seite_lookup_docs`
+**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
+`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
+`seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
+`seite_lookup_docs`
 
 **Available resources:** `seite://docs/*` (seite documentation),
 `seite://content/*` (site content), `seite://themes` (themes),
@@ -1630,6 +1663,7 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
         actions.extend(check_landing_page_skill(root));
         actions.extend(check_theme_builder_skill(root));
         actions.extend(check_brand_identity_skill(root));
+        actions.extend(check_claude_skill(root, "seite"));
         actions.extend(check_claude_shim(root));
     }
     if agents.contains(&Agent::Cursor) {
@@ -1648,6 +1682,7 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     if agents.contains(&Agent::Opencode) {
         actions.extend(check_opencode_json(root));
     }
+    actions.extend(check_command_files(root, agents));
     if harness::uses_shared_skills(agents) {
         actions.extend(
             harness::skills(features)
@@ -1664,6 +1699,115 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     }
     actions.extend(check_instructions_blocks(root, agents));
     actions
+}
+
+/// Add the turn-end `seite check` hook for each selected agent that isn't in
+/// `installed` (the ids recorded in `.seite/config.json`). Returns the new
+/// record: `installed` plus every agent whose hook is now in place (added
+/// here or already present). Agents whose config can't be merged are left
+/// out so a later upgrade retries them.
+fn add_stop_hooks(
+    root: &Path,
+    agents: &[Agent],
+    installed: &[String],
+    actions: &mut Vec<UpgradeAction>,
+) -> Vec<String> {
+    let mut record = installed.to_vec();
+    for &agent in agents {
+        if installed.iter().any(|id| id == agent.id()) {
+            continue;
+        }
+        if add_stop_hook(root, agent, actions) {
+            record.push(agent.id().to_string());
+        }
+    }
+    record
+}
+
+/// Queue `agent`'s stop hook: merged into a pending action on the same file
+/// (e.g. the `.claude/settings.json` the MCP step creates), else created or
+/// merged on disk. `false` when the file can't be merged safely.
+fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) -> bool {
+    use crate::cli::harness_hooks::{hook_path, merge_hook, new_hook_file};
+
+    let rel = hook_path(agent);
+    let path = root.join(rel);
+    let added = format!("Added the seite check stop hook to {rel}");
+    let unmergeable = || {
+        human::warning(&format!(
+            "{rel} can't be merged automatically; add a {} stop hook running `{}` by hand",
+            agent.label(),
+            crate::cli::harness_hooks::hook_command(agent)
+        ));
+        false
+    };
+
+    if let Some(action) = actions
+        .iter_mut()
+        .find(|a| a.replaced_path() == Some(path.as_path()))
+    {
+        return match action {
+            UpgradeAction::Create {
+                content,
+                description,
+                ..
+            } => {
+                let Ok(serde_json::Value::Object(mut doc)) = serde_json::from_str(content) else {
+                    return unmergeable();
+                };
+                match merge_hook(agent, &mut doc) {
+                    Ok(changed) => {
+                        if changed {
+                            *content = pretty_json(&serde_json::Value::Object(doc));
+                            description.push_str(" + seite check stop hook");
+                        }
+                        true
+                    }
+                    Err(_) => unmergeable(),
+                }
+            }
+            UpgradeAction::MergeJson {
+                merged, additions, ..
+            } => match merged.as_object_mut().map(|doc| merge_hook(agent, doc)) {
+                Some(Ok(changed)) => {
+                    if changed {
+                        additions.push(added);
+                    }
+                    true
+                }
+                _ => unmergeable(),
+            },
+            _ => unmergeable(),
+        };
+    }
+
+    if !path.exists() {
+        actions.push(UpgradeAction::Create {
+            path,
+            content: new_hook_file(agent),
+            description: format!("{rel} (seite check stop hook for {})", agent.label()),
+        });
+        return true;
+    }
+    if agent == Agent::Opencode {
+        // A plugin file already sits at our path; leave it alone.
+        return true;
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        return unmergeable();
+    };
+    match merge_hook(agent, &mut doc) {
+        Ok(true) => {
+            actions.push(UpgradeAction::MergeJson {
+                path,
+                merged: serde_json::Value::Object(doc),
+                additions: vec![added],
+            });
+            true
+        }
+        Ok(false) => true,
+        Err(_) => unmergeable(),
+    }
 }
 
 #[cfg(test)]
@@ -2687,5 +2831,93 @@ mod tests {
         let mut actions = vec![make()];
         extend_dedup(&mut actions, vec![make()]);
         assert_eq!(actions.len(), 1);
+    }
+
+    fn stop_command(settings: &serde_json::Value) -> &str {
+        settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn test_add_stop_hooks_merges_into_pending_settings_merge() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({ "permissions": { "allow": ["Read"] } }),
+        );
+        let mut actions = check_mcp_server(tmp.path());
+        let before = actions.len();
+        let record = add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
+        assert_eq!(record, vec!["claude".to_string()]);
+        // Merged into the MCP step's pending settings.json action, not a second one.
+        assert_eq!(actions.len(), before);
+        apply_json_actions(actions);
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        let allow = settings["permissions"]["allow"].as_array().unwrap();
+        assert!(allow.iter().any(|v| v == "mcp__seite"), "{settings}");
+        assert_eq!(
+            settings.as_object().unwrap().keys().next().unwrap(),
+            "permissions"
+        );
+    }
+
+    #[test]
+    fn test_add_stop_hooks_merges_into_pending_settings_create() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut actions = check_mcp_server(tmp.path());
+        add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
+        let described: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
+        assert!(
+            described
+                .iter()
+                .any(|d| d.contains("seite check stop hook")),
+            "{described:?}"
+        );
+        apply_json_actions(actions);
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        assert!(settings["enabledMcpjsonServers"].is_array());
+    }
+
+    #[test]
+    fn test_add_stop_hooks_skips_recorded_and_unmergeable() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // Recorded as installed (the user may have deleted it): nothing to do.
+        let mut actions = Vec::new();
+        let record = add_stop_hooks(root, &[Agent::Codex], &["codex".into()], &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(record, vec!["codex".to_string()]);
+
+        // A config we can't extend is left alone and not recorded (retried later).
+        fs::create_dir_all(root.join(".cursor")).unwrap();
+        fs::write(root.join(".cursor/hooks.json"), r#"{"hooks": []}"#).unwrap();
+        let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
+        assert!(actions.is_empty());
+        assert!(record.is_empty());
+
+        // An existing hook file gets seite's hook appended, others kept.
+        fs::write(
+            root.join(".cursor/hooks.json"),
+            r#"{"version": 1, "hooks": {"afterFileEdit": [{"command": "fmt"}]}}"#,
+        )
+        .unwrap();
+        let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
+        assert_eq!(record, vec!["cursor".to_string()]);
+        apply_json_actions(actions);
+        let hooks = read_json(&root.join(".cursor/hooks.json"));
+        assert_eq!(hooks["hooks"]["afterFileEdit"][0]["command"], "fmt");
+        assert_eq!(
+            hooks["hooks"]["stop"][0]["command"],
+            "seite check --hook cursor"
+        );
+
+        // Already present: recorded without a change.
+        let mut actions = Vec::new();
+        let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(record, vec!["cursor".to_string()]);
     }
 }

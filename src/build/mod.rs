@@ -24,9 +24,13 @@ use walkdir::WalkDir;
 
 use crate::config::{AnalyticsSection, CollectionConfig, ResolvedPaths, SiteConfig};
 use crate::content::{self, ContentItem, Frontmatter};
+use crate::diagnostics::{Diagnostic, Diagnostics, Severity};
 use crate::error::{PageError, Result};
 use crate::output::CommandOutput;
 use crate::templates;
+
+/// A rendered page (output path + HTML), or `None` when skipped (incremental).
+type RenderedPage = Option<(PathBuf, String)>;
 
 pub struct BuildOptions {
     pub include_drafts: bool,
@@ -38,6 +42,9 @@ pub struct BuildOptions {
 pub struct BuildResult {
     pub collections: HashMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
+    /// Broken links and missing assets across the whole site: the main
+    /// output plus every subdomain output (each subdomain's own results are
+    /// also on its [`SubdomainBuildInfo`]).
     pub link_check: links::LinkCheckResult,
     /// Per-subdomain build results.
     pub subdomain_builds: Vec<SubdomainBuildInfo>,
@@ -45,6 +52,10 @@ pub struct BuildResult {
     /// unexpected output (e.g. user templates that failed to parse and were
     /// replaced by the built-in defaults). Also printed to stderr.
     pub warnings: Vec<String>,
+    /// The same kind of non-fatal problems as structured, located warnings
+    /// (e.g. `template-parse` with the template file and line). Paths are
+    /// relative to the site root.
+    pub diagnostics: Diagnostics,
 }
 
 /// Build info for a single subdomain collection.
@@ -54,6 +65,9 @@ pub struct SubdomainBuildInfo {
     pub output_dir: PathBuf,
     pub base_url: String,
     pub stats: BuildStats,
+    /// Link validation for this subdomain's output (already included in
+    /// [`BuildResult::link_check`]).
+    pub link_check: links::LinkCheckResult,
 }
 
 #[derive(Debug, Serialize)]
@@ -318,12 +332,10 @@ pub fn build_site(
                     incremental: true,
                     items_skipped: cs.total_content,
                 },
-                link_check: links::LinkCheckResult {
-                    total_links_checked: 0,
-                    broken_links: Vec::new(),
-                },
+                link_check: links::LinkCheckResult::default(),
                 subdomain_builds: Vec::new(),
                 warnings: Vec::new(),
+                diagnostics: Diagnostics::new(),
             });
         }
         if let Some(ref reason) = cs.full_rebuild_reason {
@@ -338,12 +350,22 @@ pub fn build_site(
         changeset = Some(cs);
     }
 
-    // Clean subdomain output directories before building
-    if has_subdomains {
-        let subdomains_root = paths.root.join("dist-subdomains");
-        if subdomains_root.exists() {
-            fs::remove_dir_all(&subdomains_root)?;
-        }
+    // Full builds write into a staging directory next to the output and are
+    // swapped into place only after every step (including subdomain builds)
+    // succeeded, so a failed build leaves the previous output untouched.
+    // Incremental builds (dev server: only content changed, nothing deleted)
+    // update the existing output in place. They never clean it, so a failure
+    // there can leave a mix of old and freshly rendered pages but never wipes
+    // the site; the next successful build brings it back in sync.
+    clean_stale_build_dirs(&paths.output);
+    let in_place = changeset
+        .as_ref()
+        .is_some_and(|cs| !cs.needs_full_rebuild && cs.deleted_content.is_empty())
+        && paths.output.exists();
+    let mut staged = StagedOutputs::default();
+    let mut main_paths = paths.clone();
+    if !in_place {
+        main_paths.output = staged.stage(&paths.root, &paths.output)?;
     }
 
     // Compute the subdomain rewrite map from the ORIGINAL config (before filtering),
@@ -359,16 +381,50 @@ pub fn build_site(
         Some(&main_rewrites)
     };
 
-    let result = build_site_inner(effective_config, paths, opts, rewrites_ref, &changeset)?;
-
-    let mut warnings = result.warnings;
-
-    // Build subdomain collections into their own output directories
-    let subdomain_builds = if has_subdomains {
-        build_subdomain_sites(config, paths, opts, &mut warnings)?
+    // `.md` source links may point at content published on another origin
+    // (main site <-> subdomain). Index every collection's sources once, before
+    // the outputs are split, so each build can resolve them.
+    let site_sources = if has_subdomains {
+        site_source_urls(config, paths, opts)
     } else {
         Vec::new()
     };
+    let main_external = cross_origin_source_urls(config, &site_sources, None);
+
+    let result = build_site_inner(
+        effective_config,
+        &main_paths,
+        opts,
+        rewrites_ref,
+        &changeset,
+        &paths.output,
+        &main_external,
+    )?;
+
+    let mut warnings = result.warnings;
+    let mut diagnostics = result.diagnostics;
+
+    // Build subdomain collections into their own output directories
+    let subdomain_builds = if has_subdomains {
+        build_subdomain_sites(
+            config,
+            paths,
+            opts,
+            &site_sources,
+            &mut warnings,
+            &mut staged,
+            &mut diagnostics,
+        )?
+    } else {
+        Vec::new()
+    };
+
+    // Everything built: swap staged outputs into place, then drop outputs of
+    // collections that are no longer deployed to a subdomain.
+    staged.commit()?;
+    if has_subdomains {
+        prune_stale_subdomain_outputs(config, paths);
+    }
 
     // Save build cache after successful build
     if opts.incremental {
@@ -384,13 +440,312 @@ pub fn build_site(
         }
     }
 
+    let mut link_check = result.link_check;
+    for sub in &subdomain_builds {
+        link_check.merge(&sub.link_check);
+    }
+
     Ok(BuildResult {
         collections: result.collections,
         stats: result.stats,
-        link_check: result.link_check,
+        link_check,
         subdomain_builds,
         warnings,
+        diagnostics,
     })
+}
+
+/// Suffix (plus process id) of the directory a full build writes into.
+const STAGING_MARKER: &str = ".staging-";
+/// Suffix (plus process id) the previous output is renamed to during the swap.
+const OLD_OUTPUT_MARKER: &str = ".old-";
+
+/// True for `{output_name}.staging-<pid>` / `{output_name}.old-<pid>`.
+fn is_scratch_output_name(name: &str, output_name: &str) -> bool {
+    let Some(rest) = name.strip_prefix(output_name) else {
+        return false;
+    };
+    let Some(pid) = rest
+        .strip_prefix(STAGING_MARKER)
+        .or_else(|| rest.strip_prefix(OLD_OUTPUT_MARKER))
+    else {
+        return false;
+    };
+    !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Sibling of `output` named `{name}{marker}{pid}`. `None` when `output` has
+/// no parent/name, or is the site root or one of its ancestors (a
+/// misconfiguration we don't try to stage around).
+fn scratch_dir_for(root: &Path, output: &Path, marker: &str) -> Option<PathBuf> {
+    if root.starts_with(output) {
+        return None;
+    }
+    let name = output.file_name()?.to_str()?;
+    let parent = output.parent()?;
+    Some(parent.join(format!("{name}{marker}{}", std::process::id())))
+}
+
+/// Remove staging/old directories left next to `output` by a build that
+/// crashed or was killed. Best-effort: failures are only logged.
+///
+/// Directories owned by a build that is still running (e.g. the dev server
+/// rebuilding while an agent runs `seite build`) are left alone.
+fn clean_stale_build_dirs(output: &Path) {
+    let (Some(parent), Some(name)) = (output.parent(), output.file_name()) else {
+        return;
+    };
+    let Some(name) = name.to_str() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let entry_name = entry.file_name();
+        let Some(entry_name) = entry_name.to_str() else {
+            continue;
+        };
+        if is_scratch_output_name(entry_name, name)
+            && entry.path().is_dir()
+            && !scratch_owner_running(entry_name, &entry.path())
+        {
+            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                tracing::debug!(
+                    "Failed to remove stale build dir {}: {e}",
+                    entry.path().display()
+                );
+            }
+        }
+    }
+}
+
+/// Whether the build that created scratch dir `name` (`…staging-<pid>` /
+/// `…old-<pid>`) may still be running.
+fn scratch_owner_running(name: &str, path: &Path) -> bool {
+    let Some(pid) = name
+        .rsplit(['-'])
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if pid == std::process::id() {
+        return true;
+    }
+    process_running(pid, path)
+}
+
+#[cfg(unix)]
+fn process_running(pid: u32, _path: &Path) -> bool {
+    let Some(pid) = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+    else {
+        return false;
+    };
+    // Signal 0 only checks existence; EPERM means it exists but isn't ours.
+    match rustix::process::test_kill_process(pid) {
+        Ok(()) => true,
+        Err(e) => e == rustix::io::Errno::PERM,
+    }
+}
+
+/// Without a cheap portable liveness check, treat recently touched scratch
+/// dirs as belonging to a running build.
+#[cfg(not(unix))]
+fn process_running(_pid: u32, path: &Path) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < std::time::Duration::from_secs(3600))
+}
+
+/// True when `path` is inside a build output directory (the main output,
+/// `dist-subdomains/`, or a staging/old sibling of the output). The dev
+/// server's file watcher ignores these so builds don't trigger rebuilds.
+pub fn is_build_output_path(paths: &ResolvedPaths, path: &Path) -> bool {
+    let subdomains_root = &paths.subdomain_output_root;
+    if path.starts_with(&paths.output) || path.starts_with(subdomains_root) {
+        return true;
+    }
+    let (Some(parent), Some(name)) = (
+        paths.output.parent(),
+        paths.output.file_name().and_then(|n| n.to_str()),
+    ) else {
+        return false;
+    };
+    path.strip_prefix(parent)
+        .ok()
+        .and_then(|rest| rest.components().next())
+        .and_then(|first| first.as_os_str().to_str())
+        .is_some_and(|first| is_scratch_output_name(first, name))
+}
+
+/// Output directories being built in staging, swapped into place by
+/// [`StagedOutputs::commit`]. Staging directories that were never committed
+/// (the build failed) are removed on drop.
+#[derive(Default)]
+struct StagedOutputs {
+    /// (staging dir, final output dir)
+    dirs: Vec<(PathBuf, PathBuf)>,
+}
+
+impl StagedOutputs {
+    /// Start staging `output`; returns the directory to build into. Falls
+    /// back to building in place when the output can't be staged safely.
+    fn stage(&mut self, root: &Path, output: &Path) -> Result<PathBuf> {
+        let Some(staging) = scratch_dir_for(root, output, STAGING_MARKER) else {
+            return Ok(output.to_path_buf());
+        };
+        if staging.exists() {
+            fs::remove_dir_all(&staging)?;
+        }
+        self.dirs.push((staging.clone(), output.to_path_buf()));
+        Ok(staging)
+    }
+
+    /// Swap every staged directory into place.
+    fn commit(mut self) -> Result<()> {
+        while !self.dirs.is_empty() {
+            let (staging, output) = self.dirs.remove(0);
+            let root = output.parent().unwrap_or(Path::new("")).to_path_buf();
+            if let Err(e) = swap_into_place(&root, &staging, &output) {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for StagedOutputs {
+    fn drop(&mut self) {
+        for (staging, _) in &self.dirs {
+            if staging.exists() {
+                if let Err(e) = fs::remove_dir_all(staging) {
+                    tracing::debug!("Failed to remove staging dir {}: {e}", staging.display());
+                }
+            }
+        }
+    }
+}
+
+/// Replace `output` with `staging`.
+///
+/// Renames the previous output aside, renames staging into place, then
+/// deletes the old copy. Two renames rather than one because renaming onto an
+/// existing directory fails on Windows (and on Unix when it's non-empty). If
+/// the second rename fails the previous output is restored. If the output
+/// itself can't be renamed (a mount point, a symlink, or open handles on
+/// Windows), its contents are replaced instead.
+fn swap_into_place(parent: &Path, staging: &Path, output: &Path) -> Result<()> {
+    let is_symlink = fs::symlink_metadata(output)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false);
+    if !output.exists() && !is_symlink {
+        fs::create_dir_all(parent)?;
+        fs::rename(staging, output)?;
+        return Ok(());
+    }
+
+    if !is_symlink {
+        if let Some(old) = scratch_dir_for(parent, output, OLD_OUTPUT_MARKER) {
+            if old.exists() {
+                fs::remove_dir_all(&old)?;
+            }
+            match fs::rename(output, &old) {
+                Ok(()) => {
+                    if let Err(e) = fs::rename(staging, output) {
+                        // Put the previous output back so nothing is lost.
+                        let _ = fs::rename(&old, output);
+                        return Err(e.into());
+                    }
+                    if let Err(e) = fs::remove_dir_all(&old) {
+                        // Harmless: the next build removes leftovers.
+                        tracing::debug!("Failed to remove {}: {e}", old.display());
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Could not move {} aside ({e}); replacing its contents instead",
+                        output.display()
+                    );
+                }
+            }
+        }
+    }
+
+    replace_dir_contents(staging, output)?;
+    fs::remove_dir_all(staging)?;
+    Ok(())
+}
+
+/// Empty `output` and move (or, across filesystems, copy) everything from
+/// `staging` into it.
+fn replace_dir_contents(staging: &Path, output: &Path) -> Result<()> {
+    for entry in fs::read_dir(output)? {
+        let path = entry?.path();
+        let meta = fs::symlink_metadata(&path)?;
+        if meta.is_dir() {
+            fs::remove_dir_all(&path)?;
+        } else {
+            fs::remove_file(&path)?;
+        }
+    }
+    for entry in fs::read_dir(staging)? {
+        let entry = entry?;
+        let dest = output.join(entry.file_name());
+        if fs::rename(entry.path(), &dest).is_err() {
+            copy_recursively(&entry.path(), &dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_recursively(src: &Path, dest: &Path) -> Result<()> {
+    if src.is_file() {
+        fs::copy(src, dest)?;
+        return Ok(());
+    }
+    for entry in WalkDir::new(src).into_iter().filter_map(|e| e.ok()) {
+        let rel = entry.path().strip_prefix(src).unwrap_or(entry.path());
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Remove `dist-subdomains/<name>` directories for collections that are no
+/// longer deployed to a subdomain (previously handled by wiping the whole
+/// directory before every build). Best-effort.
+fn prune_stale_subdomain_outputs(config: &SiteConfig, paths: &ResolvedPaths) {
+    let subdomains_root = &paths.subdomain_output_root;
+    let Ok(entries) = fs::read_dir(subdomains_root) else {
+        return;
+    };
+    let current: HashSet<String> = config
+        .subdomain_collections()
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !current.contains(&name) && entry.path().is_dir() {
+            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                tracing::debug!("Failed to remove {}: {e}", entry.path().display());
+            }
+        }
+    }
 }
 
 fn refresh_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
@@ -432,7 +787,10 @@ fn build_subdomain_sites(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
+    site_sources: &[SiteSource],
     warnings: &mut Vec<String>,
+    staged: &mut StagedOutputs,
+    diagnostics: &mut Diagnostics,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -453,12 +811,15 @@ fn build_subdomain_sites(
         sub_config.collections = vec![sub_collection];
 
         // Create subdomain-specific paths
+        // Subdomain outputs are always rebuilt from scratch, into staging.
         let mut sub_paths = paths.clone();
-        sub_paths.output = subdomain_output.clone();
+        clean_stale_build_dirs(&subdomain_output);
+        sub_paths.output = staged.stage(&paths.root, &subdomain_output)?;
 
         // Build reverse rewrite map: links from subdomain content to other collections
         // resolve to absolute URLs on the main site (or other subdomains)
         let reverse_rewrites = config.reverse_subdomain_rewrite_map(&collection.name);
+        let external = cross_origin_source_urls(config, site_sources, Some(&collection.name));
 
         let sub_result = build_site_inner(
             &sub_config,
@@ -466,10 +827,17 @@ fn build_subdomain_sites(
             opts,
             Some(&reverse_rewrites),
             &None,
+            &subdomain_output,
+            &external,
         )?;
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
                 warnings.push(warning);
+            }
+        }
+        for diagnostic in sub_result.diagnostics {
+            if !diagnostics.iter().any(|d| *d == diagnostic) {
+                diagnostics.push(diagnostic);
             }
         }
 
@@ -479,10 +847,94 @@ fn build_subdomain_sites(
             output_dir: subdomain_output,
             base_url: subdomain_base_url,
             stats: sub_result.stats,
+            link_check: sub_result.link_check,
         });
     }
 
     Ok(results)
+}
+
+/// A content file anywhere in the site and the URL it is published at,
+/// relative to its own site's origin (subdomain collections are root-mounted).
+struct SiteSource {
+    collection: String,
+    source: PathBuf,
+    url: String,
+}
+
+/// Every (non-skipped) content file of every collection with its URL, as the
+/// build resolves it. Files that fail to parse are left out: the build that
+/// owns them reports the error.
+fn site_source_urls(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+) -> Vec<SiteSource> {
+    let mut out = Vec::new();
+    for collection in &config.collections {
+        let dir = paths.content.join(&collection.directory);
+        if !dir.exists() {
+            continue;
+        }
+        let url_collection = if collection.subdomain.is_some() {
+            CollectionConfig {
+                url_prefix: String::new(),
+                ..collection.clone()
+            }
+        } else {
+            collection.clone()
+        };
+        for entry in WalkDir::new(&dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+        {
+            let path = entry.path();
+            let Ok((fm, _)) = content::parse_content_file(path) else {
+                continue;
+            };
+            if fm.draft && !opts.include_drafts {
+                continue;
+            }
+            let rel = path.strip_prefix(&dir).unwrap_or(path);
+            let loc = resolve_item_location(config, &url_collection, path, rel, &fm);
+            out.push(SiteSource {
+                collection: collection.name.clone(),
+                source: path.to_path_buf(),
+                url: loc.url,
+            });
+        }
+    }
+    out
+}
+
+/// Absolute URLs of the content published on a different origin than the
+/// site being built: `building` is the subdomain collection being built, or
+/// `None` for the main site. Same-origin content is resolved from the build's
+/// own items (root-relative URLs).
+fn cross_origin_source_urls(
+    config: &SiteConfig,
+    sources: &[SiteSource],
+    building: Option<&str>,
+) -> HashMap<PathBuf, String> {
+    let main_base = config.site.base_url.trim_end_matches('/');
+    let mut origins: HashMap<&str, Option<String>> = HashMap::new();
+    for collection in &config.collections {
+        let origin = match &collection.subdomain {
+            Some(_) if building == Some(collection.name.as_str()) => None,
+            Some(_) => Some(config.subdomain_base_url(collection)),
+            None if building.is_none() => None,
+            None => Some(main_base.to_string()),
+        };
+        origins.insert(collection.name.as_str(), origin);
+    }
+    sources
+        .iter()
+        .filter_map(|s| {
+            let origin = origins.get(s.collection.as_str())?.as_deref()?;
+            Some((s.source.clone(), format!("{origin}{}", s.url)))
+        })
+        .collect()
 }
 
 /// Check whether the Plausible analytics config uses deprecated `extensions` without `script_url`.
@@ -503,12 +955,18 @@ fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> b
 /// This allows subdomain builds to receive reverse-rewrite maps (subdomain→main site links).
 ///
 /// `changeset`: if `Some`, used for incremental builds to skip unchanged content.
+///
+/// `display_output`: the final output directory. `paths.output` may be a
+/// staging directory that is renamed to `display_output` after the build;
+/// reported paths (e.g. broken links on generated pages) use the final one.
 fn build_site_inner(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
     subdomain_rewrites_override: Option<&HashMap<String, String>>,
     changeset: &Option<cache::ChangeSet>,
+    display_output: &Path,
+    external_sources: &HashMap<PathBuf, String>,
 ) -> Result<BuildResult> {
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
@@ -571,8 +1029,29 @@ fn build_site_inner(
     let step_start = Instant::now();
     let (mut tera, mut warnings) =
         templates::load_templates_with_warnings(&paths.templates, &config.collections)?;
+    // Non-fatal, structured problems (paths made relative to the root at the end).
+    let mut diagnostics = Diagnostics::new();
     for warning in &warnings {
         eprintln!("⚠ Warning: {warning}");
+    }
+    if !warnings.is_empty() {
+        // The user templates failed to load and the built-in defaults were
+        // used: point at every broken template (file + line) as warnings.
+        let located = templates::template_parse_diagnostics(&paths.templates);
+        if located.is_empty() {
+            for warning in &warnings {
+                diagnostics.push(
+                    Diagnostic::warning("template-parse", warning.clone())
+                        .with_file(&paths.templates),
+                );
+            }
+        }
+        for mut d in located {
+            d.severity = Severity::Warning;
+            d.message
+                .push_str(" (the built-in templates were used instead)");
+            diagnostics.push(d);
+        }
     }
     step_timings.push((
         "Load templates".to_string(),
@@ -583,7 +1062,15 @@ fn build_site_inner(
     progress.step("Loading shortcodes");
     let step_start = Instant::now();
     let shortcodes_dir = paths.templates.join("shortcodes");
-    let shortcode_registry = crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir)?;
+    let shortcode_registry =
+        crate::shortcodes::ShortcodeRegistry::new(&shortcodes_dir).map_err(|e| {
+            let located = templates::template_parse_diagnostics(&shortcodes_dir);
+            if located.is_empty() {
+                e
+            } else {
+                PageError::Diagnostics(located.relative_to(&paths.root))
+            }
+        })?;
     step_timings.push((
         "Load shortcodes".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -592,7 +1079,18 @@ fn build_site_inner(
     // Step 2.5: Load data files
     progress.step("Loading data files");
     let step_start = Instant::now();
-    let data = crate::data::load_data_dir(&paths.data_dir)?;
+    // Per-file problems that fail the build, collected so every broken data
+    // and content file is reported in one pass.
+    let mut fatal = Diagnostics::new();
+    let data = match crate::data::load_data_dir(&paths.data_dir) {
+        Ok(data) => data,
+        Err(PageError::Diagnostics(d)) => {
+            // Keep going with no data so content errors are reported too.
+            fatal.extend(d);
+            serde_json::Value::Object(serde_json::Map::new())
+        }
+        Err(e) => return Err(e),
+    };
     step_timings.push((
         "Load data files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -609,6 +1107,7 @@ fn build_site_inner(
     crate::i18n::register_filters(&mut tera, default_lang, &lang_codes);
     for warning in crate::i18n::partial_language_map_warnings(&data, &lang_codes) {
         crate::output::human::warning_stderr(&warning);
+        diagnostics.push(Diagnostic::warning("i18n-partial", warning.clone()));
         warnings.push(warning);
     }
 
@@ -644,18 +1143,7 @@ fn build_site_inner(
     let sc_i18n_empty = serde_json::json!({});
 
     // Pre-compute shortcode site context (identical for every page)
-    let sc_site = serde_json::json!({
-        "title": &config.site.title,
-        "base_url": &config.site.base_url,
-        "language": &config.site.language,
-        "contact": config.contact.as_ref().map(|c| serde_json::json!({
-            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
-            "endpoint": &c.endpoint,
-            "region": &c.region,
-            "redirect": &c.redirect,
-            "subject": &c.subject,
-        })),
-    });
+    let sc_site = shortcode_site_context(config);
 
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
@@ -675,13 +1163,18 @@ fn build_site_inner(
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                 .collect();
 
-            let results: Vec<std::result::Result<Option<ContentItem>, PageError>> = entries
+            // Each file either yields an item (or `None` for skipped drafts) or
+            // the diagnostics explaining why it is broken.
+            let results: Vec<std::result::Result<Option<ContentItem>, Vec<Diagnostic>>> = entries
                 .par_iter()
                 .map(|entry| {
                     let path = entry.path();
                     let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
-                    let (fm, raw_body) = content::parse_content_file(path)?;
+                    let parsed = content::parse_content_diagnostic(path).map_err(|d| vec![*d])?;
+                    let body_line = parsed.body_line;
+                    let fm = parsed.frontmatter;
+                    let raw_body = parsed.body;
 
                     if fm.draft && !opts.include_drafts {
                         return Ok(None);
@@ -695,23 +1188,24 @@ fn build_site_inner(
                         fm.date = parse_date_from_filename(path);
                     }
 
-                    let sc_page = serde_json::json!({
-                        "title": fm.title,
-                        "slug": &slug,
-                        "collection": &collection.name,
-                        "tags": &fm.tags,
-                    });
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
-                    let expanded_body =
-                        shortcode_registry.expand(&raw_body, path, &sc_page, &sc_site, sc_i18n)?;
+                    let RenderedBody {
+                        expanded: expanded_body,
+                        html: html_body,
+                        toc,
+                    } = render_item_body(
+                        config,
+                        &shortcode_registry,
+                        &BodySource {
+                            path,
+                            body: &raw_body,
+                            body_line,
+                            page: &shortcode_page_context(&fm, &slug, &collection.name),
+                        },
+                        &sc_site,
+                        sc_i18n,
+                    )?;
                     let excerpt = content::extract_excerpt(&expanded_body);
-                    let html_input = if config.build.math {
-                        math::render_math(&expanded_body)
-                    } else {
-                        expanded_body
-                    };
-                    let (html_body, toc) =
-                        markdown::markdown_to_html_with(&html_input, config.build.mermaid);
 
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
                     let word_count = raw_body.split_whitespace().count();
@@ -740,8 +1234,10 @@ fn build_site_inner(
                 .collect();
 
             for result in results {
-                if let Some(item) = result? {
-                    items.push(item);
+                match result {
+                    Ok(Some(item)) => items.push(item),
+                    Ok(None) => {}
+                    Err(diags) => fatal.extend(diags),
                 }
             }
         }
@@ -769,16 +1265,44 @@ fn build_site_inner(
         for items in all_collections.values() {
             for item in items {
                 if let Some(existing) = url_map.insert(&item.url, &item.source_path) {
-                    return Err(PageError::Build(format!(
-                        "URL collision: '{}' is claimed by both '{}' and '{}'",
-                        item.url,
-                        existing.display(),
-                        item.source_path.display()
-                    )));
+                    let existing_rel = existing.strip_prefix(&paths.root).unwrap_or(existing);
+                    fatal.push(
+                        Diagnostic::error(
+                            "url-collision",
+                            format!(
+                                "URL collision: '{}' is claimed by both '{}' and '{}'",
+                                item.url,
+                                existing_rel.display(),
+                                item.source_path
+                                    .strip_prefix(&paths.root)
+                                    .unwrap_or(&item.source_path)
+                                    .display()
+                            ),
+                        )
+                        .with_file(&item.source_path)
+                        .with_hint("give one of the pages a different `slug:` in its frontmatter"),
+                    );
                 }
             }
         }
     }
+
+    // Stop before rendering when any data or content file is broken, and
+    // report every one of them at once.
+    if fatal.has_errors() {
+        fatal.extend(diagnostics.clone());
+        let mut all = std::mem::take(&mut fatal).relative_to(&paths.root);
+        all.sort();
+        return Err(PageError::Diagnostics(all));
+    }
+
+    // Rewrite links written as paths to other markdown files
+    // (`[x](../docs/intro.md)`) into page URLs, now that every item's URL is
+    // known. Operates on the already-rendered HTML, so content is parsed once.
+    // Also records which source file each page was rendered from, so broken
+    // links found in the output can be reported against the markdown source.
+    let (page_sources, md_link_problems) =
+        rewrite_source_links(&mut all_collections, paths, default_lang, external_sources);
 
     step_timings.push((
         "Process collections".to_string(),
@@ -842,6 +1366,7 @@ fn build_site_inner(
     // Key: collection name → (lang → serialized nav). Only populated for nested collections.
     let mut collection_nav_cache: HashMap<String, HashMap<String, serde_json::Value>> =
         HashMap::new();
+    let mut render_errors = Diagnostics::new();
 
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
@@ -977,116 +1502,122 @@ fn build_site_inner(
                 items.iter().any(|item| changed.contains(&item.source_path))
             });
 
-            let render_results: Vec<std::result::Result<Option<(PathBuf, String)>, PageError>> =
-                items
-                    .par_iter()
-                    .map(|item| {
-                        // In incremental mode, skip rendering items whose source hasn't changed,
-                        // UNLESS any sibling in this collection changed (which can affect
-                        // prev/next links and translation links for all items in the collection).
-                        if !collection_has_changes {
-                            if let Some(ref changed) = changed_content_paths {
-                                if !changed.contains(&item.source_path) {
-                                    return Ok(None);
-                                }
+            let render_results: Vec<std::result::Result<RenderedPage, Box<Diagnostic>>> = items
+                .par_iter()
+                .map(|item| {
+                    // In incremental mode, skip rendering items whose source hasn't changed,
+                    // UNLESS any sibling in this collection changed (which can affect
+                    // prev/next links and translation links for all items in the collection).
+                    if !collection_has_changes {
+                        if let Some(ref changed) = changed_content_paths {
+                            if !changed.contains(&item.source_path) {
+                                return Ok(None);
                             }
                         }
+                    }
 
-                        let site_ctx_for_item =
-                            site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
-                                site_ctx_cache
-                                    .get(default_lang.as_str())
-                                    .expect("default language missing from site context cache")
-                            });
+                    let site_ctx_for_item =
+                        site_ctx_cache.get(item.lang.as_str()).unwrap_or_else(|| {
+                            site_ctx_cache
+                                .get(default_lang.as_str())
+                                .expect("default language missing from site context cache")
+                        });
 
-                        let mut ctx =
-                            build_page_context(site_ctx_for_item, item, &data, collection.private);
+                    let mut ctx =
+                        build_page_context(site_ctx_for_item, item, &data, collection.private);
 
-                        // Inject adjacent post links (prev_post / next_post).
-                        // Always insert both keys so Tera templates can check them without errors.
-                        let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
-                        let (prev, next) = adjacent_posts
-                            .get(&(item.lang.clone(), item.slug.clone()))
-                            .unwrap_or(&empty);
-                        ctx.insert("prev_post", prev);
-                        ctx.insert("next_post", next);
+                    // Inject adjacent post links (prev_post / next_post).
+                    // Always insert both keys so Tera templates can check them without errors.
+                    let empty: (Option<AdjacentPost>, Option<AdjacentPost>) = (None, None);
+                    let (prev, next) = adjacent_posts
+                        .get(&(item.lang.clone(), item.slug.clone()))
+                        .unwrap_or(&empty);
+                    ctx.insert("prev_post", prev);
+                    ctx.insert("next_post", next);
 
-                        if collection.nested {
-                            if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
-                                let mut nav = base_nav.clone();
-                                if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
-                                    if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
-                                        if let Some(sections) = nav.as_array_mut() {
-                                            if let Some(section) = sections.get_mut(sec_idx) {
-                                                if let Some(items_arr) = section
-                                                    .get_mut("items")
-                                                    .and_then(|i| i.as_array_mut())
+                    if collection.nested {
+                        if let Some(base_nav) = nav_by_lang.get(item.lang.as_str()) {
+                            let mut nav = base_nav.clone();
+                            if let Some(si) = nav_slug_index.get(item.lang.as_str()) {
+                                if let Some(&(sec_idx, item_idx)) = si.get(item.slug.as_str()) {
+                                    if let Some(sections) = nav.as_array_mut() {
+                                        if let Some(section) = sections.get_mut(sec_idx) {
+                                            if let Some(items_arr) = section
+                                                .get_mut("items")
+                                                .and_then(|i| i.as_array_mut())
+                                            {
+                                                if let Some(nav_item) = items_arr.get_mut(item_idx)
                                                 {
-                                                    if let Some(nav_item) =
-                                                        items_arr.get_mut(item_idx)
-                                                    {
-                                                        nav_item["active"] =
-                                                            serde_json::Value::Bool(true);
-                                                    }
+                                                    nav_item["active"] =
+                                                        serde_json::Value::Bool(true);
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                ctx.insert("nav", &nav);
                             }
-                        } else {
-                            ctx.insert("nav", &empty_nav_value);
+                            ctx.insert("nav", &nav);
                         }
-                        ctx.insert("lang", &item.lang);
-                        if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
-                            insert_i18n_context_cached(&mut ctx, cached_i18n);
-                        } else {
-                            insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
-                        }
-                        insert_build_flags(&mut ctx, config);
+                    } else {
+                        ctx.insert("nav", &empty_nav_value);
+                    }
+                    ctx.insert("lang", &item.lang);
+                    if let Some(cached_i18n) = i18n_cache.get(item.lang.as_str()) {
+                        insert_i18n_context_cached(&mut ctx, cached_i18n);
+                    } else {
+                        insert_i18n_context(&mut ctx, &item.lang, default_lang, &data);
+                    }
+                    insert_build_flags(&mut ctx, config);
 
-                        let empty_translations: Vec<TranslationLink> = Vec::new();
-                        let translations = translation_map
-                            .get(&(collection.name.clone(), item.slug.clone()))
-                            .filter(|t| t.len() > 1)
-                            .map(|t| t.as_slice())
-                            .unwrap_or(&empty_translations);
-                        ctx.insert("translations", &translations);
+                    let empty_translations: Vec<TranslationLink> = Vec::new();
+                    let translations = translation_map
+                        .get(&(collection.name.clone(), item.slug.clone()))
+                        .filter(|t| t.len() > 1)
+                        .map(|t| t.as_slice())
+                        .unwrap_or(&empty_translations);
+                    ctx.insert("translations", &translations);
 
-                        let template_name = item
-                            .frontmatter
-                            .template
-                            .as_deref()
-                            .unwrap_or(&collection.default_template);
-                        let html = tera.render(template_name, &ctx).map_err(|e| {
-                            use std::error::Error as _;
-                            let mut source_chain = String::new();
-                            let mut source: Option<&dyn std::error::Error> = e.source();
-                            while let Some(s) = source {
-                                source_chain.push_str(&format!("\n  Caused by: {s}"));
-                                source = s.source();
-                            }
-                            PageError::Build(format!(
-                                "rendering '{}': {e}{source_chain}",
-                                item.slug
-                            ))
-                        })?;
+                    let template_name = item
+                        .frontmatter
+                        .template
+                        .as_deref()
+                        .unwrap_or(&collection.default_template);
+                    let html = tera.render(template_name, &ctx).map_err(|e| {
+                        Box::new(templates::render_error_diagnostic(
+                            &e,
+                            template_name,
+                            Some(&item.source_path),
+                            &paths.templates,
+                            &paths.root,
+                            &ctx,
+                        ))
+                    })?;
 
-                        let output_path = url_to_output_path(&paths.output, &item.url);
-                        Ok(Some((output_path, html)))
-                    })
-                    .collect();
+                    let output_path = url_to_output_path(&paths.output, &item.url);
+                    Ok(Some((output_path, html)))
+                })
+                .collect();
 
             for result in render_results {
-                if let Some((output_path, html)) = result? {
-                    if let Some(parent) = output_path.parent() {
-                        fs::create_dir_all(parent)?;
+                match result {
+                    Ok(Some((output_path, html))) => {
+                        if let Some(parent) = output_path.parent() {
+                            fs::create_dir_all(parent)?;
+                        }
+                        fs::write(&output_path, html)?;
                     }
-                    fs::write(&output_path, html)?;
+                    Ok(None) => {}
+                    Err(d) => render_errors.push(*d),
                 }
             }
         }
+    }
+
+    // Report every page that failed to render, not just the first.
+    if !render_errors.is_empty() {
+        let mut all = render_errors.relative_to(&paths.root);
+        all.sort();
+        return Err(PageError::Diagnostics(all));
     }
 
     step_timings.push((
@@ -1357,7 +1888,7 @@ fn build_site_inner(
             generate_redirect_html(&target_url)
         } else {
             tera.render(&index_template, &index_ctx)
-                .map_err(|e| PageError::Build(format!("rendering index ({lang}): {e}")))?
+                .map_err(|e| render_failure(&e, &index_template, None, paths, &index_ctx))?
         };
 
         if *lang == *default_lang {
@@ -1532,9 +2063,9 @@ fn build_site_inner(
                 } else {
                     "index.html"
                 };
-                let html = tera.render(template_name, &ctx).map_err(|e| {
-                    PageError::Build(format!("rendering {collection_base} page {page_num}: {e}"))
-                })?;
+                let html = tera
+                    .render(template_name, &ctx)
+                    .map_err(|e| render_failure(&e, template_name, None, paths, &ctx))?;
 
                 let out_dir = if *lang == *default_lang {
                     if page_num == 1 {
@@ -1714,7 +2245,7 @@ fn build_site_inner(
             };
             let html = tera
                 .render(template_name, &ctx)
-                .map_err(|e| PageError::Build(format!("rendering {collection_url}: {e}")))?;
+                .map_err(|e| render_failure(&e, template_name, None, paths, &ctx))?;
 
             let out_dir = if *lang == *default_lang {
                 paths.output.join(url_prefix_trimmed)
@@ -1788,7 +2319,7 @@ fn build_site_inner(
             );
             let html_404 = tera
                 .render("404.html", &ctx_404)
-                .map_err(|e| PageError::Build(format!("rendering 404 page ({lang}): {e}")))?;
+                .map_err(|e| render_failure(&e, "404.html", None, paths, &ctx_404))?;
 
             if *lang == *default_lang {
                 fs::write(paths.output.join("404.html"), html_404)?;
@@ -1901,7 +2432,7 @@ fn build_site_inner(
             );
             let tags_html = tera
                 .render("tags.html", &tags_ctx)
-                .map_err(|e| PageError::Build(format!("rendering tags index: {e}")))?;
+                .map_err(|e| render_failure(&e, "tags.html", None, paths, &tags_ctx))?;
             let tags_dir = paths.output.join(tags_base_url.trim_start_matches('/'));
             fs::create_dir_all(&tags_dir)?;
             fs::write(tags_dir.join("index.html"), tags_html)?;
@@ -1944,7 +2475,7 @@ fn build_site_inner(
                 );
                 let tag_html = tera
                     .render("tag.html", &tag_ctx)
-                    .map_err(|e| PageError::Build(format!("rendering tag '{tag}': {e}")))?;
+                    .map_err(|e| render_failure(&e, "tag.html", None, paths, &tag_ctx))?;
                 let tag_dir = paths.output.join(format!(
                     "{}/{tag_slug}",
                     tags_base_url.trim_start_matches('/')
@@ -2368,7 +2899,28 @@ fn build_site_inner(
         analytics: config.analytics.as_ref(),
         mermaid: config.build.mermaid,
     };
-    let link_check = post_process_html_files(&paths.output, &post_ctx)?;
+    let mut link_check = post_process_html_files(&paths.output, &post_ctx)?;
+    link_check.broken_links.extend(md_link_problems);
+    {
+        // Report problems against the file they were written in (markdown
+        // source, template, or data file) rather than the generated HTML.
+        let output_display = links::relative_display(&paths.root, display_output);
+        // Links not in a page's own markdown: templates and data (nav) first,
+        // then other content files (post excerpts shown on listing pages).
+        let fallback_dirs = [
+            paths.templates.clone(),
+            paths.data_dir.clone(),
+            paths.content.clone(),
+        ];
+        let attribution = links::SourceAttribution {
+            root: &paths.root,
+            page_sources: &page_sources,
+            fallback_dirs: &fallback_dirs,
+            output_display: &output_display,
+        };
+        links::attribute_sources(&mut link_check.broken_links, &attribution);
+        links::attribute_sources(&mut link_check.missing_assets, &attribution);
+    }
     step_timings.push((
         "Post-process HTML".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -2437,7 +2989,27 @@ fn build_site_inner(
         link_check,
         subdomain_builds: Vec::new(),
         warnings,
+        diagnostics: diagnostics.relative_to(&paths.root),
     })
+}
+
+/// A `template-render` failure as a located `PageError::Diagnostics`.
+fn render_failure(
+    err: &tera::Error,
+    template: &str,
+    source: Option<&Path>,
+    paths: &ResolvedPaths,
+    ctx: &tera::Context,
+) -> PageError {
+    let d = templates::render_error_diagnostic(
+        err,
+        template,
+        source,
+        &paths.templates,
+        &paths.root,
+        ctx,
+    );
+    PageError::Diagnostics(d.into())
 }
 
 /// All config needed for the unified HTML post-processing pass.
@@ -2474,85 +3046,76 @@ fn post_process_html_files(
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
         .collect();
 
-    // Per-file result: (link_count, broken_links) or error
-    let results: Vec<std::result::Result<(usize, Vec<links::BrokenLink>), PageError>> =
-        html_entries
-            .par_iter()
-            .map(|entry| {
-                let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
+    // Per-file link check result or error
+    let results: Vec<std::result::Result<links::PageRefCheck, PageError>> = html_entries
+        .par_iter()
+        .map(|entry| {
+            let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
 
-                let mut html = original.clone();
+            let mut html = original.clone();
 
-                // 1. Image srcset rewrite
-                if ctx.needs_image_rewrite && html.contains("<img ") {
-                    html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
-                }
+            // 1. Image srcset rewrite
+            if ctx.needs_image_rewrite && html.contains("<img ") {
+                html = images::rewrite_html_images(&html, ctx.image_manifest, ctx.lazy_loading);
+            }
 
-                // 2. Code copy button injection
-                if html.contains("<pre") {
-                    html = code_copy::inject_code_copy(&html);
-                }
+            // 2. Code copy button injection
+            if html.contains("<pre") {
+                html = code_copy::inject_code_copy(&html);
+            }
 
-                // 3. Cross-subdomain link rewriting
-                if !ctx.subdomain_rewrites.is_empty() {
-                    html = links::rewrite_subdomain_links(&html, ctx.subdomain_rewrites);
-                }
+            // 3. Cross-subdomain link rewriting
+            if !ctx.subdomain_rewrites.is_empty() {
+                html = links::rewrite_subdomain_links(&html, ctx.subdomain_rewrites);
+            }
 
-                // 4. Base path URL rewriting
-                if !ctx.base_path.is_empty() {
-                    html = base_path::rewrite_html_urls(&html, ctx.base_path);
-                }
+            // 4. Base path URL rewriting
+            if !ctx.base_path.is_empty() {
+                html = base_path::rewrite_html_urls(&html, ctx.base_path);
+            }
 
-                // 5. Analytics injection
-                if let Some(analytics_config) = ctx.analytics {
-                    html = analytics::inject_analytics(&html, analytics_config);
-                }
+            // 5. Analytics injection
+            if let Some(analytics_config) = ctx.analytics {
+                html = analytics::inject_analytics(&html, analytics_config);
+            }
 
-                // 6. Mermaid loader injection (no-op unless the page has a diagram)
-                if ctx.mermaid {
-                    html = mermaid::inject_mermaid(&html);
-                }
+            // 6. Mermaid loader injection (no-op unless the page has a diagram)
+            if ctx.mermaid {
+                html = mermaid::inject_mermaid(&html);
+            }
 
-                // Only write if something changed
-                if html != original {
-                    fs::write(entry.path(), &html).map_err(PageError::from)?;
-                }
+            // Only write if something changed
+            if html != original {
+                fs::write(entry.path(), &html).map_err(PageError::from)?;
+            }
 
-                // 7. Extract internal links from final HTML for validation
-                let internal_links = links::extract_internal_links(&html);
-                let link_count = internal_links.len();
-                let rel_path = entry
-                    .path()
-                    .strip_prefix(output_dir)
-                    .unwrap_or(entry.path())
-                    .to_string_lossy()
-                    .replace('\\', "/");
+            // 7. Validate internal links and asset references in the final HTML
+            let rel_path = entry
+                .path()
+                .strip_prefix(output_dir)
+                .unwrap_or(entry.path())
+                .to_string_lossy()
+                .replace('\\', "/");
+            Ok(links::check_page_refs(
+                &html,
+                &rel_path,
+                &valid_urls,
+                ctx.base_path,
+            ))
+        })
+        .collect();
 
-                let broken: Vec<links::BrokenLink> = internal_links
-                    .into_iter()
-                    .filter(|href| !valid_urls.contains(href.as_str()))
-                    .map(|href| links::BrokenLink {
-                        source_file: rel_path.clone(),
-                        href,
-                    })
-                    .collect();
-
-                Ok((link_count, broken))
-            })
-            .collect();
-
-    let mut all_broken = Vec::new();
-    let mut total_checked = 0;
+    let mut check = links::LinkCheckResult::default();
     for result in results {
-        let (count, broken) = result?;
-        total_checked += count;
-        all_broken.extend(broken);
+        let page = result?;
+        check.total_links_checked += page.checked;
+        check.broken_links.extend(page.broken_links);
+        check.missing_assets.extend(page.missing_assets);
     }
+    links::fill_suggestions(&mut check.broken_links, &valid_urls);
+    links::fill_suggestions(&mut check.missing_assets, &valid_urls);
 
-    Ok(links::LinkCheckResult {
-        total_links_checked: total_checked,
-        broken_links: all_broken,
-    })
+    Ok(check)
 }
 
 /// Where a content file lands in the built site.
@@ -2814,6 +3377,86 @@ fn minify_js(raw: &[u8]) -> String {
     result
 }
 
+/// Output HTML path of a page URL, relative to the output directory
+/// (`/posts/hello` → `posts/hello.html`, `/docs/index` → `docs/index.html`).
+fn output_rel_html(url: &str) -> String {
+    format!("{}.html", url.trim_matches('/'))
+}
+
+/// Rewrite links to markdown source files in every item's HTML body and
+/// excerpt (see [`markdown::rewrite_md_links`]). `external_sources` maps
+/// content published on another origin (main site / other subdomains) to its
+/// absolute URL; this build's own items map to root-relative URLs.
+///
+/// Returns a map of output-relative HTML path → source file for every item
+/// (used to attribute broken links to their markdown source), plus a
+/// `Markdown`-kind broken link for each relative `.md` link that matched no
+/// content file, located at its line in the source file.
+fn rewrite_source_links(
+    all_collections: &mut HashMap<String, Vec<ContentItem>>,
+    paths: &ResolvedPaths,
+    default_lang: &str,
+    external_sources: &HashMap<PathBuf, String>,
+) -> (HashMap<String, PathBuf>, Vec<links::BrokenLink>) {
+    let mut map = markdown::SourceLinkMap::new(&paths.root, &paths.content, default_lang);
+    for (source, url) in external_sources {
+        map.insert(source, url);
+    }
+    let mut page_sources = HashMap::new();
+    for items in all_collections.values() {
+        for item in items {
+            map.insert(&item.source_path, &item.url);
+            page_sources.insert(output_rel_html(&item.url), item.source_path.clone());
+        }
+    }
+
+    let mut problems = Vec::new();
+    for items in all_collections.values_mut() {
+        let per_item: Vec<Vec<links::BrokenLink>> = items
+            .par_iter_mut()
+            .map(|item| {
+                if !item.html_body.contains(".md") && !item.excerpt_html.contains(".md") {
+                    return Vec::new();
+                }
+                let (html, unresolved) = markdown::rewrite_md_links(
+                    &item.html_body,
+                    &item.source_path,
+                    &item.lang,
+                    &map,
+                );
+                item.html_body = html;
+                let (excerpt, _) = markdown::rewrite_md_links(
+                    &item.excerpt_html,
+                    &item.source_path,
+                    &item.lang,
+                    &map,
+                );
+                item.excerpt_html = excerpt;
+                if unresolved.is_empty() {
+                    return Vec::new();
+                }
+                let text = fs::read_to_string(&item.source_path).ok();
+                let source = links::relative_display(&paths.root, &item.source_path);
+                let page = output_rel_html(&item.url);
+                unresolved
+                    .into_iter()
+                    .map(|href| {
+                        let mut link =
+                            links::BrokenLink::new(page.clone(), href, links::LinkKind::Markdown);
+                        link.source = Some(source.clone());
+                        link.line = text
+                            .as_deref()
+                            .and_then(|t| links::find_link_line(t, &link.href));
+                        link
+                    })
+                    .collect()
+            })
+            .collect();
+        problems.extend(per_item.into_iter().flatten());
+    }
+    (page_sources, problems)
+}
+
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     let clean = url.trim_matches('/');
     output_dir.join(format!("{clean}.html"))
@@ -2921,11 +3564,97 @@ fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
     }
 }
 
+/// The `site` context shortcode templates see (identical for every page).
+pub(crate) fn shortcode_site_context(config: &SiteConfig) -> serde_json::Value {
+    serde_json::json!({
+        "title": &config.site.title,
+        "base_url": &config.site.base_url,
+        "language": &config.site.language,
+        "contact": config.contact.as_ref().map(|c| serde_json::json!({
+            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
+            "endpoint": &c.endpoint,
+            "region": &c.region,
+            "redirect": &c.redirect,
+            "subject": &c.subject,
+        })),
+    })
+}
+
+/// The `page` context shortcode templates see for one content item.
+pub(crate) fn shortcode_page_context(
+    fm: &Frontmatter,
+    slug: &str,
+    collection: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "title": fm.title,
+        "slug": slug,
+        "collection": collection,
+        "tags": &fm.tags,
+    })
+}
+
+/// One content item's markdown body, as input to [`render_item_body`].
+pub(crate) struct BodySource<'a> {
+    /// Source file (shortcode diagnostics point at it).
+    pub path: &'a Path,
+    /// Markdown body (after the frontmatter).
+    pub body: &'a str,
+    /// 1-based file line the body starts on.
+    pub body_line: usize,
+    /// Shortcode `page` context ([`shortcode_page_context`]).
+    pub page: &'a serde_json::Value,
+}
+
+/// A content item's rendered body.
+pub(crate) struct RenderedBody {
+    /// Body after shortcode expansion, before math/markdown (excerpt source).
+    pub expanded: String,
+    /// Body HTML (no page template, no HTML post-processing).
+    pub html: String,
+    pub toc: Vec<markdown::TocEntry>,
+}
+
+/// Render one content item's body exactly as the build's content step does:
+/// expand shortcodes, then math (when `build.math`), then markdown. On
+/// failure returns every shortcode problem, with file lines. Shared by the
+/// build and `seite_get_page` so they can't drift.
+pub(crate) fn render_item_body(
+    config: &SiteConfig,
+    registry: &crate::shortcodes::ShortcodeRegistry,
+    source: &BodySource<'_>,
+    sc_site: &serde_json::Value,
+    i18n: &serde_json::Value,
+) -> std::result::Result<RenderedBody, Vec<Diagnostic>> {
+    let expanded = registry
+        .expand_diagnostic(source.body, source.path, source.page, sc_site, i18n)
+        .map_err(|diags| {
+            // Shortcode lines are relative to the body; map them to file lines.
+            diags
+                .into_iter()
+                .map(|mut d| {
+                    d.line = d.line.map(|l| source.body_line + l.saturating_sub(1));
+                    d
+                })
+                .collect::<Vec<_>>()
+        })?;
+    let (html, toc) = if config.build.math {
+        markdown::markdown_to_html_with(&math::render_math(&expanded), config.build.mermaid)
+    } else {
+        markdown::markdown_to_html_with(&expanded, config.build.mermaid)
+    };
+    Ok(RenderedBody {
+        expanded,
+        html,
+        toc,
+    })
+}
+
 /// Return a JSON object of common UI strings for a given language.
 ///
 /// Starts with English defaults, then merges any overrides from
 /// `data.i18n.{lang}` (i.e. `data/i18n/{lang}.yaml`).
-fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Value {
+pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde_json::Value {
     let defaults = serde_json::json!({
         "search_placeholder": "Search\u{2026}",
         "skip_to_content": "Skip to main content",
@@ -4738,5 +5467,275 @@ mod tests {
         assert_eq!(json["title"], "No Date");
         assert!(json["date"].is_null());
         assert!(json["description"].is_null());
+    }
+
+    fn staging_siblings(parent: &Path) -> Vec<String> {
+        fs::read_dir(parent)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.contains(".staging-") || n.contains(".old-"))
+            .collect()
+    }
+
+    fn write_post(paths: &ResolvedPaths, name: &str, body: &str) {
+        let dir = paths.content.join("posts");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(name), body).unwrap();
+    }
+
+    fn full_build(config: &SiteConfig, paths: &ResolvedPaths) -> Result<BuildResult> {
+        build_site(
+            config,
+            paths,
+            &BuildOptions {
+                include_drafts: false,
+                incremental: false,
+            },
+        )
+    }
+
+    #[test]
+    fn test_is_scratch_output_name() {
+        assert!(is_scratch_output_name("dist.staging-123", "dist"));
+        assert!(is_scratch_output_name("dist.old-9", "dist"));
+        assert!(!is_scratch_output_name("dist.staging-", "dist"));
+        assert!(!is_scratch_output_name("dist.staging-12a", "dist"));
+        assert!(!is_scratch_output_name("dist", "dist"));
+        assert!(!is_scratch_output_name("public.staging-1", "dist"));
+    }
+
+    #[test]
+    fn test_is_build_output_path() {
+        let config = minimal_config();
+        let paths = config.resolve_paths(Path::new("/site"));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist/index.html")
+        ));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist.staging-42/posts/a.html")
+        ));
+        assert!(is_build_output_path(
+            &paths,
+            Path::new("/site/dist-subdomains/docs.staging-1/x.html")
+        ));
+        assert!(!is_build_output_path(
+            &paths,
+            Path::new("/site/content/posts/a.md")
+        ));
+        assert!(!is_build_output_path(
+            &paths,
+            Path::new("/site/distribution/a")
+        ));
+    }
+
+    #[test]
+    fn test_full_build_replaces_output_via_staging() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        fs::create_dir_all(&paths.output).unwrap();
+        fs::write(paths.output.join("stale.html"), "old").unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(paths.output.join("index.html").exists());
+        assert!(paths.output.join("posts/hello.html").exists());
+        assert!(
+            !paths.output.join("stale.html").exists(),
+            "full builds start from a clean output"
+        );
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_failed_full_build_keeps_previous_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        full_build(&config, &paths).unwrap();
+        let index_before = fs::read_to_string(paths.output.join("index.html")).unwrap();
+
+        write_post(&paths, "bad.md", "---\ntitle: [unclosed\n---\nbody\n");
+        assert!(full_build(&config, &paths).is_err());
+
+        assert_eq!(
+            fs::read_to_string(paths.output.join("index.html")).unwrap(),
+            index_before,
+            "a failed build must leave the previous output untouched"
+        );
+        assert!(paths.output.join("posts/hello.html").exists());
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_build_removes_leftover_staging_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        fs::create_dir_all(tmp.path().join("dist.staging-999999/posts")).unwrap();
+        fs::create_dir_all(tmp.path().join("dist.old-999999")).unwrap();
+        fs::create_dir_all(tmp.path().join("dist.staging-notes")).unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(staging_siblings(tmp.path()) == vec!["dist.staging-notes".to_string()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_build_keeps_staging_dir_of_running_build() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        // A live process other than this one (pid 1 always exists on unix).
+        fs::create_dir_all(tmp.path().join("dist.staging-1/posts")).unwrap();
+
+        full_build(&config, &paths).unwrap();
+
+        assert!(staging_siblings(tmp.path()) == vec!["dist.staging-1".to_string()]);
+    }
+
+    #[test]
+    fn test_incremental_content_build_updates_output_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# config\n").unwrap();
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nHi\n",
+        );
+        let incremental = BuildOptions {
+            include_drafts: false,
+            incremental: true,
+        };
+        build_site(&config, &paths, &incremental).unwrap();
+        // A file only the previous output has: an in-place build keeps it.
+        fs::write(paths.output.join("marker.txt"), "kept").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        write_post(
+            &paths,
+            "hello.md",
+            "---\ntitle: Hello\ndate: 2025-01-01\n---\nChanged body\n",
+        );
+        let result = build_site(&config, &paths, &incremental).unwrap();
+
+        assert!(result.stats.incremental);
+        assert!(paths.output.join("marker.txt").exists());
+        assert!(fs::read_to_string(paths.output.join("posts/hello.html"))
+            .unwrap()
+            .contains("Changed body"));
+        assert!(staging_siblings(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_swap_into_place_without_existing_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("out.staging-1");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("a.html"), "new").unwrap();
+        let output = tmp.path().join("out");
+
+        swap_into_place(tmp.path(), &staging, &output).unwrap();
+
+        assert_eq!(fs::read_to_string(output.join("a.html")).unwrap(), "new");
+        assert!(!staging.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_swap_into_place_keeps_symlinked_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real-out");
+        fs::create_dir_all(real.join("old-dir")).unwrap();
+        fs::write(real.join("old.html"), "old").unwrap();
+        let output = tmp.path().join("out");
+        std::os::unix::fs::symlink(&real, &output).unwrap();
+        let staging = tmp.path().join("out.staging-1");
+        fs::create_dir_all(staging.join("posts")).unwrap();
+        fs::write(staging.join("posts/a.html"), "new").unwrap();
+
+        swap_into_place(tmp.path(), &staging, &output).unwrap();
+
+        assert!(fs::symlink_metadata(&output)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read_to_string(real.join("posts/a.html")).unwrap(),
+            "new"
+        );
+        assert!(!real.join("old.html").exists());
+        assert!(!real.join("old-dir").exists());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn test_build_attributes_broken_links_to_markdown_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        write_post(
+            &paths,
+            "2025-01-01-a.md",
+            "---\ntitle: A\ndate: 2025-01-01\n---\n\nIntro\n\n[gone](/posts/gone)\n\n![x](/static/nope.png)\n\n[b](./2025-01-02-b.md#top) [bad](./missing.md)\n",
+        );
+        write_post(
+            &paths,
+            "2025-01-02-b.md",
+            "---\ntitle: B\ndate: 2025-01-02\n---\nB\n",
+        );
+
+        let result = full_build(&config, &paths).unwrap();
+        let check = &result.link_check;
+
+        let gone = check
+            .broken_links
+            .iter()
+            .find(|l| l.href == "/posts/gone")
+            .expect("broken link reported");
+        assert_eq!(gone.location(), "content/posts/2025-01-01-a.md:8");
+
+        let md = check
+            .broken_links
+            .iter()
+            .find(|l| l.href == "./missing.md")
+            .expect("unresolved .md link reported");
+        assert_eq!(md.kind, links::LinkKind::Markdown);
+        assert_eq!(md.line, Some(12));
+
+        assert_eq!(check.missing_assets.len(), 1);
+        assert_eq!(
+            check.missing_assets[0].location(),
+            "content/posts/2025-01-01-a.md:10"
+        );
+
+        let html = fs::read_to_string(paths.output.join("posts/a.html")).unwrap();
+        assert!(html.contains(r#"href="/posts/b#top""#), "{html}");
     }
 }

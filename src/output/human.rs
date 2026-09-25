@@ -2,11 +2,16 @@ use std::fmt;
 
 use console::style;
 
-/// Write one line of human-readable output. Goes to stdout normally, and to
-/// stderr in `--json` mode so stdout stays a single machine-readable document.
+/// Write one line of human-readable output. Goes to stdout normally. In
+/// `--json` mode it is dropped (or sent to stderr with `--verbose`): agents
+/// often run commands in a pty that merges stdout and stderr, and status
+/// chatter around the JSON document makes it harder to find. Warnings still
+/// reach the document's `warnings` array.
 pub fn emit_line(args: fmt::Arguments<'_>) {
     if super::is_json() {
-        eprintln!("{args}");
+        if super::is_verbose() {
+            eprintln!("{args}");
+        }
     } else {
         println!("{args}");
     }
@@ -45,7 +50,9 @@ pub fn warning(msg: &str) {
 /// Also collected for the `--json` envelope.
 pub fn warning_stderr(msg: &str) {
     super::json::record_warning(msg);
-    eprintln!("{} {}", style("⚠").yellow().bold(), msg);
+    if !super::is_json() || super::is_verbose() {
+        eprintln!("{} {}", style("⚠").yellow().bold(), msg);
+    }
 }
 
 /// Print an error message.

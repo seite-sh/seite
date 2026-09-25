@@ -15,6 +15,7 @@ cargo fmt --all      # Format — CI enforces this
 cargo clippy         # Lint — must be zero warnings
 cargo run -- init mysite --title "My Site" --collections posts,docs,pages
 cargo run -- build   # Build site from seite.toml
+cargo run -- check   # Validate config/content/templates/links (no dist/ writes)
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
@@ -34,6 +35,7 @@ cargo run -- completions bash  # Generate shell completions
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
+  diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col) for build, check, MCP
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
@@ -41,10 +43,10 @@ src/
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 subcommands: init, new, build, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
+  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
-  config/              SiteConfig, CollectionConfig, defaults
+  config/              SiteConfig, CollectionConfig, defaults; unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
   data/                Data file loading (YAML/JSON/TOML)
   content/             Frontmatter parsing, ContentItem, slug generation
   deploy/              GitHub Pages + Cloudflare + Netlify
@@ -52,7 +54,7 @@ src/
   output/              CommandOutput trait, human (colored), json
   server/              tiny_http dev server, file watcher, live reload
   templates/           Tera template loading with embedded defaults
-tests/integration.rs   Integration tests (assert_cmd + tempfile)
+tests/integration/     Integration tests, one module per command (assert_cmd + tempfile)
 build.rs               Generates releases.md from changelog at compile time
 ```
 
@@ -116,6 +118,7 @@ endpoint = "xpznqkdl"
 ### Output
 - Human-readable output goes through `output::human::{success,info,warning,error,header}` — never raw `println!`.
 - `--json` mode: set the command's payload with `output::json::set_data()`; the top-level `{"ok","command","data","warnings"}` / `{"ok":false,"error":{...}}` document is assembled and printed by `main.rs`. `CommandOutput` trait covers older per-command JSON.
+- Child processes whose output isn't captured (`.status()`/`.spawn()` of git, gh, wrangler, netlify, npm, claude, …) must set `.stdout(output::child_stdout())` — stderr in `--json` mode, so stdout stays one JSON document on every platform (the Unix fd-1 redirect is only a backstop).
 - Interactive prompts always go through `src/cli/prompt.rs`, never `dialoguer` directly — it degrades safely under `--yes`/`SEITE_YES=1` or a non-TTY (default if there is one, else an error naming the missing flag).
 
 ### Versioning
@@ -140,14 +143,17 @@ endpoint = "xpznqkdl"
 9. i18n → `{{ t.key }}` for UI text, `{{ lang_prefix }}` for links, `{{ value | i18n(lang=lang) }}` for per-language data prose (language maps; see `src/i18n.rs`)
 
 ### Generated Site Structure
-- `seite init --agents claude,codex,opencode,cursor` (default all; stored in `.seite/config.json` `agents`) writes lean AGENTS.md (always) plus per-agent harness files, all rendered from one source in `src/cli/harness.rs` (`RULES`, `SKILLS`, MCP entry):
-  - claude: CLAUDE.md `@AGENTS.md` shim, `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md` (`paths:` frontmatter), `.claude/skills/`
-  - cursor: `.cursor/mcp.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
-  - codex: `.codex/config.toml` (`[mcp_servers.seite]`, trust comment); opencode: `opencode.json` (`mcp.seite` + `permission`)
-  - codex/opencode/cursor: `.agents/skills/`; codex/opencode-only sites: `.agents/rules/` (the AGENTS.md rules index target)
+- `seite init --agents claude,codex,opencode,cursor` (non-interactive default all; the interactive picker preselects agents detected on PATH/`$HOME`; stored in `.seite/config.json` `agents`) writes lean AGENTS.md (always) plus per-agent harness files, all rendered from one source in `src/cli/harness.rs`: `RULES`, `SKILLS`, the MCP entry, and the `PROVIDERS` table (one `AgentSpec` per agent — MCP config path/format, rules dir/format, skills dir + frontmatter, permissions file, command wrappers, setup step, detection; each quirk commented with its source):
+  - claude: CLAUDE.md `@AGENTS.md` shim, `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md` (`paths:` frontmatter), `.claude/skills/` (`seite` skill gets `argument-hint`)
+  - cursor: `.cursor/mcp.json`, `.cursor/cli.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
+  - codex: `.codex/config.toml` (`[mcp_servers.seite]`, trust comment); opencode: `opencode.json` (`mcp.seite` + `permission`) + `.opencode/commands/seite.md` (`/seite` → skill wrapper)
+  - codex/opencode/cursor: `.agents/skills/` (portable frontmatter: `name`/`description` only); codex/opencode-only sites: `.agents/rules/` (the AGENTS.md rules index target)
+- The `seite` skill (`src/scaffold/skill-seite.md`) is the verb dispatcher: `/seite check|new|preview|build|deploy|theme|collection` (`$seite` in Codex)
+- Harness output is snapshot-tested in `tests/snapshots/harness/*.snap` (`SEITE_UPDATE_SNAPSHOTS=1 cargo test --test integration harness_snapshot` to regenerate)
+- Turn-end stop hooks running `seite check --hook <agent>` (`src/cli/harness_hooks.rs`; only errors block, one continuation per turn, always exit 0): claude `.claude/settings.json` `hooks.Stop`, codex `.codex/hooks.json`, cursor `.cursor/hooks.json`, opencode `.opencode/plugins/seite-check.js`. `.seite/config.json` `hooks_installed` records them; `seite upgrade` only adds hooks for unrecorded agents, so a user-deleted hook stays deleted
 - AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent MCP table) and `<!-- seite:context-rules -->` (rules index) blocks
 - `seite upgrade [--agents …]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks, and never deletes files of deselected agents
-- Rules files are created only when missing; skills are replaced when the bundled `# seite-skill-version` is newer
+- Rules files are created only when missing; skills and command wrappers are replaced when the bundled `# seite-skill-version` is newer
 
 ## Context Rules
 

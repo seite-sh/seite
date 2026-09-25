@@ -2,8 +2,12 @@ use std::path::PathBuf;
 
 use clap::Args;
 
+use crate::build;
 use crate::config::{self, SiteConfig};
-use crate::content::create::{create_content_file, NewContent};
+use crate::content::{
+    self,
+    create::{create_content_file, NewContent},
+};
 use crate::output::human::{self, suggest_match};
 
 #[derive(Args)]
@@ -81,11 +85,23 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         console::style("→").dim()
     );
 
-    let prefix = collection.url_prefix.trim_end_matches('/');
-    let url = match spec.lang {
-        Some(lang) => format!("/{lang}{prefix}/{}", created.slug),
-        None => format!("{prefix}/{}", created.slug),
-    };
+    // Report the URL exactly as the build will generate it (the default
+    // language is unprefixed, translations get `/{lang}`, `slug:`/date
+    // handling), using the build's own resolver so the two can't disagree.
+    let collection_dir = paths.content.join(&collection.directory);
+    let rel_to_collection = created
+        .path
+        .strip_prefix(&collection_dir)
+        .unwrap_or(&created.path);
+    let (fm, _) = content::parse_content_file(&created.path)?;
+    let url = build::resolve_item_location(
+        &site_config,
+        collection,
+        &created.path,
+        rel_to_collection,
+        &fm,
+    )
+    .url;
     crate::output::json::set_data(serde_json::json!({
         "path": created.path.display().to_string(),
         "collection": collection.name,

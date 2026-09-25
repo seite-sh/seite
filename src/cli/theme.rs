@@ -188,6 +188,7 @@ fn run_create(user_prompt: &str) -> anyhow::Result<()> {
     let status = npm_cmd("claude")
         .args(["-p", &full_prompt])
         .args(["--allowedTools", "Write,Edit,Read"])
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
 

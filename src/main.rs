@@ -84,7 +84,7 @@ fn run(cli: &Cli) -> Result<()> {
             | Command::Perf(_)
             | Command::Completions(_)
             | Command::Telemetry(_)
-    );
+    ) || matches!(command, Command::Check(args) if args.hook.is_some());
     if !skip {
         seite::telemetry::maybe_record_command(cmd_name, success, elapsed);
         seite::update_check::maybe_notify();
@@ -109,8 +109,19 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             let (message, chain) = json::error_chain(&err);
             if json_mode {
                 json::emit_document(&json::error_document(cmd_name, &err, json::warnings()));
+                // The document carries the error; only echo it with --verbose.
+                if !seite::output::is_verbose() {
+                    return ExitCode::FAILURE;
+                }
             }
-            // Human-readable error always goes to stderr.
+            // Human-readable error goes to stderr: every diagnostic on its own
+            // compiler-style line, then the summary.
+            if let Some(diagnostics) = json::find_diagnostics(&err) {
+                for diagnostic in diagnostics.iter() {
+                    eprintln!("{diagnostic}");
+                }
+                eprintln!();
+            }
             eprintln!("Error: {message}");
             if !chain.is_empty() {
                 eprintln!("\nCaused by:");
@@ -162,6 +173,7 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Init(args) => seite::cli::init::run(args),
         Command::New(args) => seite::cli::new::run(args),
         Command::Build(args) => seite::cli::build::run(args, site),
+        Command::Check(args) => seite::cli::check::run(args, site),
         Command::Serve(args) => seite::cli::serve::run(args, site),
         Command::Deploy(args) => seite::cli::deploy::run(args, site),
         Command::Agent(args) => seite::cli::agent::run(args),
@@ -186,6 +198,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Init(_) => "init",
         Command::New(_) => "new",
         Command::Build(_) => "build",
+        Command::Check(_) => "check",
         Command::Serve(_) => "serve",
         Command::Deploy(_) => "deploy",
         Command::Agent(_) => "agent",

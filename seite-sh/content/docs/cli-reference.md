@@ -18,6 +18,7 @@ Run `seite <command> --help` for quick inline help on any command.
 |---------|-------------|
 | `init` | Create a new site |
 | `build` | Build the site |
+| `check` | Validate the site without building it |
 | `serve` | Development server with live reload |
 | `new` | Create content files |
 | `agent` | AI assistant with site context |
@@ -62,7 +63,7 @@ seite init <name> [options]
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
-| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor` or `all` (default: all) |
+| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 
 If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
@@ -82,11 +83,11 @@ Every site gets an `AGENTS.md` (read by all four agents). `--agents` decides whi
 | Agent | Files |
 |-------|-------|
 | `claude` (Claude Code) | `CLAUDE.md` (`@AGENTS.md` import), `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md`, `.claude/skills/*/SKILL.md` |
-| `cursor` (Cursor editor + `cursor-agent`) | `.cursor/mcp.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
+| `cursor` (Cursor editor + `cursor-agent`) | `.cursor/mcp.json`, `.cursor/cli.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
 | `codex` (Codex CLI) | `.codex/config.toml` (`[mcp_servers.seite]`) |
-| `opencode` (OpenCode) | `opencode.json` (`mcp.seite` + permission defaults) |
+| `opencode` (OpenCode) | `opencode.json` (`mcp.seite` + permission defaults), `.opencode/commands/seite.md` |
 
-Codex, Cursor, and OpenCode also get the bundled skills in `.agents/skills/`. The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
+Codex, Cursor, and OpenCode also get the bundled skills in `.agents/skills/`. Every agent gets the `seite` workflow skill: `/seite check`, `/seite new post "Title"`, `/seite preview`, `/seite build`, `/seite deploy`, `/seite theme`, `/seite collection` (`$seite …` in Codex; see [AI Agent](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 
@@ -99,11 +100,55 @@ seite build [options]
 | Flag | Description |
 |------|-------------|
 | `--drafts` | Include draft content in the build |
-| `--strict` | Treat broken internal links as build errors |
+| `--strict` | Treat broken internal links and missing assets as build errors |
 
 The build pipeline cleans the output directory, loads templates, processes each collection, renders pages, generates RSS/sitemap/discovery files (`llms.txt`, `robots.txt`), writes markdown alongside the HTML, builds the search index, copies static files, processes images, and post-processes the generated HTML (srcset, lazy-loading, analytics injection, link validation, ...). Per-step timing is shown with `--verbose` (always included in `--json` output).
 
-After building, `seite build` validates all internal links in the generated HTML. Broken links (e.g., links pointing to `/posts/missing-slug`) are reported as warnings by default. Use `--strict` to fail the build when broken links (or other warnings) are found: useful in CI pipelines. With `--json`, the result's `data.broken_links` and `data.warnings` give the same information as structured JSON instead of terminal text.
+A full build never writes into `dist/` directly: it renders into a temporary staging directory next to it and only swaps it into place once every step (including any subdomain builds) succeeds. If the build fails partway through, or the process is killed, the previous `dist/` is left exactly as it was — you never end up with a half-written site. Leftover staging directories from a crashed or interrupted build are cleaned up automatically on the next build.
+
+After building, `seite build` validates all internal links and asset references (`img`, `srcset`, `script`, `link rel=stylesheet`, `video`, `audio`, `track`) in the generated HTML. Broken links and missing assets (e.g., links pointing to `/posts/missing-slug`, an `<img>` with no matching file) are reported as warnings by default; `--strict` turns them into errors. Each one is attributed to where it was written — the markdown source file, a template, or a data file, with a line number when it can be found — falling back to naming the generated page when the source can't be traced (e.g. a listing page). A "did you mean" suggestion is included when a close match exists among the site's valid URLs. With `--json`, the result's `data.broken_links` and `data.missing_assets` (each grouped by target, with `source`/`line`/`locations`) and `data.warnings` give the same information as structured JSON instead of terminal text.
+
+Relative links between markdown source files (`[intro](../docs/intro.md)`, or root-relative `/content/docs/intro.md`) are rewritten to the target page's published URL, keeping any `#fragment` or `?query`, preferring a translation in the current page's language when one exists, and respecting `base_path`. A link like this that matches no content file becomes a broken-link warning (or error, with `--strict`) instead of shipping a dead `.md` link. Root-relative links outside the content directory (e.g. `/docs/intro.md`) are left alone: they point at the raw markdown copy published alongside every page.
+
+Problems are reported all at once, one per line, in compiler style (`file:line:col: severity[code]: message`, plus a `hint:` line). A bad shortcode in one post no longer hides a broken frontmatter in another. Unknown keys in `seite.toml` (e.g. `minfy = true`) are warnings with a did-you-mean hint; the build still succeeds. With `--json`, successful builds list warnings in `data.diagnostics`, and failed builds list every problem in `error.diagnostics`.
+
+## seite check
+
+Validate everything without touching the output directory: config (syntax and unknown keys), templates, data files, every content file (frontmatter and shortcodes), a full render, and internal links. The render happens in a temporary directory that is discarded, so `dist/` is never created or modified.
+
+```bash
+seite check [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--strict` | Fail on warnings too (unknown config keys, broken links, ...) |
+| `--drafts` | Include draft content |
+| `--hook <agent>` | Run as a coding agent's turn-end hook (`claude`, `codex`, `cursor`, `opencode`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Stop hooks](/docs/agent#stop-hooks) |
+
+Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on:
+
+| Code | Severity | Meaning |
+|------|----------|---------|
+| `config-invalid` | error | `seite.toml` does not parse or has a wrong value type |
+| `config-unknown-key` | warning | Key the config schema does not know (typo) |
+| `frontmatter-missing` | error | Content file has no `---` frontmatter block |
+| `frontmatter-parse` | error | Frontmatter YAML is invalid (line points into the file) |
+| `content-invalid` | error | Content file cannot be read |
+| `shortcode-syntax` | error | Malformed shortcode (Hugo-style syntax gets a corrected example) |
+| `shortcode-unknown` | error | Shortcode name is not registered (did-you-mean hint) |
+| `shortcode-render` | error | Shortcode template failed to render |
+| `data-file-parse` | error | YAML/JSON/TOML data file is invalid |
+| `data-conflict` | error | Two data files map to the same `data.*` key |
+| `url-collision` | error | Two pages resolve to the same URL |
+| `template-parse` | error | Template has a syntax error (file, line, column) |
+| `template-render` | error | Page failed to render (names the content file and the template) |
+| `i18n-partial` | warning | A data language map is missing some configured languages |
+| `broken-link` | warning (error with `--strict`) | Internal link, or relative `.md` link between content files, with no matching target (did-you-mean hint when a close match exists) |
+| `missing-asset` | warning (error with `--strict`) | Referenced image, script, stylesheet, or media file doesn't exist in the build output |
+| `build-failed` | error | Any other build failure |
+
+With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`.
 
 ## seite serve
 
@@ -311,7 +356,10 @@ When inside a workspace, `build`, `serve`, and `deploy` operate on all sites by 
 seite build --site blog               # Build only the blog
 seite serve --site docs               # Serve only the docs
 seite deploy --site blog --dry-run    # Preview blog deploy
+seite check --site blog               # Check only the blog
 ```
+
+Workspace builds report each site's unknown `seite.toml` keys like a single-site build (`sites/blog/seite.toml:12:1: warning[config-unknown-key]`; in `--json`, under `data.sites.<name>.diagnostics`). `seite build --strict` builds every site, then fails once with every site's broken links and missing assets; with `--json` they are in `error.diagnostics`, with file paths relative to the workspace root (`sites/blog/content/...`). `seite check` run from the workspace root (or with `--site`) checks the workspace's sites the same way, with workspace-relative paths.
 
 ## seite mcp
 

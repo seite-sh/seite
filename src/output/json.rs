@@ -55,10 +55,21 @@ pub fn warnings() -> Vec<String> {
 /// dropped so renderers never show blank or repeated "Caused by" lines.
 pub fn error_chain(error: &anyhow::Error) -> (String, Vec<String>) {
     let mut iter = error.chain();
-    let message = iter.next().map(|e| e.to_string()).unwrap_or_default();
+    // A diagnostics list is summarised here; callers render the individual
+    // diagnostics themselves (see [`find_diagnostics`]).
+    let message = iter
+        .next()
+        .map(|e| match as_diagnostics(e) {
+            Some(d) => format!("found {}", d.summary()),
+            None => e.to_string(),
+        })
+        .unwrap_or_default();
     let mut previous = message.clone();
     let mut chain = Vec::new();
     for cause in iter {
+        if as_diagnostics(cause).is_some() {
+            continue;
+        }
         let text = cause.to_string().trim().to_string();
         if text.is_empty() || previous.contains(&text) {
             continue;
@@ -67,6 +78,21 @@ pub fn error_chain(error: &anyhow::Error) -> (String, Vec<String>) {
         chain.push(text);
     }
     (message, chain)
+}
+
+fn as_diagnostics<'a>(
+    error: &'a (dyn std::error::Error + 'static),
+) -> Option<&'a crate::diagnostics::Diagnostics> {
+    match error.downcast_ref::<crate::error::PageError>() {
+        Some(crate::error::PageError::Diagnostics(d)) => Some(d),
+        _ => None,
+    }
+}
+
+/// The diagnostics carried by `error` (anywhere in its cause chain), if it is
+/// a [`crate::error::PageError::Diagnostics`].
+pub fn find_diagnostics(error: &anyhow::Error) -> Option<&crate::diagnostics::Diagnostics> {
+    error.chain().find_map(as_diagnostics)
 }
 
 /// Build the success envelope for `command`.
@@ -80,12 +106,24 @@ pub fn success_document(command: &str, data: Option<Value>, warnings: Vec<String
 }
 
 /// Build the failure envelope for `command`.
+///
+/// When the error carries diagnostics (`PageError::Diagnostics`), they are
+/// included as `error.diagnostics` (plus `error.summary` counts) so agents get
+/// every problem with its file, line, code, and hint.
 pub fn error_document(command: &str, error: &anyhow::Error, warnings: Vec<String>) -> Value {
     let (message, chain) = error_chain(error);
+    let mut err = json!({ "message": message, "chain": chain });
+    if let Some(diagnostics) = find_diagnostics(error) {
+        err["diagnostics"] = serde_json::to_value(diagnostics).unwrap_or(Value::Null);
+        err["summary"] = json!({
+            "errors": diagnostics.error_count(),
+            "warnings": diagnostics.warning_count(),
+        });
+    }
     json!({
         "ok": false,
         "command": command,
-        "error": { "message": message, "chain": chain },
+        "error": err,
         "warnings": warnings,
     })
 }
@@ -94,7 +132,10 @@ pub fn error_document(command: &str, error: &anyhow::Error, warnings: Vec<String
 /// the original stdout for the final JSON document. This guarantees stdout
 /// stays pure JSON even for stray `println!`s and inherited child-process
 /// output (git, wrangler, …). No-op on non-Unix platforms, where human output
-/// is still routed to stderr by [`super::human::emit_line`].
+/// is still routed to stderr by [`super::human::emit_line`] and child
+/// processes get their stdout pointed at stderr at each spawn site via
+/// [`super::child_stdout`] (which is also used on Unix, making this a
+/// belt-and-braces there).
 pub fn redirect_stdout_to_stderr() {
     #[cfg(unix)]
     {
@@ -260,5 +301,42 @@ mod tests {
         let env = JsonEnvelope::success(Info { count: 5 });
         assert!(env.ok);
         assert_eq!(env.data.unwrap().count, 5);
+    }
+
+    #[test]
+    fn test_error_document_includes_diagnostics() {
+        use crate::diagnostics::{Diagnostic, Diagnostics};
+        let mut ds = Diagnostics::new();
+        ds.push(
+            Diagnostic::error("frontmatter-parse", "bad")
+                .with_file("content/posts/a.md")
+                .with_line(3),
+        );
+        ds.push(Diagnostic::warning("config-unknown-key", "unknown"));
+        let err = anyhow::Error::new(crate::error::PageError::Diagnostics(ds));
+        let doc = error_document("build", &err, vec![]);
+        assert_eq!(doc["error"]["message"], "found 1 error, 1 warning");
+        assert_eq!(doc["error"]["chain"], json!([]));
+        let diags = doc["error"]["diagnostics"].as_array().unwrap();
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0]["code"], "frontmatter-parse");
+        assert_eq!(diags[0]["file"], "content/posts/a.md");
+        assert_eq!(diags[0]["line"], 3);
+        assert_eq!(doc["error"]["summary"]["errors"], 1);
+
+        // Wrapped in context: the context is the message, the list is not
+        // repeated in the chain, and the diagnostics are still found.
+        let wrapped = err.context("check failed");
+        let doc = error_document("check", &wrapped, vec![]);
+        assert_eq!(doc["error"]["message"], "check failed");
+        assert_eq!(doc["error"]["chain"], json!([]));
+        assert_eq!(doc["error"]["diagnostics"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_error_document_without_diagnostics_has_no_field() {
+        let err = anyhow::anyhow!("plain");
+        let doc = error_document("build", &err, vec![]);
+        assert!(doc["error"].get("diagnostics").is_none());
     }
 }

@@ -103,6 +103,44 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({ "resources": resources }))
 }
 
+/// Handle `resources/templates/list` — the parameterized resources that
+/// `resources/read` accepts (RFC 6570 URI templates).
+pub fn templates_list(proto: super::protocol::Protocol) -> serde_json::Value {
+    let templates = [
+        (
+            "seite://content/{collection}",
+            "collection-content",
+            "Collection content",
+            "Content items of one collection: source path, published URL, language, draft status, date, tags. \
+             {collection} is a collection name from seite.toml (singular aliases like 'post' work).",
+            "application/json",
+        ),
+        (
+            "seite://docs/{slug}",
+            "seite-doc",
+            "seite documentation page",
+            "One page of the embedded seite documentation as markdown. List slugs via the seite://docs resource.",
+            "text/markdown",
+        ),
+    ];
+    let resource_templates: Vec<serde_json::Value> = templates
+        .iter()
+        .map(|(uri_template, name, title, description, mime)| {
+            let mut t = serde_json::json!({
+                "uriTemplate": uri_template,
+                "name": if proto.titles() { *name } else { *title },
+                "description": description,
+                "mimeType": mime,
+            });
+            if proto.titles() {
+                t["title"] = serde_json::json!(title);
+            }
+            t
+        })
+        .collect();
+    serde_json::json!({ "resourceTemplates": resource_templates })
+}
+
 /// Handle `resources/read` — return the content of a specific resource.
 pub fn read(
     state: &ServerState,

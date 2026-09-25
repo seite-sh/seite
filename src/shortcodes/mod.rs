@@ -6,6 +6,7 @@ pub use parser::{ShortcodeCall, ShortcodeKind, ShortcodeValue};
 use std::collections::HashSet;
 use std::path::Path;
 
+use crate::diagnostics::Diagnostic;
 use crate::error::{PageError, Result};
 
 /// Registry of available shortcodes (built-in and user-defined).
@@ -91,38 +92,93 @@ impl ShortcodeRegistry {
         site_context: &serde_json::Value,
         i18n: &serde_json::Value,
     ) -> Result<String> {
-        let calls = parser::parse_shortcodes(input, source_path)?;
+        self.expand_diagnostic(input, source_path, page_context, site_context, i18n)
+            .map_err(|mut diagnostics| parser::diagnostic_to_error(diagnostics.remove(0)))
+    }
 
-        if calls.is_empty() {
+    /// Like [`expand`](Self::expand), but reports every unknown shortcode in
+    /// the input (codes `shortcode-unknown`, `shortcode-syntax`,
+    /// `shortcode-render`) with did-you-mean hints. Lines are relative to
+    /// `input`. The returned `Vec` is never empty on `Err`.
+    pub fn expand_diagnostic(
+        &self,
+        input: &str,
+        source_path: &Path,
+        page_context: &serde_json::Value,
+        site_context: &serde_json::Value,
+        i18n: &serde_json::Value,
+    ) -> std::result::Result<String, Vec<Diagnostic>> {
+        // Syntax errors don't stop the scan, so every malformed tag and every
+        // unknown name in the file is reported together, in document order.
+        let (calls, syntax_errors) = parser::parse_shortcodes_recovering(input, source_path);
+
+        if calls.is_empty() && syntax_errors.is_empty() {
             return Ok(input.to_string());
         }
 
-        // Validate all shortcode names
-        for call in &calls {
-            if !self.known.contains(&call.name) {
-                let mut available: Vec<&str> = self.known.iter().map(|s| s.as_str()).collect();
-                available.sort();
-                return Err(PageError::Shortcode {
-                    path: source_path.to_path_buf(),
-                    line: call.line,
-                    message: format!(
-                        "unknown shortcode `{}`. Available: {}",
-                        call.name,
-                        available.join(", ")
-                    ),
-                });
-            }
+        let mut problems: Vec<Diagnostic> = syntax_errors;
+        problems.extend(
+            calls
+                .iter()
+                .filter(|call| !self.known.contains(&call.name))
+                .map(|call| {
+                    self.unknown_shortcode(call, source_path)
+                        .with_column(crate::diagnostics::line_col_at(input, call.span.0).1)
+                }),
+        );
+        if !problems.is_empty() {
+            problems.sort_by_key(|d| (d.line, d.column));
+            return Err(problems);
         }
 
         // Replace spans back-to-front so byte offsets stay valid
         let mut output = input.to_string();
         for call in calls.iter().rev() {
-            let rendered =
-                self.render_shortcode(call, source_path, page_context, site_context, i18n)?;
+            let rendered = self
+                .render_shortcode(call, source_path, page_context, site_context, i18n)
+                .map_err(|e| {
+                    let message = match e {
+                        PageError::Shortcode { message, .. } => message,
+                        other => other.to_string(),
+                    };
+                    vec![Diagnostic::error("shortcode-render", message)
+                        .with_file(source_path)
+                        .with_line(call.line)]
+                })?;
             output.replace_range(call.span.0..call.span.1, &rendered);
         }
 
         Ok(output)
+    }
+
+    /// Sorted names of every registered shortcode.
+    pub fn names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.known.iter().map(String::as_str).collect();
+        names.sort_unstable();
+        names
+    }
+
+    fn unknown_shortcode(&self, call: &ShortcodeCall, source_path: &Path) -> Diagnostic {
+        let available = self.names();
+        let hint = crate::diagnostics::did_you_mean(&call.name, available.iter().copied())
+            .unwrap_or_else(|| {
+                format!(
+                    "available shortcodes: {} (add your own in templates/shortcodes/{}.html)",
+                    available.join(", "),
+                    call.name
+                )
+            });
+        Diagnostic::error(
+            "shortcode-unknown",
+            format!(
+                "unknown shortcode `{}`. Available: {}",
+                call.name,
+                available.join(", ")
+            ),
+        )
+        .with_file(source_path)
+        .with_line(call.line)
+        .with_hint(hint)
     }
 
     /// Render a single shortcode call using its Tera template.
@@ -490,5 +546,65 @@ mod tests {
             .expand(input, &PathBuf::from("test.md"), &page, &site, &i18n)
             .unwrap();
         assert!(result.contains("<p>ok</p>"));
+    }
+
+    #[test]
+    fn test_expand_diagnostic_reports_every_unknown_with_did_you_mean() {
+        let registry = test_registry();
+        let (page, site, i18n) = empty_contexts();
+        let input = "{{< youtub(id=\"x\") >}}\n\n{{< zzzzzz() >}}";
+        let diags = registry
+            .expand_diagnostic(input, &PathBuf::from("t.md"), &page, &site, &i18n)
+            .unwrap_err();
+        assert_eq!(diags.len(), 2);
+        assert!(diags.iter().all(|d| d.code == "shortcode-unknown"));
+        assert_eq!(diags[0].line, Some(1));
+        assert_eq!(diags[0].hint.as_deref(), Some("did you mean `youtube`?"));
+        assert_eq!(diags[1].line, Some(3));
+        assert!(diags[1]
+            .hint
+            .as_ref()
+            .unwrap()
+            .contains("available shortcodes"));
+    }
+
+    #[test]
+    fn test_expand_diagnostic_recovers_after_syntax_errors() {
+        let registry = test_registry();
+        let (page, site, i18n) = empty_contexts();
+        let input = "{{< youtube id=\"x\" >}}\n\
+                     \n\
+                     {{% bad name() %}}\nbody\n{{% end %}}\n\
+                     {{< figure(src=) >}}\n\
+                     {{% callout(type=\"tip\") %}}\nnever closed\n\
+                     {{< zzzzzz() >}}\n\
+                     {{< youtube(id=\"ok\") >}}\n";
+        let diags = registry
+            .expand_diagnostic(input, &PathBuf::from("t.md"), &page, &site, &i18n)
+            .unwrap_err();
+        let summary: Vec<(&str, Option<usize>)> = diags.iter().map(|d| (d.code, d.line)).collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("shortcode-syntax", Some(1)),
+                ("shortcode-syntax", Some(3)),
+                ("shortcode-syntax", Some(6)),
+                ("shortcode-syntax", Some(7)),
+                ("shortcode-unknown", Some(9)),
+            ],
+            "{diags:#?}"
+        );
+        // Hugo-style hint still attached to the first one.
+        assert!(diags[0]
+            .hint
+            .as_ref()
+            .unwrap()
+            .contains("youtube(id=\"x\")"));
+        assert!(diags[3].message.contains("unclosed body shortcode"));
+        // `expand` still reports the first problem.
+        let err = registry
+            .expand(input, &PathBuf::from("t.md"), &page, &site, &i18n)
+            .unwrap_err();
+        assert!(err.to_string().contains("youtube"), "{err}");
     }
 }

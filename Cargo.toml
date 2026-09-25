@@ -96,7 +96,7 @@ getrandom = "0.3"
 
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["stdio"] }
+rustix = { version = "1", features = ["stdio", "process"] }
 
 [features]
 default = ["math"]
@@ -105,6 +105,8 @@ math = ["dep:katex-rs"]
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+# Validates MCP tool outputs against their declared outputSchema in tests.
+jsonschema = { version = "0.57", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

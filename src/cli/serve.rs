@@ -551,6 +551,7 @@ fn cmd_agent(_config: &SiteConfig, _paths: &crate::config::ResolvedPaths, args: 
             Some(args.join(" "))
         },
         once: false,
+        with: None,
     };
     if let Err(e) = agent::run(&agent_args) {
         human::error(&format!("Agent failed: {e}"));
