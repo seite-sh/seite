@@ -745,28 +745,55 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
 /// without requiring the user to manually diff skill files. A file at the same
 /// or a higher version is left alone.
 fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Option<UpgradeAction> {
-    let bundled_version = extract_skill_version(skill.content);
-    let rel = format!("{dir}/{}/SKILL.md", skill.name);
-    let skill_path = root.join(&rel);
+    let content = skill.render(harness::skill_frontmatter_for(dir));
+    check_versioned_file(
+        root,
+        format!("{dir}/{}/SKILL.md", skill.name),
+        content,
+        &format!("/{} command", skill.name),
+    )
+}
 
-    if skill_path.exists() {
-        let existing = fs::read_to_string(&skill_path).unwrap_or_default();
+/// Create `rel`, or replace it when its `# seite-skill-version` is older than
+/// the bundled `content`'s. Same-or-newer files are left alone.
+fn check_versioned_file(
+    root: &Path,
+    rel: String,
+    content: String,
+    what: &str,
+) -> Option<UpgradeAction> {
+    let bundled_version = extract_skill_version(&content);
+    let path = root.join(&rel);
+
+    if path.exists() {
+        let existing = fs::read_to_string(&path).unwrap_or_default();
         let existing_version = extract_skill_version(&existing);
         if existing_version >= bundled_version {
             return None;
         }
         return Some(UpgradeAction::Create {
-            path: skill_path,
-            content: skill.content.to_string(),
+            path,
+            content,
             description: format!("{rel} (updated v{existing_version} → v{bundled_version})"),
         });
     }
 
     Some(UpgradeAction::Create {
-        path: skill_path,
-        content: skill.content.to_string(),
-        description: format!("{rel} (/{} command)", skill.name),
+        path,
+        content,
+        description: format!("{rel} ({what})"),
     })
+}
+
+/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`) for the
+/// selected agents, created or refreshed by version like skills.
+fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+    harness::command_files(agents, SiteFeatures::detect(root))
+        .into_iter()
+        .filter_map(|(rel, content)| {
+            check_versioned_file(root, rel, content, "slash command → skill")
+        })
+        .collect()
 }
 
 /// A bundled Claude Code skill by name, as an upgrade action.
@@ -821,15 +848,7 @@ fn check_brand_identity_skill(root: &Path) -> Vec<UpgradeAction> {
 /// Extract the `# seite-skill-version: N` value from a SKILL.md file.
 /// Returns 0 if not found.
 fn extract_skill_version(content: &str) -> u32 {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("# seite-skill-version:") {
-            if let Ok(v) = rest.trim().parse::<u32>() {
-                return v;
-            }
-        }
-    }
-    0
+    harness::extract_version(content)
 }
 
 /// Fix deploy workflows that use `cargo install --path .` instead of the shell installer.
@@ -1632,6 +1651,7 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
         actions.extend(check_landing_page_skill(root));
         actions.extend(check_theme_builder_skill(root));
         actions.extend(check_brand_identity_skill(root));
+        actions.extend(check_claude_skill(root, "seite"));
         actions.extend(check_claude_shim(root));
     }
     if agents.contains(&Agent::Cursor) {
@@ -1650,6 +1670,7 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     if agents.contains(&Agent::Opencode) {
         actions.extend(check_opencode_json(root));
     }
+    actions.extend(check_command_files(root, agents));
     if harness::uses_shared_skills(agents) {
         actions.extend(
             harness::skills(features)

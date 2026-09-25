@@ -566,3 +566,13 @@ fn test_init_gitignore_includes_dist_subdomains() {
         ".gitignore should include dist-subdomains/"
     );
 }
+
+#[test]
+fn test_init_agents_md_mentions_seite_workflow_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Workflow", "posts");
+    let agents_md = fs::read_to_string(tmp.path().join("site/AGENTS.md")).unwrap();
+    assert!(agents_md.contains("`/seite <command>`"), "{agents_md}");
+    let skill = fs::read_to_string(tmp.path().join("site/.agents/skills/seite/SKILL.md")).unwrap();
+    assert!(skill.starts_with("---\nname: seite\n"));
+}

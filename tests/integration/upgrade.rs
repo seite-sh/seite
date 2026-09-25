@@ -1022,6 +1022,56 @@ fn test_upgrade_is_idempotent_for_harness_files() {
 }
 
 #[test]
+fn test_upgrade_adds_seite_skill_and_opencode_command() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude,opencode");
+    let site_dir = tmp.path().join("site");
+    let fresh = harness_snapshot(&site_dir);
+    let command = site_dir.join(".opencode/commands/seite.md");
+    assert!(command.exists());
+    assert!(site_dir.join(".claude/skills/seite/SKILL.md").exists());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").exists());
+
+    // A site from before the seite skill: both come back exactly as init
+    // wrote them, and an outdated command wrapper is refreshed.
+    fs::remove_dir_all(site_dir.join(".claude/skills/seite")).unwrap();
+    fs::remove_dir_all(site_dir.join(".agents/skills/seite")).unwrap();
+    fs::write(&command, "---\ndescription: old\n---\nold\n").unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".opencode/commands/seite.md"));
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+
+    // A newer (user-bumped) wrapper is left alone.
+    let custom = "---\ndescription: mine\n# seite-skill-version: 99\n---\nmine\n";
+    fs::write(&command, custom).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert_eq!(fs::read_to_string(&command).unwrap(), custom);
+
+    // Deselecting OpenCode stops maintaining the wrapper.
+    fs::remove_file(&command).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force", "--agents", "claude"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert!(!command.exists());
+}
+
+#[test]
 fn test_upgrade_fixes_deploy_workflow_cargo_install() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Deploy Fix", "posts");

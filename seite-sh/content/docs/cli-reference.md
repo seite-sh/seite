@@ -63,7 +63,7 @@ seite init <name> [options]
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
-| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor` or `all` (default: all) |
+| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 
 If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
@@ -83,11 +83,11 @@ Every site gets an `AGENTS.md` (read by all four agents). `--agents` decides whi
 | Agent | Files |
 |-------|-------|
 | `claude` (Claude Code) | `CLAUDE.md` (`@AGENTS.md` import), `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md`, `.claude/skills/*/SKILL.md` |
-| `cursor` (Cursor editor + `cursor-agent`) | `.cursor/mcp.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
+| `cursor` (Cursor editor + `cursor-agent`) | `.cursor/mcp.json`, `.cursor/cli.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
 | `codex` (Codex CLI) | `.codex/config.toml` (`[mcp_servers.seite]`) |
-| `opencode` (OpenCode) | `opencode.json` (`mcp.seite` + permission defaults) |
+| `opencode` (OpenCode) | `opencode.json` (`mcp.seite` + permission defaults), `.opencode/commands/seite.md` |
 
-Codex, Cursor, and OpenCode also get the bundled skills in `.agents/skills/`. The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
+Codex, Cursor, and OpenCode also get the bundled skills in `.agents/skills/`. Every agent gets the `seite` workflow skill: `/seite check`, `/seite new post "Title"`, `/seite preview`, `/seite build`, `/seite deploy`, `/seite theme`, `/seite collection` (`$seite …` in Codex; see [AI Agent](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 

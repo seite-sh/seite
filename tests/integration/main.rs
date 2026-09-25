@@ -10,6 +10,7 @@ mod content;
 mod context_rules;
 mod deploy;
 mod feeds;
+mod harness_snapshots;
 mod i18n;
 mod init;
 mod links;
