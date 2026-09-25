@@ -127,9 +127,17 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
 /// grouped report was already printed, so the error is just the summary
 /// (`main` would otherwise print each problem a second time).
 pub fn strict_link_failure(check: &links::LinkCheckResult) -> anyhow::Error {
-    let summary = format!("Build failed: {}", problem_summary(check));
+    strict_failure(
+        format!("Build failed: {}", problem_summary(check)),
+        Diagnostics::from(links::link_diagnostics(check, true)),
+    )
+}
+
+/// A `--strict` failure with `summary` as its message. With `--json` the
+/// error carries `diagnostics` (surfaced as `error.diagnostics`); in human
+/// mode only the summary, since the caller already printed the report.
+pub fn strict_failure(summary: String, diagnostics: Diagnostics) -> anyhow::Error {
     if output::is_json() {
-        let diagnostics = Diagnostics::from(links::link_diagnostics(check, true));
         anyhow::Error::new(crate::error::PageError::Diagnostics(diagnostics)).context(summary)
     } else {
         anyhow::anyhow!(summary)

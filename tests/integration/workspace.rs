@@ -263,3 +263,83 @@ fn test_workspace_init_and_add_site() {
         .success()
         .stdout(predicate::str::contains("mysite"));
 }
+
+/// Helper: init a workspace in `tmp` with one `posts` site per name.
+fn init_workspace_with_sites(tmp: &TempDir, sites: &[&str]) {
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    for name in sites {
+        page_cmd()
+            .args([
+                "workspace",
+                "add",
+                name,
+                "--title",
+                name,
+                "--collections",
+                "posts",
+            ])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn test_workspace_build_strict_json_includes_link_diagnostics() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["alpha", "beta"]);
+    for site in ["alpha", "beta"] {
+        write_site_file(
+            &tmp.path().join("sites").join(site),
+            "content/posts/2025-01-01-broken.md",
+            "---\ntitle: Broken\n---\n\nSee [gone](/posts/not-here).\n",
+        );
+    }
+
+    let output = page_cmd()
+        .args(["--json", "build", "--strict"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    let diagnostics = doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no diagnostics: {doc}"));
+    // One per site, with workspace-relative (unambiguous) file paths.
+    assert_eq!(diagnostics.len(), 2, "{doc}");
+    for (d, site) in diagnostics.iter().zip(["alpha", "beta"]) {
+        assert_eq!(d["code"], "broken-link", "{doc}");
+        assert_eq!(d["severity"], "error", "{doc}");
+        assert_eq!(
+            d["file"],
+            format!("sites/{site}/content/posts/2025-01-01-broken.md"),
+            "{doc}"
+        );
+        assert_eq!(d["line"], 5, "{doc}");
+    }
+
+    // Human output: grouped report per site plus one summary, no repeats.
+    let output = page_cmd()
+        .args(["build", "--strict"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(all.matches("/posts/not-here").count(), 2, "{all}");
+    assert!(all.contains("Error: Build failed"), "{all}");
+    assert!(
+        all.contains("Site 'alpha'") && all.contains("Site 'beta'"),
+        "{all}"
+    );
+}

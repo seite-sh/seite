@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use crate::build::{self, BuildOptions, BuildResult};
+use crate::build::{self, links, BuildOptions, BuildResult};
+use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::output::{human, CommandOutput};
 
 use super::{load_site_in_workspace, WorkspaceConfig};
@@ -32,6 +33,11 @@ impl WorkspaceBuildResult {
 }
 
 /// Build all (or filtered) sites in a workspace.
+///
+/// With `strict`, every site is still built so one run reports all sites'
+/// broken links / missing assets; the build then fails once at the end with
+/// the problems as diagnostics whose files are workspace-relative
+/// (`sites/blog/content/...`), mirroring single-site `build --strict`.
 pub fn build_workspace(
     ws_config: &WorkspaceConfig,
     ws_root: &Path,
@@ -43,6 +49,8 @@ pub fn build_workspace(
 
     let total = sites.len();
     let mut site_results = Vec::new();
+    let mut strict_failures: Vec<String> = Vec::new();
+    let mut strict_diagnostics = Diagnostics::new();
 
     for (i, ws_site) in sites.iter().enumerate() {
         human::header(&format!(
@@ -69,14 +77,27 @@ pub fn build_workspace(
             Some(&ws_site.name),
         );
         if opts.strict && problems > 0 {
-            anyhow::bail!(
-                "Build failed: site '{}' has {}",
+            strict_failures.push(format!(
+                "site '{}' has {}",
                 ws_site.name,
                 crate::cli::build::problem_summary(&result.link_check),
+            ));
+            let site_dir = Path::new(&ws_site.path);
+            strict_diagnostics.extend(
+                links::link_diagnostics(&result.link_check, true)
+                    .into_iter()
+                    .map(|d| prefix_file(d, site_dir)),
             );
         }
 
         site_results.push((ws_site.name.clone(), result));
+    }
+
+    if !strict_failures.is_empty() {
+        return Err(crate::cli::build::strict_failure(
+            format!("Build failed: {}", strict_failures.join("; ")),
+            strict_diagnostics,
+        ));
     }
 
     human::header("Workspace build complete");
@@ -84,4 +105,34 @@ pub fn build_workspace(
     human::success(&ws_result.stats_summary());
 
     Ok(ws_result)
+}
+
+/// Prefix a site-relative diagnostic file with the site's workspace path so
+/// files stay unambiguous across sites.
+pub(crate) fn prefix_file(mut d: Diagnostic, site_dir: &Path) -> Diagnostic {
+    if let Some(file) = d.file.take() {
+        d.file = Some(if file.is_absolute() {
+            file
+        } else {
+            site_dir.join(file)
+        });
+    }
+    d
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_prefix_file_joins_site_path() {
+        let d = prefix_file(
+            Diagnostic::error("broken-link", "x").with_file("content/a.md"),
+            Path::new("sites/blog"),
+        );
+        assert_eq!(d.file, Some(PathBuf::from("sites/blog/content/a.md")));
+        let d = prefix_file(Diagnostic::error("broken-link", "x"), Path::new("s"));
+        assert_eq!(d.file, None);
+    }
 }
