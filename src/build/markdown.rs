@@ -710,6 +710,30 @@ mod tests {
     }
 
     #[test]
+    fn test_rewrite_md_links_explicit_translation_and_escaping_root() {
+        // Linking a translation file directly works from any language.
+        for lang in ["es", "en"] {
+            let from = if lang == "es" {
+                "pages/index.es.md"
+            } else {
+                "pages/index.md"
+            };
+            let (html, unresolved) =
+                render_rewrite("[es](../docs/getting-started.es.md)", from, lang);
+            assert!(
+                html.contains(r#"href="/es/docs/getting-started""#),
+                "{lang}: {html}"
+            );
+            assert!(unresolved.is_empty(), "{lang}: {unresolved:?}");
+        }
+        // A relative link climbing above the content root is reported, not
+        // silently resolved to some other file.
+        let (_, unresolved) =
+            render_rewrite("[up](../../../../outside.md)", "posts/other.md", "en");
+        assert_eq!(unresolved, vec!["../../../../outside.md"]);
+    }
+
+    #[test]
     fn test_rewrite_md_links_reports_unresolved() {
         let (html, unresolved) = render_rewrite(
             "[bad](./nope.md#x) [bad again](./nope.md#x) [content](/content/posts/gone.md) [plain](./not-markdown.txt)",

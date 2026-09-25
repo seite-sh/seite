@@ -399,6 +399,45 @@ fn test_contact_status_shows_redirect_and_subject() {
 }
 
 #[test]
+fn test_contact_setup_over_existing_config_needs_yes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Replace", "posts,pages");
+    let site = tmp.path().join("site");
+    add_contact_config(&site, "formspree", "xoriginal");
+    let before = fs::read_to_string(site.join("seite.toml")).unwrap();
+    let setup = [
+        "contact",
+        "setup",
+        "--provider",
+        "web3forms",
+        "--endpoint",
+        "wnew",
+    ];
+
+    page_cmd()
+        .args(setup)
+        .current_dir(&site)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("confirmation required"))
+        .stderr(predicate::str::contains("--yes"));
+    assert_eq!(fs::read_to_string(site.join("seite.toml")).unwrap(), before);
+    assert!(!site.join("content/pages/contact.md").exists());
+
+    page_cmd()
+        .arg("--yes")
+        .args(setup)
+        .current_dir(&site)
+        .assert()
+        .success();
+    let after = fs::read_to_string(site.join("seite.toml")).unwrap();
+    assert!(after.contains("wnew"), "{after}");
+    assert!(!after.contains("xoriginal"), "{after}");
+}
+
+#[test]
 fn test_contact_setup_outside_project_fails() {
     let tmp = TempDir::new().unwrap();
 

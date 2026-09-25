@@ -422,9 +422,9 @@ pub fn build_site(
     // Everything built: swap staged outputs into place, then drop outputs of
     // collections that are no longer deployed to a subdomain.
     staged.commit()?;
-    if has_subdomains {
-        prune_stale_subdomain_outputs(config, paths);
-    }
+    // Also when no collection is on a subdomain any more: its old output
+    // would otherwise linger in dist-subdomains/ indefinitely.
+    prune_stale_subdomain_outputs(config, paths);
 
     // Save build cache after successful build
     if opts.incremental {

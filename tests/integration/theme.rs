@@ -692,3 +692,64 @@ fn test_theme_apply_then_build_with_all_themes() {
         );
     }
 }
+
+#[test]
+fn test_theme_apply_never_overwrites_an_earlier_backup() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Backups", "posts");
+    let site_dir = tmp.path().join("site");
+    let base = site_dir.join("templates/base.html");
+
+    fs::write(&base, "<html>first custom</html>").unwrap();
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Backed up your customized base.html to",
+        ));
+    fs::write(&base, "<html>second custom</html>").unwrap();
+    page_cmd()
+        .args(["theme", "apply", "minimal"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("base.html.bak.1"));
+
+    let templates = site_dir.join("templates");
+    assert_eq!(
+        fs::read_to_string(templates.join("base.html.bak")).unwrap(),
+        "<html>first custom</html>"
+    );
+    assert_eq!(
+        fs::read_to_string(templates.join("base.html.bak.1")).unwrap(),
+        "<html>second custom</html>"
+    );
+
+    // Switching between bundled themes backs nothing up.
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Backed up").not());
+    assert!(!templates.join("base.html.bak.2").exists());
+
+    // A third customization takes the next free number.
+    fs::write(&base, "<html>third custom</html>").unwrap();
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("base.html.bak.2"));
+    assert_eq!(
+        fs::read_to_string(templates.join("base.html.bak.2")).unwrap(),
+        "<html>third custom</html>"
+    );
+    assert_eq!(
+        fs::read_to_string(templates.join("base.html.bak")).unwrap(),
+        "<html>first custom</html>"
+    );
+}

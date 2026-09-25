@@ -791,7 +791,7 @@ fn unknown_variable_hint(chain: &str, ctx: &tera::Context) -> Option<String> {
 
 /// Render an error and all of its sources (Tera nests the useful detail —
 /// file, line, and the parser message — in the source chain).
-fn error_chain(err: &dyn std::error::Error) -> String {
+pub(crate) fn error_chain(err: &dyn std::error::Error) -> String {
     let mut out = err.to_string();
     let mut source = err.source();
     while let Some(s) = source {

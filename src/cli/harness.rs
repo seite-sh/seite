@@ -1431,6 +1431,31 @@ mod tests {
     }
 
     #[test]
+    fn merge_codex_config_without_servers_inline_seite_and_odd_shapes() {
+        // No mcp_servers at all: the table is appended after the user's text.
+        let existing = "model = \"o3\" # pinned\n";
+        let merged = merge_codex_config(existing).unwrap().unwrap();
+        assert!(
+            merged.starts_with("model = \"o3\" # pinned\n\n"),
+            "{merged}"
+        );
+        let parsed: toml::Value = toml::from_str(&merged).unwrap();
+        assert_eq!(parsed["model"].as_str(), Some("o3"));
+        assert_eq!(
+            parsed["mcp_servers"]["seite"]["command"].as_str(),
+            Some("seite")
+        );
+        // Already declared inline: nothing to do.
+        let inline = "mcp_servers = { seite = { command = \"seite\" } }\n";
+        assert!(merge_codex_config(inline).unwrap().is_none());
+        // `mcp_servers` that isn't a table can't be extended: leave it alone
+        // rather than replacing the user's value.
+        assert!(merge_codex_config("mcp_servers = \"oops\"\n")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn replace_block_swaps_only_marked_content() {
         let doc = format!("# T\n\n{}after\n", wrap_block("x", "old"));
         let out = replace_block(&doc, "x", "new").unwrap();

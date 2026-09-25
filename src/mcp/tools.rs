@@ -2265,6 +2265,22 @@ mod tests {
             assert!(text.contains("invalid subdir"), "{bad}: {text}");
         }
         assert!(!tmp.path().join("etc").exists());
+
+        // Segments that aren't URL-safe, and blank titles, are refused too.
+        for (args, needle) in [
+            (
+                serde_json::json!({ "collection": "docs", "title": "X", "subdir": "my notes" }),
+                "segments may only contain letters, digits, '-' and '_'",
+            ),
+            (
+                serde_json::json!({ "collection": "docs", "title": "   " }),
+                "title must not be empty",
+            ),
+        ] {
+            let text = call_err(&mut state, "seite_create_content", args.clone());
+            assert!(text.contains(needle), "{args}: {text}");
+        }
+        assert!(!tmp.path().join("content/docs").exists());
     }
 
     #[test]
@@ -2342,6 +2358,106 @@ mod tests {
             serde_json::json!({ "query": "rust", "collection": "post" }),
         );
         assert_eq!(posts["total"], 1);
+    }
+
+    #[test]
+    fn test_search_description_tier_and_title_tiebreak() {
+        let (tmp, mut state) = site("");
+        // Same tier and body-occurrence count: ordered by title, not file order.
+        write(
+            tmp.path(),
+            "content/docs/a.md",
+            "---\ntitle: Zeta\n---\none tokio mention\n",
+        );
+        write(
+            tmp.path(),
+            "content/docs/b.md",
+            "---\ntitle: Alpha\n---\none tokio mention\n",
+        );
+        write(
+            tmp.path(),
+            "content/docs/c.md",
+            "---\ntitle: Mid\n---\none tokio mention\n",
+        );
+        // A description match outranks body-only matches.
+        write(
+            tmp.path(),
+            "content/docs/d.md",
+            "---\ntitle: Runtime\ndescription: All about Tokio\n---\nnothing here\n",
+        );
+        let result = call_ok(
+            &mut state,
+            "seite_search",
+            serde_json::json!({ "query": "tokio" }),
+        );
+        let hits: Vec<(&str, &serde_json::Value)> = result["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| (r["title"].as_str().unwrap(), &r["matched_in"]))
+            .collect();
+        assert_eq!(
+            hits.iter().map(|h| h.0).collect::<Vec<_>>(),
+            vec!["Runtime", "Alpha", "Mid", "Zeta"],
+            "{result}"
+        );
+        assert_eq!(*hits[0].1, serde_json::json!(["description"]));
+        assert_eq!(*hits[1].1, serde_json::json!(["body"]));
+    }
+
+    #[test]
+    fn test_call_non_object_and_null_arguments() {
+        let (_tmp, mut state) = site("");
+        for (args, got) in [
+            (serde_json::json!(true), "boolean"),
+            (serde_json::json!([1]), "array"),
+        ] {
+            let err = call_err(&mut state, "seite_search", args);
+            assert!(
+                err.contains(&format!("arguments must be a JSON object (got {got})")),
+                "{err}"
+            );
+        }
+        // `"arguments": null` is the same as no arguments.
+        let result = call(
+            &state,
+            Protocol::new(crate::mcp::protocol::LEGACY_VERSIONS[0]),
+            &serde_json::json!({ "name": "seite_list_templates", "arguments": null }),
+        )
+        .unwrap();
+        assert_ne!(result["isError"], true, "{result}");
+    }
+
+    #[test]
+    fn test_unknown_collection_without_any_collections_says_how_to_add_one() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("seite.toml"),
+            "collections = []\n[site]\ntitle = \"T\"\nbase_url = \"http://localhost:3000\"\n",
+        )
+        .unwrap();
+        let mut state = ServerState::load(tmp.path().to_path_buf());
+        let err = call_err(
+            &mut state,
+            "seite_create_content",
+            serde_json::json!({ "collection": "posts", "title": "x" }),
+        );
+        assert!(
+            err.contains("(none — add [[collections]] to seite.toml)"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_create_content_weight_out_of_range_writes_nothing() {
+        let (tmp, mut state) = site("");
+        let err = call_err(
+            &mut state,
+            "seite_create_content",
+            serde_json::json!({ "collection": "docs", "title": "Big", "weight": 1_i64 << 40 }),
+        );
+        assert!(err.contains("'weight' is out of range"), "{err}");
+        assert!(!tmp.path().join("content/docs/big.md").exists());
     }
 
     #[test]

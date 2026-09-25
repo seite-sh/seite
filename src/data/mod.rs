@@ -72,6 +72,13 @@ pub fn load_data_dir(data_dir: &Path) -> Result<serde_json::Value> {
         files.push((segments, path.to_path_buf()));
     }
 
+    // Directory walk order is filesystem-dependent. Sort so a file is always
+    // inserted before the files of a same-named directory (`authors.yaml`
+    // before `authors/jane.yaml`): a non-object file then conflicts with the
+    // directory every time instead of silently replacing whatever the
+    // directory contributed on some filesystems.
+    files.sort();
+
     // Check for key conflicts (e.g., authors.yaml and authors.json)
     if let Err(e) = check_conflicts(&files) {
         return Err(PageError::Diagnostics(data_error_diagnostic(e).into()));

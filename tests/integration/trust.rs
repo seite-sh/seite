@@ -342,6 +342,65 @@ fn test_access_groups_lists_separate_path_password_groups() {
         );
 }
 
+#[cfg(unix)]
+#[test]
+fn test_access_set_password_without_tty_refuses_and_uploads_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Set Password", "posts,pages");
+    let site = tmp.path().join("site");
+    add_collection_line(&site, "posts", "private = true");
+    add_collection_line(&site, "posts", "access_group = \"members\"");
+    enable_password_access(&site);
+    let config = fs::read_to_string(site.join("seite.toml")).unwrap();
+    fs::write(
+        site.join("seite.toml"),
+        config.replace(
+            "target = \"github-pages\"",
+            "target = \"cloudflare\"\nproject = \"my-site\"",
+        ),
+    )
+    .unwrap();
+
+    // A wrangler that records any call: nothing may be uploaded.
+    let bin = TempDir::new().unwrap();
+    let called = bin.path().join("called");
+    let wrangler = bin.path().join("wrangler");
+    fs::write(
+        &wrangler,
+        format!("#!/bin/sh\necho \"$@\" >> {}\n", called.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&wrangler, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    // --yes can't stand in for a password either.
+    for args in [
+        vec!["access", "set-password", "members"],
+        vec!["--yes", "access", "set-password", "members"],
+    ] {
+        page_cmd()
+            .args(&args)
+            .current_dir(&site)
+            .env("PATH", &path)
+            .write_stdin("hunter2\nhunter2\n")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "cannot prompt for a password when not running interactively",
+            ))
+            .stderr(predicate::str::contains(
+                "passwords are never read from flags",
+            ));
+    }
+    assert!(!called.exists(), "wrangler must not be called");
+}
+
 #[test]
 fn test_password_access_protects_an_entire_subdomain_output() {
     let tmp = TempDir::new().unwrap();

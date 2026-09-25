@@ -1337,6 +1337,27 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_internal_refs_truncated_html_keeps_earlier_refs() {
+        // Unterminated comment, raw-text element, or tag: everything after is
+        // not parsed as markup (and nothing panics).
+        for tail in [
+            "<!-- <a href=\"/in-comment\">",
+            "<script>var s = '<a href=\"/in-script\">'",
+            "<a title=\"x > y\" href=\"/unterminated",
+        ] {
+            let html = format!("<a href=/ok>x</a><AREA HREF='/area'>{tail}");
+            assert_eq!(
+                refs(&html),
+                vec![
+                    ("/ok".into(), LinkKind::Page),
+                    ("/area".into(), LinkKind::Page)
+                ],
+                "{tail}"
+            );
+        }
+    }
+
+    #[test]
     fn test_parse_srcset() {
         assert_eq!(
             parse_srcset("/a-480w.webp 480w, /a-800w.webp 800w"),

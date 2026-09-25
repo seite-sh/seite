@@ -375,6 +375,12 @@ mod tests {
         );
         assert!(did_you_mean("zzzz", ["minify", "math"]).is_none());
         assert!(did_you_mean("x", std::iter::empty()).is_none());
+        // Never "did you mean" the very name that was typed.
+        assert_eq!(
+            did_you_mean("page.title", ["page.title", "page.titles"]).as_deref(),
+            Some("did you mean `page.titles`?")
+        );
+        assert!(did_you_mean("title", ["title"]).is_none());
     }
 
     #[test]
@@ -385,6 +391,8 @@ mod tests {
         assert_eq!(line_col_at(src, 5), (2, 3));
         assert_eq!(line_col_at(src, 8), (3, 1));
         assert_eq!(line_col_at(src, 999), (3, 2));
+        // An offset inside a multi-byte char snaps back to its start (no panic).
+        assert_eq!(line_col_at(src, 6), (2, 3));
     }
 
     #[test]

@@ -669,6 +669,41 @@ fn test_deploy_domain_netlify() {
 }
 
 #[test]
+fn test_deploy_without_tty_refuses_failed_preflight_before_any_side_effect() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Repo", "posts,pages");
+    let site = tmp.path().join("site");
+    fs::write(
+        site.join("seite.toml"),
+        fs::read_to_string(site.join("seite.toml"))
+            .unwrap()
+            .replace("http://localhost:3000", "https://example.com"),
+    )
+    .unwrap();
+    assert!(!site.join(".git").exists());
+
+    // stdin is not a terminal and there is no --yes: the "Git repository"
+    // check can't be auto-fixed and deploying anyway must not be assumed.
+    let output = page_cmd()
+        .arg("deploy")
+        .current_dir(&site)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("confirmation required"), "{stderr}");
+    assert!(stderr.contains("--yes"), "{stderr}");
+    assert!(stderr.contains("--skip-checks"), "{stderr}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Git repository"), "{stdout}");
+    // No `git init`, no commit, no build output.
+    assert!(!site.join(".git").exists(), "deploy must not init a repo");
+    assert!(!site.join("dist").exists(), "deploy must not build");
+}
+
+#[test]
 fn test_deploy_dry_run_shows_subdomains() {
     let tmp = TempDir::new().unwrap();
     let site_dir = init_subdomain_site(&tmp, "subdom5");

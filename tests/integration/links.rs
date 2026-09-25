@@ -612,3 +612,274 @@ fn test_build_strict_json_includes_link_diagnostics() {
         "{all}"
     );
 }
+
+// --- link extraction from raw HTML ---
+
+#[test]
+fn test_build_checks_links_in_raw_html_of_any_quoting_and_case() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Raw Html", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "static/ok.png", "png");
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-raw.md",
+        "---\ntitle: Raw\n---\n\n\
+         <IMG SRC=/static/ok.png ALT=fine>\n\
+         <IMG SRC=/static/unquoted.png ALT=x>\n\
+         <a title=\"a > b\" href='/ghost-single'>x</a>\n\
+         <img srcset=\"/static/one.png 1x, /static/two.png 2x\" alt=\"\">\n\
+         <LINK REL=\"preload\" AS=\"image\" HREF=\"/static/preloaded.png\">\n\
+         <video poster=\"/static/poster.png\"></video>\n\
+         <svg><use href=\"/static/sprite.svg\"></use></svg>\n\
+         <!-- <a href=\"/commented-out\">x</a> -->\n",
+    );
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    let targets = |key: &str| -> Vec<String> {
+        let mut t: Vec<String> = doc["data"][key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["target"].as_str().unwrap().to_string())
+            .collect();
+        t.sort();
+        t
+    };
+    assert_eq!(targets("broken_links"), vec!["/ghost-single"], "{doc}");
+    assert_eq!(
+        targets("missing_assets"),
+        vec![
+            "/static/one.png",
+            "/static/poster.png",
+            "/static/preloaded.png",
+            "/static/sprite.svg",
+            "/static/two.png",
+            "/static/unquoted.png",
+        ],
+        "{doc}"
+    );
+    // Located in the markdown source, on the line the reference is written.
+    let unquoted = doc["data"]["missing_assets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["target"] == "/static/unquoted.png")
+        .unwrap();
+    assert_eq!(unquoted["source"], "content/posts/2025-01-01-raw.md");
+    assert_eq!(unquoted["line"], 6);
+}
+
+#[test]
+fn test_build_reference_link_at_end_of_file_is_located() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Ref Link", "posts");
+    let site = tmp.path().join("site");
+    // No trailing newline: the href is the very last thing in the file.
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-ref.md",
+        "---\ntitle: Ref\n---\n\nSee [the guide][g].\n\n[g]: /ghost-ref",
+    );
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    let doc = json_stdout(&output);
+    let broken = doc["data"]["broken_links"].as_array().unwrap();
+    assert_eq!(broken.len(), 1, "{doc}");
+    assert_eq!(broken[0]["target"], "/ghost-ref");
+    assert_eq!(broken[0]["source"], "content/posts/2025-01-01-ref.md");
+    assert_eq!(broken[0]["line"], 7);
+}
+
+#[test]
+fn test_build_strict_names_template_for_template_links() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Template Link", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-a.md",
+        "---\ntitle: A\n---\nbody\n",
+    );
+    write_site_file(
+        &site,
+        "templates/post.html",
+        "{% extends \"base.html\" %}\n{% block content %}\n<a href=\"/from-template\">x</a>\n{{ page.content | safe }}\n{% endblock %}\n",
+    );
+    let output = page_cmd()
+        .args(["--json", "build", "--strict"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let doc = json_stdout(&output);
+    let d = doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "broken-link")
+        .unwrap_or_else(|| panic!("{doc}"))
+        .clone();
+    assert_eq!(d["file"], "templates/post.html", "{d}");
+    assert_eq!(d["line"], 3, "{d}");
+    let message = d["message"].as_str().unwrap();
+    assert!(message.contains("`/from-template`"), "{message}");
+    assert!(
+        message.contains("(from template/listing, on page posts/"),
+        "{message}"
+    );
+}
+
+// --- output directory swapping ---
+
+#[cfg(unix)]
+#[test]
+fn test_build_into_symlinked_output_dir_replaces_contents_in_place() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Symlinked Dist", "posts,pages");
+    let site = tmp.path().join("site");
+    let real = tmp.path().join("real-dist");
+    fs::create_dir_all(real.join("old-dir")).unwrap();
+    fs::write(real.join("stale.html"), "stale").unwrap();
+    fs::write(real.join("old-dir/x.txt"), "x").unwrap();
+    std::os::unix::fs::symlink(&real, site.join("dist")).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+
+    let meta = fs::symlink_metadata(site.join("dist")).unwrap();
+    assert!(meta.file_type().is_symlink(), "dist must stay a symlink");
+    assert!(
+        real.join("index.html").is_file(),
+        "output written through link"
+    );
+    assert!(!real.join("stale.html").exists(), "stale files removed");
+    assert!(!real.join("old-dir").exists(), "stale dirs removed");
+    let index = fs::read_to_string(real.join("index.html")).unwrap();
+
+    // A failed build leaves the linked directory's contents alone.
+    write_site_file(
+        &site,
+        "content/posts/2025-02-02-bad.md",
+        "---\ntitle: [unclosed\n---\nbody\n",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .failure();
+    assert_eq!(fs::read_to_string(real.join("index.html")).unwrap(), index);
+    assert!(fs::symlink_metadata(site.join("dist"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let leftovers: Vec<String> = fs::read_dir(&site)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.starts_with("dist."))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_build_leaves_scratch_dirs_of_running_builds_alone() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Concurrent", "posts,pages");
+    let site = tmp.path().join("site");
+    // This test process stands in for another seite build that is still running.
+    let live = format!("dist.staging-{}", std::process::id());
+    fs::create_dir_all(site.join(&live).join("posts")).unwrap();
+    fs::create_dir_all(site.join("dist.old-4242424")).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+
+    assert!(
+        site.join(&live).join("posts").is_dir(),
+        "a running build's staging dir must not be deleted"
+    );
+    assert!(
+        !site.join("dist.old-4242424").exists(),
+        "a dead build's leftover is cleaned up"
+    );
+}
+
+#[test]
+fn test_build_prunes_output_of_collection_no_longer_on_a_subdomain() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(
+        &site,
+        "content/docs/guide.md",
+        "---\ntitle: Guide\n---\nhi\n",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    assert!(site.join("dist-subdomains/docs/guide.html").is_file());
+
+    // Move docs back onto the main site.
+    let config = fs::read_to_string(site.join("seite.toml")).unwrap();
+    fs::write(
+        site.join("seite.toml"),
+        config.replace("subdomain = \"docs\"\n", ""),
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    assert!(
+        !site.join("dist-subdomains/docs").exists(),
+        "stale subdomain output must be pruned"
+    );
+    assert!(site.join("dist/docs/guide.html").is_file());
+}
+
+#[test]
+fn test_build_subdomain_template_warning_reported_once() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(&site, "content/docs/g.md", "---\ntitle: G\n---\nhi\n");
+    write_site_file(&site, "templates/base.html", "<html>{% if %}</html>");
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc = json_stdout(&output);
+    let parse: Vec<&serde_json::Value> = doc["data"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "template-parse")
+        .collect();
+    // Main site and subdomain both hit it; it is one problem in one file.
+    assert_eq!(parse.len(), 1, "{doc}");
+    assert_eq!(parse[0]["file"], "templates/base.html");
+    assert_eq!(
+        doc["data"]["warnings"].as_array().unwrap().len(),
+        1,
+        "{doc}"
+    );
+}

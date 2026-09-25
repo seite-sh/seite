@@ -944,6 +944,138 @@ mod tests {
     }
 
     #[test]
+    fn test_path_resolution_errors_name_the_fix() {
+        let (tmp, mut state) = site("");
+        write(
+            tmp.path(),
+            "content/notes/idea.md",
+            "---\ntitle: Idea\n---\nx\n",
+        );
+
+        let err = call_err(
+            &mut state,
+            "seite_get_page",
+            serde_json::json!({ "path": "   " }),
+        );
+        assert!(err.contains("'path' must not be empty"), "{err}");
+
+        // A markdown file under content/ but outside every collection is never
+        // built: say so and list where content has to live.
+        for (tool, args) in [
+            (
+                "seite_get_page",
+                serde_json::json!({ "path": "content/notes/idea.md" }),
+            ),
+            (
+                "seite_update_frontmatter",
+                serde_json::json!({ "path": "content/notes/idea.md", "set": { "draft": true } }),
+            ),
+        ] {
+            let err = call_err(&mut state, tool, args);
+            assert!(err.starts_with(tool), "{err}");
+            assert!(
+                err.contains("not inside any collection directory (content/posts, content/docs)"),
+                "{err}"
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("content/notes/idea.md")).unwrap(),
+            "---\ntitle: Idea\n---\nx\n"
+        );
+
+        // No content directory at all.
+        fs::remove_dir_all(tmp.path().join("content")).unwrap();
+        write(tmp.path(), "stray.md", "---\ntitle: S\n---\n");
+        let err = call_err(
+            &mut state,
+            "seite_get_page",
+            serde_json::json!({ "path": "stray.md" }),
+        );
+        assert!(err.contains("content directory"), "{err}");
+        assert!(err.contains("does not exist"), "{err}");
+    }
+
+    #[test]
+    fn test_get_page_and_update_frontmatter_on_subdomain_collection() {
+        let (tmp, mut state) = site("subdomain = \"docs\"\n");
+        write(
+            tmp.path(),
+            "content/docs/guide.md",
+            "---\ntitle: Guide\n---\nRead me.\n",
+        );
+        let built = call_ok(&mut state, "seite_build", serde_json::json!({}));
+        let subs = built["subdomain_builds"].as_array().unwrap();
+        assert_eq!(subs.len(), 1, "{built}");
+        assert_eq!(subs[0]["collection"], "docs");
+        assert_eq!(subs[0]["subdomain"], "docs");
+        assert!(
+            subs[0]["output_dir"]
+                .as_str()
+                .unwrap()
+                .ends_with("dist-subdomains/docs"),
+            "{built}"
+        );
+
+        // Subdomain collections are root-mounted: no /docs prefix, and the
+        // built page lives in the subdomain's own output directory.
+        let page = call_ok(
+            &mut state,
+            "seite_get_page",
+            serde_json::json!({ "url": "/guide" }),
+        );
+        assert_eq!(page["path"], "content/docs/guide.md");
+        assert_eq!(page["url"], "/guide");
+        assert_eq!(page["output_path"], "dist-subdomains/docs/guide.html");
+
+        let updated = call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": "content/docs/guide.md", "set": { "weight": 2 } }),
+        );
+        assert_eq!(updated["url"], "/guide");
+    }
+
+    #[test]
+    fn test_update_frontmatter_empty_and_non_mapping_frontmatter() {
+        let (tmp, mut state) = site("");
+        // Empty frontmatter is an empty mapping: keys can be added to it.
+        let rel = "content/docs/empty.md";
+        write(tmp.path(), rel, "---\n---\nBody\n");
+        call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "title": "Now Titled" } }),
+        );
+        let (fm, body) = content::parse_content_file(&tmp.path().join(rel)).unwrap();
+        assert_eq!(fm.title, "Now Titled");
+        assert_eq!(body, "Body\n");
+
+        // A YAML list is not frontmatter: refuse and leave the file alone.
+        let rel = "content/docs/list.md";
+        let original = "---\n- a\n- b\n---\nBody\n";
+        write(tmp.path(), rel, original);
+        let err = call_err(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "draft": true } }),
+        );
+        assert!(err.contains("is not a YAML mapping"), "{err}");
+        assert_eq!(fs::read_to_string(tmp.path().join(rel)).unwrap(), original);
+
+        // An existing empty title must be fixed, not carried along.
+        let rel = "content/docs/untitled.md";
+        let original = "---\ntitle: \"\"\n---\nBody\n";
+        write(tmp.path(), rel, original);
+        let err = call_err(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "draft": true } }),
+        );
+        assert!(err.contains("'title' must not be empty"), "{err}");
+        assert_eq!(fs::read_to_string(tmp.path().join(rel)).unwrap(), original);
+    }
+
+    #[test]
     fn test_update_frontmatter_round_trip_preserves_body() {
         let (tmp, mut state) = site("");
         let body = "\n# Title\r\n\nBody with --- dashes\n---\nand a fake delimiter, trailing spaces   \n\n\n";

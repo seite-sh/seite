@@ -811,12 +811,26 @@ mod tests {
                 serde_json::json!(10),
             ),
             (r#""just a string""#, serde_json::Value::Null),
+            (
+                r#"{"jsonrpc":"2.0","id":11,"method":5}"#,
+                serde_json::json!(11),
+            ),
         ];
         for (line, id) in cases {
             let resp = handle_line(&mut state, &mut session, line).unwrap();
             assert_eq!(resp["error"]["code"], INVALID_REQUEST, "{line}");
             assert_eq!(resp["id"], id, "{line}");
         }
+        let resp = handle_line(
+            &mut state,
+            &mut session,
+            r#"{"jsonrpc":"2.0","id":11,"method":5}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            resp["error"]["message"],
+            "Invalid request: 'method' must be a string"
+        );
     }
 
     #[test]

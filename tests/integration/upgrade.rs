@@ -1296,3 +1296,221 @@ fn test_upgrade_stop_hooks_respect_opt_out() {
     assert!(read_json_file(&settings_path).get("hooks").is_none());
     assert!(!site_dir.join(".cursor/hooks.json").exists());
 }
+
+#[test]
+fn test_upgrade_leaves_malformed_cursor_configs_untouched_with_warning() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    fs::create_dir_all(site_dir.join(".cursor")).unwrap();
+    let cli_json = "{ \"permissions\": { \"allow\": [ // comment\n] }";
+    let mcp_json = "[\"not\", \"an object\"]";
+    fs::write(site_dir.join(".cursor/cli.json"), cli_json).unwrap();
+    fs::write(site_dir.join(".cursor/mcp.json"), mcp_json).unwrap();
+
+    for _ in 0..2 {
+        let output = page_cmd()
+            .args(["upgrade", "--force", "--agents", "claude,cursor"])
+            .current_dir(&site_dir)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let all = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            all.contains(".cursor/cli.json is not a JSON object; add seite's Cursor permissions to it manually"),
+            "{all}"
+        );
+        assert!(
+            all.contains(
+                ".cursor/mcp.json is not a JSON object; add the seite MCP server to it manually"
+            ),
+            "{all}"
+        );
+        // Unparseable user files are never rewritten…
+        assert_eq!(
+            fs::read_to_string(site_dir.join(".cursor/cli.json")).unwrap(),
+            cli_json
+        );
+        assert_eq!(
+            fs::read_to_string(site_dir.join(".cursor/mcp.json")).unwrap(),
+            mcp_json
+        );
+        // …and don't block the rest of the Cursor setup.
+        assert!(site_dir.join(".cursor/rules/templates.mdc").is_file());
+    }
+}
+
+#[test]
+fn test_upgrade_merges_cursor_cli_json_keeping_user_rules_and_order() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    fs::create_dir_all(site_dir.join(".cursor")).unwrap();
+    fs::write(
+        site_dir.join(".cursor/cli.json"),
+        r#"{"zeta":1,"permissions":{"deny":["Shell(rm)"],"allow":["Shell(ls)","Mcp(seite:*)"]},"alpha":true}"#,
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force", "--agents", "claude,cursor"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Added Write(content/**) to .cursor/cli.json",
+        ))
+        .stdout(predicate::str::contains("Added Mcp(seite:*)").not());
+
+    let text = fs::read_to_string(site_dir.join(".cursor/cli.json")).unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+    // User keys and rules kept, in their original order; seite's appended once.
+    let keys: Vec<&String> = doc.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["zeta", "permissions", "alpha"]);
+    assert_eq!(doc["permissions"]["deny"], serde_json::json!(["Shell(rm)"]));
+    let allow: Vec<&str> = doc["permissions"]["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(allow[..2], ["Shell(ls)", "Mcp(seite:*)"]);
+    assert_eq!(
+        allow.iter().filter(|r| **r == "Mcp(seite:*)").count(),
+        1,
+        "{allow:?}"
+    );
+    assert!(allow.contains(&"Write(seite.toml)"), "{allow:?}");
+
+    // Idempotent: nothing left to add.
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(
+        fs::read_to_string(site_dir.join(".cursor/cli.json")).unwrap(),
+        text
+    );
+}
+
+#[test]
+fn test_upgrade_stop_hook_unmergeable_settings_warns_and_retries_later() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site_dir = tmp.path().join("site");
+    let meta_path = site_dir.join(".seite/config.json");
+    let mut meta = read_json_file(&meta_path);
+    meta.as_object_mut().unwrap().remove("hooks_installed");
+    fs::write(&meta_path, meta.to_string()).unwrap();
+    let settings_path = site_dir.join(".claude/settings.json");
+    let broken = "{ \"permissions\": { \"allow\": [] }, }";
+    fs::write(&settings_path, broken).unwrap();
+
+    let output = page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        all.contains(".claude/settings.json can't be merged automatically; add a Claude Code stop hook running `seite check --hook claude` by hand"),
+        "{all}"
+    );
+    assert_eq!(fs::read_to_string(&settings_path).unwrap(), broken);
+    let ids = stop_hook_ids(&site_dir);
+    assert!(
+        !ids.as_array().unwrap().iter().any(|id| id == "claude"),
+        "claude hook not recorded as installed: {ids}"
+    );
+
+    // Once the user fixes the file, the next upgrade adds the hook.
+    fs::write(&settings_path, "{ \"permissions\": { \"allow\": [] } }").unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let settings = read_json_file(&settings_path);
+    assert!(
+        settings["hooks"]["Stop"]
+            .to_string()
+            .contains("seite check --hook claude"),
+        "{settings}"
+    );
+    assert!(stop_hook_ids(&site_dir)
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|id| id == "claude"));
+}
+
+#[test]
+fn test_upgrade_old_project_injects_minify_into_build_section() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Old Minify", "posts");
+    let site_dir = tmp.path().join("site");
+    let toml_path = site_dir.join("seite.toml");
+    let without: String = fs::read_to_string(&toml_path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("minify ="))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert!(without.contains("[build]"));
+    fs::write(&toml_path, &without).unwrap();
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta = fs::read_to_string(&meta_path).unwrap();
+    fs::write(&meta_path, meta.replace(env!("CARGO_PKG_VERSION"), "0.6.0")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("enabled minify = true in [build]"));
+
+    let after = fs::read_to_string(&toml_path).unwrap();
+    assert_eq!(
+        after,
+        without.replacen("[build]", "[build]\nminify = true", 1)
+    );
+    let parsed: toml::Value = toml::from_str(&after).unwrap();
+    assert_eq!(parsed["build"]["minify"].as_bool(), Some(true));
+}
+
+#[test]
+fn test_upgrade_old_project_without_claude_keeps_claude_files_out() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "codex,opencode");
+    let site_dir = tmp.path().join("site");
+    assert!(!site_dir.join(".claude").exists());
+    assert!(!site_dir.join(".mcp.json").exists());
+    fs::remove_dir_all(site_dir.join(".agents/rules")).unwrap();
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta = fs::read_to_string(&meta_path).unwrap();
+    fs::write(&meta_path, meta.replace(env!("CARGO_PKG_VERSION"), "0.6.0")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    // Historical steps (MCP setup, Claude skills) must not recreate Claude
+    // Code files for a project that doesn't use Claude Code.
+    assert!(!site_dir.join(".claude").exists());
+    assert!(!site_dir.join(".mcp.json").exists());
+    // The shared rules directory Codex/OpenCode read is restored.
+    assert!(site_dir.join(".agents/rules/templates.md").is_file());
+}

@@ -215,7 +215,11 @@ impl ShortcodeRegistry {
             .map_err(|e| PageError::Shortcode {
                 path: source_path.to_path_buf(),
                 line: call.line,
-                message: format!("rendering shortcode `{}`: {e}", call.name),
+                message: format!(
+                    "rendering shortcode `{}`: {}",
+                    call.name,
+                    crate::templates::error_chain(&e)
+                ),
             })
     }
 }

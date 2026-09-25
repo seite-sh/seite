@@ -588,3 +588,232 @@ fn test_check_hook_rejects_unknown_agent_and_json() {
         .assert()
         .failure();
 }
+
+#[test]
+fn test_check_reports_semantically_invalid_config() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Semantic", "posts");
+    let site = tmp.path().join("site");
+    let mut config = fs::read_to_string(site.join("seite.toml")).unwrap();
+    config.push_str("\n[access]\nmode = \"password\"\nsession_hours = 0\n");
+    fs::write(site.join("seite.toml"), config).unwrap();
+
+    let diagnostics = failing_diagnostics(&site, "check");
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    let d = &diagnostics[0];
+    assert_eq!(d["code"], "config-invalid");
+    assert_eq!(d["file"], "seite.toml");
+    assert!(
+        d["message"]
+            .as_str()
+            .unwrap()
+            .contains("access.session_hours must be between 1 and 8760"),
+        "{d}"
+    );
+    assert!(!site.join("dist").exists());
+}
+
+#[test]
+fn test_check_wrong_shaped_config_sections_are_errors_not_unknown_keys() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Shapes", "posts");
+    let site = tmp.path().join("site");
+    let original = fs::read_to_string(site.join("seite.toml")).unwrap();
+    for (label, config) in [
+        (
+            "scalar where a table of languages is expected",
+            original.replacen("[languages]", "[languages]\nes = \"Spanish\"", 1),
+        ),
+        (
+            "table where the collections array is expected",
+            original.replacen("[[collections]]", "[collections]", 1),
+        ),
+    ] {
+        fs::write(site.join("seite.toml"), &config).unwrap();
+        let diagnostics = failing_diagnostics(&site, "check");
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d["code"] == "config-invalid" && d["file"] == "seite.toml"),
+            "{label}: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|d| d["code"] != "config-unknown-key"),
+            "{label}: known keys must not be reported as unknown: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
+fn test_data_file_and_same_named_directory_conflict_is_reported() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Data Conflict", "posts");
+    let site = tmp.path().join("site");
+    // `data.authors` can't be both this list and a map holding `jane`.
+    write_site_file(&site, "data/authors.yaml", "- a\n- b\n");
+    write_site_file(&site, "data/authors/jane.yaml", "name: Jane\n");
+    for cmd in ["build", "check"] {
+        let diagnostics = failing_diagnostics(&site, cmd);
+        assert_eq!(diagnostics.len(), 1, "{cmd}: {diagnostics:?}");
+        let d = &diagnostics[0];
+        assert_eq!(d["code"], "data-conflict", "{cmd}: {d}");
+        assert_eq!(d["file"], "data/authors/jane.yaml", "{cmd}: {d}");
+        assert!(
+            d["message"]
+                .as_str()
+                .unwrap()
+                .contains("key 'authors' is both a file and a directory"),
+            "{cmd}: {d}"
+        );
+    }
+}
+
+// --- render / parse failures in site-level templates and shortcodes ---
+
+/// Run `seite --json <cmd>` expecting failure; return its diagnostics.
+fn failing_diagnostics(site: &std::path::Path, cmd: &str) -> Vec<serde_json::Value> {
+    let output = page_cmd()
+        .args(["--json", cmd])
+        .current_dir(site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{cmd} unexpectedly succeeded");
+    let doc = json_stdout(&output);
+    doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no diagnostics: {doc}"))
+        .clone()
+}
+
+#[test]
+fn test_build_render_error_in_site_level_templates_names_the_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Render", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-tagged.md",
+        "---\ntitle: Tagged\ntags: [rust]\n---\nbody\n",
+    );
+    for (template, body, hint) in [
+        (
+            "index.html",
+            "<h1>{{ site.titel }}</h1>",
+            Some("did you mean `site.title`?"),
+        ),
+        (
+            "404.html",
+            "<h1>{{ site.titel }}</h1>",
+            Some("did you mean `site.title`?"),
+        ),
+        ("tags.html", "<ul>{{ no_such_var }}</ul>", None),
+        ("tag.html", "<ul>{{ no_such_var }}</ul>", None),
+    ] {
+        write_site_file(&site, &format!("templates/{template}"), body);
+        for cmd in ["build", "check"] {
+            let diagnostics = failing_diagnostics(&site, cmd);
+            let d = diagnostics
+                .iter()
+                .find(|d| d["code"] == "template-render")
+                .unwrap_or_else(|| panic!("{cmd} {template}: {diagnostics:?}"));
+            // No content file caused it: the template itself is the location.
+            assert_eq!(d["file"], format!("templates/{template}"), "{cmd}: {d}");
+            let message = d["message"].as_str().unwrap();
+            assert!(
+                message.starts_with(&format!(
+                    "failed to render template `{template}` (templates/{template})"
+                )),
+                "{cmd}: {message}"
+            );
+            if let Some(hint) = hint {
+                assert_eq!(d["hint"], hint, "{cmd}: {d}");
+            }
+        }
+        fs::remove_file(site.join("templates").join(template)).unwrap();
+    }
+    // With the broken templates gone, the site builds again.
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_build_render_error_hint_walks_nested_fields() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Nested", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-a.md",
+        "---\ntitle: A\nextra:\n  author: Jane\n---\nbody\n",
+    );
+    write_site_file(
+        &site,
+        "templates/post.html",
+        "{% extends \"base.html\" %}\n{% block content %}{{ page.extra.autor }}{% endblock %}\n",
+    );
+    let diagnostics = failing_diagnostics(&site, "build");
+    let d = &diagnostics[0];
+    assert_eq!(d["code"], "template-render");
+    assert_eq!(d["file"], "content/posts/2024-01-01-a.md");
+    assert_eq!(d["hint"], "did you mean `page.extra.author`?", "{d}");
+}
+
+#[test]
+fn test_build_shortcode_render_error_points_at_the_call() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Shortcode Render", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "templates/shortcodes/badge.html",
+        "<span>{{ label }}</span>",
+    );
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-a.md",
+        "---\ntitle: A\n---\n\nIntro.\n\n{{< badge() >}}\n",
+    );
+    for cmd in ["build", "check"] {
+        let diagnostics = failing_diagnostics(&site, cmd);
+        assert_eq!(diagnostics.len(), 1, "{cmd}: {diagnostics:?}");
+        let d = &diagnostics[0];
+        assert_eq!(d["code"], "shortcode-render", "{cmd}: {d}");
+        assert_eq!(d["file"], "content/posts/2024-01-01-a.md");
+        assert_eq!(d["line"], 7, "{cmd}: {d}");
+        let message = d["message"].as_str().unwrap();
+        assert!(message.contains("badge"), "{message}");
+        // The actual cause (the missing variable) must be in the message.
+        assert!(message.contains("label"), "{message}");
+    }
+}
+
+#[test]
+fn test_build_broken_user_shortcode_template_is_located() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Shortcode Parse", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "templates/shortcodes/badge.html",
+        "<span>\n{% if label %}{{ label }}\n</span>\n",
+    );
+    for cmd in ["build", "check"] {
+        let diagnostics = failing_diagnostics(&site, cmd);
+        let d = diagnostics
+            .iter()
+            .find(|d| d["file"] == "templates/shortcodes/badge.html")
+            .unwrap_or_else(|| panic!("{cmd}: {diagnostics:?}"));
+        assert_eq!(d["code"], "template-parse", "{cmd}: {d}");
+        assert_eq!(d["severity"], "error");
+        assert!(d["line"].as_u64().is_some(), "{cmd}: {d}");
+    }
+    assert!(
+        !site.join("dist").exists(),
+        "a failed build writes no output"
+    );
+}

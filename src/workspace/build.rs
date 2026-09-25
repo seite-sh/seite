@@ -91,7 +91,9 @@ pub fn build_workspace(
             .iter()
             .filter(|d| d.code == "template-parse")
         {
-            human::warning(&d.to_string());
+            // Workspace-relative, like the config warnings above: a bare
+            // `templates/…` would name the workspace's own templates dir.
+            human::warning(&d.clone().under(site_dir).to_string());
         }
         human::success(&result.stats.human_display());
 

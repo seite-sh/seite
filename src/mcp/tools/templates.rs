@@ -822,6 +822,51 @@ mod tests {
     }
 
     #[test]
+    fn test_list_templates_reports_broken_base_collection_index_and_data() {
+        let (tmp, mut state) = site("");
+        write(tmp.path(), "templates/base.html", "<html>{% if %}</html>");
+        write(
+            tmp.path(),
+            "templates/posts-index.html",
+            "{% for p in collections %}{% endfor %}",
+        );
+        write(tmp.path(), "data/authors.yaml", "jane: [unclosed\n");
+
+        let out = call_ok(&mut state, "seite_list_templates", serde_json::json!({}));
+        // The agent learns the base template is broken instead of a silent fallback.
+        let base_err = out["base_template"]["error"].as_str().unwrap();
+        assert!(base_err.starts_with("base.html does not parse"), "{out}");
+        assert_eq!(out["base_template"]["path"], "templates/base.html");
+        let warnings: Vec<&str> = out["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap())
+            .collect();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.starts_with("base.html does not parse")),
+            "{warnings:?}"
+        );
+        // A broken data file is surfaced with the file name, not swallowed.
+        let data_err = out["data"]["error"].as_str().unwrap();
+        assert!(data_err.contains("authors.yaml"), "{data_err}");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.starts_with("data files:") && w.contains("authors.yaml")),
+            "{warnings:?}"
+        );
+        let user = out["user_templates"].as_array().unwrap();
+        let index = user
+            .iter()
+            .find(|t| t["name"] == "posts-index.html")
+            .unwrap();
+        assert_eq!(index["kind"], "collection_index");
+    }
+
+    #[test]
     fn test_list_templates_defaults_and_bad_args() {
         let (_tmp, mut state) = site("");
         let out = call_ok(&mut state, "seite_list_templates", serde_json::json!({}));

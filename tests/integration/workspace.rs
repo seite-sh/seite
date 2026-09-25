@@ -451,3 +451,88 @@ fn test_workspace_check_reports_each_site() {
         .failure()
         .stderr(predicate::str::contains("unknown site 'nope'"));
 }
+
+#[test]
+fn test_workspace_build_locates_problems_under_the_site_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["alpha", "beta"]);
+    // The workspace has its own templates/ dir, so a bare
+    // `templates/base.html` would point at the wrong file.
+    assert!(tmp.path().join("templates").is_dir());
+    write_site_file(
+        &tmp.path().join("sites/beta"),
+        "templates/base.html",
+        "<html>{% if %}</html>",
+    );
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "template fallback is a warning");
+    let doc = json_stdout(&output);
+    let warnings: Vec<&str> = doc["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.starts_with("sites/beta/templates/base.html:1:13: warning[template-parse]")),
+        "{warnings:?}"
+    );
+
+    // A config syntax error fails the build, located in that site's seite.toml.
+    let config_path = tmp.path().join("sites/alpha/seite.toml");
+    let mut config = fs::read_to_string(&config_path).unwrap();
+    config.push_str("[site\n");
+    let line = config.lines().count();
+    fs::write(&config_path, config).unwrap();
+    let output = page_cmd()
+        .args(["--json", "build"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let doc = json_stdout(&output);
+    let d = &doc["error"]["diagnostics"][0];
+    assert_eq!(d["code"], "config-invalid", "{doc}");
+    assert_eq!(d["file"], "sites/alpha/seite.toml");
+    assert_eq!(d["line"], line);
+}
+
+#[test]
+fn test_workspace_add_checks_real_sites_not_config_text() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    // The scaffold's commented-out example is named "blog"; the workspace
+    // itself is named "ws". Neither is a site.
+    for name in ["blog", "ws"] {
+        page_cmd()
+            .args(["workspace", "add", name, "--collections", "posts"])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+        assert!(tmp
+            .path()
+            .join("sites")
+            .join(name)
+            .join("seite.toml")
+            .is_file());
+    }
+    // A real duplicate is still refused.
+    page_cmd()
+        .args(["workspace", "add", "blog", "--collections", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "site 'blog' already exists in the workspace",
+        ));
+}
