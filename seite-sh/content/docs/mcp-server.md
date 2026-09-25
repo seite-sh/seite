@@ -35,7 +35,16 @@ No file parsing. No guessing. The AI tool gets clean data and can focus on what 
 
 ## How It Works
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. Claude Code launches it automatically based on the configuration in `.claude/settings.json` (created by `seite init` or added with `seite upgrade`: see the [configuration docs](/docs/configuration) for details on `seite.toml`):
+The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. `seite init` declares it in the project config of every coding agent you select (`--agents`, default all), and `seite upgrade` adds it to existing projects, merging into configs you already have:
+
+| Agent | Project config | One-time step |
+|-------|----------------|---------------|
+| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` in `.claude/settings.json`) | May ask you to approve the server on first open; check with `/mcp` |
+| Codex CLI | `.codex/config.toml` | Codex only loads project config for trusted projects: accept the trust prompt on first run, then `codex mcp list` shows it |
+| Cursor | `.cursor/mcp.json` | Approve it in Cursor's MCP settings, or run `cursor-agent mcp enable seite` |
+| OpenCode | `opencode.json` | None — it starts automatically |
+
+Claude Code and Cursor share the same JSON shape:
 
 ```json
 {
@@ -48,7 +57,37 @@ The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using
 }
 ```
 
-This is scaffolded by `seite init` and can be added to existing projects with `seite upgrade`.
+Codex (`.codex/config.toml`):
+
+```toml
+[mcp_servers.seite]
+command = "seite"
+args = ["mcp"]
+```
+
+OpenCode (`opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "seite": { "type": "local", "command": ["seite", "mcp"], "enabled": true }
+  }
+}
+```
+
+`seite upgrade` also migrates any older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
+
+Other MCP clients (Codex CLI, OpenCode, Cursor, ...) run the same `seite mcp` command from the site directory.
+
+### Protocol versions
+
+The server negotiates the MCP revision with each client:
+
+- **`initialize` handshake** — revisions `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`. The server answers with the version the client asks for, or `2025-11-25` if it asks for one it doesn't know.
+- **Stateless requests** — revision `2026-07-28`: `server/discover` lists the supported versions, and each request declares its version in `_meta`. An unsupported version gets an `UnsupportedProtocolVersionError` (`-32022`) listing the supported ones.
+
+Newer fields are only sent to clients that negotiated a revision defining them: tool `annotations` (read-only/destructive/idempotent hints) from `2025-03-26`, tool `title`, `outputSchema`, and `structuredContent` from `2025-06-18`. The `initialize`/`server/discover` result includes `instructions` telling the agent when to use the server instead of reading files.
 
 ## Resources
 
@@ -60,15 +99,28 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Documentation page | `seite://docs/{slug}` | Full markdown content of a specific doc page |
 | Site configuration | `seite://config` | Current `seite.toml` serialized as JSON |
 | Content overview | `seite://content` | All collections with item counts |
-| Collection items | `seite://content/{collection}` | Items in a collection with metadata (title, date, tags, slug, url, draft status) |
+| Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
 | Themes | `seite://themes` | Available bundled and installed themes |
-| MCP configuration | `seite://mcp-config` | The `.claude/settings.json` MCP server configuration |
+| MCP configuration | `seite://mcp-config` | Each agent's project config that exists: `.mcp.json` and `.claude/settings.json` (Claude Code), `.cursor/mcp.json`, `opencode.json`, `.codex/config.toml` (as JSON) |
 
 Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`) are only available when running inside a page project directory.
 
+`resources/templates/list` advertises the parameterized URIs `seite://content/{collection}` and `seite://docs/{slug}`.
+
 ## Tools
 
-Tools are actions that AI tools can execute.
+Tools are actions that AI tools can execute. A tool-execution failure (bad arguments, no site found, a failed build, an unknown theme, an existing file without `overwrite`, ...) comes back as a normal result with `isError: true` and an actionable message — only a missing/unknown tool name is a protocol-level error.
+
+A successful result is compact JSON text; clients on `2025-06-18` or newer also get the same object as `structuredContent`, and every tool except `seite_lookup_docs` declares an `outputSchema` for it.
+
+| Tool | Changes files? |
+|------|----------------|
+| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check` | No (read-only — `seite_check` renders into a temporary directory that's discarded, never touching `dist/`) |
+| `seite_build` | Writes the output directory |
+| `seite_create_content` | Creates a content file (replaces one only with `overwrite: true`) |
+| `seite_update_frontmatter` | Rewrites one file's frontmatter |
+| `seite_apply_theme` | Writes `templates/base.html` (backs up a customized one) |
+| `seite_create_collection` | Rewrites `seite.toml`, creates a content directory |
 
 ### seite_build
 
@@ -77,33 +129,92 @@ Build the site to the output directory.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `drafts` | boolean | No | Include draft content in the build (default: false) |
+| `strict` | boolean | No | Fail (`isError`) if the build produced warnings or broken internal links (default: false) |
 
-Returns build statistics including pages built per collection, timing, and any errors.
+Returns build statistics, `warnings` (e.g. a custom template that failed to parse and fell back to the built-in default), `broken_links` and `missing_assets` (each `[{target, sources}]` — internal links pointing at pages that don't exist, and asset references with no matching file), and `diagnostics` (the same structured list `seite_check` returns: severity, stable `code`, message, and source `file`/`line` when known).
+
+### seite_check
+
+Report every problem in the site without touching the output directory — the same checks as `seite check`: config syntax and unknown keys, frontmatter, shortcodes, data files, templates, a full render, broken internal links, and missing assets.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `drafts` | boolean | No | Also check draft content (default: false) |
+| `strict` | boolean | No | Treat warnings as failures too (default: false) |
+
+Returns `ok` (false when there are errors, or any warning with `strict: true`), `summary` (`{errors, warnings}` counts), and `diagnostics` — each with `severity`, a stable `code` (e.g. `frontmatter-parse`, `broken-link`, `config-unknown-key`), `message`, and `file`/`line`/`column`/`hint` when known. Run it after making changes to catch problems before building.
 
 ### seite_create_content
 
-Create a new content file with frontmatter.
+Create a new content file with frontmatter (same rules as `seite new`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `collection` | string | Yes | Collection name (`posts`, `docs`, or `pages`) |
+| `collection` | string | Yes | Collection name, e.g. `posts`, `docs`, `pages`, `changelog`, `roadmap` (singular aliases like `post` work) |
 | `title` | string | Yes | Title of the content |
+| `slug` | string | No | Filename slug (lowercase letters, digits, `-`, `_`); defaults to a slug of the title |
+| `description` | string | No | Frontmatter description (meta description and listings) |
 | `tags` | string[] | No | Tags for the content |
-| `body` | string | No | Markdown body content |
-| `draft` | boolean | No | Create as draft |
+| `body` | string | No | Markdown body content; omit for frontmatter only |
+| `draft` | boolean | No | Create as draft (default: false) |
+| `weight` | integer | No | Ordering weight for non-date collections (lower sorts first) |
+| `extra` | object | No | Arbitrary frontmatter data exposed to templates as `page.extra` |
+| `subdir` | string | No | Sub-directory inside a nested collection, e.g. `guides` (docs only) |
+| `lang` | string | No | Language code for a translation (must be configured under `[languages]`); adds a `.{lang}.md` suffix |
+| `overwrite` | boolean | No | Replace the file if it already exists (default: false — otherwise the call fails) |
 
-Returns the file path, URL, and slug of the created content.
+Returns the source `path` (relative to the site root) and the `url` it will be published at.
+
+### seite_get_page
+
+Inspect one content file as the build sees it. Pass exactly one of:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | One of | Source file, relative to the site root (`content/docs/guides/intro.md`) or to the content directory |
+| `url` | string | One of | Published URL (`/docs/guides/intro`; a full URL on the site's `base_url` also works) |
+
+Returns `path`, `collection`, `url`, `slug`, `lang`, `draft`, `date`, the resolved `frontmatter` (e.g. a date taken from the filename), `word_count`, `reading_time`, the markdown `body`, the rendered body `html` (shortcodes + markdown, without the page template; `null` with a `render_error` if rendering fails), and `output_path` when the page has been built.
+
+### seite_update_frontmatter
+
+Edit only the frontmatter of a content file. The markdown body is kept byte-for-byte.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Content file (`.md`) inside the content directory |
+| `set` | object | No | Top-level keys to add or replace (e.g. `{"tags": ["rust"], "draft": false}`) |
+| `unset` | string[] | No | Top-level keys to remove (`title` can't be removed) |
+
+The result must still parse and keep its required fields (`title`; a date for dated collections, from `date` or the filename). Paths outside the content directory are refused. Edits are targeted: only the lines of the keys you set or unset change (new keys are appended at the end of the frontmatter), so comments, key order, and the formatting of every other key are preserved. If the frontmatter uses YAML the line editor can't follow (e.g. a flow mapping), it is re-serialized instead and the result's `notes` say so. Repeating the same update writes nothing (`changed: false`).
 
 ### seite_search
 
-Search site content by keywords.
+Search site content (including drafts) by keyword.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | string | Yes | Search keywords |
-| `collection` | string | No | Limit search to a specific collection |
+| `query` | string | Yes | Search keywords (case-insensitive substring match) |
+| `collection` | string | No | Limit search to a specific collection (singular aliases work) |
+| `limit` | integer | No | Maximum results to return, 1-100 (default: 20) |
 
-Matches against titles, descriptions, and tags. Returns up to 20 results with metadata.
+Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`.
+
+### seite_content_stats
+
+Content health overview, optionally for one `collection`: item and draft counts, items missing a `description`, dated items without tags, future-dated items, files that fail to parse, and — on multilingual sites — default-language items missing a translation, per configured language. Lists are capped at 50 per category; the `totals` counts are exact.
+
+### seite_list_templates
+
+No parameters. Returns what an agent needs before editing templates: the user templates in `templates/` (and which embedded defaults they override), the blocks defined in the active `base.html`, the Tera context variables available to each template kind (item pages, homepage, collection indexes, 404, tag pages, shortcodes), built-in and custom shortcodes with their parameters and usage, and the keys of loaded data files.
+
+### seite_create_collection
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `preset` | string | Yes | `posts`, `docs`, `pages`, `changelog`, `roadmap`, or `trust` |
+
+Adds the collection to `seite.toml` and creates its content directory — the same as `seite collection add`. Fails if the collection already exists.
 
 ### seite_apply_theme
 
@@ -111,7 +222,9 @@ Apply a bundled or installed theme to the site.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, or an installed theme) |
+| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`, or an installed theme) |
+
+If the current `base.html` has been customized (it matches no known theme), it's backed up to `base.html.bak` (or `base.html.bak.N`) before being replaced, and the backup path is returned.
 
 ### seite_lookup_docs
 
@@ -137,13 +250,13 @@ Say you're using Claude Code and ask: "Add a new blog post summarizing our three
 You can test the MCP server manually by sending JSON-RPC messages:
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | seite mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}' | seite mcp
 ```
 
 A full session requires the initialization handshake first, then queries:
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}\n' | seite mcp
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}\n{"jsonrpc":"2.0","method":"notifications/initialized"}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' | seite mcp
 ```
 
 ## Next Steps

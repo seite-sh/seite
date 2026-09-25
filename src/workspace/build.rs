@@ -1,9 +1,11 @@
 use std::path::Path;
 
 use crate::build::{self, links, BuildOptions, BuildResult};
+use crate::diagnostics::Diagnostics;
+use crate::error::PageError;
 use crate::output::{human, CommandOutput};
 
-use super::{load_site_in_workspace, WorkspaceConfig};
+use super::{load_site_in_workspace_with_diagnostics, WorkspaceConfig};
 
 pub struct WorkspaceBuildOptions {
     pub include_drafts: bool,
@@ -12,6 +14,8 @@ pub struct WorkspaceBuildOptions {
 }
 
 pub struct WorkspaceBuildResult {
+    /// Per-site results. Each result's `diagnostics` starts with the site's
+    /// config warnings (`config-unknown-key`), with site-relative files.
     pub site_results: Vec<(String, BuildResult)>,
 }
 
@@ -32,6 +36,14 @@ impl WorkspaceBuildResult {
 }
 
 /// Build all (or filtered) sites in a workspace.
+///
+/// Each site's `seite.toml` is loaded with diagnostics, so unknown keys are
+/// warned about (as `sites/<name>/seite.toml:line:col: warning[...]`) like in
+/// a single-site build. With `strict`, every site is still built so one run
+/// reports all sites' broken links / missing assets; the build then fails
+/// once at the end with the problems as diagnostics whose files are
+/// workspace-relative (`sites/blog/content/...`), mirroring single-site
+/// `build --strict`.
 pub fn build_workspace(
     ws_config: &WorkspaceConfig,
     ws_root: &Path,
@@ -43,6 +55,8 @@ pub fn build_workspace(
 
     let total = sites.len();
     let mut site_results = Vec::new();
+    let mut strict_failures: Vec<String> = Vec::new();
+    let mut strict_diagnostics = Diagnostics::new();
 
     for (i, ws_site) in sites.iter().enumerate() {
         human::header(&format!(
@@ -52,57 +66,67 @@ pub fn build_workspace(
             ws_site.name
         ));
 
-        let (config, paths) = load_site_in_workspace(ws_root, ws_site)?;
+        let site_dir = Path::new(&ws_site.path);
+        let (config, paths, config_diagnostics) =
+            load_site_in_workspace_with_diagnostics(ws_root, ws_site).map_err(|e| match e {
+                // Locate config syntax errors in this site's seite.toml.
+                PageError::Diagnostics(d) => PageError::Diagnostics(Diagnostics::from(
+                    d.into_iter().map(|d| d.under(site_dir)).collect::<Vec<_>>(),
+                )),
+                other => other,
+            })?;
+        // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
+        for d in &config_diagnostics {
+            human::warning(&d.clone().under(site_dir).to_string());
+        }
 
         let build_opts = BuildOptions {
             include_drafts: opts.include_drafts,
             incremental: false,
         };
 
-        let result = build::build_site(&config, &paths, &build_opts)?;
+        let mut result = build::build_site(&config, &paths, &build_opts)?;
+        for d in result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "template-parse")
+        {
+            // Workspace-relative, like the config warnings above: a bare
+            // `templates/…` would name the workspace's own templates dir.
+            human::warning(&d.clone().under(site_dir).to_string());
+        }
         human::success(&result.stats.human_display());
 
         // Link validation results from the post-process pass (no extra file walk)
-        if !result.link_check.broken_links.is_empty() {
-            let grouped = links::group_broken_links(&result.link_check.broken_links);
-            let count = result.link_check.broken_links.len();
-            let target_count = grouped.len();
-
-            let header = format!(
-                "Site '{}': {count} broken internal link{} ({target_count} broken target{})",
+        let problems = crate::cli::build::print_link_report(
+            &result.link_check,
+            opts.strict,
+            Some(&ws_site.name),
+        );
+        if opts.strict && problems > 0 {
+            strict_failures.push(format!(
+                "site '{}' has {}",
                 ws_site.name,
-                if count == 1 { "" } else { "s" },
-                if target_count == 1 { "" } else { "s" },
+                crate::cli::build::problem_summary(&result.link_check),
+            ));
+            strict_diagnostics.extend(
+                links::link_diagnostics(&result.link_check, true)
+                    .into_iter()
+                    .map(|d| d.under(site_dir)),
             );
-
-            if opts.strict {
-                human::error(&header);
-            } else {
-                human::warning(&header);
-            }
-
-            for (href, sources) in &grouped {
-                human::info(&format!(
-                    "  {} (linked from {} file{})",
-                    href,
-                    sources.len(),
-                    if sources.len() == 1 { "" } else { "s" }
-                ));
-                for source in sources {
-                    human::info(&format!("    - {source}"));
-                }
-            }
-
-            if opts.strict {
-                anyhow::bail!(
-                    "Build failed: site '{}' has {count} broken internal link{}",
-                    ws_site.name,
-                    if count == 1 { "" } else { "s" },
-                );
-            }
         }
 
+        let mut diagnostics = Diagnostics::from(config_diagnostics);
+        diagnostics.extend(result.diagnostics.iter().cloned());
+        result.diagnostics = diagnostics;
         site_results.push((ws_site.name.clone(), result));
+    }
+
+    if !strict_failures.is_empty() {
+        return Err(crate::cli::build::strict_failure(
+            format!("Build failed: {}", strict_failures.join("; ")),
+            strict_diagnostics,
+        ));
     }
 
     human::header("Workspace build complete");

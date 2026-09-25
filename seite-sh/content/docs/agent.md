@@ -8,9 +8,9 @@ Most static site generators treat AI as an afterthought: a plugin, a separate AP
 
 ## Overview
 
-`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's full context: configuration, content inventory, templates, and available commands. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
+`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's live context: config, collections, content inventory, and templates. Your project's `AGENTS.md` (created by `seite init`) already covers conventions like content format and file naming, so Claude Code loads that on its own — the agent only adds what changes at runtime. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
 
-No API keys needed. It uses your Claude Code subscription directly.
+No API keys needed. It uses your Claude Code subscription directly. You can also point `seite agent` at Codex, opencode, or Cursor with `--with` — see [Other Agent Harnesses](#other-agent-harnesses).
 
 ## Setup
 
@@ -34,13 +34,12 @@ Launch an interactive session:
 seite agent
 ```
 
-Claude receives a rich system prompt containing:
-- Your site config (title, description, base URL, collections)
+Claude receives a system prompt with the live, per-project context it can't get any other way:
+- Site config (title, base URL, language)
+- Collections table (directory, URL prefix, dated, nested)
 - Content inventory (titles, dates, tags of every existing page)
 - Available templates
-- Frontmatter format with examples
-- File naming conventions
-- All `seite` CLI commands
+- A pointer to `AGENTS.md` for everything else (content format, file naming, available commands, shortcodes)
 
 You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
 
@@ -115,6 +114,51 @@ seite theme create "dark mode with neon green accents and brutalist layout"
 
 Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly. For more on themes, see the [theme gallery](/docs/theme-gallery).
 
+## Other Agent Harnesses
+
+`seite agent` defaults to Claude Code, but you can drive other coding agents with the same live site context via `--with`:
+
+```bash
+seite agent --with codex "write a post about our latest release"
+seite agent --with opencode "reorganize the docs into guides/ and reference/"
+seite agent --with cursor "add a testimonials section to the homepage"
+```
+
+Set `SEITE_AGENT` to change the default without passing `--with` every time:
+
+```bash
+export SEITE_AGENT=codex
+seite agent "fix the broken links in my content"
+```
+
+Each harness needs its own CLI installed and on `PATH`:
+
+| Harness | Binary | Install |
+|---|---|---|
+| `claude` (default) | `claude` | `npm install -g @anthropic-ai/claude-code` |
+| `codex` | `codex` | `npm install -g @openai/codex` |
+| `opencode` | `opencode` | `curl -fsSL https://opencode.ai/install \| bash` |
+| `cursor` | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
+
+If the binary isn't found, `seite agent` fails immediately with the install command instead of hanging or falling back silently.
+
+Codex has no system-prompt flag, so for `codex` and `opencode`/`cursor` the site context is prepended to the prompt itself, clearly delimited from your instructions. Auto-approving a harness's own side effects (writes, MCP servers) stays opt-in: pass the global `-y`/`--yes` flag to also pass `opencode run --auto` or `cursor-agent --force --approve-mcps`.
+
+## Stop Hooks
+
+`seite init` installs a turn-end hook for each selected coding agent. When the agent finishes a turn, the hook runs `seite check --hook <agent>`. If the site has **errors**, the agent gets the compiler-style diagnostics back (at most 40 lines) and keeps working until they're fixed; warnings never block, and a clean site produces no output at all.
+
+| Agent | Hook lives in | Notes |
+|---|---|---|
+| Claude Code | `.claude/settings.json` → `hooks.Stop` | Shown to Claude as "Stop hook feedback" |
+| Codex CLI | `.codex/hooks.json` → `hooks.Stop` | Codex runs project hooks only after you review and trust them once: open `/hooks` in Codex (they're skipped until then) |
+| Cursor | `.cursor/hooks.json` → `hooks.stop` | Needs a trusted workspace. Fires in the editor and interactive `cursor-agent`; `cursor-agent -p` doesn't run `stop` hooks |
+| OpenCode | `.opencode/plugins/seite-check.js` | A small plugin that checks on `session.idle` and sends the errors back as a prompt. Works in the TUI and `opencode serve`; one-shot `opencode run` exits before plugins finish |
+
+Loops can't run away: each hook hands the errors back at most once per turn (Claude's and Codex's `stop_hook_active`, Cursor's `loop_count`, the plugin's own flag), then lets the agent stop. The hook exits 0 on every path, stays silent outside a seite site, and never fails the session if seite itself breaks. The hook runs the `seite` found on the agent's `PATH` (often your login shell's), so keep that binary current.
+
+**Opting out:** delete the hook entry (or the plugin file). `seite upgrade` records which hooks it has installed in `.seite/config.json` (`hooks_installed`) and adds a hook only to agents that never had one, so a hook you removed stays removed. Existing projects get the hooks on their next `seite upgrade`, merged into existing hook configs without touching your other hooks.
+
 ## REPL Integration
 
 The dev server REPL also supports the agent:
@@ -127,13 +171,16 @@ This is useful for quick content creation while previewing your site.
 
 ## What the Agent Can Do
 
-The agent has access to these tools:
+With Claude Code, the agent has access to these tools, scoped to content and theme work:
 - **Read**: read any file in your project
 - **Write**: create new content files
 - **Edit**: modify existing files
 - **Glob**: find files by pattern
 - **Grep**: search file contents
-- **Bash**: run CLI commands (build, serve, deploy)
+- **`mcp__seite`**: every tool of the [seite MCP server](/docs/mcp-server)
+- **Bash**, limited to `seite <anything>`, `git status`, `git diff`, `git log`, and `ls` — no general shell access
+
+This keeps the agent able to write content, run builds, and inspect git state without handing it an unrestricted shell.
 
 ### Concrete example: writing a blog post
 
@@ -156,7 +203,34 @@ seite's agent understands your project natively. It knows the [configuration](/d
 
 ## Agent instruction scaffolding
 
-When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions and a one-line `CLAUDE.md` that imports it. This keeps one canonical instruction file for Claude Code, OpenCode, Codex, and other compatible agents. Seite also creates `.claude/settings.json` with pre-configured Claude Code permissions and MCP access.
+When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions — the one canonical instruction file that Claude Code (through a one-line `CLAUDE.md` import), Codex, OpenCode, and Cursor all read. It then sets the site up for each coding agent you pick with `--agents` (default: all four), generating every agent's files from the same bundled content:
+
+- **Claude Code** — `.mcp.json` (declares the seite MCP server), `.claude/settings.json` (permissions plus `enabledMcpjsonServers`), path-scoped guides in `.claude/rules/`, and skills in `.claude/skills/`
+- **Cursor** — `.cursor/mcp.json` and the same guides as `.cursor/rules/*.mdc` (auto-attached by `globs`)
+- **Codex CLI** — `.codex/config.toml` with `[mcp_servers.seite]`
+- **OpenCode** — `opencode.json` with the MCP server and permission defaults (allow reads, site edits, and `seite build/new/serve/theme`; ask for everything else; deny `.env` reads), plus `.opencode/commands/seite.md` so `/seite` works there too
+
+Codex, Cursor, and OpenCode read the bundled skills (`/seite`, `/theme-builder`, `/brand-identity`, `/landing-page`) from `.agents/skills/`. Agents without path-scoped rules (Codex, OpenCode) find the guides through the "Context Rules" index in `AGENTS.md`, and the "MCP Server" section lists each agent's one-time approval step.
+
+When you run `seite init` interactively, the agent picker preselects the agents it finds on your machine (their CLI on `PATH`, or a config directory like `~/.claude`, `~/.codex`, `~/.config/opencode`, `~/.cursor`). Without a terminal, the default stays all four.
+
+### The `/seite` workflow skill
+
+Every agent gets one entry point for everyday site work. Type `/seite <command>` (in Codex, `$seite <command>`), or just describe the task and the agent picks the command:
+
+| Command | What the agent does |
+|---------|---------------------|
+| `check` | Runs `seite check` (or the `seite_check` MCP tool), fixes every error at its source file and line, and re-runs until clean |
+| `new <type> "<title>"` | Creates the file with `seite new` / `seite_create_content`, writes it, then checks it |
+| `preview` | Starts `seite serve --no-repl` in the background and reports the URL |
+| `build` | Runs `seite build --json` and reports broken links, missing assets, and diagnostics |
+| `deploy` | Checks, runs `seite deploy --dry-run`, and asks you before a real deploy |
+| `theme` | Lists or applies a bundled theme, or hands off to `/theme-builder` for a custom design |
+| `collection` | Lists collections or adds a preset |
+
+The skill points at `AGENTS.md` for the details rather than repeating them, and `seite upgrade` keeps it current.
+
+`seite agent` itself drives Claude Code; the other agents work in the project directly.
 
 Existing sites can migrate without losing their custom instructions:
 
@@ -164,7 +238,7 @@ Existing sites can migrate without losing their custom instructions:
 seite upgrade
 ```
 
-The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import.
+The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import. It also adds any missing files for the selected agents (older sites are treated as `all`), merging into existing configs rather than replacing them. Change the selection with `seite upgrade --agents claude,cursor`; files of deselected agents are left in place but no longer maintained.
 
 ## Next Steps
 

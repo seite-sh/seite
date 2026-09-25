@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::config::CollectionConfig;
+use crate::diagnostics::{did_you_mean, Diagnostic, Diagnostics};
 use crate::error::Result;
 use crate::themes;
 
@@ -500,6 +501,33 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
 </div>
 {% endblock %}"##;
 
+/// Names of every embedded default template (see [`embedded_default`]).
+pub const EMBEDDED_TEMPLATE_NAMES: &[&str] = &[
+    "base.html",
+    "index.html",
+    "post.html",
+    "doc.html",
+    "docs-index.html",
+    "page.html",
+    "trust-item.html",
+    "trust-index.html",
+    "404.html",
+    "tags.html",
+    "tag.html",
+    "changelog-entry.html",
+    "changelog-index.html",
+    "roadmap-item.html",
+    "roadmap-index.html",
+    "roadmap-kanban.html",
+    "roadmap-timeline.html",
+];
+
+/// The embedded default template with this name, if any. The build uses it
+/// whenever the site's template directory does not provide the template.
+pub fn embedded_default(name: &str) -> Option<&'static str> {
+    get_default_template(name)
+}
+
 fn get_default_template(name: &str) -> Option<&'static str> {
     match name {
         "base.html" => Some(default_base()),
@@ -526,13 +554,33 @@ fn get_default_template(name: &str) -> Option<&'static str> {
 /// Load Tera templates from the user's template directory, falling back to
 /// embedded defaults for any template not provided.
 pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> Result<tera::Tera> {
+    let (tera, warnings) = load_templates_with_warnings(template_dir, collections)?;
+    for warning in &warnings {
+        eprintln!("⚠ Warning: {warning}");
+    }
+    Ok(tera)
+}
+
+/// Like [`load_templates`], but returns non-fatal problems (e.g. a user
+/// template that failed to parse, causing a fallback to the embedded defaults)
+/// as warnings instead of printing them. Callers decide how to surface them.
+pub fn load_templates_with_warnings(
+    template_dir: &Path,
+    collections: &[CollectionConfig],
+) -> Result<(tera::Tera, Vec<String>)> {
+    let mut warnings = Vec::new();
     #[allow(clippy::manual_unwrap_or_default)]
     let mut tera = if template_dir.exists() {
         let glob_pattern = format!("{}/**/*.html", template_dir.display());
         match tera::Tera::new(&glob_pattern) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("⚠ Warning: failed to parse user templates, using defaults: {e}");
+                warnings.push(format!(
+                    "failed to parse user templates in {}, using built-in defaults \
+                     (your custom templates were ignored): {}",
+                    template_dir.display(),
+                    error_chain(&e)
+                ));
                 tera::Tera::default()
             }
         }
@@ -579,12 +627,195 @@ pub fn load_templates(template_dir: &Path, collections: &[CollectionConfig]) -> 
         }
     }
 
-    Ok(tera)
+    Ok((tera, warnings))
+}
+
+/// Parse every user template under `template_dir` (including
+/// `shortcodes/*.html`) individually and report each syntax error as a
+/// `template-parse` error diagnostic with the template file and, when Tera's
+/// parser provides it, the line and column. Unlike loading the whole
+/// directory with Tera (which stops at the first bad file), this finds every
+/// broken template in one pass. Returns an empty list when all templates parse.
+pub fn template_parse_diagnostics(template_dir: &Path) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
+    if !template_dir.is_dir() {
+        return diagnostics;
+    }
+    let mut files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(template_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "html"))
+        .collect();
+    files.sort();
+    for path in files {
+        let name = path
+            .strip_prefix(template_dir)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                diagnostics.push(
+                    Diagnostic::error(
+                        "template-parse",
+                        format!("cannot read template `{name}`: {e}"),
+                    )
+                    .with_file(&path),
+                );
+                continue;
+            }
+        };
+        if let Err(e) = tera::Template::new(&name, None, &content) {
+            diagnostics.push(parse_error_diagnostic(&e, &name, &path));
+        }
+    }
+    diagnostics
+}
+
+/// Build a `template-parse` diagnostic from a Tera parse error, extracting the
+/// `--> line:col` position and the `= expected ...` explanation from pest's
+/// report.
+fn parse_error_diagnostic(err: &tera::Error, name: &str, path: &Path) -> Diagnostic {
+    let full = error_chain(err);
+    let mut line_col = None;
+    let mut explanation = Vec::new();
+    for l in full.lines() {
+        let t = l.trim();
+        if let Some(pos) = t.strip_prefix("--> ") {
+            if let Some((a, b)) = pos.split_once(':') {
+                if let (Ok(a), Ok(b)) = (a.trim().parse::<usize>(), b.trim().parse::<usize>()) {
+                    line_col.get_or_insert((a, b));
+                }
+            }
+        } else if let Some(rest) = t.strip_prefix("= ") {
+            explanation.push(rest.to_string());
+        }
+    }
+    let detail = if explanation.is_empty() {
+        full.lines().next().unwrap_or_default().to_string()
+    } else {
+        explanation.join("; ")
+    };
+    let mut d = Diagnostic::error(
+        "template-parse",
+        format!("syntax error in template `{name}`: {detail}"),
+    )
+    .with_file(path);
+    if let Some((line, col)) = line_col {
+        d = d.with_line(line).with_column(col);
+    }
+    d
+}
+
+/// Build a `template-render` diagnostic for a failed render of `template`.
+///
+/// `source` is the content file being rendered (when there is one); the
+/// diagnostic points at it and names the template (with its path under
+/// `template_dir` when it is a user template). The message carries Tera's full
+/// cause chain, e.g. ``Variable `page.titel` not found in context``, and a
+/// did-you-mean hint is added for unknown variables using the keys of `ctx`.
+pub fn render_error_diagnostic(
+    err: &tera::Error,
+    template: &str,
+    source: Option<&Path>,
+    template_dir: &Path,
+    root: &Path,
+    ctx: &tera::Context,
+) -> Diagnostic {
+    let rel = |p: &Path| p.strip_prefix(root).unwrap_or(p).to_path_buf();
+    let user_template = template_dir.join(template);
+    let is_user_template = user_template.is_file();
+    let template_desc = if is_user_template {
+        format!("template `{template}` ({})", rel(&user_template).display())
+    } else {
+        format!("built-in template `{template}`")
+    };
+    let chain = error_chain(err);
+    let message = match source {
+        Some(src) => format!(
+            "failed to render {} with {template_desc}: {chain}",
+            rel(src).display()
+        ),
+        None => format!("failed to render {template_desc}: {chain}"),
+    };
+    let mut d = Diagnostic::error("template-render", message);
+    d = match source {
+        Some(src) => d.with_file(rel(src)),
+        None if is_user_template => d.with_file(rel(&user_template)),
+        None => d,
+    };
+    if let Some(hint) = unknown_variable_hint(&chain, ctx) {
+        d = d.with_hint(hint);
+    }
+    d
+}
+
+/// For ``Variable `a.b` not found`` errors, suggest the closest existing key:
+/// among the fields of `a` when `a` exists (and is an object), otherwise among
+/// the context's top-level keys.
+fn unknown_variable_hint(chain: &str, ctx: &tera::Context) -> Option<String> {
+    let start = chain.find("Variable `")? + "Variable `".len();
+    let rest = &chain[start..];
+    let var = &rest[..rest.find('`')?];
+    let json = ctx.clone().into_json();
+    let obj = json.as_object()?;
+    let mut parts = var.split('.');
+    let top = parts.next()?;
+    let Some(mut current) = obj.get(top) else {
+        return did_you_mean(top, obj.keys().map(String::as_str));
+    };
+    // Walk down existing object keys; suggest at the first missing segment.
+    let mut path = top.to_string();
+    for segment in parts {
+        let map = current.as_object()?;
+        match map.get(segment) {
+            Some(next) => {
+                current = next;
+                path.push('.');
+                path.push_str(segment);
+            }
+            None => {
+                let best = did_you_mean(segment, map.keys().map(String::as_str))?;
+                let suggestion = best
+                    .trim_start_matches("did you mean `")
+                    .trim_end_matches("`?");
+                return Some(format!("did you mean `{path}.{suggestion}`?"));
+            }
+        }
+    }
+    None
+}
+
+/// Render an error and all of its sources (Tera nests the useful detail —
+/// file, line, and the parser message — in the source chain).
+pub(crate) fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(s) = source {
+        let msg = s.to_string();
+        if !out.contains(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        source = s.source();
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_embedded_template_names_all_resolve() {
+        for name in EMBEDDED_TEMPLATE_NAMES {
+            assert!(embedded_default(name).is_some(), "{name}");
+        }
+        assert!(embedded_default("nope.html").is_none());
+    }
 
     #[test]
     fn test_default_base_is_non_empty() {
@@ -684,6 +915,85 @@ mod tests {
         let tera = load_templates(&tpl_dir, &[]).unwrap();
         // Our custom template should be loaded
         assert!(tera.get_template("base.html").is_ok());
+    }
+
+    #[test]
+    fn test_load_templates_with_warnings_reports_parse_fallback() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl_dir = tmp.path().join("templates");
+        std::fs::create_dir_all(&tpl_dir).unwrap();
+        std::fs::write(tpl_dir.join("base.html"), "<html>{% if %}</html>").unwrap();
+        let (tera, warnings) = load_templates_with_warnings(&tpl_dir, &[]).unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("failed to parse user templates"));
+        assert!(warnings[0].contains("base.html"), "{}", warnings[0]);
+        // Falls back to the embedded default.
+        assert!(tera.get_template("base.html").is_ok());
+    }
+
+    #[test]
+    fn test_template_parse_diagnostics_reports_each_file_with_location() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path().join("templates");
+        std::fs::create_dir_all(dir.join("shortcodes")).unwrap();
+        std::fs::write(dir.join("ok.html"), "<p>{{ page.title }}</p>").unwrap();
+        std::fs::write(dir.join("post.html"), "<html>\n<body>\n{% if %}\n</body>").unwrap();
+        std::fs::write(dir.join("shortcodes/bad.html"), "{{ x ").unwrap();
+        let diags = template_parse_diagnostics(&dir).into_vec();
+        assert_eq!(diags.len(), 2, "{diags:?}");
+        let post = diags
+            .iter()
+            .find(|d| d.file.as_ref().unwrap().ends_with("post.html"))
+            .unwrap();
+        assert_eq!(post.code, "template-parse");
+        assert_eq!(post.line, Some(3), "{post}");
+        assert!(post.column.is_some());
+        assert!(post.message.contains("post.html"), "{}", post.message);
+        assert!(diags
+            .iter()
+            .any(|d| d.file.as_ref().unwrap().ends_with("shortcodes/bad.html")));
+        assert!(template_parse_diagnostics(&tmp.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn test_render_error_diagnostic_names_source_template_and_hint() {
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template("post.html", "{{ page.titel }}")
+            .unwrap();
+        let mut ctx = tera::Context::new();
+        ctx.insert("page", &serde_json::json!({"title": "x", "slug": "y"}));
+        let err = tera.render("post.html", &ctx).unwrap_err();
+        let d = render_error_diagnostic(
+            &err,
+            "post.html",
+            Some(Path::new("/site/content/posts/a.md")),
+            Path::new("/nonexistent"),
+            Path::new("/site"),
+            &ctx,
+        );
+        assert_eq!(d.code, "template-render");
+        assert_eq!(d.file.as_deref(), Some(Path::new("content/posts/a.md")));
+        assert!(d.message.contains("post.html"), "{}", d.message);
+        assert!(d.message.contains("page.titel"), "{}", d.message);
+        assert_eq!(d.hint.as_deref(), Some("did you mean `page.title`?"));
+    }
+
+    #[test]
+    fn test_unknown_variable_hint_top_level() {
+        let mut ctx = tera::Context::new();
+        ctx.insert("site", &serde_json::json!({}));
+        assert_eq!(
+            unknown_variable_hint("Variable `sit.title` not found", &ctx).as_deref(),
+            Some("did you mean `site`?")
+        );
+        assert!(unknown_variable_hint("some other error", &ctx).is_none());
+    }
+
+    #[test]
+    fn test_load_templates_with_warnings_clean_dir_has_none() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (_, warnings) = load_templates_with_warnings(&tmp.path().join("missing"), &[]).unwrap();
+        assert!(warnings.is_empty());
     }
 
     #[test]

@@ -12,6 +12,10 @@ Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). 
 | `docs` | Sidebar layout for documentation |
 | `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |
 | `bento` | Card grid layout with rounded corners and soft shadows |
+| `landing` | Marketing landing page with hero section |
+| `terminal` | Monospace hacker aesthetic, green-on-black |
+| `magazine` | Multi-column editorial layout |
+| `academic` | Clean scholarly style with serif typography |
 
 Apply with `seite theme apply <name>`. This overwrites `templates/base.html`.
 

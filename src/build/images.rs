@@ -1505,6 +1505,7 @@ mod tests {
             static_dir: tmp.path().join("nonexistent_static"),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection::default();
         let result = process_images(&paths, &config).unwrap();
@@ -1529,6 +1530,7 @@ mod tests {
             static_dir: tmp.path().join("static"),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
 
         clear_private_static_output(&paths).unwrap();
@@ -1549,6 +1551,7 @@ mod tests {
             static_dir: tmp.path().join("static"),
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection::default();
         let result = process_images(&paths, &config).unwrap();
@@ -1572,6 +1575,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection::default();
         let result = process_images(&paths, &config).unwrap();
@@ -1593,6 +1597,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection::default();
         // Should not fail — just warns and skips the invalid image
@@ -1622,6 +1627,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![50],
@@ -1663,6 +1669,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![480, 800, 1200], // All larger than the 50px image
@@ -1745,6 +1752,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![50],
@@ -1779,6 +1787,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![50],
@@ -1812,6 +1821,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![50],
@@ -1850,6 +1860,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![], // No resize widths
@@ -1887,6 +1898,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![150, 50, 100], // Unsorted widths
@@ -1925,6 +1937,7 @@ mod tests {
             static_dir,
             data_dir: tmp.path().join("data"),
             public_dir: tmp.path().join("public"),
+            subdomain_output_root: tmp.path().join("dist-subdomains"),
         };
         let config = ImageSection {
             widths: vec![50],

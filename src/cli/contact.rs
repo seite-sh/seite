@@ -3,8 +3,13 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
+use crate::cli::prompt;
 use crate::config::{ContactProvider, ContactSection, SiteConfig};
 use crate::output::human;
+
+/// Flag named in errors when the endpoint can't be prompted for. (`seite init`
+/// exposes the same value as `--contact-endpoint`.)
+const ENDPOINT_FLAG: &str = "--endpoint (--contact-endpoint for `seite init`)";
 
 #[derive(Args)]
 pub struct ContactArgs {
@@ -55,11 +60,13 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
 
     if site_config.contact.is_some() {
         human::info("A contact form is already configured.");
-        let replace = dialoguer::Confirm::new()
-            .with_prompt("Replace existing configuration?")
-            .default(false)
-            .interact()?;
+        let replace = prompt::confirm_or_fail(
+            "Replace existing configuration?",
+            false,
+            "replace the existing contact form configuration",
+        )?;
         if !replace {
+            crate::output::json::set_data(serde_json::json!({ "changed": false }));
             return Ok(());
         }
     }
@@ -98,6 +105,7 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
     }
 
     human::info("Run `seite build` to generate the form, or `seite serve` to preview.");
+    crate::output::json::set_data(serde_json::json!({ "changed": true, "contact": contact }));
     Ok(())
 }
 
@@ -107,6 +115,7 @@ fn run_remove() -> anyhow::Result<()> {
 
     if site_config.contact.is_none() {
         human::info("No contact form configured.");
+        crate::output::json::set_data(serde_json::json!({ "changed": false }));
         return Ok(());
     }
 
@@ -121,6 +130,7 @@ fn run_remove() -> anyhow::Result<()> {
     fs::write(&config_path, new_contents)?;
 
     human::success("Removed [contact] section from seite.toml");
+    crate::output::json::set_data(serde_json::json!({ "changed": true }));
     human::info(
         "Note: Any {{< contact_form() >}} shortcodes in content will show an error on next build.",
     );
@@ -131,19 +141,20 @@ fn run_status() -> anyhow::Result<()> {
     let config_path = PathBuf::from("seite.toml");
     let site_config = SiteConfig::load(&config_path)?;
 
+    crate::output::json::set_data(serde_json::json!({ "contact": site_config.contact }));
     match &site_config.contact {
         Some(contact) => {
-            println!("Contact Form Configuration:");
-            println!("  Provider: {}", provider_display_name(&contact.provider));
-            println!("  Endpoint: {}", contact.endpoint);
+            crate::human_println!("Contact Form Configuration:");
+            crate::human_println!("  Provider: {}", provider_display_name(&contact.provider));
+            crate::human_println!("  Endpoint: {}", contact.endpoint);
             if let Some(ref region) = contact.region {
-                println!("  Region:   {region}");
+                crate::human_println!("  Region:   {region}");
             }
             if let Some(ref redirect) = contact.redirect {
-                println!("  Redirect: {redirect}");
+                crate::human_println!("  Redirect: {redirect}");
             }
             if let Some(ref subject) = contact.subject {
-                println!("  Subject:  {subject}");
+                crate::human_println!("  Subject:  {subject}");
             }
         }
         None => {
@@ -181,11 +192,13 @@ pub fn prompt_contact_config(
                 ]
             };
 
-            let selection = dialoguer::Select::new()
-                .with_prompt("Select contact form provider")
-                .items(&items)
-                .default(0)
-                .interact()?;
+            let selection = prompt::select(
+                "Select contact form provider",
+                &items,
+                None,
+                "--provider",
+                &["formspree", "web3forms", "netlify", "hubspot", "typeform"],
+            )?;
 
             let name = items[selection];
             match name {
@@ -202,28 +215,27 @@ pub fn prompt_contact_config(
     let endpoint = match &args.endpoint {
         Some(e) => e.clone(),
         None => match provider {
-            ContactProvider::Formspree => dialoguer::Input::new()
-                .with_prompt("Formspree form ID (e.g., xpznqkdl)")
-                .interact_text()?,
-            ContactProvider::Web3forms => dialoguer::Input::new()
-                .with_prompt("Web3Forms access key")
-                .interact_text()?,
-            ContactProvider::Netlify => dialoguer::Input::new()
-                .with_prompt("Form name")
-                .default("contact".to_string())
-                .interact_text()?,
+            ContactProvider::Formspree => {
+                prompt::input("Formspree form ID (e.g., xpznqkdl)", None, ENDPOINT_FLAG)?
+            }
+            ContactProvider::Web3forms => {
+                prompt::input("Web3Forms access key", None, ENDPOINT_FLAG)?
+            }
+            ContactProvider::Netlify => prompt::input("Form name", Some("contact"), ENDPOINT_FLAG)?,
             ContactProvider::Hubspot => {
-                let portal_id: String = dialoguer::Input::new()
-                    .with_prompt("HubSpot portal ID")
-                    .interact_text()?;
-                let form_guid: String = dialoguer::Input::new()
-                    .with_prompt("HubSpot form GUID")
-                    .interact_text()?;
+                if !prompt::is_interactive() {
+                    return Err(prompt::missing_value(
+                        "--endpoint (HubSpot: <portal-id>/<form-guid>)",
+                        &[],
+                    ));
+                }
+                let portal_id = prompt::input("HubSpot portal ID", None, ENDPOINT_FLAG)?;
+                let form_guid = prompt::input("HubSpot form GUID", None, ENDPOINT_FLAG)?;
                 format!("{portal_id}/{form_guid}")
             }
-            ContactProvider::Typeform => dialoguer::Input::new()
-                .with_prompt("Typeform form ID (e.g., abc123XY)")
-                .interact_text()?,
+            ContactProvider::Typeform => {
+                prompt::input("Typeform form ID (e.g., abc123XY)", None, ENDPOINT_FLAG)?
+            }
         },
     };
 
@@ -231,10 +243,7 @@ pub fn prompt_contact_config(
         match &args.region {
             Some(r) => Some(r.clone()),
             None => {
-                let r: String = dialoguer::Input::new()
-                    .with_prompt("HubSpot region")
-                    .default("na1".to_string())
-                    .interact_text()?;
+                let r = prompt::input("HubSpot region", Some("na1"), "--region")?;
                 if r == "na1" {
                     None // na1 is the default, don't store it
                 } else {

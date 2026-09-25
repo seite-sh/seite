@@ -259,6 +259,7 @@ fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Resu
         .arg(archive)
         .arg("-C")
         .arg(dest_dir)
+        .stdout(crate::output::child_stdout())
         .status()?;
 
     if !status.success() {

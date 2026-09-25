@@ -89,9 +89,15 @@ mysite/
 ├── public/        # Root-level files (favicon.ico, .well-known/, _redirects)
 ├── static/        # Static assets (CSS, JS, images) → dist/static/
 ├── seite.toml      # Site configuration
-├── .claude/       # Claude Code agent configuration (includes MCP server)
-└── .seite/         # Project metadata (version tracking)
+├── AGENTS.md      # Instructions for every coding agent
+├── .claude/       # Claude Code rules, skills, permissions (+ .mcp.json, CLAUDE.md)
+├── .cursor/       # Cursor MCP config and .mdc rules
+├── .codex/        # Codex CLI MCP config
+├── .agents/       # Skills for Codex, Cursor, and OpenCode (+ opencode.json)
+└── .seite/         # Project metadata (version tracking, agent selection)
 ```
+
+The agent files cover Claude Code, Codex CLI, OpenCode, and Cursor by default. Pass `--agents claude,cursor` (any subset) to generate only the ones you use; see the [CLI reference](/docs/cli-reference#seite-init).
 
 The [`seite.toml`](/docs/configuration) file controls your site's title, description, base URL, and collections. The defaults work out of the box. You can tune settings later as needed.
 
@@ -148,6 +154,29 @@ Builds are fast: typically under a second, even with dozens of pages. Every buil
 - **LLM discovery files** at `/llms.txt` and `/llms-full.txt`, making your site discoverable by AI search engines and coding agents.
 
 This triple output (HTML + Markdown + LLM files) is what makes seite an AI-native static site generator. Your content is readable by browsers, search engines, and AI models from a single build command.
+
+## Checking Your Site
+
+Before (or instead of) a full build, `seite check` validates your config, frontmatter, shortcodes, data files, templates, and internal links and assets:
+
+```bash
+seite check
+```
+
+It renders the site into a temporary directory to catch real render errors and broken links, then throws that directory away — `dist/` is never created or touched, so it's safe to run at any time, including in an editor or CI as a fast "does this still work" gate. Every problem is reported at once, compiler-style:
+
+```
+content/posts/hello-world.md:8:1: warning[broken-link]: link to `/posts/goodbye-world` does not match any page
+  hint: did you mean `/posts/hello-world`?
+```
+
+Use `--strict` to also fail on warnings (like unknown `seite.toml` keys or broken links), and `--drafts` to include draft content:
+
+```bash
+seite check --strict
+```
+
+`seite build` runs the same link and asset validation as part of a normal build (reported as warnings, or errors with `seite build --strict`), so `seite check` is most useful when you want to validate content without producing output, or want the fastest possible feedback loop while editing.
 
 ## Development Server
 
@@ -234,7 +263,7 @@ After updating, bring your project's config files up to date:
 seite upgrade
 ```
 
-This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries). It's additive and non-destructive. Your existing settings are preserved.
+This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries) and any missing files for your coding agents. It's additive and non-destructive. Your existing settings are preserved.
 
 ## Next Steps
 

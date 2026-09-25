@@ -48,6 +48,10 @@ pub enum PageError {
     #[error("Data file error in {path}: {message}")]
     Data { path: PathBuf, message: String },
 
+    /// Several problems collected in one pass (see [`crate::diagnostics`]).
+    #[error("{0}")]
+    Diagnostics(crate::diagnostics::Diagnostics),
+
     #[error("{0}")]
     Other(String),
 }

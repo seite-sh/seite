@@ -1,11 +1,13 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Args;
+use serde_json::{json, Value};
 
-use crate::build::{self, links, BuildOptions};
+use crate::build::{self, links, BuildOptions, BuildResult};
 use crate::config::SiteConfig;
+use crate::diagnostics::Diagnostics;
 use crate::meta;
-use crate::output::{human, CommandOutput};
+use crate::output::{self, human, json as json_out, CommandOutput};
 use crate::workspace;
 
 #[derive(Args)]
@@ -14,7 +16,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub drafts: bool,
 
-    /// Treat broken internal links as build errors
+    /// Treat broken internal links and missing assets as build errors
     #[arg(long)]
     pub strict: bool,
 }
@@ -45,7 +47,15 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             site_filter: site_filter.map(String::from),
         };
 
-        workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;
+        let ws_result = workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;
+        let sites: serde_json::Map<String, Value> = ws_result
+            .site_results
+            .iter()
+            .map(|(name, result)| (name.clone(), build_data(result, None)))
+            .collect();
+        json_out::set_data(
+            json!({ "workspace_root": ws_root.display().to_string(), "sites": sites }),
+        );
         return Ok(());
     }
 
@@ -54,7 +64,12 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let (config, config_diagnostics) =
+        SiteConfig::load_with_diagnostics(&PathBuf::from("seite.toml"))?;
+    // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
+    for d in &config_diagnostics {
+        human::warning(&d.to_string());
+    }
     let paths = config.resolve_paths(&cwd);
 
     let opts = BuildOptions {
@@ -63,7 +78,20 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
 
     let result = build::build_site(&config, &paths, &opts)?;
+    // Point at the exact template file/line behind a template fallback warning.
+    for d in result
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "template-parse")
+    {
+        human::warning(&d.to_string());
+    }
     human::success(&result.stats.human_display());
+    if output::is_verbose() {
+        if let Some(timings) = result.stats.timings_display() {
+            crate::human_println!("{timings}");
+        }
+    }
 
     // Display subdomain build results
     for sub in &result.subdomain_builds {
@@ -79,42 +107,188 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     // Link validation results from the post-process pass (no extra file walk)
-    if !result.link_check.broken_links.is_empty() {
-        let grouped = links::group_broken_links(&result.link_check.broken_links);
-        let count = result.link_check.broken_links.len();
-        let target_count = grouped.len();
+    let problems = print_link_report(&result.link_check, args.strict, None);
+    if args.strict && problems > 0 {
+        return Err(strict_link_failure(&result.link_check));
+    }
 
+    let mut diagnostics = Diagnostics::from(config_diagnostics);
+    diagnostics.extend(result.diagnostics.iter().cloned());
+    let mut data = build_data(&result, Some(&paths.output));
+    data["diagnostics"] = serde_json::to_value(&diagnostics).unwrap_or_default();
+    json_out::set_data(data);
+    Ok(())
+}
+
+/// The `--strict` failure for broken links / missing assets.
+///
+/// With `--json` the error carries every problem as located diagnostics
+/// (`error.diagnostics` with code, file, line, hint). In human mode the
+/// grouped report was already printed, so the error is just the summary
+/// (`main` would otherwise print each problem a second time).
+pub fn strict_link_failure(check: &links::LinkCheckResult) -> anyhow::Error {
+    strict_failure(
+        format!("Build failed: {}", problem_summary(check)),
+        Diagnostics::from(links::link_diagnostics(check, true)),
+    )
+}
+
+/// A `--strict` failure with `summary` as its message. With `--json` the
+/// error carries `diagnostics` (surfaced as `error.diagnostics`); in human
+/// mode only the summary, since the caller already printed the report.
+pub fn strict_failure(summary: String, diagnostics: Diagnostics) -> anyhow::Error {
+    if output::is_json() {
+        anyhow::Error::new(crate::error::PageError::Diagnostics(diagnostics)).context(summary)
+    } else {
+        anyhow::anyhow!(summary)
+    }
+}
+
+/// Structured build summary for the `--json` envelope.
+fn build_data(result: &BuildResult, output_dir: Option<&Path>) -> Value {
+    let stats = &result.stats;
+    let timings: serde_json::Map<String, Value> = stats
+        .step_timings
+        .iter()
+        .map(|(step, ms)| (step.clone(), json!((ms * 10.0).round() / 10.0)))
+        .collect();
+    let broken_links = grouped_json(&result.link_check.broken_links);
+    let missing_assets = grouped_json(&result.link_check.missing_assets);
+    let subdomains: Vec<Value> = result
+        .subdomain_builds
+        .iter()
+        .map(|sub| {
+            json!({
+                "collection": sub.collection_name,
+                "subdomain": sub.subdomain,
+                "base_url": sub.base_url,
+                "output_dir": sub.output_dir.display().to_string(),
+                "collections": sub.stats.items_built,
+            })
+        })
+        .collect();
+    json!({
+        "output_dir": output_dir.map(|p| p.display().to_string()),
+        "collections": stats.items_built,
+        "pages_written": stats.items_built.values().sum::<usize>(),
+        "static_files_copied": stats.static_files_copied,
+        "public_files_copied": stats.public_files_copied,
+        "data_files_loaded": stats.data_files_loaded,
+        "duration_ms": stats.duration_ms,
+        "timings_ms": timings,
+        "links_checked": result.link_check.total_links_checked,
+        "broken_links": broken_links,
+        "missing_assets": missing_assets,
+        "subdomains": subdomains,
+        "warnings": json_out::warnings(),
+        "diagnostics": result.diagnostics,
+    })
+}
+
+/// Broken links / missing assets grouped by target for the `--json`
+/// envelope. `sources` lists human-readable locations (kept for
+/// compatibility); `locations` has the structured source file + line.
+fn grouped_json(links_: &[links::BrokenLink]) -> Vec<Value> {
+    links::group_by_target(links_)
+        .into_iter()
+        .map(|(target, group)| {
+            let sources: Vec<String> = group.iter().map(|l| l.location()).collect();
+            let mut locations: Vec<Value> = Vec::new();
+            for link in &group {
+                locations.push(json!({
+                    "source": link.file(),
+                    "line": link.line,
+                    "page": link.source_file,
+                    "from_template": link.from_template,
+                }));
+            }
+            let first = group[0];
+            json!({
+                "target": target,
+                "kind": first.kind,
+                "sources": sources,
+                "locations": locations,
+                "suggestion": first.suggestion,
+                // Location of the first occurrence, for convenience.
+                "source": first.file(),
+                "line": first.line,
+            })
+        })
+        .collect()
+}
+
+/// e.g. `2 broken internal links, 1 missing asset`.
+pub fn problem_summary(check: &links::LinkCheckResult) -> String {
+    let mut parts = Vec::new();
+    let broken = links::distinct_links(&check.broken_links).len();
+    if broken > 0 {
+        parts.push(format!(
+            "{broken} broken internal link{}",
+            if broken == 1 { "" } else { "s" }
+        ));
+    }
+    let missing = links::distinct_links(&check.missing_assets).len();
+    if missing > 0 {
+        parts.push(format!(
+            "{missing} missing asset{}",
+            if missing == 1 { "" } else { "s" }
+        ));
+    }
+    parts.join(", ")
+}
+
+/// Print broken links and missing assets grouped by target, each with the
+/// source file (and line) it was written in. Warnings normally, errors with
+/// `strict`. `site` prefixes the headers in workspace builds. Returns the
+/// number of problems printed.
+pub fn print_link_report(
+    check: &links::LinkCheckResult,
+    strict: bool,
+    site: Option<&str>,
+) -> usize {
+    let prefix = site.map(|s| format!("Site '{s}': ")).unwrap_or_default();
+    let sections = [
+        (&check.broken_links, "broken internal link", "broken target"),
+        (
+            &check.missing_assets,
+            "missing asset reference",
+            "missing file",
+        ),
+    ];
+    for (items, noun, target_noun) in sections {
+        if items.is_empty() {
+            continue;
+        }
+        let grouped = links::group_by_target(items);
+        let count: usize = grouped.iter().map(|(_, group)| group.len()).sum();
+        let target_count = grouped.len();
         let header = format!(
-            "Found {count} broken internal link{} ({target_count} broken target{})",
+            "{prefix}Found {count} {noun}{} ({target_count} {target_noun}{})",
             if count == 1 { "" } else { "s" },
             if target_count == 1 { "" } else { "s" },
         );
-
-        if args.strict {
+        if strict {
             human::error(&header);
         } else {
             human::warning(&header);
         }
-
-        for (href, sources) in &grouped {
+        for (href, group) in &grouped {
+            let locations: Vec<String> = group.iter().map(|l| l.location()).collect();
+            let hint = group[0]
+                .suggestion
+                .as_deref()
+                .map(|s| format!(" — did you mean {s}?"))
+                .unwrap_or_default();
             human::info(&format!(
-                "  {} (linked from {} file{})",
+                "  {} (linked from {} file{}){hint}",
                 href,
-                sources.len(),
-                if sources.len() == 1 { "" } else { "s" }
+                locations.len(),
+                if locations.len() == 1 { "" } else { "s" }
             ));
-            for source in sources {
-                human::info(&format!("    - {source}"));
+            for loc in &locations {
+                human::info(&format!("    - {loc}"));
             }
         }
-
-        if args.strict {
-            anyhow::bail!(
-                "Build failed: {count} broken internal link{}",
-                if count == 1 { "" } else { "s" },
-            );
-        }
     }
-
-    Ok(())
+    check.problem_count()
 }
