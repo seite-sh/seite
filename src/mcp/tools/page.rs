@@ -435,6 +435,187 @@ fn yaml_key(key: &str) -> serde_yaml_ng::Value {
     serde_yaml_ng::Value::String(key.to_string())
 }
 
+/// Parse frontmatter YAML as a mapping; empty (or comment-only) is `{}`.
+fn parse_mapping(yaml: &str) -> Result<serde_yaml_ng::Mapping, serde_yaml_ng::Error> {
+    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(yaml)? {
+        serde_yaml_ng::Value::Null => Ok(serde_yaml_ng::Mapping::new()),
+        other => serde_yaml_ng::from_value(other),
+    }
+}
+
+/// The key of a top-level mapping entry starting on `line` (`key: value`,
+/// `key:`, `"quoted key": value`), or `None` for anything else: indented
+/// lines, comments, blank lines, list items, and forms the scanner doesn't
+/// handle (complex `? ` keys, flow mappings, ...).
+fn top_level_key(line: &str) -> Option<serde_yaml_ng::Value> {
+    let text = line.trim_end_matches(['\n', '\r']);
+    let first = text.chars().next()?;
+    if matches!(
+        first,
+        ' ' | '\t' | '#' | '?' | '{' | '[' | '&' | '*' | '!' | '|' | '>' | '%' | '@' | '`'
+    ) || text == "-"
+        || text.starts_with("- ")
+        || text.starts_with("-\t")
+    {
+        return None;
+    }
+    let key_end = if first == '"' || first == '\'' {
+        // Closing quote: `\"` escapes in double quotes, `''` in single.
+        let bytes = text.as_bytes();
+        let mut i = 1;
+        loop {
+            match bytes.get(i)? {
+                b'\\' if first == '"' => i += 2,
+                b'\'' if first == '\'' && bytes.get(i + 1) == Some(&b'\'') => i += 2,
+                &b if b == first as u8 => break i + 1,
+                _ => i += 1,
+            }
+        }
+    } else {
+        // Plain key: up to the first `:` followed by whitespace or the end.
+        let bytes = text.as_bytes();
+        (0..bytes.len()).find(|&i| {
+            bytes[i] == b':' && bytes.get(i + 1).is_none_or(|b| *b == b' ' || *b == b'\t')
+        })?
+    };
+    let after = text[key_end..].trim_start_matches([' ', '\t']);
+    let rest = after.strip_prefix(':')?;
+    if !(rest.is_empty() || rest.starts_with([' ', '\t'])) {
+        return None;
+    }
+    let key_text = text[..key_end].trim_end();
+    if key_text.contains(" #") {
+        return None;
+    }
+    serde_yaml_ng::from_str(key_text).ok()
+}
+
+/// Line ranges (into `lines`) of each top-level entry: the key line plus its
+/// continuation — indented lines, compact (unindented) `- ` list items, and
+/// blank lines between them. Trailing blank lines and column-0 comments are
+/// not part of an entry, so comments above the next key stay put.
+fn top_level_entries(lines: &[&str]) -> Vec<(serde_yaml_ng::Value, std::ops::Range<usize>)> {
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let Some(key) = top_level_key(lines[i]) else {
+            i += 1;
+            continue;
+        };
+        let start = i;
+        let mut end = i + 1;
+        let mut j = i + 1;
+        while j < lines.len() {
+            let text = lines[j].trim_end_matches(['\n', '\r']);
+            if text.trim().is_empty() {
+                j += 1;
+                continue;
+            }
+            let continues = text.starts_with([' ', '\t'])
+                || text == "-"
+                || text.starts_with("- ")
+                || text.starts_with("-\t");
+            if !continues {
+                break;
+            }
+            j += 1;
+            end = j;
+        }
+        entries.push((key, start..end));
+        i = end;
+    }
+    entries
+}
+
+/// Apply `unset`/`set` to the frontmatter text `yaml` (everything between the
+/// `---` delimiters, starting with the rest of the opening `---` line) as
+/// targeted line edits: a replaced key's entry (key line plus continuation)
+/// is swapped for the serialized new value, unset keys' entries are removed,
+/// new keys are appended at the end, and every other line (comments, order,
+/// formatting) stays byte-identical. Keys whose value doesn't change are not
+/// touched. Values are serialized with serde_yaml. The caller must re-parse
+/// the result to validate it.
+fn edit_frontmatter_text(
+    yaml: &str,
+    original: &serde_yaml_ng::Mapping,
+    unset: &[String],
+    set: &serde_json::Map<String, serde_json::Value>,
+) -> Result<String, String> {
+    let newline = if yaml.contains("\r\n") { "\r\n" } else { "\n" };
+    let all: Vec<&str> = yaml.split_inclusive('\n').collect();
+    // The first line is the rest of the opening `---` line.
+    let (opening, lines) = all.split_first().ok_or("empty frontmatter span")?;
+    let entries = top_level_entries(lines);
+    let entry_of = |key: &str| {
+        let key = yaml_key(key);
+        let mut found = entries.iter().filter(|(k, _)| *k == key);
+        match (found.next(), found.next()) {
+            (Some((_, range)), None) => Ok(Some(range.clone())),
+            (None, _) => Ok(None),
+            (Some(_), Some(_)) => Err(format!("key '{}' appears more than once", key_text(&key))),
+        }
+    };
+
+    // Replacement text per line range; `None` for removals.
+    let mut replacements: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    let mut appended = String::new();
+    for key in unset {
+        if let Some(range) = entry_of(key)? {
+            replacements.push((range, String::new()));
+        }
+    }
+    for (key, value) in set {
+        let yaml_value = serde_yaml_ng::to_value(value).map_err(|e| e.to_string())?;
+        if original.get(yaml_key(key)) == Some(&yaml_value) {
+            continue;
+        }
+        let mut single = serde_yaml_ng::Mapping::new();
+        single.insert(yaml_key(key), yaml_value);
+        let text = serde_yaml_ng::to_string(&single).map_err(|e| e.to_string())?;
+        let text = if newline == "\n" {
+            text
+        } else {
+            text.replace('\n', newline)
+        };
+        match entry_of(key)? {
+            Some(range) => replacements.push((range, text)),
+            None => appended.push_str(&text),
+        }
+    }
+
+    replacements.sort_by_key(|(range, _)| range.start);
+    let mut out = String::with_capacity(yaml.len() + appended.len());
+    out.push_str(opening);
+    let mut next = 0;
+    for (range, text) in &replacements {
+        for line in &lines[next..range.start] {
+            out.push_str(line);
+        }
+        out.push_str(text);
+        next = range.end;
+    }
+    for line in &lines[next..] {
+        out.push_str(line);
+    }
+    if !appended.is_empty() {
+        if !out.ends_with('\n') {
+            out.push_str(newline);
+        }
+        out.push_str(&appended);
+    }
+    Ok(out)
+}
+
+fn key_text(key: &serde_yaml_ng::Value) -> String {
+    match key {
+        serde_yaml_ng::Value::String(s) => s.clone(),
+        other => serde_yaml_ng::to_string(other)
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    }
+}
+
 pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Value) -> ToolResult {
     const TOOL: &str = "seite_update_frontmatter";
     let args = Args::new(TOOL, arguments, &["path", "set", "unset"])?;
@@ -480,16 +661,12 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
             file.rel
         ))
     })?;
-    let original: serde_yaml_ng::Mapping = if yaml.trim().is_empty() {
-        serde_yaml_ng::Mapping::new()
-    } else {
-        serde_yaml_ng::from_str(yaml).map_err(|e| {
-            ToolError::new(format!(
-                "{TOOL}: the existing frontmatter of {} is not a YAML mapping: {e}",
-                file.rel
-            ))
-        })?
-    };
+    let original = parse_mapping(yaml).map_err(|e| {
+        ToolError::new(format!(
+            "{TOOL}: the existing frontmatter of {} is not a YAML mapping: {e}",
+            file.rel
+        ))
+    })?;
 
     let mut map = original.clone();
     let mut notes = Vec::new();
@@ -526,10 +703,28 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
 
     let changed = map != original;
     if changed {
-        let new_yaml = serde_yaml_ng::to_string(&map)
-            .map_err(|e| ToolError::new(format!("{TOOL}: cannot serialize frontmatter: {e}")))?;
+        // Targeted line edits keep comments and formatting of untouched keys.
+        // If the result doesn't parse back to exactly the intended mapping
+        // (exotic YAML the line scanner doesn't understand), fall back to
+        // re-serializing the whole frontmatter.
+        let edited = edit_frontmatter_text(yaml, &original, &unset, &set)
+            .ok()
+            .filter(|text| parse_mapping(text).is_ok_and(|m| m == map));
+        let new_yaml = match edited {
+            Some(text) => text,
+            None => {
+                notes.push(
+                    "the frontmatter was re-serialized; its comments and formatting were not preserved"
+                        .to_string(),
+                );
+                let text = serde_yaml_ng::to_string(&map).map_err(|e| {
+                    ToolError::new(format!("{TOOL}: cannot serialize frontmatter: {e}"))
+                })?;
+                format!("\n{text}")
+            }
+        };
         let updated = format!(
-            "{}---\n{}---{}",
+            "{}---{}---{}",
             &raw[..prefix_end],
             new_yaml,
             &raw[rest_start..]
@@ -787,6 +982,169 @@ mod tests {
         let pos = |k: &str| text.find(k).unwrap();
         assert!(pos("title: Renamed") < pos("tags:"), "{text}");
         assert!(pos("tags:") < pos("description:"), "{text}");
+    }
+
+    #[test]
+    fn test_update_frontmatter_preserves_comments_and_formatting() {
+        let (tmp, mut state) = site("");
+        let body = "\n# Body\n\nText with --- dashes.\n";
+        let original = format!(
+            "---\n\
+             # Leading comment\n\
+             title: Hello   # inline title comment\n\
+             # about tags\n\
+             tags:\n\
+             \x20 - old   # item comment\n\
+             \x20 - older\n\
+             description: >\n\
+             \x20 folded text\n\
+             \n\
+             \x20 more\n\
+             draft: false\n\
+             weight: 1 # beside weight\n\
+             # trailing comment\n\
+             ---{body}"
+        );
+        let rel = "content/docs/commented.md";
+        write(tmp.path(), rel, &original);
+
+        let out = call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({
+                "path": rel,
+                "set": { "tags": ["rust", "web"], "extra": { "hero": true, "nested": { "a": 1 } } },
+                "unset": ["draft"]
+            }),
+        );
+        assert_eq!(out["changed"], true);
+        assert!(out.get("notes").is_none(), "{out}");
+        let updated = fs::read_to_string(tmp.path().join(rel)).unwrap();
+        let expected = format!(
+            "---\n\
+             # Leading comment\n\
+             title: Hello   # inline title comment\n\
+             # about tags\n\
+             tags:\n\
+             - rust\n\
+             - web\n\
+             description: >\n\
+             \x20 folded text\n\
+             \n\
+             \x20 more\n\
+             weight: 1 # beside weight\n\
+             # trailing comment\n\
+             extra:\n\
+             \x20 hero: true\n\
+             \x20 nested:\n\
+             \x20   a: 1\n\
+             ---{body}"
+        );
+        assert_eq!(updated, expected);
+        let (fm, parsed_body) = content::parse_content_file(&tmp.path().join(rel)).unwrap();
+        assert_eq!(fm.tags, vec!["rust", "web"]);
+        assert_eq!(fm.description.as_deref(), Some("folded text\nmore\n"));
+        assert_eq!(parsed_body.trim(), body.trim());
+
+        // Replacing a list-valued key that uses a compact (unindented) list,
+        // and a nested object value, touches only those blocks.
+        let out = call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({
+                "path": rel,
+                "set": { "tags": ["one"], "extra": { "hero": false } }
+            }),
+        );
+        assert_eq!(
+            out["frontmatter"]["extra"],
+            serde_json::json!({ "hero": false })
+        );
+        let updated = fs::read_to_string(tmp.path().join(rel)).unwrap();
+        assert_eq!(
+            updated,
+            expected
+                .replace("tags:\n- rust\n- web\n", "tags:\n- one\n")
+                .replace(
+                    "extra:\n  hero: true\n  nested:\n    a: 1\n",
+                    "extra:\n  hero: false\n"
+                )
+        );
+
+        // Setting a key to the value it already has leaves its formatting alone.
+        let before = updated.clone();
+        let out = call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "weight": 1 } }),
+        );
+        assert_eq!(out["changed"], false);
+        assert_eq!(fs::read_to_string(tmp.path().join(rel)).unwrap(), before);
+    }
+
+    #[test]
+    fn test_top_level_key_forms() {
+        let key = |l: &str| top_level_key(l).map(|k| key_text(&k));
+        assert_eq!(key("title: Hello # c\n").as_deref(), Some("title"));
+        assert_eq!(key("tags:\n").as_deref(), Some("tags"));
+        assert_eq!(key("url: http://x.y/z\n").as_deref(), Some("url"));
+        assert_eq!(key("a:b: c\n").as_deref(), Some("a:b"));
+        assert_eq!(key("\"we: ird\": 1\n").as_deref(), Some("we: ird"));
+        assert_eq!(key("'it''s': 1\r\n").as_deref(), Some("it's"));
+        for other in [
+            "  nested: 1\n",
+            "# c: 1\n",
+            "- a\n",
+            "\n",
+            "{a: 1}\n",
+            "plain\n",
+        ] {
+            assert_eq!(key(other), None, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn test_update_frontmatter_falls_back_for_unscannable_yaml() {
+        let (tmp, mut state) = site("");
+        let rel = "content/docs/flow.md";
+        write(tmp.path(), rel, "---\n{title: Flow}\n---\nBody\n");
+        let out = call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "weight": 4 } }),
+        );
+        assert!(out["notes"][0].as_str().unwrap().contains("re-serialized"));
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(rel)).unwrap(),
+            "---\ntitle: Flow\nweight: 4\n---\nBody\n"
+        );
+    }
+
+    #[test]
+    fn test_update_frontmatter_crlf_and_invalid_leaves_file_alone() {
+        let (tmp, mut state) = site("");
+        let rel = "content/docs/crlf.md";
+        let original = "---\r\n# note\r\ntitle: Hi\r\ndraft: true\r\n---\r\nBody\r\n";
+        write(tmp.path(), rel, original);
+        call_ok(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "draft": false, "weight": 2 } }),
+        );
+        assert_eq!(
+            fs::read_to_string(tmp.path().join(rel)).unwrap(),
+            "---\r\n# note\r\ntitle: Hi\r\ndraft: false\r\nweight: 2\r\n---\r\nBody\r\n"
+        );
+
+        // An update that would make the frontmatter invalid writes nothing.
+        let before = fs::read_to_string(tmp.path().join(rel)).unwrap();
+        let err = call_err(
+            &mut state,
+            "seite_update_frontmatter",
+            serde_json::json!({ "path": rel, "set": { "weight": "heavy" } }),
+        );
+        assert!(err.contains("would be invalid"), "{err}");
+        assert_eq!(fs::read_to_string(tmp.path().join(rel)).unwrap(), before);
     }
 
     #[test]

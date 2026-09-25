@@ -136,7 +136,7 @@ pub static TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "seite_update_frontmatter",
         title: "Update frontmatter",
-        description: "Edit only the frontmatter of a content file under the content directory; the markdown body is preserved byte-for-byte. `set` replaces top-level keys (e.g. {\"tags\": [\"rust\"], \"draft\": false, \"extra\": {...}}), `unset` removes keys. The result must still parse and keep its required fields (title; a date for dated collections). Comments inside the frontmatter are not preserved. Returns the new frontmatter.",
+        description: "Edit only the frontmatter of a content file under the content directory; the markdown body is preserved byte-for-byte. `set` replaces top-level keys (e.g. {\"tags\": [\"rust\"], \"draft\": false, \"extra\": {...}}), `unset` removes keys. The result must still parse and keep its required fields (title; a date for dated collections); nothing is written otherwise. Only the lines of the keys you set/unset change (new keys go at the end), so comments and the formatting of other keys are preserved. Returns the new frontmatter.",
         input_schema: page::update_frontmatter_input_schema,
         output_schema: Some(page::update_frontmatter_output_schema),
         annotations: Annotations {

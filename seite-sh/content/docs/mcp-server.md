@@ -186,7 +186,7 @@ Edit only the frontmatter of a content file. The markdown body is kept byte-for-
 | `set` | object | No | Top-level keys to add or replace (e.g. `{"tags": ["rust"], "draft": false}`) |
 | `unset` | string[] | No | Top-level keys to remove (`title` can't be removed) |
 
-The result must still parse and keep its required fields (`title`; a date for dated collections, from `date` or the filename). Paths outside the content directory are refused. Unknown keys and key order are preserved; YAML comments inside the frontmatter are not. Repeating the same update writes nothing (`changed: false`).
+The result must still parse and keep its required fields (`title`; a date for dated collections, from `date` or the filename). Paths outside the content directory are refused. Edits are targeted: only the lines of the keys you set or unset change (new keys are appended at the end of the frontmatter), so comments, key order, and the formatting of every other key are preserved. If the frontmatter uses YAML the line editor can't follow (e.g. a flow mapping), it is re-serialized instead and the result's `notes` say so. Repeating the same update writes nothing (`changed: false`).
 
 ### seite_search
 

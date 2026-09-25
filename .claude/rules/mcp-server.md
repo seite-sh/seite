@@ -28,7 +28,7 @@ Synchronous read loop on stdin, dispatches methods, writes to stdout. All loggin
 - `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`
 - `seite_check` (read-only annotations; renders into a scratch dir like `seite check`) — returns `{ok, summary: {errors, warnings}, diagnostics}`; `ok` is false on any error, or any warning with `strict: true`
 - `seite_get_page` (path or url → resolved frontmatter, body, rendered body HTML, output_path)
-- `seite_update_frontmatter` (set/unset top-level keys; body preserved byte-for-byte; content dir only)
+- `seite_update_frontmatter` (set/unset top-level keys; body preserved byte-for-byte; content dir only). `edit_frontmatter_text()` in `src/mcp/tools/page.rs` applies changes as line edits on top-level entries (key line + indented/compact-list continuation; values serialized with serde_yaml), so comments and untouched keys stay byte-identical; unchanged values aren't rewritten. The edited text must parse back to exactly the intended mapping, else it falls back to full re-serialization (with a `notes` entry). Validation (title, types, dated-collection date) runs before anything is written.
 - `seite_content_stats`, `seite_list_templates`, `seite_create_collection`
 - `seite_build`'s output schema includes `broken_links` and `missing_assets` (each `[{target, sources}]`, grouped by target) plus `diagnostics` (the same `Diagnostic` shape as `seite_check`); `strict: true` fails the call (`isError`) on any warning, broken link, or missing asset
 
