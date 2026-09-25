@@ -123,7 +123,19 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         human::warning(
                             "Deploying with localhost base_url. Use --base-url to override.",
                         );
-                        human::info("Continuing anyway...");
+                        // Must be decided before auto-commit/push, build and upload.
+                        let cont = prompt::confirm_or_fail(
+                            "Deploy with a localhost base_url anyway?",
+                            true,
+                            "deploy with a localhost base_url, or pass --base-url",
+                        )?;
+                        if !cont {
+                            return Err(PageError::Deploy(
+                                "base_url points at localhost — set it in seite.toml or pass --base-url"
+                                    .into(),
+                            )
+                            .into());
+                        }
                     } else {
                         crate::human_println!();
                         human::error("Some pre-flight checks could not be resolved:");

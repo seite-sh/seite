@@ -1233,8 +1233,11 @@ pub fn deploy_cloudflare(
 
     // Try to extract the deploy URL from wrangler output
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Print wrangler's output
-    print!("{stdout}");
+    // Show wrangler's output (goes to stderr, or is dropped, in --json mode so
+    // stdout stays a single JSON document on every platform).
+    for line in stdout.lines() {
+        crate::human_println!("{line}");
+    }
 
     let deploy_url = extract_url_from_output(&stdout);
     Ok(deploy_url)

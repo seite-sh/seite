@@ -314,11 +314,14 @@ information. Full `prefers-reduced-motion: reduce` support.
 This project includes an MCP server that AI tools can connect to for structured
 access to site content, documentation, themes, and build tools.
 
-The server is configured in `.claude/settings.json` and starts automatically
-when Claude Code opens this project. No API keys or setup required.
+The server is declared in `.mcp.json` (Claude Code; pre-approved via
+`enabledMcpjsonServers` in `.claude/settings.json`). Claude Code starts it when it
+opens this project and may ask you to approve it once (check with `/mcp`). No API
+keys required. Codex, OpenCode, and Cursor read it from their own project configs —
+see `seite upgrade --agents`.
 
-**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
-`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
+**Available tools:** `seite_check`, `seite_build`, `seite_create_content`,
+`seite_get_page`, `seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
 `seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
 `seite_lookup_docs`
 

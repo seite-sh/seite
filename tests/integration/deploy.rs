@@ -716,3 +716,66 @@ fn test_deploy_dry_run_shows_subdomains() {
         .stdout(predicate::str::contains("Subdomain deploys"))
         .stdout(predicate::str::contains("docs.example.com"));
 }
+
+/// A localhost base_url is the only failing pre-flight check: without a TTY
+/// and without --yes, deploy must refuse before committing or pushing (it
+/// used to warn and carry on).
+#[test]
+fn test_deploy_without_tty_refuses_localhost_base_url_before_side_effects() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Localhost", "posts,pages");
+    let site = tmp.path().join("site");
+    let remote = tmp.path().join("remote.git");
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    git(tmp.path(), &["init", "--bare", "-q", "remote.git"]);
+    git(&site, &["init", "-q", "-b", "main"]);
+    git(
+        &site,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    git(&site, &["add", "-A"]);
+    git(
+        &site,
+        &["-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"],
+    );
+    let head = git(&site, &["rev-parse", "HEAD"]);
+    // Leave a change behind that auto-commit would pick up.
+    fs::write(
+        site.join("content/pages/new.md"),
+        "---\ntitle: New\n---\nx\n",
+    )
+    .unwrap();
+
+    let output = page_cmd()
+        .arg("deploy")
+        .current_dir(&site)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("confirmation required"), "{stderr}");
+    assert!(stderr.contains("--base-url"), "{stderr}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Base URL"), "{stdout}");
+    assert_eq!(git(&site, &["rev-parse", "HEAD"]), head, "no auto-commit");
+    assert_eq!(git(&remote, &["for-each-ref"]), "", "nothing pushed");
+}
