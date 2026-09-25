@@ -132,7 +132,10 @@ pub fn error_document(command: &str, error: &anyhow::Error, warnings: Vec<String
 /// the original stdout for the final JSON document. This guarantees stdout
 /// stays pure JSON even for stray `println!`s and inherited child-process
 /// output (git, wrangler, …). No-op on non-Unix platforms, where human output
-/// is still routed to stderr by [`super::human::emit_line`].
+/// is still routed to stderr by [`super::human::emit_line`] and child
+/// processes get their stdout pointed at stderr at each spawn site via
+/// [`super::child_stdout`] (which is also used on Unix, making this a
+/// belt-and-braces there).
 pub fn redirect_stdout_to_stderr() {
     #[cfg(unix)]
     {

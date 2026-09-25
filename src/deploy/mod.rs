@@ -779,6 +779,7 @@ pub fn execute_fix(
                     "repo", "create", repo_name, "--public", "--source", ".", "--push",
                 ])
                 .current_dir(&paths.root)
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
             if result.success() {
@@ -793,6 +794,7 @@ pub fn execute_fix(
             human::info("Opening Cloudflare login...");
             let result = npm_cmd("wrangler")
                 .args(["login"])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
             Ok(result.success())
@@ -801,6 +803,7 @@ pub fn execute_fix(
             human::info("Opening Netlify login...");
             let result = npm_cmd("netlify")
                 .args(["login"])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
             Ok(result.success())
@@ -823,6 +826,7 @@ pub fn execute_fix(
                     "--production-branch",
                     "main",
                 ])
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
             if result.success() {
@@ -857,6 +861,7 @@ pub fn execute_fix(
                 let _ = npm_cmd("netlify")
                     .args(["link", "--name", site_name])
                     .current_dir(&paths.root)
+                    .stdout(crate::output::child_stdout())
                     .status();
                 Ok(true)
             } else {
@@ -866,6 +871,7 @@ pub fn execute_fix(
                     let link_result = npm_cmd("netlify")
                         .args(["link", "--name", site_name])
                         .current_dir(&paths.root)
+                        .stdout(crate::output::child_stdout())
                         .status()
                         .map_err(|e| PageError::Deploy(format!("netlify link failed: {e}")))?;
                     Ok(link_result.success())
@@ -912,6 +918,7 @@ pub fn execute_fix(
             let result = npm_cmd("netlify")
                 .args(["domains:add", domain])
                 .current_dir(&paths.root)
+                .stdout(crate::output::child_stdout())
                 .status()
                 .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
             if result.success() {
@@ -982,6 +989,7 @@ fn run_install_command(cmd: &str, args: &[&str], label: &str) -> Result<bool> {
     human::info(&format!("Installing {label}..."));
     let result = npm_cmd(cmd)
         .args(args)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("{cmd} failed: {e}")))?;
     if result.success() {
@@ -1380,6 +1388,7 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
                 "repo", "create", repo_name, "--public", "--source", ".", "--push",
             ])
             .current_dir(&paths.root)
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("gh repo create failed: {e}")))?;
 
@@ -1446,6 +1455,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
         human::info("Logging in to Cloudflare...");
         let login = npm_cmd("wrangler")
             .args(["login"])
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("wrangler login failed: {e}")))?;
         if !login.success() {
@@ -1473,6 +1483,7 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
             "--production-branch",
             "main",
         ])
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
 
@@ -1511,6 +1522,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
         human::info("Logging in to Netlify...");
         let login = npm_cmd("netlify")
             .args(["login"])
+            .stdout(crate::output::child_stdout())
             .status()
             .map_err(|e| PageError::Deploy(format!("netlify login failed: {e}")))?;
         if !login.success() {
@@ -1543,6 +1555,7 @@ pub fn deploy_init_netlify(paths: &ResolvedPaths) -> Result<String> {
     let _ = npm_cmd("netlify")
         .args(["link", "--name", &site_name])
         .current_dir(&paths.root)
+        .stdout(crate::output::child_stdout())
         .status();
 
     Ok(site_name)
@@ -1565,6 +1578,7 @@ pub fn deploy_init_cloudflare_project(project_name: &str) -> Result<String> {
             "--production-branch",
             "main",
         ])
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("wrangler project create failed: {e}")))?;
 
@@ -2156,6 +2170,7 @@ pub fn netlify_add_domain(paths: &ResolvedPaths, domain: &str) -> Result<bool> {
     let result = npm_cmd("netlify")
         .args(["domains:add", domain])
         .current_dir(&paths.root)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Deploy(format!("netlify domains:add failed: {e}")))?;
     Ok(result.success())

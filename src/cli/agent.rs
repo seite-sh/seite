@@ -285,6 +285,7 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
 fn run_to_completion(harness: Harness, cmd_args: &[String]) -> anyhow::Result<()> {
     let status = npm_cmd(harness.binary())
         .args(cmd_args)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Agent(format!("failed to run {}: {e}", harness.binary())))?;
 
@@ -301,6 +302,7 @@ fn run_to_completion(harness: Harness, cmd_args: &[String]) -> anyhow::Result<()
 fn run_interactive(harness: Harness, cmd_args: &[String]) -> anyhow::Result<()> {
     let status = npm_cmd(harness.binary())
         .args(cmd_args)
+        .stdout(crate::output::child_stdout())
         .status()
         .map_err(|e| PageError::Agent(format!("failed to run {}: {e}", harness.binary())))?;
 

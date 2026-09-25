@@ -118,6 +118,7 @@ endpoint = "xpznqkdl"
 ### Output
 - Human-readable output goes through `output::human::{success,info,warning,error,header}` — never raw `println!`.
 - `--json` mode: set the command's payload with `output::json::set_data()`; the top-level `{"ok","command","data","warnings"}` / `{"ok":false,"error":{...}}` document is assembled and printed by `main.rs`. `CommandOutput` trait covers older per-command JSON.
+- Child processes whose output isn't captured (`.status()`/`.spawn()` of git, gh, wrangler, netlify, npm, claude, …) must set `.stdout(output::child_stdout())` — stderr in `--json` mode, so stdout stays one JSON document on every platform (the Unix fd-1 redirect is only a backstop).
 - Interactive prompts always go through `src/cli/prompt.rs`, never `dialoguer` directly — it degrades safely under `--yes`/`SEITE_YES=1` or a non-TTY (default if there is one, else an error naming the missing flag).
 
 ### Versioning

@@ -1,5 +1,44 @@
 use super::common::*;
 
+/// `--json`: a child process that writes to stdout (here a fake `claude` for
+/// `theme create`) must not corrupt the JSON document; its output goes to
+/// stderr instead.
+#[cfg(unix)]
+#[test]
+fn test_theme_create_json_keeps_child_stdout_off_stdout() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Child Stdout", "posts");
+    let site = tmp.path().join("site");
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("claude");
+    fs::write(
+        &fake,
+        "#!/bin/sh\necho \"noise from child stdout\"\necho '<html></html>' > templates/base.html\n",
+    )
+    .unwrap();
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let output = page_cmd()
+        .args(["--json", "theme", "create", "minimal"])
+        .env("PATH", path)
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], true);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("noise from child stdout"));
+    assert!(site.join("templates/base.html").exists());
+}
+
 // --- theme command ---
 
 #[test]
