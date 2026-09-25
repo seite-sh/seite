@@ -7,6 +7,7 @@ Allowed Edit(static/**) in .claude/settings.json
 Allowed Edit(seite.toml) in .claude/settings.json
 Allowed Bash(seite check:*) in .claude/settings.json
 Allowed Bash(seite check) in .claude/settings.json
+Added the seite check stop hook to .claude/settings.json
 Canonical AGENTS.md project instructions
 .claude/rules/seo-requirements.md
 .claude/rules/templates.md
@@ -106,7 +107,20 @@ paths:
   },
   "enabledMcpjsonServers": [
     "seite"
-  ]
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
 }
 
 ==> .claude/skills/brand-identity/SKILL.md <==

@@ -1251,6 +1251,8 @@ pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
             files.push(file(format!(".agents/rules/{}.md", r.name), claude_rule(r)));
         }
     }
+    // Turn-end `seite check` hooks (see `cli::harness_hooks`).
+    crate::cli::harness_hooks::extend_plan(&mut files, agents);
     files
 }
 

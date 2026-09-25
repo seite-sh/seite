@@ -144,6 +144,21 @@ If the binary isn't found, `seite agent` fails immediately with the install comm
 
 Codex has no system-prompt flag, so for `codex` and `opencode`/`cursor` the site context is prepended to the prompt itself, clearly delimited from your instructions. Auto-approving a harness's own side effects (writes, MCP servers) stays opt-in: pass the global `-y`/`--yes` flag to also pass `opencode run --auto` or `cursor-agent --force --approve-mcps`.
 
+## Stop Hooks
+
+`seite init` installs a turn-end hook for each selected coding agent. When the agent finishes a turn, the hook runs `seite check --hook <agent>`. If the site has **errors**, the agent gets the compiler-style diagnostics back (at most 40 lines) and keeps working until they're fixed; warnings never block, and a clean site produces no output at all.
+
+| Agent | Hook lives in | Notes |
+|---|---|---|
+| Claude Code | `.claude/settings.json` → `hooks.Stop` | Shown to Claude as "Stop hook feedback" |
+| Codex CLI | `.codex/hooks.json` → `hooks.Stop` | Codex runs project hooks only after you review and trust them once: open `/hooks` in Codex (they're skipped until then) |
+| Cursor | `.cursor/hooks.json` → `hooks.stop` | Needs a trusted workspace. Fires in the editor and interactive `cursor-agent`; `cursor-agent -p` doesn't run `stop` hooks |
+| OpenCode | `.opencode/plugins/seite-check.js` | A small plugin that checks on `session.idle` and sends the errors back as a prompt. Works in the TUI and `opencode serve`; one-shot `opencode run` exits before plugins finish |
+
+Loops can't run away: each hook hands the errors back at most once per turn (Claude's and Codex's `stop_hook_active`, Cursor's `loop_count`, the plugin's own flag), then lets the agent stop. The hook exits 0 on every path, stays silent outside a seite site, and never fails the session if seite itself breaks. The hook runs the `seite` found on the agent's `PATH` (often your login shell's), so keep that binary current.
+
+**Opting out:** delete the hook entry (or the plugin file). `seite upgrade` records which hooks it has installed in `.seite/config.json` (`hooks_installed`) and adds a hook only to agents that never had one, so a hook you removed stays removed. Existing projects get the hooks on their next `seite upgrade`, merged into existing hook configs without touching your other hooks.
+
 ## REPL Integration
 
 The dev server REPL also supports the agent:

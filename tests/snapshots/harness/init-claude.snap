@@ -100,7 +100,20 @@ paths:
   },
   "enabledMcpjsonServers": [
     "seite"
-  ]
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
 }
 
 ==> .claude/skills/brand-identity/SKILL.md <==

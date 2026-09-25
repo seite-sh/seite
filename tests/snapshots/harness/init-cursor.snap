@@ -101,6 +101,19 @@ description: Create or customize a site theme interactively. Walks through site 
   }
 }
 
+==> .cursor/hooks.json <==
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "seite check --hook cursor",
+        "timeout": 120
+      }
+    ]
+  }
+}
+
 ==> .cursor/mcp.json <==
 {
   "mcpServers": {

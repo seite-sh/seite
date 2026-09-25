@@ -163,6 +163,24 @@ command = "seite"
 args = ["mcp"]
 default_tools_approval_mode = "approve"
 
+==> .codex/hooks.json <==
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook codex",
+            "timeout": 120,
+            "statusMessage": "Running seite check"
+          }
+        ]
+      }
+    ]
+  }
+}
+
 ==> AGENTS.md#agent-setup <==
 | Agent | MCP config | One-time step |
 |---|---|---|

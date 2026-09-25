@@ -446,3 +446,145 @@ fn test_check_strict_reports_subdomain_broken_links() {
     assert_eq!(missing["line"], 9, "{doc}");
     assert!(!site.join("dist-subdomains").exists());
 }
+
+// --- seite check --hook (coding-agent stop hooks) ---
+
+const BROKEN_POST: &str = "---\ntitle: Broken\ndate: notadate\n---\nbody\n";
+
+/// `seite check --hook <agent>` fed `input` on stdin, run in `dir`, with the
+/// harness's project-dir variables cleared (the test may itself run inside
+/// an agent).
+fn run_hook(dir: &std::path::Path, agent: &str, input: &str) -> std::process::Output {
+    let output = page_cmd()
+        .args(["check", "--hook", agent])
+        .current_dir(dir)
+        .env_remove("CLAUDE_PROJECT_DIR")
+        .env_remove("CURSOR_PROJECT_DIR")
+        .write_stdin(input)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "hooks always exit 0");
+    output
+}
+
+fn hook_json(output: &std::process::Output) -> serde_json::Value {
+    serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|_| panic!("stdout: {}", String::from_utf8_lossy(&output.stdout)))
+}
+
+#[test]
+fn test_check_hook_blocks_on_errors_per_protocol() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    let expected = "content/posts/2024-01-01-broken.md:3:7: error[frontmatter-parse]";
+
+    let claude = hook_json(&run_hook(
+        &site,
+        "claude",
+        r#"{"hook_event_name":"Stop","stop_hook_active":false}"#,
+    ));
+    let context = claude["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert_eq!(claude["hookSpecificOutput"]["hookEventName"], "Stop");
+    assert!(
+        context.starts_with("seite check found 1 error:\n"),
+        "{context}"
+    );
+    assert!(context.contains(expected), "{context}");
+    assert!(context.ends_with("then finish. Run `seite check` to confirm."));
+
+    let codex = hook_json(&run_hook(&site, "codex", r#"{"stop_hook_active":false}"#));
+    assert_eq!(codex["decision"], "block");
+    assert!(codex["reason"].as_str().unwrap().contains(expected));
+
+    let cursor = hook_json(&run_hook(
+        &site,
+        "cursor",
+        r#"{"status":"completed","loop_count":0}"#,
+    ));
+    assert!(cursor["followup_message"]
+        .as_str()
+        .unwrap()
+        .contains(expected));
+
+    let opencode = hook_json(&run_hook(&site, "opencode", ""));
+    assert!(opencode["message"].as_str().unwrap().contains(expected));
+
+    // The session cwd from the hook input locates the site.
+    let from_input = run_hook(
+        tmp.path(),
+        "codex",
+        &serde_json::json!({ "cwd": site.join("content/posts") }).to_string(),
+    );
+    assert_eq!(hook_json(&from_input)["decision"], "block");
+}
+
+#[test]
+fn test_check_hook_loop_guards_let_the_agent_stop() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+
+    for agent in ["claude", "codex", "opencode"] {
+        let output = run_hook(&site, agent, r#"{"stop_hook_active":true}"#);
+        assert!(output.stdout.is_empty(), "{agent}");
+    }
+    // Cursor: always JSON; no follow-up after one, or after an aborted turn.
+    for input in [
+        r#"{"status":"completed","loop_count":1}"#,
+        r#"{"status":"aborted","loop_count":0}"#,
+    ] {
+        assert_eq!(
+            hook_json(&run_hook(&site, "cursor", input)),
+            serde_json::json!({})
+        );
+    }
+}
+
+#[test]
+fn test_check_hook_is_silent_on_clean_site_and_outside_a_site() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    // Warnings never block.
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-link.md",
+        "---\ntitle: Link\n---\nSee [x](/nonexistent-page).\n",
+    );
+    for dir in [site.as_path(), tmp.path()] {
+        let output = run_hook(dir, "claude", r#"{"stop_hook_active":false}"#);
+        assert!(
+            output.stdout.is_empty(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    // Garbage on stdin is ignored, not an error.
+    assert!(run_hook(&site, "codex", "not json").stdout.is_empty());
+}
+
+#[test]
+fn test_check_hook_rejects_unknown_agent_and_json() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["check", "--hook", "aider"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure();
+    page_cmd()
+        .args(["--json", "check", "--hook", "claude"])
+        .current_dir(tmp.path())
+        .write_stdin("")
+        .assert()
+        .failure();
+}

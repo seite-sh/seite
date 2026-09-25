@@ -84,7 +84,7 @@ fn run(cli: &Cli) -> Result<()> {
             | Command::Perf(_)
             | Command::Completions(_)
             | Command::Telemetry(_)
-    );
+    ) || matches!(command, Command::Check(args) if args.hook.is_some());
     if !skip {
         seite::telemetry::maybe_record_command(cmd_name, success, elapsed);
         seite::update_check::maybe_notify();
