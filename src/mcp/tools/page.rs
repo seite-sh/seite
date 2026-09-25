@@ -7,7 +7,7 @@ use super::{
     input_object, nullable, object_schema, prop, string_array, Args, ServerState, ToolError,
     ToolResult,
 };
-use crate::build::{self, markdown, math};
+use crate::build;
 use crate::config::{CollectionConfig, ResolvedPaths, SiteConfig};
 use crate::content::{self, Frontmatter};
 use crate::mcp::content_index;
@@ -272,15 +272,18 @@ fn find_by_url(config: &SiteConfig, paths: &ResolvedPaths, raw: &str) -> Result<
 // seite_get_page
 // ---------------------------------------------------------------------------
 
-/// Render a body exactly like the build's content step (shortcodes, then
-/// math, then markdown) — without the page template or HTML post-processing.
-/// Keep in sync with the "Process each collection" step of `build_site_inner`.
+/// Render a body with the build's own content step
+/// ([`build::render_item_body`]: shortcodes, then math, then markdown) —
+/// without the page template or HTML post-processing. On failure, every
+/// problem as compiler-style diagnostic lines (paths relative to the site).
+#[allow(clippy::too_many_arguments)]
 fn render_body(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     file: &ContentFile,
     fm: &Frontmatter,
     body: &str,
+    body_line: usize,
     slug: &str,
     lang: &str,
 ) -> Result<String, String> {
@@ -288,34 +291,28 @@ fn render_body(
         .map_err(|e| e.to_string())?;
     let data = crate::data::load_data_dir(&paths.data_dir).map_err(|e| e.to_string())?;
     let t = build::ui_strings_for_lang(lang, &data);
-    let sc_site = serde_json::json!({
-        "title": &config.site.title,
-        "base_url": &config.site.base_url,
-        "language": &config.site.language,
-        "contact": config.contact.as_ref().map(|c| serde_json::json!({
-            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
-            "endpoint": &c.endpoint,
-            "region": &c.region,
-            "redirect": &c.redirect,
-            "subject": &c.subject,
-        })),
-    });
-    let sc_page = serde_json::json!({
-        "title": fm.title,
-        "slug": slug,
-        "collection": &file.collection.name,
-        "tags": &fm.tags,
-    });
-    let expanded = registry
-        .expand(body, &file.abs, &sc_page, &sc_site, &t)
-        .map_err(|e| e.to_string())?;
-    let input = if config.build.math {
-        math::render_math(&expanded)
-    } else {
-        expanded
+    let source = build::BodySource {
+        path: &file.abs,
+        body,
+        body_line,
+        page: &build::shortcode_page_context(fm, slug, &file.collection.name),
     };
-    let (html, _toc) = markdown::markdown_to_html_with(&input, config.build.mermaid);
-    Ok(html)
+    build::render_item_body(
+        config,
+        &registry,
+        &source,
+        &build::shortcode_site_context(config),
+        &t,
+    )
+    .map(|rendered| rendered.html)
+    .map_err(|diagnostics| {
+        let root = paths.root.canonicalize().unwrap_or(paths.root.clone());
+        diagnostics
+            .into_iter()
+            .map(|d| d.relative_to(&root).to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
 }
 
 pub fn call_get_page(state: &ServerState, arguments: &serde_json::Value) -> ToolResult {
@@ -333,8 +330,9 @@ pub fn call_get_page(state: &ServerState, arguments: &serde_json::Value) -> Tool
             )),
         };
     let file = resolve_content_file("seite_get_page", config, paths, &raw_path)?;
-    let (fm, body) = content::parse_content_file(&file.abs)
-        .map_err(|e| ToolError::new(format!("seite_get_page: {e}")))?;
+    let parsed = content::parse_content_diagnostic(&file.abs)
+        .map_err(|d| ToolError::new(format!("seite_get_page: {d}")))?;
+    let (fm, body, body_line) = (parsed.frontmatter, parsed.body, parsed.body_line);
 
     let loc = build::resolve_item_location(
         config,
@@ -349,11 +347,12 @@ pub fn call_get_page(state: &ServerState, arguments: &serde_json::Value) -> Tool
     let frontmatter = serde_json::to_value(&resolved)
         .map_err(|e| ToolError::new(format!("seite_get_page: {e}")))?;
 
-    let (html, render_error) =
-        match render_body(config, paths, &file, &fm, &body, &loc.slug, &loc.lang) {
-            Ok(html) => (Some(html), None),
-            Err(e) => (None, Some(e)),
-        };
+    let (html, render_error) = match render_body(
+        config, paths, &file, &fm, &body, body_line, &loc.slug, &loc.lang,
+    ) {
+        Ok(html) => (Some(html), None),
+        Err(e) => (None, Some(e)),
+    };
 
     let output_dir = if file.collection.subdomain.is_some() {
         paths.subdomain_output(&file.collection.name)
@@ -876,6 +875,26 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("nosuchshortcode"));
+        // Same located diagnostics as the build: file lines, every problem.
+        write(
+            tmp.path(),
+            "content/posts/2026-03-04-hello.md",
+            "---\ntitle: Hello\n---\n\n{{< nosuchshortcode() >}}\n\n{{< youtube id=\"x\" >}}\n",
+        );
+        let out = call_ok(
+            &mut state,
+            "seite_get_page",
+            serde_json::json!({ "path": "content/posts/2026-03-04-hello.md" }),
+        );
+        let err = out["render_error"].as_str().unwrap();
+        assert!(
+            err.contains("content/posts/2026-03-04-hello.md:5:1: error[shortcode-unknown]"),
+            "{err}"
+        );
+        assert!(
+            err.contains("content/posts/2026-03-04-hello.md:7:1: error[shortcode-syntax]"),
+            "{err}"
+        );
     }
 
     #[test]

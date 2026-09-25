@@ -1143,18 +1143,7 @@ fn build_site_inner(
     let sc_i18n_empty = serde_json::json!({});
 
     // Pre-compute shortcode site context (identical for every page)
-    let sc_site = serde_json::json!({
-        "title": &config.site.title,
-        "base_url": &config.site.base_url,
-        "language": &config.site.language,
-        "contact": config.contact.as_ref().map(|c| serde_json::json!({
-            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
-            "endpoint": &c.endpoint,
-            "region": &c.region,
-            "redirect": &c.redirect,
-            "subject": &c.subject,
-        })),
-    });
+    let sc_site = shortcode_site_context(config);
 
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
@@ -1199,34 +1188,24 @@ fn build_site_inner(
                         fm.date = parse_date_from_filename(path);
                     }
 
-                    let sc_page = serde_json::json!({
-                        "title": fm.title,
-                        "slug": &slug,
-                        "collection": &collection.name,
-                        "tags": &fm.tags,
-                    });
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
-                    let expanded_body = shortcode_registry
-                        .expand_diagnostic(&raw_body, path, &sc_page, &sc_site, sc_i18n)
-                        .map_err(|diags| {
-                            // Shortcode lines are relative to the body; map them
-                            // to file lines.
-                            diags
-                                .into_iter()
-                                .map(|mut d| {
-                                    d.line = d.line.map(|l| body_line + l.saturating_sub(1));
-                                    d
-                                })
-                                .collect::<Vec<_>>()
-                        })?;
+                    let RenderedBody {
+                        expanded: expanded_body,
+                        html: html_body,
+                        toc,
+                    } = render_item_body(
+                        config,
+                        &shortcode_registry,
+                        &BodySource {
+                            path,
+                            body: &raw_body,
+                            body_line,
+                            page: &shortcode_page_context(&fm, &slug, &collection.name),
+                        },
+                        &sc_site,
+                        sc_i18n,
+                    )?;
                     let excerpt = content::extract_excerpt(&expanded_body);
-                    let html_input = if config.build.math {
-                        math::render_math(&expanded_body)
-                    } else {
-                        expanded_body
-                    };
-                    let (html_body, toc) =
-                        markdown::markdown_to_html_with(&html_input, config.build.mermaid);
 
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
                     let word_count = raw_body.split_whitespace().count();
@@ -3583,6 +3562,92 @@ fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
     } else {
         format!("/{lang}")
     }
+}
+
+/// The `site` context shortcode templates see (identical for every page).
+pub(crate) fn shortcode_site_context(config: &SiteConfig) -> serde_json::Value {
+    serde_json::json!({
+        "title": &config.site.title,
+        "base_url": &config.site.base_url,
+        "language": &config.site.language,
+        "contact": config.contact.as_ref().map(|c| serde_json::json!({
+            "provider": serde_json::to_value(&c.provider).unwrap_or_default(),
+            "endpoint": &c.endpoint,
+            "region": &c.region,
+            "redirect": &c.redirect,
+            "subject": &c.subject,
+        })),
+    })
+}
+
+/// The `page` context shortcode templates see for one content item.
+pub(crate) fn shortcode_page_context(
+    fm: &Frontmatter,
+    slug: &str,
+    collection: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "title": fm.title,
+        "slug": slug,
+        "collection": collection,
+        "tags": &fm.tags,
+    })
+}
+
+/// One content item's markdown body, as input to [`render_item_body`].
+pub(crate) struct BodySource<'a> {
+    /// Source file (shortcode diagnostics point at it).
+    pub path: &'a Path,
+    /// Markdown body (after the frontmatter).
+    pub body: &'a str,
+    /// 1-based file line the body starts on.
+    pub body_line: usize,
+    /// Shortcode `page` context ([`shortcode_page_context`]).
+    pub page: &'a serde_json::Value,
+}
+
+/// A content item's rendered body.
+pub(crate) struct RenderedBody {
+    /// Body after shortcode expansion, before math/markdown (excerpt source).
+    pub expanded: String,
+    /// Body HTML (no page template, no HTML post-processing).
+    pub html: String,
+    pub toc: Vec<markdown::TocEntry>,
+}
+
+/// Render one content item's body exactly as the build's content step does:
+/// expand shortcodes, then math (when `build.math`), then markdown. On
+/// failure returns every shortcode problem, with file lines. Shared by the
+/// build and `seite_get_page` so they can't drift.
+pub(crate) fn render_item_body(
+    config: &SiteConfig,
+    registry: &crate::shortcodes::ShortcodeRegistry,
+    source: &BodySource<'_>,
+    sc_site: &serde_json::Value,
+    i18n: &serde_json::Value,
+) -> std::result::Result<RenderedBody, Vec<Diagnostic>> {
+    let expanded = registry
+        .expand_diagnostic(source.body, source.path, source.page, sc_site, i18n)
+        .map_err(|diags| {
+            // Shortcode lines are relative to the body; map them to file lines.
+            diags
+                .into_iter()
+                .map(|mut d| {
+                    d.line = d.line.map(|l| source.body_line + l.saturating_sub(1));
+                    d
+                })
+                .collect::<Vec<_>>()
+        })?;
+    let (html, toc) = if config.build.math {
+        markdown::markdown_to_html_with(&math::render_math(&expanded), config.build.mermaid)
+    } else {
+        markdown::markdown_to_html_with(&expanded, config.build.mermaid)
+    };
+    Ok(RenderedBody {
+        expanded,
+        html,
+        toc,
+    })
 }
 
 /// Return a JSON object of common UI strings for a given language.
