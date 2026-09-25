@@ -108,24 +108,27 @@ impl ShortcodeRegistry {
         site_context: &serde_json::Value,
         i18n: &serde_json::Value,
     ) -> std::result::Result<String, Vec<Diagnostic>> {
-        let calls =
-            parser::parse_shortcodes_diagnostic(input, source_path).map_err(|d| vec![*d])?;
+        // Syntax errors don't stop the scan, so every malformed tag and every
+        // unknown name in the file is reported together, in document order.
+        let (calls, syntax_errors) = parser::parse_shortcodes_recovering(input, source_path);
 
-        if calls.is_empty() {
+        if calls.is_empty() && syntax_errors.is_empty() {
             return Ok(input.to_string());
         }
 
-        // Validate all shortcode names (report every unknown one)
-        let unknown: Vec<Diagnostic> = calls
-            .iter()
-            .filter(|call| !self.known.contains(&call.name))
-            .map(|call| {
-                self.unknown_shortcode(call, source_path)
-                    .with_column(crate::diagnostics::line_col_at(input, call.span.0).1)
-            })
-            .collect();
-        if !unknown.is_empty() {
-            return Err(unknown);
+        let mut problems: Vec<Diagnostic> = syntax_errors;
+        problems.extend(
+            calls
+                .iter()
+                .filter(|call| !self.known.contains(&call.name))
+                .map(|call| {
+                    self.unknown_shortcode(call, source_path)
+                        .with_column(crate::diagnostics::line_col_at(input, call.span.0).1)
+                }),
+        );
+        if !problems.is_empty() {
+            problems.sort_by_key(|d| (d.line, d.column));
+            return Err(problems);
         }
 
         // Replace spans back-to-front so byte offsets stay valid
@@ -563,5 +566,45 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("available shortcodes"));
+    }
+
+    #[test]
+    fn test_expand_diagnostic_recovers_after_syntax_errors() {
+        let registry = test_registry();
+        let (page, site, i18n) = empty_contexts();
+        let input = "{{< youtube id=\"x\" >}}\n\
+                     \n\
+                     {{% bad name() %}}\nbody\n{{% end %}}\n\
+                     {{< figure(src=) >}}\n\
+                     {{% callout(type=\"tip\") %}}\nnever closed\n\
+                     {{< zzzzzz() >}}\n\
+                     {{< youtube(id=\"ok\") >}}\n";
+        let diags = registry
+            .expand_diagnostic(input, &PathBuf::from("t.md"), &page, &site, &i18n)
+            .unwrap_err();
+        let summary: Vec<(&str, Option<usize>)> = diags.iter().map(|d| (d.code, d.line)).collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("shortcode-syntax", Some(1)),
+                ("shortcode-syntax", Some(3)),
+                ("shortcode-syntax", Some(6)),
+                ("shortcode-syntax", Some(7)),
+                ("shortcode-unknown", Some(9)),
+            ],
+            "{diags:#?}"
+        );
+        // Hugo-style hint still attached to the first one.
+        assert!(diags[0]
+            .hint
+            .as_ref()
+            .unwrap()
+            .contains("youtube(id=\"x\")"));
+        assert!(diags[3].message.contains("unclosed body shortcode"));
+        // `expand` still reports the first problem.
+        let err = registry
+            .expand(input, &PathBuf::from("t.md"), &page, &site, &i18n)
+            .unwrap_err();
+        assert!(err.to_string().contains("youtube"), "{err}");
     }
 }

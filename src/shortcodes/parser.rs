@@ -83,9 +83,27 @@ pub fn parse_shortcodes_diagnostic(
     input: &str,
     source_path: &Path,
 ) -> ParseResult<Vec<ShortcodeCall>> {
+    let (calls, mut errors) = parse_shortcodes_recovering(input, source_path);
+    if errors.is_empty() {
+        Ok(calls)
+    } else {
+        Err(Box::new(errors.remove(0)))
+    }
+}
+
+/// Parse every shortcode, recovering from syntax errors: a malformed
+/// `{{< … >}}` / `{{% … %}}` tag is reported and skipped, and scanning goes
+/// on, so one run finds every problem in the file. Returns the well-formed
+/// calls and the `shortcode-syntax` diagnostics, both in document order.
+/// Line numbers are relative to `input`.
+pub fn parse_shortcodes_recovering(
+    input: &str,
+    source_path: &Path,
+) -> (Vec<ShortcodeCall>, Vec<Diagnostic>) {
     let bytes = input.as_bytes();
     let len = bytes.len();
     let mut results = Vec::new();
+    let mut errors: Vec<Diagnostic> = Vec::new();
     let mut pos: usize = 0;
     let mut line: usize = 1;
 
@@ -187,14 +205,19 @@ pub fn parse_shortcodes_diagnostic(
                 let call_start = pos + 3;
                 if let Some(close_offset) = find_inline_close(bytes, call_start) {
                     let call_str = &input[call_start..call_start + close_offset];
-                    let (name, args) =
-                        parse_call(call_str.trim(), source_path, line).map_err(|d| {
-                            Box::new(
+                    let end = call_start + close_offset + 3; // skip past ">}}"
+                    let (name, args) = match parse_call(call_str.trim(), source_path, line) {
+                        Ok(parsed) => parsed,
+                        Err(d) => {
+                            // Report and skip past this tag; keep scanning.
+                            errors.push(
                                 with_syntax_hint(*d, call_str.trim(), ShortcodeKind::Inline)
                                     .with_column(column_at(input, start)),
-                            )
-                        })?;
-                    let end = call_start + close_offset + 3; // skip past ">}}"
+                            );
+                            pos = end;
+                            continue;
+                        }
+                    };
                     results.push(ShortcodeCall {
                         name,
                         args,
@@ -221,14 +244,21 @@ pub fn parse_shortcodes_diagnostic(
                         continue;
                     }
 
-                    let (name, args) =
-                        parse_call(trimmed, source_path, start_line).map_err(|d| {
-                            Box::new(
+                    let open_end = call_start + close_offset + 3; // past "%}}"
+                    let (name, args) = match parse_call(trimmed, source_path, start_line) {
+                        Ok(parsed) => parsed,
+                        Err(d) => {
+                            // Report and skip the opening tag; its body is
+                            // scanned as ordinary text and a matching
+                            // `{{% end %}}` is skipped as a stray end tag.
+                            errors.push(
                                 with_syntax_hint(*d, trimmed, ShortcodeKind::Body)
                                     .with_column(column_at(input, start)),
-                            )
-                        })?;
-                    let open_end = call_start + close_offset + 3; // past "%}}"
+                            );
+                            pos = open_end;
+                            continue;
+                        }
+                    };
 
                     // Find matching {{% end %}}
                     if let Some((body_end_rel, close_end_rel)) = find_end_tag(input, open_end) {
@@ -262,7 +292,7 @@ pub fn parse_shortcodes_diagnostic(
                         } else {
                             "add `{{% end %}}` after the shortcode body".to_string()
                         };
-                        return Err(Box::new(
+                        errors.push(
                             syntax_error(
                                 source_path,
                                 start_line,
@@ -272,7 +302,10 @@ pub fn parse_shortcodes_diagnostic(
                             )
                             .with_column(column_at(input, start))
                             .with_hint(hint),
-                        ));
+                        );
+                        // Keep scanning after the opening tag.
+                        pos = open_end;
+                        continue;
                     }
                 }
             }
@@ -281,7 +314,7 @@ pub fn parse_shortcodes_diagnostic(
         pos += 1;
     }
 
-    Ok(results)
+    (results, errors)
 }
 
 // ---------------------------------------------------------------------------

@@ -91,6 +91,7 @@ UI string translations: `data/i18n/{lang}.yaml` overrides English defaults, inje
 - Built-ins: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`, `contact_form`
 - User-defined: `templates/shortcodes/*.html` (override built-ins by name)
 - To add a built-in: create template in `src/shortcodes/builtins/`, add entry in `builtins.rs`
+- Diagnostics: `parser::parse_shortcodes_recovering()` reports a malformed tag, skips past it, and keeps scanning, so `ShortcodeRegistry::expand_diagnostic()` returns every `shortcode-syntax` / `shortcode-unknown` problem in a file (sorted by line/column); `expand()` still surfaces only the first
 
 ## Image Processing
 

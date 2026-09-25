@@ -65,6 +65,48 @@ fn test_build_reports_all_broken_files_in_one_pass() {
 }
 
 #[test]
+fn test_check_reports_every_shortcode_problem_in_a_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Shortcodes", "posts");
+    let site = tmp.path().join("site");
+    // Two syntax errors and one unknown shortcode in the same file.
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-many.md",
+        "---\ntitle: Many\n---\n\n{{< youtube id=\"x\" >}}\n\n{{< figure(src=) >}}\n\nText.\n\n{{< vimo(id=\"1\") >}}\n",
+    );
+    for cmd in ["check", "build"] {
+        let output = page_cmd()
+            .args(["--json", cmd])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let doc = json_stdout(&output);
+        let diagnostics = doc["error"]["diagnostics"].as_array().unwrap();
+        let found: Vec<(String, u64)> = diagnostics
+            .iter()
+            .map(|d| {
+                assert_eq!(d["file"], "content/posts/2024-01-01-many.md", "{doc}");
+                (
+                    d["code"].as_str().unwrap().to_string(),
+                    d["line"].as_u64().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("shortcode-syntax".to_string(), 5),
+                ("shortcode-syntax".to_string(), 7),
+                ("shortcode-unknown".to_string(), 11),
+            ],
+            "{cmd}: {doc}"
+        );
+    }
+}
+
+#[test]
 fn test_build_warns_on_unknown_config_key_and_still_succeeds() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Keys", "posts");
