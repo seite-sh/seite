@@ -43,10 +43,10 @@ serde_yaml_ng = "0.10"
 # Content processing
 pulldown-cmark = "0.13"
 syntect = "5"
-katex-rs = { version = "0.2", optional = true }
+katex-rs = { version = "0.3", optional = true }
 
 # Templating
-tera = "1.20"
+tera = "2.4"
 
 # Web server
 tiny_http = "0.12"
@@ -71,7 +71,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # RSS / Sitemap generation
-quick-xml = { version = "0.40", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 
 # Slug generation
 slug = "0.1"
@@ -90,8 +90,8 @@ urlencoding = "2"
 tempfile = "3"
 
 # SHA-256 (in-process checksum verification for self-update)
-sha2 = "0.10"
-getrandom = "0.3"
+sha2 = "0.11"
+getrandom = "0.4"
 
 [features]
 default = ["math"]
