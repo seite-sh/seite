@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.19.0"
+version = "0.20.0"
 edition = "2021"
 description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
 license = "MIT"
@@ -36,14 +36,15 @@ strsim = "0.11"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 toml = { version = "1.1", features = ["preserve_order"] }
+toml_edit = "0.25"  # comment-preserving edits (e.g. .codex/config.toml in `seite upgrade`)
 serde_yaml_ng = "0.10"
 
 # Content processing
 pulldown-cmark = "0.13"
 syntect = "5"
-katex-rs = { version = "0.2", optional = true }
+katex-rs = { version = "0.3", optional = true }
 
 # Templating
 tera = "1.20"
@@ -71,7 +72,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # RSS / Sitemap generation
-quick-xml = { version = "0.40", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 
 # Slug generation
 slug = "0.1"
@@ -90,8 +91,12 @@ urlencoding = "2"
 tempfile = "3"
 
 # SHA-256 (in-process checksum verification for self-update)
-sha2 = "0.10"
-getrandom = "0.3"
+sha2 = "0.11"
+getrandom = "0.4"
+
+# Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["stdio", "process"] }
 
 [features]
 default = ["math"]
@@ -100,6 +105,8 @@ math = ["dep:katex-rs"]
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+# Validates MCP tool outputs against their declared outputSchema in tests.
+jsonschema = { version = "0.57", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

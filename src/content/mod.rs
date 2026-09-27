@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{PageError, Result};
 
+pub mod create;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Frontmatter {
     pub title: String,
@@ -83,6 +85,111 @@ pub fn parse_content_file(path: &Path) -> Result<(Frontmatter, String)> {
             source: e,
         })?;
     Ok((frontmatter, body.to_string()))
+}
+
+/// A content file parsed for the build, with enough layout information to map
+/// positions in the body (e.g. shortcode lines) back to lines in the file.
+#[derive(Debug, Clone)]
+pub struct ParsedContent {
+    pub frontmatter: Frontmatter,
+    pub body: String,
+    /// 1-based file line on which `body` starts.
+    pub body_line: usize,
+}
+
+impl ParsedContent {
+    /// Convert a 1-based line within `body` to a 1-based line in the file.
+    pub fn file_line(&self, body_line: usize) -> usize {
+        self.body_line + body_line.saturating_sub(1)
+    }
+}
+
+/// Like [`parse_content_file`], but reports problems as a located
+/// [`Diagnostic`](crate::diagnostics::Diagnostic) (`frontmatter-missing`, `frontmatter-parse`,
+/// `content-invalid`) so the build can collect every broken file in one pass.
+/// Frontmatter error lines are converted from YAML-relative to file lines.
+pub fn parse_content_diagnostic(
+    path: &Path,
+) -> std::result::Result<ParsedContent, Box<crate::diagnostics::Diagnostic>> {
+    use crate::diagnostics::{line_col_at, Diagnostic};
+
+    let raw = std::fs::read_to_string(path).map_err(|e| {
+        Box::new(
+            Diagnostic::error("content-invalid", format!("cannot read content file: {e}"))
+                .with_file(path),
+        )
+    })?;
+    let Some((fm_str, body)) = split_frontmatter(&raw) else {
+        return Err(Box::new(Diagnostic::error(
+            "frontmatter-missing",
+            "missing frontmatter (the file must start with a `---` line and close it with another `---` line)",
+        )
+        .with_file(path)
+        .with_line(1)
+        .with_hint("start the file with:\n---\ntitle: \"My Page\"\n---")));
+    };
+    let offset_of = |slice: &str| slice.as_ptr() as usize - raw.as_ptr() as usize;
+    let (fm_line, fm_col) = line_col_at(&raw, offset_of(fm_str));
+    let (body_line, _) = line_col_at(&raw, offset_of(body));
+
+    let frontmatter: Frontmatter = serde_yaml_ng::from_str(fm_str).map_err(|e| {
+        let mut d = Diagnostic::error(
+            "frontmatter-parse",
+            format!(
+                "invalid frontmatter: {}",
+                strip_yaml_location(&e.to_string())
+            ),
+        )
+        .with_file(path);
+        match e.location() {
+            Some(loc) => {
+                let line = fm_line + loc.line().saturating_sub(1);
+                let column = if loc.line() <= 1 {
+                    fm_col + loc.column().saturating_sub(1)
+                } else {
+                    loc.column()
+                };
+                d = d.with_line(line).with_column(column);
+            }
+            None => d = d.with_line(fm_line),
+        }
+        if e.to_string().contains("missing field `title`") {
+            d = d.with_hint("every page needs a `title:` in its frontmatter");
+        }
+        Box::new(d)
+    })?;
+    Ok(ParsedContent {
+        frontmatter,
+        body: body.to_string(),
+        body_line,
+    })
+}
+
+/// serde_yaml/serde_json embed ` at line L column C` in their messages
+/// (relative to the parsed snippet, and sometimes mid-message); drop every
+/// occurrence because diagnostics carry the file-relative position separately.
+pub(crate) fn strip_yaml_location(message: &str) -> String {
+    const MARKER: &str = " at line ";
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(idx) = rest.find(MARKER) {
+        let after = &rest[idx + MARKER.len()..];
+        let line_len = after.bytes().take_while(u8::is_ascii_digit).count();
+        let tail = &after[line_len..];
+        let col_len = tail
+            .strip_prefix(" column ")
+            .map(|t| t.bytes().take_while(u8::is_ascii_digit).count())
+            .unwrap_or(0);
+        if line_len > 0 && col_len > 0 {
+            out.push_str(&rest[..idx]);
+            rest = &tail[" column ".len() + col_len..];
+        } else {
+            out.push_str(&rest[..idx + MARKER.len()]);
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn split_frontmatter(raw: &str) -> Option<(&str, &str)> {
@@ -446,5 +553,71 @@ mod tests {
         assert_eq!(strip_lang_suffix("readme.min.es", &langs), "readme.min");
         // "readme.min" should not strip
         assert_eq!(strip_lang_suffix("readme.min", &langs), "readme.min");
+    }
+
+    #[test]
+    fn test_parse_content_diagnostic_maps_yaml_line_to_file_line() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("bad.md");
+        // Line 3 of the file (line 2 of the YAML) has an unterminated string.
+        std::fs::write(&path, "---\ntitle: ok\ndate: [2024\n---\nBody").unwrap();
+        let d = parse_content_diagnostic(&path).unwrap_err();
+        assert_eq!(d.code, "frontmatter-parse");
+        assert!(d.line.unwrap() >= 3, "{d}");
+        assert!(!d.message.contains(" at line "), "{d}");
+    }
+
+    #[test]
+    fn test_parse_content_diagnostic_type_error_line() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("bad.md");
+        std::fs::write(&path, "\n---\ntitle: ok\nweight: heavy\n---\nBody").unwrap();
+        let d = parse_content_diagnostic(&path).unwrap_err();
+        assert_eq!(d.code, "frontmatter-parse");
+        assert_eq!(d.line, Some(4), "{d}");
+        assert_eq!(d.column, Some(9), "{d}");
+    }
+
+    #[test]
+    fn test_parse_content_diagnostic_missing_and_ok() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("none.md");
+        std::fs::write(&path, "no frontmatter").unwrap();
+        let d = parse_content_diagnostic(&path).unwrap_err();
+        assert_eq!(d.code, "frontmatter-missing");
+        assert_eq!(d.line, Some(1));
+
+        let missing_title = tmp.path().join("notitle.md");
+        std::fs::write(&missing_title, "---\ndraft: true\n---\n").unwrap();
+        let d = parse_content_diagnostic(&missing_title).unwrap_err();
+        assert!(d.hint.unwrap().contains("title"));
+
+        let good = tmp.path().join("good.md");
+        std::fs::write(&good, "---\ntitle: Hi\n---\n\nBody here").unwrap();
+        let parsed = parse_content_diagnostic(&good).unwrap();
+        assert_eq!(parsed.frontmatter.title, "Hi");
+        assert_eq!(parsed.body, "Body here");
+        assert_eq!(parsed.body_line, 5);
+        assert_eq!(parsed.file_line(2), 6);
+
+        let d = parse_content_diagnostic(&tmp.path().join("gone.md")).unwrap_err();
+        assert_eq!(d.code, "content-invalid");
+    }
+
+    #[test]
+    fn test_strip_yaml_location() {
+        assert_eq!(
+            strip_yaml_location("invalid type: string at line 2 column 9"),
+            "invalid type: string"
+        );
+        assert_eq!(strip_yaml_location("no location here"), "no location here");
+        assert_eq!(
+            strip_yaml_location("did not find ']' at line 3 column 1, while parsing"),
+            "did not find ']', while parsing"
+        );
+        assert_eq!(
+            strip_yaml_location("x at line two column 3"),
+            "x at line two column 3"
+        );
     }
 }

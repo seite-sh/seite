@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 
 use crate::build::{self, BuildOptions};
-use crate::cli::perf;
+use crate::cli::{perf, prompt};
 use crate::config::{DeployTarget, SiteConfig};
 use crate::deploy;
 use crate::error::PageError;
@@ -123,18 +123,31 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         human::warning(
                             "Deploying with localhost base_url. Use --base-url to override.",
                         );
-                        human::info("Continuing anyway...");
+                        // Must be decided before auto-commit/push, build and upload.
+                        let cont = prompt::confirm_or_fail(
+                            "Deploy with a localhost base_url anyway?",
+                            true,
+                            "deploy with a localhost base_url, or pass --base-url",
+                        )?;
+                        if !cont {
+                            return Err(PageError::Deploy(
+                                "base_url points at localhost — set it in seite.toml or pass --base-url"
+                                    .into(),
+                            )
+                            .into());
+                        }
                     } else {
-                        println!();
+                        crate::human_println!();
                         human::error("Some pre-flight checks could not be resolved:");
                         for name in &unresolved {
                             human::info(&format!("  - {name}"));
                         }
-                        let cont = dialoguer::Confirm::new()
-                            .with_prompt("Continue deploying anyway?")
-                            .default(false)
-                            .interact()
-                            .unwrap_or(false);
+                        // Must be decided before auto-commit/push, build and upload.
+                        let cont = prompt::confirm_or_fail(
+                            "Continue deploying anyway?",
+                            false,
+                            "deploy despite failed pre-flight checks, or pass --skip-checks",
+                        )?;
                         if !cont {
                             return Err(PageError::Deploy(
                                 "pre-flight checks failed — fix the issues above before deploying"
@@ -333,6 +346,12 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
+    crate::output::json::set_data(serde_json::json!({
+        "target": target_str,
+        "url": deploy_url,
+        "preview": preview,
+        "dry_run": false,
+    }));
     Ok(())
 }
 
@@ -384,13 +403,9 @@ fn run_domain_setup(
     match target {
         DeployTarget::Cloudflare => {
             if let Some(ref project) = config.deploy.project {
-                let attach = dialoguer::Confirm::new()
-                    .with_prompt(format!(
-                        "Attach '{clean_domain}' to Cloudflare Pages project '{project}'?"
-                    ))
-                    .default(true)
-                    .interact()
-                    .unwrap_or(false);
+                let attach = confirm_side_effect(&format!(
+                    "Attach '{clean_domain}' to Cloudflare Pages project '{project}'?"
+                ));
                 if attach {
                     match deploy::cloudflare_attach_domain(project, clean_domain) {
                         Ok(true) => human::success(&format!(
@@ -412,11 +427,7 @@ fn run_domain_setup(
         }
         DeployTarget::Netlify => {
             let paths = config.resolve_paths(&std::env::current_dir()?);
-            let attach = dialoguer::Confirm::new()
-                .with_prompt(format!("Add '{clean_domain}' to Netlify site?"))
-                .default(true)
-                .interact()
-                .unwrap_or(false);
+            let attach = confirm_side_effect(&format!("Add '{clean_domain}' to Netlify site?"));
             if attach {
                 match deploy::netlify_add_domain(&paths, clean_domain) {
                     Ok(true) => {
@@ -524,7 +535,7 @@ fn run_setup(
                 human::info("Consider using Cloudflare Pages or Netlify for subdomain support.");
             }
             "cloudflare" => {
-                println!();
+                crate::human_println!();
                 human::header("Setting up subdomain deploy projects");
                 for collection in &subdomain_collections {
                     let subdomain = collection.subdomain.as_ref().unwrap();
@@ -543,7 +554,7 @@ fn run_setup(
                 }
             }
             "netlify" => {
-                println!();
+                crate::human_println!();
                 human::header("Setting up subdomain deploy projects");
                 for collection in &subdomain_collections {
                     let subdomain = collection.subdomain.as_ref().unwrap();
@@ -567,11 +578,10 @@ fn run_setup(
 
     // Offer contact form setup if not already configured
     if config.contact.is_none() {
-        println!();
-        let add_contact = dialoguer::Confirm::new()
-            .with_prompt("Would you like to add a contact form?")
-            .default(false)
-            .interact()?;
+        crate::human_println!();
+        // Optional extra: only offered to a human at a terminal.
+        let add_contact = prompt::is_interactive()
+            && prompt::confirm("Would you like to add a contact form?", false)?;
         if add_contact {
             let setup_args = crate::cli::contact::SetupArgs {
                 provider: None,
@@ -595,7 +605,7 @@ fn run_setup(
         }
     }
 
-    println!();
+    crate::human_println!();
     human::info("Setup complete. Next steps:");
     human::info("  1. Set your production URL:  seite deploy --domain example.com");
     human::info("  2. Deploy:                   seite deploy");
@@ -614,6 +624,16 @@ fn run_dry_run(
     // Run pre-flight checks even in dry-run
     let checks = deploy::preflight(config, paths, target_str);
     deploy::print_preflight(&checks);
+    crate::output::json::set_data(serde_json::json!({
+        "target": target_str,
+        "dry_run": true,
+        "preview": args.preview,
+        "output_dir": paths.output.display().to_string(),
+        "checks": checks
+            .iter()
+            .map(|c| serde_json::json!({ "name": c.name, "passed": c.passed, "message": c.message }))
+            .collect::<Vec<_>>(),
+    }));
 
     match target_str {
         "github-pages" => {
@@ -678,7 +698,7 @@ fn run_dry_run(
     // Show subdomain deploy plan
     let subdomain_collections = config.subdomain_collections();
     if !subdomain_collections.is_empty() {
-        println!();
+        crate::human_println!();
         human::info("Subdomain deploys:");
         for c in &subdomain_collections {
             let subdomain_url = config.subdomain_base_url(c);
@@ -719,7 +739,7 @@ fn run_interactive_recovery(
 ) -> anyhow::Result<Vec<String>> {
     let mut unresolved = Vec::new();
 
-    println!();
+    crate::human_println!();
     for check in checks {
         if check.passed {
             continue;
@@ -729,11 +749,17 @@ fn run_interactive_recovery(
         match fix {
             Some(fix_action) if !fix_action.prompt.is_empty() => {
                 // We have an auto-fix available — ask the user
-                let do_fix = dialoguer::Confirm::new()
-                    .with_prompt(&fix_action.prompt)
-                    .default(true)
-                    .interact()
-                    .unwrap_or(false);
+                // Auto-fixes have side effects (installs, git init, project
+                // creation): only run them when a human agrees or --yes is set.
+                let do_fix = if prompt::is_interactive() || prompt::assume_yes() {
+                    prompt::confirm(&fix_action.prompt, true).unwrap_or(false)
+                } else {
+                    human::info(&format!(
+                        "Skipping auto-fix for '{}' (not interactive; pass --yes to apply fixes)",
+                        check.name
+                    ));
+                    false
+                };
 
                 if do_fix {
                     match deploy::execute_fix(&check.name, paths, config, config_path) {
@@ -741,14 +767,14 @@ fn run_interactive_recovery(
                             // Verify the fix worked
                             let recheck = deploy::recheck(&check.name, config, paths, target);
                             if recheck.passed {
-                                println!(
+                                crate::human_println!(
                                     "  {} {}: {}",
                                     console::style("✓").green(),
                                     recheck.name,
                                     recheck.message
                                 );
                             } else {
-                                println!(
+                                crate::human_println!(
                                     "  {} {}: {}",
                                     console::style("✗").red(),
                                     recheck.name,
@@ -798,6 +824,18 @@ fn print_manual_instructions(instructions: &[String]) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Ask before an optional remote side effect (default yes). Without a terminal
+/// and without `--yes`, the step is skipped (never performed silently).
+fn confirm_side_effect(question: &str) -> bool {
+    if prompt::is_interactive() || prompt::assume_yes() {
+        return prompt::confirm(question, true).unwrap_or(false);
+    }
+    human::info(&format!(
+        "Skipped: {question} (not interactive; pass --yes to do this automatically)"
+    ));
+    false
+}
 
 fn resolve_target_str(args: &DeployArgs, config: &SiteConfig) -> String {
     args.target

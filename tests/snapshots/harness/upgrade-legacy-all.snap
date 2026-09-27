@@ -1,0 +1,593 @@
+==> (upgrade changes) <==
+.mcp.json (seite MCP server for Claude Code)
+Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)
+Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json
+Allowed mcp__seite in .claude/settings.json
+Allowed Edit(static/**) in .claude/settings.json
+Allowed Edit(seite.toml) in .claude/settings.json
+Allowed Bash(seite check:*) in .claude/settings.json
+Allowed Bash(seite check) in .claude/settings.json
+Added the seite check stop hook to .claude/settings.json
+Canonical AGENTS.md project instructions
+.claude/rules/seo-requirements.md
+.claude/rules/templates.md
+.claude/rules/i18n.md
+.claude/rules/data-files.md
+.claude/rules/shortcodes.md
+.claude/rules/config-reference.md
+.claude/rules/features.md
+.claude/rules/design-prompts.md
+.claude/rules/private-collections.md
+.claude/skills/theme-builder/SKILL.md (updated v0 → v1)
+.claude/skills/brand-identity/SKILL.md (/brand-identity command)
+.claude/skills/seite/SKILL.md (/seite command)
+.cursor/mcp.json (seite MCP server for Cursor)
+.cursor/cli.json (Cursor CLI permissions for seite)
+.cursor/rules/seo-requirements.mdc
+.cursor/rules/templates.mdc
+.cursor/rules/i18n.mdc
+.cursor/rules/data-files.mdc
+.cursor/rules/shortcodes.mdc
+.cursor/rules/config-reference.mdc
+.cursor/rules/features.mdc
+.cursor/rules/design-prompts.mdc
+.cursor/rules/private-collections.mdc
+.codex/config.toml (seite MCP server for Codex CLI)
+opencode.json (seite MCP server + permissions for OpenCode)
+.opencode/commands/seite.md (slash command → skill)
+.agents/skills/seite/SKILL.md (/seite command)
+.agents/skills/theme-builder/SKILL.md (/theme-builder command)
+.agents/skills/brand-identity/SKILL.md (/brand-identity command)
+Project instructions (per-agent MCP setup table)
+Project instructions (context rules index)
+.codex/hooks.json (seite check stop hook for Codex CLI)
+.opencode/plugins/seite-check.js (seite check stop hook for OpenCode)
+.cursor/hooks.json (seite check stop hook for Cursor)
+
+==> .agents/skills/brand-identity/SKILL.md <==
+---
+name: brand-identity
+description: Create a logo (SVG) and brand color palette for a project. Walks through brand personality, audience, and visual preferences before generating an SVG logo, color system, and favicon — then optionally applies colors to the site theme.
+# seite-skill-version: 1
+---
+[… body of skill `brand-identity` elided …]
+
+==> .agents/skills/seite/SKILL.md <==
+---
+name: seite
+description: Work on this seite static site — write or edit content (posts, docs, pages), check the site and fix every error, preview it locally, build it, deploy it, switch or tune the theme, and add collections. Use for any change to content/, templates/, data/, static/, or seite.toml, and whenever the user asks to check, fix, preview, build, publish, or deploy the site.
+# seite-skill-version: 1
+---
+
+# seite site workflow
+
+One entry point for everyday work on this site. `AGENTS.md` is the project reference (commands, content format, collections, conventions) and the context guides it indexes cover templates, shortcodes, data files, and config — read those for details; this skill only decides *what to run, in what order*.
+
+**Dispatch:** `/seite <command> <args>` (Codex: `$seite <command> <args>`). Run the matching command below. With no command, infer it from the request (e.g. "write a post about X" → `new`, "is the site OK?" → `check`, "publish" → `deploy`), and ask once if two commands fit equally.
+
+Prefer the seite MCP tools (`seite_*`) when they are available; the `seite` CLI does the same thing otherwise.
+
+## Commands
+
+| Command | What it does | Reference |
+|---|---|---|
+| `check` | Validate the whole site and fix every problem | [check](#check) |
+| `new <type> "<title>"` | Create a post, doc, page, … and write it | [new](#new) |
+| `preview` | Start the dev server in the background, report the URL | [preview](#preview) |
+| `build` | Build `dist/` and report problems | [build](#build) |
+| `deploy` | Dry-run, then deploy only after the user confirms | [deploy](#deploy) |
+| `theme [name \| description]` | List, apply, or design a theme | [theme](#theme) |
+| `collection [preset]` | List collections or add a preset | [collection](#collection) |
+
+## check
+
+1. Run MCP `seite_check` (or `seite check`). Output is `file:line:col: severity[code]: message` plus a `hint:`.
+2. Fix every error at the reported source file and line — the `.md`, template, data file, or `seite.toml`, never `dist/`.
+3. Re-run until it reports no errors. Then fix warnings (broken links, missing assets, unknown config keys) unless the user only asked about errors; `seite check --strict` fails on those too.
+4. Summarize what you changed.
+
+## new
+
+1. Create the file with MCP `seite_create_content` (or `seite new <type> "<title>"`, with `--tags a,b`, `--draft`, or `--lang xx` as asked). `<type>` is a collection's singular name (`post`, `doc`, `page`, …).
+2. Write the body the user asked for; keep the frontmatter format described in `AGENTS.md`. Link other pages with relative `.md` paths.
+3. Run `check` on the result.
+
+## preview
+
+1. Start `seite serve --no-repl` as a background process (add `--build` if `dist/` is missing or stale). It keeps serving with live reload while you edit.
+2. Report the local URL it prints (default `http://localhost:3000`; a free port is picked if that is taken).
+3. Stop the process when the user is done, if your harness tracks background jobs.
+
+## build
+
+1. Run MCP `seite_build` (or `seite build --json`; add `--drafts` to include drafts).
+2. Report `broken_links`, `missing_assets`, and `diagnostics` from the result. If there are errors, switch to `check`.
+
+## deploy
+
+1. Run `check` first; do not deploy a site with errors.
+2. Run `seite deploy --dry-run` and show the user what it would do (target, branch, preview vs production).
+3. **Ask the user before running a real `seite deploy`** — it commits, pushes, and publishes. Pass `--preview` for a staging URL, `--no-commit` if the user wants to commit themselves.
+
+## theme
+
+- No argument: `seite theme list`.
+- A bundled theme name: MCP `seite_apply_theme` (or `seite theme apply <name>`), then `build`.
+- A design description or "custom": use the `theme-builder` skill (or `seite theme create "<description>"` with Claude Code). Themes replace only `templates/base.html`.
+
+## collection
+
+- No argument: `seite collection list`.
+- A preset (`posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`): MCP `seite_create_collection` (or `seite collection add <preset>`), then `check`.
+
+==> .agents/skills/theme-builder/SKILL.md <==
+---
+name: theme-builder
+description: Create or customize a site theme interactively. Walks through site purpose, audience, visual direction, and design specifics before generating a complete base.html template with all SEO, accessibility, search, pagination, and i18n requirements.
+# seite-skill-version: 1
+---
+[… body of skill `theme-builder` elided …]
+
+==> .claude/rules/config-reference.md <==
+---
+paths:
+  - "seite.toml"
+---
+[… body of rule `config-reference` elided …]
+
+==> .claude/rules/data-files.md <==
+---
+paths:
+  - "data/**"
+---
+[… body of rule `data-files` elided …]
+
+==> .claude/rules/design-prompts.md <==
+---
+paths:
+  - "templates/**"
+---
+[… body of rule `design-prompts` elided …]
+
+==> .claude/rules/features.md <==
+---
+paths:
+  - "content/**"
+  - "templates/**"
+---
+[… body of rule `features` elided …]
+
+==> .claude/rules/i18n.md <==
+---
+paths:
+  - "content/**"
+  - "templates/**"
+  - "data/i18n/**"
+---
+[… body of rule `i18n` elided …]
+
+==> .claude/rules/private-collections.md <==
+---
+paths:
+  - "seite.toml"
+  - "content/**"
+---
+[… body of rule `private-collections` elided …]
+
+==> .claude/rules/seo-requirements.md <==
+---
+paths:
+  - "templates/**"
+---
+[… body of rule `seo-requirements` elided …]
+
+==> .claude/rules/shortcodes.md <==
+---
+paths:
+  - "content/**"
+  - "templates/shortcodes/**"
+---
+[… body of rule `shortcodes` elided …]
+
+==> .claude/rules/templates.md <==
+---
+paths:
+  - "templates/**"
+---
+[… body of rule `templates` elided …]
+
+==> .claude/settings.json <==
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(seite build:*)",
+      "mcp__seite",
+      "Edit(static/**)",
+      "Edit(seite.toml)",
+      "Bash(seite check:*)",
+      "Bash(seite check)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "seite"
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
+
+==> .claude/skills/brand-identity/SKILL.md <==
+---
+name: brand-identity
+description: Create a logo (SVG) and brand color palette for a project. Walks through brand personality, audience, and visual preferences before generating an SVG logo, color system, and favicon — then optionally applies colors to the site theme.
+# seite-skill-version: 1
+---
+[… body of skill `brand-identity` elided …]
+
+==> .claude/skills/seite/SKILL.md <==
+---
+name: seite
+description: Work on this seite static site — write or edit content (posts, docs, pages), check the site and fix every error, preview it locally, build it, deploy it, switch or tune the theme, and add collections. Use for any change to content/, templates/, data/, static/, or seite.toml, and whenever the user asks to check, fix, preview, build, publish, or deploy the site.
+argument-hint: "[check | new <type> \"<title>\" | preview | build | deploy | theme [name] | collection [preset]]"
+# seite-skill-version: 1
+---
+
+# seite site workflow
+
+One entry point for everyday work on this site. `AGENTS.md` is the project reference (commands, content format, collections, conventions) and the context guides it indexes cover templates, shortcodes, data files, and config — read those for details; this skill only decides *what to run, in what order*.
+
+**Dispatch:** `/seite <command> <args>` (Codex: `$seite <command> <args>`). Run the matching command below. With no command, infer it from the request (e.g. "write a post about X" → `new`, "is the site OK?" → `check`, "publish" → `deploy`), and ask once if two commands fit equally.
+
+Prefer the seite MCP tools (`seite_*`) when they are available; the `seite` CLI does the same thing otherwise.
+
+## Commands
+
+| Command | What it does | Reference |
+|---|---|---|
+| `check` | Validate the whole site and fix every problem | [check](#check) |
+| `new <type> "<title>"` | Create a post, doc, page, … and write it | [new](#new) |
+| `preview` | Start the dev server in the background, report the URL | [preview](#preview) |
+| `build` | Build `dist/` and report problems | [build](#build) |
+| `deploy` | Dry-run, then deploy only after the user confirms | [deploy](#deploy) |
+| `theme [name \| description]` | List, apply, or design a theme | [theme](#theme) |
+| `collection [preset]` | List collections or add a preset | [collection](#collection) |
+
+## check
+
+1. Run MCP `seite_check` (or `seite check`). Output is `file:line:col: severity[code]: message` plus a `hint:`.
+2. Fix every error at the reported source file and line — the `.md`, template, data file, or `seite.toml`, never `dist/`.
+3. Re-run until it reports no errors. Then fix warnings (broken links, missing assets, unknown config keys) unless the user only asked about errors; `seite check --strict` fails on those too.
+4. Summarize what you changed.
+
+## new
+
+1. Create the file with MCP `seite_create_content` (or `seite new <type> "<title>"`, with `--tags a,b`, `--draft`, or `--lang xx` as asked). `<type>` is a collection's singular name (`post`, `doc`, `page`, …).
+2. Write the body the user asked for; keep the frontmatter format described in `AGENTS.md`. Link other pages with relative `.md` paths.
+3. Run `check` on the result.
+
+## preview
+
+1. Start `seite serve --no-repl` as a background process (add `--build` if `dist/` is missing or stale). It keeps serving with live reload while you edit.
+2. Report the local URL it prints (default `http://localhost:3000`; a free port is picked if that is taken).
+3. Stop the process when the user is done, if your harness tracks background jobs.
+
+## build
+
+1. Run MCP `seite_build` (or `seite build --json`; add `--drafts` to include drafts).
+2. Report `broken_links`, `missing_assets`, and `diagnostics` from the result. If there are errors, switch to `check`.
+
+## deploy
+
+1. Run `check` first; do not deploy a site with errors.
+2. Run `seite deploy --dry-run` and show the user what it would do (target, branch, preview vs production).
+3. **Ask the user before running a real `seite deploy`** — it commits, pushes, and publishes. Pass `--preview` for a staging URL, `--no-commit` if the user wants to commit themselves.
+
+## theme
+
+- No argument: `seite theme list`.
+- A bundled theme name: MCP `seite_apply_theme` (or `seite theme apply <name>`), then `build`.
+- A design description or "custom": use the `theme-builder` skill (or `seite theme create "<description>"` with Claude Code). Themes replace only `templates/base.html`.
+
+## collection
+
+- No argument: `seite collection list`.
+- A preset (`posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`): MCP `seite_create_collection` (or `seite collection add <preset>`), then `check`.
+
+==> .claude/skills/theme-builder/SKILL.md <==
+---
+name: theme-builder
+description: Create or customize a site theme interactively. Walks through site purpose, audience, visual direction, and design specifics before generating a complete base.html template with all SEO, accessibility, search, pagination, and i18n requirements.
+# seite-skill-version: 1
+---
+[… body of skill `theme-builder` elided …]
+
+==> .codex/config.toml <==
+# Codex CLI project config for this seite site.
+#
+# Codex only loads a project's .codex/config.toml once you trust the project:
+# answer "trust" when Codex asks on first run in this directory (this records
+# `[projects."<path>"] trust_level = "trusted"` in ~/.codex/config.toml).
+# After that, `codex mcp list` (or /mcp inside Codex) shows the seite server.
+
+[mcp_servers.seite]
+command = "seite"
+args = ["mcp"]
+default_tools_approval_mode = "approve"
+
+==> .codex/hooks.json <==
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook codex",
+            "timeout": 120,
+            "statusMessage": "Running seite check"
+          }
+        ]
+      }
+    ]
+  }
+}
+
+==> .cursor/cli.json <==
+{
+  "permissions": {
+    "allow": [
+      "Mcp(seite:*)",
+      "Shell(seite)",
+      "Write(content/**)",
+      "Write(templates/**)",
+      "Write(static/**)",
+      "Write(data/**)",
+      "Write(seite.toml)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)"
+    ]
+  }
+}
+
+==> .cursor/hooks.json <==
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "seite check --hook cursor",
+        "timeout": 120
+      }
+    ]
+  }
+}
+
+==> .cursor/mcp.json <==
+{
+  "mcpServers": {
+    "seite": {
+      "command": "seite",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+
+==> .cursor/rules/config-reference.mdc <==
+---
+description: "Optional seite.toml configuration sections"
+globs: "seite.toml"
+alwaysApply: false
+---
+[… body of rule `config-reference` elided …]
+
+==> .cursor/rules/data-files.mdc <==
+---
+description: "Data files in data/ and how templates read them"
+globs: "data/**"
+alwaysApply: false
+---
+[… body of rule `data-files` elided …]
+
+==> .cursor/rules/design-prompts.mdc <==
+---
+description: "Starting directions for redesigning or creating a theme"
+globs: "templates/**"
+alwaysApply: false
+---
+[… body of rule `design-prompts` elided …]
+
+==> .cursor/rules/features.mdc <==
+---
+description: "Built-in site features (highlighting, homepage content, math, diagrams, search)"
+globs: "content/**, templates/**"
+alwaysApply: false
+---
+[… body of rule `features` elided …]
+
+==> .cursor/rules/i18n.mdc <==
+---
+description: "Multi-language content, translations, and localized templates"
+globs: "content/**, templates/**, data/i18n/**"
+alwaysApply: false
+---
+[… body of rule `i18n` elided …]
+
+==> .cursor/rules/private-collections.mdc <==
+---
+description: "Private collections and password-protected access"
+globs: "seite.toml, content/**"
+alwaysApply: false
+---
+[… body of rule `private-collections` elided …]
+
+==> .cursor/rules/seo-requirements.mdc <==
+---
+description: "SEO and GEO requirements every page template must meet (meta tags, JSON-LD, feeds)"
+globs: "templates/**"
+alwaysApply: false
+---
+[… body of rule `seo-requirements` elided …]
+
+==> .cursor/rules/shortcodes.mdc <==
+---
+description: "Built-in and custom shortcodes for markdown content"
+globs: "content/**, templates/shortcodes/**"
+alwaysApply: false
+---
+[… body of rule `shortcodes` elided …]
+
+==> .cursor/rules/templates.mdc <==
+---
+description: "Tera template variables, blocks, and theme conventions"
+globs: "templates/**"
+alwaysApply: false
+---
+[… body of rule `templates` elided …]
+
+==> .mcp.json <==
+{
+  "mcpServers": {
+    "seite": {
+      "command": "seite",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+
+==> .opencode/commands/seite.md <==
+---
+description: "Work on this seite static site — write or edit content (posts, docs, pages), check the site and fix every error, preview it locally, build it, deploy it, switch or tune the theme, and add collections. Use for any change to content/, templates/, data/, static/, or seite.toml, and whenever the user asks to check, fix, preview, build, publish, or deploy the site."
+# seite-skill-version: 1
+---
+Load the `seite` skill (call skill({ name: "seite" })) and follow its dispatch rule and Commands table for: $ARGUMENTS
+
+==> .opencode/plugins/seite-check.js <==
+// Generated by seite: when an OpenCode session goes idle, run `seite check`
+// and, if the site has errors, send them back so the agent fixes them.
+// Delete this file to opt out (`seite upgrade` won't recreate it).
+export const SeiteCheck = async ({ client, $, directory }) => {
+  const continued = new Set();
+  return {
+    event: async ({ event }) => {
+      if (event.type !== "session.idle") return;
+      const sessionID = event.properties?.sessionID;
+      if (!sessionID) return;
+      const input = JSON.stringify({
+        hook_event_name: "session.idle",
+        session_id: sessionID,
+        cwd: directory,
+        stop_hook_active: continued.has(sessionID),
+      });
+      continued.delete(sessionID);
+      let message;
+      try {
+        const out = await $`seite check --hook opencode < ${new Response(input)}`
+          .cwd(directory)
+          .quiet()
+          .nothrow()
+          .text();
+        message = JSON.parse(out || "{}").message;
+      } catch {
+        return;
+      }
+      if (!message) return;
+      continued.add(sessionID);
+      await client.session.prompt({
+        path: { id: sessionID },
+        body: { parts: [{ type: "text", text: message }] },
+      });
+    },
+  };
+};
+
+==> AGENTS.md <==
+# Legacy
+
+Custom instructions the user wrote.
+
+## MCP Setup per Agent
+
+<!-- seite:agent-setup -->
+| Agent | MCP config | One-time step |
+|---|---|---|
+| Claude Code | `.mcp.json` | Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`) |
+| Codex CLI | `.codex/config.toml` | Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp` |
+| OpenCode | `opencode.json` | None — it starts automatically |
+| Cursor | `.cursor/mcp.json` (+ `.cursor/cli.json` permissions) | Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt) |
+<!-- /seite:agent-setup -->
+
+## Context Rules
+
+<!-- seite:context-rules -->
+Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`). Claude Code and Cursor load them automatically for matching files; other agents should read the matching guides before editing:
+
+- `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`, `design-prompts.md`
+- `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`
+- `data/i18n/**`: `i18n.md`
+- `data/**`: `data-files.md`
+- `templates/shortcodes/**`: `shortcodes.md`
+- `seite.toml`: `config-reference.md`, `private-collections.md`
+<!-- /seite:context-rules -->
+
+==> CLAUDE.md <==
+@AGENTS.md
+
+==> opencode.json <==
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "seite": {
+      "type": "local",
+      "command": [
+        "seite",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny"
+    },
+    "edit": {
+      "*": "ask",
+      "content/*": "allow",
+      "templates/*": "allow",
+      "static/*": "allow",
+      "data/*": "allow",
+      "seite.toml": "allow"
+    },
+    "bash": {
+      "*": "ask",
+      "seite build*": "allow",
+      "seite check*": "allow",
+      "seite new*": "allow",
+      "seite serve*": "allow",
+      "seite theme*": "allow"
+    },
+    "glob": "allow",
+    "grep": "allow",
+    "websearch": "allow",
+    "webfetch": "ask"
+  }
+}
+

@@ -1,6 +1,6 @@
 ## Contact Forms
 
-The `{{< contact_form() >}}` shortcode renders a styled contact form using the configured provider. All 6 bundled themes include contact form CSS.
+The `{{< contact_form() >}}` shortcode renders a styled contact form using the configured provider. All 10 bundled themes include contact form CSS.
 
 ### Configuration
 

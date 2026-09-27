@@ -154,8 +154,13 @@ The MCP server is configured in `.claude/settings.json`:
 |------|-------------|
 | `seite_build` | Run the build pipeline, returns build stats |
 | `seite_create_content` | Scaffold new content with proper frontmatter |
+| `seite_get_page` | One page as the build sees it: resolved frontmatter, URL, body, rendered HTML |
+| `seite_update_frontmatter` | Edit a page's frontmatter without touching its body |
 | `seite_search` | Search content by title, description, or tags |
+| `seite_content_stats` | Drafts, missing descriptions/tags/translations, future-dated items |
+| `seite_list_templates` | Template overrides, base blocks, context variables, shortcodes, data keys |
 | `seite_apply_theme` | Apply a bundled or installed theme |
+| `seite_create_collection` | Add a preset collection (posts, docs, pages, changelog, roadmap, trust) |
 | `seite_lookup_docs` | Search seite's embedded documentation |
 
 ### Available MCP Resources

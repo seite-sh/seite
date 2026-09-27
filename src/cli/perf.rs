@@ -123,18 +123,18 @@ fn print_report(report: &PerfReport) {
         Some(s) => format!("{}", style(format!("{s:.0}/100")).red().bold()),
         None => "N/A".to_string(),
     };
-    println!("\n{} Performance Score: {score_label}", style("●").bold());
+    crate::human_println!("\n{} Performance Score: {score_label}", style("●").bold());
     print_metric("  FCP (First Contentful Paint)", &report.fcp);
     print_metric("  LCP (Largest Contentful Paint)", &report.lcp);
     print_metric("  TBT (Total Blocking Time)    ", &report.tbt);
     print_metric("  CLS (Cumulative Layout Shift)", &report.cls);
     print_metric("  Speed Index                  ", &report.speed_index);
-    println!();
+    crate::human_println!();
 }
 
 fn print_metric(label: &str, metric: &Option<Metric>) {
     match metric {
-        None => println!("{label}: N/A"),
+        None => crate::human_println!("{label}: N/A"),
         Some(m) => {
             let val = if m.score >= 0.9 {
                 format!("{}", style(&m.display).green())
@@ -143,7 +143,7 @@ fn print_metric(label: &str, metric: &Option<Metric>) {
             } else {
                 format!("{}", style(&m.display).red())
             };
-            println!("{label}: {val}");
+            crate::human_println!("{label}: {val}");
         }
     }
 }

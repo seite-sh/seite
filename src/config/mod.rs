@@ -1,4 +1,5 @@
 pub mod defaults;
+pub mod unknown_keys;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -513,12 +514,17 @@ pub struct ResolvedPaths {
     pub static_dir: PathBuf,
     pub data_dir: PathBuf,
     pub public_dir: PathBuf,
+    /// Directory holding each subdomain collection's output
+    /// (`{root}/dist-subdomains`). Kept separate from `root` so an output-only
+    /// redirect (e.g. `seite check` building into a scratch dir) still reads
+    /// sources from the real site.
+    pub subdomain_output_root: PathBuf,
 }
 
 impl ResolvedPaths {
     /// Output directory for a subdomain collection (e.g., `{root}/dist-subdomains/docs/`).
     pub fn subdomain_output(&self, collection_name: &str) -> PathBuf {
-        self.root.join("dist-subdomains").join(collection_name)
+        self.subdomain_output_root.join(collection_name)
     }
 }
 
@@ -583,6 +589,39 @@ impl SiteConfig {
         config.validate_subdomains()?;
         config.validate_access()?;
         Ok(config)
+    }
+
+    /// Like [`load`](Self::load), but also returns non-fatal problems found in
+    /// the file — currently `config-unknown-key` warnings for keys the schema
+    /// does not know (typos such as `minfy`), each with its line and a
+    /// did-you-mean hint. A TOML syntax/type error is returned as a located
+    /// `config-invalid` diagnostic (`PageError::Diagnostics`).
+    pub fn load_with_diagnostics(
+        path: &Path,
+    ) -> Result<(Self, Vec<crate::diagnostics::Diagnostic>)> {
+        if !path.exists() {
+            return Err(PageError::ConfigNotFound {
+                path: path.to_path_buf(),
+            });
+        }
+        let contents = std::fs::read_to_string(path)?;
+        let file_name = path.file_name().map(Path::new).unwrap_or(path);
+        let config: SiteConfig = toml::from_str(&contents).map_err(|e| {
+            let mut d = crate::diagnostics::Diagnostic::error(
+                "config-invalid",
+                format!("invalid config: {}", e.message().trim()),
+            )
+            .with_file(file_name);
+            if let Some(span) = e.span() {
+                let (line, column) = crate::diagnostics::line_col_at(&contents, span.start);
+                d = d.with_line(line).with_column(column);
+            }
+            PageError::Diagnostics(d.into())
+        })?;
+        config.validate_subdomains()?;
+        config.validate_access()?;
+        let warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        Ok((config, warnings))
     }
 
     fn validate_access(&self) -> Result<()> {
@@ -842,6 +881,7 @@ impl SiteConfig {
             static_dir: project_root.join(&self.build.static_dir),
             data_dir: project_root.join(&self.build.data_dir),
             public_dir: project_root.join(&self.build.public_dir),
+            subdomain_output_root: project_root.join("dist-subdomains"),
         }
     }
 }
@@ -1208,6 +1248,7 @@ deploy_project = "my-docs"
             static_dir: PathBuf::from("/project/static"),
             data_dir: PathBuf::from("/project/data"),
             public_dir: PathBuf::from("/project/public"),
+            subdomain_output_root: PathBuf::from("/project/dist-subdomains"),
         };
         assert_eq!(
             paths.subdomain_output("docs"),

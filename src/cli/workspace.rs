@@ -64,9 +64,7 @@ pub fn run(args: &WorkspaceArgs) -> anyhow::Result<()> {
 fn run_init(args: &WorkspaceInitArgs) -> anyhow::Result<()> {
     let name = match &args.name {
         Some(n) => n.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Workspace name")
-            .interact_text()?,
+        None => crate::cli::prompt::input("Workspace name", None, "<NAME> argument")?,
     };
 
     let ws_file = PathBuf::from("seite-workspace.toml");
@@ -159,7 +157,18 @@ fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     // Check if site already exists in workspace config
     let ws_config_path = ws_root.join("seite-workspace.toml");
     let contents = fs::read_to_string(&ws_config_path)?;
-    if contents.contains(&format!("name = \"{}\"", args.name)) {
+    // Compare against the parsed [[sites]] entries, not the raw text: the
+    // scaffold's commented-out example (`# name = "blog"`) and the
+    // `[workspace]` name are not sites.
+    let exists = toml::from_str::<toml::Value>(&contents)
+        .ok()
+        .and_then(|doc| doc.get("sites")?.as_array().cloned())
+        .is_some_and(|sites| {
+            sites
+                .iter()
+                .any(|s| s.get("name").and_then(|n| n.as_str()) == Some(args.name.as_str()))
+        });
+    if exists {
         anyhow::bail!("site '{}' already exists in the workspace", args.name);
     }
 
@@ -270,7 +279,7 @@ fn run_status() -> anyhow::Result<()> {
         human::info(&format!("  Shared templates: {templates}"));
     }
 
-    println!();
+    crate::human_println!();
     for site in &ws_config.sites {
         let site_root = ws_root.join(&site.path);
         let has_config = site_root.join("seite.toml").exists();

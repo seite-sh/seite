@@ -1,8 +1,10 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Args;
 
+use crate::cli::harness::{self, Agent, SiteFeatures};
+use crate::cli::prompt;
 use crate::config::{CollectionConfig, DeployTarget, SiteConfig};
 use crate::content;
 use crate::meta;
@@ -22,7 +24,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub description: Option<String>,
 
-    /// Deploy target (github-pages, cloudflare)
+    /// Deploy target (github-pages, cloudflare, netlify); required when not interactive
     #[arg(long)]
     pub deploy_target: Option<String>,
 
@@ -49,43 +51,50 @@ pub struct InitArgs {
     /// Contact form endpoint/ID
     #[arg(long)]
     pub contact_endpoint: Option<String>,
+
+    /// Coding agents to set the site up for (comma-separated: claude,codex,opencode,cursor, or all).
+    /// Default: all
+    #[arg(long, value_name = "LIST")]
+    pub agents: Option<String>,
 }
 
 pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let name = match &args.name {
         Some(n) => n.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site name (directory)")
-            .interact_text()?,
+        None => prompt::input("Site name (directory)", None, "<NAME> argument")?,
     };
 
     let title = match &args.title {
         Some(t) => t.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site title")
-            .default(name.clone())
-            .interact_text()?,
+        None => prompt::input("Site title", Some(&name), "--title")?,
     };
 
     let description = match &args.description {
         Some(d) => d.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Site description")
-            .default(String::new())
-            .allow_empty(true)
-            .interact_text()?,
+        None => prompt::input("Site description", Some(""), "--description")?,
     };
 
+    const DEPLOY_TARGETS: [&str; 3] = ["github-pages", "cloudflare", "netlify"];
     let deploy_target = match &args.deploy_target {
-        Some(t) => t.clone(),
+        Some(t) => {
+            if !DEPLOY_TARGETS.contains(&t.as_str()) {
+                anyhow::bail!(
+                    "unknown deploy target '{t}'. Valid targets: {}",
+                    DEPLOY_TARGETS.join(", ")
+                );
+            }
+            t.clone()
+        }
         None => {
-            let options = ["github-pages", "cloudflare", "netlify"];
-            let selection = dialoguer::Select::new()
-                .with_prompt("Deploy target")
-                .items(options)
-                .default(0)
-                .interact()?;
-            options[selection].to_string()
+            // No silent default: the target decides which CI workflow is generated.
+            let selection = prompt::select(
+                "Deploy target",
+                &DEPLOY_TARGETS,
+                None,
+                "--deploy-target",
+                &DEPLOY_TARGETS,
+            )?;
+            DEPLOY_TARGETS[selection].to_string()
         }
     };
 
@@ -93,16 +102,21 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let collections: Vec<CollectionConfig> = match &args.collections {
         Some(list) => list
             .split(',')
-            .filter_map(|name| CollectionConfig::from_preset(name.trim()))
-            .collect(),
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(|name| {
+                CollectionConfig::from_preset(name).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "unknown collection preset '{name}'. Available: posts, docs, pages, changelog, roadmap, trust"
+                    )
+                })
+            })
+            .collect::<anyhow::Result<_>>()?,
         None => {
             let preset_names = ["posts", "docs", "pages", "changelog", "roadmap", "trust"];
             let defaults = &[true, false, true, false, false, false]; // posts + pages on by default
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Collections to include")
-                .items(preset_names)
-                .defaults(defaults)
-                .interact()?;
+            let selections =
+                prompt::multi_select("Collections to include", &preset_names, defaults)?;
             selections
                 .into_iter()
                 .filter_map(|i| CollectionConfig::from_preset(preset_names[i]))
@@ -113,6 +127,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     if collections.is_empty() {
         anyhow::bail!("at least one collection is required");
     }
+
+    // Coding agents to generate config for (AGENTS.md is always written).
+    let agents = harness::resolve_init_agents(args.agents.as_deref())?;
 
     let root = PathBuf::from(&name);
     if root.exists() {
@@ -127,7 +144,6 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join("static"))?;
     fs::create_dir_all(root.join("public"))?;
     fs::create_dir_all(root.join("data"))?;
-    fs::create_dir_all(root.join(".claude"))?;
     fs::create_dir_all(root.join(".seite"))?;
 
     // Write .gitignore
@@ -195,10 +211,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         )?);
     } else if args.name.is_none() {
         // Interactive mode (no --name given = user is in interactive init flow)
-        let add_contact = dialoguer::Confirm::new()
-            .with_prompt("Add a contact form?")
-            .default(false)
-            .interact()?;
+        let add_contact =
+            prompt::is_interactive() && prompt::confirm("Add a contact form?", false)?;
         if add_contact {
             let setup_args = crate::cli::contact::SetupArgs {
                 provider: None,
@@ -367,49 +381,23 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         }
     }
 
-    // Write project metadata (.seite/config.json)
-    meta::write(&root, &meta::PageMeta::current())?;
-
-    // Write Claude Code settings (.claude/settings.json)
-    fs::write(
-        root.join(".claude/settings.json"),
-        generate_claude_settings(),
+    // Write project metadata (.seite/config.json), recording the agent
+    // selection so `seite upgrade` knows which harness files to maintain.
+    meta::write(
+        &root,
+        &meta::PageMeta {
+            agents: Some(harness::to_ids(&agents)),
+            hooks_installed: Some(harness::to_ids(&agents)),
+            ..meta::PageMeta::current()
+        },
     )?;
 
-    // Write Claude Code skills
-    if collections.iter().any(|c| c.name == "pages") {
-        let skill_dir = root.join(".claude/skills/landing-page");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-landing-page.md"),
-        )?;
-    }
+    // Per-agent harness files: MCP server config, permissions, path-scoped
+    // rules, and skills (plus the CLAUDE.md `@AGENTS.md` shim for Claude Code).
+    let features = SiteFeatures::from_config(&config);
+    harness::write_plan(&root, &agents, features)?;
 
-    {
-        let skill_dir = root.join(".claude/skills/theme-builder");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-theme-builder.md"),
-        )?;
-    }
-
-    {
-        let skill_dir = root.join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            include_str!("../scaffold/skill-brand-identity.md"),
-        )?;
-    }
-
-    // Write .claude/rules/ files (path-scoped context for Claude)
-    generate_rules_files(&root, &collections, config.contact.is_some())?;
-
-    // Write cross-agent project instructions and a Claude Code compatibility shim.
-    // Claude Code expands the @AGENTS.md import, while other agents can consume
-    // AGENTS.md directly.
+    // Cross-agent project instructions, read by every supported agent.
     fs::write(
         root.join("AGENTS.md"),
         generate_agents_md(
@@ -418,44 +406,82 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             &description,
             &collections,
             trust_opts.as_ref(),
+            &agents,
         ),
     )?;
-    fs::write(root.join("CLAUDE.md"), "@AGENTS.md\n")?;
 
     human::success(&format!("Created new site in '{name}'"));
-    println!();
+    crate::human_println!();
 
     // Show project structure so users know what was created
-    let collection_dirs: Vec<String> = collections
-        .iter()
-        .map(|c| format!("  │   └── {}/", c.directory))
-        .collect();
-    println!(
-        "  {name}/\n\
-         ├── seite.toml          {}\n\
-         ├── content/\n\
-         {}\n\
-         ├── templates/base.html {}\n\
-         └── static/             {}",
-        console::style("← site config").dim(),
-        collection_dirs.join("\n"),
-        console::style("← theme template").dim(),
-        console::style("← CSS, images, etc.").dim(),
-    );
+    for line in project_tree_lines(&name, &collections) {
+        crate::human_println!("{line}");
+    }
 
-    println!();
+    crate::human_println!();
     human::info("Next steps:");
-    println!("  cd {name}");
-    println!(
+    crate::human_println!("  cd {name}");
+    crate::human_println!(
         "  seite serve             {} start dev server with live reload",
         console::style("←").dim()
     );
-    println!(
+    crate::human_println!(
         "  seite agent             {} write content & themes with Claude Code",
         console::style("←").dim()
     );
+    crate::human_println!();
+    human::info(&format!(
+        "Set up for {} — see AGENTS.md → MCP Server for each agent's one-time approval step.",
+        agents
+            .iter()
+            .map(|a| a.label())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+
+    let root_display = std::env::current_dir()
+        .map(|cwd| cwd.join(&root))
+        .unwrap_or_else(|_| root.clone());
+    crate::output::json::set_data(serde_json::json!({
+        "path": root_display.display().to_string(),
+        "name": name,
+        "title": title,
+        "collections": collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        "deploy_target": deploy_target,
+        "contact": config.contact.is_some(),
+        "agents": harness::to_ids(&agents),
+    }));
 
     Ok(())
+}
+
+/// Lines of the "what was created" tree shown after `seite init`.
+fn project_tree_lines(name: &str, collections: &[CollectionConfig]) -> Vec<String> {
+    let mut lines = vec![
+        format!("  {name}/"),
+        format!(
+            "  ├── seite.toml          {}",
+            console::style("← site config").dim()
+        ),
+        "  ├── content/".to_string(),
+    ];
+    for (i, c) in collections.iter().enumerate() {
+        let branch = if i + 1 == collections.len() {
+            "└──"
+        } else {
+            "├──"
+        };
+        lines.push(format!("  │   {branch} {}/", c.directory));
+    }
+    lines.push(format!(
+        "  ├── templates/base.html {}",
+        console::style("← theme template").dim()
+    ));
+    lines.push(format!(
+        "  └── static/             {}",
+        console::style("← CSS, images, etc.").dim()
+    ));
+    lines
 }
 
 /// Trust center framework metadata.
@@ -519,10 +545,7 @@ pub struct TrustOptions {
 fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOptions> {
     let company = match &args.trust_company {
         Some(c) => c.clone(),
-        None => dialoguer::Input::<String>::new()
-            .with_prompt("Trust center company name")
-            .default(title.to_string())
-            .interact_text()?,
+        None => prompt::input("Trust center company name", Some(title), "--trust-company")?,
     };
 
     let frameworks: Vec<String> = match &args.trust_frameworks {
@@ -530,11 +553,7 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
         None => {
             let names: Vec<&str> = FRAMEWORKS.iter().map(|f| f.name).collect();
             let defaults = &[true, false, false, false, false, false, false];
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Compliance frameworks")
-                .items(names)
-                .defaults(defaults)
-                .interact()?;
+            let selections = prompt::multi_select("Compliance frameworks", &names, defaults)?;
             selections
                 .into_iter()
                 .map(|i| FRAMEWORKS[i].slug.to_string())
@@ -564,11 +583,8 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
                 "changelog",
             ];
             let defaults = &[true, true, true, true, true, false, false];
-            let selections = dialoguer::MultiSelect::new()
-                .with_prompt("Trust center sections")
-                .items(section_names)
-                .defaults(defaults)
-                .interact()?;
+            let selections =
+                prompt::multi_select("Trust center sections", &section_names, defaults)?;
             selections
                 .into_iter()
                 .map(|i| section_slugs[i].to_string())
@@ -581,8 +597,8 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
     for fw_slug in &frameworks {
         let fw = framework_by_slug(fw_slug);
         let fw_name = fw.map(|f| f.name).unwrap_or(fw_slug.as_str());
-        let status = if args.trust_frameworks.is_some() {
-            // Non-interactive: default to "in_progress"
+        let status = if args.trust_frameworks.is_some() || !prompt::is_interactive() {
+            // Non-interactive: default to "in_progress" (never claim certification)
             "in_progress".to_string()
         } else {
             let options = [
@@ -590,11 +606,13 @@ fn prompt_trust_options(args: &InitArgs, title: &str) -> anyhow::Result<TrustOpt
                 "In Progress (pursuing)",
                 "Planned (on roadmap)",
             ];
-            let selection = dialoguer::Select::new()
-                .with_prompt(format!("{fw_name} status"))
-                .items(options)
-                .default(0)
-                .interact()?;
+            let selection = prompt::select(
+                &format!("{fw_name} status"),
+                &options,
+                Some(0),
+                "--trust-frameworks",
+                &[],
+            )?;
             match selection {
                 0 => "active",
                 1 => "in_progress",
@@ -789,159 +807,6 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     Ok(())
 }
 
-/// Generate .claude/settings.json with pre-approved tools and MCP server config.
-fn generate_claude_settings() -> String {
-    r#"{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "permissions": {
-    "allow": [
-      "Read",
-      "Write(content/**)",
-      "Write(templates/**)",
-      "Write(static/**)",
-      "Write(data/**)",
-      "Edit(content/**)",
-      "Edit(templates/**)",
-      "Edit(data/**)",
-      "Bash(seite build:*)",
-      "Bash(seite build)",
-      "Bash(seite new:*)",
-      "Bash(seite serve:*)",
-      "Bash(seite theme:*)",
-      "Glob",
-      "Grep",
-      "WebSearch"
-    ],
-    "deny": [
-      "Read(.env)",
-      "Read(.env.*)"
-    ]
-  },
-  "mcpServers": {
-    "seite": {
-      "command": "seite",
-      "args": ["mcp"]
-    }
-  }
-}
-"#
-    .to_string()
-}
-
-/// The MCP server block that should be present in .claude/settings.json.
-/// Used by upgrade to merge into existing settings.
-pub fn mcp_server_block() -> serde_json::Value {
-    serde_json::json!({
-        "seite": {
-            "command": "seite",
-            "args": ["mcp"]
-        }
-    })
-}
-
-/// Wrap scaffold content with `.claude/rules/` YAML frontmatter.
-pub(crate) fn rules_file(paths: &[&str], content: &str) -> String {
-    let mut result = String::with_capacity(content.len() + 128);
-    result.push_str("---\npaths:\n");
-    for p in paths {
-        result.push_str(&format!("  - \"{p}\"\n"));
-    }
-    result.push_str("---\n");
-    result.push_str(content);
-    result
-}
-
-/// Write `.claude/rules/*.md` files with path-scoped context for Claude.
-fn generate_rules_files(
-    root: &Path,
-    collections: &[CollectionConfig],
-    has_contact: bool,
-) -> std::io::Result<()> {
-    let rules_dir = root.join(".claude/rules");
-    fs::create_dir_all(&rules_dir)?;
-
-    // Always-present rules
-    fs::write(
-        rules_dir.join("seo-requirements.md"),
-        rules_file(
-            &["templates/**"],
-            include_str!("../scaffold/seo-requirements.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("templates.md"),
-        rules_file(&["templates/**"], include_str!("../scaffold/templates.md")),
-    )?;
-    fs::write(
-        rules_dir.join("i18n.md"),
-        rules_file(
-            &["content/**", "templates/**", "data/i18n/**"],
-            include_str!("../scaffold/i18n.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("data-files.md"),
-        rules_file(&["data/**"], include_str!("../scaffold/data-files.md")),
-    )?;
-    fs::write(
-        rules_dir.join("shortcodes.md"),
-        rules_file(
-            &["content/**", "templates/shortcodes/**"],
-            include_str!("../scaffold/shortcodes.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("config-reference.md"),
-        rules_file(
-            &["seite.toml"],
-            include_str!("../scaffold/config-reference.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("features.md"),
-        rules_file(
-            &["content/**", "templates/**"],
-            include_str!("../scaffold/features.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("design-prompts.md"),
-        rules_file(
-            &["templates/**"],
-            include_str!("../scaffold/design-prompts.md"),
-        ),
-    )?;
-    fs::write(
-        rules_dir.join("private-collections.md"),
-        rules_file(
-            &["seite.toml", "content/**"],
-            include_str!("../scaffold/private-collections.md"),
-        ),
-    )?;
-
-    // Conditional rules
-    if has_contact {
-        fs::write(
-            rules_dir.join("contact-form.md"),
-            rules_file(
-                &["content/**", "templates/**", "seite.toml"],
-                include_str!("../scaffold/contact-form.md"),
-            ),
-        )?;
-    }
-    if collections.iter().any(|c| c.name == "trust") {
-        fs::write(
-            rules_dir.join("trust-center.md"),
-            rules_file(
-                &["content/trust/**", "data/trust/**"],
-                include_str!("../scaffold/rules-trust-center.md"),
-            ),
-        )?;
-    }
-
-    Ok(())
-}
-
 /// Generate an AGENTS.md tailored to the site's collections and structure.
 fn generate_agents_md(
     config: &SiteConfig,
@@ -949,8 +814,11 @@ fn generate_agents_md(
     description: &str,
     collections: &[CollectionConfig],
     trust_opts: Option<&TrustOptions>,
+    agents: &[Agent],
 ) -> String {
     let mut md = String::with_capacity(8192);
+    let features = SiteFeatures::from_config(config);
+    let (rules_dir, rules_ext) = harness::rules_location(agents);
 
     // Header (dynamic)
     md.push_str(&format!("# {title}\n\n"));
@@ -958,6 +826,7 @@ fn generate_agents_md(
         md.push_str(&format!("{description}\n\n"));
     }
     md.push_str("This is a static site built with the `seite` CLI tool.\n\n");
+    md.push_str("Workflow shortcut: `/seite <command>` (`check`, `new`, `preview`, `build`, `deploy`, `theme`, `collection`; `$seite` in Codex) runs the bundled `seite` skill, which picks the right commands below.\n\n");
 
     // Commands (dynamic — iterates collections)
     md.push_str("## Commands\n\n");
@@ -987,6 +856,21 @@ fn generate_agents_md(
     md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
     md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
     md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
+    md.push_str("seite skill install seomachine           # Install a skill pack\n");
+    md.push_str(
+        "seite workspace list                     # List sites in a multi-site workspace\n",
+    );
+    md.push_str(
+        "seite access groups                      # List private-collection password groups\n",
+    );
+    md.push_str("seite upgrade                            # Upgrade project config after a seite version bump\n");
+    md.push_str("seite self-update                        # Update the seite binary itself\n");
+    md.push_str(
+        "seite perf                                # Audit performance via PageSpeed Insights\n",
+    );
+    md.push_str(
+        "seite mcp                                # Start the MCP server (usually auto-started)\n",
+    );
     md.push_str("seite completions bash                   # Generate shell completions\n");
     md.push_str("```\n\n");
 
@@ -1118,15 +1002,22 @@ fn generate_agents_md(
         md.push_str(include_str!("../scaffold/landing-page-builder.md"));
     }
 
-    // MCP Server (brief — details in embedded docs)
-    md.push_str("## MCP Server\n\n");
+    // MCP Server (per-agent config table is a marker block `seite upgrade` refreshes)
     md.push_str(
-        "An MCP server is configured in `.claude/settings.json` and starts automatically.\n",
+        &include_str!("../scaffold/mcp.md")
+            .replace(
+                "{mcp_setup}",
+                &harness::wrap_block(harness::MCP_SETUP_BLOCK, &harness::mcp_setup_table(agents)),
+            )
+            .replace(
+                "{trust_resource}",
+                if trust_opts.is_some() {
+                    ", `seite://trust` (trust center data)"
+                } else {
+                    ""
+                },
+            ),
     );
-    md.push_str(
-        "Resources: `seite://config`, `seite://content`, `seite://docs`, `seite://themes`\n",
-    );
-    md.push_str("Tools: `seite_build`, `seite_create_content`, `seite_search`, `seite_apply_theme`, `seite_lookup_docs`\n\n");
 
     // Trust Center (brief — details in .claude/rules/trust-center.md)
     if let Some(opts) = trust_opts {
@@ -1147,7 +1038,7 @@ fn generate_agents_md(
                 md.push_str(&format!("- **{name}** — {badge}\n"));
             }
         }
-        md.push_str("\nSee `.claude/rules/trust-center.md` for data file formats, management workflows, and MCP integration.\n\n");
+        md.push_str(&format!("\nSee `{rules_dir}/trust-center.{rules_ext}` for data file formats, management workflows, and MCP integration.\n\n"));
     }
 
     // Contact forms (brief — details in .claude/rules/contact-form.md)
@@ -1163,6 +1054,21 @@ fn generate_agents_md(
     // Brand identity skill (static)
     md.push_str(include_str!("../scaffold/brand-identity.md"));
 
+    // Verify Your Change (short, static — how an agent should check its work)
+    md.push_str("## Verify Your Change\n\n");
+    md.push_str(
+        "After editing content, templates, or config, check the whole site in one pass:\n\n",
+    );
+    md.push_str("```bash\n");
+    md.push_str("seite check            # every problem, compiler-style: file:line:col: error[code]: message; exit 0 = no errors\n");
+    md.push_str("seite check --strict   # also fail on warnings (broken links, missing assets, unknown config keys)\n");
+    md.push_str("seite build --json     # one JSON document on stdout: {\"ok\",\"data\":{\"broken_links\",\"missing_assets\",\"diagnostics\"}}\n");
+    md.push_str("```\n\n");
+    md.push_str("`seite check` never touches `dist/`, and a failed `seite build` leaves the previous `dist/` in place. Diagnostics point at the source file and line (the `.md`, template, or `seite.toml`), not the generated HTML. Link between content files with relative `.md` paths (`[intro](../docs/intro.md)`) — the build rewrites them to page URLs and reports ones that don't resolve.\n\n");
+    md.push_str(&crate::cli::harness_hooks::verify_note(agents));
+    md.push_str("For a background preview while you keep editing, `seite serve --no-repl &` runs the dev server (with live reload) without an interactive prompt.\n\n");
+    md.push_str("**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.\n\n");
+
     // Key conventions (short, mixed static/dynamic — keep inline)
     md.push_str("## Key Conventions\n\n");
     md.push_str("- Run `seite build` after creating or editing content to regenerate the site\n");
@@ -1177,18 +1083,13 @@ fn generate_agents_md(
     md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
     md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
 
-    // Context rules note
+    // Context rules index (generated from the same rule list as the rules files)
     md.push_str("## Context Rules\n\n");
-    md.push_str("Detailed guides live in `.claude/rules/`. Claude Code loads them automatically for matching files. Other agents should read the relevant guides before editing:\n\n");
-    md.push_str(
-        "- `templates/**`: `templates.md`, `seo-requirements.md`, and `design-prompts.md`\n",
-    );
-    md.push_str("- `content/**` or `templates/shortcodes/**`: `i18n.md`, `shortcodes.md`, and `features.md`\n");
-    md.push_str("- `data/**`: `data-files.md`\n");
-    md.push_str("- `seite.toml`: `config-reference.md` and `private-collections.md`\n");
-    md.push_str(
-        "- Contact or trust-center work: `contact-form.md` or `trust-center.md` when present\n\n",
-    );
+    md.push_str(&harness::wrap_block(
+        harness::RULES_INDEX_BLOCK,
+        &harness::rules_index(features, agents),
+    ));
+    md.push('\n');
 
     // Documentation links
     md.push_str("## Documentation\n\n");

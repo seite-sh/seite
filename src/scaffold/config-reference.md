@@ -6,10 +6,13 @@ These sections in `seite.toml` enable additional features. Omit them entirely to
 
 ```toml
 [build]
-math = true  # enable $inline$ and $$display$$ math rendering via KaTeX
+math = true     # enable $inline$ and $$display$$ math rendering via KaTeX
+mermaid = true  # render fenced ```mermaid blocks as client-side Mermaid diagrams
 ```
 
 When `math = true`, the build pipeline renders LaTeX math expressions to HTML using server-side KaTeX. KaTeX CSS is automatically loaded from CDN. Code blocks and inline code spans are skipped.
+
+When `mermaid = true`, fenced ` ```mermaid ` code blocks in markdown are left intact and rendered client-side by an injected Mermaid script — no server-side rendering. Default: `false`.
 
 ### Image Processing
 
@@ -50,4 +53,14 @@ deploy_project = "my-site-docs" # Cloudflare/Netlify project (optional)
 ```
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), own sitemap, RSS, robots.txt, and search index. Internal links targeting subdomain collections are auto-rewritten to absolute URLs. The dev server previews subdomain content at `/{name}-preview/`. `deploy_project` sets the Cloudflare Pages or Netlify project name for that subdomain (auto-created by `seite deploy --setup`).
+
+### Password Access (Cloudflare Pages only)
+
+```toml
+[access]
+mode = "password"       # only supported mode today
+session_hours = 168     # 1-8760; how long a visitor's password session lasts
+```
+
+Adding `[access]` turns on password protection, enforced by a generated Cloudflare Pages Worker, for every collection with `private = true`. See `.claude/rules/private-collections.md` for `access_group`, protected static assets, and private subdomains. Manage passwords with `seite access groups` and `seite access set-password <group>`.
 

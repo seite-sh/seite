@@ -11,7 +11,6 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::output::human;
 use crate::platform;
 
 /// How often to check for updates (24 hours).
@@ -42,8 +41,31 @@ const CACHE_FILE: &str = "update-cache.json";
 /// - If a newer version is available, prints a one-liner info message.
 /// - All errors are silently ignored.
 pub fn maybe_notify() {
+    use std::io::IsTerminal;
+
+    let env_set = |key: &str| {
+        std::env::var(key)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+    };
+    if !should_run(
+        env_set,
+        std::io::stdout().is_terminal() && std::io::stderr().is_terminal(),
+        crate::output::is_json(),
+    ) {
+        return;
+    }
     // Best-effort: never panic or propagate errors
     let _ = check_and_notify();
+}
+
+/// Environment variables that disable the update check when set (non-empty).
+const OPT_OUT_VARS: &[&str] = &["CI", "DO_NOT_TRACK", "SEITE_NO_UPDATE_CHECK"];
+
+/// Decide whether the update check may run: never in CI, when opted out via
+/// env, when output isn't a terminal (scripts/agents), or in `--json` mode.
+fn should_run(env_set: impl Fn(&str) -> bool, is_terminal: bool, json_mode: bool) -> bool {
+    is_terminal && !json_mode && !OPT_OUT_VARS.iter().any(|k| env_set(k))
 }
 
 fn check_and_notify() -> Option<()> {
@@ -72,10 +94,12 @@ fn check_and_notify() -> Option<()> {
 
     // Compare versions
     if version_is_newer(&latest_version, current_version) {
-        human::info(&format!(
-            "A new version of seite is available: {current_version} → {latest_version} \
-             (run `seite self-update`)"
-        ));
+        // stderr: the notice must never pollute parseable stdout.
+        eprintln!(
+            "{} A new version of seite is available: {current_version} → {latest_version} \
+             (run `seite self-update`)",
+            console::style("ℹ").blue().bold()
+        );
     }
 
     Some(())
@@ -158,6 +182,20 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_should_run_only_on_terminal_without_opt_out() {
+        let none = |_: &str| false;
+        assert!(should_run(none, true, false));
+        assert!(!should_run(none, false, false), "no TTY → skip");
+        assert!(!should_run(none, true, true), "--json → skip");
+        for var in ["CI", "DO_NOT_TRACK", "SEITE_NO_UPDATE_CHECK"] {
+            assert!(
+                !should_run(|k: &str| k == var, true, false),
+                "{var} should disable the update check"
+            );
+        }
+    }
 
     #[test]
     fn test_version_is_newer() {

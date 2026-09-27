@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 use walkdir::WalkDir;
 
+use crate::diagnostics::{line_col_at, Diagnostic, Diagnostics};
 use crate::error::{PageError, Result};
 
 /// Load all data files from the given directory, returning a nested
@@ -71,13 +72,34 @@ pub fn load_data_dir(data_dir: &Path) -> Result<serde_json::Value> {
         files.push((segments, path.to_path_buf()));
     }
 
-    // Check for key conflicts (e.g., authors.yaml and authors.json)
-    check_conflicts(&files)?;
+    // Directory walk order is filesystem-dependent. Sort so a file is always
+    // inserted before the files of a same-named directory (`authors.yaml`
+    // before `authors/jane.yaml`): a non-object file then conflicts with the
+    // directory every time instead of silently replacing whatever the
+    // directory contributed on some filesystems.
+    files.sort();
 
-    // Parse each file and insert into the nested map
+    // Check for key conflicts (e.g., authors.yaml and authors.json)
+    if let Err(e) = check_conflicts(&files) {
+        return Err(PageError::Diagnostics(data_error_diagnostic(e).into()));
+    }
+
+    // Parse each file and insert into the nested map, collecting every
+    // broken file so they are all reported in one pass.
+    let mut diagnostics = Diagnostics::new();
     for (segments, path) in &files {
-        let value = parse_data_file(path)?;
-        insert_nested(&mut root, segments, value, path)?;
+        match parse_data_file(path) {
+            Ok(value) => {
+                if let Err(e) = insert_nested(&mut root, segments, value, path) {
+                    diagnostics.push(data_error_diagnostic(e));
+                }
+            }
+            Err(d) => diagnostics.push(*d),
+        }
+    }
+    if !diagnostics.is_empty() {
+        diagnostics.sort();
+        return Err(PageError::Diagnostics(diagnostics));
     }
 
     Ok(serde_json::Value::Object(root))
@@ -105,44 +127,64 @@ pub fn count_data_files(data_dir: &Path) -> usize {
         .count()
 }
 
-/// Parse a single data file into a `serde_json::Value`.
-fn parse_data_file(path: &Path) -> Result<serde_json::Value> {
-    let content = std::fs::read_to_string(path)?;
+/// `data-conflict` diagnostic for a [`PageError::Data`] raised while
+/// assembling the data tree.
+fn data_error_diagnostic(e: PageError) -> Diagnostic {
+    match e {
+        PageError::Data { path, message } => {
+            Diagnostic::error("data-conflict", message).with_file(path)
+        }
+        other => Diagnostic::error("data-conflict", other.to_string()),
+    }
+}
+
+/// Parse a single data file into a `serde_json::Value`. Syntax errors are
+/// reported as a `data-file-parse` diagnostic with the line and column.
+fn parse_data_file(path: &Path) -> std::result::Result<serde_json::Value, Box<Diagnostic>> {
+    let parse_error =
+        |message: String| Diagnostic::error("data-file-parse", message).with_file(path);
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| parse_error(format!("cannot read data file: {e}")))?;
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
 
-    match ext.as_str() {
-        "yaml" | "yml" => {
-            serde_yaml_ng::from_str::<serde_json::Value>(&content).map_err(|e| PageError::Data {
-                path: path.to_path_buf(),
-                message: format!("invalid YAML: {e}"),
-            })
-        }
-        "json" => {
-            serde_json::from_str::<serde_json::Value>(&content).map_err(|e| PageError::Data {
-                path: path.to_path_buf(),
-                message: format!("invalid JSON: {e}"),
-            })
-        }
-        "toml" => {
-            let toml_value: toml::Table =
-                toml::from_str(&content).map_err(|e| PageError::Data {
-                    path: path.to_path_buf(),
-                    message: format!("invalid TOML: {e}"),
-                })?;
-            serde_json::to_value(toml_value).map_err(|e| PageError::Data {
-                path: path.to_path_buf(),
-                message: format!("TOML conversion error: {e}"),
-            })
-        }
-        _ => Err(PageError::Data {
-            path: path.to_path_buf(),
-            message: format!("unsupported file extension: .{ext}"),
+    let parsed: std::result::Result<serde_json::Value, Diagnostic> = match ext.as_str() {
+        "yaml" | "yml" => serde_yaml_ng::from_str::<serde_json::Value>(&content).map_err(|e| {
+            let mut d = parse_error(format!(
+                "invalid YAML: {}",
+                crate::content::strip_yaml_location(&e.to_string())
+            ));
+            if let Some(loc) = e.location() {
+                d = d.with_line(loc.line()).with_column(loc.column());
+            }
+            d
         }),
-    }
+        "json" => serde_json::from_str::<serde_json::Value>(&content).map_err(|e| {
+            parse_error(format!(
+                "invalid JSON: {}",
+                crate::content::strip_yaml_location(&e.to_string())
+            ))
+            .with_line(e.line())
+            .with_column(e.column())
+        }),
+        "toml" => {
+            let toml_value: toml::Table = toml::from_str(&content).map_err(|e| {
+                let mut d = parse_error(format!("invalid TOML: {}", e.message().trim()));
+                if let Some(span) = e.span() {
+                    let (line, column) = line_col_at(&content, span.start);
+                    d = d.with_line(line).with_column(column);
+                }
+                d
+            })?;
+            serde_json::to_value(toml_value)
+                .map_err(|e| parse_error(format!("TOML conversion error: {e}")))
+        }
+        _ => Err(parse_error(format!("unsupported file extension: .{ext}"))),
+    };
+    parsed.map_err(Box::new)
 }
 
 /// Check for key conflicts where two files resolve to the same key path.
@@ -470,5 +512,34 @@ mod tests {
         std::fs::write(tmp.path().join("config.toml"), "[section]\nkey = \"val\"\n").unwrap();
         let data = load_data_dir(tmp.path()).unwrap();
         assert_eq!(data["config"]["section"]["key"], "val");
+    }
+
+    #[test]
+    fn test_load_data_dir_reports_every_broken_file_with_location() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("a.yaml"), "ok: 1\nbad: [\n").unwrap();
+        std::fs::write(tmp.path().join("b.json"), "{\n  \"x\": ,\n}").unwrap();
+        std::fs::write(tmp.path().join("c.toml"), "x = 1\ny = \n").unwrap();
+        std::fs::write(tmp.path().join("d.yaml"), "fine: true\n").unwrap();
+        let err = load_data_dir(tmp.path()).unwrap_err();
+        let PageError::Diagnostics(diags) = err else {
+            panic!("expected diagnostics, got {err}");
+        };
+        assert_eq!(diags.len(), 3, "{diags}");
+        for d in diags.iter() {
+            assert_eq!(d.code, "data-file-parse");
+            assert!(d.line.is_some(), "{d}");
+        }
+        let json = diags
+            .iter()
+            .find(|d| d.file.as_ref().unwrap().ends_with("b.json"))
+            .unwrap();
+        assert_eq!(json.line, Some(2));
+        assert!(!json.message.contains(" at line "), "{json}");
+        let toml = diags
+            .iter()
+            .find(|d| d.file.as_ref().unwrap().ends_with("c.toml"))
+            .unwrap();
+        assert_eq!(toml.line, Some(2));
     }
 }

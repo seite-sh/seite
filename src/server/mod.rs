@@ -350,6 +350,17 @@ fn watch_and_rebuild(
                 ) {
                     continue;
                 }
+                // Ignore writes to build output (including the staging dir a
+                // full build writes into), in case an output dir is configured
+                // inside a watched source directory.
+                if !event.paths.is_empty()
+                    && event
+                        .paths
+                        .iter()
+                        .all(|p| build::is_build_output_path(paths, p))
+                {
+                    continue;
+                }
 
                 // Drain any additional events within the debounce window
                 while rx.recv_timeout(debounce).is_ok() {}

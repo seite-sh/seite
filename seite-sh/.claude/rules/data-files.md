@@ -17,7 +17,7 @@ Supported file types: `.yaml` / `.yml`, `.json`, `.toml`.
 
 ### Theme integration
 
-All 6 bundled themes conditionally render `data.nav` (navigation links) and `data.footer` (footer links + copyright). Example `data/nav.yaml`:
+All 10 bundled themes conditionally render `data.nav` (navigation links) and `data.footer` (footer links + copyright). Example `data/nav.yaml`:
 
 ```yaml
 - title: Blog

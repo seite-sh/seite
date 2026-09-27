@@ -10,6 +10,8 @@
 - **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates; `lastmod` uses `updated` date (with `date` fallback)
 - **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.
 - **Math/LaTeX rendering** — Add `math = true` to `[build]` for server-side KaTeX rendering of `$inline$` and `$$display$$` math expressions. KaTeX CSS loaded automatically from CDN.
+- **Mermaid diagrams** — Add `mermaid = true` to `[build]` to render fenced ` ```mermaid ` code blocks as client-side diagrams.
+- **Password access** — Add `[access]` to `seite.toml` to password-protect any `private = true` collection via a generated Cloudflare Pages Worker. See Configuration section below.
 - **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See Configuration section below.
 - **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See Configuration section below.
 - **Tag pages** — Auto-generated `/tags/` index and `/tags/{tag}/` archive pages, included in sitemap

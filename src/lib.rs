@@ -6,6 +6,7 @@ pub mod config;
 pub mod content;
 pub mod data;
 pub mod deploy;
+pub mod diagnostics;
 pub mod docs;
 pub mod error;
 pub mod i18n;
