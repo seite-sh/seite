@@ -16,7 +16,11 @@
       "Glob",
       "Grep",
       "WebSearch",
-      "mcp__seite"
+      "mcp__seite",
+      "Edit(static/**)",
+      "Edit(seite.toml)",
+      "Bash(seite check:*)",
+      "Bash(seite check)"
     ],
     "deny": [
       "Read(.env)",
@@ -25,5 +29,18 @@
   },
   "enabledMcpjsonServers": [
     "seite"
-  ]
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
 }

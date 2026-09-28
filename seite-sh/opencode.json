@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "seite": {
+      "type": "local",
+      "command": [
+        "seite",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny"
+    },
+    "edit": {
+      "*": "ask",
+      "content/*": "allow",
+      "templates/*": "allow",
+      "static/*": "allow",
+      "data/*": "allow",
+      "seite.toml": "allow"
+    },
+    "bash": {
+      "*": "ask",
+      "seite build*": "allow",
+      "seite check*": "allow",
+      "seite new*": "allow",
+      "seite serve*": "allow",
+      "seite theme*": "allow"
+    },
+    "glob": "allow",
+    "grep": "allow",
+    "websearch": "allow",
+    "webfetch": "ask"
+  }
+}
