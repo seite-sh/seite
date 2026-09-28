@@ -125,6 +125,7 @@ seite access set-password investors
 Password for access group 'investors': 
 Confirm password: 
 ✓ Stored password for 'investors' on Cloudflare Pages project 'acme-site' (production and preview)
+✓ Cloudflare Pages project 'acme-site' fails closed (protected files stay behind the password when the Workers request limit is reached)
 ```
 
 The password is prompted twice and piped to `wrangler pages secret put` over stdin. It is never read from a flag, written to `seite.toml` or printed.
@@ -139,7 +140,7 @@ seite deploy
 
 Staged secrets apply to the *next* deployment, so the password isn't live until you deploy. Deploy from the Pages project's production branch (`main` for projects seite created) and run `seite deploy --preview` to activate it on preview. Visitors to `/investors` now get a login form. The rest of the site stays public.
 
-One setting to change in the Cloudflare dashboard while you're there: on the Pages project, open **Settings > Runtime** and set **Fail closed**. Every request on a password-enabled project runs the Worker, and in *Fail open* mode Cloudflare serves static files without the Worker once your Workers request limit is reached. More on that in the limits below.
+`set-password` also switches the Pages project to **Fail closed**, and `seite deploy` checks that setting before it uploads (since v0.20.1). Every request on a password-enabled project runs the Worker. In *Fail open* mode, which Cloudflare's API uses by default, Cloudflare serves static files without the Worker once your Workers request limit is reached. More on that in the limits below.
 
 The [password-protecting paths and subdomains](/docs/deployment#password-protecting-paths-and-subdomains) section of the deployment guide has the same flow in reference form.
 
@@ -247,7 +248,7 @@ This is a shared-password gate for a static site. Know where it stops.
 - **Nothing is live until you deploy.** Staged secrets apply to the next deployment only.
 - **Set it from a terminal.** `set-password` needs an interactive terminal and refuses to read passwords from flags, so it can't run unattended in CI.
 - **No login rate limiting.** The Worker doesn't throttle attempts. Use a long, random password.
-- **Every request runs the Worker.** Because `_routes.json` includes `/*`, all requests on that project invoke the Worker, and Workers Free allows [100,000 requests per day](https://developers.cloudflare.com/workers/platform/limits/). Check **Settings > Runtime > Fail open / closed** on the Pages project and pick **Fail closed**. [Fail open](https://developers.cloudflare.com/pages/functions/routing/) serves static assets without running the Worker once the limit is hit.
+- **Every request runs the Worker.** Because `_routes.json` includes `/*`, all requests on that project invoke the Worker, and Workers Free allows [100,000 requests per day](https://developers.cloudflare.com/workers/platform/limits/). [Fail open](https://developers.cloudflare.com/pages/functions/routing/) would serve static assets without running the Worker once the limit is hit, so seite sets each protected project to **Fail closed**, and `seite deploy`'s pre-flight stops if it can't confirm that. After the limit, visitors get a Cloudflare error page until it resets. If you deploy with your own `wrangler` workflow instead of `seite deploy`, check **Settings > Runtime > Fail open / closed** once yourself.
 
 For investor pages, internal docs, client previews and a gated trust center, a shared password per group is usually the right amount of security. For anything regulated, pair seite's discovery controls with Access.
 
@@ -275,7 +276,7 @@ Run `seite access set-password <group>` again, then deploy. The new password tak
 
 ### What About StatiCrypt or Client-Side Encryption?
 
-StatiCrypt-style tools encrypt the HTML and decrypt it in the browser with JavaScript. They work on any host, including GitHub Pages. seite checks the password at Cloudflare's edge before serving anything, so protected files never reach an unauthenticated browser (with the Pages project set to fail closed), and there's no client-side decryption step.
+StatiCrypt-style tools encrypt the HTML and decrypt it in the browser with JavaScript. They work on any host, including GitHub Pages. seite checks the password at Cloudflare's edge before serving anything, so protected files never reach an unauthenticated browser (seite keeps the Pages project set to fail closed), and there's no client-side decryption step.
 
 ## Gate It, Then Get Back to Shipping
 

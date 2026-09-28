@@ -133,6 +133,8 @@ session_hours = 168
 
 Password access currently supports **Cloudflare Pages only**. During `seite build`, seite generates an advanced-mode `_worker.js` that checks the password before serving protected files. Missing secrets fail closed with a service-unavailable response.
 
+**Protected Pages projects must be set to Fail closed.** The protected files are still deployed as static assets, and only the Worker keeps them private. On the Workers Free plan, a project set to *Fail open* serves static assets without running the Worker once the daily Workers request allowance is exhausted. That serves protected content without a password. Cloudflare's API defaults new projects to fail open. `seite access set-password` and `seite deploy --setup` switch every protected project to *Fail closed*, and `seite deploy` checks it before uploading. If you deploy another way, set it in the dashboard under **Workers & Pages → project → Settings → Runtime**. See [Password-protecting paths and subdomains](/docs/deployment#set-every-protected-project-to-fail-closed).
+
 The protected scope comes from the collection:
 
 - A non-empty `url_prefix` protects that path and its descendants.
