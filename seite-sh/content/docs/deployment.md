@@ -230,6 +230,18 @@ seite deploy
 
 The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
 
+#### Set every protected project to Fail closed
+
+Every request to a password-enabled Pages project runs the Worker. On the Workers Free plan that uses up a [daily request allowance](https://developers.cloudflare.com/pages/functions/pricing/), and each Pages project has a **Fail open / Fail closed** setting that decides what happens once the allowance is exhausted. With **Fail open**, Cloudflare [serves static assets without running the Worker](https://developers.cloudflare.com/pages/functions/routing/). The protected pages, `.md` alternates, and `/private-assets/` files are static assets, so anyone could load them without a password until the allowance resets. Cloudflare's API defaults new projects to fail open.
+
+seite sets production and preview to **Fail closed** on every protected project (the main project when a main-site collection is private, and each private subdomain's project):
+
+- `seite access set-password` sets it after uploading the secrets.
+- `seite deploy --setup` sets it after creating the projects.
+- `seite deploy` runs a **Cloudflare fail closed** pre-flight check. It reads the setting through the Cloudflare API and offers to fix it. If the setting still fails open or can't be verified, the deploy stops unless you confirm interactively or pass `--skip-checks`. `--yes` applies the fix, but it never skips this check.
+
+The API calls use `CLOUDFLARE_API_TOKEN` (or your `wrangler login` session). Set `CLOUDFLARE_ACCOUNT_ID` if your login has access to more than one account, because seite won't guess which account holds the project. If you deploy another way, such as your own `wrangler pages deploy` workflow, check the setting once in the dashboard: **Workers & Pages → your project → Settings → Runtime → Fail open / closed → Fail closed**. Once the allowance runs out, a fail-closed project shows visitors a Cloudflare error page instead of your site. The Workers Paid plan removes the daily limit.
+
 ## Override Target
 
 Override the configured target on the command line:
