@@ -55,7 +55,7 @@ seite new post "Title" --tags rust,web   # Create with tags
 seite new post "Title" --draft           # Create as draft
 seite new post "Title" --lang es         # Create translation (needs [languages.es] in config)
 seite theme list                         # List available themes
-seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento)
+seite theme apply <name>                 # Apply a bundled theme (seite theme list shows all 10)
 seite theme create "coral brutalist"     # Generate a custom theme with AI (requires Claude Code)
 seite agent                              # Interactive AI agent session
 seite agent "write about Rust"           # One-shot AI agent prompt
@@ -176,6 +176,10 @@ Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). 
 | `docs` | Sidebar layout for documentation |
 | `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |
 | `bento` | Card grid layout with rounded corners and soft shadows |
+| `landing` | Marketing and landing page theme with hero sections and CTAs |
+| `terminal` | Monospace hacker theme with green-on-black terminal aesthetic |
+| `magazine` | Multi-column editorial layout with featured articles |
+| `academic` | Scholarly serif theme for research and long-form writing |
 
 Apply with `seite theme apply <name>`. This overwrites `templates/base.html`.
 
@@ -440,3 +444,46 @@ deploy_project = "my-site-docs"  # optional, auto-created by deploy --setup
 - Dev server previews at `/{name}-preview/`
 - `seite deploy --setup` auto-creates Cloudflare/Netlify projects for subdomain collections
 - GitHub Pages does not support subdomain deploys — use Cloudflare Pages or Netlify
+
+
+## Atom Feeds & Redirect Aliases
+
+**Atom feeds** are now generated alongside RSS. Every collection with `has_rss = true` produces
+both `feed.xml` (RSS 2.0) and `atom.xml` (Atom 1.0). Bundled themes include autodiscovery
+`<link>` tags for both formats. No configuration changes needed.
+
+**Redirect aliases** let you set `aliases: ["/old-path"]` in any page's frontmatter.
+During build, seite generates:
+- A lightweight HTML redirect file at each alias path (`<meta http-equiv="refresh">`)
+- A `_redirects` file (Netlify/Cloudflare compatible) with 301 status codes
+
+Example frontmatter:
+```yaml
+aliases:
+  - /old-url
+  - /legacy/path
+```
+
+## MCP Setup per Agent
+
+<!-- seite:agent-setup -->
+| Agent | MCP config | One-time step |
+|---|---|---|
+| Claude Code | `.mcp.json` | Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`) |
+| Codex CLI | `.codex/config.toml` | Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp` |
+| OpenCode | `opencode.json` | None — it starts automatically |
+| Cursor | `.cursor/mcp.json` (+ `.cursor/cli.json` permissions) | Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt) |
+<!-- /seite:agent-setup -->
+
+## Context Rules
+
+<!-- seite:context-rules -->
+Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`). Claude Code and Cursor load them automatically for matching files; other agents should read the matching guides before editing:
+
+- `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`, `design-prompts.md`
+- `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`
+- `data/i18n/**`: `i18n.md`
+- `data/**`: `data-files.md`
+- `templates/shortcodes/**`: `shortcodes.md`
+- `seite.toml`: `config-reference.md`, `private-collections.md`
+<!-- /seite:context-rules -->

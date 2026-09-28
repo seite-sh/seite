@@ -1,0 +1,11 @@
+# Codex CLI project config for this seite site.
+#
+# Codex only loads a project's .codex/config.toml once you trust the project:
+# answer "trust" when Codex asks on first run in this directory (this records
+# `[projects."<path>"] trust_level = "trusted"` in ~/.codex/config.toml).
+# After that, `codex mcp list` (or /mcp inside Codex) shows the seite server.
+
+[mcp_servers.seite]
+command = "seite"
+args = ["mcp"]
+default_tools_approval_mode = "approve"

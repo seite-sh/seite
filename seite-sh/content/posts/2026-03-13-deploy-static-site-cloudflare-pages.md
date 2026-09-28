@@ -1,6 +1,7 @@
 ---
 title: "Deploy a Static Site to Cloudflare Pages in One Command"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Deploy your static site to Cloudflare Pages with one CLI command. Free global CDN, preview deploys, custom domains, and zero dashboard clicking. Step-by-step."
 tags:
   - cloudflare
@@ -210,6 +211,10 @@ seite deploy --dry-run
 ```
 
 This runs the build, shows you what would be deployed, and stops. Always worth running before your first deploy to a new target.
+
+### Password-Protected Pages
+
+Cloudflare Pages has no built-in password setting, but seite can gate part of your site on it. Mark a collection `private = true`, add an `[access]` section to `seite.toml`, and run `seite access set-password` before your next deploy. seite generates the Worker that checks the password, and different paths or subdomains can have different passwords. The full walkthrough is in [how to password protect Cloudflare Pages](/blog/password-protect-cloudflare-pages).
 
 ## Deploy with Wrangler Only (No SSG Required)
 

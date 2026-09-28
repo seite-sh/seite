@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": "seite check --hook cursor",
+        "timeout": 120
+      }
+    ]
+  }
+}
