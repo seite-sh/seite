@@ -61,6 +61,7 @@ nested = false
 default_template = "post.html"
 
 [build]
+minify = true
 output_dir = "dist"
 content_dir = "content"
 template_dir = "templates"

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "seite": {
+      "command": "seite",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

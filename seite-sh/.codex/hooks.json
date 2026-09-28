@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook codex",
+            "timeout": 120,
+            "statusMessage": "Running seite check"
+          }
+        ]
+      }
+    ]
+  }
+}

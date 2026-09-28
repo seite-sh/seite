@@ -1,6 +1,7 @@
 ---
 title: "Build a Docs Site from the Command Line in 5 Minutes"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Build a docs site from the command line without installing Node.js or Python. Get search, sidebar nav, and AI-readable markdown in under 5 minutes. Start now."
 tags:
   - documentation
@@ -184,7 +185,7 @@ Apply the built-in docs theme with one command:
 seite theme apply docs
 ```
 
-This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Six bundled [themes](/docs/templates) are compiled into the binary; no npm install, no downloads ever. See [6 Themes, 0 Downloads](/blog/compiled-themes-binary) for the engineering rationale.
+This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Ten bundled [themes](/docs/templates) are compiled into the binary; no npm install, no downloads ever. See [10 Built-In Themes, 0 Downloads](/blog/compiled-themes-binary) for the engineering rationale.
 
 ### Search Works Automatically
 

@@ -1,6 +1,7 @@
 ---
 title: "Astro Alternative for Static Sites: JavaScript Framework vs Rust Binary"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Astro excels at component islands. For content sites, seite is the astro alternative: a Rust binary, zero Node.js, sub-second builds, and AI-native output."
 tags:
  - static-site-generator
@@ -93,7 +94,7 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | AI agent integration | No | `seite agent` |
 | MCP server | No | Built-in |
 | AGENTS.md context | No | Auto-generated |
-| Bundled themes | Via Starlight / community | 6 compiled into binary |
+| Bundled themes | Via Starlight / community | 10 compiled into binary |
 | AI theme generation | No | `seite theme create` |
 | RSS feed | Integration required | Built-in |
 | Sitemap with hreflang | Integration required | Built-in |
