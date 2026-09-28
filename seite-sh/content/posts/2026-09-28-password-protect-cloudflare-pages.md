@@ -13,7 +13,7 @@ extra:
 
 Cloudflare Pages has no password toggle. Search for how to password protect Cloudflare Pages and you get two answers: write your own middleware in Pages Functions, or set up Cloudflare Access in the Zero Trust dashboard. Both work. Neither is "add a password to `/investors` and move on."
 
-seite v0.18 made it a config change. Mark a collection `private = true`, add an `[access]` section to `seite.toml`, run `seite access set-password`, deploy. seite generates the Cloudflare Worker, keeps the gated pages out of your sitemap and llms.txt, and stages the password as a Cloudflare secret so it never touches your repo.
+[seite v0.18](/changelog/v0-18-0) made it a config change. Mark a collection `private = true`, add an `[access]` section to `seite.toml`, run `seite access set-password`, deploy. seite generates the Cloudflare Worker, keeps the gated pages out of your sitemap and llms.txt, and stages the password as a Cloudflare secret so it never touches your repo.
 
 This post covers the three ways to gate a Pages site and when each one fits. It explains the difference between *private* and *password-protected* (people mix them up constantly) and walks through the full setup: one path, several passwords, then a gated trust center on its own subdomain. It ends with the limits, including the cases where Cloudflare Access is the better tool.
 
@@ -21,9 +21,13 @@ This post covers the three ways to gate a Pages site and when each one fits. It 
 
 Not out of the box. Cloudflare Pages has no standard shared-password setting, and the top-ranking guides say so up front. Here's what people use instead.
 
-**1. Pages Functions middleware.** The most-linked answer is [Charca's cloudflare-pages-auth](https://github.com/Charca/cloudflare-pages-auth): copy a `functions/` directory into your project, set a `CFP_PASSWORD` variable in the dashboard, get a login form and a cookie. It's a good template. It also gives you one password for the whole project, and you now own that auth code. Other guides use HTTP Basic Auth with the credentials hardcoded in the Worker source, which means the password lives in git.
+**1. Pages Functions middleware.** The most-linked answer is [Charca's cloudflare-pages-auth](https://github.com/Charca/cloudflare-pages-auth): copy a `functions/` directory into your project, set a `CFP_PASSWORD` variable in the dashboard, get a login form and a cookie. It's a good template.
 
-**2. Cloudflare Access.** Zero Trust puts an identity check in front of your hostname: one-time PIN by email, Google, GitHub, Okta. It's the right tool for real user identity, and the free plan has a [50-user limit](https://www.cloudflare.com/en-au/products/cloudflare-access). It isn't a shared password, though. Every visitor needs an allowed email or identity, and you configure it per hostname in a separate dashboard.
+It also gives you one password for the whole project, and you now own that auth code. Other guides use HTTP Basic Auth with the credentials hardcoded in the Worker source, which means the password lives in git.
+
+**2. Cloudflare Access.** Zero Trust puts an identity check in front of your hostname: one-time PIN by email, Google, GitHub, Okta. It's the right tool for real user identity, and the free plan has a [50-user limit](https://www.cloudflare.com/en-au/products/cloudflare-access).
+
+It isn't a shared password, though. Every visitor needs an allowed email or identity, and you configure it per hostname in a separate dashboard.
 
 **3. seite's built-in password access.** Config in `seite.toml`, a generated Worker, one password per *group*. Different paths or subdomains can use different passwords.
 
@@ -42,7 +46,7 @@ That second-to-last row matters more than it looks. Middleware blocks the page, 
 
 seite has two settings that sound alike and do different jobs.
 
-**`private = true` hides a collection.** Every page still builds, including the collection's hub page. What changes is discovery: the pages are excluded from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds and tag pages, and every page gets `<meta name="robots" content="noindex, nofollow">`. The build log tells you how many pages it held back:
+**`private = true` hides a [collection](/docs/collections).** Every page still builds, including the collection's hub page. What changes is discovery: the pages are excluded from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds and tag pages, and every page gets `<meta name="robots" content="noindex, nofollow">`. The build log tells you how many pages it held back:
 
 ```
 ℹ 1 private pages excluded from discovery
@@ -123,7 +127,9 @@ Confirm password:
 ✓ Stored password for 'investors' on Cloudflare Pages project 'acme-site' (production and preview)
 ```
 
-The password is prompted twice and piped to `wrangler pages secret put` over stdin. It is never read from a flag, written to `seite.toml` or printed. seite also generates a random session-signing secret per group. Both are staged for **production and preview**, so staging deploys are gated too. If only one group exists, you can drop the group name.
+The password is prompted twice and piped to `wrangler pages secret put` over stdin. It is never read from a flag, written to `seite.toml` or printed.
+
+seite also generates a random session-signing secret per group. Both are staged for **production and preview**, so staging deploys are gated too. If only one group exists, you can drop the group name.
 
 ### 5. Deploy
 

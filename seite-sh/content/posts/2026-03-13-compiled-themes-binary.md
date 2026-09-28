@@ -1,5 +1,5 @@
 ---
-title: "10 Built-In Themes, 0 Downloads: Why seite Compiles Them In"
+title: "Static Site Generator with Built-In Themes: 10 Compiled In"
 date: 2026-03-13
 updated: 2026-09-28
 description: "seite is a static site generator with built-in themes: 10 of them compiled into one binary. No npm, no gems, no git submodules. How it works and what it costs."
@@ -10,8 +10,6 @@ tags:
  - engineering
 extra:
  primary_keyword: "static site generator with built-in themes"
- meta_title: "Static Site Generator with Built-In Themes | seite"
- meta_description: "seite is a static site generator with built-in themes: 10 of them compiled into one binary. No npm, no gems, no git submodules. How it works and what it costs."
 ---
 
 You're on a flight with no wifi. You run `seite theme apply terminal` and your site has a new look. Nothing was fetched. The theme was already inside the `seite` binary on your laptop, compiled in when the release was built.
@@ -37,13 +35,15 @@ cd site
 git submodule update --init --recursive
 ```
 
-Each approach puts a step between "clone the repo" and "build the site", and each step can fail. A registry is down. An upstream repo gets renamed or deleted. A theme release changes a template you depended on. A CI config forgets the submodule init. None of these failures has anything to do with your content, and all of them show up at the worst moment: on a new machine, in CI or in a locked-down network.
+Each approach puts a step between "clone the repo" and "build the site", and each step can fail. A registry is down. An upstream repo gets renamed or deleted. A theme release changes a template you depended on. A CI config forgets the submodule init.
+
+None of these failures has anything to do with your content, and all of them show up at the worst moment: on a new machine, in CI or in a locked-down network.
 
 We wanted theme setup to be something you never think about. The simplest way to get there was to stop distributing themes separately and build a static site generator with built-in themes.
 
 ## How a Static Site Generator with Built-In Themes Works
 
-Each seite theme is a single `base.html` [Tera](https://keats.github.io/tera/) template, stored as a `.tera` file in `src/themes/` in the seite repo. `src/themes.rs` wraps each one in a small constructor. `include_str!` reads the file at compile time and stores its contents in the binary as a `&'static str`:
+Each seite theme is a single `base.html` [Tera](https://keats.github.io/tera/) template, stored as a `.tera` file in `src/themes/` in the seite repo. `src/themes.rs` wraps each one in a small constructor. [`include_str!`](https://doc.rust-lang.org/std/macro.include_str.html) reads the file at compile time and stores its contents in the binary as a `&'static str`:
 
 ```rust
 // src/themes.rs (abridged)
@@ -65,7 +65,7 @@ pub fn all() -> Vec<Theme> {
 
 At runtime there is no theme directory to look up and nothing to fetch. `seite theme list` prints the name and description of each entry in `all()`. `seite theme apply` writes the chosen `base_html` string to `templates/base.html`. That's the whole mechanism.
 
-The rest of the template set works the same way. Page templates like `post.html`, `doc.html` and `404.html` extend `base.html`, and the build falls back to embedded defaults for any template your `templates/` directory doesn't provide. `seite init` writes the default theme to `templates/base.html`, so you have a real file to edit from the first commit.
+The rest of the [template set](/docs/templates) works the same way. Page templates like `post.html`, `doc.html` and `404.html` extend `base.html`, and the build falls back to embedded defaults for any template your `templates/` directory doesn't provide. `seite init` writes the default theme to `templates/base.html`, so you have a real file to edit from the first commit.
 
 Every bundled theme carries the same SEO and GEO head block: a canonical URL, Open Graph and Twitter Card tags, JSON-LD structured data, a link to your [llms.txt file](/blog/what-is-llms-txt) and a markdown alternate link for each page. Switching themes changes the design, not your metadata.
 
@@ -149,7 +149,9 @@ seite theme install https://example.com/themes/coral.tera --name coral
 seite theme apply coral
 ```
 
-`install` downloads the file, checks that it looks like an HTML template and saves it to `templates/themes/coral.tera`. That's a network request, but only once. The file lives in your repo from then on, so builds and later applies stay offline. The check confirms the file is HTML, not that it's well built, so read a theme before you apply it. Bundled themes take priority by name, so give an installed theme a name of its own. seite warns you if it would shadow a bundled one.
+`install` downloads the file, checks that it looks like an HTML template and saves it to `templates/themes/coral.tera`. That's a network request, but only once. The file lives in your repo from then on, so builds and later applies stay offline.
+
+The check confirms the file is HTML, not that it's well built, so read a theme before you apply it. Bundled themes take priority by name, so give an installed theme a name of its own. seite warns you if it would shadow a bundled one.
 
 **Export your own.** Once you've tuned a theme, package it for someone else:
 
@@ -165,7 +167,9 @@ This copies `templates/base.html` to `templates/themes/coral-wide.tera` and adds
 seite theme create "editorial serif, warm cream background, single column, 620px max width"
 ```
 
-This runs Claude Code with the Read, Write and Edit tools and a prompt that spells out the required Tera blocks, the template variables and the patterns for search, pagination and language switching. Claude writes `templates/base.html` directly. Two caveats. It needs Claude Code installed. And it doesn't go through the backup step that `apply` does, so commit your current template first. Compare the generated `<head>` with a bundled theme's before you ship: the prompt doesn't spell out the full SEO block the bundled themes carry.
+This runs Claude Code with the Read, Write and Edit tools and a prompt that spells out the required Tera blocks, the template variables and the patterns for search, pagination and language switching. Claude writes `templates/base.html` directly.
+
+Two caveats. It needs Claude Code installed. And it doesn't go through the backup step that `apply` does, so commit your current template first. Compare the generated `<head>` with a bundled theme's before you ship: the prompt doesn't spell out the full SEO block the bundled themes carry.
 
 To build or adjust a theme by hand, the [custom themes guide](/docs/custom-themes) walks through the required blocks, the SEO and JSON-LD tags to include, search, pagination, accessibility and starting from a copy of a bundled theme.
 
@@ -174,6 +178,15 @@ What doesn't exist yet is a registry. There's no `seite theme browse` and no `se
 ## The Tradeoffs of a Static Site Generator with Built-In Themes
 
 Compiling themes in buys a lot. It also costs some things. Here's the accounting.
+
+| | Built-in themes (seite) | Downloaded themes (npm, gems, submodules) |
+|---|---|---|
+| Works offline and in locked-down CI | Yes | Only after the first fetch |
+| Theme version tied to tool version | Yes | Separate version to pin |
+| Dependency surface to audit | None | Package, gem or repo |
+| Size cost | ~42 KB compressed, for everyone | Only for themes you install |
+| Choice | 10 bundled + install/export/generate | Whole marketplace |
+| Theme fixes ship | With the next seite release | On the theme's own schedule |
 
 ### What You Gain
 
@@ -216,4 +229,4 @@ The short version:
 - Need something else? `install` from a URL, `export` your own or `create` one with Claude Code.
 - The cost is 349 KB of template text in the binary, a curated set and theme updates tied to seite releases.
 
-If you already have seite, run `seite theme list` and try a couple of themes against your own content. They're already on your machine. Browse the [theme gallery](/docs/theme-gallery) for previews, or read the [getting started guide](/docs/getting-started) if you're new to seite.
+If you already have seite, run `seite theme list` and try a couple of themes against your own content. They're already on your machine. Browse the theme gallery linked above for previews, or read the [getting started guide](/docs/getting-started) if you're new to seite.
