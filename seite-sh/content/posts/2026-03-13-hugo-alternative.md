@@ -1,6 +1,7 @@
 ---
 title: "Hugo Alternative: When You Want Speed, Simplicity, and AI"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Looking for a Hugo alternative? seite is a single Rust binary with sub-second builds, Jinja2 templates, AI agent integration, and one-command deploy."
 tags:
  - hugo
@@ -146,7 +147,7 @@ Here's how this Hugo alternative compares feature by feature.
 | Template language | Go `text/template` | Tera (Jinja2-compatible) |
 | Template debugging | Silent failures | Clear error messages |
 | Built-in deploy | No | GitHub Pages, Cloudflare, Netlify |
-| Bundled themes | Community (download) | 6 compiled into binary |
+| Bundled themes | Community (download) | 10 compiled into binary |
 | AI context file | No | Auto-generated AGENTS.md |
 | MCP server | No | Built-in |
 | llms.txt output | No | Every build |
@@ -236,7 +237,7 @@ This works in both Hugo and seite. The main difference: Hugo uses `content/posts
 ### Step 4: Pick a theme or generate one
 
 ```bash
-seite theme list # see the 6 bundled themes
+seite theme list # see the 10 bundled themes
 seite theme apply dark # apply one
 seite theme create "your description" # or generate a custom one with AI
 ```

@@ -1,6 +1,7 @@
 ---
 title: "Static Site Generator for Startups: Ship Your Website in an Afternoon"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Ship your startup website in an afternoon: landing page, docs, blog, changelog, and contact form from one CLI tool. Free Cloudflare hosting. One deploy command."
 tags:
  - static-site-generator
@@ -107,7 +108,7 @@ seite theme list
 seite theme apply bento
 ```
 
-Six bundled themes ship with seite: `default`, `minimal`, `dark`, `docs`, `brutalist` and `bento`. Apply one in under a minute. Or describe the design you want and let the AI generate it:
+Ten bundled themes ship with seite, including `default`, `docs`, `landing` for a marketing homepage, and `bento`. Browse all of them in the [theme gallery](/docs/theme-gallery). Apply one in under a minute. Or describe the design you want and let the AI generate it:
 
 ```bash
 seite theme create "clean SaaS landing page, dark navy background, green accent, geometric sans-serif"
@@ -168,6 +169,8 @@ After `seite deploy`, here is what is live at your domain:
 **AI-readable output.** Every page gets a `.md` file alongside the `.html`. Your site ships `llms.txt` and `llms-full.txt` for AI search engines like ChatGPT and Perplexity. A startup that does not generate `llms.txt` is invisible to an increasingly large share of web traffic from day one.
 
 **Full SEO.** Canonical URLs, Open Graph tags, Twitter Cards, JSON-LD structured data (`BlogPosting`, `Article`, `WebSite` per page type), hreflang tags, `robots.txt`. Zero config. It ships by default.
+
+**Gated pages when you need them.** Investor updates, customer-only docs or a security trust center can live on the same site behind a password. On Cloudflare Pages that's a config change, not a separate auth service: see [how to password protect Cloudflare Pages](/blog/password-protect-cloudflare-pages).
 
 To see how to [build a docs site from the command line](/blog/build-docs-site-command-line) in depth, that post covers the docs collection in detail.
 

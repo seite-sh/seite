@@ -1,6 +1,7 @@
 ---
 title: "AI Static Site Generator: What It Means and Why It Matters"
 date: 2026-03-13
+updated: 2026-09-28
 description: "An AI static site generator outputs HTML, markdown, and llms.txt from one build. See how AI-native architecture differs from Hugo, Astro, and AI website builders."
 tags:
   - ai
@@ -96,8 +97,11 @@ But a static file isn't enough. seite also ships an [MCP server](/docs/mcp-serve
 - `seite_build` triggers a build and returns stats
 - `seite_create_content` creates properly formatted content files
 - `seite_search` searches your content by title, description, or tags
+- `seite_check` validates the whole site and returns file-and-line diagnostics
 
-The MCP server starts automatically when Claude Code opens your project. No API keys. No setup. The AI tool works with site concepts (collections, content items, themes) instead of parsing raw files.
+That's three of its resources and four of its 11 tools; the [MCP server docs](/docs/mcp-server) list the rest.
+
+`seite init` registers the server for Claude Code, Codex, OpenCode and Cursor, and the agent starts it when it opens your project. No API keys. The AI tool works with site concepts (collections, content items, themes) instead of parsing raw files.
 
 ### AI Agent Integration
 
@@ -138,7 +142,7 @@ seite theme create "coral brutalist with lime accents and hard shadows"
 
 This spawns Claude Code with a detailed prompt that includes all template variables, Tera block requirements, and SEO guardrails. Claude writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
 
-10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding — why seite ships themes in the binary instead of downloading them — see [6 Themes, 0 Downloads](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
+10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding — why seite ships themes in the binary instead of downloading them — see [10 Built-In Themes, 0 Downloads](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
 
 ## How AI Discoverability Changes the Game
 
@@ -224,7 +228,7 @@ Here's how the major static site generators compare on AI-related capabilities:
 | AI theme generation | No | No | No | `seite theme create` |
 | AI agent integration | No | No | No | `seite agent` |
 | Built-in deploy | No | No | No | GitHub Pages, Cloudflare, Netlify |
-| Bundled themes | Community | Community | Community | 6 compiled into binary |
+| Bundled themes | Community | Community | Community | 10 compiled into binary |
 | RSS feed | Plugin | Plugin | Built-in | Built-in |
 | Client-side search | Plugin | Plugin | Built-in | Built-in |
 

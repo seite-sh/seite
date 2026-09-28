@@ -1,6 +1,7 @@
 ---
 title: "How to Build a Website with an AI Coding Agent"
 date: 2026-03-13
+updated: 2026-09-28
 description: "Use Claude Code to build a complete website in under an hour. seite's AGENTS.md and MCP server give AI coding agents full site context from day one."
 tags:
   - ai
@@ -34,7 +35,7 @@ The solution is not a better prompt. It's a site generator built for this workfl
 
 ## How seite Solves the Context Problem
 
-When you run `seite init`, the tool does something no other static site generator does: it generates a root `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The canonical file includes:
+When you run `seite init`, the tool does something most static site generators don't: it generates a root `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The canonical file includes:
 
 - Your collections with directory paths, URL patterns and date conventions
 - The complete frontmatter schema for each content type
@@ -44,7 +45,7 @@ When you run `seite init`, the tool does something no other static site generato
 
 The agent reads this file once and understands your project. No orientation questions. No guessing.
 
-seite also starts an [MCP server](/docs/mcp-server) automatically when Claude Code opens your project. The MCP server uses the [Model Context Protocol](https://modelcontextprotocol.io/) to give the agent real-time, typed access to your content, config and build pipeline. Instead of asking "what's the build command?", the agent calls `seite_build` and gets back structured results including page count, build time and any errors.
+seite also registers an [MCP server](/docs/mcp-server) for Claude Code (in `.mcp.json`), Codex, OpenCode and Cursor, and the agent starts it when it opens your project. Claude Code may ask you to approve it once. The MCP server uses the [Model Context Protocol](https://modelcontextprotocol.io/) to give the agent real-time, typed access to your content, config and build pipeline. Instead of asking "what's the build command?", the agent calls `seite_build` and gets back structured results including page count, build time and any errors.
 
 [Get started with seite](/docs/getting-started) and see the difference in the first session.
 
@@ -77,7 +78,7 @@ seite init mysite --title "My Company" --collections posts,docs,pages
 cd mysite
 ```
 
-This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file, `CLAUDE.md` compatibility import, and `.claude/settings.json` MCP server config. Open the project directory in Claude Code and the context loads automatically.
+This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file, `CLAUDE.md` compatibility import, and MCP server config for each coding agent (`.mcp.json` for Claude Code, plus Codex, OpenCode and Cursor configs; pick with `seite init --agents`). Open the project directory in your agent and the context loads automatically.
 
 ### Step 3: Run the Agent
 
@@ -174,7 +175,7 @@ The difference was not the agent's capability. It was the information available 
 | Agent orientation per session | 10-20 minutes | 0, reads AGENTS.md once |
 | Content file creation | Often wrong directory or format | Correct by default |
 | Template editing | Risky without full variable context | Agent knows all template variables |
-| Build verification | Manual | Agent calls `seite_build` via MCP |
+| Build verification | Manual | Agent calls `seite_check` and `seite_build` via MCP; a stop hook runs `seite check` before it finishes |
 | Deploy | Requires manual CI/CD setup | `seite deploy` one command |
 | Session continuity | Agent forgets project structure | AGENTS.md is always present |
 
@@ -182,7 +183,7 @@ The difference was not the agent's capability. It was the information available 
 
 Beyond `seite agent`, the [MCP server](/docs/mcp-server) makes seite's content and build pipeline accessible to any MCP-compatible tool.
 
-When the MCP server is running (it starts automatically when Claude Code opens your project), AI tools can call `seite_build` to trigger a build and get structured results, call `seite_create_content` to create a properly formatted content file, call `seite_search` to find existing content by title or tag, and read `seite://config` for your site configuration as typed JSON.
+When the MCP server is running (your coding agent starts it when it opens the project), AI tools can call `seite_check` to validate the whole site with file-and-line diagnostics, `seite_build` to trigger a build and get structured results, `seite_create_content` to create a properly formatted content file, `seite_search` to find existing content by title or tag, and read `seite://config` for your site configuration as typed JSON.
 
 This means your AI assistant works with site concepts, collections, content items, themes; instead of parsing raw files. The result is fewer errors and faster iteration.
 
