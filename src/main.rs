@@ -183,7 +183,7 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Skill(args) => seite::cli::skill::run(args),
         Command::Theme(args) => seite::cli::theme::run(args),
         Command::Workspace(args) => seite::cli::workspace::run(args),
-        Command::Upgrade(args) => seite::cli::upgrade::run(args, site),
+        Command::Upgrade(args) => seite::cli::upgrade::run_for_site(args, site),
         Command::SelfUpdate(args) => seite::cli::self_update::run(args),
         Command::Mcp(args) => seite::cli::mcp::run(args),
         Command::Perf(args) => seite::cli::perf::run(args),

@@ -279,10 +279,16 @@ fn check_private_collections_rule(root: &Path) -> Vec<UpgradeAction> {
         .collect()
 }
 
+/// Upgrade the project in the current directory (or, from a workspace root,
+/// every workspace site). See [`run_for_site`].
+pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
+    run_for_site(args, None)
+}
+
 /// Upgrade the project in the current directory. In a workspace, `--site
 /// <name>` (or running from the workspace root, which has no `seite.toml`)
 /// upgrades the workspace's sites instead, behind a single confirmation.
-pub fn run(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     if let Some(ws_root) = crate::workspace::find_workspace_root(&cwd) {
         if site_filter.is_some() || !cwd.join("seite.toml").exists() {
