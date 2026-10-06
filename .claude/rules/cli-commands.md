@@ -31,7 +31,7 @@ GitHub Pages (git push), Cloudflare (wrangler), Netlify. `auto_commit = true` by
 `seite skill install|list|remove|update`. Known: `seomachine` (11 agents, 22 commands, 25 skills). Manifest in `.claude/.seite-skill-packs.json`. SEOMachine AGENTS.md section managed by HTML comment markers.
 
 ## Coding-Agent Harness Files
-`seite init --agents` / `seite upgrade --agents` (claude, codex, opencode, cursor; default all, stored in `.seite/config.json`). All rules, skills, and MCP entries come from `src/cli/harness.rs`; upgrade merges via `check_agent_harness()` in `src/cli/upgrade.rs`.
+`seite init --agents` / `seite upgrade --agents` (in a workspace root or with `--site`, upgrade plans every site and confirms once) (claude, codex, opencode, cursor; default all, stored in `.seite/config.json`). All rules, skills, and MCP entries come from `src/cli/harness.rs`; upgrade merges via `check_agent_harness()` in `src/cli/upgrade.rs`.
 
 ## Built-in Skills
 `/seite` (verb dispatcher: check, new, preview, build, deploy, theme, collection; OpenCode gets a `.opencode/commands/seite.md` wrapper), `/theme-builder` (4-phase theme creation), `/brand-identity` (5-phase visual identity), `/landing-page` (conditional on pages collection). Scaffolded by init into `.claude/skills/` (Claude) and `.agents/skills/` (Codex/Cursor/OpenCode), upgraded with version tracking (`# seite-skill-version: N`). Per-agent paths/formats come from `harness::PROVIDERS`.

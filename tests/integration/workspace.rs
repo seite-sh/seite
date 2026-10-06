@@ -536,3 +536,88 @@ fn test_workspace_add_checks_real_sites_not_config_text() {
             "site 'blog' already exists in the workspace",
         ));
 }
+
+// --- workspace upgrade ---
+
+/// A workspace with two sites added by `seite workspace add` (no
+/// `.seite/config.json`, so both start out pre-tracking).
+fn workspace_with_two_sites(tmp: &TempDir) {
+    page_cmd()
+        .args(["workspace", "init", "ws-upgrade"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    for site in ["blog", "docs"] {
+        page_cmd()
+            .args(["workspace", "add", site])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn test_upgrade_from_workspace_root_upgrades_every_site() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("in 2 sites"));
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    for site in ["blog", "docs"] {
+        let site_dir = tmp.path().join("sites").join(site);
+        assert!(site_dir.join(".seite/config.json").exists(), "{site}");
+        assert!(site_dir.join(".mcp.json").exists(), "{site}");
+    }
+
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_upgrade_workspace_site_filter() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+
+    let output = page_cmd()
+        .args(["--json", "--site", "blog", "upgrade", "--force"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let sites = doc["data"]["sites"].as_array().unwrap();
+    assert_eq!(sites.len(), 1);
+    assert_eq!(sites[0]["site"], "blog");
+    assert_eq!(doc["data"]["applied"], true);
+
+    assert!(tmp.path().join("sites/blog/.mcp.json").exists());
+    assert!(!tmp.path().join("sites/docs/.mcp.json").exists());
+}
+
+#[test]
+fn test_upgrade_inside_workspace_site_upgrades_only_that_site() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(tmp.path().join("sites/docs"))
+        .assert()
+        .success();
+
+    assert!(tmp.path().join("sites/docs/.mcp.json").exists());
+    assert!(!tmp.path().join("sites/blog/.mcp.json").exists());
+}

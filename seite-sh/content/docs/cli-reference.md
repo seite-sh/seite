@@ -398,6 +398,8 @@ seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 seite upgrade --agents claude,cursor   # Add Cursor files; stop maintaining Codex/OpenCode files
 ```
 
+In a [workspace](/docs/workspace), run `seite upgrade` from the workspace root to upgrade every site at once (one confirmation for all of them), or pass `--site <name>` to upgrade a single site. `--check` fails if any site needs upgrading; `--json` lists each site's changes under `data.sites`.
+
 Upgrade is **additive and non-destructive**:
 - Creates or merges `.mcp.json` (the seite MCP server declaration) and `.claude/settings.json` (permissions + `enabledMcpjsonServers`), adding new entries and never removing yours; any legacy `mcpServers` block in `settings.json` is moved into `.mcp.json`, since Claude Code only reads project MCP servers from there
 - Migrates project guidance to `AGENTS.md` while preserving existing instructions

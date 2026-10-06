@@ -126,7 +126,7 @@ Each site must have its own `seite.toml` inside its directory.
 
 ## The --site Flag
 
-When inside a workspace, `build`, `serve`, and `deploy` operate on **all sites** by default. Use the global `--site` flag to target a specific site:
+When inside a workspace, `build`, `check`, `serve`, `deploy`, and `upgrade` operate on **all sites** by default. Use the global `--site` flag to target a specific site:
 
 ```bash
 seite build --site blog       # Build only the blog
@@ -185,6 +185,16 @@ Each site deploys according to its own `seite.toml` deploy config. Sites can use
 {{% callout(type="tip") %}}
 Use `seite deploy --site blog --dry-run` to preview a single site's deploy before pushing to production.
 {{% end %}}
+
+## Upgrading
+
+```bash
+seite upgrade                 # Upgrade every site (one confirmation)
+seite upgrade --site blog     # Upgrade one site
+seite upgrade --check         # CI: exit 1 if any site needs upgrading
+```
+
+After installing a new `seite` binary, run `seite upgrade` from the workspace root to bring every site's agent files and config up to date. Changes are listed per site before anything is written. Running it inside a site's directory upgrades only that site.
 
 ## Checking Status
 
