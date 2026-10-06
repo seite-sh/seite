@@ -587,6 +587,31 @@ fn test_upgrade_from_workspace_root_upgrades_every_site() {
 }
 
 #[test]
+fn test_upgrade_workspace_check_json_reports_pending_sites() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+
+    let output = page_cmd()
+        .args(["--json", "upgrade", "--check"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let doc = json_stdout(&output);
+    assert_eq!(doc["ok"], false);
+    assert!(doc["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("in 2 sites"));
+    let sites = doc["data"]["sites"].as_array().unwrap();
+    assert_eq!(sites.len(), 2);
+    for site in sites {
+        assert_eq!(site["applied"], false);
+        assert!(!site["changes"].as_array().unwrap().is_empty(), "{site}");
+    }
+}
+
+#[test]
 fn test_upgrade_workspace_site_filter() {
     let tmp = TempDir::new().unwrap();
     workspace_with_two_sites(&tmp);

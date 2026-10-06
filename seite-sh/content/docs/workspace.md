@@ -126,7 +126,7 @@ Each site must have its own `seite.toml` inside its directory.
 
 ## The --site Flag
 
-When inside a workspace, `build`, `check`, `serve`, `deploy`, and `upgrade` operate on **all sites** by default. Use the global `--site` flag to target a specific site:
+When inside a workspace, `build`, `serve`, and `deploy` operate on **all sites** by default; `check` and `upgrade` do too when run from the workspace root (inside a site's directory they cover just that site). Use the global `--site` flag to target a specific site:
 
 ```bash
 seite build --site blog       # Build only the blog

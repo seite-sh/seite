@@ -46,7 +46,7 @@ These flags work with any command:
 | `--config <path>` | Path to the project's `seite.toml` (must be that exact filename) |
 | `--dir <path>` | Project directory |
 | `--verbose` | Enable verbose logging (also shows per-step build timings) |
-| `--json` | Print exactly one JSON document on stdout — `{"ok":true,"command":...,"data":...,"warnings":[...]}` or `{"ok":false,"command":...,"error":{"message":...,"chain":[...]}}` — with all human-readable output on stderr. Not supported by `serve`, `agent`, `mcp`, `completions`, or `self-update`, which stream output or take over the terminal |
+| `--json` | Print exactly one JSON document on stdout — `{"ok":true,"command":...,"data":...,"warnings":[...]}` or `{"ok":false,"command":...,"error":{"message":...,"chain":[...]}}` (plus `data` when the command has results to report, such as `upgrade --check`'s pending changes) — with all human-readable output on stderr. Not supported by `serve`, `agent`, `mcp`, `completions`, or `self-update`, which stream output or take over the terminal |
 | `-y`, `--yes` | Never prompt: accept defaults and answer "yes" to confirmations (also `SEITE_YES=1`). Without a terminal, prompts fall back to their defaults, and any value with no default must be passed as a flag or the command errors naming it |
 
 ## seite init

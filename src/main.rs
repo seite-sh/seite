@@ -108,7 +108,13 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
         Err(err) => {
             let (message, chain) = json::error_chain(&err);
             if json_mode {
-                json::emit_document(&json::error_document(cmd_name, &err, json::warnings()));
+                let mut doc = json::error_document(cmd_name, &err, json::warnings());
+                // A command can report what it found before failing (e.g. the
+                // pending changes behind `upgrade --check`'s non-zero exit).
+                if let Some(data) = json::take_data() {
+                    doc["data"] = data;
+                }
+                json::emit_document(&doc);
                 // The document carries the error; only echo it with --verbose.
                 if !seite::output::is_verbose() {
                     return ExitCode::FAILURE;

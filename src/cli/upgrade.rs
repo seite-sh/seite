@@ -344,6 +344,7 @@ pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Re
     // --check mode: just report and fail (exit 1 = upgrade needed; useful for CI)
     if args.check {
         human::info("Run `seite upgrade` to apply these changes.");
+        crate::output::json::set_data(plan.data(false));
         return Err(pending_error(plan.changes.len(), None));
     }
 
@@ -450,6 +451,7 @@ fn run_workspace(
     if args.check {
         human::info("Run `seite upgrade` to apply these changes.");
         let outdated = plans.iter().filter(|(_, p)| !p.changes.is_empty()).count();
+        crate::output::json::set_data(workspace_data(&plans, false, false));
         return Err(pending_error(pending, Some(outdated)));
     }
 
