@@ -142,6 +142,18 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         for name in &unresolved {
                             human::info(&format!("  - {name}"));
                         }
+                        // --yes applies fixes but must not upload protected
+                        // files to a project that can fail open; only a human
+                        // answer or --skip-checks may accept that risk.
+                        if prompt::assume_yes()
+                            && unresolved.iter().any(|n| n == deploy::FAIL_CLOSED_CHECK)
+                        {
+                            return Err(PageError::Deploy(format!(
+                                "'{}' is unresolved — --yes never deploys protected content to a project that may fail open. Fix it above, or pass --skip-checks to override",
+                                deploy::FAIL_CLOSED_CHECK
+                            ))
+                            .into());
+                        }
                         // Must be decided before auto-commit/push, build and upload.
                         let cont = prompt::confirm_or_fail(
                             "Continue deploying anyway?",
@@ -573,6 +585,26 @@ fn run_setup(
                 }
             }
             _ => {}
+        }
+    }
+
+    // Password-protected projects must fail closed, or Cloudflare serves the
+    // protected static files without the Worker once the free Workers request
+    // quota runs out.
+    if target_str == "cloudflare" && !config.password_access_groups().is_empty() {
+        crate::human_println!();
+        human::header("Securing password-protected projects");
+        let updated = SiteConfig::load(config_path).unwrap_or_else(|_| config.clone());
+        let projects = deploy::protected_cloudflare_projects(&updated, paths);
+        if projects.is_empty() {
+            human::warning(
+                "Could not determine which Cloudflare Pages projects hold protected content.",
+            );
+            for line in deploy::fail_closed_manual_instructions(&projects) {
+                human::info(&format!("  {line}"));
+            }
+        } else {
+            deploy::ensure_fail_closed(&projects);
         }
     }
 

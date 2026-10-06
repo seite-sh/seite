@@ -51,6 +51,9 @@ pub fn preflight(config: &SiteConfig, paths: &ResolvedPaths, target: &str) -> Ve
             if config.deploy.domain.is_some() {
                 checks.push(check_cloudflare_domain(config));
             }
+            if !config.password_access_groups().is_empty() {
+                checks.push(check_cloudflare_fail_closed(config, paths));
+            }
         }
         "netlify" => {
             checks.push(check_cli_available("netlify", &["--version"]));
@@ -694,6 +697,10 @@ pub fn try_fix_check(
                 manual_instructions: vec![format!("Run: netlify domains:add {domain}")],
             })
         }
+        FAIL_CLOSED_CHECK => Some(FixAction {
+            prompt: "Set the Cloudflare Pages project(s) to fail closed?".into(),
+            manual_instructions: fail_closed_manual_instructions(&[]),
+        }),
         _ => None,
     }
 }
@@ -929,6 +936,12 @@ pub fn execute_fix(
                 Ok(false)
             }
         }
+        FAIL_CLOSED_CHECK => {
+            // Earlier fixes (project creation) may have rewritten seite.toml.
+            let fresh = SiteConfig::load(config_path).ok();
+            let projects = protected_cloudflare_projects(fresh.as_ref().unwrap_or(config), paths);
+            Ok(!projects.is_empty() && ensure_fail_closed(&projects))
+        }
         _ => Ok(false),
     }
 }
@@ -961,6 +974,7 @@ pub fn recheck(
         "Netlify site" => check_netlify_site(config, paths),
         "Cloudflare domain" => check_cloudflare_domain(config),
         "Netlify domain" => check_netlify_domain(config, paths),
+        FAIL_CLOSED_CHECK => check_cloudflare_fail_closed(config, paths),
         _ => PreflightCheck {
             name: check_name.into(),
             passed: false,
@@ -2019,24 +2033,40 @@ fn detect_github_username(deploy: &crate::config::DeploySection) -> Option<Strin
 // Cloudflare Pages API (domain management)
 // ---------------------------------------------------------------------------
 
-/// Extract the Cloudflare account ID from `wrangler whoami` output.
+/// Resolve the Cloudflare account ID from `CLOUDFLARE_ACCOUNT_ID`, falling back
+/// to `wrangler whoami` output.
 fn get_cloudflare_account_id() -> Option<String> {
+    // Explicit account (standard for CI/CD and multi-account logins)
+    if let Ok(id) = std::env::var("CLOUDFLARE_ACCOUNT_ID") {
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
     let output = npm_cmd("wrangler").args(["whoami"]).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    single_account_id(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The account ID from a `wrangler whoami` table, or None when it lists zero
+/// or several accounts: guessing could read or change another account's project.
+fn single_account_id(whoami: &str) -> Option<String> {
     // Parse table: │ Account Name │ Account ID │
-    for line in stdout.lines() {
-        let cells: Vec<&str> = line.split('│').map(|c| c.trim()).collect();
+    let mut ids = std::collections::BTreeSet::new();
+    for line in whoami.lines() {
         // Look for a cell that looks like a 32-char hex account ID
-        for cell in &cells {
+        for cell in line.split('│').map(|c| c.trim()) {
             if cell.len() == 32 && cell.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Some(cell.to_string());
+                ids.insert(cell.to_string());
             }
         }
     }
-    None
+    if ids.len() == 1 {
+        ids.pop_first()
+    } else {
+        None
+    }
 }
 
 /// Get a Cloudflare API token. Checks CLOUDFLARE_API_TOKEN env var first,
@@ -2073,8 +2103,11 @@ fn get_cloudflare_api_token() -> Option<String> {
 
 /// List custom domains attached to a Cloudflare Pages project.
 fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
-    let account_id = get_cloudflare_account_id()
-        .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
+    let account_id = get_cloudflare_account_id().ok_or_else(|| {
+        PageError::Deploy(
+            "could not determine a single Cloudflare account ID — set CLOUDFLARE_ACCOUNT_ID".into(),
+        )
+    })?;
     let token = get_cloudflare_api_token().ok_or_else(|| {
         PageError::Deploy(
             "no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into(),
@@ -2114,8 +2147,11 @@ fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
 
 /// Attach a custom domain to a Cloudflare Pages project via the API.
 pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
-    let account_id = get_cloudflare_account_id()
-        .ok_or_else(|| PageError::Deploy("could not determine Cloudflare account ID".into()))?;
+    let account_id = get_cloudflare_account_id().ok_or_else(|| {
+        PageError::Deploy(
+            "could not determine a single Cloudflare account ID — set CLOUDFLARE_ACCOUNT_ID".into(),
+        )
+    })?;
     let token = get_cloudflare_api_token().ok_or_else(|| {
         PageError::Deploy(
             "no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into(),
@@ -2165,6 +2201,290 @@ pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
 
         human::error(&format!("Cloudflare API error: {error_str}"));
         Ok(false)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cloudflare Pages fail-closed mode (password access)
+// ---------------------------------------------------------------------------
+
+/// Pages environments whose deployments carry the password Worker.
+const PAGES_ENVIRONMENTS: [&str; 2] = ["production", "preview"];
+
+/// Pre-flight check name for the Pages project fail-open/fail-closed setting.
+pub const FAIL_CLOSED_CHECK: &str = "Cloudflare fail closed";
+
+/// Cloudflare Pages projects that receive password-protected output: the main
+/// project when a main-site collection is private, plus the project of every
+/// private subdomain collection. Mirrors the project resolution `seite deploy`
+/// uses, so the check covers exactly what gets uploaded.
+pub fn protected_cloudflare_projects(config: &SiteConfig, paths: &ResolvedPaths) -> Vec<String> {
+    if config.access.is_none() {
+        return Vec::new();
+    }
+    let mut projects = Vec::new();
+    let main_is_protected = config
+        .collections
+        .iter()
+        .any(|c| c.subdomain.is_none() && c.resolved_access_group().is_some());
+    if main_is_protected {
+        if let Some(project) = config
+            .deploy
+            .project
+            .clone()
+            .or_else(|| detect_cloudflare_project(paths))
+        {
+            projects.push(project);
+        }
+    }
+    for collection in config.subdomain_collections() {
+        if collection.resolved_access_group().is_none() {
+            continue;
+        }
+        if let Some(project) = collection
+            .deploy_project
+            .as_deref()
+            .or(config.deploy.project.as_deref())
+        {
+            if !projects.iter().any(|p| p == project) {
+                projects.push(project.to_string());
+            }
+        }
+    }
+    projects
+}
+
+/// Environments of a Pages project (the API's `result` object) that are not
+/// explicitly set to fail closed. A missing `fail_open` field is treated as
+/// failing open: once the Workers request quota is exhausted, a fail-open
+/// project serves static assets without running the password Worker.
+pub fn fail_open_environments(project: &serde_json::Value) -> Vec<&'static str> {
+    PAGES_ENVIRONMENTS
+        .iter()
+        .copied()
+        .filter(|env| {
+            project
+                .pointer(&format!("/deployment_configs/{env}/fail_open"))
+                .and_then(serde_json::Value::as_bool)
+                != Some(false)
+        })
+        .collect()
+}
+
+/// Deployment-config fields that carry a default in Cloudflare's update-project
+/// request schema. The PATCH body echoes their current values so an omitted
+/// field can never be reset to its default.
+const DEFAULTED_CONFIG_FIELDS: [&str; 3] = [
+    "always_use_latest_compatibility_date",
+    "build_image_major_version",
+    "usage_model",
+];
+
+/// PATCH body that switches every Pages environment to fail closed, given the
+/// project's current state (the API's `result` object). Secrets, variables,
+/// and bindings are left out so the update cannot touch them.
+pub fn fail_closed_patch_body(current: &serde_json::Value) -> serde_json::Value {
+    let mut configs = serde_json::Map::new();
+    for env in PAGES_ENVIRONMENTS {
+        let mut values = serde_json::Map::new();
+        for field in DEFAULTED_CONFIG_FIELDS {
+            if let Some(value) = current
+                .pointer(&format!("/deployment_configs/{env}/{field}"))
+                .filter(|value| !value.is_null())
+            {
+                values.insert(field.into(), value.clone());
+            }
+        }
+        values.insert("fail_open".into(), serde_json::Value::Bool(false));
+        configs.insert(env.into(), serde_json::Value::Object(values));
+    }
+    serde_json::json!({ "deployment_configs": configs })
+}
+
+fn cloudflare_api_credentials() -> Result<(String, String)> {
+    let account_id = get_cloudflare_account_id().ok_or_else(|| {
+        PageError::Deploy(
+            "could not determine a single Cloudflare account ID — set CLOUDFLARE_ACCOUNT_ID (required when your login has several accounts) or run `wrangler login`"
+                .into(),
+        )
+    })?;
+    let token = get_cloudflare_api_token().ok_or_else(|| {
+        PageError::Deploy(
+            "no Cloudflare API token — set CLOUDFLARE_API_TOKEN or run `wrangler login`".into(),
+        )
+    })?;
+    Ok((account_id, token))
+}
+
+fn cloudflare_project_url(account_id: &str, project: &str) -> String {
+    format!(
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{}",
+        urlencoding::encode(project)
+    )
+}
+
+fn cloudflare_project_result(
+    response: std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    project: &str,
+) -> Result<serde_json::Value> {
+    let mut response = response.map_err(|e| {
+        PageError::Deploy(format!(
+            "Cloudflare API request for project '{project}' failed: {e}"
+        ))
+    })?;
+    let body: serde_json::Value = response
+        .body_mut()
+        .read_json()
+        .map_err(|e| PageError::Deploy(format!("failed to parse Cloudflare API response: {e}")))?;
+    body.get("result")
+        .filter(|result| result.is_object())
+        .cloned()
+        .ok_or_else(|| {
+            PageError::Deploy(format!(
+                "Cloudflare API returned no project data for '{project}'"
+            ))
+        })
+}
+
+fn cloudflare_get_project(
+    account_id: &str,
+    token: &str,
+    project: &str,
+) -> Result<serde_json::Value> {
+    cloudflare_project_result(
+        ureq::get(&cloudflare_project_url(account_id, project))
+            .header("Authorization", &format!("Bearer {token}"))
+            .call(),
+        project,
+    )
+}
+
+/// Read which environments of a Pages project fail open.
+pub fn cloudflare_fail_open_environments(project: &str) -> Result<Vec<&'static str>> {
+    let (account_id, token) = cloudflare_api_credentials()?;
+    let result = cloudflare_get_project(&account_id, &token, project)?;
+    Ok(fail_open_environments(&result))
+}
+
+/// Switch a Pages project to fail closed in production and preview, then
+/// confirm the setting from the API's response.
+pub fn cloudflare_set_fail_closed(project: &str) -> Result<()> {
+    let (account_id, token) = cloudflare_api_credentials()?;
+    let current = cloudflare_get_project(&account_id, &token, project)?;
+    if fail_open_environments(&current).is_empty() {
+        return Ok(());
+    }
+    let result = cloudflare_project_result(
+        ureq::patch(&cloudflare_project_url(&account_id, project))
+            .header("Authorization", &format!("Bearer {token}"))
+            .send_json(fail_closed_patch_body(&current)),
+        project,
+    )?;
+    let still_open = fail_open_environments(&result);
+    if still_open.is_empty() {
+        Ok(())
+    } else {
+        Err(PageError::Deploy(format!(
+            "Cloudflare still reports project '{project}' failing open in {}",
+            still_open.join(" and ")
+        )))
+    }
+}
+
+/// Dashboard steps for users who set the mode by hand.
+pub fn fail_closed_manual_instructions(projects: &[String]) -> Vec<String> {
+    let names = if projects.is_empty() {
+        "your Pages project".to_string()
+    } else {
+        projects
+            .iter()
+            .map(|p| format!("'{p}'"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    vec![
+        format!(
+            "In the Cloudflare dashboard, open Workers & Pages → {names} → Settings → Runtime → Fail open / closed, and choose Fail closed"
+        ),
+        "Or run: seite access set-password <group>, which sets Fail closed on each project".into(),
+    ]
+}
+
+/// Set each project to fail closed, reporting progress. Returns false (after
+/// printing manual steps) when any project could not be switched.
+pub fn ensure_fail_closed(projects: &[String]) -> bool {
+    let mut failed = Vec::new();
+    for project in projects {
+        match cloudflare_set_fail_closed(project) {
+            Ok(()) => human::success(&format!(
+                "Cloudflare Pages project '{project}' fails closed (protected files stay behind the password when the Workers request limit is reached)"
+            )),
+            Err(e) => {
+                human::warning(&format!(
+                    "Could not set Cloudflare Pages project '{project}' to fail closed: {e}"
+                ));
+                failed.push(project.clone());
+            }
+        }
+    }
+    if failed.is_empty() {
+        return true;
+    }
+    human::warning(
+        "Until it is set to Fail closed, a project on the Workers Free plan can serve protected files without a password once its daily Workers request limit is reached.",
+    );
+    for line in fail_closed_manual_instructions(&failed) {
+        human::info(&format!("  {line}"));
+    }
+    false
+}
+
+fn check_cloudflare_fail_closed(config: &SiteConfig, paths: &ResolvedPaths) -> PreflightCheck {
+    let projects = protected_cloudflare_projects(config, paths);
+    if projects.is_empty() {
+        return PreflightCheck {
+            name: FAIL_CLOSED_CHECK.into(),
+            passed: false,
+            message: "could not determine the Cloudflare Pages project for protected content — set deploy.project (and deploy_project on private subdomain collections)".into(),
+        };
+    }
+    fail_closed_check_from_results(
+        projects
+            .iter()
+            .map(|p| (p.as_str(), cloudflare_fail_open_environments(p)))
+            .collect(),
+    )
+}
+
+fn fail_closed_check_from_results(
+    results: Vec<(&str, Result<Vec<&'static str>>)>,
+) -> PreflightCheck {
+    let mut problems = Vec::new();
+    for (project, result) in &results {
+        match result {
+            Ok(open) if open.is_empty() => {}
+            Ok(open) => problems.push(format!(
+                "'{project}' fails open in {} — once the Workers request limit is reached, Cloudflare serves protected files without the password check",
+                open.join(" and ")
+            )),
+            Err(e) => problems.push(format!(
+                "could not verify '{project}' fails closed ({e}) — protected files may be served without the password check once the Workers request limit is reached"
+            )),
+        }
+    }
+    if problems.is_empty() {
+        let names: Vec<&str> = results.iter().map(|(p, _)| *p).collect();
+        PreflightCheck {
+            name: FAIL_CLOSED_CHECK.into(),
+            passed: true,
+            message: names.join(", "),
+        }
+    } else {
+        PreflightCheck {
+            name: FAIL_CLOSED_CHECK.into(),
+            passed: false,
+            message: problems.join("; "),
+        }
     }
 }
 
@@ -2836,6 +3156,236 @@ mod tests {
         let checks = preflight(&config, &paths, "github-pages");
 
         assert!(checks.iter().all(|check| check.name != "Password access"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Cloudflare Pages fail-closed mode
+    // -----------------------------------------------------------------------
+
+    fn private_collection(name: &str, subdomain: Option<&str>) -> crate::config::CollectionConfig {
+        let mut collection = crate::config::CollectionConfig::preset_docs();
+        collection.name = name.into();
+        collection.url_prefix = format!("/{name}");
+        collection.private = true;
+        collection.subdomain = subdomain.map(Into::into);
+        collection
+    }
+
+    #[test]
+    fn test_fail_open_environments_requires_explicit_fail_closed() {
+        let closed = serde_json::json!({
+            "deployment_configs": {
+                "production": { "fail_open": false },
+                "preview": { "fail_open": false }
+            }
+        });
+        assert!(fail_open_environments(&closed).is_empty());
+
+        let mixed = serde_json::json!({
+            "deployment_configs": {
+                "production": { "fail_open": false },
+                "preview": { "fail_open": true }
+            }
+        });
+        assert_eq!(fail_open_environments(&mixed), vec!["preview"]);
+
+        // Cloudflare's API defaults fail_open to true; an absent or malformed
+        // field must never count as verified fail-closed.
+        let missing = serde_json::json!({ "deployment_configs": { "production": {} } });
+        assert_eq!(
+            fail_open_environments(&missing),
+            vec!["production", "preview"]
+        );
+        let malformed = serde_json::json!({
+            "deployment_configs": {
+                "production": { "fail_open": "false" },
+                "preview": { "fail_open": null }
+            }
+        });
+        assert_eq!(
+            fail_open_environments(&malformed),
+            vec!["production", "preview"]
+        );
+    }
+
+    #[test]
+    fn test_fail_closed_patch_body_covers_both_environments() {
+        let empty = serde_json::json!({});
+        assert_eq!(
+            fail_closed_patch_body(&empty),
+            serde_json::json!({
+                "deployment_configs": {
+                    "production": { "fail_open": false },
+                    "preview": { "fail_open": false }
+                }
+            })
+        );
+        // The patch body must itself read back as fail-closed.
+        assert!(fail_open_environments(&fail_closed_patch_body(&empty)).is_empty());
+    }
+
+    #[test]
+    fn test_fail_closed_patch_body_preserves_defaulted_fields_and_omits_secrets() {
+        let current = serde_json::json!({
+            "deployment_configs": {
+                "production": {
+                    "fail_open": true,
+                    "always_use_latest_compatibility_date": true,
+                    "build_image_major_version": 2,
+                    "usage_model": "bundled",
+                    "compatibility_date": "2026-01-01",
+                    "env_vars": { "SEITE_PASSWORD_STAFF": { "type": "secret_text" } },
+                    "kv_namespaces": { "CACHE": { "namespace_id": "abc" } }
+                },
+                "preview": { "fail_open": true, "usage_model": null }
+            }
+        });
+
+        let body = fail_closed_patch_body(&current);
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "deployment_configs": {
+                    "production": {
+                        "always_use_latest_compatibility_date": true,
+                        "build_image_major_version": 2,
+                        "usage_model": "bundled",
+                        "fail_open": false
+                    },
+                    "preview": { "fail_open": false }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_protected_projects_require_access_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("main-site".into());
+        config.collections = vec![private_collection("members", None)];
+
+        assert!(protected_cloudflare_projects(&config, &test_paths(tmp.path())).is_empty());
+    }
+
+    #[test]
+    fn test_protected_projects_cover_main_and_private_subdomains() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut config = test_config("https://example.com");
+        config.access = Some(crate::config::AccessSection::default());
+        config.deploy.project = Some("main-site".into());
+        let mut docs = private_collection("docs", Some("docs"));
+        docs.deploy_project = Some("docs-site".into());
+        let mut public_blog = crate::config::CollectionConfig::preset_posts();
+        public_blog.subdomain = Some("blog".into());
+        public_blog.deploy_project = Some("blog-site".into());
+        config.collections = vec![private_collection("members", None), docs, public_blog];
+
+        assert_eq!(
+            protected_cloudflare_projects(&config, &test_paths(tmp.path())),
+            vec!["main-site", "docs-site"]
+        );
+    }
+
+    #[test]
+    fn test_protected_projects_skip_public_main_site() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut config = test_config("https://example.com");
+        config.access = Some(crate::config::AccessSection::default());
+        config.deploy.project = Some("main-site".into());
+        // Without deploy_project, a subdomain deploys to deploy.project.
+        config.collections = vec![
+            crate::config::CollectionConfig::preset_posts(),
+            private_collection("docs", Some("docs")),
+        ];
+
+        assert_eq!(
+            protected_cloudflare_projects(&config, &test_paths(tmp.path())),
+            vec!["main-site"]
+        );
+    }
+
+    #[test]
+    fn test_fail_closed_check_passes_only_when_every_project_is_closed() {
+        let passed = fail_closed_check_from_results(vec![
+            ("main-site", Ok(vec![])),
+            ("docs-site", Ok(vec![])),
+        ]);
+        assert!(passed.passed);
+        assert_eq!(passed.name, FAIL_CLOSED_CHECK);
+        assert_eq!(passed.message, "main-site, docs-site");
+
+        let failed = fail_closed_check_from_results(vec![
+            ("main-site", Ok(vec![])),
+            ("docs-site", Ok(vec!["production", "preview"])),
+        ]);
+        assert!(!failed.passed);
+        assert!(failed
+            .message
+            .contains("'docs-site' fails open in production and preview"));
+        assert!(!failed.message.contains("main-site"));
+    }
+
+    #[test]
+    fn test_fail_closed_check_fails_when_unverifiable() {
+        let check = fail_closed_check_from_results(vec![(
+            "main-site",
+            Err(PageError::Deploy("no Cloudflare API token".into())),
+        )]);
+        assert!(!check.passed);
+        assert!(check.message.contains("could not verify 'main-site'"));
+        assert!(check.message.contains("no Cloudflare API token"));
+    }
+
+    #[test]
+    fn test_fail_closed_check_offers_fix_with_dashboard_steps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let check = PreflightCheck {
+            name: FAIL_CLOSED_CHECK.into(),
+            passed: false,
+            message: "'main-site' fails open in production".into(),
+        };
+
+        let fix = try_fix_check(&check, &test_paths(tmp.path()), "cloudflare").unwrap();
+
+        assert!(fix.prompt.contains("fail closed"));
+        assert!(fix
+            .manual_instructions
+            .iter()
+            .any(|line| line.contains("Settings → Runtime") && line.contains("Fail closed")));
+    }
+
+    #[test]
+    fn test_single_account_id_refuses_to_guess() {
+        let one = "│ Account Name │ Account ID │\n│ Acme │ 0123456789abcdef0123456789abcdef │";
+        assert_eq!(
+            single_account_id(one).as_deref(),
+            Some("0123456789abcdef0123456789abcdef")
+        );
+        let two = format!("{one}\n│ Other │ fedcba9876543210fedcba9876543210 │");
+        assert_eq!(single_account_id(&two), None);
+        assert_eq!(single_account_id("You are not authenticated."), None);
+    }
+
+    #[test]
+    fn test_fail_closed_manual_instructions_name_projects() {
+        let lines = fail_closed_manual_instructions(&["main-site".into(), "docs-site".into()]);
+        assert!(lines[0].contains("'main-site', 'docs-site'"));
+        assert!(lines.iter().any(|line| line.contains("set-password")));
+    }
+
+    #[test]
+    fn test_password_access_preflight_skips_fail_closed_on_other_targets() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = test_paths(tmp.path());
+        let mut config = test_config("https://example.com");
+        config.access = Some(crate::config::AccessSection::default());
+        config.collections = vec![private_collection("members", None)];
+
+        let checks = preflight(&config, &paths, "github-pages");
+
+        assert!(checks.iter().all(|check| check.name != FAIL_CLOSED_CHECK));
     }
 
     fn test_paths(dir: &std::path::Path) -> ResolvedPaths {
