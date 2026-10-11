@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>{{ config.title }}</title></head>
+<body>
+<h1>{{ config.title }}</h1>
+{% set section = get_section(path="posts/_index.md") %}
+<ul>
+{% for page in section.pages %}
+<li><a href="{{ page.permalink }}">{{ page.title }}</a></li>
+{% endfor %}
+</ul>
+</body>
+</html>

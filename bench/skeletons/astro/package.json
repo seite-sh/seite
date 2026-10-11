@@ -1,0 +1,8 @@
+{
+  "name": "bench-astro",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "astro": "^5.18.0"
+  }
+}
