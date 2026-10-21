@@ -98,7 +98,7 @@ Six of the 11 tools are read-only:
 The other five write files:
 
 - `seite_create_content` creates a page with valid frontmatter in the right place and returns its path and URL. It refuses to overwrite an existing file unless the agent passes `overwrite: true`.
-- `seite_update_frontmatter` sets or removes frontmatter keys and keeps the markdown body byte-for-byte. Only the changed lines move, so comments and key order survive.
+- `seite_update_frontmatter` sets or removes frontmatter keys and keeps the markdown body byte-for-byte. Usually only the changed lines move, so comments and key order survive. If the YAML is too unusual for targeted edits, it rewrites the whole frontmatter instead and says so in the result's `notes`.
 - `seite_build` builds to the output directory and returns stats, warnings, broken links, missing assets and diagnostics. With `strict: true` any warning fails the call.
 - `seite_apply_theme` swaps in a bundled or installed theme and backs up a customized `base.html` first.
 - `seite_create_collection` adds a preset collection (posts, docs, pages, changelog, roadmap or trust) to `seite.toml` and creates its directory.
@@ -167,7 +167,7 @@ That's the whole loop: look before writing, write through a tool that knows the 
 
 ## Set Up an MCP Server for Websites in Claude Code, Codex, OpenCode and Cursor
 
-You don't write any of this config by hand. `seite init` registers the server for every agent you select with `--agents` (all four by default), and `seite upgrade` adds it to existing sites without dropping servers you already have. [v0.20.0](/changelog/v0-20-0) is the release that brought Codex, OpenCode and Cursor support and moved Claude Code's entry into `.mcp.json`.
+You don't write any of this config by hand. `seite init` registers the server for the agents you select. Interactively, it preselects the agents it finds installed (all four if it finds none); `--agents claude,codex,opencode,cursor` or a non-interactive run sets up all four. And `seite upgrade` adds it to existing sites without dropping servers you already have. [v0.20.0](/changelog/v0-20-0) is the release that brought Codex, OpenCode and Cursor support and moved Claude Code's entry into `.mcp.json`.
 
 | Agent | Config file seite writes | One-time step |
 |---|---|---|

@@ -100,7 +100,7 @@ Four architectural decisions separate an AI-first SSG from a traditional one.
 
 ### AI Context: AGENTS.md and Agent Harness Files
 
-When you run `seite init`, it generates an `AGENTS.md` file that describes your site to AI agents: collections, frontmatter format, templates, URL patterns and available commands. Since v0.20, `seite init --agents claude,codex,opencode,cursor` (all four by default) also writes each agent's own files, such as `CLAUDE.md` and `.claude/rules/` for Claude Code, `.codex/config.toml` for Codex, `opencode.json` for OpenCode and `.cursor/rules/` for Cursor. The [v0.20.0 release notes](/changelog/v0-20-0) list every file.
+When you run `seite init`, it generates an `AGENTS.md` file that describes your site to AI agents: collections, frontmatter format, templates, URL patterns and available commands. Since v0.20, `seite init` also writes the selected agents' own files (pass `--agents claude,codex,opencode,cursor` for all four), such as `CLAUDE.md` and `.claude/rules/` for Claude Code, `.codex/config.toml` for Codex, `opencode.json` for OpenCode and `.cursor/rules/` for Cursor. The [v0.20.0 release notes](/changelog/v0-20-0) list every file.
 
 Each agent also gets a turn-end hook. When the agent finishes a turn, the hook runs `seite check --hook <agent>`, which validates config, frontmatter, templates and internal links without writing to `dist/`. If it finds errors, it hands them back so the agent fixes them before stopping. Warnings never block.
 
@@ -304,7 +304,7 @@ llms.txt is a structured markdown file at your site root that tells AI models wh
 
 ### Which coding agents work with seite?
 
-Claude Code, Codex, OpenCode and Cursor. `seite init` sets up all four by default, including MCP registration and a turn-end `seite check` hook, and `seite agent --with <agent>` launches any of them with your site context. `seite theme create` currently uses Claude Code.
+Claude Code, Codex, OpenCode and Cursor. `seite init` sets up the ones you select (it preselects those it finds installed), including MCP registration and a turn-end `seite check` hook, and `seite agent --with <agent>` launches any of them with your site context. `seite theme create` currently uses Claude Code.
 
 ### Is seite free?
 
