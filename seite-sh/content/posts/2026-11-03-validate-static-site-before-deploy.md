@@ -110,7 +110,7 @@ The full list, including `url-collision`, `data-conflict` and `i18n-partial`, is
 
 ## Check a Static Site for Broken Links (and Where It Stops)
 
-If you came here to check a static site for broken links, here's the honest scope. `seite check` validates **internal** links: root-relative hrefs like `/docs/setup`, and relative links between markdown files like `[intro](../docs/intro.md)`, which the build rewrites to the published URL. It also checks every asset reference in `img`, `srcset`, `script`, stylesheet `link`, `video`, `audio` and similar tags.
+If you came here to check a static site for broken links, here's the honest scope. `seite check` validates **internal** links: root-relative hrefs like `/docs/setup`, and relative links between markdown files like `[intro](../docs/intro.md)`, which the build rewrites to the published URL. It also checks root-relative asset references (paths starting with `/`) in `img`, `srcset`, `script`, stylesheet `link`, `video`, `audio` and similar tags. Relative asset paths like `images/chart.png` and external URLs aren't checked.
 
 It does **not** fetch external URLs. A link to `https://example.com/gone` passes.
 
