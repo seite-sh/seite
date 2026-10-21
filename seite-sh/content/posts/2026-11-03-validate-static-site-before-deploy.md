@@ -103,8 +103,8 @@ The `code` in brackets is stable. seite treats it as an API: agents and scripts 
 | `shortcode-syntax` | error | Malformed shortcode; Hugo-style syntax gets the seite form |
 | `data-file-parse` | error | Invalid YAML, JSON or TOML in `data/` |
 | `template-render` | error | A page failed to render; names the page and template |
-| `broken-link` | warning (error with `--strict`) | Internal link or relative `.md` link with no target |
-| `missing-asset` | warning (error with `--strict`) | Image, script, stylesheet or media file not in the output |
+| `broken-link` | warning (`--strict` fails the run) | Internal link or relative `.md` link with no target |
+| `missing-asset` | warning (`--strict` fails the run) | Image, script, stylesheet or media file not in the output |
 
 The full list, including `url-collision`, `data-conflict` and `i18n-partial`, is in the [seite check CLI reference](/docs/cli-reference).
 
@@ -128,7 +128,7 @@ By contrast, many link checkers read only the generated HTML. lychee can scan ma
 
 Two things make `seite check` easy to script: exit codes and `--json`.
 
-The exit code is 0 when there are no errors, and 1 otherwise. With `--strict`, any diagnostic at all is a failure. That's enough for a CI step:
+The exit code is 0 when there are no errors, and 1 otherwise. With `--strict`, any diagnostic at all fails the run, though warnings are still reported as warnings in the JSON. That's enough for a CI step:
 
 ```bash
 seite check --strict
@@ -208,7 +208,7 @@ The same diagnostics work landed in `seite build` in [seite v0.20.0](/changelog/
 
 - **Every broken file at once.** A bad shortcode in one post no longer hides broken frontmatter in another. You get the whole list, then fix it in one go.
 - **Links point at the source.** Broken links and missing images, scripts and stylesheets name the `.md`, template or data file and line, not the generated HTML, with did-you-mean suggestions.
-- **A failed build keeps `dist/`.** Full builds write to a staging directory and swap it in only when every step succeeds.
+- **A failed build keeps `dist/`.** Full builds write to a staging directory and swap it in only when every build step succeeds. One exception: `seite build --strict` rejects broken links and missing assets after the swap, so a strict failure for those can still replace the previous `dist/`. Run `seite check --strict` first if you need the old output kept.
 
 That last one is easy to see. With the unclosed frontmatter list in place, `seite build` exits 1:
 

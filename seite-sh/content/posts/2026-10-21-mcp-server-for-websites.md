@@ -51,7 +51,7 @@ A coding agent can read `seite.toml` and `content/posts/*.md` on its own. So why
 
 Because the most important facts about a site aren't written in any file. They're computed by the build. Take a post at `content/posts/2026-10-21-pricing-update.md`:
 
-- Its date comes from the filename, not the frontmatter.
+- Its date comes from the `date:` frontmatter, or from the filename when that's missing.
 - Its URL depends on the collection's URL prefix, which may come from a default rather than anything in `seite.toml`.
 - Its rendered HTML depends on shortcodes, templates and data files.
 - Whether its links work depends on every other page in the site.
@@ -179,7 +179,7 @@ You don't write any of this config by hand. `seite init` registers the server fo
 Starting fresh looks like this:
 
 ```bash
-seite init mysite --title "My Site" --collections posts,docs,pages --deploy-target cloudflare --agents claude,codex
+seite init mysite --title "My Site" --collections posts,docs,pages --deploy-target cloudflare --agents claude,codex,opencode,cursor
 cd mysite
 claude          # or codex, opencode, cursor-agent
 ```
