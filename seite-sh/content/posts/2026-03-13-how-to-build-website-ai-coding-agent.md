@@ -1,7 +1,7 @@
 ---
 title: "How to Build a Website with an AI Coding Agent"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-21
 description: "Use Claude Code to build a complete website in under an hour. seite's AGENTS.md and MCP server give AI coding agents full site context from day one."
 tags:
   - ai
@@ -19,7 +19,7 @@ extra:
 
 Your AI coding agent already knows how to build websites. The problem is your static site generator doesn't tell it anything.
 
-Claude Code, Cursor, GitHub Copilot — [82% of developers now use or plan to use AI coding tools](https://survey.stackoverflow.co/2024/ai/) — these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
+Claude Code, Cursor, GitHub Copilot: [82% of developers now use or plan to use AI coding tools](https://survey.stackoverflow.co/2024/ai/), and these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
 
 Learning how to build a website with an AI coding agent requires two things most tutorials miss: a site generator that gives the agent structured context, and a workflow where the agent can take meaningful action instead of answering questions. This tutorial covers both. You'll build a complete site with landing page, blog, documentation and deploy using seite and Claude Code. The whole thing takes under an hour. The agent does most of the work.
 
@@ -185,7 +185,7 @@ Beyond `seite agent`, the [MCP server](/docs/mcp-server) makes seite's content a
 
 When the MCP server is running (your coding agent starts it when it opens the project), AI tools can call `seite_check` to validate the whole site with file-and-line diagnostics, `seite_build` to trigger a build and get structured results, `seite_create_content` to create a properly formatted content file, `seite_search` to find existing content by title or tag, and read `seite://config` for your site configuration as typed JSON.
 
-This means your AI assistant works with site concepts, collections, content items, themes; instead of parsing raw files. The result is fewer errors and faster iteration.
+This means your AI assistant works with site concepts, collections, content items, themes; instead of parsing raw files. The result is fewer errors and faster iteration. For a closer look at all 11 tools and when an agent should use each one, see [what an MCP server for websites can do](/blog/mcp-server-for-websites).
 
 Read the [full MCP server documentation](/docs/mcp-server) for all available tools and connection details.
 
@@ -221,7 +221,7 @@ Yes. Run `seite agent` in an existing seite project and the agent reads the curr
 
 ### What is the real experience like: what does the agent actually get right and wrong?
 
-For an honest behind-the-scenes account of using seite and Claude Code to build a complete website — including what the agent produced well, what took longer than expected, and what we'd do differently — see [We Built Our Website with Our Own Tool (and Claude Code)](/blog/built-with-seite-claude-code).
+For an honest behind-the-scenes account of using seite and Claude Code to build a complete website, including what the agent produced well, what took longer than expected, and what we'd do differently, see [We Built Our Website with Our Own Tool (and Claude Code)](/blog/built-with-seite-claude-code).
 
 ### What's in the AGENTS.md file and can I edit it?
 

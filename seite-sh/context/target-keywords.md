@@ -57,6 +57,7 @@
 - static site generator with contact forms
 - static site generator multilingual
 - static site generator image optimization
+- static site generator with built-in themes  (covered: /blog/compiled-themes-binary)
 - static site generator syntax highlighting
 - markdown to website with AI
 - static site generator with RSS
@@ -68,6 +69,7 @@
 - deploy static site netlify
 - one command deploy website
 - static site CI/CD
+- password protect cloudflare pages  (covered: /blog/password-protect-cloudflare-pages)
 
 ## Long-Tail Keywords
 - how to build a website with AI coding agent

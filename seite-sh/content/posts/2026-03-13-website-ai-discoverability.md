@@ -1,7 +1,8 @@
 ---
 title: "Website AI Discoverability: The Third Audience Your Site Is Missing"
 date: 2026-03-13
-description: "Website AI discoverability is no longer optional. Your site has three audiences now — humans, search engines, and AI models. Here's the architecture that reaches all three."
+updated: 2026-10-21
+description: "Website AI discoverability is no longer optional. Your site has three audiences now: humans, search engines, and AI models. Here's the architecture that reaches all three."
 tags:
  - ai
  - seo
@@ -124,7 +125,7 @@ seite build
 
 Every page gets Open Graph tags, JSON-LD structured data, a canonical URL, and a markdown alternate link in the HTML head. All wired to your frontmatter and `seite.toml` config. The third audience is addressed in the same build command that generates your HTML.
 
-This is not a plugin. It is the build pipeline. For a deeper look at the [AI static site generator](/blog/ai-static-site-generator) architecture and how each output layer works, the full technical breakdown covers the design decisions behind triple output.
+This is not a plugin. It is the build pipeline. For a deeper look at the [AI static site generator](/blog/ai-static-site-generator) architecture and how each output layer works, the full technical breakdown covers the design decisions behind triple output. Discovery files serve AI models reading your published pages, while coding agents editing the site need live access to its content and build, which is what [an MCP server for websites](/blog/mcp-server-for-websites) provides.
 
 **Want to see it for yourself?** [Get started with seite](/docs/getting-started) and run `seite build`. Open `dist/llms.txt` and `dist/robots.txt` alongside `dist/index.html`. Three audiences, one command.
 
@@ -140,4 +141,4 @@ Three things to remember:
 2. **llms.txt is a reading guide, not a ranking signal.** It does not change your Google position. It tells AI models what your site is and what to read. That is a different, complementary value.
 3. **robots.txt needs two policies, not one.** Allow AI search crawlers. Optionally block AI training crawlers. A single blanket rule does not serve both goals.
 
-The three actions covered here — triple output architecture, llms.txt, and AI-aware robots.txt — are the foundation of **website AI discoverability** in 2026. For the complete implementation: the [GEO guide](/blog/generative-engine-optimization) covers the full architecture. The [llms.txt explainer](/blog/what-is-llms-txt) covers the format in depth. For a tool that handles all of it automatically, see the [AI static site generator overview](/blog/ai-static-site-generator).
+The three actions covered here (triple output architecture, llms.txt, and AI-aware robots.txt) are the foundation of **website AI discoverability** in 2026. For the complete implementation: the [GEO guide](/blog/generative-engine-optimization) covers the full architecture. The [llms.txt explainer](/blog/what-is-llms-txt) covers the format in depth. For a tool that handles all of it automatically, see the [AI static site generator overview](/blog/ai-static-site-generator).
