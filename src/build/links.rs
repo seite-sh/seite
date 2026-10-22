@@ -352,10 +352,35 @@ const ASSET_LINK_RELS: &[&str] = &[
 /// external, protocol-relative, `data:` and relative URLs are ignored.
 /// Results are deduplicated per (url, kind).
 pub fn extract_internal_refs(html: &str) -> Vec<InternalRef> {
+    extract_refs(html, normalize_internal_ref)
+}
+
+/// Like [`extract_internal_refs`], for absolute `http(s)://` (and
+/// protocol-relative `//host`, taken as https) references: the URL with
+/// `&amp;` unescaped and the fragment removed (the query is kept). Used by
+/// `seite check --external`.
+pub fn extract_external_refs(html: &str) -> Vec<InternalRef> {
+    extract_refs(html, normalize_external_ref)
+}
+
+fn normalize_external_ref(raw: &str) -> Option<String> {
+    let value = raw.trim().replace("&amp;", "&");
+    let lower = value.to_ascii_lowercase();
+    let url = if lower.starts_with("http://") || lower.starts_with("https://") {
+        value
+    } else {
+        format!("https://{}", value.strip_prefix("//")?)
+    };
+    let url = url.split('#').next().unwrap_or("").to_string();
+    let host_part = url.split("://").nth(1).unwrap_or("");
+    (!host_part.is_empty() && !host_part.starts_with('/')).then_some(url)
+}
+
+fn extract_refs(html: &str, normalize: fn(&str) -> Option<String>) -> Vec<InternalRef> {
     let mut out = Vec::new();
     let mut seen: HashSet<(String, LinkKind)> = HashSet::new();
     let mut push = |raw: &str, kind: LinkKind| {
-        if let Some(url) = normalize_internal_ref(raw) {
+        if let Some(url) = normalize(raw) {
             if seen.insert((url.clone(), kind)) {
                 out.push(InternalRef { url, kind });
             }
@@ -411,6 +436,13 @@ pub fn extract_internal_refs(html: &str) -> Vec<InternalRef> {
             "link" => {
                 if let Some(v) = attr("href") {
                     let rel = attr("rel").unwrap_or("").to_ascii_lowercase();
+                    // Connection hints name an origin, not a document or resource.
+                    if rel
+                        .split_ascii_whitespace()
+                        .any(|r| matches!(r, "preconnect" | "dns-prefetch"))
+                    {
+                        continue;
+                    }
                     let is_asset = rel
                         .split_ascii_whitespace()
                         .any(|r| ASSET_LINK_RELS.contains(&r));

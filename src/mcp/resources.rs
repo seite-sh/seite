@@ -493,6 +493,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: "Tester".into(),
+                timezone: None,
             },
             collections,
             build: BuildSection::default(),
@@ -503,6 +504,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

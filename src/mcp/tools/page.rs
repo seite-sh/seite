@@ -9,7 +9,7 @@ use super::{
 };
 use crate::build;
 use crate::config::{CollectionConfig, ResolvedPaths, SiteConfig};
-use crate::content::{self, Frontmatter};
+use crate::content::{self, schema, Frontmatter};
 use crate::mcp::content_index;
 
 // ---------------------------------------------------------------------------
@@ -667,8 +667,15 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
         ))
     })?;
 
-    let mut map = original.clone();
     let mut notes = Vec::new();
+    // Custom schema fields live under `extra:` (top-level unknown keys are
+    // ignored by the build): route `set.author` / `set["extra.author"]` /
+    // `unset: ["author"]` into the `extra` mapping.
+    let (set, unset, touched) =
+        route_extra_keys(config, file.collection, &original, set, unset, &mut notes)
+            .map_err(|e| ToolError::new(format!("{TOOL}: {e}")))?;
+
+    let mut map = original.clone();
     for key in &unset {
         if map.shift_remove(yaml_key(key)).is_none() {
             notes.push(format!("'{key}' was not set"));
@@ -698,6 +705,36 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
             "{TOOL}: '{}' is a dated collection: keep a `date` (YYYY-MM-DD) or use a YYYY-MM-DD- filename prefix",
             file.collection.name
         )));
+    }
+
+    // The collection's frontmatter schema: problems with the keys this call
+    // touches refuse the update; problems elsewhere in the file are notes.
+    let new_text = serde_yaml_ng::to_string(&map).unwrap_or_default();
+    let problems = schema::Schema::for_site(config, file.collection).check_text(
+        &new_text,
+        2,
+        Path::new(&file.rel),
+    );
+    let (blocking, other): (Vec<_>, Vec<_>) = problems
+        .into_iter()
+        .filter(|p| p.kind != schema::ProblemKind::Unknown || touched.contains(&p.field))
+        .partition(|p| touched.contains(&p.field) && p.kind != schema::ProblemKind::Unknown);
+    if !blocking.is_empty() {
+        let lines: Vec<String> = blocking
+            .iter()
+            .map(|p| schema_line(&p.diagnostic))
+            .collect();
+        return Err(ToolError::new(format!(
+            "{TOOL}: the update breaks the '{}' frontmatter schema, nothing was written:\n- {}",
+            file.collection.name,
+            lines.join("\n- ")
+        )));
+    }
+    for p in &other {
+        notes.push(format!(
+            "schema (not changed by this call): {}",
+            schema_line(&p.diagnostic)
+        ));
     }
 
     let changed = map != original;
@@ -759,6 +796,94 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
         response["notes"] = serde_json::json!(notes);
     }
     Ok(response)
+}
+
+/// A schema diagnostic as one line for a tool message.
+fn schema_line(d: &crate::diagnostics::Diagnostic) -> String {
+    match &d.hint {
+        Some(h) => format!("{} (hint: {h})", d.message),
+        None => d.message.clone(),
+    }
+}
+
+type RoutedKeys = (
+    serde_json::Map<String, serde_json::Value>,
+    Vec<String>,
+    std::collections::HashSet<String>,
+);
+
+/// Move custom schema fields (non-built-in names declared in the
+/// collection's schema, and any `extra.<name>` key) from `set`/`unset` into
+/// a replacement `extra` mapping. Returns the new `set`, `unset`, and the
+/// names of every field the call touches (for schema checks).
+fn route_extra_keys(
+    config: &SiteConfig,
+    collection: &CollectionConfig,
+    original: &serde_yaml_ng::Mapping,
+    set: serde_json::Map<String, serde_json::Value>,
+    unset: Vec<String>,
+    notes: &mut Vec<String>,
+) -> Result<RoutedKeys, String> {
+    let is_custom = |k: &str| {
+        k.strip_prefix("extra.")
+            .is_some_and(|rest| !rest.is_empty())
+            || (!schema::is_top_level(config, k) && collection.fields.contains_key(k))
+    };
+    let field_name = |k: &str| k.strip_prefix("extra.").unwrap_or(k).to_string();
+    let mut touched: std::collections::HashSet<String> = set
+        .keys()
+        .chain(unset.iter())
+        .map(|k| field_name(k))
+        .collect();
+    if !set.keys().any(|k| is_custom(k)) && !unset.iter().any(|k| is_custom(k)) {
+        if let Some(serde_json::Value::Object(extra)) = set.get("extra") {
+            touched.extend(extra.keys().cloned());
+        }
+        return Ok((set, unset, touched));
+    }
+    if set.contains_key("extra") || unset.iter().any(|k| k == "extra") {
+        return Err("pass custom fields either as `extra` (the whole mapping) or one by one (`author` / `extra.author`), not both".into());
+    }
+    let mut extra = match original.get("extra") {
+        Some(serde_yaml_ng::Value::Mapping(m)) => serde_json::to_value(m)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default(),
+        _ => serde_json::Map::new(),
+    };
+    let mut new_set = serde_json::Map::new();
+    for (k, v) in set {
+        if is_custom(&k) {
+            let name = field_name(&k);
+            if !k.starts_with("extra.") {
+                notes.push(format!(
+                    "`{name}` is a custom field of the {} schema: stored as `extra.{name}`",
+                    collection.name
+                ));
+            }
+            extra.insert(name, v);
+        } else {
+            new_set.insert(k, v);
+        }
+    }
+    let mut new_unset = Vec::new();
+    for k in unset {
+        if is_custom(&k) {
+            if extra.remove(&field_name(&k)).is_none() {
+                notes.push(format!("'extra.{}' was not set", field_name(&k)));
+            }
+        } else {
+            new_unset.push(k);
+        }
+    }
+    if extra.is_empty() {
+        if original.contains_key("extra") {
+            new_unset.push("extra".into());
+        }
+    } else {
+        new_set.insert("extra".into(), serde_json::Value::Object(extra));
+    }
+    Ok((new_set, new_unset, touched))
 }
 
 #[cfg(test)]

@@ -189,6 +189,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -199,6 +200,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

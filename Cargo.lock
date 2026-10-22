@@ -1201,6 +1201,8 @@ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2459,6 +2461,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "chrono",
+ "chrono-tz",
  "clap",
  "clap_complete",
  "console",
@@ -2466,6 +2469,7 @@ dependencies = [
  "fs_extra",
  "getrandom 0.4.3",
  "image",
+ "indexmap",
  "indicatif",
  "jsonschema",
  "katex-rs",
@@ -2475,6 +2479,7 @@ dependencies = [
  "pulldown-cmark",
  "quick-xml",
  "rayon",
+ "regex",
  "rustix",
  "serde",
  "serde_json",

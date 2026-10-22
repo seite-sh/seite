@@ -145,6 +145,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: String::new(),
+                timezone: None,
             },
             collections: vec![
                 CollectionConfig::preset_posts(),
@@ -158,6 +159,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

@@ -104,6 +104,7 @@ seite build [options]
 |------|-------------|
 | `--drafts` | Include draft content in the build |
 | `--strict` | Treat broken internal links and missing assets as build errors |
+| `--future` | Include future-dated (scheduled) content, like `[build] future = true` (see [Scheduled publishing](/docs/configuration#scheduled-publishing)) |
 
 The build pipeline cleans the output directory, loads templates, processes each collection, renders pages, generates RSS/sitemap/discovery files (`llms.txt`, `robots.txt`), writes markdown alongside the HTML, builds the search index, copies static files, processes images, and post-processes the generated HTML (srcset, lazy-loading, analytics injection, link validation, ...). Per-step timing is shown with `--verbose` (always included in `--json` output).
 
@@ -130,6 +131,7 @@ seite check [options]
 | `--file <path>...` | Check only these files: frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
 | `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
+| `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks |
 
 Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on:
 
@@ -139,6 +141,8 @@ Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and
 | `config-unknown-key` | warning | Key the config schema does not know (typo) |
 | `frontmatter-missing` | error | Content file has no `---` frontmatter block |
 | `frontmatter-parse` | error | Frontmatter YAML is invalid (line points into the file) |
+| `frontmatter-schema` | error | Frontmatter breaks the collection's `[collections.fields.*]` schema (missing required field, wrong type, enum, bounds, pattern, custom field outside `extra:`) |
+| `frontmatter-schema-unknown` | warning | Key not declared in the schema (only with `strict_fields = true`) |
 | `content-invalid` | error | Content file cannot be read |
 | `shortcode-syntax` | error | Malformed shortcode (Hugo-style syntax gets a corrected example) |
 | `shortcode-unknown` | error | Shortcode name is not registered (did-you-mean hint) |
@@ -151,9 +155,13 @@ Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and
 | `i18n-partial` | warning | A data language map is missing some configured languages |
 | `broken-link` | warning (error with `--strict`) | Internal link, or relative `.md` link between content files, with no matching target (did-you-mean hint when a close match exists) |
 | `missing-asset` | warning (error with `--strict`) | Referenced image, script, stylesheet, or media file doesn't exist in the build output |
+| `external-link-broken` | warning (error with `--strict`) | `--external`: link returns 404/410 (or another 4xx) or its host does not exist |
+| `external-link-unreachable` | warning (error with `--strict`) | `--external`: timeout, connection failure, 5xx, 401/403/429 or a redirect loop — often temporary or bot blocking |
 | `build-failed` | error | Any other build failure |
 
-With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`.
+With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`. With `--external`, `data.external` adds `{found, checked, cached, skipped, broken, unreachable}`.
+
+`seite check` renders scheduled (future-dated) content too, so a post that will go live on its own is validated before its date.
 
 ## seite serve
 

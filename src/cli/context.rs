@@ -226,6 +226,8 @@ fn gather(state: &ServerState, version: &str) -> Value {
                         "url_prefix": if c.url_prefix.is_empty() { "/".to_string() } else { c.url_prefix.clone() },
                         "items": n("total"),
                         "drafts": n("drafts"),
+                        "schema": (!c.fields.is_empty() || c.strict_fields)
+                            .then(|| crate::content::schema::describe_collection(config, c)),
                     })
                 })
                 .collect()
@@ -280,6 +282,8 @@ fn gather(state: &ServerState, version: &str) -> Value {
         "agents": project_meta.as_ref().and_then(|m| m.agents.clone()),
         "hooks_installed": hooks,
         "dev_server": running_dev_server(root),
+        "today": stats.as_ref().and_then(|s| s.get("today")).cloned(),
+        "next_scheduled": stats.as_ref().and_then(|s| s.get("next_scheduled")).cloned(),
         "directives": directives,
     })
 }
@@ -319,6 +323,45 @@ fn print_context(data: &Value) {
                 count("drafts")
             );
         }
+    }
+    for c in collections {
+        let Some(schema) = c.get("schema").filter(|s| !s.is_null()) else {
+            continue;
+        };
+        let fields: Vec<String> = array_of(schema, "fields")
+            .iter()
+            .map(|f| {
+                let required = if f.get("required").and_then(Value::as_bool) == Some(true) {
+                    ", required"
+                } else {
+                    ""
+                };
+                format!(
+                    "{} ({}{required})",
+                    str_of(f, "location").replace("top-level", str_of(f, "name")),
+                    str_of(f, "type")
+                )
+            })
+            .collect();
+        let strict = if schema.get("strict_fields").and_then(Value::as_bool) == Some(true) {
+            " [strict]"
+        } else {
+            ""
+        };
+        human_println!(
+            "{}{}: {}{strict}",
+            label("Schema:"),
+            str_of(c, "name"),
+            fields.join(", ")
+        );
+    }
+    if let Some(next) = data.get("next_scheduled").filter(|v| !v.is_null()) {
+        human_println!(
+            "{}next scheduled: {} ({})",
+            label("Scheduled:"),
+            str_of(next, "date"),
+            str_of(next, "title")
+        );
     }
     let theme = data.get("theme").cloned().unwrap_or(json!({}));
     let base = match theme.get("base_html").and_then(Value::as_str) {

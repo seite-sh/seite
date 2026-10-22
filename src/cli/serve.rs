@@ -178,6 +178,8 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
             let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+            // The dev server previews scheduled content, like drafts.
+            config.build.future = true;
 
             let port = match args.port {
                 Some(p) => ensure_port_free(host, p)?,
@@ -230,6 +232,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 include_drafts: true,
                 strict: false,
                 site_filter: None,
+                future: true,
             };
             workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
         }
@@ -307,6 +310,8 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    // The dev server previews scheduled (future-dated) content, like drafts.
+    config.build.future = true;
     let paths = config.resolve_paths(&cwd);
 
     // Resolve the exact port we'll bind *before* building, then point base_url

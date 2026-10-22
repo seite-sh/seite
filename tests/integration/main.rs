@@ -7,6 +7,7 @@ mod collections;
 mod common;
 mod contact;
 mod content;
+mod content_model;
 mod context;
 mod context_rules;
 mod deploy;

@@ -156,7 +156,7 @@ paths:
 name: seite
 description: Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
 argument-hint: "[check | new <type> \"<title>\" | preview | build | deploy | theme [name|description] | brand | landing [page] | collection [preset] | upgrade | hooks [on|off|status]]"
-# seite-skill-version: 3
+# seite-skill-version: 4
 ---
 
 # seite
@@ -230,7 +230,9 @@ A logo, a color palette, and a favicon, saved as site files.
 3. Run `seite check` once more. If errors remain, report them with their file and line, and stop.
 4. Fix warnings (broken links, missing assets, unknown config keys) when the user asks for a clean site; `seite check --strict` fails on them.
 
-While editing one file, `seite check --file <path>` checks just that file (frontmatter, shortcodes, template syntax, data file) without rendering the site.
+While editing one file, `seite check --file <path>` checks just that file (frontmatter, its collection's schema, shortcodes, template syntax, data file) without rendering the site.
+
+Only when the user asks to check external links: `seite check --external` (needs the network; slow sites and bot-blocking hosts show as `external-link-unreachable` warnings — confirm in a browser before removing a link; add hosts to `[check] external_skip` in seite.toml to skip them).
 
 ==> .claude/skills/seite/reference/collection.md <==
 # /seite collection [preset]
@@ -276,10 +278,11 @@ The homepage or a standalone landing page. It needs a `pages` collection (`seite
 # /seite new <type> "<title>"
 
 1. Look for an existing page first: `seite search <query>`.
-2. Run `seite new <type> "<title>"`. `<type>` is the collection's singular name (`post`, `doc`, `page`, …). Options: `--tags a,b`, `--draft`, `--lang xx`. It prints the path of the new file.
-3. Write the body in that file and set `description:`. Change frontmatter with `seite frontmatter set <path> key=value`, or edit the YAML directly.
-4. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
-5. Verify as in [check.md](check.md).
+2. Run `seite new <type> "<title>"`. `<type>` is the collection's singular name (`post`, `doc`, `page`, …). Options: `--tags a,b`, `--draft`, `--lang xx`. It prints the path of the new file, writes the collection's schema defaults, and lists required fields to "fill in".
+3. Write the body in that file and set `description:`. Fill in every field `seite new` listed. `seite templates` shows each collection's fields (type, required, allowed values); custom fields go under `extra:`, built-in ones (`title`, `description`, `tags`, …) at the top level. Change frontmatter with `seite frontmatter set <path> key=value` (custom fields are stored under `extra:` for you), or edit the YAML directly.
+4. To schedule a post, give it a future `date:`; it publishes on that date (daily rebuild). `expires: YYYY-MM-DD` takes a page down after that day. `seite serve` and `seite build --future` show scheduled posts.
+5. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
+6. Verify as in [check.md](check.md). A `frontmatter-schema` error names the field, what it expects, and the line to fix.
 
 ==> .claude/skills/seite/reference/preview.md <==
 # /seite preview

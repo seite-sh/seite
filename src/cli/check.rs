@@ -11,10 +11,11 @@ use std::path::Path;
 use clap::Args;
 use serde_json::json;
 
-use crate::build::{self, links, BuildOptions};
+use crate::build::{self, external_links, links, BuildOptions};
 use crate::cli::harness::Agent;
 use crate::cli::harness_hooks;
 use crate::config::SiteConfig;
+use crate::content::schema;
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::error::PageError;
 use crate::output::{human, json as json_out};
@@ -51,6 +52,12 @@ pub struct CheckArgs {
     /// data-file syntax; no render, no link check). Repeatable.
     #[arg(long = "file", value_name = "PATH", num_args = 1.., conflicts_with = "hook")]
     pub files: Vec<std::path::PathBuf>,
+
+    /// Also check external http(s) links in the rendered site (network;
+    /// cached in .seite/cache/links.json; skip hosts with
+    /// `[check] external_skip`)
+    #[arg(long, conflicts_with_all = ["hook", "files"])]
+    pub external: bool,
 }
 
 /// Check the site in the current directory. In a workspace, `--site <name>`
@@ -84,12 +91,21 @@ pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         if site_filter.is_some() || !cwd.join("seite.toml").exists() {
             let ws_config =
                 workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
+            if args.external {
+                anyhow::bail!(
+                    "--external checks a single site: run `seite check --external` in that site's directory"
+                );
+            }
             let diagnostics = check_workspace(&ws_config, &ws_root, site_filter, args.drafts)?;
             return report(diagnostics, args.strict);
         }
     }
     if site_filter.is_some() {
         human::warning("--site flag ignored (not in a workspace)");
+    }
+    if args.external {
+        let (diagnostics, summary) = check_site_full(&cwd, args.drafts, None, Some(args.strict))?;
+        return report_with(diagnostics, args.strict, summary);
     }
     let diagnostics = check_site(&cwd, args.drafts)?;
     report(diagnostics, args.strict)
@@ -226,6 +242,14 @@ pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::R
             match crate::content::parse_content_diagnostic(&abs) {
                 Err(d) => all.push(*d),
                 Ok(parsed) => {
+                    // Frontmatter schema of the file's collection (drafts too:
+                    // this is the after-edit check).
+                    if let Some(collection) = schema::collection_for(&config, &content_dir, &abs) {
+                        all.extend(
+                            schema::Schema::for_site(&config, collection)
+                                .validate(&parsed, &abs, true),
+                        );
+                    }
                     let Some(registry) = &registry else { continue };
                     if let Err(problems) =
                         registry.expand_diagnostic(&parsed.body, &abs, &empty, &empty, &empty)
@@ -275,22 +299,38 @@ fn check_site_with(
     include_drafts: bool,
     base_url: Option<&str>,
 ) -> crate::error::Result<Diagnostics> {
+    check_site_full(root, include_drafts, base_url, None).map(|(d, _)| d)
+}
+
+/// [`check_site_with`], plus — with `external: Some(strict)` — the external
+/// link check of the rendered output (`seite check --external`, see
+/// [`external_links`]) before the scratch directory is dropped.
+fn check_site_full(
+    root: &Path,
+    include_drafts: bool,
+    base_url: Option<&str>,
+    external: Option<bool>,
+) -> crate::error::Result<(Diagnostics, Option<external_links::Summary>)> {
+    let mut external_summary = None;
     let mut all = Diagnostics::new();
 
     // 1. Config: syntax/type errors stop the check (nothing else can load).
     let (mut config, config_warnings) =
         match SiteConfig::load_with_diagnostics(&root.join("seite.toml")) {
             Ok(loaded) => loaded,
-            Err(PageError::Diagnostics(d)) => return Ok(d),
+            Err(PageError::Diagnostics(d)) => return Ok((d, None)),
             Err(PageError::ConfigInvalid { message }) => {
                 all.push(Diagnostic::error("config-invalid", message).with_file("seite.toml"));
-                return Ok(all);
+                return Ok((all, None));
             }
             Err(e) => return Err(e),
         };
     if let Some(base_url) = base_url {
         config.site.base_url = base_url.to_string();
     }
+    // Scheduled (future-dated) content publishes on its own later (cron
+    // builds), so check it today.
+    config.build.future = true;
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
 
@@ -317,6 +357,35 @@ fn check_site_with(
         Ok(result) => {
             let mut found = result.diagnostics;
             found.extend(links::link_diagnostics(&result.link_check, false));
+            if let Some(strict) = external {
+                let page_sources: std::collections::HashMap<String, std::path::PathBuf> = result
+                    .collections
+                    .values()
+                    .flatten()
+                    .map(|item| {
+                        (
+                            format!("dist/{}.html", item.url.trim_matches('/')),
+                            item.source_path.clone(),
+                        )
+                    })
+                    .collect();
+                let fallback_dirs = [
+                    paths.templates.clone(),
+                    paths.data_dir.clone(),
+                    paths.content.clone(),
+                ];
+                let (diagnostics, summary) = external_links::run(
+                    &external_links::ExternalCheck {
+                        root,
+                        output_root: scratch.path(),
+                        page_sources: &page_sources,
+                        fallback_dirs: &fallback_dirs,
+                    },
+                    &external_links::ExternalOptions::for_site(&config, strict),
+                );
+                found.extend(diagnostics);
+                external_summary = Some(summary);
+            }
             found
         }
         Err(PageError::Diagnostics(d)) => d,
@@ -337,7 +406,7 @@ fn check_site_with(
             unique.push(d);
         }
     }
-    Ok(unique)
+    Ok((unique, external_summary))
 }
 
 /// Make paths in a diagnostic relative: sources to the real site `root`, and
@@ -359,12 +428,41 @@ fn relativize(mut d: Diagnostic, root: &Path, scratch: &Path) -> Diagnostic {
 /// travel in the error (`PageError::Diagnostics`), which `main` renders as
 /// compiler-style lines and as `error.diagnostics` in the `--json` envelope.
 fn report(diagnostics: Diagnostics, strict: bool) -> anyhow::Result<()> {
+    report_with(diagnostics, strict, None)
+}
+
+/// [`report`], plus the `--external` summary (`external` in `--json`, one
+/// info line in human output).
+fn report_with(
+    diagnostics: Diagnostics,
+    strict: bool,
+    external: Option<external_links::Summary>,
+) -> anyhow::Result<()> {
     let errors = diagnostics.error_count();
     let warnings = diagnostics.warning_count();
-    json_out::set_data(json!({
+    let mut data = json!({
         "diagnostics": &diagnostics,
         "summary": { "errors": errors, "warnings": warnings },
-    }));
+    });
+    if let Some(summary) = &external {
+        data["external"] = json!(summary);
+        human::info(&format!(
+            "External links: {} found, {} checked, {} from cache, {} skipped — {} broken, {} unreachable",
+            summary.found,
+            summary.checked,
+            summary.cached,
+            summary.skipped,
+            summary.broken,
+            summary.unreachable
+        ));
+        if let Some(e) = &summary.cache_error {
+            human::warning(&format!(
+                "could not write {}: {e}",
+                external_links::CACHE_PATH
+            ));
+        }
+    }
+    json_out::set_data(data);
 
     if errors > 0 || (strict && warnings > 0) {
         let err = anyhow::Error::new(PageError::Diagnostics(diagnostics));

@@ -62,6 +62,7 @@ cookie_consent = true
 | `base_url` | string | `"http://localhost:3000"` | Full base URL for canonical links, sitemap, RSS |
 | `language` | string | `"en"` | Default language code |
 | `author` | string | `""` | Author name for JSON-LD and RSS |
+| `timezone` | string | UTC | Time zone that decides "today" for scheduled publishing: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`) |
 
 {{% callout(type="warning") %}}
 Set `base_url` to your real domain before deploying. Leaving it as `localhost` will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.
@@ -91,6 +92,53 @@ deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
 ```
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), its own base URL (`https://{subdomain}.{base_domain}`), and its own sitemap, RSS, robots.txt, llms.txt, and search index. The collection is excluded from the main site build. The subdomain **root page** renders with the collection's own index template (e.g. `trust-index.html`) and context — exactly like that collection's index page on the main domain. Use `subdomain_base_url` to override the auto-derived URL (useful when `base_url` contains `www`). See [Collections](/docs/collections) for details.
+
+### Frontmatter schemas
+
+A collection can declare typed frontmatter fields. `seite build` and `seite check` then validate every page of the collection and report each violation as a `frontmatter-schema` error at the exact `file:line`, with the field's `description` as the hint. `seite new` and the MCP create tool write defaults from the schema.
+
+```toml
+[[collections]]
+name = "posts"
+# ...
+strict_fields = true            # optional: warn about keys the schema does not declare
+
+[collections.fields.description]
+type = "string"
+required = true
+max = 160
+description = "Summary for search results and social cards"
+
+[collections.fields.author]
+type = "string"
+default = "Jane Doe"
+
+[collections.fields.status]
+type = "enum"
+enum = ["draft", "review", "published"]
+
+[collections.fields.rating]
+type = "integer"
+min = 1
+max = 5
+```
+
+| Key | Description |
+|-----|-------------|
+| `type` | `string`, `text`, `number`, `integer`, `bool`, `date` (YYYY-MM-DD), `datetime` (YYYY-MM-DDTHH:MM:SS, optional offset), `url` (http(s) URL or a path starting with `/`), `image` (path or URL), `enum`, `list`, `object` |
+| `required` | The field must be present and non-empty |
+| `enum` / `values` | Allowed values of an `enum`, or of each item of a `list` with `items = "enum"` |
+| `items` | Type of each `list` element (a scalar type) |
+| `min` / `max` | Bounds of a number, or the length of a string (characters) or list (items) |
+| `pattern` | Regular expression a string (or each string item) must contain; unanchored — write `^…$` to match the whole value |
+| `default` | Written by `seite new` and MCP `seite_create_content` when the field is not given; never injected at build time |
+| `description` | What the field is for; shown in errors, `seite templates` and `seite context` |
+
+**Where fields live.** Fields named like built-in keys (`title`, `date`, `description`, `image`, `tags`, `draft`, `slug`, `template`, `robots`, `weight`, `updated`, `aliases`, `expires`, `series`) are validated at the top level, so a schema can tighten them (for example `description` required with `max = 160`). Every other field is a custom field and lives under `extra:` — templates read it as `{{ page.extra.author }}`. A custom field written at the top level is reported at its line with a "move it under `extra:`" hint.
+
+**Required fields in new files.** `seite new` writes each default; a required field without a default is written empty (`''`, `[]`, `false` or `null`) and listed as "fill in", and `seite check` points at it until it has a value. MCP `seite_create_content` refuses (writes nothing) when a value it was given breaks the schema or a required field it could have passed is missing; `seite_update_frontmatter` refuses changes that break the schema and stores custom fields (`author`, or `extra.author`) under `extra:`.
+
+Drafts are validated with `--drafts` (and always by `seite check --file` and the after-edit hook). Scheduled (future-dated) pages are always validated. `seite init` writes small presets (for example `description` as a string of at most 300 characters); nothing is required unless you add `required = true`, and `seite upgrade` never adds schemas to existing sites.
 
 ### Private collections
 
@@ -166,6 +214,7 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 | `mermaid` | bool | `false` | Render fenced ` ```mermaid ` blocks as [Mermaid](https://mermaid.js.org/) diagrams (client-side) |
+| `future` | bool | `false` | Build future-dated (scheduled) content too. `seite build --future` does the same for one build; `seite serve` always previews it |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
@@ -410,6 +459,21 @@ Analytics injection happens as a post-processing step after the main build. Ever
 
 To remove analytics, delete the `[analytics]` section from `seite.toml`.
 
+## [check]
+
+Options for `seite check --external`, which checks external links over the network (never run by default):
+
+```toml
+[check]
+external_skip = ["example.com", "intranet.local"]  # hosts never requested (subdomains included)
+external_timeout = 10                               # seconds per request
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `external_skip` | list | `[]` | Hosts never requested, in addition to the built-in list of hosts that block bots (`linkedin.com`, `twitter.com`, `x.com`, `instagram.com`, `facebook.com`) |
+| `external_timeout` | integer | `10` | Seconds per request |
+
 ## Frontmatter
 
 Content files use YAML frontmatter between `---` delimiters:
@@ -446,7 +510,14 @@ extra:
 | `draft` | bool | No | Exclude from build unless `--drafts` |
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |
+| `expires` | date | No | Last day the page is published; later builds leave it out |
 | `extra` | map | No | Arbitrary data for templates |
+
+### Scheduled publishing
+
+A page whose `date` (or `YYYY-MM-DD-` filename prefix) is after today is scheduled: like a draft, it is left out of the build — HTML, `.md`, feeds, sitemap, search index, `llms.txt`/`llms-full.txt`, tag pages and listings — until the first build on or after its date. `expires: 2026-12-31` keeps a page up through that day and removes it from builds from the next day on. "Today" is the date in `[site] timezone` (default UTC). `seite build --future` or `[build] future = true` includes scheduled pages, and `seite serve` always shows them; expired pages are never built. `seite check` always validates scheduled pages, so a post that will publish on its own is checked today. `seite stats` lists future-dated and expired pages and the next scheduled one, and `seite context` prints `next scheduled: <date> (<title>)`.
+
+Because a static site only changes when it is rebuilt, the GitHub Actions workflow `seite init` generates rebuilds daily (`schedule: - cron: '17 5 * * *'`). See [Deployment](/docs/deployment#scheduled-publishing) for each host.
 
 ## seite-workspace.toml
 

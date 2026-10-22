@@ -19,6 +19,10 @@ pub struct BuildArgs {
     /// Treat broken internal links and missing assets as build errors
     #[arg(long)]
     pub strict: bool,
+
+    /// Include future-dated (scheduled) content, like `[build] future = true`
+    #[arg(long)]
+    pub future: bool,
 }
 
 pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
@@ -45,6 +49,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             include_drafts: args.drafts,
             strict: args.strict,
             site_filter: site_filter.map(String::from),
+            future: args.future,
         };
 
         let ws_result = workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;
@@ -64,8 +69,9 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let (config, config_diagnostics) =
+    let (mut config, config_diagnostics) =
         SiteConfig::load_with_diagnostics(&PathBuf::from("seite.toml"))?;
+    config.build.future |= args.future;
     // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
     for d in &config_diagnostics {
         human::warning(&d.to_string());
@@ -80,11 +86,12 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let result = build::build_site(&config, &paths, &opts)?;
     // Point at the exact template file/line behind a template fallback
     // warning, and at stale `{{ page.url }}.md` links in user templates.
-    for d in result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(d.code, "template-parse" | "template-markdown-link"))
-    {
+    for d in result.diagnostics.iter().filter(|d| {
+        matches!(
+            d.code,
+            "template-parse" | "template-markdown-link" | "frontmatter-schema-unknown"
+        )
+    }) {
         human::warning(&d.to_string());
     }
     human::success(&result.stats.human_display());

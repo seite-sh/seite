@@ -12,7 +12,7 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 
 **What it means:** an internal link points at a page (or, for relative `.md` links, a content file) that does not exist in the built site. Reported as a warning, or as an error with `--strict`.
 
-**Common causes:** a typo in the URL, a page that was renamed or deleted, a missing collection prefix (`/hello` instead of `/posts/hello`), a link to a draft page in a build without `--drafts`, or a relative `.md` link whose path is not relative to the linking file.
+**Common causes:** a typo in the URL, a page that was renamed or deleted, a missing collection prefix (`/hello` instead of `/posts/hello`), a link to a draft page in a build without `--drafts` or to a scheduled (future-dated) or expired page, or a relative `.md` link whose path is not relative to the linking file.
 
 **How to fix:** point the link at an existing URL (the hint suggests the closest one), or create the missing page. `seite search <words>` finds a page's real URL; `seite page <path>` shows the URL a file publishes to.
 
@@ -90,6 +90,33 @@ minify = true    # fixed
   role: Founder      # fixed
 ```
 
+## external-link-broken
+
+**What it means:** `seite check --external` requested an external `http(s)` link from the rendered site and it is gone: HTTP 404 or 410, another 4xx answer, or a host that does not exist (DNS lookup failed). Reported against the file and line the link was written in. A warning, or an error with `--strict`.
+
+**Common causes:** the page moved or was deleted, a typo in the URL, a domain that expired.
+
+**How to fix:** correct the URL (search the site you meant to link for the page's new address) or remove the link. Failures are re-checked on every `seite check --external`; working links are cached for 7 days in `.seite/cache/links.json`.
+
+```markdown
+[Spec](https://example.com/old-spec)   <!-- 404 -->
+[Spec](https://example.com/spec)       <!-- fixed -->
+```
+
+## external-link-unreachable
+
+**What it means:** `seite check --external` could not confirm an external link: the request timed out, the connection failed, the server answered 5xx, refused the check (401, 403, 429), or redirected more than 5 times. Unlike `external-link-broken`, this is often temporary or a site that blocks automated requests. A warning, or an error with `--strict`.
+
+**Common causes:** a slow or overloaded server, a site behind bot protection, a redirect loop, a network problem on your side.
+
+**How to fix:** open the URL in a browser. If it works, leave the link (run the check again later) or add the host to the skip list so it is never requested:
+
+```toml
+[check]
+external_skip = ["example.com"]   # also skips its subdomains
+external_timeout = 20             # seconds per request (default 10)
+```
+
 ## frontmatter-missing
 
 **What it means:** a content file does not start with a frontmatter block, so it has no title and cannot be built.
@@ -119,6 +146,32 @@ title: Rust: a tour          # error: mapping values are not allowed here
 title: "Rust: a tour"        # fixed
 tags: [rust, web]            # a list, not "rust, web"
 ```
+
+## frontmatter-schema
+
+**What it means:** a content file's frontmatter breaks its collection's schema (`[collections.fields.<name>]` in `seite.toml`): a required field is missing or empty, a value has the wrong type, is not one of the allowed `enum` values, is too long/short or out of range (`min`/`max`), does not match `pattern`, or a custom field is written at the top level instead of under `extra:`. The message names the field, what was expected and what was found; the hint repeats the field's `description` from the schema. The line is the offending key (or the `extra:` / opening `---` line for a missing field).
+
+**Common causes:** a new file without the fields the collection requires, a typo in an enum value, a quoted number (`rating: "4"` for an integer), a date not in `YYYY-MM-DD` form, a custom field such as `author:` at the top level.
+
+**How to fix:** edit the frontmatter to match the schema. `seite templates` (or `seite context`) prints each collection's fields; `seite new` writes defaults and empty placeholders for required fields. Custom (non-built-in) fields live under `extra:` and templates read them as `{{ page.extra.<name> }}`:
+
+```yaml
+---
+title: "Hello"
+description: "One sentence for search results."   # built-in: top level
+extra:
+  author: "Jane Doe"                              # custom field: under extra
+  rating: 4                                       # integer, not "4"
+---
+```
+
+## frontmatter-schema-unknown
+
+**What it means:** the collection sets `strict_fields = true` and the file has a key its schema does not declare: a top-level key that is not built-in (the build ignores it), or an `extra.<name>` the schema does not list. A warning (fails only with `--strict`).
+
+**Common causes:** a typo in a key (`descripton`), a field the schema does not declare yet, a custom field written at the top level.
+
+**How to fix:** rename the key to a declared field (the hint suggests the closest one), declare it with `[collections.fields.<name>]` in `seite.toml`, or remove it. Built-in keys (`title`, `date`, `tags`, …) are always allowed.
 
 ## i18n-partial
 

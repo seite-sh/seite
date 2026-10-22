@@ -200,6 +200,7 @@ mod tests {
                 base_url: base_url.into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -210,6 +211,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

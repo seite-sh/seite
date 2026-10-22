@@ -42,7 +42,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.reading_time }}` | Reading time in minutes |
 | `{{ page.excerpt }}` | Auto-extracted excerpt (HTML) |
 | `{{ page.toc }}` | Table of contents entries |
-| `{{ page.extra }}` | Custom frontmatter data |
+| `{{ page.extra }}` | Custom frontmatter data (`extra:`; custom schema fields live here, e.g. `{{ page.extra.author }}`) |
 | `{{ prev_post }}` | Previous (older) post link: `.title`, `.url`, `.date`, `.description` |
 | `{{ next_post }}` | Next (newer) post link: `.title`, `.url`, `.date`, `.description` |
 

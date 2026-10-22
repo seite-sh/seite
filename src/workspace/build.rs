@@ -11,6 +11,8 @@ pub struct WorkspaceBuildOptions {
     pub include_drafts: bool,
     pub strict: bool,
     pub site_filter: Option<String>,
+    /// Include future-dated (scheduled) content (`seite build --future`).
+    pub future: bool,
 }
 
 pub struct WorkspaceBuildResult {
@@ -67,7 +69,7 @@ pub fn build_workspace(
         ));
 
         let site_dir = Path::new(&ws_site.path);
-        let (config, paths, config_diagnostics) =
+        let (mut config, paths, config_diagnostics) =
             load_site_in_workspace_with_diagnostics(ws_root, ws_site).map_err(|e| match e {
                 // Locate config syntax errors in this site's seite.toml.
                 PageError::Diagnostics(d) => PageError::Diagnostics(Diagnostics::from(
@@ -79,6 +81,7 @@ pub fn build_workspace(
         for d in &config_diagnostics {
             human::warning(&d.clone().under(site_dir).to_string());
         }
+        config.build.future |= opts.future;
 
         let build_opts = BuildOptions {
             include_drafts: opts.include_drafts,

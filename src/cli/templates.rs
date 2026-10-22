@@ -119,6 +119,33 @@ fn print_templates(result: &Value) {
         }
     }
 
+    let schemas: Vec<&Value> = array_of(result, "collection_schemas")
+        .iter()
+        .filter(|s| !array_of(s, "fields").is_empty())
+        .collect();
+    if !schemas.is_empty() {
+        human::header("Frontmatter schemas (seite.toml [collections.fields.*])");
+        for s in schemas {
+            human_println!("  {}:", str_of(s, "collection"));
+            for f in array_of(s, "fields") {
+                let required = if f.get("required").and_then(Value::as_bool) == Some(true) {
+                    "required, "
+                } else {
+                    ""
+                };
+                human_println!(
+                    "    {}  [{required}{}]",
+                    if str_of(f, "location") == "top-level" {
+                        str_of(f, "name")
+                    } else {
+                        str_of(f, "location")
+                    },
+                    str_of(f, "expected")
+                );
+            }
+        }
+    }
+
     for w in array_of(result, "warnings") {
         human::warning(w.as_str().unwrap_or(""));
     }

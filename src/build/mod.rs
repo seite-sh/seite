@@ -4,6 +4,7 @@ pub mod base_path;
 pub mod cache;
 pub mod code_copy;
 pub mod discovery;
+pub mod external_links;
 pub mod feed;
 pub mod images;
 pub mod links;
@@ -1153,9 +1154,14 @@ fn build_site_inner(
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = shortcode_site_context(config);
 
+    // Scheduled publishing (future `date`, `expires`) and frontmatter schema
+    // warnings (errors join `fatal` through the per-file results).
+    let schedule = content::schedule::Schedule::new(config);
+    let schema_warnings = std::sync::Mutex::new(Vec::new());
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
         let mut items = Vec::new();
+        let field_schema = content::schema::Schema::for_site(config, collection);
 
         if !collection_dir.exists() {
             tracing::warn!(
@@ -1180,6 +1186,15 @@ fn build_site_inner(
                     let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
                     let parsed = content::parse_content_diagnostic(path).map_err(|d| vec![*d])?;
+                    let (schema_errors, warnings) = content::schema::split(field_schema.validate(
+                        &parsed,
+                        path,
+                        opts.include_drafts,
+                    ));
+                    schema_warnings.lock().map(|mut w| w.extend(warnings)).ok();
+                    if !schema_errors.is_empty() {
+                        return Err(schema_errors);
+                    }
                     let body_line = parsed.body_line;
                     let fm = parsed.frontmatter;
                     let raw_body = parsed.body;
@@ -1194,6 +1209,9 @@ fn build_site_inner(
                     let mut fm = fm;
                     if fm.date.is_none() && collection.has_date {
                         fm.date = parse_date_from_filename(path);
+                    }
+                    if !schedule.is_published(&fm) {
+                        return Ok(None);
                     }
 
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
@@ -1266,6 +1284,8 @@ fn build_site_inner(
 
         all_collections.insert(collection.name.clone(), items);
     }
+
+    diagnostics.extend(schema_warnings.into_inner().unwrap_or_default());
 
     // Detect URL collisions: if two content items resolve to the same URL, that's an error.
     {
@@ -3889,6 +3909,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "Author".into(),
+                timezone: None,
             },
             collections: vec![CollectionConfig::preset_posts()],
             build: BuildSection::default(),
@@ -3899,6 +3920,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

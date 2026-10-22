@@ -260,7 +260,77 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Private collections + password access guidance (.claude/rules)",
             check: check_private_collections_rule,
         },
+        UpgradeStep {
+            introduced_in: (0, 20, 2),
+            label: "Daily cron in the generated deploy workflow (scheduled publishing)",
+            check: check_workflow_schedule,
+        },
     ]
+}
+
+/// What the deploy workflow needs for scheduled publishing.
+enum WorkflowSchedule {
+    /// Nothing to do: no workflow, or it already has a `schedule:` trigger.
+    Done,
+    /// Still exactly as seite generated it (without the cron): replace it.
+    Generated(String),
+    /// Edited by hand: tell the user how to add the cron.
+    Modified,
+}
+
+fn workflow_schedule(root: &Path) -> WorkflowSchedule {
+    let path = root.join(".github/workflows/deploy.yml");
+    let Ok(existing) = fs::read_to_string(&path) else {
+        return WorkflowSchedule::Done;
+    };
+    if existing.contains("schedule:") {
+        return WorkflowSchedule::Done;
+    }
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return WorkflowSchedule::Modified;
+    };
+    let current = match config.deploy.target {
+        crate::config::DeployTarget::GithubPages => {
+            crate::deploy::generate_github_actions_workflow(&config)
+        }
+        crate::config::DeployTarget::Cloudflare => {
+            crate::deploy::generate_cloudflare_workflow(&config)
+        }
+        crate::config::DeployTarget::Netlify => crate::deploy::generate_netlify_workflow(&config),
+    };
+    let previous = current.replace(crate::deploy::SCHEDULE_TRIGGER, "");
+    let normalize = |s: &str| s.replace("\r\n", "\n").trim_end().to_string();
+    if normalize(&existing) == normalize(&previous) {
+        WorkflowSchedule::Generated(current)
+    } else {
+        WorkflowSchedule::Modified
+    }
+}
+
+/// Add the daily cron to a deploy workflow still exactly as seite generated
+/// it (an edited workflow gets [`workflow_schedule_notice`] instead).
+fn check_workflow_schedule(root: &Path) -> Vec<UpgradeAction> {
+    match workflow_schedule(root) {
+        WorkflowSchedule::Generated(content) => vec![UpgradeAction::Update {
+            path: root.join(".github/workflows/deploy.yml"),
+            content,
+            description: ".github/workflows/deploy.yml (daily cron rebuild for scheduled posts)"
+                .into(),
+        }],
+        WorkflowSchedule::Done | WorkflowSchedule::Modified => vec![],
+    }
+}
+
+/// One-time notice for an edited deploy workflow without a `schedule:`.
+fn workflow_schedule_notice(root: &Path) -> Option<Notice> {
+    matches!(workflow_schedule(root), WorkflowSchedule::Modified).then(|| Notice {
+        key: "workflow-schedule".into(),
+        text: format!(
+            "Scheduled publishing: .github/workflows/deploy.yml was edited, so seite left it alone. \
+             To publish future-dated posts on their date, add a daily trigger under `on:`:\n{}",
+            crate::deploy::SCHEDULE_TRIGGER.trim_end()
+        ),
+    })
 }
 
 /// Return the canonical project instructions file, falling back to the legacy
@@ -675,6 +745,9 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let (section_actions, section_notices) = check_legacy_sections(root);
     actions.extend(section_actions);
     notices.extend(section_notices);
+    if project_ver < (0, 20, 2) {
+        notices.extend(workflow_schedule_notice(root));
+    }
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();

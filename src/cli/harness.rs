@@ -1628,11 +1628,12 @@ pub fn local_docs() -> Vec<PlannedFile> {
 
 /// A new site's `.gitignore`: build output, plus seite's machine-local state
 /// (`.seite/docs/` is rewritten per seite version; `.seite/dev.json` names
-/// the running dev server).
-pub const GITIGNORE: &str = "/dist\n/dist-subdomains\n/.seite/docs/\n/.seite/dev.json\n";
+/// the running dev server; `.seite/cache/` holds the `seite check --external` cache).
+pub const GITIGNORE: &str =
+    "/dist\n/dist-subdomains\n/.seite/docs/\n/.seite/dev.json\n/.seite/cache/\n";
 
 /// `.gitignore` lines `seite upgrade` adds when missing (add-only).
-pub const GITIGNORE_LOCAL_STATE: &[&str] = &["/.seite/docs/", "/.seite/dev.json"];
+pub const GITIGNORE_LOCAL_STATE: &[&str] = &["/.seite/docs/", "/.seite/dev.json", "/.seite/cache/"];
 
 /// Stamp file recording which seite version wrote `.seite/docs/`.
 pub const LOCAL_DOCS_STAMP: &str = ".seite/docs/.version";
@@ -2153,7 +2154,7 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("[check | new"));
-        assert_eq!(extract_version(&rendered), 3);
+        assert_eq!(extract_version(&rendered), 4);
         assert!(body.contains("## Routing"));
         assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
@@ -2253,7 +2254,7 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 3);
+        assert_eq!(extract_version(content), 4);
 
         let (_, gemini) = &files[1];
         let parsed: toml::Table = toml::from_str(gemini).unwrap();
@@ -2262,7 +2263,7 @@ mod tests {
             Some(skill("seite").unwrap().description())
         );
         assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
-        assert_eq!(extract_version(gemini), 3);
+        assert_eq!(extract_version(gemini), 4);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );

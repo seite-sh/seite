@@ -163,6 +163,18 @@ pub fn output_schema() -> serde_json::Value {
                 }),
                 &["dir", "keys"],
             ),
+            "collection_schemas": {
+                "type": "array",
+                "description": "Each collection's frontmatter schema ([collections.fields.*] in seite.toml): fields with type, required, location (top-level or extra.<name>) and expected value",
+                "items": object_schema(
+                    serde_json::json!({
+                        "collection": { "type": "string" },
+                        "strict_fields": { "type": "boolean" },
+                        "fields": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+                    }),
+                    &["collection", "strict_fields", "fields"],
+                )
+            },
             "warnings": string_array()
         }),
         &[
@@ -607,6 +619,11 @@ pub fn call_list_templates(state: &ServerState, arguments: &serde_json::Value) -
         "context": context,
         "shortcodes": shortcodes,
         "data": data,
+        "collection_schemas": config
+            .collections
+            .iter()
+            .map(|c| crate::content::schema::describe_collection(config, c))
+            .collect::<Vec<_>>(),
         "warnings": warnings,
     }))
 }

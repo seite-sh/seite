@@ -167,6 +167,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             base_url: "http://localhost:3000".into(),
             language: "en".into(),
             author: String::new(),
+            timezone: None,
         },
         collections: collections.clone(),
         build: crate::config::BuildSection {
@@ -186,6 +187,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         trust: None,
         contact: None,
         access: None,
+        check: None,
     };
 
     // If trust collection is included, run trust center scaffolding

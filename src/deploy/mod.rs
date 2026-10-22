@@ -1656,6 +1656,12 @@ pub fn update_collection_deploy_project(
 // CI workflow generation for all targets (Feature 6)
 // ---------------------------------------------------------------------------
 
+/// The `on.schedule` trigger of the generated workflows: a daily rebuild so
+/// scheduled content (future `date:`) goes live and `expires:` pages drop off,
+/// on free GitHub Actions minutes. `seite upgrade` adds it to unmodified
+/// workflows generated before it existed.
+pub const SCHEDULE_TRIGGER: &str = "  schedule:\n    # Daily rebuild: publishes scheduled posts (future `date:`) and removes expired ones\n    - cron: '17 5 * * *'\n";
+
 /// Generate a GitHub Actions workflow YAML for building and deploying with GitHub Pages.
 pub fn generate_github_actions_workflow(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
@@ -1666,7 +1672,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-
+{SCHEDULE_TRIGGER}
 permissions:
   contents: read
   pages: write
@@ -1743,7 +1749,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-
+{SCHEDULE_TRIGGER}
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -1824,7 +1830,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-
+{SCHEDULE_TRIGGER}
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -2543,6 +2549,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -2553,6 +2560,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         };
 
         // Override takes precedence
@@ -2577,6 +2585,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -2587,6 +2596,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2607,6 +2617,7 @@ mod tests {
                 base_url: base_url.into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -2617,6 +2628,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 
@@ -5743,6 +5755,7 @@ target = "github-pages"
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![
                 crate::config::CollectionConfig {
@@ -5761,6 +5774,8 @@ target = "github-pages"
                     paginate: None,
                     private: false,
                     access_group: None,
+                    fields: Default::default(),
+                    strict_fields: false,
                 },
                 crate::config::CollectionConfig {
                     name: "docs".into(),
@@ -5778,6 +5793,8 @@ target = "github-pages"
                     paginate: None,
                     private: false,
                     access_group: None,
+                    fields: Default::default(),
+                    strict_fields: false,
                 },
             ],
             build: Default::default(),
@@ -5794,6 +5811,7 @@ target = "github-pages"
             trust: None,
             contact: None,
             access: None,
+            check: None,
         }
     }
 

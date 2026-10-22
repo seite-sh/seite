@@ -67,6 +67,7 @@ struct Frontmatter {
     robots: Option<String>,        // per-page <meta name="robots">
     weight: Option<i32>,           // ordering for non-date collections
     extra: HashMap<String, Value>, // → {{ page.extra.field }}
+    expires: Option<NaiveDate>,    // last published day (content::schedule)
 }
 
 struct ContentItem {
@@ -74,6 +75,10 @@ struct ContentItem {
     slug, collection, url, lang,
 }
 ```
+
+## Schemas and Scheduling in Step 3
+
+Per collection, `content::schema::Schema::for_site` validates each parsed file (`ParsedContent.frontmatter_text`/`frontmatter_line` give exact key lines): errors are returned like parse errors (→ `fatal`), `frontmatter-schema-unknown` warnings go to `diagnostics` through a mutex. Drafts are validated only with `--drafts`; future-dated files always. After the filename date is resolved, `content::schedule::Schedule::is_published` drops future-dated (unless `config.build.future`) and expired items exactly like drafts, so they never reach feeds, sitemap, search, llms files, tags or listings.
 
 ## Data Files
 
