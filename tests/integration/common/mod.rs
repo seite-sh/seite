@@ -10,6 +10,25 @@ pub(crate) fn page_cmd() -> Command {
     assert_cmd::cargo::cargo_bin_cmd!("seite")
 }
 
+/// Run `seite --json <args>` in `dir`; return whether it succeeded and the
+/// parsed JSON document from stdout.
+pub(crate) fn run_json(dir: &std::path::Path, args: &[&str]) -> (bool, serde_json::Value) {
+    let output = page_cmd()
+        .arg("--json")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    let doc = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}):\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    (output.status.success(), doc)
+}
+
 /// Helper to init a site with given collections
 pub(crate) fn init_site(tmp: &TempDir, name: &str, title: &str, collections: &str) {
     page_cmd()

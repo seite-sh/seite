@@ -386,7 +386,8 @@ fn diagnostic_schema() -> serde_json::Value {
             "file": prop("string", "Source file relative to the site root"),
             "line": { "type": "integer" },
             "column": { "type": "integer" },
-            "hint": { "type": "string" }
+            "hint": { "type": "string" },
+            "docs_url": prop("string", "Explanation of the code (also: `seite explain <code>`)")
         }),
         &["severity", "code", "message"],
     )

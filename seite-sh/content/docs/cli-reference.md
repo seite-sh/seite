@@ -472,3 +472,65 @@ Seite checks for available updates in the background (at most once every 24 hour
 ```
 
 The check is non-blocking and silently skipped when offline. It never runs with `CI`, `DO_NOT_TRACK`, or `SEITE_NO_UPDATE_CHECK` set, when stdout/stderr aren't both a terminal (scripts, agents, piped output), or under `--json`; that also covers `seite self-update` (which already checks) and `seite mcp` (JSON-RPC over stdio).
+
+## Agent-facing commands
+
+These commands give coding agents (and scripts) everything the [MCP server](/docs/mcp-server) offers, from a shell. Each one runs the same code as the matching MCP tool, so the results are identical. All of them accept `--json` (one `{"ok","command","data"}` document on stdout, `data` being the tool's structured result) and the global `--dir`, `--config` and `--site` flags. They find the site by walking up from the current directory, so they also work from a subdirectory.
+
+| Command | Same as MCP tool | What it does |
+|---------|------------------|--------------|
+| `seite context` | (none) | Once-per-session orientation: version, site, collections with item and draft counts, active theme, local docs, skill packs, agents and stop hooks, running dev server, and directives |
+| `seite docs [query] [--topic <slug>]` | `seite_lookup_docs` | List the embedded docs, read one topic, or search them |
+| `seite page <path-or-url> [--html]` | `seite_get_page` | One content file as the build sees it: resolved frontmatter, URL, output file, rendered HTML size (`--html` prints it) |
+| `seite search <query> [--collection <name>] [--limit <n>]` | `seite_search` | Keyword search over content, drafts included (limit 1-100, default 20) |
+| `seite stats [--collection <name>]` | `seite_content_stats` | Per-collection counts, drafts, items missing a description or tags, future-dated items, parse errors, missing translations |
+| `seite templates` | `seite_list_templates` | User templates and the defaults they override, base-template blocks, context variables per template kind, shortcodes, data keys |
+| `seite frontmatter set <path> key=value...` | `seite_update_frontmatter` | Add or replace top-level frontmatter keys; the body and untouched keys stay byte-identical |
+| `seite frontmatter unset <path> key...` | `seite_update_frontmatter` | Remove top-level frontmatter keys (`title` cannot be removed) |
+| `seite explain <code>` | (none) | Explain a diagnostic code from `seite check` or `seite build` |
+
+### seite context
+
+```bash
+seite context          # plain text
+seite context --json   # structured, including a "directives" array of {name, message}
+```
+
+The output ends with a `DIRECTIVES` list, one `NAME: message` line each:
+
+| Directive | When |
+|-----------|------|
+| `UPGRADE_AVAILABLE` | `.seite/config.json` records an older seite version than the binary (or is missing): run `seite upgrade` |
+| `NO_STOP_HOOK` | No turn-end `seite check` hook is installed: run `seite check` before finishing |
+| `ADDON_SUGGESTION` | The site uses the default or a custom theme and no `impeccable` skill is installed: optionally suggest `seite skill install impeccable` for design work |
+| `CONFIG_INVALID` | `seite.toml` exists but does not load |
+
+Outside a seite project, `seite context` says so and exits successfully, so an agent can run it unconditionally.
+
+### seite page
+
+The argument is a source path when it exists on disk or ends in `.md` (relative to the current directory, the site root, or `content/`), and a published URL when it starts with `/` or `http(s)://`.
+
+```bash
+seite page content/posts/2026-01-02-hello.md
+seite page /posts/hello --json
+seite page /docs/install --html
+```
+
+### seite frontmatter
+
+Values are parsed like YAML scalars: `true`/`false`, numbers and `null` keep their type; `[a, b]` and `{k: v}` are lists and maps; quoted values (`'"42"'`) are strings. Anything else is taken verbatim as a string, so `description=Note: this` sets exactly that text.
+
+```bash
+seite frontmatter set content/posts/hello.md draft=false "tags=[rust, web]" weight=2
+seite frontmatter unset content/posts/hello.md image
+```
+
+### seite explain
+
+```bash
+seite explain broken-link
+seite explain 'error[frontmatter-parse]'   # as printed by seite check
+```
+
+Every code is documented in the [error reference](/docs/errors). With `--json`, each diagnostic from `seite check` and `seite build` carries a `docs_url` linking to its section, and human `seite check` output ends with a pointer to `seite explain` whenever it reports a problem.

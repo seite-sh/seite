@@ -817,3 +817,86 @@ fn test_build_broken_user_shortcode_template_is_located() {
         "a failed build writes no output"
     );
 }
+
+/// A user template still using `{{ page.url }}.md` gets a located
+/// `template-markdown-link` warning from both `check` and `build`; the
+/// check output ends with the `seite explain` pointer and every JSON
+/// diagnostic carries its `docs_url`.
+#[test]
+fn test_check_warns_on_stale_markdown_link_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Stale", "posts");
+    let site = tmp.path().join("site");
+    let base = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    fs::write(
+        site.join("templates/base.html"),
+        base.replacen(
+            "<head>",
+            "<head>\n<link rel=\"alternate\" href=\"{{ page.url }}.md\">",
+            1,
+        ),
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("check")
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("templates/base.html:"))
+        .stdout(predicate::str::contains("warning[template-markdown-link]"))
+        .stdout(predicate::str::contains("page.markdown_url"))
+        .stdout(predicate::str::contains(
+            "Run `seite explain <code>` for details",
+        ));
+
+    let output = page_cmd()
+        .args(["check", "--json"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    // The stale links themselves also show up as broken links (`/.md`).
+    let diagnostics = doc["data"]["diagnostics"].as_array().unwrap();
+    assert!(diagnostics.iter().all(|d| d["docs_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://seite.sh/docs/errors#")));
+    let d = diagnostics
+        .iter()
+        .find(|d| d["code"] == "template-markdown-link")
+        .unwrap();
+    assert_eq!(d["file"], "templates/base.html");
+    assert!(d["line"].as_u64().is_some());
+    assert_eq!(
+        d["docs_url"],
+        "https://seite.sh/docs/errors#template-markdown-link"
+    );
+
+    // --strict fails, still with the pointer (on stderr).
+    page_cmd()
+        .args(["check", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Run `seite explain <code>`"));
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warning[template-markdown-link]"));
+}
+
+#[test]
+fn test_check_clean_site_has_no_explain_footer() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Clean", "posts");
+    page_cmd()
+        .arg("check")
+        .current_dir(tmp.path().join("site"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("seite explain").not());
+}

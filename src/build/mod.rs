@@ -1059,6 +1059,8 @@ fn build_site_inner(
             diagnostics.push(d);
         }
     }
+    // Stale `{{ page.url }}.md` alternate links in user templates (warnings).
+    diagnostics.extend(templates::stale_markdown_link_diagnostics(&paths.templates));
     step_timings.push((
         "Load templates".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,

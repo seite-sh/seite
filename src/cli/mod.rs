@@ -6,18 +6,27 @@ pub mod check;
 pub mod collection;
 pub mod completions;
 pub mod contact;
+pub mod context;
 pub mod deploy;
+pub mod docs;
+pub mod explain;
+pub mod frontmatter;
 pub mod harness;
 pub mod harness_hooks;
 pub mod init;
 pub mod mcp;
 pub mod new;
+pub mod page;
 pub mod perf;
 pub mod prompt;
+pub mod search;
 pub mod self_update;
 pub mod serve;
+pub(crate) mod site_tools;
 pub mod skill;
+pub mod stats;
 pub mod telemetry;
+pub mod templates;
 pub mod theme;
 pub mod upgrade;
 pub mod workspace;
@@ -125,6 +134,31 @@ pub enum Command {
 
     /// Manage anonymous usage telemetry
     Telemetry(telemetry::TelemetryArgs),
+
+    /// Orientation for coding agents: site summary, collections, theme, dev
+    /// server, and DIRECTIVES to act on (run once per session)
+    Context(context::ContextArgs),
+
+    /// List, read, or search the embedded seite documentation
+    Docs(docs::DocsArgs),
+
+    /// Explain a diagnostic code from `seite check`/`seite build`
+    Explain(explain::ExplainArgs),
+
+    /// Show one content file as the build sees it (by source path or URL)
+    Page(page::PageArgs),
+
+    /// Search site content (drafts included) by keyword
+    Search(search::SearchArgs),
+
+    /// Content health per collection: counts, drafts, missing descriptions/tags
+    Stats(stats::StatsArgs),
+
+    /// Template overrides, blocks, context variables, shortcodes and data keys
+    Templates(templates::TemplatesArgs),
+
+    /// Set or unset frontmatter keys of a content file (body untouched)
+    Frontmatter(frontmatter::FrontmatterArgs),
 }
 
 /// Build the clap Command (used by shell completion generation).
@@ -152,5 +186,17 @@ mod tests {
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
         assert!(subcommands.contains(&"access"));
+        for agent_facing in [
+            "context",
+            "docs",
+            "explain",
+            "page",
+            "search",
+            "stats",
+            "templates",
+            "frontmatter",
+        ] {
+            assert!(subcommands.contains(&agent_facing), "{agent_facing}");
+        }
     }
 }

@@ -102,6 +102,11 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             if json_mode {
                 let doc = json::success_document(cmd_name, json::take_data(), json::warnings());
                 json::emit_document(&doc);
+            } else if cmd_name == "check" {
+                // `seite check` passed but may have printed warnings.
+                if let Some(code) = json::take_data().as_ref().and_then(first_diagnostic_code) {
+                    seite::human_println!("{}", explain_footer(&code));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -126,6 +131,11 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
                 for diagnostic in diagnostics.iter() {
                     eprintln!("{diagnostic}");
                 }
+                if cmd_name == "check" {
+                    if let Some(first) = diagnostics.iter().next() {
+                        eprintln!("{}", explain_footer(first.code));
+                    }
+                }
                 eprintln!();
             }
             eprintln!("Error: {message}");
@@ -138,6 +148,21 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The code of the first diagnostic in a `seite check` data document.
+fn first_diagnostic_code(data: &serde_json::Value) -> Option<String> {
+    data.get("diagnostics")?
+        .as_array()?
+        .first()?
+        .get("code")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// The closing line of `seite check` output when it reported diagnostics.
+fn explain_footer(example_code: &str) -> String {
+    format!("Run `seite explain <code>` for details (e.g. `seite explain {example_code}`).")
 }
 
 /// Commands that stream output or take over the terminal can't produce a
@@ -195,6 +220,14 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Perf(args) => seite::cli::perf::run(args),
         Command::Completions(args) => seite::cli::completions::run(args),
         Command::Telemetry(args) => seite::cli::telemetry::run(args),
+        Command::Context(args) => seite::cli::context::run(args, site),
+        Command::Docs(args) => seite::cli::docs::run(args, site),
+        Command::Explain(args) => seite::cli::explain::run(args),
+        Command::Page(args) => seite::cli::page::run(args, site),
+        Command::Search(args) => seite::cli::search::run(args, site),
+        Command::Stats(args) => seite::cli::stats::run(args, site),
+        Command::Templates(args) => seite::cli::templates::run(args, site),
+        Command::Frontmatter(args) => seite::cli::frontmatter::run(args, site),
     }
 }
 
@@ -220,6 +253,14 @@ fn command_name(command: &Command) -> &'static str {
         Command::Perf(_) => "perf",
         Command::Completions(_) => "completions",
         Command::Telemetry(_) => "telemetry",
+        Command::Context(_) => "context",
+        Command::Docs(_) => "docs",
+        Command::Explain(_) => "explain",
+        Command::Page(_) => "page",
+        Command::Search(_) => "search",
+        Command::Stats(_) => "stats",
+        Command::Templates(_) => "templates",
+        Command::Frontmatter(_) => "frontmatter",
     }
 }
 

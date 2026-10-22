@@ -31,6 +31,7 @@ pub fn all() -> Vec<DocPage> {
         mcp_server(),
         theme_gallery(),
         cli_reference(),
+        errors(),
         releases(),
     ];
     pages.sort_by_key(|p| p.weight);
@@ -208,6 +209,38 @@ fn cli_reference() -> DocPage {
     }
 }
 
+fn errors() -> DocPage {
+    DocPage {
+        slug: "errors",
+        title: "Error Reference",
+        description: "Every diagnostic code reported by seite check and seite build: what it means, common causes, and how to fix it.",
+        weight: 12,
+        raw_content: include_str!("../seite-sh/content/docs/errors.md"),
+    }
+}
+
+/// The `## <code>` sections of the error reference, in document order, as
+/// `(code, body)` pairs (body without the heading). Backs `seite explain`.
+pub fn error_sections() -> Vec<(&'static str, &'static str)> {
+    let body = strip_frontmatter(errors().raw_content);
+    let mut sections: Vec<(&'static str, &'static str)> = Vec::new();
+    let mut current: Option<(&'static str, usize)> = None;
+    let mut offset = 0;
+    for line in body.split_inclusive('\n') {
+        if let Some(heading) = line.strip_prefix("## ") {
+            if let Some((code, start)) = current.take() {
+                sections.push((code, &body[start..offset]));
+            }
+            current = Some((heading.trim(), offset + line.len()));
+        }
+        offset += line.len();
+    }
+    if let Some((code, start)) = current {
+        sections.push((code, &body[start..]));
+    }
+    sections
+}
+
 fn releases() -> DocPage {
     DocPage {
         slug: "releases",
@@ -226,8 +259,8 @@ mod tests {
     fn test_all_returns_all_docs() {
         let docs = all();
         assert!(
-            docs.len() >= 15,
-            "Expected at least 15 docs, got {}",
+            docs.len() >= 17,
+            "Expected at least 17 docs, got {}",
             docs.len()
         );
     }
@@ -252,6 +285,22 @@ mod tests {
         assert!(by_slug("configuration").is_some());
         assert!(by_slug("getting-started").is_some());
         assert!(by_slug("cli-reference").is_some());
+    }
+
+    #[test]
+    fn test_error_sections_parse_codes_and_bodies() {
+        let sections = error_sections();
+        assert!(sections.len() >= 18, "{}", sections.len());
+        for (code, body) in &sections {
+            assert!(
+                code.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "heading `{code}` is not a diagnostic code"
+            );
+            assert!(!body.contains("\n## "), "{code} swallowed the next section");
+            assert!(body.trim().len() > 40, "{code} has no explanation");
+        }
+        assert!(sections.iter().any(|(c, _)| *c == "broken-link"));
     }
 
     #[test]

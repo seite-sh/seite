@@ -78,11 +78,12 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
 
     let result = build::build_site(&config, &paths, &opts)?;
-    // Point at the exact template file/line behind a template fallback warning.
+    // Point at the exact template file/line behind a template fallback
+    // warning, and at stale `{{ page.url }}.md` links in user templates.
     for d in result
         .diagnostics
         .iter()
-        .filter(|d| d.code == "template-parse")
+        .filter(|d| matches!(d.code, "template-parse" | "template-markdown-link"))
     {
         human::warning(&d.to_string());
     }

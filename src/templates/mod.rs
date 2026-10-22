@@ -675,6 +675,70 @@ pub fn template_parse_diagnostics(template_dir: &Path) -> Diagnostics {
     diagnostics
 }
 
+/// Find user templates (every `*.html` under `template_dir`; the embedded
+/// defaults are never scanned) that still build the markdown URL as
+/// `{{ page.url }}.md` — broken (`/.md`, `/tags/.md`) on pages without a
+/// markdown copy — and report each occurrence as a `template-markdown-link`
+/// warning with file and line.
+pub fn stale_markdown_link_diagnostics(template_dir: &Path) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
+    if !template_dir.is_dir() {
+        return diagnostics;
+    }
+    let mut files: Vec<std::path::PathBuf> = walkdir::WalkDir::new(template_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "html"))
+        .collect();
+    files.sort();
+    for path in files {
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue; // unreadable templates are reported as template-parse
+        };
+        for (idx, line) in content.lines().enumerate() {
+            if let Some(column) = find_page_url_md(line) {
+                diagnostics.push(
+                    Diagnostic::warning(
+                        "template-markdown-link",
+                        "`{{ page.url }}.md` links to a markdown copy that does not exist on every page (e.g. /.md, /tags/.md)",
+                    )
+                    .with_file(&path)
+                    .with_line(idx + 1)
+                    .with_column(column)
+                    .with_hint(
+                        "use `{% if page.markdown_url %}...{{ page.markdown_url }}...{% endif %}` (set only when a .md copy is published)",
+                    ),
+                );
+            }
+        }
+    }
+    diagnostics
+}
+
+/// 1-based column of the first `{{ page.url }}.md` in `line` (whitespace
+/// and Tera's `-` whitespace control inside the braces are optional), if any.
+fn find_page_url_md(line: &str) -> Option<usize> {
+    let mut search_from = 0;
+    while let Some(rel) = line[search_from..].find("{{") {
+        let start = search_from + rel;
+        let inner = &line[start + 2..];
+        let rest = inner.strip_prefix('-').unwrap_or(inner).trim_start();
+        if let Some(rest) = rest.strip_prefix("page.url") {
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix('-').unwrap_or(rest);
+            if let Some(rest) = rest.strip_prefix("}}") {
+                if rest.starts_with(".md") {
+                    return Some(line[..start].chars().count() + 1);
+                }
+            }
+        }
+        search_from = start + 2;
+    }
+    None
+}
+
 /// Build a `template-parse` diagnostic from a Tera parse error, extracting the
 /// `--> line:col` position and the `= expected ...` explanation from pest's
 /// report.
@@ -976,6 +1040,57 @@ mod tests {
         assert!(d.message.contains("post.html"), "{}", d.message);
         assert!(d.message.contains("page.titel"), "{}", d.message);
         assert_eq!(d.hint.as_deref(), Some("did you mean `page.title`?"));
+    }
+
+    #[test]
+    fn test_find_page_url_md_variants() {
+        assert_eq!(find_page_url_md(r#"href="{{ page.url }}.md""#), Some(7));
+        assert_eq!(find_page_url_md("{{page.url}}.md"), Some(1));
+        assert_eq!(find_page_url_md("x {{-  page.url  -}}.md"), Some(3));
+        assert_eq!(
+            find_page_url_md("{{ site.base_url }}{{ page.url }}.md"),
+            Some(20)
+        );
+        assert_eq!(find_page_url_md("{{ page.url }}"), None);
+        assert_eq!(find_page_url_md("{{ page.url }}.html"), None);
+        assert_eq!(find_page_url_md("{{ page.url_md }}.md"), None);
+        assert_eq!(find_page_url_md("{{ page.markdown_url }}"), None);
+    }
+
+    #[test]
+    fn test_stale_markdown_link_diagnostics() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert!(stale_markdown_link_diagnostics(&tmp.path().join("missing")).is_empty());
+        std::fs::create_dir_all(tmp.path().join("partials")).unwrap();
+        std::fs::write(
+            tmp.path().join("base.html"),
+            "<head>\n<link rel=\"alternate\" href=\"{{ page.url }}.md\">\n</head>",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("partials/ok.html"), "{{ page.url }}").unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), "{{ page.url }}.md").unwrap();
+        let found: Vec<_> = stale_markdown_link_diagnostics(tmp.path())
+            .into_iter()
+            .collect();
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].code, "template-markdown-link");
+        assert_eq!(found[0].severity, crate::diagnostics::Severity::Warning);
+        assert_eq!(found[0].line, Some(2));
+        assert!(found[0].file.as_ref().unwrap().ends_with("base.html"));
+        assert!(found[0]
+            .hint
+            .as_ref()
+            .unwrap()
+            .contains("page.markdown_url"));
+    }
+
+    #[test]
+    fn test_embedded_defaults_have_no_stale_markdown_links() {
+        for theme in crate::themes::all() {
+            for line in theme.base_html.lines() {
+                assert!(find_page_url_md(line).is_none(), "{}: {line}", theme.name);
+            }
+        }
     }
 
     #[test]
