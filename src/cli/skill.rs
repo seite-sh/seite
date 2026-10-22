@@ -251,7 +251,7 @@ pub struct InstalledPackInfo {
 /// Gather skill pack information for the agent system prompt.
 pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
     let manifest = load_manifest(root);
-    let bundled_skills = ["theme-builder", "brand-identity", "landing-page"];
+    let bundled_skills: Vec<&str> = crate::cli::harness::SKILLS.iter().map(|s| s.name).collect();
 
     let mut packs = Vec::new();
     let mut all_pack_skills: Vec<String> = Vec::new();
@@ -410,7 +410,7 @@ Instead of WordPress REST API, use:
 
 ### Site context
 - Read `seite.toml` for site configuration (title, collections, base_url, language)
-- Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
+- Read `data/brand.yaml` for brand identity (if created via `/seite brand`)
 - Read `AGENTS.md` for full site documentation
 "#
 }
@@ -1048,7 +1048,7 @@ fn run_list() -> anyhow::Result<()> {
     let skills_dir = root.join(".claude").join("skills");
 
     // Bundled skills (always present after init)
-    let bundled = ["theme-builder", "brand-identity", "landing-page"];
+    let bundled: Vec<&str> = crate::cli::harness::SKILLS.iter().map(|s| s.name).collect();
 
     human::info("Bundled skills:");
     for name in &bundled {
@@ -1930,9 +1930,9 @@ mod tests {
         fs::write(custom.join("SKILL.md"), "# My Skill").unwrap();
 
         // Create a bundled skill (should be excluded)
-        let bundled = skills_dir.join("theme-builder");
+        let bundled = skills_dir.join("seite");
         fs::create_dir_all(&bundled).unwrap();
-        fs::write(bundled.join("SKILL.md"), "# Theme Builder").unwrap();
+        fs::write(bundled.join("SKILL.md"), "# seite").unwrap();
 
         let summary = gather_skill_summary(tmp.path());
         assert_eq!(summary.custom_skills, vec!["my-custom-skill"]);

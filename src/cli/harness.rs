@@ -1,21 +1,25 @@
 //! Coding-agent harness files for generated sites.
 //!
 //! A seite site can be set up for several coding agents at once: Claude Code,
-//! OpenAI Codex CLI, OpenCode, and Cursor (editor + `cursor-agent`). Each one
-//! reads project context from different places, so this module declares every
-//! rules file, skill, and the MCP server entry **once**, and every per-agent
-//! difference as a row of [`PROVIDERS`] (with the reason and source for each
-//! quirk), then renders them into each agent's format:
+//! OpenAI Codex CLI, OpenCode, Cursor (editor + `cursor-agent`), and Gemini
+//! CLI. Each one reads project context from different places, so this module
+//! declares every rules file, the `seite` skill (with its reference files),
+//! and the optional MCP server entry **once**, and every per-agent difference
+//! as a row of [`PROVIDERS`] (with the reason and source for each quirk), then
+//! renders them into each agent's format:
 //!
-//! | Agent    | MCP config           | Path-scoped rules        | Skills            | `/seite` |
-//! |----------|----------------------|--------------------------|-------------------|----------|
-//! | claude   | `.mcp.json`          | `.claude/rules/*.md`     | `.claude/skills/` | skill    |
-//! | cursor   | `.cursor/mcp.json`   | `.cursor/rules/*.mdc`    | `.agents/skills/` | skill    |
-//! | codex    | `.codex/config.toml` | (index in AGENTS.md)     | `.agents/skills/` | `$seite` |
-//! | opencode | `opencode.json`      | (index in AGENTS.md)     | `.agents/skills/` | `.opencode/commands/seite.md` |
+//! | Agent    | MCP config (`--mcp`)    | Path-scoped rules     | Skills            | `/seite` |
+//! |----------|-------------------------|-----------------------|-------------------|----------|
+//! | claude   | `.mcp.json`             | `.claude/rules/*.md`  | `.claude/skills/` | skill    |
+//! | cursor   | `.cursor/mcp.json`      | `.cursor/rules/*.mdc` | `.agents/skills/` | skill    |
+//! | codex    | `.codex/config.toml`    | (index in AGENTS.md)  | `.agents/skills/` | `$seite` |
+//! | opencode | `opencode.json`         | (index in AGENTS.md)  | `.agents/skills/` | `.opencode/commands/seite.md` |
+//! | gemini   | `.gemini/settings.json` | (index in AGENTS.md)  | `.agents/skills/` | `.gemini/commands/seite.toml` |
 //!
-//! `seite init` writes [`plan`]; `seite upgrade` merges the same content into
-//! existing projects (see `cli::upgrade`).
+//! Coding agents use the `seite` CLI; the MCP server is only wired in with
+//! `seite init --mcp` / `seite upgrade --mcp` (it is aimed at chat apps
+//! without a shell). `seite init` writes [`plan`]; `seite upgrade` merges the
+//! same content into existing projects (see `cli::upgrade`).
 
 use std::path::Path;
 
@@ -34,11 +38,18 @@ pub enum Agent {
     Codex,
     Opencode,
     Cursor,
+    Gemini,
 }
 
 impl Agent {
     /// Every supported agent, in canonical order.
-    pub const ALL: [Agent; 4] = [Agent::Claude, Agent::Codex, Agent::Opencode, Agent::Cursor];
+    pub const ALL: [Agent; 5] = [
+        Agent::Claude,
+        Agent::Codex,
+        Agent::Opencode,
+        Agent::Cursor,
+        Agent::Gemini,
+    ];
 
     /// This agent's row in [`PROVIDERS`].
     pub fn spec(self) -> &'static AgentSpec {
@@ -47,6 +58,7 @@ impl Agent {
             Agent::Codex => &PROVIDERS[1],
             Agent::Opencode => &PROVIDERS[2],
             Agent::Cursor => &PROVIDERS[3],
+            Agent::Gemini => &PROVIDERS[4],
         }
     }
 
@@ -87,14 +99,9 @@ impl McpFormat {
         match self {
             McpFormat::McpServersJson => pretty_json(&mcp_json()),
             McpFormat::CodexToml => codex_config_toml(),
-            McpFormat::OpencodeJson => pretty_json(&opencode_json()),
+            McpFormat::OpencodeJson => pretty_json(&opencode_json(true)),
         }
     }
-}
-
-/// Every agent's MCP config path (for `seite://mcp-config`).
-pub fn mcp_config_paths() -> impl Iterator<Item = &'static str> {
-    PROVIDERS.iter().map(|p| p.mcp_config)
 }
 
 /// How an agent's native path-scoped rules are rendered.
@@ -148,13 +155,16 @@ pub enum SkillFrontmatter {
 pub struct CommandFiles {
     /// Directory the agent reads command files from.
     pub dir: &'static str,
-    /// Renders `<dir>/<skill>.md` for a skill that has a command table
+    /// File extension of a command file (`md`, `toml`).
+    pub ext: &'static str,
+    /// Renders `<dir>/<skill>.<ext>` for a skill that has a command table
     /// (`None` for skills that don't get a wrapper).
     pub render: fn(&Skill) -> Option<String>,
 }
 
-/// Builds the JSON of a config file a new site gets.
-pub type JsonTemplate = fn() -> serde_json::Value;
+/// Builds the JSON of a config file a new site gets (`true`: with the seite
+/// MCP server wired in).
+pub type JsonTemplate = fn(bool) -> serde_json::Value;
 
 /// Everything seite needs to know to set a site up for one coding agent.
 ///
@@ -166,7 +176,11 @@ pub struct AgentSpec {
     /// `--agents` id, stored in `.seite/config.json`.
     pub id: &'static str,
     pub label: &'static str,
-    /// Project MCP config file, relative to the site root.
+    /// The agent's own project config files (permissions, hooks), as shown
+    /// in the AGENTS.md setup table.
+    pub config_display: &'static str,
+    /// Project MCP config file, relative to the site root (only written
+    /// with `--mcp`).
     pub mcp_config: &'static str,
     pub mcp_format: McpFormat,
     /// How the MCP config appears in the AGENTS.md setup table.
@@ -177,16 +191,17 @@ pub struct AgentSpec {
     /// The skills directory seite writes for this agent.
     pub skills_dir: &'static str,
     pub skill_frontmatter: SkillFrontmatter,
-    /// Project permissions file (other than the MCP config), if separate,
-    /// and the JSON a new site gets.
+    /// Project permissions file and the JSON a new site gets.
     pub permissions_file: Option<(&'static str, JsonTemplate)>,
     /// Slash-command wrappers for skills, if the agent needs them.
     pub command_files: Option<CommandFiles>,
     /// A per-agent instructions file that only imports AGENTS.md.
     pub instructions_shim: Option<&'static str>,
-    /// One-time step before the MCP server / permissions take effect
-    /// (shown in the AGENTS.md setup table).
+    /// One-time step before the project config (permissions, hooks) takes
+    /// effect (shown in the AGENTS.md setup table).
     pub setup_step: &'static str,
+    /// The extra one-time step for the MCP server, when it is wired in.
+    pub mcp_step: &'static str,
     /// Other quirks worth knowing.
     pub notes: &'static [&'static str],
     /// CLI names on `PATH` that mean the agent is installed.
@@ -201,11 +216,12 @@ pub const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
 pub const SHARED_SKILLS_DIR: &str = ".agents/skills";
 
 /// The provider table, in [`Agent::ALL`] order.
-pub const PROVIDERS: [AgentSpec; 4] = [
+pub const PROVIDERS: [AgentSpec; 5] = [
     AgentSpec {
         agent: Agent::Claude,
         id: "claude",
         label: "Claude Code",
+        config_display: "`.claude/settings.json`, `.claude/launch.json`",
         // Claude Code reads project MCP servers only from `.mcp.json`;
         // `mcpServers` in `.claude/settings.json` is never loaded.
         // https://code.claude.com/docs/en/mcp
@@ -223,17 +239,18 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         // already (`/seite check`), so no wrapper file.
         // https://code.claude.com/docs/en/skills
         skill_frontmatter: SkillFrontmatter::ClaudeCode,
-        permissions_file: Some((".claude/settings.json", claude_settings)),
+        permissions_file: Some((".claude/settings.json", claude_settings_template)),
         command_files: None,
         // Claude Code reads AGENTS.md itself only from v2.1.277, only when no
         // CLAUDE.md exists, and not in every session; a CLAUDE.md that imports
         // it works everywhere. https://code.claude.com/docs/en/memory#agents-md
         instructions_shim: Some("CLAUDE.md"),
-        // Claude ignores project permissions until the workspace is trusted
-        // (claude -p warns "Ignoring N permissions.allow entries ... not trusted").
-        // https://code.claude.com/docs/en/settings
-        setup_step: "Open the project once interactively and accept the workspace trust prompt — until then Claude Code ignores `.claude/settings.json` permissions; approve the server if asked (`/mcp`)",
-        notes: &["`enabledMcpjsonServers` in .claude/settings.json pre-approves the .mcp.json server."],
+        // Claude ignores project permissions (and hooks) until the workspace
+        // is trusted (claude -p warns "Ignoring N permissions.allow entries
+        // ... not trusted"). https://code.claude.com/docs/en/settings
+        setup_step: "Accept the workspace trust prompt once (until then Claude Code ignores `.claude/settings.json`)",
+        mcp_step: "approve the server with `/mcp` if asked",
+        notes: &["`enabledMcpjsonServers` in .claude/settings.json pre-approves the .mcp.json server (with --mcp)."],
         binaries: &["claude"],
         home_dirs: &[".claude"],
     },
@@ -241,6 +258,7 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         agent: Agent::Codex,
         id: "codex",
         label: "Codex CLI",
+        config_display: "`.codex/hooks.json`",
         // https://developers.openai.com/codex/mcp
         mcp_config: ".codex/config.toml",
         mcp_format: McpFormat::CodexToml,
@@ -261,10 +279,13 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         permissions_file: None,
         command_files: None,
         instructions_shim: None,
-        // Codex loads a project's .codex/config.toml only once the project is
-        // trusted. https://learn.chatgpt.com/docs/config-file/config-basic
-        setup_step: "Trust the project when Codex asks (untrusted projects ignore the file, including its tool auto-approval); check with `/mcp`",
-        notes: &["`default_tools_approval_mode = \"approve\"` lets `codex exec` call seite's write tools."],
+        // Codex loads project hooks and .codex/config.toml only once the
+        // project is trusted, and asks to review new hooks in `/hooks`.
+        // https://learn.chatgpt.com/docs/config-file/config-basic
+        // https://learn.chatgpt.com/docs/hooks
+        setup_step: "Trust the project when Codex asks, then approve the hooks once in `/hooks`",
+        mcp_step: "check the server with `/mcp`",
+        notes: &["`default_tools_approval_mode = \"approve\"` lets `codex exec` call seite's write tools (with --mcp)."],
         binaries: &["codex"],
         home_dirs: &[".codex"],
     },
@@ -272,6 +293,7 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         agent: Agent::Opencode,
         id: "opencode",
         label: "OpenCode",
+        config_display: "`opencode.json`, `.opencode/plugins/seite-check.js`",
         // https://opencode.ai/docs/mcp-servers
         mcp_config: "opencode.json",
         mcp_format: McpFormat::OpencodeJson,
@@ -283,17 +305,19 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         skills_dir: SHARED_SKILLS_DIR,
         skill_frontmatter: SkillFrontmatter::Portable,
         // Permissions live in opencode.json's `permission` block.
-        permissions_file: None,
+        permissions_file: Some(("opencode.json", opencode_json_template)),
         // OpenCode has no slash-command→skill bridge (skills load through its
         // `skill` tool), so `/seite` is a command file whose body calls the
         // skill with $ARGUMENTS. https://opencode.ai/docs/commands — impeccable
         // ships the same wrapper in .opencode/commands/impeccable.md.
         command_files: Some(CommandFiles {
             dir: ".opencode/commands",
+            ext: "md",
             render: opencode_command,
         }),
         instructions_shim: None,
-        setup_step: "None — it starts automatically",
+        setup_step: "None",
+        mcp_step: "",
         notes: &["With Claude Code also selected, OpenCode finds each skill in both .claude/skills and .agents/skills."],
         binaries: &["opencode"],
         home_dirs: &[".config/opencode"],
@@ -302,10 +326,11 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         agent: Agent::Cursor,
         id: "cursor",
         label: "Cursor",
+        config_display: "`.cursor/cli.json`, `.cursor/hooks.json`",
         // https://cursor.com/docs/context/mcp
         mcp_config: ".cursor/mcp.json",
         mcp_format: McpFormat::McpServersJson,
-        mcp_config_display: "`.cursor/mcp.json` (+ `.cursor/cli.json` permissions)",
+        mcp_config_display: "`.cursor/mcp.json`",
         // Cursor reads `.cursor/rules/*.mdc` and ignores `.claude/rules`.
         // https://cursor.com/docs/context/rules
         rules: Some(RulesDir {
@@ -319,15 +344,61 @@ pub const PROVIDERS: [AgentSpec; 4] = [
         skills_dir: SHARED_SKILLS_DIR,
         skill_frontmatter: SkillFrontmatter::Portable,
         // https://cursor.com/docs/cli/reference/permissions
-        permissions_file: Some((".cursor/cli.json", cursor_cli_json)),
+        permissions_file: Some((".cursor/cli.json", cursor_cli_json_template)),
         command_files: None,
         instructions_shim: None,
-        setup_step: "Approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`; the CLI also needs workspace trust (`--trust` or answer the prompt)",
+        setup_step: "Trust the workspace (`cursor-agent --trust` or answer the prompt)",
+        mcp_step: "approve the server in Cursor's MCP settings or run `cursor-agent mcp enable seite`",
         notes: &["cursor-agent matches `Shell(...)` permissions on the command's first token."],
         // The Cursor CLI installs as `cursor-agent` (newer builds also as
         // `agent`); the editor adds a `cursor` shell command.
         binaries: &["cursor-agent", "cursor", "agent"],
         home_dirs: &[".cursor"],
+    },
+    AgentSpec {
+        agent: Agent::Gemini,
+        id: "gemini",
+        label: "Gemini CLI",
+        config_display: "`.gemini/settings.json`",
+        // Project MCP servers and hooks both live in `.gemini/settings.json`
+        // (`mcpServers.<name>` with `command`/`args`).
+        // https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md
+        mcp_config: ".gemini/settings.json",
+        mcp_format: McpFormat::McpServersJson,
+        mcp_config_display: "`.gemini/settings.json`",
+        // No path-scoped rules; the AGENTS.md index points at `.agents/rules`.
+        rules: None,
+        // Workspace skills load from `.gemini/skills/` or its alias
+        // `.agents/skills/` (on by default via `skills.enabled`); the model
+        // activates them with its `activate_skill` tool.
+        // https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md
+        skills_dir: SHARED_SKILLS_DIR,
+        skill_frontmatter: SkillFrontmatter::Portable,
+        permissions_file: None,
+        // Skills have no slash command of their own, so `/seite` is a custom
+        // command (`.gemini/commands/<name>.toml`: `description` + `prompt`,
+        // `{{args}}` replaced by what the user typed).
+        // https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/custom-commands.md
+        command_files: Some(CommandFiles {
+            dir: ".gemini/commands",
+            ext: "toml",
+            render: gemini_command,
+        }),
+        // Gemini CLI reads GEMINI.md by default and supports `@file.md`
+        // imports, so a one-line GEMINI.md imports AGENTS.md (the same shim
+        // as Claude's CLAUDE.md). `context.fileName: ["AGENTS.md"]` in
+        // settings.json would also work, but it is documented only in
+        // docs/cli/gemini-md.md, not in the settings reference.
+        // https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/gemini-md.md
+        instructions_shim: Some("GEMINI.md"),
+        // Project hooks are fingerprinted and need approval when new or
+        // changed; stdio MCP servers stay disconnected until the folder is
+        // trusted. https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/index.md
+        setup_step: "Trust the folder (`gemini trust` or the prompt) and approve the project hooks when asked",
+        mcp_step: "check the server with `/mcp`",
+        notes: &["Hook timeouts are milliseconds in Gemini CLI (seconds elsewhere)."],
+        binaries: &["gemini"],
+        home_dirs: &[".gemini"],
     },
 ];
 
@@ -618,13 +689,6 @@ pub const RULES: &[Rule] = &[
         needs: Needs::Always,
     },
     Rule {
-        name: "design-prompts",
-        paths: &["templates/**"],
-        description: "Starting directions for redesigning or creating a theme",
-        content: include_str!("../scaffold/design-prompts.md"),
-        needs: Needs::Always,
-    },
-    Rule {
         name: "private-collections",
         paths: &["seite.toml", "content/**"],
         description: "Private collections and password-protected access",
@@ -747,8 +811,9 @@ pub fn rules_index(features: SiteFeatures, agents: &[Agent]) -> String {
 // Skills
 // ---------------------------------------------------------------------------
 
-/// A bundled skill (`<dir>/<name>/SKILL.md`). Content carries a
-/// `# seite-skill-version: N` line that `seite upgrade` compares.
+/// A bundled skill (`<dir>/<name>/SKILL.md` plus `<dir>/<name>/reference/*.md`).
+/// SKILL.md carries a `# seite-skill-version: N` line that `seite upgrade`
+/// compares; the reference files are replaced together with it.
 #[derive(Debug)]
 pub struct Skill {
     pub name: &'static str,
@@ -760,34 +825,67 @@ pub struct Skill {
     /// ([`SkillFrontmatter::ClaudeCode`]). Skills with a hint are verb
     /// dispatchers and also get command wrappers ([`CommandFiles`]).
     pub argument_hint: Option<&'static str>,
+    /// `reference/<name>.md` files: one workflow per command, read on demand
+    /// so the always-loaded SKILL.md stays short. Identical for every agent.
+    pub references: &'static [Reference],
 }
 
-pub const SKILLS: &[Skill] = &[
-    Skill {
-        name: "seite",
-        content: include_str!("../scaffold/skill-seite.md"),
-        needs: Needs::Always,
-        argument_hint: Some("[check | new <type> \"<title>\" | preview | build | deploy | theme [name] | collection [preset]]"),
-    },
-    Skill {
-        name: "landing-page",
-        content: include_str!("../scaffold/skill-landing-page.md"),
-        needs: Needs::Pages,
-        argument_hint: None,
-    },
-    Skill {
-        name: "theme-builder",
-        content: include_str!("../scaffold/skill-theme-builder.md"),
-        needs: Needs::Always,
-        argument_hint: None,
-    },
-    Skill {
-        name: "brand-identity",
-        content: include_str!("../scaffold/skill-brand-identity.md"),
-        needs: Needs::Always,
-        argument_hint: None,
-    },
+/// A skill reference file, written as `<skill dir>/reference/<name>.md`.
+#[derive(Debug)]
+pub struct Reference {
+    pub name: &'static str,
+    pub content: &'static str,
+}
+
+macro_rules! reference {
+    ($name:literal) => {
+        Reference {
+            name: $name,
+            content: include_str!(concat!("../scaffold/skill-seite/reference/", $name, ".md")),
+        }
+    };
+}
+
+/// The `seite` skill's command references, in SKILL.md table order.
+pub const SEITE_REFERENCES: &[Reference] = &[
+    reference!("check"),
+    reference!("new"),
+    reference!("preview"),
+    reference!("build"),
+    reference!("deploy"),
+    reference!("theme"),
+    reference!("brand"),
+    reference!("landing"),
+    reference!("collection"),
+    reference!("upgrade"),
+    reference!("hooks"),
 ];
+
+pub const SKILLS: &[Skill] = &[Skill {
+    name: "seite",
+    content: include_str!("../scaffold/skill-seite/SKILL.md"),
+    needs: Needs::Always,
+    argument_hint: Some(
+        "[check | new <type> \"<title>\" | preview | build | deploy | theme [name|description] | brand | landing [page] | collection [preset] | upgrade | hooks [on|off|status]]",
+    ),
+    references: SEITE_REFERENCES,
+}];
+
+/// Every file of `skill` in skills directory `dir` (SKILL.md first), as
+/// (relative path, content).
+pub fn skill_files(dir: &str, skill: &Skill) -> Vec<(String, String)> {
+    let mut files = vec![(
+        format!("{dir}/{}/SKILL.md", skill.name),
+        skill.render(skill_frontmatter_for(dir)),
+    )];
+    for r in skill.references {
+        files.push((
+            format!("{dir}/{}/reference/{}.md", skill.name, r.name),
+            r.content.to_string(),
+        ));
+    }
+    files
+}
 
 impl Skill {
     /// SKILL.md as written into a skills directory with `frontmatter` rules.
@@ -866,11 +964,27 @@ fn insert_after_description(content: &str, line: &str) -> String {
 fn opencode_command(skill: &Skill) -> Option<String> {
     skill.argument_hint?;
     Some(format!(
-        "---\ndescription: {}\n# seite-skill-version: {}\n---\nLoad the `{name}` skill (call skill({{ name: \"{name}\" }})) and follow its dispatch rule and Commands table for: $ARGUMENTS\n",
+        "---\ndescription: {}\n# seite-skill-version: {}\n---\nLoad the `{name}` skill (call skill({{ name: \"{name}\" }})) and follow its Routing section and command table for: $ARGUMENTS\n",
         yaml_quote(skill.description()),
         skill.version(),
         name = skill.name,
     ))
+}
+
+/// Gemini CLI `.gemini/commands/<skill>.toml`: `/seite <args>` activates the
+/// skill (Gemini loads it from `.agents/skills`) and hands it the arguments.
+fn gemini_command(skill: &Skill) -> Option<String> {
+    skill.argument_hint?;
+    Some(format!(
+        "# seite-skill-version: {}\ndescription = {}\nprompt = \"\"\"\nActivate the `{name}` skill (.agents/skills/{name}/SKILL.md) and follow its Routing section and command table for: {{{{args}}}}\n\"\"\"\n",
+        skill.version(),
+        toml_quote(skill.description()),
+        name = skill.name,
+    ))
+}
+
+fn toml_quote(value: &str) -> String {
+    toml::Value::String(value.to_string()).to_string()
 }
 
 /// A command wrapper file planned for `agents`: (relative path, content).
@@ -882,7 +996,7 @@ pub fn command_files(agents: &[Agent], features: SiteFeatures) -> Vec<(String, S
         };
         for s in skills(features) {
             if let Some(content) = (cmds.render)(s) {
-                files.push((format!("{}/{}.md", cmds.dir, s.name), content));
+                files.push((format!("{}/{}.{}", cmds.dir, s.name, cmds.ext), content));
             }
         }
     }
@@ -923,10 +1037,11 @@ pub fn mcp_json() -> serde_json::Value {
     serde_json::json!({ "mcpServers": mcp_server_block() })
 }
 
-/// Permission rules pre-approved in a new site's `.claude/settings.json`.
+/// Permission rules pre-approved in a new site's `.claude/settings.json`
+/// (plus [`CLAUDE_MCP_ALLOW`] with `--mcp`).
 ///
-/// `mcp__seite` allows every tool of the `seite` MCP server (Claude Code's
-/// server-level MCP permission rule).
+/// `seite` commands are allowed one by one: the read-only and site-editing
+/// ones run without a prompt, `seite deploy` (publishes) still asks.
 pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
     "Read",
     "Write(content/**)",
@@ -945,51 +1060,103 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
     "Bash(seite new:*)",
     "Bash(seite serve:*)",
     "Bash(seite theme:*)",
+    "Bash(seite context:*)",
+    "Bash(seite context)",
+    "Bash(seite docs:*)",
+    "Bash(seite docs)",
+    "Bash(seite page:*)",
+    "Bash(seite search:*)",
+    "Bash(seite stats:*)",
+    "Bash(seite stats)",
+    "Bash(seite templates:*)",
+    "Bash(seite templates)",
+    "Bash(seite frontmatter:*)",
+    "Bash(seite explain:*)",
+    "Bash(seite hooks:*)",
+    "Bash(seite collection list)",
     "Glob",
     "Grep",
     "WebSearch",
-    "mcp__seite",
 ];
+
+/// `mcp__seite` allows every tool of the `seite` MCP server (Claude Code's
+/// server-level MCP permission rule). Only with `--mcp`.
+pub const CLAUDE_MCP_ALLOW: &str = "mcp__seite";
 
 /// Allow rules that `seite upgrade` adds to existing projects' settings
 /// (introduced after the original settings template).
 pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] = &[
-    "mcp__seite",
     "Edit(static/**)",
     "Edit(seite.toml)",
     "Bash(seite check:*)",
     "Bash(seite check)",
+    "Bash(seite context:*)",
+    "Bash(seite context)",
+    "Bash(seite docs:*)",
+    "Bash(seite docs)",
+    "Bash(seite page:*)",
+    "Bash(seite search:*)",
+    "Bash(seite stats:*)",
+    "Bash(seite stats)",
+    "Bash(seite templates:*)",
+    "Bash(seite templates)",
+    "Bash(seite frontmatter:*)",
+    "Bash(seite explain:*)",
+    "Bash(seite hooks:*)",
+    "Bash(seite collection list)",
 ];
 
 /// Paths the agent may edit without asking (Claude `Write/Edit(...)`,
 /// OpenCode `edit` rules).
 const EDITABLE_PATHS: &[&str] = &["content/", "templates/", "static/", "data/"];
-/// `seite` subcommands the agent may run without asking.
+/// `seite` subcommands the agent may run without asking (OpenCode `bash`
+/// rules; Claude's list is [`CLAUDE_ALLOWED_TOOLS`]).
 const ALLOWED_COMMANDS: &[&str] = &[
     "seite build",
     "seite check",
     "seite new",
     "seite serve",
     "seite theme",
+    "seite context",
+    "seite docs",
+    "seite page",
+    "seite search",
+    "seite stats",
+    "seite templates",
+    "seite frontmatter",
+    "seite explain",
+    "seite hooks",
+    "seite collection list",
 ];
 
-/// `.claude/settings.json` for a new site: permissions plus
+/// `.claude/settings.json` for a new site: permissions, plus (with `mcp`)
 /// `enabledMcpjsonServers`, which pre-approves the `seite` server declared in
 /// `.mcp.json`. (Claude Code ignores `mcpServers` in settings.json.)
-pub fn claude_settings() -> serde_json::Value {
-    serde_json::json!({
+pub fn claude_settings(mcp: bool) -> serde_json::Value {
+    let mut allow: Vec<&str> = CLAUDE_ALLOWED_TOOLS.to_vec();
+    if mcp {
+        allow.push(CLAUDE_MCP_ALLOW);
+    }
+    let mut settings = serde_json::json!({
         "$schema": "https://json.schemastore.org/claude-code-settings.json",
         "permissions": {
-            "allow": CLAUDE_ALLOWED_TOOLS,
+            "allow": allow,
             "deny": ["Read(.env)", "Read(.env.*)"]
-        },
-        "enabledMcpjsonServers": [MCP_SERVER]
-    })
+        }
+    });
+    if mcp {
+        settings["enabledMcpjsonServers"] = serde_json::json!([MCP_SERVER]);
+    }
+    settings
+}
+
+fn claude_settings_template(mcp: bool) -> serde_json::Value {
+    claude_settings(mcp)
 }
 
 /// OpenCode's `permission` block, mirroring the Claude allowlist: reads are
-/// allowed (but `.env` files denied), edits to site sources and the `seite`
-/// build/new/serve/theme commands run without asking, anything else asks.
+/// allowed (but `.env` files denied), edits to site sources and the listed
+/// `seite` commands run without asking, anything else asks.
 /// Patterns use OpenCode's wildcard syntax; the last matching rule wins.
 pub fn opencode_permission() -> serde_json::Value {
     let mut edit = serde_json::Map::new();
@@ -1016,12 +1183,12 @@ pub fn opencode_permission() -> serde_json::Value {
     })
 }
 
-/// Allow rules for the Cursor CLI's project `.cursor/cli.json`: seite's MCP
-/// tools, the `seite` command, and writes to site sources. Cursor matches
-/// `Shell(...)` on the command's first token, so this allows every `seite`
-/// subcommand (Cursor still asks before anything not listed here).
+/// Allow rules for the Cursor CLI's project `.cursor/cli.json`: the `seite`
+/// command and writes to site sources (plus [`CURSOR_MCP_ALLOW`] with
+/// `--mcp`). Cursor matches `Shell(...)` on the command's first token, so
+/// this allows every `seite` subcommand (Cursor still asks before anything
+/// not listed here).
 pub const CURSOR_ALLOW: &[&str] = &[
-    "Mcp(seite:*)",
     "Shell(seite)",
     "Write(content/**)",
     "Write(templates/**)",
@@ -1030,14 +1197,26 @@ pub const CURSOR_ALLOW: &[&str] = &[
     "Write(seite.toml)",
 ];
 
+/// Cursor's allow rule for the seite MCP server's tools.
+pub const CURSOR_MCP_ALLOW: &str = "Mcp(seite:*)";
+
 /// `.cursor/cli.json` for a new site (Cursor CLI permissions).
-pub fn cursor_cli_json() -> serde_json::Value {
+pub fn cursor_cli_json(mcp: bool) -> serde_json::Value {
+    let mut allow: Vec<&str> = Vec::new();
+    if mcp {
+        allow.push(CURSOR_MCP_ALLOW);
+    }
+    allow.extend_from_slice(CURSOR_ALLOW);
     serde_json::json!({
         "permissions": {
-            "allow": CURSOR_ALLOW,
+            "allow": allow,
             "deny": ["Read(.env)", "Read(.env.*)"]
         }
     })
+}
+
+fn cursor_cli_json_template(mcp: bool) -> serde_json::Value {
+    cursor_cli_json(mcp)
 }
 
 /// The `mcp.seite` entry in `opencode.json`.
@@ -1047,15 +1226,69 @@ pub fn opencode_mcp_entry() -> serde_json::Value {
     serde_json::json!({ "type": "local", "command": command, "enabled": true })
 }
 
-/// `opencode.json` for a new site.
-pub fn opencode_json() -> serde_json::Value {
+/// `opencode.json` for a new site (with `mcp`: plus the `mcp.seite` server).
+pub fn opencode_json(mcp: bool) -> serde_json::Value {
+    let mut json = serde_json::json!({ "$schema": "https://opencode.ai/config.json" });
+    if mcp {
+        json["mcp"] = serde_json::json!({ MCP_SERVER: opencode_mcp_entry() });
+    }
+    json["permission"] = opencode_permission();
+    json
+}
+
+fn opencode_json_template(mcp: bool) -> serde_json::Value {
+    opencode_json(mcp)
+}
+
+/// `.claude/launch.json` entry that lets Claude's desktop app start the dev
+/// server and show the site in its preview pane (live reload keeps it
+/// current). https://code.claude.com/docs/en/desktop (preview servers)
+pub const LAUNCH_JSON_PATH: &str = ".claude/launch.json";
+
+/// The `seite` configuration in `.claude/launch.json`.
+pub fn launch_configuration() -> serde_json::Value {
     serde_json::json!({
-        "$schema": "https://opencode.ai/config.json",
-        "mcp": { MCP_SERVER: opencode_mcp_entry() },
-        "permission": opencode_permission()
+        "name": "seite",
+        "runtimeExecutable": "seite",
+        "runtimeArgs": ["serve", "--no-repl", "--port", "3000"],
+        "port": 3000
     })
 }
 
+/// `.claude/launch.json` for a new site.
+pub fn launch_json() -> serde_json::Value {
+    serde_json::json!({
+        "version": "0.0.1",
+        "configurations": [launch_configuration()]
+    })
+}
+
+/// Add the `seite` configuration to an existing `.claude/launch.json`,
+/// keeping every other key and configuration. `Ok(true)` when added,
+/// `Ok(false)` when a configuration named `seite` is already there, `Err`
+/// when `configurations` isn't a list.
+pub fn merge_launch_json(
+    doc: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<bool, crate::cli::harness_hooks::Unmergeable> {
+    if !doc.contains_key("version") {
+        let rest = std::mem::take(doc);
+        doc.insert("version".into(), serde_json::json!("0.0.1"));
+        doc.extend(rest);
+    }
+    let list = doc
+        .entry("configurations")
+        .or_insert_with(|| serde_json::json!([]))
+        .as_array_mut()
+        .ok_or(crate::cli::harness_hooks::Unmergeable)?;
+    if list
+        .iter()
+        .any(|c| c.get("name").and_then(|n| n.as_str()) == Some("seite"))
+    {
+        return Ok(false);
+    }
+    list.push(launch_configuration());
+    Ok(true)
+}
 /// Leading comment for `.codex/config.toml` explaining the trust step.
 const CODEX_HEADER: &str = "\
 # Codex CLI project config for this seite site.
@@ -1179,17 +1412,67 @@ pub fn replace_block(content: &str, id: &str, body: &str) -> Option<String> {
     Some(format!("{}{}{}", &content[..s], wrap_block(id, body), tail))
 }
 
-/// The per-agent MCP config table for AGENTS.md (selected agents only).
-pub fn mcp_setup_table(agents: &[Agent]) -> String {
-    let mut md = String::from("| Agent | MCP config | One-time step |\n|---|---|---|\n");
+/// The per-agent setup table for AGENTS.md (selected agents only): each
+/// agent's project config and its one-time step. With `mcp`, an MCP column
+/// and the MCP approval step are added.
+pub fn mcp_setup_table(agents: &[Agent], mcp: bool) -> String {
+    let mut md = if mcp {
+        String::from("| Agent | Config | MCP config | One-time step |\n|---|---|---|---|\n")
+    } else {
+        String::from("| Agent | Config | One-time step |\n|---|---|---|\n")
+    };
     for agent in agents {
         let spec = agent.spec();
-        md.push_str(&format!(
-            "| {} | {} | {} |\n",
-            spec.label, spec.mcp_config_display, spec.setup_step
-        ));
+        if mcp {
+            let step = match (spec.setup_step, spec.mcp_step) {
+                (step, "") => step.to_string(),
+                ("None", mcp_step) => capitalize(mcp_step),
+                (step, mcp_step) => format!("{step}; {mcp_step}"),
+            };
+            md.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                spec.label, spec.config_display, spec.mcp_config_display, step
+            ));
+        } else {
+            md.push_str(&format!(
+                "| {} | {} | {} |\n",
+                spec.label, spec.config_display, spec.setup_step
+            ));
+        }
     }
     md
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// Whether any of `agents` already has the seite MCP server in its project
+/// config (so AGENTS.md keeps documenting it without `--mcp`).
+pub fn mcp_configured(root: &Path, agents: &[Agent]) -> bool {
+    agents.iter().any(|agent| {
+        let spec = agent.spec();
+        let Ok(text) = std::fs::read_to_string(root.join(spec.mcp_config)) else {
+            return false;
+        };
+        match spec.mcp_format {
+            McpFormat::CodexToml => text
+                .parse::<toml::Table>()
+                .ok()
+                .and_then(|t| t.get("mcp_servers")?.get(MCP_SERVER).cloned())
+                .is_some(),
+            McpFormat::McpServersJson => serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .is_some_and(|v| v["mcpServers"].get(MCP_SERVER).is_some()),
+            McpFormat::OpencodeJson => serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .is_some_and(|v| v["mcp"].get(MCP_SERVER).is_some()),
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,8 +1494,9 @@ fn file(path: impl Into<String>, content: impl Into<String>) -> PlannedFile {
 }
 
 /// Every harness file a new site gets for `agents` (AGENTS.md itself is
-/// generated by `cli::init`).
-pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
+/// generated by `cli::init`). The MCP server configs are only planned with
+/// `mcp` (`seite init --mcp`).
+pub fn plan(agents: &[Agent], features: SiteFeatures, mcp: bool) -> Vec<PlannedFile> {
     let mut files = Vec::new();
 
     let mut skill_dirs: Vec<&str> = Vec::new();
@@ -1220,10 +1504,18 @@ pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
         if let Some(shim) = spec.instructions_shim {
             files.push(file(shim, crate::cli::agent_instructions::CLAUDE_SHIM));
         }
+        let permissions_path = spec.permissions_file.map(|(path, _)| path);
         if let Some((path, permissions)) = spec.permissions_file {
-            files.push(file(path, pretty_json(&permissions())));
+            files.push(file(path, pretty_json(&permissions(mcp))));
         }
-        files.push(file(spec.mcp_config, spec.mcp_format.render()));
+        // OpenCode's MCP server lives in its permissions file (rendered
+        // above with `mcp`); the others get a separate MCP config.
+        if mcp && permissions_path != Some(spec.mcp_config) {
+            files.push(file(spec.mcp_config, spec.mcp_format.render()));
+        }
+        if spec.agent == Agent::Claude {
+            files.push(file(LAUNCH_JSON_PATH, pretty_json(&launch_json())));
+        }
         if let Some(native) = spec.rules {
             for r in rules(features) {
                 files.push(file(
@@ -1236,10 +1528,9 @@ pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
         if !skill_dirs.contains(&spec.skills_dir) {
             skill_dirs.push(spec.skills_dir);
             for s in skills(features) {
-                files.push(file(
-                    format!("{}/{}/SKILL.md", spec.skills_dir, s.name),
-                    s.render(spec.skill_frontmatter),
-                ));
+                for (path, content) in skill_files(spec.skills_dir, s) {
+                    files.push(file(path, content));
+                }
             }
         }
     }
@@ -1251,14 +1542,50 @@ pub fn plan(agents: &[Agent], features: SiteFeatures) -> Vec<PlannedFile> {
             files.push(file(format!(".agents/rules/{}.md", r.name), claude_rule(r)));
         }
     }
-    // Turn-end `seite check` hooks (see `cli::harness_hooks`).
+    // Turn-end and post-edit `seite check` hooks (see `cli::harness_hooks`).
     crate::cli::harness_hooks::extend_plan(&mut files, agents);
     files
 }
 
 /// Write [`plan`] under `root`.
-pub fn write_plan(root: &Path, agents: &[Agent], features: SiteFeatures) -> std::io::Result<()> {
-    for f in plan(agents, features) {
+pub fn write_plan(
+    root: &Path,
+    agents: &[Agent],
+    features: SiteFeatures,
+    mcp: bool,
+) -> std::io::Result<()> {
+    for f in plan(agents, features, mcp) {
+        let path = root.join(&f.path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, f.content)?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Local docs (.seite/docs/)
+// ---------------------------------------------------------------------------
+
+/// Where `seite init` / `seite upgrade` write the embedded docs, so agents
+/// read the docs that match the installed binary without a network call.
+pub const LOCAL_DOCS_DIR: &str = ".seite/docs";
+
+/// Every embedded how-to doc page as `(.seite/docs/<slug>.md, content)`.
+/// The release notes (`releases`, ~60 KB of changelog) are left out: they
+/// aren't reference material for working on a site.
+pub fn local_docs() -> Vec<PlannedFile> {
+    crate::docs::all()
+        .into_iter()
+        .filter(|d| d.slug != "releases")
+        .map(|d| file(format!("{LOCAL_DOCS_DIR}/{}.md", d.slug), d.raw_content))
+        .collect()
+}
+
+/// Write [`local_docs`] under `root`.
+pub fn write_local_docs(root: &Path) -> std::io::Result<()> {
+    for f in local_docs() {
         let path = root.join(&f.path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -1349,18 +1676,49 @@ mod tests {
     }
 
     #[test]
-    fn cursor_cli_json_allows_seite_tools_and_denies_env() {
-        let json = cursor_cli_json();
+    fn cursor_cli_json_allows_seite_and_denies_env() {
+        let json = cursor_cli_json(false);
         let allow = json["permissions"]["allow"].as_array().unwrap();
-        assert!(allow.iter().any(|v| v == "Mcp(seite:*)"));
+        assert!(!allow.iter().any(|v| v == "Mcp(seite:*)"));
         assert!(allow.iter().any(|v| v == "Shell(seite)"));
         let deny = json["permissions"]["deny"].as_array().unwrap();
         assert!(deny.iter().any(|v| v == "Read(.env)"));
+        let with_mcp = cursor_cli_json(true);
+        assert_eq!(with_mcp["permissions"]["allow"][0], "Mcp(seite:*)");
+    }
+
+    #[test]
+    fn claude_settings_only_wire_mcp_with_flag() {
+        let plain = claude_settings(false);
+        assert!(plain.get("enabledMcpjsonServers").is_none());
+        let allow = plain["permissions"]["allow"].as_array().unwrap();
+        assert!(!allow.iter().any(|v| v == "mcp__seite"));
+        // The agent-facing commands run without a prompt; deploy still asks.
+        for rule in [
+            "Bash(seite context)",
+            "Bash(seite docs:*)",
+            "Bash(seite hooks:*)",
+        ] {
+            assert!(allow.iter().any(|v| v == rule), "{rule}");
+        }
+        assert!(!allow.iter().any(|v| v.as_str().unwrap().contains("deploy")));
+        assert!(!allow.iter().any(|v| v == "Bash(seite:*)"));
+        let mcp = claude_settings(true);
+        assert_eq!(mcp["enabledMcpjsonServers"][0], "seite");
+        assert!(mcp["permissions"]["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "mcp__seite"));
+        // Every rule `seite upgrade` adds is also in a new site's settings.
+        for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE {
+            assert!(CLAUDE_ALLOWED_TOOLS.contains(rule), "{rule}");
+        }
     }
 
     #[test]
     fn opencode_json_shape() {
-        let json = opencode_json();
+        let json = opencode_json(true);
         assert_eq!(json["$schema"], "https://opencode.ai/config.json");
         assert_eq!(json["mcp"]["seite"]["type"], "local");
         assert_eq!(
@@ -1368,10 +1726,12 @@ mod tests {
             serde_json::json!(["seite", "mcp"])
         );
         assert_eq!(json["mcp"]["seite"]["enabled"], true);
+        assert!(opencode_json(false).get("mcp").is_none());
         let perm = &json["permission"];
         assert_eq!(perm["bash"]["*"], "ask");
         assert_eq!(perm["bash"]["seite build*"], "allow");
         assert_eq!(perm["bash"]["seite theme*"], "allow");
+        assert_eq!(perm["bash"]["seite context*"], "allow");
         assert_eq!(perm["edit"]["*"], "ask");
         assert_eq!(perm["edit"]["content/*"], "allow");
         assert_eq!(perm["edit"]["seite.toml"], "allow");
@@ -1491,33 +1851,122 @@ mod tests {
 
     #[test]
     fn mcp_setup_table_lists_only_selected_agents() {
-        let table = mcp_setup_table(&[Agent::Codex, Agent::Opencode]);
-        assert!(table.contains("`.codex/config.toml`") && table.contains("`opencode.json`"));
-        assert!(!table.contains(".mcp.json") && !table.contains("cursor"));
+        let table = mcp_setup_table(&[Agent::Codex, Agent::Opencode], false);
+        assert!(table.starts_with("| Agent | Config | One-time step |"));
+        assert!(table.contains("`.codex/hooks.json`") && table.contains("`opencode.json`"));
+        assert!(!table.contains(".mcp.json") && !table.contains("Cursor"));
+        assert!(!table.contains("MCP"), "{table}");
+
+        let table = mcp_setup_table(&[Agent::Claude, Agent::Opencode], true);
+        assert!(table.starts_with("| Agent | Config | MCP config | One-time step |"));
+        assert!(table.contains("`.mcp.json`") && table.contains("approve the server with `/mcp`"));
+        // OpenCode has no setup step of its own and no MCP step.
+        assert!(table.contains("| OpenCode | `opencode.json`, `.opencode/plugins/seite-check.js` | `opencode.json` | None |"), "{table}");
+    }
+
+    #[test]
+    fn mcp_configured_detects_each_format() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        assert!(!mcp_configured(root, &Agent::ALL));
+        std::fs::write(
+            root.join("opencode.json"),
+            pretty_json(&opencode_json(false)),
+        )
+        .unwrap();
+        assert!(!mcp_configured(root, &Agent::ALL));
+        std::fs::write(
+            root.join("opencode.json"),
+            pretty_json(&opencode_json(true)),
+        )
+        .unwrap();
+        assert!(mcp_configured(root, &[Agent::Opencode]));
+        assert!(!mcp_configured(root, &[Agent::Claude]));
+        std::fs::create_dir_all(root.join(".codex")).unwrap();
+        std::fs::write(root.join(".codex/config.toml"), codex_config_toml()).unwrap();
+        assert!(mcp_configured(root, &[Agent::Codex]));
+        std::fs::write(root.join(".mcp.json"), pretty_json(&mcp_json())).unwrap();
+        assert!(mcp_configured(root, &[Agent::Claude]));
+    }
+
+    #[test]
+    fn plan_without_mcp_writes_no_mcp_config() {
+        for agent in Agent::ALL {
+            let files = plan(&[agent], ALL_FEATURES, false);
+            for f in &files {
+                assert!(
+                    !f.content.contains("mcpServers")
+                        && !f.content.contains("mcp_servers")
+                        && !f.content.contains("mcp__seite")
+                        && !f.content.contains("Mcp(seite")
+                        && !f.content.contains("enabledMcpjsonServers"),
+                    "{agent:?}: {}",
+                    f.path
+                );
+            }
+            let paths: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
+            assert!(!paths.contains(&".mcp.json") && !paths.contains(&".codex/config.toml"));
+            assert!(!paths.contains(&".cursor/mcp.json"));
+        }
+        // With --mcp each agent gets its MCP config.
+        let files = plan(&Agent::ALL, ALL_FEATURES, true);
+        for spec in &PROVIDERS {
+            let f = files.iter().find(|f| f.path == spec.mcp_config).unwrap();
+            assert!(f.content.contains("seite"), "{}", spec.mcp_config);
+        }
+        let gemini = files
+            .iter()
+            .find(|f| f.path == ".gemini/settings.json")
+            .unwrap();
+        let gemini: serde_json::Value = serde_json::from_str(&gemini.content).unwrap();
+        assert_eq!(gemini["mcpServers"]["seite"]["command"], "seite");
+        assert!(gemini["hooks"].get("AfterAgent").is_some());
     }
 
     #[test]
     fn plan_subset_writes_only_selected_agent_files() {
-        let paths: Vec<String> = plan(&[Agent::Claude], ALL_FEATURES)
+        let paths: Vec<String> = plan(&[Agent::Claude], ALL_FEATURES, false)
             .into_iter()
             .map(|f| f.path)
             .collect();
-        assert!(paths.contains(&".mcp.json".to_string()));
+        assert!(paths.contains(&".claude/settings.json".to_string()));
+        assert!(paths.contains(&LAUNCH_JSON_PATH.to_string()));
+        assert!(paths.contains(&".claude/skills/seite/reference/theme.md".to_string()));
         assert!(paths.iter().all(|p| !p.starts_with(".cursor")
             && !p.starts_with(".codex")
             && !p.starts_with(".agents")
-            && p != "opencode.json"));
+            && !p.starts_with(".gemini")
+            && p != "opencode.json"
+            && p != "GEMINI.md"));
 
-        let paths: Vec<String> = plan(&[Agent::Codex], SiteFeatures::default())
+        let paths: Vec<String> = plan(&[Agent::Codex], SiteFeatures::default(), false)
             .into_iter()
             .map(|f| f.path)
             .collect();
-        assert!(paths.contains(&".codex/config.toml".to_string()));
-        assert!(paths.contains(&".agents/skills/theme-builder/SKILL.md".to_string()));
+        assert!(paths.contains(&".codex/hooks.json".to_string()));
+        assert!(paths.contains(&".agents/skills/seite/SKILL.md".to_string()));
         assert!(paths.contains(&".agents/rules/templates.md".to_string()));
         assert!(paths
             .iter()
             .all(|p| !p.starts_with(".claude") && p != "CLAUDE.md"));
+        assert!(!paths.iter().any(|p| p.contains("design-prompts")
+            || p.contains("theme-builder")
+            || p.contains("brand-identity")
+            || p.contains("landing-page")));
+
+        let paths: Vec<String> = plan(&[Agent::Gemini], SiteFeatures::default(), false)
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        for p in [
+            "GEMINI.md",
+            ".gemini/settings.json",
+            ".gemini/commands/seite.toml",
+            ".agents/skills/seite/SKILL.md",
+            ".agents/rules/templates.md",
+        ] {
+            assert!(paths.contains(&p.to_string()), "{p}: {paths:?}");
+        }
     }
 
     #[test]
@@ -1526,16 +1975,32 @@ mod tests {
             assert_eq!(PROVIDERS[i].agent, agent);
             assert_eq!(agent.spec().agent, agent);
         }
-        let paths: Vec<_> = mcp_config_paths().collect();
+        let ids: Vec<_> = Agent::ALL.iter().map(|a| a.id()).collect();
+        assert_eq!(ids, ["claude", "codex", "opencode", "cursor", "gemini"]);
+        assert_eq!(Agent::from_id("gemini"), Some(Agent::Gemini));
+    }
+
+    #[test]
+    fn launch_json_merge_is_additive() {
+        let mut doc: serde_json::Map<String, serde_json::Value> = serde_json::from_value(
+            serde_json::json!({ "configurations": [{ "name": "api", "port": 8080 }] }),
+        )
+        .unwrap();
+        assert_eq!(merge_launch_json(&mut doc), Ok(true));
+        assert_eq!(merge_launch_json(&mut doc), Ok(false));
+        assert_eq!(doc.keys().next().unwrap(), "version");
+        let configs = doc["configurations"].as_array().unwrap();
+        assert_eq!(configs.len(), 2);
+        assert_eq!(configs[0]["name"], "api");
+        assert_eq!(configs[1], launch_configuration());
         assert_eq!(
-            paths,
-            [
-                ".mcp.json",
-                ".codex/config.toml",
-                "opencode.json",
-                ".cursor/mcp.json"
-            ]
+            configs[1]["runtimeArgs"],
+            serde_json::json!(["serve", "--no-repl", "--port", "3000"])
         );
+        let mut bad: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_value(serde_json::json!({ "configurations": {} })).unwrap();
+        assert!(merge_launch_json(&mut bad).is_err());
+        assert_eq!(launch_json()["version"], "0.0.1");
     }
 
     /// Split a SKILL.md into (frontmatter YAML, body).
@@ -1573,57 +2038,98 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("[check | new"));
-        assert_eq!(
-            extract_version(&seite.render(SkillFrontmatter::ClaudeCode)),
-            1
-        );
-        // Other skills are identical in both directories.
-        let theme = skill("theme-builder").unwrap();
-        assert_eq!(theme.render(SkillFrontmatter::ClaudeCode), theme.content);
-        assert!(body.contains("## Commands"));
+        assert_eq!(extract_version(&rendered), 3);
+        assert!(body.contains("## Routing"));
+        assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
 
     #[test]
-    fn seite_skill_dispatches_commands_and_stays_small() {
+    fn seite_skill_routes_every_command_to_a_reference() {
         let seite = skill("seite").unwrap();
         assert!(
-            seite.content.len() < 5 * 1024,
+            seite.content.len() < 4 * 1024,
             "seite skill is {} bytes",
             seite.content.len()
         );
-        assert!(seite.content.contains("`/seite <command> <args>`"));
-        assert!(seite.content.contains("AGENTS.md"));
-        for cmd in [
-            "check",
-            "new",
-            "preview",
-            "build",
-            "deploy",
-            "theme",
-            "collection",
+        assert!(seite.content.contains("`/seite <command> [args]`"));
+        assert!(seite.content.contains("seite context"));
+        // Bounded verification, no shouting.
+        assert!(seite.content.contains("then stop"));
+        assert!(!seite.content.contains("MANDATORY"));
+        let names: Vec<_> = seite.references.iter().map(|r| r.name).collect();
+        assert_eq!(
+            names,
+            [
+                "check",
+                "new",
+                "preview",
+                "build",
+                "deploy",
+                "theme",
+                "brand",
+                "landing",
+                "collection",
+                "upgrade",
+                "hooks"
+            ]
+        );
+        for r in seite.references {
+            let link = format!("[reference/{0}.md](reference/{0}.md)", r.name);
+            assert!(seite.content.contains(&link), "{link}");
+            assert!(
+                r.content.starts_with(&format!("# /seite {}", r.name)),
+                "{}",
+                r.name
+            );
+            assert!(!r.content.contains("MANDATORY"), "{}", r.name);
+            // References are plain markdown (no frontmatter) and stay short.
+            assert!(r.content.len() < 4 * 1024, "{}", r.name);
+            // No MCP tool names: coding agents use the CLI.
+            assert!(!r.content.contains("seite_"), "{}", r.name);
+        }
+        let theme = seite.references.iter().find(|r| r.name == "theme").unwrap();
+        for needle in [
+            "/impeccable",
+            "impeccable detect dist/",
+            "never make standalone HTML mockups",
+            "search-index.json",
+            "{{ t.",
+            "`content` (inside",
         ] {
             assert!(
-                seite.content.contains(&format!("| [{cmd}](#{cmd}) |")),
-                "row for {cmd}"
-            );
-            assert!(
-                seite.content.contains(&format!("\n## {cmd}\n")),
-                "section for {cmd}"
+                theme
+                    .content
+                    .to_lowercase()
+                    .contains(&needle.to_lowercase()),
+                "{needle}"
             );
         }
-        for tool in ["seite_check", "seite_create_content", "seite_build"] {
-            assert!(seite.content.contains(tool), "{tool}");
-        }
-        assert!(seite.content.contains("seite deploy --dry-run"));
-        assert!(seite.content.contains("seite serve --no-repl"));
+        let preview = seite
+            .references
+            .iter()
+            .find(|r| r.name == "preview")
+            .unwrap();
+        assert!(preview.content.contains(".claude/launch.json"));
+        assert!(preview.content.contains("Never start a second server"));
+        let brand = seite.references.iter().find(|r| r.name == "brand").unwrap();
+        assert!(brand.content.contains("data/brand.yaml"));
+        let landing = seite
+            .references
+            .iter()
+            .find(|r| r.name == "landing")
+            .unwrap();
+        assert!(landing.content.contains("content/pages/index.md"));
     }
 
     #[test]
-    fn opencode_command_wraps_the_seite_skill() {
+    fn command_wrappers_route_to_the_seite_skill() {
         let files = command_files(&Agent::ALL, SiteFeatures::default());
-        assert_eq!(files.len(), 1, "{files:?}");
-        let (path, content) = &files[0];
-        assert_eq!(path, ".opencode/commands/seite.md");
+        let paths: Vec<_> = files.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            [".opencode/commands/seite.md", ".gemini/commands/seite.toml"]
+        );
+        let (_, content) = &files[0];
         let (fm, body) = split_frontmatter(content);
         assert_eq!(keys(&fm), ["description"]);
         assert_eq!(
@@ -1632,16 +2138,25 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 1);
+        assert_eq!(extract_version(content), 3);
+
+        let (_, gemini) = &files[1];
+        let parsed: toml::Table = toml::from_str(gemini).unwrap();
+        assert_eq!(
+            parsed["description"].as_str(),
+            Some(skill("seite").unwrap().description())
+        );
+        assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
+        assert_eq!(extract_version(gemini), 3);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );
     }
 
     #[test]
-    fn plan_writes_seite_skill_for_every_agent() {
+    fn plan_writes_seite_skill_and_references_for_every_agent() {
         for agent in Agent::ALL {
-            let files = plan(&[agent], SiteFeatures::default());
+            let files = plan(&[agent], SiteFeatures::default(), false);
             let dir = agent.spec().skills_dir;
             let skill = files
                 .iter()
@@ -1651,6 +2166,14 @@ mod tests {
                 skill.content.contains("argument-hint:"),
                 agent == Agent::Claude
             );
+            for r in SEITE_REFERENCES {
+                let path = format!("{dir}/seite/reference/{}.md", r.name);
+                let f = files
+                    .iter()
+                    .find(|f| f.path == path)
+                    .unwrap_or_else(|| panic!("{agent:?}: {path}"));
+                assert_eq!(f.content, r.content);
+            }
             assert_eq!(
                 files
                     .iter()
@@ -1659,12 +2182,25 @@ mod tests {
             );
         }
         // No path is planned twice.
-        let files = plan(&Agent::ALL, ALL_FEATURES);
+        let files = plan(&Agent::ALL, ALL_FEATURES, true);
         let mut paths: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
         let n = paths.len();
         paths.sort();
         paths.dedup();
         assert_eq!(paths.len(), n);
+    }
+
+    #[test]
+    fn local_docs_cover_every_embedded_page() {
+        let docs = local_docs();
+        assert_eq!(docs.len(), crate::docs::all().len() - 1);
+        assert!(!docs.iter().any(|f| f.path.ends_with("releases.md")));
+        assert!(docs
+            .iter()
+            .any(|f| f.path == ".seite/docs/getting-started.md"));
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_local_docs(tmp.path()).unwrap();
+        assert!(tmp.path().join(".seite/docs/agent.md").is_file());
     }
 
     fn touch(path: &Path) {
@@ -1713,10 +2249,10 @@ mod tests {
 
     #[test]
     fn interactive_defaults_fall_back_to_all() {
-        assert_eq!(interactive_defaults(&[]), vec![true; 4]);
+        assert_eq!(interactive_defaults(&[]), vec![true; 5]);
         assert_eq!(
             interactive_defaults(&[Agent::Claude, Agent::Cursor]),
-            vec![true, false, false, true]
+            vec![true, false, false, true, false]
         );
     }
 }

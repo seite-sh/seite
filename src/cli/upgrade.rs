@@ -27,10 +27,15 @@ pub struct UpgradeArgs {
     pub check: bool,
 
     /// Change which coding agents the project is set up for (comma-separated:
-    /// claude,codex,opencode,cursor, or all). Adds files for newly selected
+    /// claude,codex,opencode,cursor,gemini, or all). Adds files for newly selected
     /// agents; files of deselected agents are left in place but no longer maintained.
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
+
+    /// Also add the seite MCP server to the selected agents' configs. Without
+    /// it, existing MCP config is left exactly as it is.
+    #[arg(long)]
+    pub mcp: bool,
 }
 
 /// A single upgrade action to present and optionally apply.
@@ -80,6 +85,17 @@ enum UpgradeAction {
         root: PathBuf,
         description: String,
     },
+    /// Delete a seite-owned file or directory that is still exactly as seite
+    /// wrote it (e.g. a skill folded into `/seite`).
+    Remove {
+        path: PathBuf,
+        description: String,
+    },
+    /// Write several files at once (the version-matched `.seite/docs/`).
+    WriteFiles {
+        files: Vec<(PathBuf, String)>,
+        description: String,
+    },
 }
 
 impl UpgradeAction {
@@ -102,7 +118,9 @@ impl UpgradeAction {
             UpgradeAction::StampProjectVersion { description } => {
                 vec![description.clone()]
             }
-            UpgradeAction::MigrateAgentInstructions { description, .. } => {
+            UpgradeAction::MigrateAgentInstructions { description, .. }
+            | UpgradeAction::Remove { description, .. }
+            | UpgradeAction::WriteFiles { description, .. } => {
                 vec![description.clone()]
             }
         }
@@ -115,9 +133,11 @@ impl UpgradeAction {
             | UpgradeAction::Update { path, .. }
             | UpgradeAction::Append { path, .. }
             | UpgradeAction::InjectToml { path, .. } => path == target,
+            UpgradeAction::Remove { path, .. } => path == target,
             UpgradeAction::StampProjectVersion { .. }
             | UpgradeAction::MigrateAgentInstructions { .. }
-            | UpgradeAction::SyncInstructionsBlock { .. } => false,
+            | UpgradeAction::SyncInstructionsBlock { .. }
+            | UpgradeAction::WriteFiles { .. } => false,
         }
     }
 
@@ -168,21 +188,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             check: check_page_meta,
         },
         UpgradeStep {
-            introduced_in: (0, 1, 0),
-            label: "Project instructions MCP documentation",
-            check: check_claude_md_mcp,
-        },
-        UpgradeStep {
-            introduced_in: (0, 1, 4),
-            label: "Landing page builder skill (/landing-page)",
-            check: check_landing_page_skill,
-        },
-        UpgradeStep {
-            introduced_in: (0, 1, 5),
-            label: "Theme builder skill (/theme-builder)",
-            check: check_theme_builder_skill,
-        },
-        UpgradeStep {
             introduced_in: (0, 1, 6),
             label: "Fix deploy workflows (use shell installer instead of cargo install)",
             check: check_deploy_workflows,
@@ -201,11 +206,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             introduced_in: (0, 2, 1),
             label: "Public directory for root-level files",
             check: check_public_dir,
-        },
-        UpgradeStep {
-            introduced_in: (0, 2, 4),
-            label: "Brand identity builder skill (/brand-identity)",
-            check: check_brand_identity_skill,
         },
         UpgradeStep {
             introduced_in: (0, 4, 0),
@@ -251,14 +251,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             introduced_in: (0, 16, 0),
             label: "Private collections + password access guidance (.claude/rules)",
             check: check_private_collections_rule,
-        },
-        UpgradeStep {
-            // Replaces the original (0.1.0) step that wrote `mcpServers` into
-            // .claude/settings.json, which Claude Code never reads. The check
-            // is idempotent, so it is safe for every older project.
-            introduced_in: (0, 20, 0),
-            label: "MCP server for AI tools (.mcp.json + settings migration)",
-            check: check_mcp_server,
         },
     ]
 }
@@ -635,7 +627,10 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
 
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    extend_dedup(&mut actions, check_agent_harness(root, &agents));
+    extend_dedup(
+        &mut actions,
+        check_agent_harness(root, &agents, args.mcp, project_ver),
+    );
     // Turn-end `seite check` hooks, once per agent: merged into (or next to)
     // the actions above, and skipped for agents recorded as done so a hook
     // the user deleted stays deleted.
@@ -769,6 +764,23 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
                 human::success(&format!("Updated {description}"));
             }
         }
+        UpgradeAction::Remove { path, description } => {
+            if path.is_dir() {
+                fs::remove_dir_all(&path)?;
+            } else if path.exists() {
+                fs::remove_file(&path)?;
+            }
+            human::success(&format!("Removed {description}"));
+        }
+        UpgradeAction::WriteFiles { files, description } => {
+            for (path, content) in files {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&path, content)?;
+            }
+            human::success(&format!("Updated {description}"));
+        }
     }
     Ok(())
 }
@@ -806,21 +818,26 @@ fn pretty_json(value: &serde_json::Value) -> String {
     )
 }
 
-/// Configure the seite MCP server the way Claude Code actually loads it.
+/// Keep `.claude/settings.json` (and, with `mcp`, `.mcp.json`) current.
 ///
-/// Claude Code only reads project MCP servers from `.mcp.json`; the
-/// `mcpServers` block older versions wrote into `.claude/settings.json` was
-/// never loaded. This step:
-/// - creates `.mcp.json`, or merges the `seite` server into an existing one
-///   (other servers are preserved);
-/// - moves any legacy `mcpServers` from settings.json into `.mcp.json`
-///   (only when `.mcp.json` can hold them, so nothing is lost);
-/// - pre-approves the server via `enabledMcpjsonServers` and adds the newer
-///   permission rules (`mcp__seite`, `Edit(static/**)`, `Edit(seite.toml)`).
+/// Always: create the settings file when missing, and add the allow rules
+/// introduced after the original template ([`CLAUDE_ALLOWED_TOOLS_UPGRADE`]).
+///
+/// With `mcp` (`seite upgrade --mcp`), also configure the seite MCP server
+/// the way Claude Code loads it: create `.mcp.json` or merge the `seite`
+/// server into it (other servers are kept), move any legacy `mcpServers`
+/// from settings.json into `.mcp.json` (only when `.mcp.json` can hold them),
+/// pre-approve it via `enabledMcpjsonServers`, and allow `mcp__seite`.
+/// Without `mcp`, existing MCP config — including a legacy `mcpServers`
+/// block — is left exactly as it is.
 ///
 /// Malformed JSON files are left untouched. Running it again is a no-op.
-fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
-    use crate::cli::harness::{claude_settings, mcp_server_block, CLAUDE_ALLOWED_TOOLS_UPGRADE};
+///
+/// [`CLAUDE_ALLOWED_TOOLS_UPGRADE`]: harness::CLAUDE_ALLOWED_TOOLS_UPGRADE
+fn check_claude_config(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
+    use crate::cli::harness::{
+        claude_settings, mcp_server_block, CLAUDE_ALLOWED_TOOLS_UPGRADE, CLAUDE_MCP_ALLOW,
+    };
 
     let settings_path = root.join(".claude/settings.json");
     let mcp_path = root.join(".mcp.json");
@@ -842,7 +859,9 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
 
     // --- .mcp.json (first, so legacy servers land there before settings.json
     // drops them) ---
-    let mcp_holds_servers = if !mcp_path.exists() {
+    let mcp_holds_servers = if !mcp {
+        false
+    } else if !mcp_path.exists() {
         let mut servers = legacy_servers.clone();
         servers
             .entry("seite".to_string())
@@ -853,8 +872,8 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
             description: ".mcp.json (seite MCP server for Claude Code)".into(),
         });
         true
-    } else if let Some(mut mcp) = read_json_object(&mcp_path) {
-        let servers = mcp
+    } else if let Some(mut mcp_json) = read_json_object(&mcp_path) {
+        let servers = mcp_json
             .entry("mcpServers".to_string())
             .or_insert_with(|| serde_json::json!({}));
         match servers.as_object_mut() {
@@ -875,7 +894,7 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
                 if !additions.is_empty() {
                     actions.push(UpgradeAction::MergeJson {
                         path: mcp_path,
-                        merged: serde_json::Value::Object(mcp),
+                        merged: serde_json::Value::Object(mcp_json),
                         additions,
                     });
                 }
@@ -891,29 +910,30 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     if !settings_path.exists() {
         actions.push(UpgradeAction::Create {
             path: settings_path,
-            content: pretty_json(&claude_settings()),
-            description: ".claude/settings.json (permissions + MCP server approval)".into(),
+            content: pretty_json(&claude_settings(mcp)),
+            description: ".claude/settings.json (permissions for Claude Code)".into(),
         });
     } else if let Some(mut settings) = settings {
         let mut additions = Vec::new();
 
-        if mcp_holds_servers && settings.remove("mcpServers").is_some() {
-            additions.push(
-                "Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)"
-                    .to_string(),
-            );
-        }
-
-        let enabled = settings
-            .entry("enabledMcpjsonServers".to_string())
-            .or_insert_with(|| serde_json::json!([]));
-        if let Some(list) = enabled.as_array_mut() {
-            if !list.iter().any(|v| v == "seite") {
-                list.push(serde_json::json!("seite"));
+        if mcp {
+            if mcp_holds_servers && settings.remove("mcpServers").is_some() {
                 additions.push(
-                    "Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json"
+                    "Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)"
                         .to_string(),
                 );
+            }
+            let enabled = settings
+                .entry("enabledMcpjsonServers".to_string())
+                .or_insert_with(|| serde_json::json!([]));
+            if let Some(list) = enabled.as_array_mut() {
+                if !list.iter().any(|v| v == "seite") {
+                    list.push(serde_json::json!("seite"));
+                    additions.push(
+                        "Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json"
+                            .to_string(),
+                    );
+                }
             }
         }
 
@@ -925,7 +945,8 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
                 .entry("allow".to_string())
                 .or_insert_with(|| serde_json::json!([]));
             if let Some(allow) = allow.as_array_mut() {
-                for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE {
+                let mcp_rule = mcp.then_some(CLAUDE_MCP_ALLOW);
+                for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE.iter().copied().chain(mcp_rule) {
                     if !allow.iter().any(|v| v == rule) {
                         allow.push(serde_json::json!(rule));
                         additions.push(format!("Allowed {rule} in .claude/settings.json"));
@@ -946,21 +967,67 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
-/// Create or refresh `<dir>/<name>/SKILL.md` for a bundled skill.
+/// Create `.claude/launch.json` (Claude desktop app preview server), or add
+/// the `seite` configuration to an existing one.
+fn check_launch_json(root: &Path) -> Vec<UpgradeAction> {
+    let rel = harness::LAUNCH_JSON_PATH;
+    let path = root.join(rel);
+    if !path.exists() {
+        return vec![UpgradeAction::Create {
+            path,
+            content: pretty_json(&harness::launch_json()),
+            description: format!("{rel} (dev server for the Claude desktop app's preview)"),
+        }];
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        human::warning(&format!(
+            "{rel} is not a JSON object; add the seite dev server to it manually"
+        ));
+        return vec![];
+    };
+    match harness::merge_launch_json(&mut doc) {
+        Ok(true) => vec![UpgradeAction::MergeJson {
+            path,
+            merged: serde_json::Value::Object(doc),
+            additions: vec![format!("Added the seite dev server to {rel}")],
+        }],
+        _ => vec![],
+    }
+}
+
+/// Create or refresh a bundled skill in skills directory `dir`: SKILL.md and
+/// its `reference/*.md` files.
 ///
-/// Skills embed a `# seite-skill-version: N` comment in their YAML frontmatter.
-/// If the existing file has a lower version (or none), the upgrade replaces it
-/// with the bundled version. This lets us ship improved prompts in new releases
-/// without requiring the user to manually diff skill files. A file at the same
-/// or a higher version is left alone.
-fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Option<UpgradeAction> {
-    let content = skill.render(harness::skill_frontmatter_for(dir));
-    check_versioned_file(
-        root,
-        format!("{dir}/{}/SKILL.md", skill.name),
-        content,
-        &format!("/{} command", skill.name),
-    )
+/// SKILL.md embeds a `# seite-skill-version: N` comment in its YAML
+/// frontmatter. If the existing file has a lower version (or none), the
+/// upgrade replaces it — and every reference file — with the bundled version.
+/// This lets us ship improved prompts in new releases without requiring the
+/// user to manually diff skill files. A SKILL.md at the same or a higher
+/// version is left alone; only missing reference files are added then.
+fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Vec<UpgradeAction> {
+    let mut files = harness::skill_files(dir, skill).into_iter();
+    let Some((skill_md, content)) = files.next() else {
+        return vec![];
+    };
+    let main = check_versioned_file(root, skill_md, content, &format!("/{} skill", skill.name));
+    let replace_all = main.is_some();
+    let mut actions: Vec<UpgradeAction> = main.into_iter().collect();
+    let references: Vec<(PathBuf, String)> = files
+        .map(|(rel, content)| (root.join(rel), content))
+        .filter(|(path, _)| replace_all || !path.exists())
+        .collect();
+    if !references.is_empty() {
+        actions.push(UpgradeAction::WriteFiles {
+            description: format!(
+                "{dir}/{}/reference/ ({} file{})",
+                skill.name,
+                references.len(),
+                if references.len() == 1 { "" } else { "s" }
+            ),
+            files: references,
+        });
+    }
+    actions
 }
 
 /// Create `rel`, or replace it when its `# seite-skill-version` is older than
@@ -994,8 +1061,9 @@ fn check_versioned_file(
     })
 }
 
-/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`) for the
-/// selected agents, created or refreshed by version like skills.
+/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`, Gemini
+/// CLI's `.gemini/commands/seite.toml`) for the selected agents, created or
+/// refreshed by version like skills.
 fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     harness::command_files(agents, SiteFeatures::detect(root))
         .into_iter()
@@ -1005,55 +1073,158 @@ fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
         .collect()
 }
 
-/// A bundled Claude Code skill by name, as an upgrade action.
-fn check_claude_skill(root: &Path, name: &str) -> Vec<UpgradeAction> {
-    harness::skill(name)
-        .and_then(|skill| check_skill(root, harness::CLAUDE_SKILLS_DIR, skill))
-        .into_iter()
+// ---------------------------------------------------------------------------
+// Skills and rules folded into `/seite` (0.21)
+// ---------------------------------------------------------------------------
+
+/// SHA-256 of the body (everything after the YAML frontmatter, CRLF→LF,
+/// trimmed) of every version seite ever bundled of the skills and the rule
+/// that 0.21 folded into the `seite` skill. Comparing bodies rather than
+/// whole files makes one hash cover every agent's rendering (Claude and
+/// portable skill frontmatter, Claude `paths:` and Cursor MDC rule
+/// frontmatter). Edge case: a copy whose user only edited the frontmatter
+/// counts as unmodified.
+///
+/// Recompute from history with `git log --follow -- src/scaffold/<file>` and
+/// `git show <commit>:src/scaffold/<file>` (files removed in 0.21):
+const LEGACY_BODY_HASHES: &[(&str, &[&str])] = &[
+    (
+        // skill-theme-builder.md @ 253aba7, b5e3876, 80f0df5
+        "theme-builder",
+        &[
+            "4c3f8ce70b70ed1b95b7767d379135babe3ba259cc5f23ac5cca8314c38d070d",
+            "d2ece8146129ded7b44f71629a9739f3a508c7479642b18c88d1349641e8b16b",
+            "9a36807cc0ea01fa6fc59d6383cc826e78e407e80ee2af132f7a4ec7c4c0f88d",
+        ],
+    ),
+    (
+        // skill-brand-identity.md @ 3baa808
+        "brand-identity",
+        &["e6675d9e01b2af4742b08182fed94309f0d9e9506685a5d627a92a195578ffbe"],
+    ),
+    (
+        // skill-landing-page.md @ b40e871, b5e3876, 257718f
+        "landing-page",
+        &[
+            "fc9960ae709c23e531e3eb158cd88bdfeeb783f2f72cd8f35914c067cfa6c062",
+            "979779305a30c237b0d76afb7a2ba8ed9812fa2f31b01dbd36d0b8b18229275d",
+            "464be45ca2bffbce98929b8e1339bd76fb1c38fe262d5f0903154f396e086cf0",
+        ],
+    ),
+    (
+        // design-prompts.md @ bf32552, f2235fa
+        "design-prompts",
+        &[
+            "9db95f6ed5675195fff0dd93477aa466b22f886fa38f84a60558a86b389f7463",
+            "3a2197dc5d93ef2e89bb90a2c8f0e12269810c3c6f8aff35f256de91dd30ccb7",
+        ],
+    ),
+];
+
+/// Hex SHA-256 of `content`'s body (see [`LEGACY_BODY_HASHES`]).
+fn legacy_body_hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let text = content.replace("\r\n", "\n");
+    let body = text
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.find("\n---\n").map(|i| &rest[i + 5..]))
+        .unwrap_or(&text);
+    Sha256::digest(body.trim().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
         .collect()
 }
 
-/// Ensure `.claude/skills/landing-page/SKILL.md` exists and is up-to-date when
-/// the project has a pages collection.
-///
-/// Also handles migration from the old `homepage` skill name to `landing-page`.
-fn check_landing_page_skill(root: &Path) -> Vec<UpgradeAction> {
-    // Only relevant if the project has a pages collection
-    if !SiteFeatures::detect(root).pages {
-        return vec![];
-    }
+/// Whether `content` is an unmodified bundled version of `name`.
+fn is_unmodified_legacy(name: &str, content: &str) -> bool {
+    let hash = legacy_body_hash(content);
+    LEGACY_BODY_HASHES
+        .iter()
+        .filter(|(n, _)| *n == name)
+        .any(|(_, hashes)| hashes.contains(&hash.as_str()))
+}
 
-    // An old homepage skill at the current version stands in for landing-page.
-    let skill_path = root.join(".claude/skills/landing-page/SKILL.md");
-    let old_skill_path = root.join(".claude/skills/homepage/SKILL.md");
-    if !skill_path.exists() && old_skill_path.exists() {
-        let bundled_version =
-            extract_skill_version(harness::skill("landing-page").map_or("", |s| s.content));
-        let existing = fs::read_to_string(&old_skill_path).unwrap_or_default();
-        if extract_skill_version(&existing) >= bundled_version {
-            return vec![];
+/// Remove the `theme-builder`, `brand-identity`, and `landing-page` skills
+/// and the `design-prompts` rule seite wrote before 0.21 — only copies still
+/// exactly as seite shipped them. Modified copies stay, with a notice that
+/// `/seite` now covers them.
+fn check_legacy_skills(root: &Path) -> Vec<UpgradeAction> {
+    let mut actions = Vec::new();
+    let mut kept = Vec::new();
+    for dir in [harness::CLAUDE_SKILLS_DIR, harness::SHARED_SKILLS_DIR] {
+        for name in ["theme-builder", "brand-identity", "landing-page"] {
+            let rel = format!("{dir}/{name}");
+            let skill_dir = root.join(&rel);
+            let Ok(content) = fs::read_to_string(skill_dir.join("SKILL.md")) else {
+                continue;
+            };
+            let only_skill_md = fs::read_dir(&skill_dir)
+                .map(|entries| entries.count() == 1)
+                .unwrap_or(false);
+            if only_skill_md && is_unmodified_legacy(name, &content) {
+                actions.push(UpgradeAction::Remove {
+                    path: skill_dir,
+                    description: format!("{rel}/ (now part of /seite)"),
+                });
+            } else {
+                kept.push(rel);
+            }
         }
     }
-
-    check_claude_skill(root, "landing-page")
+    for (dir, ext) in [
+        (".claude/rules", "md"),
+        (".cursor/rules", "mdc"),
+        (".agents/rules", "md"),
+    ] {
+        let rel = format!("{dir}/design-prompts.{ext}");
+        let path = root.join(&rel);
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if is_unmodified_legacy("design-prompts", &content) {
+            actions.push(UpgradeAction::Remove {
+                path,
+                description: format!("{rel} (replaced by /seite theme)"),
+            });
+        } else {
+            kept.push(rel);
+        }
+    }
+    if !kept.is_empty() {
+        human::info(&format!(
+            "Kept {} (edited since seite wrote it); `/seite theme`, `/seite brand`, and `/seite landing` now cover these, so delete them when you no longer need them.",
+            kept.join(", ")
+        ));
+    }
+    actions
 }
 
-/// Ensure `.claude/skills/theme-builder/SKILL.md` exists and is up-to-date.
-///
-/// Unlike the landing-page skill, the theme builder is unconditional — every
-/// site benefits from interactive theme creation.
-fn check_theme_builder_skill(root: &Path) -> Vec<UpgradeAction> {
-    check_claude_skill(root, "theme-builder")
+/// Write the embedded docs to `.seite/docs/`: missing files always, changed
+/// files when the project was set up by an older seite.
+fn check_local_docs(root: &Path, project_ver: (u64, u64, u64)) -> Vec<UpgradeAction> {
+    let refresh = project_ver < meta::binary_version();
+    let files: Vec<(PathBuf, String)> = harness::local_docs()
+        .into_iter()
+        .map(|f| (root.join(&f.path), f.content))
+        .filter(|(path, content)| match fs::read_to_string(path) {
+            Ok(existing) => refresh && existing != *content,
+            Err(_) => true,
+        })
+        .collect();
+    if files.is_empty() {
+        return vec![];
+    }
+    vec![UpgradeAction::WriteFiles {
+        description: format!(
+            "{}/ ({} doc page{} for seite {})",
+            harness::LOCAL_DOCS_DIR,
+            files.len(),
+            if files.len() == 1 { "" } else { "s" },
+            meta::format_version(meta::binary_version())
+        ),
+        files,
+    }]
 }
-
-/// Ensure `.claude/skills/brand-identity/SKILL.md` exists and is up-to-date.
-///
-/// Like the theme builder, this is unconditional — every site benefits from
-/// brand identity creation (logo, color palette, favicon).
-fn check_brand_identity_skill(root: &Path) -> Vec<UpgradeAction> {
-    check_claude_skill(root, "brand-identity")
-}
-
 /// Extract the `# seite-skill-version: N` value from a SKILL.md file.
 /// Returns 0 if not found.
 fn extract_skill_version(content: &str) -> u32 {
@@ -1122,56 +1293,6 @@ fn check_deploy_workflows(root: &Path) -> Vec<UpgradeAction> {
 /// via version.txt). Kept as a no-op to avoid breaking the upgrade step chain.
 fn check_deploy_version_pinning(_root: &Path) -> Vec<UpgradeAction> {
     vec![]
-}
-
-/// Ensure the project instructions have an MCP server section.
-fn check_claude_md_mcp(root: &Path) -> Vec<UpgradeAction> {
-    let path = project_instructions_path(root);
-    if !path.exists() {
-        return vec![];
-    }
-
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    // Already has MCP section — nothing to do
-    if content.contains("## MCP Server") {
-        return vec![];
-    }
-
-    let section = r#"
-
-## MCP Server
-
-This project includes an MCP server that AI tools can connect to for structured
-access to site content, documentation, themes, and build tools.
-
-The server is declared in `.mcp.json` (and pre-approved in
-`.claude/settings.json`). Claude Code starts it when it opens this project;
-the first time, it may ask you to approve the project's MCP server.
-No API keys required.
-
-**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
-`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
-`seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
-`seite_lookup_docs`
-
-**Available resources:** `seite://docs/*` (seite documentation),
-`seite://content/*` (site content), `seite://themes` (themes),
-`seite://config` (site configuration), `seite://mcp-config` (MCP settings)
-
-The MCP server provides typed, structured access to your site — AI tools work
-with seite concepts (collections, content items, themes) rather than parsing
-raw files.
-"#;
-
-    vec![UpgradeAction::Append {
-        path,
-        content: section.to_string(),
-        description: "Project instructions (added MCP Server section)".into(),
-    }]
 }
 
 /// Ensure `public/` directory exists for root-level files.
@@ -1630,9 +1751,9 @@ impl InstructionsBlock {
     }
 }
 
-/// Keep AGENTS.md's per-agent MCP table and rules index in sync with the
-/// agent selection.
-fn check_instructions_blocks(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+/// Keep AGENTS.md's per-agent setup table and rules index in sync with the
+/// agent selection (the table shows MCP config when `mcp`).
+fn check_instructions_blocks(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeAction> {
     let path = project_instructions_path(root);
     let Ok(content) = fs::read_to_string(&path) else {
         return vec![];
@@ -1642,11 +1763,11 @@ fn check_instructions_blocks(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction
         (
             InstructionsBlock {
                 id: harness::MCP_SETUP_BLOCK,
-                body: harness::mcp_setup_table(agents),
-                heading: "## MCP Setup per Agent",
+                body: harness::mcp_setup_table(agents, mcp),
+                heading: "## Agent setup",
                 skip_if_contains: None,
             },
-            "Project instructions (per-agent MCP setup table)",
+            "Project instructions (per-agent setup table)",
         ),
         (
             InstructionsBlock {
@@ -1707,14 +1828,14 @@ fn check_mcp_servers_json(root: &Path, rel: &str, agent: &str) -> Vec<UpgradeAct
 }
 
 /// Create `.cursor/cli.json`, or add seite's allow rules to an existing one
-/// (other rules, and any deny list, are kept).
-fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
+/// (other rules, and any deny list, are kept). `Mcp(seite:*)` only with `mcp`.
+fn check_cursor_cli_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
     let rel = ".cursor/cli.json";
     let path = root.join(rel);
     if !path.exists() {
         return vec![UpgradeAction::Create {
             path,
-            content: harness::pretty_json(&harness::cursor_cli_json()),
+            content: harness::pretty_json(&harness::cursor_cli_json(mcp)),
             description: format!("{rel} (Cursor CLI permissions for seite)"),
         }];
     }
@@ -1737,7 +1858,11 @@ fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
         return vec![];
     };
     let mut additions = Vec::new();
-    for rule in harness::CURSOR_ALLOW {
+    let mcp_rule = mcp.then_some(harness::CURSOR_MCP_ALLOW);
+    for rule in mcp_rule
+        .into_iter()
+        .chain(harness::CURSOR_ALLOW.iter().copied())
+    {
         if !allow.iter().any(|v| v == rule) {
             allow.push(serde_json::json!(rule));
             additions.push(format!("Added {rule} to {rel}"));
@@ -1753,41 +1878,43 @@ fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
     }]
 }
 
-/// Create `opencode.json`, or merge into an existing one: add `mcp.seite` if
-/// missing, and the permission block only when there's no `permission` key.
-/// Every other key is kept.
-fn check_opencode_json(root: &Path) -> Vec<UpgradeAction> {
+/// Create `opencode.json`, or merge into an existing one: the permission
+/// block only when there's no `permission` key, and (with `mcp`) `mcp.seite`
+/// if missing. Every other key is kept.
+fn check_opencode_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
     let path = root.join("opencode.json");
     if !path.exists() {
         if root.join("opencode.jsonc").exists() {
             human::warning(
-                "opencode.jsonc exists; add the seite MCP server to it manually (see seite.sh/docs/mcp)",
+                "opencode.jsonc exists; add seite's permissions to it manually (see seite.sh/docs/agent)",
             );
             return vec![];
         }
         return vec![UpgradeAction::Create {
             path,
-            content: harness::pretty_json(&harness::opencode_json()),
-            description: "opencode.json (seite MCP server + permissions for OpenCode)".into(),
+            content: harness::pretty_json(&harness::opencode_json(mcp)),
+            description: "opencode.json (permissions for OpenCode)".into(),
         }];
     }
     let Some(mut json) = read_json_object(&path) else {
         human::warning(
-            "opencode.json isn't plain JSON (comments?); add the seite MCP server to it manually",
+            "opencode.json isn't plain JSON (comments?); add seite's permissions to it manually",
         );
         return vec![];
     };
     let mut additions = Vec::new();
-    let mcp = json
-        .entry("mcp".to_string())
-        .or_insert_with(|| serde_json::json!({}));
-    if let Some(mcp) = mcp.as_object_mut() {
-        if !mcp.contains_key(harness::MCP_SERVER) {
-            mcp.insert(
-                harness::MCP_SERVER.to_string(),
-                harness::opencode_mcp_entry(),
-            );
-            additions.push("Added mcp.seite to opencode.json".to_string());
+    if mcp {
+        let mcp_block = json
+            .entry("mcp".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(mcp_block) = mcp_block.as_object_mut() {
+            if !mcp_block.contains_key(harness::MCP_SERVER) {
+                mcp_block.insert(
+                    harness::MCP_SERVER.to_string(),
+                    harness::opencode_mcp_entry(),
+                );
+                additions.push("Added mcp.seite to opencode.json".to_string());
+            }
         }
     }
     if !json.contains_key("permission") {
@@ -1805,7 +1932,7 @@ fn check_opencode_json(root: &Path) -> Vec<UpgradeAction> {
 }
 
 /// Create `.codex/config.toml`, or add `[mcp_servers.seite]` to an existing
-/// one with a comment-preserving edit.
+/// one with a comment-preserving edit (only with `--mcp`).
 fn check_codex_config(root: &Path) -> Vec<UpgradeAction> {
     let rel = ".codex/config.toml";
     let path = root.join(rel);
@@ -1835,37 +1962,50 @@ fn check_codex_config(root: &Path) -> Vec<UpgradeAction> {
     }
 }
 
-/// Create the CLAUDE.md `@AGENTS.md` shim when Claude Code is selected for a
-/// project that doesn't have one.
-fn check_claude_shim(root: &Path) -> Vec<UpgradeAction> {
-    let claude = root.join("CLAUDE.md");
-    if claude.exists() || !root.join("AGENTS.md").exists() {
+/// Create an instructions shim (`CLAUDE.md`, `GEMINI.md`) that imports
+/// AGENTS.md, for an agent that needs one, when the project has none.
+fn check_instructions_shim(root: &Path, agent: Agent) -> Vec<UpgradeAction> {
+    let Some(name) = agent.spec().instructions_shim else {
+        return vec![];
+    };
+    let shim = root.join(name);
+    if shim.exists() || !root.join("AGENTS.md").exists() {
         return vec![];
     }
     vec![UpgradeAction::Create {
-        path: claude,
+        path: shim,
         content: crate::cli::agent_instructions::CLAUDE_SHIM.to_string(),
-        description: "CLAUDE.md (@AGENTS.md import for Claude Code)".into(),
+        description: format!("{name} (@AGENTS.md import for {})", agent.label()),
     }]
 }
 
 /// Every harness file the selected agents need, merged into what exists.
-fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+/// MCP config is only added or changed with `mcp`.
+fn check_agent_harness(
+    root: &Path,
+    agents: &[Agent],
+    mcp: bool,
+    project_ver: (u64, u64, u64),
+) -> Vec<UpgradeAction> {
     let features = SiteFeatures::detect(root);
     let mut actions = Vec::new();
 
+    for &agent in agents {
+        actions.extend(check_instructions_shim(root, agent));
+    }
     if agents.contains(&Agent::Claude) {
-        actions.extend(check_mcp_server(root));
+        actions.extend(check_claude_config(root, mcp));
         actions.extend(check_claude_rules(root));
-        actions.extend(check_landing_page_skill(root));
-        actions.extend(check_theme_builder_skill(root));
-        actions.extend(check_brand_identity_skill(root));
-        actions.extend(check_claude_skill(root, "seite"));
-        actions.extend(check_claude_shim(root));
+        actions.extend(check_launch_json(root));
+        for skill in harness::skills(features) {
+            actions.extend(check_skill(root, harness::CLAUDE_SKILLS_DIR, skill));
+        }
     }
     if agents.contains(&Agent::Cursor) {
-        actions.extend(check_mcp_servers_json(root, ".cursor/mcp.json", "Cursor"));
-        actions.extend(check_cursor_cli_json(root));
+        if mcp {
+            actions.extend(check_mcp_servers_json(root, ".cursor/mcp.json", "Cursor"));
+        }
+        actions.extend(check_cursor_cli_json(root, mcp));
         actions.extend(missing_rules(
             root,
             ".cursor/rules",
@@ -1873,18 +2013,24 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
             harness::cursor_rule,
         ));
     }
-    if agents.contains(&Agent::Codex) {
+    if agents.contains(&Agent::Codex) && mcp {
         actions.extend(check_codex_config(root));
     }
     if agents.contains(&Agent::Opencode) {
-        actions.extend(check_opencode_json(root));
+        actions.extend(check_opencode_json(root, mcp));
+    }
+    if agents.contains(&Agent::Gemini) && mcp {
+        actions.extend(check_mcp_servers_json(
+            root,
+            ".gemini/settings.json",
+            "Gemini CLI",
+        ));
     }
     actions.extend(check_command_files(root, agents));
     if harness::uses_shared_skills(agents) {
-        actions.extend(
-            harness::skills(features)
-                .filter_map(|skill| check_skill(root, harness::SHARED_SKILLS_DIR, skill)),
-        );
+        for skill in harness::skills(features) {
+            actions.extend(check_skill(root, harness::SHARED_SKILLS_DIR, skill));
+        }
     }
     if harness::uses_shared_rules(agents) {
         actions.extend(missing_rules(
@@ -1894,15 +2040,21 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
             harness::claude_rule,
         ));
     }
-    actions.extend(check_instructions_blocks(root, agents));
+    actions.extend(check_legacy_skills(root));
+    actions.extend(check_local_docs(root, project_ver));
+    let show_mcp = mcp || harness::mcp_configured(root, agents);
+    actions.extend(check_instructions_blocks(root, agents, show_mcp));
     actions
 }
 
-/// Add the turn-end `seite check` hook for each selected agent that isn't in
-/// `installed` (the ids recorded in `.seite/config.json`). Returns the new
-/// record: `installed` plus every agent whose hook is now in place (added
-/// here or already present). Agents whose config can't be merged are left
-/// out so a later upgrade retries them.
+/// Hooks for each selected agent. Agents not in `installed` (the ids
+/// recorded in `.seite/config.json`) get both tiers. Recorded agents whose
+/// stop hook is still in place get what newer seite versions added (the
+/// post-edit tier, the missing-binary wrapper, the newer OpenCode plugin);
+/// recorded agents without it (the user deleted it or ran `seite hooks off`)
+/// are left alone. Returns the new record: `installed` plus every agent whose
+/// hooks are now in place. Agents whose config can't be merged are left out
+/// so a later upgrade retries them.
 fn add_stop_hooks(
     root: &Path,
     agents: &[Agent],
@@ -1912,6 +2064,7 @@ fn add_stop_hooks(
     let mut record = installed.to_vec();
     for &agent in agents {
         if installed.iter().any(|id| id == agent.id()) {
+            refresh_hooks(root, agent, actions);
             continue;
         }
         if add_stop_hook(root, agent, actions) {
@@ -1921,20 +2074,42 @@ fn add_stop_hooks(
     record
 }
 
-/// Queue `agent`'s stop hook: merged into a pending action on the same file
-/// (e.g. the `.claude/settings.json` the MCP step creates), else created or
-/// merged on disk. `false` when the file can't be merged safely.
-fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) -> bool {
-    use crate::cli::harness_hooks::{hook_path, merge_hook, new_hook_file};
+/// Bring an installed seite hook up to date (see [`add_stop_hooks`]).
+fn refresh_hooks(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) {
+    use crate::cli::harness_hooks::{hook_path, installed_hooks, is_outdated_opencode_plugin};
 
     let rel = hook_path(agent);
     let path = root.join(rel);
-    let added = format!("Added the seite check stop hook to {rel}");
+    if agent == Agent::Opencode {
+        if fs::read_to_string(&path).is_ok_and(|text| is_outdated_opencode_plugin(&text)) {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: crate::cli::harness_hooks::opencode_plugin().to_string(),
+                description: format!("{rel} (adds the after-edit check)"),
+            });
+        }
+        return;
+    }
+    let (stop, _) = installed_hooks(root, agent);
+    if stop {
+        add_stop_hook(root, agent, actions);
+    }
+}
+
+/// Queue `agent`'s hooks: merged into a pending action on the same file
+/// (e.g. the `.claude/settings.json` the settings step creates), else created
+/// or merged on disk. `false` when the file can't be merged safely.
+fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) -> bool {
+    use crate::cli::harness_hooks::{hook_command, hook_path, merge_hook, new_hook_file, HookKind};
+
+    let rel = hook_path(agent);
+    let path = root.join(rel);
+    let added = format!("Added the seite check hooks to {rel}");
     let unmergeable = || {
         human::warning(&format!(
-            "{rel} can't be merged automatically; add a {} stop hook running `{}` by hand",
+            "{rel} can't be merged automatically; add a {} hook running `{}` by hand",
             agent.label(),
-            crate::cli::harness_hooks::hook_command(agent)
+            hook_command(agent, HookKind::Stop)
         ));
         false
     };
@@ -1956,7 +2131,7 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
                     Ok(changed) => {
                         if changed {
                             *content = pretty_json(&serde_json::Value::Object(doc));
-                            description.push_str(" + seite check stop hook");
+                            description.push_str(" + seite check hooks");
                         }
                         true
                     }
@@ -1982,7 +2157,7 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
         actions.push(UpgradeAction::Create {
             path,
             content: new_hook_file(agent),
-            description: format!("{rel} (seite check stop hook for {})", agent.label()),
+            description: format!("{rel} (seite check hooks for {})", agent.label()),
         });
         return true;
     }
@@ -2006,7 +2181,6 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
         Err(_) => unmergeable(),
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2090,44 +2264,6 @@ mod tests {
     }
 
     #[test]
-    fn test_check_claude_md_mcp_no_file() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_claude_md_mcp_already_has_section() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join("CLAUDE.md"),
-            "# Project\n\n## MCP Server\nExists",
-        )
-        .unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_claude_md_mcp_needs_section() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(tmp.path().join("CLAUDE.md"), "# Project\nSome content").unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Append {
-                description,
-                content,
-                ..
-            } => {
-                assert!(description.contains("MCP Server"));
-                assert!(content.contains("MCP Server"));
-            }
-            _ => panic!("expected Append action"),
-        }
-    }
-
-    #[test]
     fn test_check_public_dir_exists() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::create_dir(tmp.path().join("public")).unwrap();
@@ -2187,9 +2323,9 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_no_claude_dir() {
+    fn test_check_claude_config_mcp_no_claude_dir() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         assert_eq!(actions.len(), 2);
         match (&actions[0], &actions[1]) {
             (
@@ -2247,7 +2383,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_migrates_legacy_settings() {
+    fn test_check_claude_config_mcp_migrates_legacy_settings() {
         let tmp = tempfile::TempDir::new().unwrap();
         write_settings(
             tmp.path(),
@@ -2259,7 +2395,7 @@ mod tests {
                 }
             }),
         );
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         let descriptions: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
         assert!(descriptions.iter().any(|d| d.contains(".mcp.json")));
         assert!(descriptions
@@ -2295,11 +2431,11 @@ mod tests {
         assert_eq!(settings["permissions"]["deny"][0], "Read(.env)");
 
         // Idempotent: a second run has nothing to do.
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_merges_into_existing_mcp_json() {
+    fn test_check_claude_config_mcp_merges_into_existing_mcp_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
@@ -2310,22 +2446,22 @@ mod tests {
             tmp.path(),
             serde_json::json!({ "permissions": { "allow": ["Read"] } }),
         );
-        apply_json_actions(check_mcp_server(tmp.path()));
+        apply_json_actions(check_claude_config(tmp.path(), true));
         let mcp = read_json(&tmp.path().join(".mcp.json"));
         assert_eq!(mcp["mcpServers"]["mine"]["command"], "mine");
         assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_keeps_legacy_servers_if_mcp_json_malformed() {
+    fn test_check_claude_config_mcp_keeps_legacy_servers_if_mcp_json_malformed() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join(".mcp.json"), "not json").unwrap();
         write_settings(
             tmp.path(),
             serde_json::json!({ "mcpServers": { "other": { "command": "other" } } }),
         );
-        apply_json_actions(check_mcp_server(tmp.path()));
+        apply_json_actions(check_claude_config(tmp.path(), true));
         assert_eq!(
             fs::read_to_string(tmp.path().join(".mcp.json")).unwrap(),
             "not json"
@@ -2335,19 +2471,19 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_fresh_init_is_noop() {
+    fn test_check_claude_config_mcp_fresh_init_is_noop() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
             serde_json::to_string_pretty(&crate::cli::harness::mcp_json()).unwrap(),
         )
         .unwrap();
-        write_settings(tmp.path(), crate::cli::harness::claude_settings());
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        write_settings(tmp.path(), crate::cli::harness::claude_settings(true));
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_malformed_json() {
+    fn test_check_claude_config_mcp_malformed_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
@@ -2357,108 +2493,8 @@ mod tests {
         let claude_dir = tmp.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(claude_dir.join("settings.json"), "not json").unwrap();
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         assert!(actions.is_empty()); // malformed JSON, don't touch
-    }
-
-    #[test]
-    fn test_check_landing_page_skill_no_pages_collection() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        // seite.toml without pages collection
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"http://localhost\"\nlanguage = \"en\"\n\n[[collections]]\nname = \"posts\"\n",
-        )
-        .unwrap();
-        let actions = check_landing_page_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_landing_page_skill_with_pages() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[site]\ntitle = \"Test\"\n\n[[collections]]\nname = \"pages\"\n",
-        )
-        .unwrap();
-        let actions = check_landing_page_skill(tmp.path());
-        assert!(!actions.is_empty());
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("landing-page"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_theme_builder_skill_missing() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_theme_builder_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("theme-builder"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_theme_builder_skill_up_to_date() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/theme-builder");
-        fs::create_dir_all(&skill_dir).unwrap();
-        // Write the bundled version so it's considered up-to-date
-        let bundled = include_str!("../scaffold/skill-theme-builder.md");
-        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
-        let actions = check_theme_builder_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_missing() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("brand-identity"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_up_to_date() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir).unwrap();
-        let bundled = include_str!("../scaffold/skill-brand-identity.md");
-        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_outdated() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\n# seite-skill-version: 0\n---\nOld content",
-        )
-        .unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("updated v0"));
-            }
-            _ => panic!("expected Create action"),
-        }
     }
 
     #[test]
@@ -2943,24 +2979,24 @@ mod tests {
             "{\n  // comment\n  \"model\": \"x\"\n}\n",
         )
         .unwrap();
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
 
         // opencode.jsonc is never shadowed by a new opencode.json
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("opencode.jsonc"), "{}").unwrap();
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
     }
 
     #[test]
     fn test_check_opencode_json_merges_and_is_idempotent() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("opencode.json"), r#"{"theme":"dark"}"#).unwrap();
-        apply_json_actions(check_opencode_json(tmp.path()));
+        apply_json_actions(check_opencode_json(tmp.path(), true));
         let json = read_json(&tmp.path().join("opencode.json"));
         assert_eq!(json["theme"], "dark");
         assert_eq!(json["mcp"]["seite"]["type"], "local");
         assert_eq!(json["permission"]["bash"]["*"], "ask");
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
     }
 
     #[test]
@@ -2980,20 +3016,20 @@ mod tests {
             r#"{"permissions":{"allow":["Shell(git)"],"deny":["Shell(rm)"]},"editor":{"vimMode":true}}"#,
         )
         .unwrap();
-        apply_json_actions(check_cursor_cli_json(tmp.path()));
+        apply_json_actions(check_cursor_cli_json(tmp.path(), true));
         let json = read_json(&tmp.path().join(".cursor/cli.json"));
         let allow = json["permissions"]["allow"].as_array().unwrap();
         assert_eq!(allow[0], "Shell(git)");
         assert!(allow.iter().any(|v| v == "Mcp(seite:*)"));
         assert_eq!(json["permissions"]["deny"][0], "Shell(rm)");
         assert_eq!(json["editor"]["vimMode"], true);
-        assert!(check_cursor_cli_json(tmp.path()).is_empty());
+        assert!(check_cursor_cli_json(tmp.path(), true).is_empty());
     }
 
     #[test]
     fn test_check_cursor_cli_json_creates_missing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_cursor_cli_json(tmp.path());
+        let actions = check_cursor_cli_json(tmp.path(), true);
         assert!(matches!(actions.as_slice(), [UpgradeAction::Create { .. }]));
     }
 
@@ -3043,7 +3079,7 @@ mod tests {
             tmp.path(),
             serde_json::json!({ "permissions": { "allow": ["Read"] } }),
         );
-        let mut actions = check_mcp_server(tmp.path());
+        let mut actions = check_claude_config(tmp.path(), true);
         let before = actions.len();
         let record = add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
         assert_eq!(record, vec!["claude".to_string()]);
@@ -3051,7 +3087,13 @@ mod tests {
         assert_eq!(actions.len(), before);
         apply_json_actions(actions);
         let settings = read_json(&tmp.path().join(".claude/settings.json"));
-        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        assert_eq!(
+            stop_command(&settings),
+            crate::cli::harness_hooks::hook_command(
+                Agent::Claude,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
+        );
         let allow = settings["permissions"]["allow"].as_array().unwrap();
         assert!(allow.iter().any(|v| v == "mcp__seite"), "{settings}");
         assert_eq!(
@@ -3063,18 +3105,22 @@ mod tests {
     #[test]
     fn test_add_stop_hooks_merges_into_pending_settings_create() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let mut actions = check_mcp_server(tmp.path());
+        let mut actions = check_claude_config(tmp.path(), true);
         add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
         let described: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
         assert!(
-            described
-                .iter()
-                .any(|d| d.contains("seite check stop hook")),
+            described.iter().any(|d| d.contains("seite check hooks")),
             "{described:?}"
         );
         apply_json_actions(actions);
         let settings = read_json(&tmp.path().join(".claude/settings.json"));
-        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        assert_eq!(
+            stop_command(&settings),
+            crate::cli::harness_hooks::hook_command(
+                Agent::Claude,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
+        );
         assert!(settings["enabledMcpjsonServers"].is_array());
     }
 
@@ -3108,7 +3154,10 @@ mod tests {
         assert_eq!(hooks["hooks"]["afterFileEdit"][0]["command"], "fmt");
         assert_eq!(
             hooks["hooks"]["stop"][0]["command"],
-            "seite check --hook cursor"
+            crate::cli::harness_hooks::hook_command(
+                Agent::Cursor,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
         );
 
         // Already present: recorded without a change.
@@ -3116,5 +3165,62 @@ mod tests {
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
         assert!(actions.is_empty());
         assert_eq!(record, vec!["cursor".to_string()]);
+    }
+
+    #[test]
+    fn test_legacy_body_hash_matches_every_rendering() {
+        let theme_builder = include_str!("../../tests/fixtures/legacy-skills/theme-builder-v2.md");
+        let design = include_str!("../../tests/fixtures/legacy-skills/design-prompts.md");
+        assert!(is_unmodified_legacy("theme-builder", theme_builder));
+        // Portable vs Claude frontmatter, CRLF line endings: same body.
+        let body = theme_builder.split_once("\n---\n").unwrap().1;
+        let other_fm = format!("---\nname: theme-builder\ndescription: x\n---\n{body}");
+        assert!(is_unmodified_legacy("theme-builder", &other_fm));
+        assert!(is_unmodified_legacy(
+            "theme-builder",
+            &theme_builder.replace('\n', "\r\n")
+        ));
+        // Rules: Claude `paths:` and Cursor MDC frontmatter.
+        assert!(is_unmodified_legacy(
+            "design-prompts",
+            &format!("---\npaths:\n  - \"templates/**\"\n---\n{design}")
+        ));
+        assert!(is_unmodified_legacy(
+            "design-prompts",
+            &format!("---\ndescription: \"d\"\nglobs: \"templates/**\"\nalwaysApply: false\n---\n{design}")
+        ));
+        // Edited, or the wrong name: not ours to delete.
+        assert!(!is_unmodified_legacy(
+            "theme-builder",
+            &theme_builder.replace("Phase 1", "Step 1")
+        ));
+        assert!(!is_unmodified_legacy("brand-identity", theme_builder));
+        for (_, hashes) in LEGACY_BODY_HASHES {
+            assert!(hashes.iter().all(|h| h.len() == 64));
+        }
+    }
+
+    #[test]
+    fn test_check_claude_config_without_mcp_leaves_mcp_alone() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({
+                "permissions": { "allow": ["Read"] },
+                "mcpServers": { "seite": { "command": "seite", "args": ["mcp"] } }
+            }),
+        );
+        let actions = check_claude_config(tmp.path(), false);
+        assert!(actions
+            .iter()
+            .all(|a| a.replaced_path() != Some(tmp.path().join(".mcp.json").as_path())));
+        apply_json_actions(actions);
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert!(settings.get("mcpServers").is_some(), "legacy block kept");
+        assert!(settings.get("enabledMcpjsonServers").is_none());
+        let allow = settings["permissions"]["allow"].as_array().unwrap();
+        assert!(!allow.iter().any(|v| v == "mcp__seite"));
+        assert!(allow.iter().any(|v| v == "Bash(seite context)"));
+        assert!(!tmp.path().join(".mcp.json").exists());
     }
 }

@@ -1,26 +1,42 @@
-//! Turn-end ("stop") hooks that run `seite check` inside coding agents.
+//! Hooks that run `seite check` inside coding agents, in two tiers:
 //!
-//! When an agent finishes its turn in a seite site, the hook runs
-//! `seite check --hook <agent>`. If the site has **errors** (warnings never
-//! block), the hook hands the compiler-style diagnostics back to the agent in
-//! that harness's protocol so it fixes them before stopping. A clean site, a
-//! directory without `seite.toml`, and any internal failure all pass silently:
-//! a broken hook must never break the agent session.
+//! - **post-edit**: after the agent writes or edits a file, the hook runs
+//!   `seite check --hook <agent> --post-edit`, which checks only the edited
+//!   file(s) (config, frontmatter, shortcodes, template syntax, data files;
+//!   no render) and hands errors back right away.
+//! - **stop**: when the agent finishes its turn, `seite check --hook <agent>`
+//!   checks the whole site and hands errors back so the agent fixes them
+//!   before stopping.
 //!
-//! | Agent    | Hook config                          | Event          | Continue the agent with               | Loop guard                 |
-//! |----------|--------------------------------------|----------------|---------------------------------------|----------------------------|
-//! | claude   | `.claude/settings.json` `hooks.Stop` | `Stop`         | `hookSpecificOutput.additionalContext`| `stop_hook_active`         |
-//! | codex    | `.codex/hooks.json` `hooks.Stop`     | `Stop`         | `{"decision":"block","reason":…}`     | `stop_hook_active`         |
-//! | cursor   | `.cursor/hooks.json` `hooks.stop`    | `stop`         | `{"followup_message":…}`              | `loop_count`, `status`     |
-//! | opencode | `.opencode/plugins/seite-check.js`   | `session.idle` | plugin sends `{"message"}` as prompt  | plugin's `stop_hook_active`|
+//! Warnings never block. A clean site, a directory without `seite.toml`, a
+//! file outside the site, malformed hook input, and any internal failure all
+//! pass silently: a broken hook must never break the agent session. Every
+//! hook command is wrapped so a missing `seite` binary exits 0 silently
+//! (`command -v seite … || true`, POSIX shell syntax: Claude Code runs hooks
+//! with `sh -c` on macOS/Linux and Git Bash on Windows; Codex and Gemini CLI
+//! run them through the user's shell; Cursor uses PowerShell on Windows, where
+//! the wrapper does not work — Windows users need Git Bash for Cursor hooks).
+//!
+//! | Agent    | Hook config                          | Stop event (continue with)                     | Post-edit event (feedback)                          |
+//! |----------|--------------------------------------|------------------------------------------------|-----------------------------------------------------|
+//! | claude   | `.claude/settings.json` `hooks`      | `Stop` (`hookSpecificOutput.additionalContext`) | `PostToolUse` `Write\|Edit\|MultiEdit` (`additionalContext`) |
+//! | codex    | `.codex/hooks.json` `hooks`          | `Stop` (`{"decision":"block","reason"}`)        | `PostToolUse` `^apply_patch$` (`additionalContext`) |
+//! | cursor   | `.cursor/hooks.json` `hooks`         | `stop` (`{"followup_message"}`)                 | `postToolUse` `Write` (`{"additional_context"}`)    |
+//! | opencode | `.opencode/plugins/seite-check.js`   | `session.idle` (plugin prompts the session)     | `tool.execute.after` (plugin appends to the tool output) |
+//! | gemini   | `.gemini/settings.json` `hooks`      | `AfterAgent` (`{"decision":"deny","reason"}`)   | `AfterTool` `write_file\|replace` (`additionalContext`) |
+//!
+//! Sources: <https://code.claude.com/docs/en/hooks>,
+//! <https://learn.chatgpt.com/docs/hooks>, <https://cursor.com/docs/agent/hooks>,
+//! <https://opencode.ai/docs/plugins/> (types from `@opencode-ai/plugin` 1.18),
+//! <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>.
 //!
 //! Every protocol here exits 0 and speaks JSON on stdout, so a crash or a
 //! non-zero exit is always the harness's "hook failed, carry on" path.
 //!
-//! `seite init` writes the hooks with the other harness files; `seite upgrade`
-//! merges them into existing configs once per agent and records that in
-//! `.seite/config.json` (`hooks_installed`), so a hook the user deleted stays
-//! deleted.
+//! `seite init` writes the hooks with the other harness files; `seite hooks
+//! on|off|status` manages them; `seite upgrade` merges them into existing
+//! configs once per agent and records that in `.seite/config.json`
+//! (`hooks_installed`), so a hook the user deleted (or turned off) stays off.
 
 use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
@@ -31,18 +47,28 @@ use serde_json::{json, Map, Value};
 use crate::cli::harness::{Agent, PlannedFile};
 use crate::diagnostics::Diagnostics;
 
-/// Seconds each harness waits for the hook before giving up (fail-open).
+/// Seconds each harness waits for the turn-end hook before giving up
+/// (fail-open). Gemini CLI takes milliseconds.
 pub const HOOK_TIMEOUT_SECS: u64 = 120;
+
+/// Seconds each harness waits for the post-edit hook.
+pub const POST_EDIT_TIMEOUT_SECS: u64 = 30;
 
 /// Most diagnostic lines handed back to the agent in one go.
 pub const MAX_LINES: usize = 40;
 
-/// The line that tells the agent what to do with the diagnostics.
+/// The line that tells the agent what to do with the turn-end diagnostics.
 pub const INSTRUCTION: &str =
-    "Fix these `seite check` errors, then finish. Run `seite check` to confirm.";
+    "Fix these `seite check` errors, then finish. Run `seite check` once to confirm.";
+
+/// The line that tells the agent what to do with post-edit diagnostics.
+pub const POST_EDIT_INSTRUCTION: &str = "Fix these errors in the file you just edited.";
 
 /// Marker every seite hook command contains; used to detect an installed hook.
 const COMMAND_MARKER: &str = "seite check --hook";
+
+/// Flag that marks the post-edit tier.
+const POST_EDIT_FLAG: &str = "--post-edit";
 
 /// How long to wait for the harness to close stdin before checking anyway.
 const STDIN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -51,7 +77,74 @@ const STDIN_TIMEOUT: Duration = Duration::from_secs(5);
 /// plugins in `.opencode/plugins/` load automatically).
 pub const OPENCODE_PLUGIN_PATH: &str = ".opencode/plugins/seite-check.js";
 
-const OPENCODE_PLUGIN: &str = r#"// Generated by seite: when an OpenCode session goes idle, run `seite check`
+/// The two hook tiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookKind {
+    /// After every file write/edit: check that file.
+    PostEdit,
+    /// At the end of the agent's turn: check the whole site.
+    Stop,
+}
+
+const OPENCODE_PLUGIN: &str = r#"// Generated by seite: runs `seite check` for OpenCode. After the agent edits a
+// file it checks that file; when a session goes idle it checks the whole site.
+// Errors are handed back to the agent (warnings never are).
+// Delete this file to opt out (`seite upgrade` won't recreate it).
+// Hook signatures: @opencode-ai/plugin 1.18 (`tool.execute.after(input: {tool,
+// sessionID, callID, args}, output: {title, output, metadata})`).
+const EDIT_TOOLS = new Set(["edit", "write", "multiedit"]);
+export const SeiteCheck = async ({ client, $, directory }) => {
+  const continued = new Set();
+  const check = async (args, input) => {
+    try {
+      const out = await $`seite check --hook opencode ${args} < ${new Response(JSON.stringify(input))}`
+        .cwd(directory)
+        .quiet()
+        .nothrow()
+        .text();
+      return JSON.parse(out || "{}").message;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    "tool.execute.after": async (input, output) => {
+      if (!EDIT_TOOLS.has(input.tool)) return;
+      const filePath = input.args?.filePath ?? input.args?.path;
+      if (!filePath || !output) return;
+      const message = await check(["--post-edit"], {
+        hook_event_name: "tool.execute.after",
+        cwd: directory,
+        file_path: filePath,
+      });
+      if (message) output.output = `${output.output ?? ""}\n\n${message}`;
+    },
+    event: async ({ event }) => {
+      if (event.type !== "session.idle") return;
+      const sessionID = event.properties?.sessionID;
+      if (!sessionID) return;
+      const active = continued.has(sessionID);
+      continued.delete(sessionID);
+      const message = await check([], {
+        hook_event_name: "session.idle",
+        session_id: sessionID,
+        cwd: directory,
+        stop_hook_active: active,
+      });
+      if (!message) return;
+      continued.add(sessionID);
+      await client.session.prompt({
+        path: { id: sessionID },
+        body: { parts: [{ type: "text", text: message }] },
+      });
+    },
+  };
+};
+"#;
+
+/// The plugin seite 0.20 generated (stop tier only), replaced by `seite
+/// upgrade` when it is still unmodified.
+const OPENCODE_PLUGIN_V1: &str = r#"// Generated by seite: when an OpenCode session goes idle, run `seite check`
 // and, if the site has errors, send them back so the agent fixes them.
 // Delete this file to opt out (`seite upgrade` won't recreate it).
 export const SeiteCheck = async ({ client, $, directory }) => {
@@ -90,18 +183,31 @@ export const SeiteCheck = async ({ client, $, directory }) => {
 };
 "#;
 
-/// The command each harness runs (bare `seite` on PATH, like the MCP config).
-pub fn hook_command(agent: Agent) -> String {
-    format!("{COMMAND_MARKER} {}", agent.id())
+/// The `seite check` invocation for `agent`'s `kind` hook.
+fn check_invocation(agent: Agent, kind: HookKind) -> String {
+    match kind {
+        HookKind::Stop => format!("{COMMAND_MARKER} {}", agent.id()),
+        HookKind::PostEdit => format!("{COMMAND_MARKER} {} {POST_EDIT_FLAG}", agent.id()),
+    }
 }
 
-/// The file that holds `agent`'s stop hook, relative to the site root.
+/// The command each harness runs: `seite` from `PATH`, skipped silently
+/// (exit 0) when it isn't installed — e.g. a collaborator without seite.
+pub fn hook_command(agent: Agent, kind: HookKind) -> String {
+    format!(
+        "command -v seite >/dev/null 2>&1 && {} || true",
+        check_invocation(agent, kind)
+    )
+}
+
+/// The file that holds `agent`'s hooks, relative to the site root.
 pub fn hook_path(agent: Agent) -> &'static str {
     match agent {
         Agent::Claude => ".claude/settings.json",
         Agent::Codex => ".codex/hooks.json",
         Agent::Cursor => ".cursor/hooks.json",
         Agent::Opencode => OPENCODE_PLUGIN_PATH,
+        Agent::Gemini => ".gemini/settings.json",
     }
 }
 
@@ -113,68 +219,210 @@ pub fn hook_path(agent: Agent) -> &'static str {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Unmergeable;
 
-/// Add seite's stop hook to a JSON hook config (`.claude/settings.json`,
-/// `.codex/hooks.json`, `.cursor/hooks.json`), keeping every other hook and
-/// key in place. `Ok(true)` when added, `Ok(false)` when a seite hook is
-/// already there, `Err` when the shape isn't one we can extend safely (e.g.
-/// `hooks` isn't an object). Not for OpenCode, whose hook is a plugin file.
-pub fn merge_hook(agent: Agent, doc: &mut Map<String, Value>) -> Result<bool, Unmergeable> {
-    let (event, entry) = match agent {
-        Agent::Claude => (
+/// `(event name, entry)` for `agent`'s `kind` hook in its JSON hook config.
+/// `None` for OpenCode, whose hooks live in a plugin file.
+fn hook_entry(agent: Agent, kind: HookKind) -> Option<(&'static str, Value)> {
+    let command = hook_command(agent, kind);
+    let entry = match (agent, kind) {
+        (Agent::Claude, HookKind::Stop) => (
             "Stop",
             json!({ "hooks": [{
                 "type": "command",
-                "command": hook_command(agent),
+                "command": command,
                 "timeout": HOOK_TIMEOUT_SECS
             }] }),
         ),
-        Agent::Codex => (
+        // Claude Code tool names; the matcher splits on `|`.
+        (Agent::Claude, HookKind::PostEdit) => (
+            "PostToolUse",
+            json!({ "matcher": "Write|Edit|MultiEdit", "hooks": [{
+                "type": "command",
+                "command": command,
+                "timeout": POST_EDIT_TIMEOUT_SECS
+            }] }),
+        ),
+        (Agent::Codex, HookKind::Stop) => (
             "Stop",
             json!({ "hooks": [{
                 "type": "command",
-                "command": hook_command(agent),
+                "command": command,
                 "timeout": HOOK_TIMEOUT_SECS,
                 "statusMessage": "Running seite check"
             }] }),
         ),
-        Agent::Cursor => {
-            if !doc.contains_key("version") {
-                // Cursor requires the schema version; put it first in a new file.
-                let rest = std::mem::take(doc);
-                doc.insert("version".into(), json!(1));
-                doc.extend(rest);
-            }
-            (
-                "stop",
-                json!({ "command": hook_command(agent), "timeout": HOOK_TIMEOUT_SECS }),
-            )
-        }
-        Agent::Opencode => return Err(Unmergeable),
+        // Codex edits files through `apply_patch` (the patch text, with
+        // `*** Update File: <path>` headers, is in `tool_input.command`).
+        (Agent::Codex, HookKind::PostEdit) => (
+            "PostToolUse",
+            json!({ "matcher": "^apply_patch$", "hooks": [{
+                "type": "command",
+                "command": command,
+                "timeout": POST_EDIT_TIMEOUT_SECS
+            }] }),
+        ),
+        (Agent::Cursor, HookKind::Stop) => (
+            "stop",
+            json!({ "command": command, "timeout": HOOK_TIMEOUT_SECS }),
+        ),
+        // `postToolUse` (not `afterFileEdit`, which has no output channel)
+        // can hand `additional_context` back to the agent.
+        (Agent::Cursor, HookKind::PostEdit) => (
+            "postToolUse",
+            json!({ "command": command, "timeout": POST_EDIT_TIMEOUT_SECS, "matcher": "Write" }),
+        ),
+        // Gemini CLI timeouts are milliseconds.
+        (Agent::Gemini, HookKind::Stop) => (
+            "AfterAgent",
+            json!({ "hooks": [{
+                "type": "command",
+                "name": "seite-check",
+                "command": command,
+                "timeout": HOOK_TIMEOUT_SECS * 1000
+            }] }),
+        ),
+        (Agent::Gemini, HookKind::PostEdit) => (
+            "AfterTool",
+            json!({ "matcher": "write_file|replace", "hooks": [{
+                "type": "command",
+                "name": "seite-check-file",
+                "command": command,
+                "timeout": POST_EDIT_TIMEOUT_SECS * 1000
+            }] }),
+        ),
+        (Agent::Opencode, _) => return None,
     };
+    Some(entry)
+}
+
+/// Whether `value` (a hook entry) is seite's `kind` hook.
+fn is_seite_hook(value: &Value, kind: HookKind) -> bool {
+    let text = value.to_string();
+    text.contains(COMMAND_MARKER) && (text.contains(POST_EDIT_FLAG) == (kind == HookKind::PostEdit))
+}
+
+/// Add seite's stop and post-edit hooks to a JSON hook config
+/// (`.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json`,
+/// `.gemini/settings.json`), keeping every other hook and key in place.
+/// Hook commands from older seite versions (not wrapped against a missing
+/// binary) are rewritten. `Ok(true)` when anything changed, `Ok(false)` when
+/// seite's hooks are already there, `Err` when the shape isn't one we can
+/// extend safely (e.g. `hooks` isn't an object). Not for OpenCode, whose
+/// hooks are a plugin file.
+pub fn merge_hook(agent: Agent, doc: &mut Map<String, Value>) -> Result<bool, Unmergeable> {
+    merge_hook_kinds(agent, doc, &[HookKind::Stop, HookKind::PostEdit])
+}
+
+/// [`merge_hook`] for only the given hook tiers.
+pub fn merge_hook_kinds(
+    agent: Agent,
+    doc: &mut Map<String, Value>,
+    kinds: &[HookKind],
+) -> Result<bool, Unmergeable> {
+    if agent == Agent::Opencode {
+        return Err(Unmergeable);
+    }
+    if agent == Agent::Cursor && !doc.contains_key("version") {
+        // Cursor requires the schema version; put it first in a new file.
+        let rest = std::mem::take(doc);
+        doc.insert("version".into(), json!(1));
+        doc.extend(rest);
+    }
     let hooks = doc
         .entry("hooks")
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .ok_or(Unmergeable)?;
-    let list = hooks
-        .entry(event)
-        .or_insert_with(|| Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or(Unmergeable)?;
-    if list.iter().any(|v| v.to_string().contains(COMMAND_MARKER)) {
-        return Ok(false);
+    let mut changed = false;
+    for &kind in kinds {
+        let Some((event, entry)) = hook_entry(agent, kind) else {
+            continue;
+        };
+        let list = hooks
+            .entry(event)
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or(Unmergeable)?;
+        if list.iter().any(|v| is_seite_hook(v, kind)) {
+            changed |= wrap_bare_commands(list, agent, kind);
+            continue;
+        }
+        list.push(entry);
+        changed = true;
     }
-    list.push(entry);
-    Ok(true)
+    Ok(changed)
 }
 
-/// Whether `text` (a hook config file) already contains a seite stop hook.
+/// Rewrite seite 0.20's bare `seite check --hook <agent>` commands in `list`
+/// to the wrapped form ([`hook_command`]). `true` when any changed.
+fn wrap_bare_commands(list: &mut [Value], agent: Agent, kind: HookKind) -> bool {
+    let bare = check_invocation(agent, kind);
+    let mut changed = false;
+    let mut visit = |handler: &mut Value| {
+        if handler.get("command").and_then(Value::as_str) == Some(bare.as_str()) {
+            handler["command"] = json!(hook_command(agent, kind));
+            changed = true;
+        }
+    };
+    for entry in list.iter_mut() {
+        match entry.get_mut("hooks").and_then(Value::as_array_mut) {
+            Some(handlers) => handlers.iter_mut().for_each(&mut visit),
+            None => visit(entry),
+        }
+    }
+    changed
+}
+
+/// Remove seite's hooks (both tiers) from a JSON hook config, keeping every
+/// other hook. Event lists and the `hooks` object are dropped when they end
+/// up empty. `true` when anything was removed.
+pub fn remove_hooks(doc: &mut Map<String, Value>) -> bool {
+    let Some(hooks) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return false;
+    };
+    let mut removed = false;
+    for list in hooks.values_mut().filter_map(Value::as_array_mut) {
+        let before = list.len();
+        for entry in list.iter_mut() {
+            if let Some(handlers) = entry.get_mut("hooks").and_then(Value::as_array_mut) {
+                let n = handlers.len();
+                handlers.retain(|h| !h.to_string().contains(COMMAND_MARKER));
+                removed |= handlers.len() != n;
+            }
+        }
+        list.retain(|entry| match entry.get("hooks").and_then(Value::as_array) {
+            Some(handlers) => !handlers.is_empty(),
+            None => !entry.to_string().contains(COMMAND_MARKER),
+        });
+        removed |= list.len() != before;
+    }
+    if removed {
+        hooks.retain(|_, v| v.as_array().is_none_or(|l| !l.is_empty()));
+        if hooks.is_empty() {
+            doc.remove("hooks");
+        }
+    }
+    removed
+}
+
+/// Whether `text` (a hook config file) already contains a seite hook.
 pub fn has_seite_hook(text: &str) -> bool {
     text.contains(COMMAND_MARKER)
 }
 
-/// The content of a new hook file for `agent` (for Claude, a settings file
-/// holding only the hook; new sites get it merged into the full settings).
+/// The OpenCode plugin seite generates now.
+pub fn opencode_plugin() -> &'static str {
+    OPENCODE_PLUGIN
+}
+
+/// Whether `text` is an OpenCode plugin seite generated earlier and the user
+/// left unchanged (safe to replace with [`opencode_plugin`]).
+pub fn is_outdated_opencode_plugin(text: &str) -> bool {
+    text == OPENCODE_PLUGIN_V1
+}
+
+/// The content of a new hook file for `agent` (for Claude and Gemini, a
+/// settings file holding only the hooks; new sites get them merged into the
+/// full settings).
 pub fn new_hook_file(agent: Agent) -> String {
     if agent == Agent::Opencode {
         return OPENCODE_PLUGIN.to_string();
@@ -184,38 +432,29 @@ pub fn new_hook_file(agent: Agent) -> String {
     crate::cli::harness::pretty_json(&Value::Object(doc))
 }
 
-/// The one-paragraph note for AGENTS.md "Verify Your Change": where each
-/// selected agent's hook lives and how to opt out.
+/// One sentence for AGENTS.md: where each selected agent's hooks live and how
+/// to manage them.
 pub fn verify_note(agents: &[Agent]) -> String {
     let places: Vec<String> = agents
         .iter()
-        .map(|&agent| {
-            let extra = match agent {
-                Agent::Claude => " (`hooks.Stop`)",
-                Agent::Codex => " (approve it once in `/hooks`)",
-                _ => "",
-            };
-            format!("{} `{}`{extra}", agent.label(), hook_path(agent))
-        })
+        .map(|&agent| format!("`{}`", hook_path(agent)))
         .collect();
     format!(
-        "When you finish a turn, a stop hook runs `seite check --hook <agent>` and hands any errors back to you (warnings never block): {}. Everyone working on the site needs seite 0.20 or newer on `PATH` (older versions don't have `seite check` and the hook will fail). Delete the hook to opt out; `seite upgrade` won't re-add it.\n\n",
+        "Hooks ({}) run `seite check --file` after each edit and `seite check` when a turn ends, and hand errors back to you; `seite hooks status|on|off` manages them.",
         places.join(", ")
     )
 }
 
-/// Add the stop hooks for `agents` to a fresh-site plan: merge Claude's into
-/// the planned `.claude/settings.json`, add the other agents' hook files.
+/// Add the hooks for `agents` to a fresh-site plan: merge them into a
+/// planned config at the hook path (Claude's and Gemini's settings), else add
+/// the hook file.
 pub fn extend_plan(files: &mut Vec<PlannedFile>, agents: &[Agent]) {
     for &agent in agents {
         let path = hook_path(agent);
-        if agent == Agent::Claude {
-            let Some(settings) = files.iter_mut().find(|f| f.path == path) else {
-                continue;
-            };
-            if let Ok(Value::Object(mut doc)) = serde_json::from_str(&settings.content) {
+        if let Some(planned) = files.iter_mut().find(|f| f.path == path) {
+            if let Ok(Value::Object(mut doc)) = serde_json::from_str(&planned.content) {
                 if merge_hook(agent, &mut doc) == Ok(true) {
-                    settings.content = crate::cli::harness::pretty_json(&Value::Object(doc));
+                    planned.content = crate::cli::harness::pretty_json(&Value::Object(doc));
                 }
             }
         } else {
@@ -227,17 +466,44 @@ pub fn extend_plan(files: &mut Vec<PlannedFile>, agents: &[Agent]) {
     }
 }
 
+/// Whether seite's hooks for `agent` are in place under `root`:
+/// `(stop, post_edit)`.
+pub fn installed_hooks(root: &Path, agent: Agent) -> (bool, bool) {
+    let Ok(text) = std::fs::read_to_string(root.join(hook_path(agent))) else {
+        return (false, false);
+    };
+    if agent == Agent::Opencode {
+        let ours = has_seite_hook(&text);
+        return (ours, ours && text.contains("tool.execute.after"));
+    }
+    let Ok(Value::Object(doc)) = serde_json::from_str::<Value>(&text) else {
+        return (false, false);
+    };
+    let has = |kind| {
+        hook_entry(agent, kind).is_some_and(|(event, _)| {
+            doc.get("hooks")
+                .and_then(|h| h.get(event))
+                .and_then(Value::as_array)
+                .is_some_and(|l| l.iter().any(|v| is_seite_hook(v, kind)))
+        })
+    };
+    (has(HookKind::Stop), has(HookKind::PostEdit))
+}
+
 // ---------------------------------------------------------------------------
-// `seite check --hook <agent>`
+// `seite check --hook <agent> [--post-edit]`
 // ---------------------------------------------------------------------------
 
-/// Run the check as `agent`'s turn-end hook. Never returns an error: every
-/// failure path prints a short note on stderr and lets the agent stop.
-pub fn run(agent: Agent, include_drafts: bool) -> anyhow::Result<()> {
+/// Run the check as `agent`'s hook. Never returns an error: every failure
+/// path prints a short note on stderr and lets the agent carry on.
+pub fn run(agent: Agent, include_drafts: bool, kind: HookKind) -> anyhow::Result<()> {
     // stdout carries only the protocol document; stray output goes to stderr.
     crate::output::json::redirect_stdout_to_stderr();
     let input = read_stdin_json();
-    let outcome = std::panic::catch_unwind(|| evaluate(agent, &input, include_drafts));
+    let outcome = std::panic::catch_unwind(|| match kind {
+        HookKind::Stop => evaluate(agent, &input, include_drafts),
+        HookKind::PostEdit => evaluate_post_edit(agent, &input),
+    });
     match outcome {
         Ok(Ok(Some(doc))) => crate::output::json::emit_document(&doc),
         Ok(Ok(None)) => {
@@ -252,8 +518,8 @@ pub fn run(agent: Agent, include_drafts: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Decide what the hook prints: `Some(json)` to keep the agent going, `None`
-/// to let it stop.
+/// Decide what the stop hook prints: `Some(json)` to keep the agent going,
+/// `None` to let it stop.
 fn evaluate(agent: Agent, input: &Value, include_drafts: bool) -> anyhow::Result<Option<Value>> {
     let Some(root) = find_site_root(&start_dirs(input)) else {
         return Ok(None);
@@ -265,11 +531,104 @@ fn evaluate(agent: Agent, input: &Value, include_drafts: bool) -> anyhow::Result
     Ok(block_reason(&diagnostics).map(|reason| encode(agent, input, &reason)))
 }
 
+/// Decide what the post-edit hook prints: errors in the edited file(s), or
+/// `None`.
+fn evaluate_post_edit(agent: Agent, input: &Value) -> anyhow::Result<Option<Value>> {
+    // Claude's hooks imported by Cursor: Cursor's native hook reports.
+    if agent == Agent::Claude && runs_in_cursor(input) {
+        return Ok(None);
+    }
+    let base = input
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let edited: Vec<PathBuf> = edited_paths(input)
+        .into_iter()
+        .map(|p| base.join(p))
+        .collect();
+    let Some(first) = edited.first() else {
+        return Ok(None);
+    };
+    let mut starts: Vec<PathBuf> = first.parent().map(Path::to_path_buf).into_iter().collect();
+    starts.extend(start_dirs(input));
+    let Some(root) = find_site_root(&starts) else {
+        return Ok(None);
+    };
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let files: Vec<PathBuf> = edited
+        .iter()
+        .filter_map(|p| {
+            let p = p.canonicalize().unwrap_or_else(|_| p.clone());
+            p.strip_prefix(&canonical_root)
+                .or_else(|_| p.strip_prefix(&root))
+                .ok()
+                .map(Path::to_path_buf)
+        })
+        .collect();
+    if files.is_empty() {
+        return Ok(None);
+    }
+    let diagnostics = crate::cli::check::check_files(&root, &files)?;
+    Ok(block_reason_with(&diagnostics, POST_EDIT_INSTRUCTION)
+        .map(|reason| encode_post_edit(agent, &reason)))
+}
+
+/// The file paths a post-edit hook input names, as given (absolute or
+/// relative to the session's `cwd`), deduplicated in order:
+///
+/// - top-level `file_path` (Cursor `afterFileEdit`, seite's OpenCode plugin)
+/// - `tool_input.file_path` / `filePath` / `path` / `target_file` (Claude
+///   Write/Edit/MultiEdit, Gemini `write_file`/`replace`, Cursor `Write`)
+/// - `*** Add File:` / `*** Update File:` / `*** Move to:` headers of a
+///   Codex `apply_patch` patch (`tool_input.command`, `tool_input.input`, or
+///   `tool_input` itself as a string)
+pub fn edited_paths(input: &Value) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+    let mut push = |p: &str| {
+        let p = p.trim();
+        if !p.is_empty() && !paths.iter().any(|x| x == p) {
+            paths.push(p.to_string());
+        }
+    };
+    if let Some(p) = input.get("file_path").and_then(Value::as_str) {
+        push(p);
+    }
+    let tool_input = input.get("tool_input");
+    if let Some(obj) = tool_input.and_then(Value::as_object) {
+        for key in ["file_path", "filePath", "path", "target_file"] {
+            if let Some(p) = obj.get(key).and_then(Value::as_str) {
+                push(p);
+            }
+        }
+    }
+    let patches = tool_input.and_then(Value::as_str).into_iter().chain(
+        ["command", "input", "patch"]
+            .iter()
+            .filter_map(|k| tool_input?.get(*k)?.as_str()),
+    );
+    for patch in patches {
+        for line in patch.lines() {
+            for header in ["*** Add File: ", "*** Update File: ", "*** Move to: "] {
+                if let Some(p) = line.strip_prefix(header) {
+                    push(p);
+                }
+            }
+        }
+    }
+    paths
+}
+
 /// Directories to look for the site in, most specific first: the project
 /// directory the harness reports, then the session's `cwd`, then ours.
 fn start_dirs(input: &Value) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    for var in ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR"] {
+    for var in [
+        "CLAUDE_PROJECT_DIR",
+        "CURSOR_PROJECT_DIR",
+        "GEMINI_PROJECT_DIR",
+    ] {
         if let Some(dir) = std::env::var_os(var).filter(|v| !v.is_empty()) {
             dirs.push(PathBuf::from(dir));
         }
@@ -326,9 +685,14 @@ fn cursor_hook_installed(root: &Path) -> bool {
         .is_ok_and(|text| has_seite_hook(&text))
 }
 
-/// The message handed to the agent, or `None` when there are no errors.
-/// Warnings are left out: they never block.
+/// The turn-end message handed to the agent, or `None` when there are no
+/// errors. Warnings are left out: they never block.
 pub fn block_reason(diagnostics: &Diagnostics) -> Option<String> {
+    block_reason_with(diagnostics, INSTRUCTION)
+}
+
+/// [`block_reason`] ending with `instruction`.
+pub fn block_reason_with(diagnostics: &Diagnostics, instruction: &str) -> Option<String> {
     let errors: Vec<_> = diagnostics.iter().filter(|d| d.is_error()).collect();
     if errors.is_empty() {
         return None;
@@ -359,11 +723,11 @@ pub fn block_reason(diagnostics: &Diagnostics) -> Option<String> {
             total - shown
         ));
     }
-    msg.push_str(INSTRUCTION);
+    msg.push_str(instruction);
     Some(msg)
 }
 
-/// Wrap `reason` in the protocol of the harness that ran the hook.
+/// Wrap a turn-end `reason` in the protocol of the harness that ran the hook.
 pub fn encode(agent: Agent, input: &Value, reason: &str) -> Value {
     match agent {
         // Claude Code: `additionalContext` continues the turn like
@@ -375,6 +739,24 @@ pub fn encode(agent: Agent, input: &Value, reason: &str) -> Value {
         }),
         Agent::Claude | Agent::Codex => json!({ "decision": "block", "reason": reason }),
         Agent::Cursor => json!({ "followup_message": reason }),
+        Agent::Opencode => json!({ "message": reason }),
+        // Gemini CLI `AfterAgent`: `deny` rejects the response and sends
+        // `reason` back as a new prompt.
+        Agent::Gemini => json!({ "decision": "deny", "reason": reason }),
+    }
+}
+
+/// Wrap a post-edit `reason` in the protocol of the harness that ran the
+/// hook: context added to the tool result, never a blocked tool call.
+pub fn encode_post_edit(agent: Agent, reason: &str) -> Value {
+    match agent {
+        Agent::Claude | Agent::Codex => json!({
+            "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": reason }
+        }),
+        Agent::Gemini => json!({
+            "hookSpecificOutput": { "hookEventName": "AfterTool", "additionalContext": reason }
+        }),
+        Agent::Cursor => json!({ "additional_context": reason }),
         Agent::Opencode => json!({ "message": reason }),
     }
 }
@@ -434,6 +816,8 @@ mod tests {
         assert!(msg.contains("content/posts/00.md:2:1: error[frontmatter-parse]: bad 0"));
         assert!(!msg.contains("not shown"));
         assert!(msg.ends_with(INSTRUCTION));
+        let post = block_reason_with(&d, POST_EDIT_INSTRUCTION).unwrap();
+        assert!(post.ends_with(POST_EDIT_INSTRUCTION));
     }
 
     #[test]
@@ -474,6 +858,111 @@ mod tests {
             encode(Agent::Opencode, &plain, "r"),
             json!({ "message": "r" })
         );
+        assert_eq!(
+            encode(Agent::Gemini, &plain, "r"),
+            json!({ "decision": "deny", "reason": "r" })
+        );
+    }
+
+    #[test]
+    fn encode_post_edit_per_protocol() {
+        for agent in [Agent::Claude, Agent::Codex] {
+            assert_eq!(
+                encode_post_edit(agent, "r"),
+                json!({ "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": "r" } })
+            );
+        }
+        assert_eq!(
+            encode_post_edit(Agent::Gemini, "r")["hookSpecificOutput"]["hookEventName"],
+            "AfterTool"
+        );
+        assert_eq!(
+            encode_post_edit(Agent::Cursor, "r"),
+            json!({ "additional_context": "r" })
+        );
+        assert_eq!(
+            encode_post_edit(Agent::Opencode, "r"),
+            json!({ "message": "r" })
+        );
+    }
+
+    #[test]
+    fn edited_paths_per_harness() {
+        // Claude Write/Edit/MultiEdit, Gemini write_file/replace.
+        let claude =
+            json!({ "tool_name": "Edit", "tool_input": { "file_path": "/s/content/a.md" } });
+        assert_eq!(edited_paths(&claude), ["/s/content/a.md"]);
+        // Cursor postToolUse / afterFileEdit.
+        let cursor = json!({ "file_path": "/s/a.md", "tool_input": { "file_path": "/s/a.md" } });
+        assert_eq!(edited_paths(&cursor), ["/s/a.md"]);
+        // OpenCode-style camelCase.
+        let oc = json!({ "tool_input": { "filePath": "content/b.md" } });
+        assert_eq!(edited_paths(&oc), ["content/b.md"]);
+        // Codex apply_patch: every file header, in order, deduplicated.
+        let patch = "*** Begin Patch\n*** Update File: content/a.md\n@@\n-x\n+y\n*** Add File: data/nav.yaml\n+- a\n*** Update File: content/a.md\n*** Move to: content/c.md\n*** End Patch\n";
+        let codex = json!({ "tool_name": "apply_patch", "tool_input": { "command": patch } });
+        assert_eq!(
+            edited_paths(&codex),
+            ["content/a.md", "data/nav.yaml", "content/c.md"]
+        );
+        let raw = json!({ "tool_input": patch });
+        assert_eq!(edited_paths(&raw).len(), 3);
+        // Malformed or unrelated input: nothing.
+        for bad in [
+            json!({}),
+            json!({ "tool_input": 5 }),
+            json!({ "tool_input": { "file_path": 3 } }),
+            json!({ "file_path": "  " }),
+        ] {
+            assert!(edited_paths(&bad).is_empty(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn post_edit_reports_only_errors_in_the_site() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        std::fs::create_dir_all(site.join("content/posts")).unwrap();
+        std::fs::write(
+            site.join("seite.toml"),
+            "[site]\ntitle = \"T\"\ndescription = \"\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\nhas_date = false\nnested = false\nurl_prefix = \"/posts\"\n",
+        )
+        .unwrap();
+        let bad = site.join("content/posts/bad.md");
+        std::fs::write(&bad, "---\ntitle: [unclosed\n---\nbody\n").unwrap();
+        let good = site.join("content/posts/good.md");
+        std::fs::write(&good, "---\ntitle: Good\n---\nbody\n").unwrap();
+
+        let input = |p: &Path| json!({ "tool_input": { "file_path": p.to_string_lossy() } });
+        let out = evaluate_post_edit(Agent::Claude, &input(&bad))
+            .unwrap()
+            .unwrap();
+        let ctx = out["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap();
+        assert!(ctx.contains("content/posts/bad.md"), "{ctx}");
+        assert!(ctx.contains("frontmatter-parse"), "{ctx}");
+        assert!(evaluate_post_edit(Agent::Claude, &input(&good))
+            .unwrap()
+            .is_none());
+        // Outside any site, or no path at all: silent.
+        let outside = tmp.path().join("notes.md");
+        std::fs::write(&outside, "---\ntitle: [\n---\n").unwrap();
+        assert!(evaluate_post_edit(Agent::Codex, &input(&outside))
+            .unwrap()
+            .is_none());
+        assert!(evaluate_post_edit(Agent::Gemini, &json!({}))
+            .unwrap()
+            .is_none());
+        // Claude hooks imported by Cursor defer to Cursor's own hook.
+        let mut in_cursor = input(&bad);
+        in_cursor["cursor_version"] = json!("2.0");
+        assert!(evaluate_post_edit(Agent::Claude, &in_cursor)
+            .unwrap()
+            .is_none());
+        // Relative paths resolve against the session cwd.
+        let rel = json!({ "cwd": site.to_string_lossy(), "tool_input": { "command": "*** Update File: content/posts/bad.md\n" } });
+        assert!(evaluate_post_edit(Agent::Codex, &rel).unwrap().is_some());
     }
 
     #[test]
@@ -482,7 +971,7 @@ mod tests {
         let root = tmp.path();
         let active = json!({ "stop_hook_active": true });
         let fresh = json!({ "stop_hook_active": false });
-        for agent in [Agent::Claude, Agent::Codex, Agent::Opencode] {
+        for agent in [Agent::Claude, Agent::Codex, Agent::Opencode, Agent::Gemini] {
             assert!(should_skip(agent, &active, root));
             assert!(!should_skip(agent, &fresh, root));
         }
@@ -513,6 +1002,18 @@ mod tests {
     }
 
     #[test]
+    fn hook_commands_are_wrapped_against_a_missing_binary() {
+        assert_eq!(
+            hook_command(Agent::Claude, HookKind::Stop),
+            "command -v seite >/dev/null 2>&1 && seite check --hook claude || true"
+        );
+        assert_eq!(
+            hook_command(Agent::Gemini, HookKind::PostEdit),
+            "command -v seite >/dev/null 2>&1 && seite check --hook gemini --post-edit || true"
+        );
+    }
+
+    #[test]
     fn merge_hook_is_additive_and_idempotent() {
         let mut doc: Map<String, Value> = serde_json::from_value(json!({
             "permissions": { "allow": ["Read"] },
@@ -527,7 +1028,16 @@ mod tests {
         let stop = doc["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2);
         assert_eq!(stop[0]["hooks"][0]["command"], "other");
-        assert_eq!(stop[1]["hooks"][0]["command"], "seite check --hook claude");
+        assert_eq!(
+            stop[1]["hooks"][0]["command"],
+            hook_command(Agent::Claude, HookKind::Stop)
+        );
+        let post = &doc["hooks"]["PostToolUse"][0];
+        assert_eq!(post["matcher"], "Write|Edit|MultiEdit");
+        assert_eq!(
+            post["hooks"][0]["command"],
+            hook_command(Agent::Claude, HookKind::PostEdit)
+        );
         assert!(doc["hooks"].get("PreToolUse").is_some());
         // Key order is kept: permissions stays first.
         assert_eq!(doc.keys().next().unwrap(), "permissions");
@@ -538,6 +1048,52 @@ mod tests {
         let mut bad: Map<String, Value> =
             serde_json::from_value(json!({ "hooks": { "stop": {} } })).unwrap();
         assert_eq!(merge_hook(Agent::Cursor, &mut bad), Err(Unmergeable));
+        assert_eq!(
+            merge_hook(Agent::Opencode, &mut Map::new()),
+            Err(Unmergeable)
+        );
+    }
+
+    #[test]
+    fn merge_hook_wraps_old_bare_commands_and_adds_post_edit() {
+        // A site from seite 0.20: bare stop hook only.
+        let mut doc: Map<String, Value> = serde_json::from_value(json!({
+            "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "seite check --hook codex", "timeout": 120 }] }] }
+        }))
+        .unwrap();
+        assert_eq!(merge_hook(Agent::Codex, &mut doc), Ok(true));
+        assert_eq!(
+            doc["hooks"]["Stop"][0]["hooks"][0]["command"],
+            hook_command(Agent::Codex, HookKind::Stop)
+        );
+        assert_eq!(doc["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert_eq!(doc["hooks"]["PostToolUse"][0]["matcher"], "^apply_patch$");
+        assert_eq!(merge_hook(Agent::Codex, &mut doc), Ok(false));
+    }
+
+    #[test]
+    fn remove_hooks_keeps_other_hooks() {
+        let mut doc: Map<String, Value> = serde_json::from_value(json!({
+            "permissions": {},
+            "hooks": {
+                "Stop": [{ "hooks": [{ "type": "command", "command": "other" }] }],
+            }
+        }))
+        .unwrap();
+        merge_hook(Agent::Claude, &mut doc).unwrap();
+        assert!(remove_hooks(&mut doc));
+        assert!(!remove_hooks(&mut doc));
+        assert_eq!(doc["hooks"]["Stop"].as_array().unwrap().len(), 1);
+        assert_eq!(doc["hooks"]["Stop"][0]["hooks"][0]["command"], "other");
+        assert!(doc["hooks"].get("PostToolUse").is_none());
+
+        // Only seite's hooks: the `hooks` key goes away; Cursor's flat entries too.
+        for agent in [Agent::Cursor, Agent::Gemini] {
+            let mut doc = Map::new();
+            merge_hook(agent, &mut doc).unwrap();
+            assert!(remove_hooks(&mut doc));
+            assert!(doc.get("hooks").is_none(), "{agent:?}");
+        }
     }
 
     #[test]
@@ -546,8 +1102,9 @@ mod tests {
         assert_eq!(cursor["version"], 1);
         assert_eq!(
             cursor["hooks"]["stop"][0]["command"],
-            "seite check --hook cursor"
+            hook_command(Agent::Cursor, HookKind::Stop)
         );
+        assert_eq!(cursor["hooks"]["postToolUse"][0]["matcher"], "Write");
         let text = new_hook_file(Agent::Cursor);
         assert!(text.find("\"version\"").unwrap() < text.find("\"hooks\"").unwrap());
 
@@ -560,31 +1117,73 @@ mod tests {
         let codex: Value = serde_json::from_str(&new_hook_file(Agent::Codex)).unwrap();
         let handler = &codex["hooks"]["Stop"][0]["hooks"][0];
         assert_eq!(handler["type"], "command");
-        assert_eq!(handler["command"], "seite check --hook codex");
+        assert_eq!(
+            handler["command"],
+            hook_command(Agent::Codex, HookKind::Stop)
+        );
         assert_eq!(handler["timeout"], HOOK_TIMEOUT_SECS);
+
+        let gemini: Value = serde_json::from_str(&new_hook_file(Agent::Gemini)).unwrap();
+        assert_eq!(
+            gemini["hooks"]["AfterAgent"][0]["hooks"][0]["timeout"],
+            HOOK_TIMEOUT_SECS * 1000
+        );
+        assert_eq!(
+            gemini["hooks"]["AfterTool"][0]["matcher"],
+            "write_file|replace"
+        );
 
         let plugin = new_hook_file(Agent::Opencode);
         assert!(plugin.contains("session.idle"));
+        assert!(plugin.contains("tool.execute.after"));
         assert!(plugin.contains("seite check --hook opencode"));
+        assert!(plugin.contains("--post-edit"));
         assert!(has_seite_hook(&plugin));
+        assert!(is_outdated_opencode_plugin(OPENCODE_PLUGIN_V1));
+        assert!(!is_outdated_opencode_plugin(&plugin));
     }
 
     #[test]
-    fn extend_plan_merges_claude_settings_and_adds_files() {
-        let mut files = vec![PlannedFile {
-            path: ".claude/settings.json".into(),
-            content: crate::cli::harness::pretty_json(&json!({ "permissions": {} })),
-        }];
+    fn installed_hooks_reads_each_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        for agent in Agent::ALL {
+            assert_eq!(installed_hooks(root, agent), (false, false));
+            let path = root.join(hook_path(agent));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, new_hook_file(agent)).unwrap();
+            assert_eq!(installed_hooks(root, agent), (true, true), "{agent:?}");
+        }
+        std::fs::write(root.join(OPENCODE_PLUGIN_PATH), OPENCODE_PLUGIN_V1).unwrap();
+        assert_eq!(installed_hooks(root, Agent::Opencode), (true, false));
+    }
+
+    #[test]
+    fn extend_plan_merges_settings_and_adds_files() {
+        let mut files = vec![
+            PlannedFile {
+                path: ".claude/settings.json".into(),
+                content: crate::cli::harness::pretty_json(&json!({ "permissions": {} })),
+            },
+            PlannedFile {
+                path: ".gemini/settings.json".into(),
+                content: crate::cli::harness::pretty_json(&json!({ "mcpServers": {} })),
+            },
+        ];
         extend_plan(&mut files, &Agent::ALL);
         let settings: Value = serde_json::from_str(&files[0].content).unwrap();
         assert_eq!(
             settings["hooks"]["Stop"][0]["hooks"][0]["command"],
-            "seite check --hook claude"
+            hook_command(Agent::Claude, HookKind::Stop)
         );
+        let gemini: Value = serde_json::from_str(&files[1].content).unwrap();
+        assert!(gemini.get("mcpServers").is_some());
+        assert!(gemini["hooks"].get("AfterAgent").is_some());
         let paths: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
         assert!(paths.contains(&".codex/hooks.json"));
         assert!(paths.contains(&".cursor/hooks.json"));
         assert!(paths.contains(&OPENCODE_PLUGIN_PATH));
+        assert_eq!(paths.len(), 5);
     }
 
     #[test]

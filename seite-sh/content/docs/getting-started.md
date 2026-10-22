@@ -12,7 +12,7 @@ By the end of this guide you'll have a working site with a blog post, a docs pag
 
 No runtime dependencies are required. seite is a single binary that runs on macOS, Linux, and Windows. If you want to install from source rather than using the prebuilt binary, you'll need the [Rust toolchain](https://rustup.rs/).
 
-For the optional [AI agent](/docs/agent) and AI theme generation features, install [Claude Code](https://docs.anthropic.com/en/docs/claude-code): `npm install -g @anthropic-ai/claude-code`.
+To let a coding agent run the site, install any of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex CLI, OpenCode, Cursor, or Gemini CLI. seite sets the site up for all of them; see [Coding Agents](/docs/agent).
 
 ## Installation
 
@@ -89,15 +89,16 @@ mysite/
 ├── public/        # Root-level files (favicon.ico, .well-known/, _redirects)
 ├── static/        # Static assets (CSS, JS, images) → dist/static/
 ├── seite.toml      # Site configuration
-├── AGENTS.md      # Instructions for every coding agent
-├── .claude/       # Claude Code rules, skills, permissions (+ .mcp.json, CLAUDE.md)
-├── .cursor/       # Cursor MCP config and .mdc rules
-├── .codex/        # Codex CLI MCP config
-├── .agents/       # Skills for Codex, Cursor, and OpenCode (+ opencode.json)
-└── .seite/         # Project metadata (version tracking, agent selection)
+├── AGENTS.md      # Instructions for every coding agent (+ CLAUDE.md, GEMINI.md imports)
+├── .claude/       # Claude Code rules, /seite skill, permissions, hooks, launch.json
+├── .cursor/       # Cursor rules, permissions, hooks
+├── .codex/        # Codex CLI hooks
+├── .gemini/       # Gemini CLI hooks and /seite command
+├── .agents/       # The /seite skill for Codex, Cursor, OpenCode, and Gemini CLI
+└── .seite/        # Project metadata and the docs for this seite version (.seite/docs/)
 ```
 
-The agent files cover Claude Code, Codex CLI, OpenCode, and Cursor by default. Pass `--agents claude,cursor` (any subset) to generate only the ones you use; see the [CLI reference](/docs/cli-reference#seite-init).
+The agent files cover Claude Code, Codex CLI, OpenCode, Cursor, and Gemini CLI by default. Pass `--agents claude,cursor` (any subset) to generate only the ones you use, and `--mcp` to also wire in the MCP server; see the [CLI reference](/docs/cli-reference#seite-init).
 
 The [`seite.toml`](/docs/configuration) file controls your site's title, description, base URL, and collections. The defaults work out of the box. You can tune settings later as needed.
 
@@ -133,7 +134,7 @@ seite new page "About"
 Open the generated markdown file in your editor and write your content below the `---` frontmatter delimiter. Add a `description` field for better SEO: seite uses it for meta tags, Open Graph, and JSON-LD structured data automatically.
 
 {{% callout(type="tip") %}}
-Want AI to write your first post? Run `seite agent "write a hello world blog post about launching my site"` and Claude will create the content file for you. See the [AI Agent docs](/docs/agent) for more.
+Want an agent to write your first post? Open your coding agent in the site and run `/seite new post "Hello world"`, or run `seite agent "write a hello world blog post about launching my site"`. See [Coding Agents](/docs/agent) for more.
 {{% end %}}
 
 ## Build Your Static Site
@@ -224,7 +225,7 @@ You can also generate a custom theme with AI:
 seite theme create "minimal serif with warm colors"
 ```
 
-This spawns Claude Code to write a complete `templates/base.html` with all SEO, accessibility, and i18n features built in. See [Building Custom Themes](/docs/custom-themes) for details.
+This runs your coding agent with `/seite theme <description>`, which builds `templates/base.html` with the SEO, accessibility, and i18n contract in place. With the impeccable design skill installed (`seite skill install impeccable`), it points you to `/impeccable` instead. See [Building Custom Themes](/docs/custom-themes) for details.
 
 ## Deploy Your Site
 
@@ -263,7 +264,7 @@ After updating, bring your project's config files up to date:
 seite upgrade
 ```
 
-This adds any new configuration that shipped with the new version (e.g., MCP server settings, new permission entries) and any missing files for your coding agents. It's additive and non-destructive. Your existing settings are preserved.
+This adds any new configuration that shipped with the new version (e.g. new permission entries and hooks), refreshes the `/seite` skill and `.seite/docs/`, and adds any missing files for your coding agents. It merges into your existing settings rather than replacing them.
 
 ## Next Steps
 
@@ -278,6 +279,6 @@ Now that your static site generator is up and running, explore these guides to g
 - [Shortcodes](/docs/shortcodes): embed YouTube, Vimeo, callouts, figures, contact forms, and custom components
 - [Contact Forms](/docs/contact-forms): add a contact form with Formspree, Web3Forms, Netlify Forms, HubSpot, or Typeform
 - [Workspaces](/docs/workspace): manage multiple sites in a single repository
-- [AI Agent](/docs/agent): let Claude write content, debug builds, and generate themes for you
-- [MCP Server](/docs/mcp-server): structured AI access to your site via the Model Context Protocol
+- [Coding Agents](/docs/agent): run the site with Claude Code, Codex, OpenCode, Cursor, or Gemini CLI
+- [MCP Server](/docs/mcp-server): structured access for chat apps such as Claude Desktop
 - [CLI Reference](/docs/cli-reference): every command and flag in one place

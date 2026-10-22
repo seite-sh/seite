@@ -15,6 +15,7 @@ mod explain;
 mod feeds;
 mod frontmatter;
 mod harness_snapshots;
+mod hooks;
 mod i18n;
 mod init;
 mod links;

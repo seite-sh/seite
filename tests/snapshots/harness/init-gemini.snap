@@ -1,0 +1,299 @@
+==> .agents/rules/config-reference.md <==
+---
+paths:
+  - "seite.toml"
+---
+[… body of rule `config-reference` elided …]
+
+==> .agents/rules/data-files.md <==
+---
+paths:
+  - "data/**"
+---
+[… body of rule `data-files` elided …]
+
+==> .agents/rules/features.md <==
+---
+paths:
+  - "content/**"
+  - "templates/**"
+---
+[… body of rule `features` elided …]
+
+==> .agents/rules/i18n.md <==
+---
+paths:
+  - "content/**"
+  - "templates/**"
+  - "data/i18n/**"
+---
+[… body of rule `i18n` elided …]
+
+==> .agents/rules/private-collections.md <==
+---
+paths:
+  - "seite.toml"
+  - "content/**"
+---
+[… body of rule `private-collections` elided …]
+
+==> .agents/rules/seo-requirements.md <==
+---
+paths:
+  - "templates/**"
+---
+[… body of rule `seo-requirements` elided …]
+
+==> .agents/rules/shortcodes.md <==
+---
+paths:
+  - "content/**"
+  - "templates/shortcodes/**"
+---
+[… body of rule `shortcodes` elided …]
+
+==> .agents/rules/templates.md <==
+---
+paths:
+  - "templates/**"
+---
+[… body of rule `templates` elided …]
+
+==> .agents/skills/seite/SKILL.md <==
+---
+name: seite
+description: Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
+# seite-skill-version: 3
+---
+
+# seite
+
+Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the command's reference file, then follow its steps.
+
+| Command | Use it to | Steps |
+|---|---|---|
+| `check` | find and fix every error | [reference/check.md](reference/check.md) |
+| `new <type> "<title>"` | create a post, doc, page, … | [reference/new.md](reference/new.md) |
+| `preview` | show the site in a browser | [reference/preview.md](reference/preview.md) |
+| `build` | build `dist/` and report problems | [reference/build.md](reference/build.md) |
+| `deploy` | publish, after the user confirms | [reference/deploy.md](reference/deploy.md) |
+| `theme [name \| description]` | apply or design the theme | [reference/theme.md](reference/theme.md) |
+| `brand` | logo, colors, favicon | [reference/brand.md](reference/brand.md) |
+| `landing [page]` | homepage or a landing page | [reference/landing.md](reference/landing.md) |
+| `collection [preset]` | list or add collections | [reference/collection.md](reference/collection.md) |
+| `upgrade` | update this project to the installed seite | [reference/upgrade.md](reference/upgrade.md) |
+| `hooks [on \| off \| status]` | manage the automatic checks | [reference/hooks.md](reference/hooks.md) |
+
+## Routing
+
+- Command given: open its reference file and follow it.
+- No command: choose one from the request ("write a post about X" → `new`, "is the site OK?" → `check`, "publish" → `deploy`, "make it look like X" → `theme`). If two fit equally well, ask the user once.
+
+## Principles
+
+- Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
+- Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
+- Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
+- Look up seite features in `.seite/docs/` or with `seite docs <query>`; `seite explain <code>` explains a diagnostic code.
+- Verify once: `seite check`, fix every error, run `seite check` again, then stop. Report errors that remain instead of looping.
+
+==> .agents/skills/seite/reference/brand.md <==
+# /seite brand
+
+A logo, a color palette, and a favicon, saved as site files.
+
+1. Look for existing assets first (`public/favicon*`, `static/logo*`, `data/brand.yaml`, colors in `templates/base.html`). Refine them rather than replace them, unless the user asks.
+2. Ask for what you cannot infer (name, what it does, the feel), once, in one message. With impeccable installed, use `/impeccable` for the design decisions.
+3. Palette: write `data/brand.yaml`:
+   ```yaml
+   name: "Site name"
+   colors:
+     primary: "#0057b7"
+     primary_hover: "#003d82"
+     secondary: "#f59e0b"
+     background: "#ffffff"
+     surface: "#f8f9fa"
+     text: "#1a1a1a"
+     text_muted: "#6b7280"
+     border: "#e5e7eb"
+   ```
+   Templates read it as `{{ data.brand.colors.primary }}`. Text on its background needs WCAG AA contrast (4.5:1, or 3:1 for large text).
+4. Logo: `static/logo.svg`, valid SVG with `xmlns="http://www.w3.org/2000/svg"`, legible at 32px wide.
+5. Favicon: `public/favicon.svg` and, if you can convert it, `public/favicon.ico`. `public/` is copied to the site root, and themes link `/favicon.ico`.
+6. To apply the palette, change only color values in `templates/base.html` (or read `data.brand.colors.*` there). Then verify as in [check.md](check.md).
+
+==> .agents/skills/seite/reference/build.md <==
+# /seite build
+
+1. Run `seite build --json` (add `--drafts` to include drafts).
+2. Report `data.broken_links`, `data.missing_assets`, and `data.diagnostics` from the JSON.
+3. On errors, continue with [check.md](check.md).
+
+==> .agents/skills/seite/reference/check.md <==
+# /seite check
+
+1. Run `seite check` (add `--drafts` to include drafts). Each problem is one line, `file:line:col: severity[code]: message`, often followed by a `hint:` line.
+2. Fix every error in the source file it names (a `.md` file, a template, a data file, or `seite.toml`). Never edit `dist/`. `seite explain <code>` explains a code.
+3. Run `seite check` once more. If errors remain, report them with their file and line, and stop.
+4. Fix warnings (broken links, missing assets, unknown config keys) when the user asks for a clean site; `seite check --strict` fails on them.
+
+While editing one file, `seite check --file <path>` checks just that file (frontmatter, shortcodes, template syntax, data file) without rendering the site.
+
+==> .agents/skills/seite/reference/collection.md <==
+# /seite collection [preset]
+
+- No argument: `seite collection list`.
+- A preset (`posts`, `docs`, `pages`, `changelog`, `roadmap`, `trust`): `seite collection add <preset>`, then verify as in [check.md](check.md).
+
+==> .agents/skills/seite/reference/deploy.md <==
+# /seite deploy
+
+1. Run [check.md](check.md) first. Do not deploy a site with errors.
+2. Run `seite deploy --dry-run` and show the user what it would do (target, branch, preview or production).
+3. Ask the user before a real `seite deploy`: it commits, pushes, and publishes. `--preview` deploys to a staging URL; `--no-commit` skips the commit and push.
+
+==> .agents/skills/seite/reference/hooks.md <==
+# /seite hooks [on | off | status]
+
+Hooks run `seite check` for the agent: after each file edit (`seite check --file`, on that file only) and when a turn ends (the full check). Only errors come back to the agent; warnings never block. If `seite` is not installed, the hooks exit silently.
+
+- `seite hooks status`: installed or missing, per agent.
+- `seite hooks on [--agents a,b]`: install the hooks.
+- `seite hooks off [--agents a,b]`: remove seite's hook entries and leave every other hook alone. `seite upgrade` does not add them back.
+
+On Windows the hook commands need a POSIX shell (Git Bash).
+
+==> .agents/skills/seite/reference/landing.md <==
+# /seite landing [page]
+
+The homepage or a standalone landing page. It needs a `pages` collection (`seite collection add pages`).
+
+| Page | Content file | Template |
+|---|---|---|
+| Homepage | `content/pages/index.md` | `templates/index.html` |
+| Other page | `content/pages/<slug>.md` | `templates/<slug>-page.html`, with `template: <slug>-page.html` in the frontmatter |
+
+1. Read the existing files, if any, and improve them.
+2. Ask for what you cannot infer (audience, offer, main call to action), once, in one message. Write real copy, never placeholders.
+3. Content file: set `title`, `description` (160 characters at most), and `image` (e.g. `/static/og.png`). Put section copy in `extra:` keys (`hero_headline`, `cta_primary_text`, `cta_primary_url`, `feature_1_title`, …). Leave the body empty unless there is prose.
+4. Template: `{% extends "base.html" %}`, CSS in `{% block extra_css %}`, markup in `{% block content %}` reading `page.extra.*`. Use one `<h1>`, make it work without JavaScript, and respect `prefers-reduced-motion`. On the homepage, keep the `{% for collection in collections %}` listing unless the user says otherwise. Do not change `base.html` for a landing page.
+5. Preview as in [preview.md](preview.md), then verify as in [check.md](check.md).
+
+==> .agents/skills/seite/reference/new.md <==
+# /seite new <type> "<title>"
+
+1. Look for an existing page first: `seite search <query>`.
+2. Run `seite new <type> "<title>"`. `<type>` is the collection's singular name (`post`, `doc`, `page`, …). Options: `--tags a,b`, `--draft`, `--lang xx`. It prints the path of the new file.
+3. Write the body in that file and set `description:`. Change frontmatter with `seite frontmatter set <path> key=value`, or edit the YAML directly.
+4. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
+5. Verify as in [check.md](check.md).
+
+==> .agents/skills/seite/reference/preview.md <==
+# /seite preview
+
+1. `seite context` shows whether a dev server is already running, and its URL. If one is, use it. Never start a second server.
+2. Otherwise start one in the background: `seite serve --no-repl` (add `--build` when `dist/` is missing). The default URL is `http://localhost:3000`; seite picks another port if that one is taken, and prints it.
+3. Open the preview once, after the first visible change (template, CSS, a new page):
+   - Claude desktop app: open the `seite` server from `.claude/launch.json` in its preview pane (it starts the server itself, so skip step 2).
+   - Cursor: open the URL in Cursor's browser.
+   - Anywhere else: run `seite serve --no-repl --open` instead of step 2, or give the user the URL.
+4. Live reload refreshes the page after later edits. Do not reopen it.
+5. Stop the server when the user is done, if you started it.
+
+==> .agents/skills/seite/reference/theme.md <==
+# /seite theme [name | description]
+
+A theme is `templates/base.html`. Collection templates (`post.html`, `doc.html`, …) extend it and stay as they are.
+
+## List or apply
+
+- No argument: `seite theme list`.
+- A bundled theme name: `seite theme apply <name>` (a customized `base.html` is backed up), then verify as in [check.md](check.md).
+
+## Design a custom theme (`/seite theme <description>`)
+
+1. Design decisions: if impeccable is installed (`.claude/skills/impeccable/` or `.agents/skills/impeccable/` exists), use `/impeccable` (Codex: `$impeccable`) for direction, type, color, and layout, and apply its result within the contract below. Otherwise decide from the description, and mention once that `seite skill install impeccable` adds design tooling.
+2. Start from the closest bundled theme (`seite theme apply <name>`) and restyle it. It already has the SEO head, search, and i18n wiring.
+3. Build directly in `templates/base.html` (assets in `static/`, colors from `data/brand.yaml` if it exists). Never make standalone HTML mockups to port later.
+4. Preview as in [preview.md](preview.md), once after the first visible change.
+5. Verify as in [check.md](check.md). If impeccable is installed, run `seite build` and then `impeccable detect dist/` once, and fix what it reports.
+6. Optional: `seite theme export <name>` saves the theme as `templates/themes/<name>.tera`.
+
+## Contract for base.html
+
+- A full HTML document that extends nothing: `<html lang="{{ lang }}">`.
+- Blocks: `title`, `head`, `extra_css`, `header`, `content` (inside `<main id="main-content">`), `footer`, `extra_js`.
+- Head: everything in the `seo-requirements` context guide (canonical URL, `page.description | default(value=site.description)`, Open Graph and Twitter tags with an absolute image URL, JSON-LD, RSS/Atom links, the `/llms.txt` link, the markdown alternate inside `{% if page.markdown_url %}`, hreflang links for `translations`, `page.robots`).
+- Body: `{{ page.content | safe }}` on pages; loop over `collections` on index pages; render `pagination` when it is set.
+- i18n: UI text from `{{ t.<key> }}`, internal links prefixed with `{{ lang_prefix }}`, never hardcoded English.
+- Search: a `role="search"` form with `<input type="search" id="search-input">` and `<div id="search-results" aria-live="polite">`. The script loads `{{ site.base_path }}{{ lang_prefix }}/search-index.json` on first input: an array of `{title, description, url, collection, tags, date, lang}`. It filters on title, description, and tags, and prefixes result URLs with `site.base_path`.
+- Accessibility: a skip link to `#main-content`, visible focus styles, and `prefers-reduced-motion` respected.
+
+==> .agents/skills/seite/reference/upgrade.md <==
+# /seite upgrade
+
+Brings this project's agent files and config up to date with the installed `seite`.
+
+1. Run `seite upgrade --check`. It lists pending changes and exits 1 when there are some.
+2. Show the list to the user. After they agree, run `seite upgrade --force`.
+3. `--agents claude,codex,…` changes which coding agents the project is set up for; `--mcp` also adds the seite MCP server to their configs.
+4. Verify as in [check.md](check.md).
+
+If the installed `seite` is older than the project expects, tell the user to run `seite self-update`.
+
+==> .gemini/commands/seite.toml <==
+# seite-skill-version: 3
+description = "Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml."
+prompt = """
+Activate the `seite` skill (.agents/skills/seite/SKILL.md) and follow its Routing section and command table for: {{args}}
+"""
+
+==> .gemini/settings.json <==
+{
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "seite-check",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook gemini || true",
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "seite-check-file",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook gemini --post-edit || true",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}
+
+==> AGENTS.md#agent-setup <==
+| Agent | Config | One-time step |
+|---|---|---|
+| Gemini CLI | `.gemini/settings.json` | Trust the folder (`gemini trust` or the prompt) and approve the project hooks when asked |
+
+==> AGENTS.md#context-rules <==
+Detailed guides live in `.agents/rules/`. Before editing, read the guides for the files you touch:
+
+- `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`
+- `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`
+- `data/i18n/**`: `i18n.md`
+- `data/**`: `data-files.md`
+- `templates/shortcodes/**`: `shortcodes.md`
+- `seite.toml`: `config-reference.md`, `private-collections.md`
+
+==> GEMINI.md <==
+@AGENTS.md
+

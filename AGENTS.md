@@ -4,7 +4,7 @@
 
 `seite` is a Rust CLI static site generator designed to be AI-native. Content and templates are structured for LLM generation and consumption. Sites ship with `llms.txt`, `llms-full.txt`, and markdown versions of every page alongside the HTML.
 
-The `seite agent` command spawns Claude Code as a subprocess with full site context — no API keys needed, uses the user's Claude Code subscription directly.
+Generated sites are set up for coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI): a compact AGENTS.md, one routed `/seite` skill, check hooks, and version-matched docs in `.seite/docs/`. `seite agent` is a thin launcher for those agents — no API keys, no paid services.
 
 ## Quick Commands
 
@@ -22,6 +22,8 @@ cargo run -- serve --open  # Dev server + open browser
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- agent "create a blog post about Rust"
+cargo run -- hooks status        # coding-agent check hooks (on|off|status)
+cargo run -- check --file content/posts/x.md  # fast per-file check
 cargo run -- theme create "coral brutalist with lime accents"
 cargo run -- deploy  # Commit, push, build, and deploy
 cargo run -- skill install seomachine
@@ -44,7 +46,7 @@ src/
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
+  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, hooks, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults; unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
@@ -144,17 +146,19 @@ endpoint = "xpznqkdl"
 9. i18n → `{{ t.key }}` for UI text, `{{ lang_prefix }}` for links, `{{ value | i18n(lang=lang) }}` for per-language data prose (language maps; see `src/i18n.rs`)
 
 ### Generated Site Structure
-- `seite init --agents claude,codex,opencode,cursor` (non-interactive default all; the interactive picker preselects agents detected on PATH/`$HOME`; stored in `.seite/config.json` `agents`) writes lean AGENTS.md (always) plus per-agent harness files, all rendered from one source in `src/cli/harness.rs`: `RULES`, `SKILLS`, the MCP entry, and the `PROVIDERS` table (one `AgentSpec` per agent — MCP config path/format, rules dir/format, skills dir + frontmatter, permissions file, command wrappers, setup step, detection; each quirk commented with its source):
-  - claude: CLAUDE.md `@AGENTS.md` shim, `.mcp.json`, `.claude/settings.json`, `.claude/rules/*.md` (`paths:` frontmatter), `.claude/skills/` (`seite` skill gets `argument-hint`)
-  - cursor: `.cursor/mcp.json`, `.cursor/cli.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
-  - codex: `.codex/config.toml` (`[mcp_servers.seite]`, trust comment); opencode: `opencode.json` (`mcp.seite` + `permission`) + `.opencode/commands/seite.md` (`/seite` → skill wrapper)
-  - codex/opencode/cursor: `.agents/skills/` (portable frontmatter: `name`/`description` only); codex/opencode-only sites: `.agents/rules/` (the AGENTS.md rules index target)
-- The `seite` skill (`src/scaffold/skill-seite.md`) is the verb dispatcher: `/seite check|new|preview|build|deploy|theme|collection` (`$seite` in Codex)
+- `seite init --agents claude,codex,opencode,cursor,gemini` (non-interactive default all; the interactive picker preselects agents detected on PATH/`$HOME`; stored in `.seite/config.json` `agents`) writes a compact AGENTS.md (always, ≤ ~3.5 KB; `generate_agents_md` in `src/cli/init.rs`), `.seite/docs/<slug>.md` (embedded docs, `harness::local_docs`), plus per-agent harness files, all rendered from one source in `src/cli/harness.rs`: `RULES`, `SKILLS` (+ `SEITE_REFERENCES`), the optional MCP entry, and the `PROVIDERS` table (one `AgentSpec` per agent — config display, MCP config path/format, rules dir/format, skills dir + frontmatter, permissions file, command wrappers, setup/MCP steps, detection; each quirk commented with its source):
+  - claude: CLAUDE.md `@AGENTS.md` shim, `.claude/settings.json`, `.claude/launch.json` (desktop preview server), `.claude/rules/*.md` (`paths:` frontmatter), `.claude/skills/` (`seite` skill gets `argument-hint`)
+  - cursor: `.cursor/cli.json`, `.cursor/rules/*.mdc` (`description`/`globs`/`alwaysApply: false`)
+  - opencode: `opencode.json` (`permission`) + `.opencode/commands/seite.md` (`/seite` → skill wrapper)
+  - gemini: GEMINI.md `@AGENTS.md` shim, `.gemini/settings.json` (hooks), `.gemini/commands/seite.toml` (`/seite` custom command)
+  - codex/opencode/cursor/gemini: `.agents/skills/` (portable frontmatter: `name`/`description` only); sites without claude/cursor: `.agents/rules/` (the AGENTS.md rules index target)
+  - MCP config only with `--mcp` (init and upgrade): `.mcp.json` + `enabledMcpjsonServers`/`mcp__seite`, `.cursor/mcp.json` + `Mcp(seite:*)`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`; upgrade without `--mcp` never touches existing MCP config
+- The `seite` skill (`src/scaffold/skill-seite/SKILL.md` + `reference/*.md`, version 3) is one routed skill: `/seite check|new|preview|build|deploy|theme|brand|landing|collection|upgrade|hooks` (`$seite` in Codex); references are written to `<skills dir>/seite/reference/` for every provider
 - Harness output is snapshot-tested in `tests/snapshots/harness/*.snap` (`SEITE_UPDATE_SNAPSHOTS=1 cargo test --test integration harness_snapshot` to regenerate)
-- Turn-end stop hooks running `seite check --hook <agent>` (`src/cli/harness_hooks.rs`; only errors block, one continuation per turn, always exit 0): claude `.claude/settings.json` `hooks.Stop`, codex `.codex/hooks.json`, cursor `.cursor/hooks.json`, opencode `.opencode/plugins/seite-check.js`. `.seite/config.json` `hooks_installed` records them; `seite upgrade` only adds hooks for unrecorded agents, so a user-deleted hook stays deleted
-- AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent MCP table) and `<!-- seite:context-rules -->` (rules index) blocks
-- `seite upgrade [--agents …]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks, and never deletes files of deselected agents
-- Rules files are created only when missing; skills and command wrappers are replaced when the bundled `# seite-skill-version` is newer
+- Two-tier hooks (`src/cli/harness_hooks.rs`; only errors are reported, always exit 0, commands wrapped as `command -v seite … && seite check --hook <agent> [--post-edit] || true`): post-edit (`seite check --hook <agent> --post-edit` → `check::check_files` on the edited file) and turn-end (full check, one continuation per turn). claude `.claude/settings.json` `Stop` + `PostToolUse`, codex `.codex/hooks.json` `Stop` + `PostToolUse`, cursor `.cursor/hooks.json` `stop` + `postToolUse`, opencode `.opencode/plugins/seite-check.js` (`session.idle` + `tool.execute.after`), gemini `.gemini/settings.json` `AfterAgent` + `AfterTool`. `.seite/config.json` `hooks_installed` records them; `seite upgrade` adds hooks only for unrecorded agents (and the post-edit tier where the stop hook is still present), so a user-deleted hook stays deleted; `seite hooks on|off|status` (`src/cli/hooks.rs`) manages them
+- AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent setup table; MCP column only when MCP is on) and `<!-- seite:context-rules -->` (rules index) blocks
+- `seite upgrade [--agents …] [--mcp]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks and `.seite/docs/`, and never deletes files of deselected agents
+- Rules files are created only when missing; skills (with their reference files) and command wrappers are replaced when the bundled `# seite-skill-version` is newer. Pre-0.21 `theme-builder`/`brand-identity`/`landing-page` skills and the `design-prompts` rule are removed only when unmodified (`LEGACY_BODY_HASHES` in `src/cli/upgrade.rs`: SHA-256 of every released body)
 
 ## Context Rules
 

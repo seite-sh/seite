@@ -232,47 +232,101 @@ fn test_init_creates_page_meta() {
 }
 
 #[test]
-fn test_init_creates_mcp_server_config() {
+fn test_init_without_mcp_writes_no_mcp_config() {
     let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "MCP Test", "posts,pages");
+    init_site(&tmp, "site", "Plain", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Claude Code reads project MCP servers from .mcp.json only.
-    let mcp_path = site_dir.join(".mcp.json");
-    assert!(mcp_path.exists(), "init should write .mcp.json");
-    let mcp: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&mcp_path).unwrap()).unwrap();
-    assert_eq!(
-        mcp.pointer("/mcpServers/seite/command")
-            .and_then(|v| v.as_str()),
-        Some("seite"),
-        "MCP command should be 'seite'"
-    );
-    assert_eq!(
-        mcp.pointer("/mcpServers/seite/args")
-            .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>()),
-        Some(vec!["mcp"]),
-        "MCP args should be ['mcp']"
-    );
+    for absent in [".mcp.json", ".cursor/mcp.json", ".codex/config.toml"] {
+        assert!(!site_dir.join(absent).exists(), "{absent} should not exist");
+    }
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
+    assert!(settings.get("enabledMcpjsonServers").is_none());
+    assert!(!settings.to_string().contains("mcp__seite"));
+    assert!(read_json_file(&site_dir.join("opencode.json"))
+        .get("mcp")
+        .is_none());
+    assert!(!read_json_file(&site_dir.join(".cursor/cli.json"))
+        .to_string()
+        .contains("Mcp(seite"));
+    assert!(read_json_file(&site_dir.join(".gemini/settings.json"))
+        .get("mcpServers")
+        .is_none());
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(!agents_md.contains("MCP"), "{agents_md}");
 }
 
 #[test]
-fn test_init_settings_json_approves_mcp_without_mcp_servers() {
+fn test_init_with_mcp_wires_every_agent() {
     let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "MCP Settings", "posts,pages");
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "MCP",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts",
+            "--mcp",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
     let site_dir = tmp.path().join("site");
 
-    let content = fs::read_to_string(site_dir.join(".claude/settings.json")).unwrap();
-    let settings: serde_json::Value = serde_json::from_str(&content).unwrap();
-    assert!(
-        settings.get("mcpServers").is_none(),
-        "settings.json must not carry mcpServers (Claude Code ignores it there)"
+    // Claude Code reads project MCP servers from .mcp.json only.
+    let mcp = read_json_file(&site_dir.join(".mcp.json"));
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+    assert_eq!(
+        mcp["mcpServers"]["seite"]["args"],
+        serde_json::json!(["mcp"])
     );
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
+    assert!(settings.get("mcpServers").is_none());
     assert_eq!(
         settings["enabledMcpjsonServers"],
         serde_json::json!(["seite"])
     );
+    assert!(settings["permissions"]["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "mcp__seite"));
+    assert_eq!(
+        read_json_file(&site_dir.join(".cursor/mcp.json"))["mcpServers"]["seite"]["args"][0],
+        "mcp"
+    );
+    let codex: toml::Value =
+        toml::from_str(&fs::read_to_string(site_dir.join(".codex/config.toml")).unwrap()).unwrap();
+    assert_eq!(
+        codex["mcp_servers"]["seite"]["command"].as_str(),
+        Some("seite")
+    );
+    assert_eq!(
+        read_json_file(&site_dir.join("opencode.json"))["mcp"]["seite"]["type"],
+        "local"
+    );
+    let gemini = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert_eq!(gemini["mcpServers"]["seite"]["command"], "seite");
+    assert!(gemini["hooks"].get("AfterAgent").is_some());
+
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    for needle in ["MCP config", "`.mcp.json`", "cursor-agent mcp enable seite"] {
+        assert!(agents_md.contains(needle), "AGENTS.md missing {needle}");
+    }
+}
+
+#[test]
+fn test_init_settings_json_permissions() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Settings", "posts,pages");
+    let site_dir = tmp.path().join("site");
+
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
     let allow: Vec<&str> = settings["permissions"]["allow"]
         .as_array()
         .unwrap()
@@ -280,13 +334,39 @@ fn test_init_settings_json_approves_mcp_without_mcp_servers() {
         .filter_map(|v| v.as_str())
         .collect();
     for rule in [
-        "mcp__seite",
         "Edit(static/**)",
         "Edit(seite.toml)",
         "Write(static/**)",
+        "Bash(seite check:*)",
+        "Bash(seite context)",
     ] {
         assert!(allow.contains(&rule), "missing allow rule {rule}");
     }
+    // Hooks of both tiers.
+    assert!(settings["hooks"].get("Stop").is_some());
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["matcher"],
+        "Write|Edit|MultiEdit"
+    );
+}
+
+#[test]
+fn test_init_writes_claude_launch_json() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let launch = read_json_file(&tmp.path().join("site/.claude/launch.json"));
+    assert_eq!(launch["version"], "0.0.1");
+    assert_eq!(
+        launch["configurations"][0],
+        serde_json::json!({
+            "name": "seite",
+            "runtimeExecutable": "seite",
+            "runtimeArgs": ["serve", "--no-repl", "--port", "3000"],
+            "port": 3000
+        })
+    );
+    init_site_with_agents(&tmp, "codex", "codex");
+    assert!(!tmp.path().join("codex/.claude").exists());
 }
 
 #[test]
@@ -297,59 +377,21 @@ fn test_init_uses_agents_md_as_canonical_instructions() {
 
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(
-        agents_md.contains("## Commands"),
+        agents_md.contains("## Workflow"),
         "AGENTS.md should contain the generated project instructions"
     );
     assert!(
-        agents_md.contains("## MCP Server"),
-        "AGENTS.md should contain the generated MCP guidance"
+        agents_md.contains("## Agent setup"),
+        "AGENTS.md should contain the per-agent setup table"
     );
 
-    let claude_md = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
-    assert_eq!(
-        claude_md, "@AGENTS.md\n",
-        "CLAUDE.md should only import the canonical AGENTS.md"
-    );
-}
-
-#[test]
-fn test_init_creates_landing_page_skill() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "Skill Test", "posts,pages");
-    let site_dir = tmp.path().join("site");
-
-    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
-    assert!(
-        skill_path.exists(),
-        "landing-page skill should be created when pages collection is present"
-    );
-
-    let content = fs::read_to_string(&skill_path).unwrap();
-    assert!(
-        content.starts_with("---"),
-        "SKILL.md should have YAML frontmatter"
-    );
-    assert!(
-        content.contains("name: landing-page"),
-        "SKILL.md should define skill name"
-    );
-    assert!(
-        content.contains("Phase 1: Messaging"),
-        "SKILL.md should contain messaging phase"
-    );
-}
-
-#[test]
-fn test_init_no_landing_page_skill_without_pages() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "No Pages", "posts,docs");
-    let site_dir = tmp.path().join("site");
-
-    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
-    assert!(
-        !skill_path.exists(),
-        "landing-page skill should NOT be created without pages collection"
-    );
+    for shim in ["CLAUDE.md", "GEMINI.md"] {
+        assert_eq!(
+            fs::read_to_string(site_dir.join(shim)).unwrap(),
+            "@AGENTS.md\n",
+            "{shim} should only import the canonical AGENTS.md"
+        );
+    }
 }
 
 #[test]
@@ -382,61 +424,47 @@ fn test_init_agents_default_writes_all_harness_files() {
     let site_dir = tmp.path().join("site");
 
     // Claude Code
-    assert_eq!(
-        read_json_file(&site_dir.join(".mcp.json"))["mcpServers"]["seite"]["command"],
-        "seite"
-    );
     assert!(site_dir.join(".claude/settings.json").exists());
     assert!(site_dir.join(".claude/rules/templates.md").exists());
-    assert!(site_dir
-        .join(".claude/skills/theme-builder/SKILL.md")
-        .exists());
+    assert!(site_dir.join(".claude/skills/seite/SKILL.md").exists());
     assert_eq!(
         fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
         "@AGENTS.md\n"
     );
 
-    // Cursor: same MCP shape, .mdc rules with globs from the same source
-    assert_eq!(
-        read_json_file(&site_dir.join(".cursor/mcp.json"))["mcpServers"]["seite"]["args"][0],
-        "mcp"
-    );
+    // Cursor: .mdc rules with globs from the same source
     let mdc = fs::read_to_string(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
     assert!(mdc.contains("globs: \"templates/**\"\nalwaysApply: false\n"));
     let claude_rule = fs::read_to_string(site_dir.join(".claude/rules/templates.md")).unwrap();
     let body = |s: &str| s.splitn(3, "---\n").nth(2).unwrap().to_string();
     assert_eq!(body(&mdc), body(&claude_rule), "rules share one source");
+    assert!(site_dir.join(".cursor/cli.json").exists());
 
-    // Codex
-    let codex: toml::Value =
-        toml::from_str(&fs::read_to_string(site_dir.join(".codex/config.toml")).unwrap()).unwrap();
-    assert_eq!(
-        codex["mcp_servers"]["seite"]["command"].as_str(),
-        Some("seite")
-    );
+    // Codex: hooks (no MCP config without --mcp)
+    assert!(site_dir.join(".codex/hooks.json").exists());
 
     // OpenCode
     let opencode = read_json_file(&site_dir.join("opencode.json"));
-    assert_eq!(opencode["mcp"]["seite"]["type"], "local");
     assert_eq!(opencode["permission"]["bash"]["seite build*"], "allow");
 
-    // Shared skills for Codex / Cursor / OpenCode
-    assert_eq!(
-        fs::read_to_string(site_dir.join(".agents/skills/theme-builder/SKILL.md")).unwrap(),
-        fs::read_to_string(site_dir.join(".claude/skills/theme-builder/SKILL.md")).unwrap()
-    );
-    assert!(site_dir
-        .join(".agents/skills/landing-page/SKILL.md")
-        .exists());
+    // Gemini CLI
+    assert!(site_dir.join(".gemini/settings.json").exists());
+    assert!(site_dir.join(".gemini/commands/seite.toml").exists());
 
-    // AGENTS.md lists every agent's MCP config and the rules index
+    // Shared skill for Codex / Cursor / OpenCode / Gemini: same references
+    assert_eq!(
+        fs::read_to_string(site_dir.join(".agents/skills/seite/reference/theme.md")).unwrap(),
+        fs::read_to_string(site_dir.join(".claude/skills/seite/reference/theme.md")).unwrap()
+    );
+
+    // AGENTS.md lists every agent's setup and the rules index
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     for needle in [
-        "`.mcp.json`",
-        "`.codex/config.toml`",
-        "`.cursor/mcp.json`",
+        "`.claude/settings.json`",
+        "`.codex/hooks.json`",
+        "`.cursor/cli.json`",
         "`opencode.json`",
-        "cursor-agent mcp enable seite",
+        "`.gemini/settings.json`",
         "- `templates/**`: `seo-requirements.md`",
     ] {
         assert!(agents_md.contains(needle), "AGENTS.md missing {needle}");
@@ -444,7 +472,7 @@ fn test_init_agents_default_writes_all_harness_files() {
 
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
 }
 
@@ -453,13 +481,21 @@ fn test_init_agents_subset() {
     let tmp = TempDir::new().unwrap();
     init_site_with_agents(&tmp, "claude-only", "claude");
     let site_dir = tmp.path().join("claude-only");
-    assert!(site_dir.join(".mcp.json").exists());
+    assert!(site_dir.join(".claude/settings.json").exists());
     assert!(site_dir.join(".claude/rules/templates.md").exists());
-    for absent in [".cursor", ".codex", ".agents", "opencode.json"] {
+    for absent in [
+        ".cursor",
+        ".codex",
+        ".agents",
+        "opencode.json",
+        ".gemini",
+        "GEMINI.md",
+        ".mcp.json",
+    ] {
         assert!(!site_dir.join(absent).exists(), "{absent} should not exist");
     }
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
-    assert!(agents_md.contains("`.mcp.json`"));
+    assert!(agents_md.contains("`.claude/settings.json`"));
     assert!(!agents_md.contains("opencode.json") && !agents_md.contains(".codex/"));
     assert!(!agents_md.contains("Cursor"));
     assert_eq!(stored_agents(&site_dir), serde_json::json!(["claude"]));
@@ -467,10 +503,8 @@ fn test_init_agents_subset() {
     // Codex only: no Claude files; rules land in the neutral .agents/rules/
     init_site_with_agents(&tmp, "codex-only", "codex");
     let site_dir = tmp.path().join("codex-only");
-    assert!(site_dir.join(".codex/config.toml").exists());
-    assert!(site_dir
-        .join(".agents/skills/theme-builder/SKILL.md")
-        .exists());
+    assert!(site_dir.join(".codex/hooks.json").exists());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").exists());
     assert!(site_dir.join(".agents/rules/templates.md").exists());
     for absent in [
         ".claude",
@@ -478,12 +512,29 @@ fn test_init_agents_subset() {
         "CLAUDE.md",
         ".cursor",
         "opencode.json",
+        ".codex/config.toml",
     ] {
         assert!(!site_dir.join(absent).exists(), "{absent} should not exist");
     }
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(agents_md.contains("Detailed guides live in `.agents/rules/`"));
     assert!(!agents_md.contains(".claude/"));
+
+    // Gemini only: GEMINI.md shim, settings with hooks, the /seite command.
+    init_site_with_agents(&tmp, "gemini-only", "gemini");
+    let site_dir = tmp.path().join("gemini-only");
+    assert_eq!(
+        fs::read_to_string(site_dir.join("GEMINI.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+    let settings = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert_eq!(
+        settings["hooks"]["AfterTool"][0]["matcher"],
+        "write_file|replace"
+    );
+    assert!(site_dir.join(".gemini/commands/seite.toml").exists());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").exists());
+    assert!(!site_dir.join(".claude").exists());
 }
 
 #[test]

@@ -228,6 +228,8 @@ pub(crate) fn harness_snapshot(site_dir: &std::path::Path) -> Vec<(String, Strin
         ".codex",
         ".agents",
         ".opencode",
+        ".gemini",
+        "GEMINI.md",
         ".mcp.json",
         "opencode.json",
         "AGENTS.md",

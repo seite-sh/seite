@@ -1,16 +1,31 @@
 ---
 title: "MCP Server for AI Integration"
-description: "Give AI tools structured access to your static site's content, configuration, and build tools via the Model Context Protocol. Auto-configured, no API keys."
+description: "Give chat apps such as Claude Desktop structured access to your static site's content, configuration, and build tools via the Model Context Protocol. Opt-in for coding agents, no API keys."
 weight: 10
 ---
 
-AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is what makes the [AI agent](/docs/agent) and other AI integrations understand your static site generator project as a project, not just a pile of files.
+AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
 
 ## Overview
 
-`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically, no API keys or setup required.
+`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server, `seite mcp`. It exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, checking, creating content, searching, and applying themes. No API keys required.
 
-The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
+## Claude Desktop
+
+Add the server to Claude Desktop's config (`claude_desktop_config.json`, opened from Settings → Developer → Edit Config), pointing `--dir` at your site:
+
+```json
+{
+  "mcpServers": {
+    "my-site": {
+      "command": "seite",
+      "args": ["mcp", "--dir", "/path/to/my-site"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The chat can then read your content, check the site, create posts, and build it. Use the full path to `seite` (`which seite`) if Claude Desktop doesn't find it on `PATH`. Other chat apps that speak MCP over stdio take the same command.
 
 ## Why MCP?
 
@@ -33,52 +48,34 @@ Response: [
 
 No file parsing. No guessing. The AI tool gets clean data and can focus on what you actually asked it to do.
 
-## How It Works
+## Coding agents (opt-in)
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. `seite init` declares it in the project config of every coding agent you select (`--agents`, default all), and `seite upgrade` adds it to existing projects, merging into configs you already have:
+Coding agents get the same features from CLI commands (`seite check`, `seite context`, `seite search`, `seite page`, `seite templates`, …), which cost no extra context and work in every agent. To wire the MCP server in as well, pass `--mcp`:
 
-| Agent | Project config | One-time step |
-|-------|----------------|---------------|
-| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` in `.claude/settings.json`) | May ask you to approve the server on first open; check with `/mcp` |
-| Codex CLI | `.codex/config.toml` | Codex only loads project config for trusted projects: accept the trust prompt on first run, then `codex mcp list` shows it |
-| Cursor | `.cursor/mcp.json` | Approve it in Cursor's MCP settings, or run `cursor-agent mcp enable seite` |
-| OpenCode | `opencode.json` | None — it starts automatically |
+```bash
+seite init my-site --mcp      # new site
+seite upgrade --mcp           # existing site
+```
 
-Claude Code and Cursor share the same JSON shape:
+| Agent | Project config |
+|-------|----------------|
+| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` and `mcp__seite` in `.claude/settings.json`); check with `/mcp` |
+| Codex CLI | `.codex/config.toml` `[mcp_servers.seite]` (trusted projects only) |
+| Cursor | `.cursor/mcp.json` (approve it in Cursor's MCP settings, or `cursor-agent mcp enable seite`) |
+| OpenCode | `opencode.json` `mcp.seite` |
+| Gemini CLI | `.gemini/settings.json` `mcpServers.seite` (needs a trusted folder) |
+
+Claude Code, Cursor, and Gemini CLI share the same JSON shape:
 
 ```json
 {
   "mcpServers": {
-    "seite": {
-      "command": "seite",
-      "args": ["mcp"]
-    }
+    "seite": { "command": "seite", "args": ["mcp"] }
   }
 }
 ```
 
-Codex (`.codex/config.toml`):
-
-```toml
-[mcp_servers.seite]
-command = "seite"
-args = ["mcp"]
-```
-
-OpenCode (`opencode.json`):
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "seite": { "type": "local", "command": ["seite", "mcp"], "enabled": true }
-  }
-}
-```
-
-`seite upgrade` also migrates any older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
-
-Other MCP clients (Codex CLI, OpenCode, Cursor, ...) run the same `seite mcp` command from the site directory.
+Without `--mcp`, `seite upgrade` leaves existing MCP config exactly as it is, and never removes it. With `--mcp`, it also moves an older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
 
 ### Protocol versions
 
@@ -101,9 +98,8 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Content overview | `seite://content` | All collections with item counts |
 | Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
 | Themes | `seite://themes` | Available bundled and installed themes |
-| MCP configuration | `seite://mcp-config` | Each agent's project config that exists: `.mcp.json` and `.claude/settings.json` (Claude Code), `.cursor/mcp.json`, `opencode.json`, `.codex/config.toml` (as JSON) |
 
-Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`) are only available when running inside a page project directory.
+Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`) are only available when running inside a page project directory.
 
 `resources/templates/list` advertises the parameterized URIs `seite://content/{collection}` and `seite://docs/{slug}`.
 

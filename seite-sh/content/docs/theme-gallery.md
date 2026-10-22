@@ -147,7 +147,7 @@ seite theme create "warm editorial design with serif headings and earth tones"
 seite theme create "neon cyberpunk with scanline effects and monospace everything"
 ```
 
-This spawns Claude Code to generate a complete `templates/base.html` with all required blocks, SEO tags, search, pagination, and accessibility features. Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
+This runs your coding agent (Claude Code by default; `SEITE_AGENT` picks Codex, OpenCode, Cursor, or Gemini CLI) with `/seite theme <description>` to build a complete `templates/base.html` with all required blocks, SEO tags, search, pagination, and accessibility features. With the impeccable design skill installed, it points you to `/impeccable` instead.
 
 {{% callout(type="info") %}}
 AI-generated themes are production-ready. Claude includes all SEO meta tags, search functionality, pagination, accessibility features, and responsive design automatically.
@@ -181,7 +181,7 @@ seite theme list              # Show all bundled + installed themes
 seite theme apply <name>      # Apply a theme (writes templates/base.html)
 seite theme install <url>     # Download a theme from a URL
 seite theme export <name>     # Export current theme as shareable .tera file
-seite theme create "<prompt>" # Generate a custom theme with AI
+seite theme create "<prompt>" # Design a custom theme with your coding agent
 ```
 
 In the dev server REPL, type `theme` to list themes or `theme <name>` to apply and auto-rebuild.

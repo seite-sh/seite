@@ -23,4 +23,4 @@ paths:
 ## Also update the repo's canonical AGENTS.md instructions when adding new patterns or architecture.
 
 ## Scaffold files (`src/scaffold/`)
-Static markdown sections embedded via `include_str!` into generated AGENTS.md and the per-agent rules/skills for user sites (`.claude/rules/*.md`, `.cursor/rules/*.mdc`, `.claude/skills/`, `.agents/skills/`). Register new rules/skills once in `RULES`/`SKILLS` in `src/cli/harness.rs`. Edit these when changing the AI agent context.
+Static markdown embedded via `include_str!` into the per-agent rules and the `seite` skill for user sites (`.claude/rules/*.md`, `.cursor/rules/*.mdc`, `.claude/skills/seite/`, `.agents/skills/seite/`). Rules = path-triggered hard contracts (`src/scaffold/*.md`, registered in `RULES`); the skill = workflows (`src/scaffold/skill-seite/SKILL.md` + `reference/*.md`, registered in `SKILLS`/`SEITE_REFERENCES`). Don't repeat a fact in both. AGENTS.md itself is generated in `generate_agents_md` (`src/cli/init.rs`) and stays compact (size budget tested). Bump `# seite-skill-version` when changing the skill or its references. `init`/`upgrade` also write every embedded doc to `.seite/docs/`.

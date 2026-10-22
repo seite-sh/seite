@@ -576,7 +576,10 @@ fn test_upgrade_from_workspace_root_upgrades_every_site() {
     for site in ["blog", "docs"] {
         let site_dir = tmp.path().join("sites").join(site);
         assert!(site_dir.join(".seite/config.json").exists(), "{site}");
-        assert!(site_dir.join(".mcp.json").exists(), "{site}");
+        assert!(
+            site_dir.join(".claude/skills/seite/SKILL.md").exists(),
+            "{site}"
+        );
     }
 
     page_cmd()
@@ -628,8 +631,14 @@ fn test_upgrade_workspace_site_filter() {
     assert_eq!(sites[0]["site"], "blog");
     assert_eq!(doc["data"]["applied"], true);
 
-    assert!(tmp.path().join("sites/blog/.mcp.json").exists());
-    assert!(!tmp.path().join("sites/docs/.mcp.json").exists());
+    assert!(tmp
+        .path()
+        .join("sites/blog/.claude/skills/seite/SKILL.md")
+        .exists());
+    assert!(!tmp
+        .path()
+        .join("sites/docs/.claude/skills/seite/SKILL.md")
+        .exists());
 }
 
 #[test]
@@ -643,6 +652,12 @@ fn test_upgrade_inside_workspace_site_upgrades_only_that_site() {
         .assert()
         .success();
 
-    assert!(tmp.path().join("sites/docs/.mcp.json").exists());
-    assert!(!tmp.path().join("sites/blog/.mcp.json").exists());
+    assert!(tmp
+        .path()
+        .join("sites/docs/.claude/skills/seite/SKILL.md")
+        .exists());
+    assert!(!tmp
+        .path()
+        .join("sites/blog/.claude/skills/seite/SKILL.md")
+        .exists());
 }

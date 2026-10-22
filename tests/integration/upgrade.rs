@@ -1,4 +1,6 @@
 use super::common::*;
+use seite::cli::harness::Agent;
+use seite::cli::harness_hooks::{hook_command, HookKind};
 
 #[test]
 fn test_upgrade_migrates_claude_md_to_agents_md() {
@@ -348,123 +350,6 @@ fn test_upgrade_rejects_non_utf8_instructions_before_applying_actions() {
 }
 
 #[test]
-fn test_upgrade_adds_landing_page_skill() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "Upgrade Test", "posts,pages");
-    let site_dir = tmp.path().join("site");
-
-    // Remove the skill to simulate an older project
-    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
-    fs::remove_file(&skill_path).unwrap();
-    assert!(!skill_path.exists());
-
-    // Downgrade the project version so the upgrade step applies
-    let meta_path = site_dir.join(".seite/config.json");
-    let meta_content = fs::read_to_string(&meta_path).unwrap();
-    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
-    fs::write(&meta_path, &updated).unwrap();
-
-    page_cmd()
-        .args(["upgrade", "--force"])
-        .current_dir(&site_dir)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("landing-page"));
-
-    assert!(
-        skill_path.exists(),
-        "upgrade should create the landing-page skill"
-    );
-    let content = fs::read_to_string(&skill_path).unwrap();
-    assert!(content.contains("name: landing-page"));
-}
-
-#[test]
-fn test_upgrade_updates_outdated_skill() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "Skill Update", "posts,pages");
-    let site_dir = tmp.path().join("site");
-
-    let skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
-    assert!(skill_path.exists());
-
-    // Write an older version of the skill (version 1)
-    fs::write(
-        &skill_path,
-        "---\nname: landing-page\ndescription: old\n# seite-skill-version: 1\n---\nOld content\n",
-    )
-    .unwrap();
-
-    // Downgrade the project version so the upgrade step applies
-    let meta_path = site_dir.join(".seite/config.json");
-    let meta_content = fs::read_to_string(&meta_path).unwrap();
-    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
-    fs::write(&meta_path, &updated).unwrap();
-
-    page_cmd()
-        .args(["upgrade", "--force"])
-        .current_dir(&site_dir)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("updated v1 \u{2192} v3"));
-
-    let content = fs::read_to_string(&skill_path).unwrap();
-    assert!(
-        content.contains("seite-skill-version: 3"),
-        "upgrade should replace skill with newer version"
-    );
-    assert!(
-        content.contains("Phase 1: Messaging"),
-        "upgraded skill should have full content"
-    );
-}
-
-#[test]
-fn test_upgrade_migrates_old_homepage_skill() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "Migration Test", "posts,pages");
-    let site_dir = tmp.path().join("site");
-
-    // Remove the new skill and create an old homepage skill to simulate pre-rename project
-    let new_skill_path = site_dir.join(".claude/skills/landing-page/SKILL.md");
-    fs::remove_file(&new_skill_path).unwrap();
-    let old_skill_dir = site_dir.join(".claude/skills/homepage");
-    fs::create_dir_all(&old_skill_dir).unwrap();
-    fs::write(
-        old_skill_dir.join("SKILL.md"),
-        "---\nname: homepage\ndescription: old\n# seite-skill-version: 1\n---\nOld content\n",
-    )
-    .unwrap();
-
-    // Downgrade the project version
-    let meta_path = site_dir.join(".seite/config.json");
-    let meta_content = fs::read_to_string(&meta_path).unwrap();
-    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), "0.1.0");
-    fs::write(&meta_path, &updated).unwrap();
-
-    page_cmd()
-        .args(["upgrade", "--force"])
-        .current_dir(&site_dir)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("landing-page"));
-
-    // New skill should exist
-    assert!(
-        new_skill_path.exists(),
-        "upgrade should create the new landing-page skill"
-    );
-    let content = fs::read_to_string(&new_skill_path).unwrap();
-    assert!(content.contains("name: landing-page"));
-
-    // Old skill should still be there (non-destructive)
-    assert!(
-        old_skill_dir.join("SKILL.md").exists(),
-        "upgrade should not delete the old homepage skill"
-    );
-}
-
-#[test]
 fn test_upgrade_on_fresh_project_is_noop() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Up To Date", "posts,pages");
@@ -485,9 +370,10 @@ fn test_upgrade_adds_mcp_to_existing_project() {
     init_site(&tmp, "site", "Upgrade MCP", "posts,pages");
     let site_dir = tmp.path().join("site");
 
-    // Simulate a pre-MCP project by removing the MCP config and version stamp
+    // Simulate a pre-MCP project by removing the version stamp. MCP is
+    // opt-in, so init wrote no MCP config.
     fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
-    fs::remove_file(site_dir.join(".mcp.json")).unwrap();
+    assert!(!site_dir.join(".mcp.json").exists());
 
     // Write a .claude/settings.json WITHOUT mcpServers
     fs::write(
@@ -502,9 +388,9 @@ fn test_upgrade_adds_mcp_to_existing_project() {
     )
     .unwrap();
 
-    // Run upgrade
+    // Run upgrade with MCP opted in
     page_cmd()
-        .args(["upgrade", "--force"])
+        .args(["upgrade", "--force", "--mcp"])
         .current_dir(&site_dir)
         .assert()
         .success()
@@ -565,53 +451,6 @@ fn test_upgrade_installs_private_collections_rule() {
 }
 
 #[test]
-fn test_upgrade_adds_mcp_section_before_migrating_to_agents_md() {
-    let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "CLAUDE.md Upgrade", "posts,pages");
-    let site_dir = tmp.path().join("site");
-
-    // init now includes MCP section, so verify it's there
-    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
-    assert!(
-        agents_md.contains("## MCP Server"),
-        "init-generated AGENTS.md should include MCP section"
-    );
-    assert!(
-        agents_md.contains("## Commands"),
-        "AGENTS.md should have Commands section from init"
-    );
-
-    // Simulate an older project whose CLAUDE.md doesn't have the MCP section.
-    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
-    let older_md = "# My Site\n\n## Commands\n\n```bash\nseite build\n```\n";
-    fs::write(site_dir.join("CLAUDE.md"), older_md).unwrap();
-
-    // Remove version stamp to trigger upgrade
-    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
-
-    page_cmd()
-        .args(["upgrade", "--force"])
-        .current_dir(&site_dir)
-        .assert()
-        .success();
-
-    let updated = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
-    assert!(
-        updated.contains("## MCP Server"),
-        "upgrade should retain MCP guidance added before migration"
-    );
-    // Original content should still be there
-    assert!(
-        updated.contains("## Commands"),
-        "upgrade should preserve existing project instructions"
-    );
-    assert_eq!(
-        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
-        "@AGENTS.md\n"
-    );
-}
-
-#[test]
 fn test_upgrade_check_mode_exits_nonzero() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Check Mode", "posts,pages");
@@ -667,7 +506,7 @@ fn test_upgrade_preserves_existing_mcp_servers() {
     .unwrap();
 
     page_cmd()
-        .args(["upgrade", "--force"])
+        .args(["upgrade", "--force", "--mcp"])
         .current_dir(&site_dir)
         .assert()
         .success();
@@ -694,7 +533,6 @@ fn test_upgrade_migrates_legacy_settings_json() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Legacy MCP", "posts,pages");
     let site_dir = tmp.path().join("site");
-    fs::remove_file(site_dir.join(".mcp.json")).unwrap();
     let meta_path = site_dir.join(".seite/config.json");
     let meta_content = fs::read_to_string(&meta_path).unwrap();
     fs::write(
@@ -716,7 +554,7 @@ fn test_upgrade_migrates_legacy_settings_json() {
     .unwrap();
 
     page_cmd()
-        .args(["upgrade", "--force"])
+        .args(["upgrade", "--force", "--mcp"])
         .current_dir(&site_dir)
         .assert()
         .success()
@@ -754,7 +592,7 @@ fn test_upgrade_migrates_legacy_settings_json() {
 
     // Idempotent: nothing left to migrate.
     page_cmd()
-        .args(["upgrade", "--check"])
+        .args(["upgrade", "--check", "--mcp"])
         .current_dir(&site_dir)
         .assert()
         .success();
@@ -830,11 +668,11 @@ fn test_upgrade_stamps_version_even_when_no_actions() {
     let site_dir = tmp.path().join("site");
 
     // Simulate a project whose files are already up to date but whose
-    // .seite/config.json records an older version (e.g. 0.4.0 → current).
+    // .seite/config.json records an older version (e.g. 0.20.0 → current).
     let meta_path = site_dir.join(".seite/config.json");
     fs::write(
         &meta_path,
-        r#"{"version": "0.4.0", "initialized_at": "2026-01-01T00:00:00+00:00"}"#,
+        r#"{"version": "0.20.0", "initialized_at": "2026-01-01T00:00:00+00:00"}"#,
     )
     .unwrap();
 
@@ -886,7 +724,7 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     fs::write(site_dir.join(".codex/config.toml"), codex_before).unwrap();
 
     let output = page_cmd()
-        .args(["--json", "upgrade", "--force", "--agents", "all"])
+        .args(["--json", "upgrade", "--force", "--agents", "all", "--mcp"])
         .current_dir(&site_dir)
         .output()
         .unwrap();
@@ -894,7 +732,7 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     let doc = json_stdout(&output);
     assert_eq!(
         doc["data"]["agents"],
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
 
     let opencode = read_json_file(&site_dir.join("opencode.json"));
@@ -927,15 +765,19 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     );
 
     assert!(site_dir.join(".cursor/rules/templates.mdc").exists());
-    assert!(site_dir
-        .join(".agents/skills/brand-identity/SKILL.md")
-        .exists());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").exists());
+    let gemini = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert_eq!(gemini["mcpServers"]["seite"]["command"], "seite");
+    assert!(
+        gemini["hooks"]["AfterAgent"].is_array(),
+        "gemini hooks kept alongside MCP: {gemini}"
+    );
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(agents_md.contains("`.codex/config.toml`"));
     assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`)"));
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
 }
 
@@ -961,7 +803,7 @@ fn test_upgrade_is_idempotent_for_harness_files() {
     fs::remove_file(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
     // (Not `.codex/hooks.json`: a deleted stop hook stays deleted, see
     // test_upgrade_stop_hooks_respect_opt_out.)
-    fs::remove_file(site_dir.join(".codex/config.toml")).unwrap();
+    fs::remove_file(site_dir.join(".agents/skills/seite/SKILL.md")).unwrap();
     page_cmd()
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
@@ -989,7 +831,7 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .stdout(predicate::str::contains("up to date"));
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
     assert_eq!(harness_snapshot(&site_dir), fresh);
 
@@ -1000,10 +842,10 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "No longer maintaining files for OpenCode, Cursor",
+            "No longer maintaining files for OpenCode, Cursor, Gemini CLI",
         ));
     assert!(site_dir.join("opencode.json").exists());
-    assert!(site_dir.join(".cursor/mcp.json").exists());
+    assert!(site_dir.join(".cursor/hooks.json").exists());
     assert_eq!(
         stored_agents(&site_dir),
         serde_json::json!(["claude", "codex"])
@@ -1013,14 +855,14 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         !agents_md.contains("`opencode.json`"),
         "table follows selection"
     );
-    fs::remove_file(site_dir.join(".cursor/mcp.json")).unwrap();
+    fs::remove_file(site_dir.join(".cursor/rules/templates.mdc")).unwrap();
     page_cmd()
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
         .assert()
         .success()
         .stdout(predicate::str::contains("up to date"));
-    assert!(!site_dir.join(".cursor/mcp.json").exists());
+    assert!(!site_dir.join(".cursor/rules/templates.mdc").exists());
 }
 
 #[test]
@@ -1169,27 +1011,51 @@ fn test_init_writes_stop_hooks_for_selected_agents() {
     let settings = read_json_file(&site_dir.join(".claude/settings.json"));
     assert_eq!(
         settings["hooks"]["Stop"][0]["hooks"][0]["command"],
-        "seite check --hook claude"
+        hook_command(Agent::Claude, HookKind::Stop)
+    );
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        hook_command(Agent::Claude, HookKind::PostEdit)
+    );
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["matcher"],
+        "Write|Edit|MultiEdit"
     );
     let codex = read_json_file(&site_dir.join(".codex/hooks.json"));
     assert_eq!(
         codex["hooks"]["Stop"][0]["hooks"][0]["command"],
-        "seite check --hook codex"
+        hook_command(Agent::Codex, HookKind::Stop)
+    );
+    assert_eq!(
+        codex["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        hook_command(Agent::Codex, HookKind::PostEdit)
     );
     let cursor = read_json_file(&site_dir.join(".cursor/hooks.json"));
     assert_eq!(cursor["version"], 1);
     assert_eq!(
         cursor["hooks"]["stop"][0]["command"],
-        "seite check --hook cursor"
+        hook_command(Agent::Cursor, HookKind::Stop)
+    );
+    assert_eq!(
+        cursor["hooks"]["postToolUse"][0]["command"],
+        hook_command(Agent::Cursor, HookKind::PostEdit)
+    );
+    let gemini = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert_eq!(
+        gemini["hooks"]["AfterAgent"][0]["hooks"][0]["command"],
+        hook_command(Agent::Gemini, HookKind::Stop)
+    );
+    assert_eq!(
+        gemini["hooks"]["AfterTool"][0]["hooks"][0]["command"],
+        hook_command(Agent::Gemini, HookKind::PostEdit)
     );
     let plugin = fs::read_to_string(site_dir.join(".opencode/plugins/seite-check.js")).unwrap();
     assert!(plugin.contains("seite check --hook opencode"));
+    assert!(plugin.contains("tool.execute.after"));
     assert_eq!(
         stop_hook_ids(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
-    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
-    assert!(agents_md.contains("`seite check --hook <agent>`"));
 
     init_site_with_agents(&tmp, "codex-only", "codex");
     let site_dir = tmp.path().join("codex-only");
@@ -1232,17 +1098,26 @@ fn test_upgrade_adds_stop_hooks_to_existing_project() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("stop hook"));
+        .stdout(predicate::str::contains(
+            "Added the seite check hooks to .claude/settings.json",
+        ))
+        .stdout(predicate::str::contains(
+            ".codex/hooks.json (seite check hooks for Codex CLI)",
+        ));
 
     let cursor = read_json_file(&site_dir.join(".cursor/hooks.json"));
     assert_eq!(cursor["hooks"]["afterFileEdit"][0]["command"], "fmt");
     assert_eq!(
         cursor["hooks"]["stop"][0]["command"],
-        "seite check --hook cursor"
+        hook_command(Agent::Cursor, HookKind::Stop)
+    );
+    assert_eq!(
+        cursor["hooks"]["postToolUse"][0]["command"],
+        hook_command(Agent::Cursor, HookKind::PostEdit)
     );
     assert_eq!(
         stop_hook_ids(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
     // Everything except the user's own Cursor hook file matches a fresh init
     // (the Claude hook lands in settings.json exactly where init puts it).
@@ -1310,7 +1185,7 @@ fn test_upgrade_leaves_malformed_cursor_configs_untouched_with_warning() {
 
     for _ in 0..2 {
         let output = page_cmd()
-            .args(["upgrade", "--force", "--agents", "claude,cursor"])
+            .args(["upgrade", "--force", "--mcp", "--agents", "claude,cursor"])
             .current_dir(&site_dir)
             .output()
             .unwrap();
@@ -1424,7 +1299,10 @@ fn test_upgrade_stop_hook_unmergeable_settings_warns_and_retries_later() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        all.contains(".claude/settings.json can't be merged automatically; add a Claude Code stop hook running `seite check --hook claude` by hand"),
+        all.contains(&format!(
+            ".claude/settings.json can't be merged automatically; add a Claude Code hook running `{}` by hand",
+            hook_command(Agent::Claude, HookKind::Stop)
+        )),
         "{all}"
     );
     assert_eq!(fs::read_to_string(&settings_path).unwrap(), broken);
@@ -1445,7 +1323,7 @@ fn test_upgrade_stop_hook_unmergeable_settings_warns_and_retries_later() {
     assert!(
         settings["hooks"]["Stop"]
             .to_string()
-            .contains("seite check --hook claude"),
+            .contains(&hook_command(Agent::Claude, HookKind::Stop)),
         "{settings}"
     );
     assert!(stop_hook_ids(&site_dir)
@@ -1513,4 +1391,228 @@ fn test_upgrade_old_project_without_claude_keeps_claude_files_out() {
     assert!(!site_dir.join(".mcp.json").exists());
     // The shared rules directory Codex/OpenCode read is restored.
     assert!(site_dir.join(".agents/rules/templates.md").is_file());
+}
+
+/// Point `.seite/config.json` at an older version so `upgrade` has work to do.
+fn set_project_version(site_dir: &std::path::Path, version: &str) {
+    let meta_path = site_dir.join(".seite/config.json");
+    let meta = fs::read_to_string(&meta_path).unwrap();
+    fs::write(&meta_path, meta.replace(env!("CARGO_PKG_VERSION"), version)).unwrap();
+}
+
+#[test]
+fn test_upgrade_without_mcp_leaves_existing_mcp_config_untouched() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No MCP", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    assert!(!site_dir.join(".mcp.json").exists(), "init is MCP opt-in");
+
+    let mcp_json = r#"{
+  "mcpServers": {
+    "custom-server": { "command": "my-tool", "args": ["serve"] }
+  }
+}
+"#;
+    let settings = r#"{
+  "permissions": { "allow": ["Read"] },
+  "mcpServers": { "legacy": { "command": "legacy-tool" } }
+}
+"#;
+    fs::write(site_dir.join(".mcp.json"), mcp_json).unwrap();
+    fs::write(site_dir.join(".claude/settings.json"), settings).unwrap();
+    set_project_version(&site_dir, "0.19.0");
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(site_dir.join(".mcp.json")).unwrap(),
+        mcp_json,
+        "an existing .mcp.json must stay byte-identical without --mcp"
+    );
+    // Permissions may be topped up, but the legacy server block stays put and
+    // no MCP enablement is added.
+    let after = read_json_file(&site_dir.join(".claude/settings.json"));
+    assert_eq!(
+        after["mcpServers"],
+        serde_json::json!({ "legacy": { "command": "legacy-tool" } }),
+        "legacy mcpServers must not be migrated without --mcp"
+    );
+    assert!(after.get("enabledMcpjsonServers").is_none(), "{after}");
+    assert!(!after.to_string().contains("mcp__seite"), "{after}");
+    // No other agent gets MCP config either.
+    assert!(!site_dir.join(".cursor/mcp.json").exists());
+    assert!(!site_dir.join(".codex/config.toml").exists());
+    let opencode = read_json_file(&site_dir.join("opencode.json"));
+    assert!(opencode.get("mcp").is_none(), "{opencode}");
+    let gemini = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert!(gemini.get("mcpServers").is_none(), "{gemini}");
+}
+
+#[test]
+fn test_upgrade_mcp_flag_adds_mcp_config_for_selected_agents() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "With MCP", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    set_project_version(&site_dir, "0.19.0");
+
+    page_cmd()
+        .args([
+            "upgrade",
+            "--force",
+            "--mcp",
+            "--agents",
+            "claude,codex,gemini",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let mcp = read_json_file(&site_dir.join(".mcp.json"));
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
+    assert_eq!(
+        settings["enabledMcpjsonServers"],
+        serde_json::json!(["seite"])
+    );
+    assert!(settings["permissions"]["allow"]
+        .to_string()
+        .contains("mcp__seite"));
+    let codex = fs::read_to_string(site_dir.join(".codex/config.toml")).unwrap();
+    assert!(codex.contains("[mcp_servers.seite]"), "{codex}");
+    let gemini = read_json_file(&site_dir.join(".gemini/settings.json"));
+    assert_eq!(gemini["mcpServers"]["seite"]["command"], "seite");
+    // Agents outside the selection get nothing.
+    assert!(!site_dir.join(".cursor/mcp.json").exists());
+    assert!(read_json_file(&site_dir.join("opencode.json"))
+        .get("mcp")
+        .is_none());
+
+    // The per-agent table gains an MCP column once MCP is configured.
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("MCP config"), "{agents_md}");
+}
+
+#[test]
+fn test_upgrade_merges_launch_json_add_only() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    let launch = site_dir.join(".claude/launch.json");
+    assert!(launch.exists(), "init writes launch.json for Claude");
+
+    // An existing file with another configuration gains `seite`, add-only.
+    fs::write(
+        &launch,
+        r#"{"version":"0.0.1","configurations":[{"name":"web","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":5173}]}"#,
+    )
+    .unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".claude/launch.json"));
+    let doc = read_json_file(&launch);
+    let configs = doc["configurations"].as_array().unwrap();
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0]["name"], "web");
+    assert_eq!(configs[0]["port"], 5173);
+    let seite = configs
+        .iter()
+        .find(|c| c["name"] == "seite")
+        .expect("seite configuration added");
+    assert_eq!(seite["runtimeExecutable"], "seite");
+
+    // Idempotent, and a deleted file is recreated.
+    let before = fs::read_to_string(&launch).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(fs::read_to_string(&launch).unwrap(), before);
+    fs::remove_file(&launch).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let doc = read_json_file(&launch);
+    assert_eq!(doc["configurations"][0]["name"], "seite");
+}
+
+#[test]
+fn test_upgrade_adds_post_edit_tier_to_020_hooks_and_respects_hooks_off() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+
+    // A 0.20-style site: only the bare Stop hook, recorded as installed.
+    let settings_path = site_dir.join(".claude/settings.json");
+    let mut settings = read_json_file(&settings_path);
+    settings["hooks"] = serde_json::json!({
+        "Stop": [{ "hooks": [{
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 60
+        }] }]
+    });
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+    set_project_version(&site_dir, "0.20.0");
+    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["claude"]));
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let settings = read_json_file(&settings_path);
+    let stop = settings["hooks"]["Stop"].to_string();
+    assert!(stop.contains(&hook_command(Agent::Claude, HookKind::Stop)));
+    assert_eq!(
+        settings["hooks"]["Stop"].as_array().unwrap().len(),
+        1,
+        "the bare command is wrapped in place, not duplicated: {stop}"
+    );
+    assert!(
+        !stop.contains("\"seite check --hook claude\""),
+        "bare command should be replaced: {stop}"
+    );
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"],
+        hook_command(Agent::Claude, HookKind::PostEdit)
+    );
+    assert_eq!(
+        settings["hooks"]["PostToolUse"][0]["matcher"],
+        "Write|Edit|MultiEdit"
+    );
+
+    // After `seite hooks off`, an upgrade does not bring them back.
+    page_cmd()
+        .args(["hooks", "off", "--agents", "claude"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert!(read_json_file(&settings_path).get("hooks").is_none());
+    set_project_version(&site_dir, "0.20.1");
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert!(
+        read_json_file(&settings_path).get("hooks").is_none(),
+        "hooks off must survive upgrade"
+    );
+    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["claude"]));
 }
