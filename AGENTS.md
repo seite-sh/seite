@@ -43,7 +43,7 @@ src/
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid
+  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model
   docs.rs              Embedded docs (16 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
@@ -88,6 +88,11 @@ minify = true
 fingerprint = true
 math = true              # KaTeX
 mermaid = true           # Mermaid diagrams (```mermaid fences, client-side)
+related = 3              # page.related size (0 disables; per-collection `related` overrides)
+
+[[taxonomies]]           # optional; `tags` is implicit (no feeds unless listed here)
+name = "categories"      # frontmatter `categories: [..]` → /categories/, /categories/<slug>/ (+ feed.xml/atom.xml)
+# paginate = 10
 
 [deploy]
 target = "github-pages"  # or "cloudflare" or "netlify"

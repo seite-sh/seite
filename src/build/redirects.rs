@@ -127,6 +127,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 

@@ -194,15 +194,15 @@ Search site content (including drafts) by keyword.
 | `collection` | string | No | Limit search to a specific collection (singular aliases work) |
 | `limit` | integer | No | Maximum results to return, 1-100 (default: 20) |
 
-Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`.
+Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`, plus the page's `taxonomies` (terms per configured taxonomy other than tags) and `series`.
 
 ### seite_content_stats
 
-Content health overview, optionally for one `collection`: item and draft counts, items missing a `description`, dated items without tags, future-dated items, files that fail to parse, and — on multilingual sites — default-language items missing a translation, per configured language. Lists are capped at 50 per category; the `totals` counts are exact.
+Content health overview, optionally for one `collection`: item and draft counts, items missing a `description`, dated items without tags, future-dated items, files that fail to parse, and — on multilingual sites — default-language items missing a translation, per configured language. Lists are capped at 50 per category; the `totals` counts are exact. `taxonomies` lists each taxonomy's terms with counts (most used first) and `series` lists each series with its number of parts, both over non-draft items.
 
 ### seite_list_templates
 
-No parameters. Returns what an agent needs before editing templates: the user templates in `templates/` (and which embedded defaults they override), the blocks defined in the active `base.html`, the Tera context variables available to each template kind (item pages, homepage, collection indexes, 404, tag pages, shortcodes), built-in and custom shortcodes with their parameters and usage, and the keys of loaded data files.
+No parameters. Returns what an agent needs before editing templates: the user templates in `templates/` (and which embedded defaults they override), the blocks defined in the active `base.html`, the Tera context variables available to each template kind (item pages, homepage, collection indexes, 404, tag pages, taxonomy and term pages, series pages, shortcodes), built-in and custom shortcodes with their parameters and usage, and the keys of loaded data files.
 
 ### seite_create_collection
 

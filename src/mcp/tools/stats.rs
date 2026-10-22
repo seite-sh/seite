@@ -63,8 +63,11 @@ pub fn output_schema() -> serde_json::Value {
         ],
     );
     let count = || serde_json::json!({ "type": "integer" });
+    let (taxonomies, series) = content_model_schema();
     object_schema(
         serde_json::json!({
+            "taxonomies": taxonomies,
+            "series": series,
             "today": { "type": "string" },
             "languages": string_array(),
             "collections": { "type": "array", "items": collection },
@@ -91,6 +94,116 @@ pub fn output_schema() -> serde_json::Value {
         }),
         &["today", "languages", "collections", "totals"],
     )
+}
+
+/// Schema of the add-only `taxonomies` / `series` summaries.
+fn content_model_schema() -> (serde_json::Value, serde_json::Value) {
+    let term = object_schema(
+        serde_json::json!({
+            "name": { "type": "string" },
+            "slug": { "type": "string" },
+            "count": { "type": "integer" }
+        }),
+        &["name", "slug", "count"],
+    );
+    let taxonomies = serde_json::json!({
+        "type": "array",
+        "description": "Terms per taxonomy (tags plus [[taxonomies]]), counted over non-draft items, most used first",
+        "items": object_schema(
+            serde_json::json!({
+                "name": { "type": "string" },
+                "label": { "type": "string" },
+                "url_prefix": { "type": "string" },
+                "terms": { "type": "array", "items": term }
+            }),
+            &["name", "label", "url_prefix", "terms"],
+        )
+    });
+    let series = serde_json::json!({
+        "type": "array",
+        "description": "Series used by non-draft items (`series:` frontmatter) and their part counts",
+        "items": object_schema(
+            serde_json::json!({
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "parts": { "type": "integer" }
+            }),
+            &["name", "slug", "parts"],
+        )
+    });
+    (taxonomies, series)
+}
+
+/// Accumulates term and series usage across the scanned items.
+#[derive(Default)]
+struct ModelCounts {
+    /// (taxonomy index, slug) → (first spelling, count)
+    terms: BTreeMap<(usize, String), (String, usize)>,
+    /// slug → (first spelling, parts)
+    series: BTreeMap<String, (String, usize)>,
+}
+
+impl ModelCounts {
+    fn add(
+        &mut self,
+        taxes: &[crate::build::taxonomy::Taxonomy],
+        fm: &crate::content::Frontmatter,
+    ) {
+        use crate::build::taxonomy::term_slug;
+        for (ti, tax) in taxes.iter().enumerate() {
+            let mut seen = HashSet::new();
+            for term in fm.taxonomy_terms(&tax.name) {
+                let slug = term_slug(&term);
+                if slug.is_empty() || !seen.insert(slug.clone()) {
+                    continue;
+                }
+                self.terms.entry((ti, slug)).or_insert((term, 0)).1 += 1;
+            }
+        }
+        if let Some(name) = fm.series.as_deref() {
+            let slug = term_slug(name);
+            if !slug.is_empty() {
+                self.series
+                    .entry(slug)
+                    .or_insert((name.trim().to_string(), 0))
+                    .1 += 1;
+            }
+        }
+    }
+
+    fn to_json(
+        &self,
+        taxes: &[crate::build::taxonomy::Taxonomy],
+    ) -> (serde_json::Value, serde_json::Value) {
+        let taxonomies: Vec<serde_json::Value> = taxes
+            .iter()
+            .enumerate()
+            .map(|(ti, tax)| {
+                let mut terms: Vec<(&String, &String, usize)> = self
+                    .terms
+                    .iter()
+                    .filter(|((i, _), _)| *i == ti)
+                    .map(|((_, slug), (name, n))| (slug, name, *n))
+                    .collect();
+                terms.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(b.0)));
+                serde_json::json!({
+                    "name": tax.name,
+                    "label": tax.label,
+                    "url_prefix": tax.url_prefix,
+                    "terms": terms
+                        .iter()
+                        .map(|(slug, name, count)| serde_json::json!({ "name": name, "slug": slug, "count": count }))
+                        .collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        let series: Vec<serde_json::Value> = self
+            .series
+            .iter()
+            .map(|(slug, (name, parts))| serde_json::json!({ "name": name, "slug": slug, "parts": parts }))
+            .collect();
+        (serde_json::json!(taxonomies), serde_json::json!(series))
+    }
 }
 
 #[derive(Default)]
@@ -129,6 +242,8 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         .collect();
 
     let mut totals = Totals::default();
+    let taxes = crate::build::taxonomy::resolve_taxonomies(config);
+    let mut model = ModelCounts::default();
     let mut out = Vec::new();
     for collection in collections {
         let items = content_index::scan_collection(config, paths, collection);
@@ -153,6 +268,8 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             let fm = &parsed.frontmatter;
             if fm.draft {
                 drafts += 1;
+            } else {
+                model.add(&taxes, fm);
             }
             if fm
                 .description
@@ -215,10 +332,13 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         }));
     }
 
+    let (taxonomies, series) = model.to_json(&taxes);
     Ok(serde_json::json!({
         "today": today.to_string(),
         "languages": config.all_languages(),
         "collections": out,
+        "taxonomies": taxonomies,
+        "series": series,
         "totals": {
             "items": totals.items,
             "drafts": totals.drafts,

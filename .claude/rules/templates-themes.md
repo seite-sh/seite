@@ -9,6 +9,9 @@ paths:
 - Jinja2-compatible, all extend `base.html`
 - Page variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.markdown_url }}` (published `.md` path, unset when none), `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
 - Adjacent posts: `{{ prev_post }}` (older), `{{ next_post }}` (newer) — each has `.title`, `.url`, `.date`, `.description`
+- Content pages also get `{{ page.taxonomies }}` (`{tags: [{name, slug, url}], categories: [...]}`), `{{ page.related }}` (`[{title, url, date, description, score}]`), `{{ page.series }}` (`{name, slug, url, parts, index, total, prev, next}` or null)
+- Listing templates: `tags.html`/`taxonomy.html` (`taxonomy`, `terms`), `tag.html`/`term.html` (`taxonomy`, `term`, `terms`, `items`, `pagination`; tag pages keep `tags`, `tag_name`, `tags_url`), `series.html` (`series`, `items`)
+- Post-page markup for categories/series/related lives in `DEFAULT_POST` and reuses the themes' `.tags` and `.article-nav` classes (no theme CSS needed)
 - Global: `{{ collections }}`, `{{ lang }}`, `{{ default_language }}`, `{{ lang_prefix }}`, `{{ t }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
 - Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
 - User `templates/` overrides embedded defaults

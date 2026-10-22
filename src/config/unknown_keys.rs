@@ -18,7 +18,7 @@ use toml::de::{DeTable, DeValue};
 
 use super::{
     AccessSection, AnalyticsSection, BuildSection, CollectionConfig, ContactSection, DeploySection,
-    ImageSection, LanguageConfig, SiteConfig, SiteSection, TrustSection,
+    ImageSection, LanguageConfig, SiteConfig, SiteSection, TaxonomyConfig, TrustSection,
 };
 use crate::diagnostics::{did_you_mean, line_col_at, Diagnostic};
 
@@ -47,6 +47,9 @@ fn schema_for_root() -> Schema {
         "access" => Schema::Struct(fields_of::<AccessSection>(), |_| Schema::Any),
         "collections" => {
             Schema::ArrayOf(|| Schema::Struct(fields_of::<CollectionConfig>(), |_| Schema::Any))
+        }
+        "taxonomies" => {
+            Schema::ArrayOf(|| Schema::Struct(fields_of::<TaxonomyConfig>(), |_| Schema::Any))
         }
         "languages" => {
             Schema::MapOf(|| Schema::Struct(fields_of::<LanguageConfig>(), |_| Schema::Any))

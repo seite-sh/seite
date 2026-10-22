@@ -24,6 +24,9 @@ Optional `subdomain` deploys collection separately. Optional `deploy_project` fo
 3. Update `init.rs` template writing match
 4. Add integration tests
 
+## Taxonomies, Related Pages, Series
+`[[taxonomies]]` (name, label, url_prefix, feed, paginate, template, term_template) adds term pages beyond the implicit `tags`; frontmatter assigns terms with a top-level key of the taxonomy's name (captured by `Frontmatter::other`). `series:` / `series_order:` frontmatter drive `page.series` and `/series/<slug>/`. `[build] related` (default 3) and per-collection `related` size `page.related`. See `.claude/rules/build-pipeline.md`.
+
 ## Singular→Plural Normalization
 `find_collection()` normalizes "post" → "posts", "doc" → "docs", "seite" → "pages"
 

@@ -80,6 +80,31 @@ fn print_stats(result: &Value) {
             }
         }
     }
+    for tax in array_of(result, "taxonomies") {
+        let terms = array_of(tax, "terms");
+        if terms.is_empty() {
+            continue;
+        }
+        let top: Vec<String> = terms
+            .iter()
+            .take(LIST_PREVIEW)
+            .map(|t| format!("{} ({})", str_of(t, "name"), count(t, "count")))
+            .collect();
+        human_println!(
+            "{} {} terms: {}",
+            style(format!("{}:", str_of(tax, "label"))).bold(),
+            terms.len(),
+            top.join(", ")
+        );
+    }
+    let series = array_of(result, "series");
+    if !series.is_empty() {
+        let names: Vec<String> = series
+            .iter()
+            .map(|s| format!("{} ({} parts)", str_of(s, "name"), count(s, "parts")))
+            .collect();
+        human_println!("{} {}", style("Series:").bold(), names.join(", "));
+    }
     if let Some(totals) = result.get("totals") {
         human_println!();
         human_println!(

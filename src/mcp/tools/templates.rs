@@ -26,7 +26,7 @@ const VARIABLES: &[(&str, &str)] = &[
     ("math_enabled", "Whether [build] math (KaTeX) is on"),
     ("katex_css_url", "KaTeX stylesheet URL (only set when math is enabled)"),
     ("translations", "[{lang, url}] versions of this page in other languages (empty when none)"),
-    ("page", "The page: title, content (rendered HTML), date, updated, description, image, slug, tags, url, collection, robots, word_count, reading_time, excerpt, toc, extra"),
+    ("page", "The page: title, content (rendered HTML), date, updated, description, image, slug, tags, url, collection, robots, word_count, reading_time, excerpt, toc, extra; content pages also get taxonomies ({<taxonomy>: [{name, slug, url}]}), related ([{title, url, date, description, score}]) and series ({name, slug, url, parts: [{title, url, current}], index, total, prev, next} or null)"),
     ("prev_post", "Previous item in the collection {title, url, date, description}, or null"),
     ("next_post", "Next item in the collection {title, url, date, description}, or null"),
     ("nav", "Docs sidebar for nested collections: [{name, label, items: [{title, url, active}]}]; empty otherwise"),
@@ -36,6 +36,10 @@ const VARIABLES: &[(&str, &str)] = &[
     ("tags", "All tags: [{name, url, count}]"),
     ("tag_name", "The tag this page lists"),
     ("tags_url", "URL of the tags index page"),
+    ("taxonomy", "The taxonomy being listed: {name, label, url}"),
+    ("terms", "All terms of the taxonomy in this language: [{name, slug, url, count, feed_url}] (feed_url only when the term has feeds)"),
+    ("term", "The term this page lists: {name, slug, url, count, feed_url}"),
+    ("series", "The series: {name, slug, url, parts: [{title, url, current}], total}"),
 ];
 
 /// Shortcode template variables (besides the shortcode's own arguments).
@@ -74,8 +78,33 @@ const KINDS: &[(&str, &[&str])] = &[
         &["collections", "items", "nav", "pagination"],
     ),
     ("not_found", &["collections"]),
-    ("tags", &["tags"]),
-    ("tag", &["tag_name", "items", "tags_url"]),
+    ("tags", &["tags", "taxonomy", "terms"]),
+    (
+        "tag",
+        &[
+            "tag_name",
+            "items",
+            "tags_url",
+            "taxonomy",
+            "term",
+            "terms",
+            "pagination",
+        ],
+    ),
+    ("taxonomy", &["taxonomy", "terms", "tags"]),
+    (
+        "term",
+        &[
+            "taxonomy",
+            "term",
+            "terms",
+            "items",
+            "pagination",
+            "tag_name",
+            "tags_url",
+        ],
+    ),
+    ("series", &["series", "items"]),
 ];
 
 pub fn output_schema() -> serde_json::Value {
@@ -102,7 +131,7 @@ pub fn output_schema() -> serde_json::Value {
                     serde_json::json!({
                         "name": prop("string", "Tera template name (path inside the template dir)"),
                         "path": { "type": "string" },
-                        "kind": prop("string", "base, homepage, item, collection_index, not_found, tags, tag, shortcode, or other (partials, frontmatter `template:` targets)"),
+                        "kind": prop("string", "base, homepage, item, collection_index, not_found, tags, tag, taxonomy, term, series, shortcode, or other (partials, frontmatter `template:` targets)"),
                         "overrides_default": { "type": "boolean" }
                     }),
                     &["name", "path", "kind", "overrides_default"],
@@ -218,7 +247,18 @@ fn template_kind(config: &SiteConfig, name: &str) -> &'static str {
         "404.html" => return "not_found",
         "tags.html" => return "tags",
         "tag.html" => return "tag",
+        "taxonomy.html" => return "taxonomy",
+        "term.html" => return "term",
+        "series.html" => return "series",
         _ => {}
+    }
+    for tax in &config.taxonomies {
+        if tax.template.as_deref() == Some(name) {
+            return "taxonomy";
+        }
+        if tax.term_template.as_deref() == Some(name) {
+            return "term";
+        }
     }
     if config
         .collections
@@ -519,6 +559,18 @@ pub fn call_list_templates(state: &ServerState, arguments: &serde_json::Value) -
             }
         })
         .collect();
+    // Templates of configured taxonomies other than tags (tags use tags.html/tag.html).
+    let (taxonomy_templates, term_templates): (BTreeSet<String>, BTreeSet<String>) = {
+        let taxes: Vec<_> = crate::build::taxonomy::resolve_taxonomies(config)
+            .into_iter()
+            .filter(|t| !t.is_tags())
+            .collect();
+        let mut index: BTreeSet<String> = taxes.iter().map(|t| t.template.clone()).collect();
+        let mut term: BTreeSet<String> = taxes.iter().map(|t| t.term_template.clone()).collect();
+        index.insert("taxonomy.html".into());
+        term.insert("term.html".into());
+        (index, term)
+    };
     let mut context: Vec<serde_json::Value> = KINDS
         .iter()
         .map(|(kind, extra)| {
@@ -528,7 +580,10 @@ pub fn call_list_templates(state: &ServerState, arguments: &serde_json::Value) -
                 "collection_index" => index_templates.iter().cloned().collect(),
                 "not_found" => vec!["404.html".into()],
                 "tags" => vec!["tags.html".into()],
-                _ => vec!["tag.html".into()],
+                "tag" => vec!["tag.html".into()],
+                "taxonomy" => taxonomy_templates.iter().cloned().collect(),
+                "term" => term_templates.iter().cloned().collect(),
+                _ => vec!["series.html".into()],
             };
             let names: Vec<&str> = COMMON.iter().chain(extra.iter()).copied().collect();
             serde_json::json!({
@@ -645,7 +700,9 @@ mod tests {
 
     #[test]
     fn test_context_variables_cover_build() {
-        let build_vars = inserted_names(include_str!("../../build/mod.rs"));
+        let mut build_vars = inserted_names(include_str!("../../build/mod.rs"));
+        build_vars.extend(inserted_names(include_str!("../../build/taxonomy.rs")));
+        build_vars.extend(inserted_names(include_str!("../../build/series.rs")));
         assert!(build_vars.contains("page") && build_vars.contains("nav"));
         let listed: BTreeSet<&str> = COMMON
             .iter()

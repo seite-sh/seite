@@ -28,6 +28,37 @@ pub struct SiteConfig {
     pub contact: Option<ContactSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessSection>,
+    /// `[[taxonomies]]`: term groupings beyond the implicit `tags` (e.g.
+    /// categories). See `crate::build::taxonomy`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub taxonomies: Vec<TaxonomyConfig>,
+}
+
+/// One `[[taxonomies]]` entry. Pages assign terms with a top-level frontmatter
+/// list named after the taxonomy (`categories: [rust, web]`). `tags` is always
+/// available without configuration; listing it here opts it into the same
+/// options (per-term feeds, pagination, template overrides).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TaxonomyConfig {
+    pub name: String,
+    /// Display name (default: the name, title-cased).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// URL prefix of the term index (default: `/<name>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_prefix: Option<String>,
+    /// Per-term RSS + Atom feeds (default: true for every configured taxonomy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feed: Option<bool>,
+    /// Items per term page. None means one page per term.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paginate: Option<usize>,
+    /// Template for the term index (default: `taxonomy.html`; `tags.html` for tags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Template for each term page (default: `term.html`; `tag.html` for tags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub term_template: Option<String>,
 }
 
 /// Per-language overrides for site metadata.
@@ -86,6 +117,9 @@ pub struct CollectionConfig {
     /// Only used when `subdomain` is set. Falls back to the global `deploy.project`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deploy_project: Option<String>,
+    /// Override `[build] related` for this collection (`0` disables `page.related`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<usize>,
 }
 
 impl CollectionConfig {
@@ -106,6 +140,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -126,6 +161,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -146,6 +182,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -166,6 +203,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -186,6 +224,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -206,6 +245,7 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
         }
     }
 
@@ -295,6 +335,9 @@ pub struct BuildSection {
     /// Render fenced ```mermaid blocks as client-side Mermaid diagrams. Default: false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mermaid: bool,
+    /// Maximum `page.related` items per page (default 3; `0` disables).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<usize>,
 }
 
 impl Default for BuildSection {
@@ -310,6 +353,7 @@ impl Default for BuildSection {
             fingerprint: false,
             math: false,
             mermaid: false,
+            related: None,
         }
     }
 }
@@ -908,6 +952,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 

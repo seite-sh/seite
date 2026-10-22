@@ -2553,6 +2553,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         };
 
         // Override takes precedence
@@ -2587,6 +2588,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2617,6 +2619,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 
@@ -5761,6 +5764,7 @@ target = "github-pages"
                     paginate: None,
                     private: false,
                     access_group: None,
+                    related: None,
                 },
                 crate::config::CollectionConfig {
                     name: "docs".into(),
@@ -5778,6 +5782,7 @@ target = "github-pages"
                     paginate: None,
                     private: false,
                     access_group: None,
+                    related: None,
                 },
             ],
             build: Default::default(),
@@ -5794,6 +5799,7 @@ target = "github-pages"
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 

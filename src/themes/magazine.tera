@@ -133,7 +133,7 @@
         article p { color: #555; font-size: 0.88rem; margin: 0.3rem 0 0; line-height: 1.5; }
         time { font-size: 0.68rem; color: #888; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
         .reading-time { color: #888; font-size: 0.78rem; }
-        .tags a, .tags span { color: #e63946; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 0.5rem; }
+        .tags a, .tags span { color: #e63946; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 0.5rem; }
         .tags a:hover { text-decoration: underline; }
 
         /* ===== SINGLE ARTICLE PAGES — Editorial Reading Column ===== */

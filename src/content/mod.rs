@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
@@ -44,6 +44,40 @@ pub struct Frontmatter {
     /// Use this for custom per-page data that doesn't fit standard fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra: HashMap<String, serde_yaml_ng::Value>,
+    /// Series this page belongs to (`series: "Rust from scratch"`) → `page.series`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    /// Position within the series (lower first). Unordered parts follow, by date then filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series_order: Option<i32>,
+    /// Every other top-level key, kept as written. Configured `[[taxonomies]]`
+    /// read their terms from here (`categories: [rust, web]`); see
+    /// [`Frontmatter::taxonomy_terms`].
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub other: BTreeMap<String, serde_yaml_ng::Value>,
+}
+
+impl Frontmatter {
+    /// Terms this page assigns in taxonomy `name`: `tags` reads the `tags`
+    /// field; any other name reads the top-level key of that name, which may
+    /// be a list or a single string. Non-string entries are ignored; blank
+    /// terms are dropped.
+    pub fn taxonomy_terms(&self, name: &str) -> Vec<String> {
+        if name == "tags" {
+            return self.tags.clone();
+        }
+        let scalar = |v: &serde_yaml_ng::Value| match v {
+            serde_yaml_ng::Value::String(s) => Some(s.trim().to_string()),
+            serde_yaml_ng::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        };
+        let terms: Vec<String> = match self.other.get(name) {
+            Some(serde_yaml_ng::Value::Sequence(seq)) => seq.iter().filter_map(scalar).collect(),
+            Some(v) => scalar(v).into_iter().collect(),
+            None => Vec::new(),
+        };
+        terms.into_iter().filter(|t| !t.is_empty()).collect()
+    }
 }
 
 fn is_false(v: &bool) -> bool {
@@ -481,6 +515,7 @@ mod tests {
             weight: Some(5),
             aliases: vec!["/old-url".into()],
             extra: HashMap::new(),
+            ..Default::default()
         };
         let generated = generate_frontmatter(&fm);
         assert!(generated.contains("title: Full Post"));

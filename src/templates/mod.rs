@@ -56,15 +56,28 @@ pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
     <div class="tags">
         {% for tag in page.tags %}<a href="{{ lang_prefix }}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
     </div>
-    {% endif %}
-    <div class="content">{{ page.content | safe }}</div>
+    {% endif %}{% if page.taxonomies %}{% for tax_name, terms in page.taxonomies %}{% if tax_name != "tags" and terms | length > 0 %}
+    <div class="tags terms-{{ tax_name }}">
+        {% for term in terms %}<a href="{{ term.url }}">{{ term.name }}</a> {% endfor %}
+    </div>{% endif %}{% endfor %}{% endif %}
+    <div class="content">{{ page.content | safe }}</div>{% if page.series %}
+    <nav class="article-nav series-nav" aria-label="{{ t.series }}">
+        <span>{{ t.series_part | replace(from="{n}", to=page.series.index ~ "") | replace(from="{total}", to=page.series.total ~ "") }} &middot; <a href="{{ page.series.url }}">{{ page.series.name }}</a></span>
+        <span>{% if page.series.prev %}<a href="{{ page.series.prev.url }}" rel="prev">&larr; {{ page.series.prev.title }}</a>{% endif %}{% if page.series.prev and page.series.next %} &middot; {% endif %}{% if page.series.next %}<a href="{{ page.series.next.url }}" rel="next">{{ page.series.next.title }} &rarr;</a>{% endif %}</span>
+    </nav>{% endif %}
 </article>
 {% if prev_post or next_post %}
 <nav class="article-nav">
     {% if next_post %}<a href="{{ next_post.url }}">&larr; {{ next_post.title }}</a>{% endif %}
     {% if prev_post %}<a href="{{ prev_post.url }}">{{ prev_post.title }} &rarr;</a>{% endif %}
 </nav>
-{% endif %}
+{% endif %}{% if page.related %}
+<aside class="related" aria-labelledby="related-title">
+    <h2 id="related-title">{{ t.related }}</h2>
+    <ul>
+        {% for r in page.related %}<li><a href="{{ r.url }}">{{ r.title }}</a></li>
+        {% endfor %}</ul>
+</aside>{% endif %}
 {% endblock %}"#;
 
 pub const DEFAULT_DOC: &str = r##"{% extends "base.html" %}
@@ -154,6 +167,8 @@ pub const DEFAULT_TAGS_INDEX: &str = r#"{% extends "base.html" %}
 
 pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
 {% block title %}Tag: {{ tag_name }} — {{ site.title }}{% endblock %}
+{% block head %}{% if term and term.feed_url %}<link rel="alternate" type="application/rss+xml" title="{{ site.title }} — {{ tag_name }}" href="{{ term.feed_url }}">
+    <link rel="alternate" type="application/atom+xml" title="{{ site.title }} — {{ tag_name }}" href="{{ term.url }}atom.xml">{% endif %}{% endblock %}
 {% block content %}
 <h1>{{ t.tagged }} "{{ tag_name }}"</h1>
 <div class="tag-items">
@@ -165,8 +180,65 @@ pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
         {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
     </article>
     {% endfor %}
-</div>
+</div>{% if pagination %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
+</nav>{% endif %}
 <p><a href="{{ tags_url }}">&larr; {{ t.all_tags }}</a></p>
+{% endblock %}"##;
+
+pub const DEFAULT_TAXONOMY: &str = r##"{% extends "base.html" %}
+{% block title %}{{ taxonomy.label }} — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>{{ taxonomy.label }}</h1>
+<div class="tags-index">
+    {% for term in terms %}
+    <a href="{{ term.url }}" class="tag-link">{{ term.name }} <span class="tag-count">({{ term.count }})</span></a>
+    {% endfor %}
+</div>
+{% endblock %}"##;
+
+pub const DEFAULT_TERM: &str = r##"{% extends "base.html" %}
+{% block title %}{{ taxonomy.label }}: {{ term.name }} — {{ site.title }}{% endblock %}
+{% block head %}{% if term.feed_url %}<link rel="alternate" type="application/rss+xml" title="{{ site.title }} — {{ term.name }}" href="{{ term.feed_url }}">
+    <link rel="alternate" type="application/atom+xml" title="{{ site.title }} — {{ term.name }}" href="{{ term.url }}atom.xml">{% endif %}{% endblock %}
+{% block content %}
+<h1>{{ taxonomy.label }}: {{ term.name }}</h1>
+<div class="tag-items">
+    {% for item in items %}
+    <article>
+        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+        {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} {{ t.min_read }}</span>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% if pagination %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+<p><a href="{{ taxonomy.url }}">&larr; {{ taxonomy.label }}</a></p>
+{% endblock %}"##;
+
+pub const DEFAULT_SERIES: &str = r##"{% extends "base.html" %}
+{% block title %}{{ series.name }} — {{ site.title }}{% endblock %}
+{% block content %}
+<h1>{{ series.name }}</h1>
+<ol class="series-parts">
+    {% for item in items %}
+    <li>
+        <a href="{{ item.url }}">{{ item.title }}</a>
+        {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+    </li>
+    {% endfor %}
+</ol>
 {% endblock %}"##;
 
 pub const DEFAULT_CHANGELOG_ENTRY: &str = r#"{% extends "base.html" %}
@@ -514,6 +586,9 @@ pub const EMBEDDED_TEMPLATE_NAMES: &[&str] = &[
     "404.html",
     "tags.html",
     "tag.html",
+    "taxonomy.html",
+    "term.html",
+    "series.html",
     "changelog-entry.html",
     "changelog-index.html",
     "roadmap-item.html",
@@ -541,6 +616,9 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "404.html" => Some(DEFAULT_404),
         "tags.html" => Some(DEFAULT_TAGS_INDEX),
         "tag.html" => Some(DEFAULT_TAG),
+        "taxonomy.html" => Some(DEFAULT_TAXONOMY),
+        "term.html" => Some(DEFAULT_TERM),
+        "series.html" => Some(DEFAULT_SERIES),
         "changelog-entry.html" => Some(DEFAULT_CHANGELOG_ENTRY),
         "changelog-index.html" => Some(DEFAULT_CHANGELOG_INDEX),
         "roadmap-item.html" => Some(DEFAULT_ROADMAP_ITEM),
@@ -600,6 +678,9 @@ pub fn load_templates_with_warnings(
         "404.html",
         "tags.html",
         "tag.html",
+        "taxonomy.html",
+        "term.html",
+        "series.html",
         "roadmap-kanban.html",
         "roadmap-timeline.html",
     ] {
@@ -1130,6 +1211,9 @@ mod tests {
             "404.html",
             "tags.html",
             "tag.html",
+            "taxonomy.html",
+            "term.html",
+            "series.html",
             "changelog-entry.html",
             "changelog-index.html",
             "roadmap-item.html",

@@ -104,6 +104,22 @@ pub fn scan_collection(
         .collect()
 }
 
+/// `{taxonomy: [terms]}` for every configured taxonomy other than `tags`
+/// that this frontmatter assigns terms in.
+pub(crate) fn taxonomy_terms(
+    taxonomies: &[crate::build::taxonomy::Taxonomy],
+    fm: &Frontmatter,
+) -> serde_json::Map<String, serde_json::Value> {
+    taxonomies
+        .iter()
+        .filter(|t| !t.is_tags())
+        .filter_map(|t| {
+            let terms = fm.taxonomy_terms(&t.name);
+            (!terms.is_empty()).then(|| (t.name.clone(), serde_json::json!(terms)))
+        })
+        .collect()
+}
+
 /// JSON summary of an item for listings. Unparseable files become
 /// `{ "path", "parse_error" }` entries.
 pub fn item_summary(item: &IndexedItem) -> serde_json::Value {
@@ -158,6 +174,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 

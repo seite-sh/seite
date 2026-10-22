@@ -45,6 +45,9 @@ Available in all templates:
 | `page.excerpt` | string? | Auto-extracted excerpt (from `<!-- more -->` marker or first paragraph) |
 | `page.toc` | string | Auto-generated table of contents HTML from heading hierarchy |
 | `page.extra` | object | Arbitrary data from `extra:` frontmatter — access via `{{ page.extra.field }}` |
+| `page.taxonomies` | object | Content pages: terms per taxonomy, e.g. `page.taxonomies.categories` = `[{name, slug, url}]` |
+| `page.related` | array | Content pages: related pages `[{title, url, date, description, score}]` (same collection and language, by shared tags/categories) |
+| `page.series` | object? | Content pages in a series: `{name, url, parts: [{title, url, current}], index, total, prev, next}` |
 | `nav` | array | Sidebar nav sections `[{name, label, items: [{title, url, active}]}]` |
 
 Index template also gets:
@@ -54,6 +57,8 @@ Index template also gets:
 | `collections` | array | Listed collections `[{name, label, items}]` |
 | `page` | object? | Homepage content (if `content/pages/index.md` exists) |
 | `pagination` | object? | Pagination context (when collection has `paginate = N` — see Key Conventions) |
+
+Taxonomy pages (`taxonomy.html`, `term.html`; tags use `tags.html`, `tag.html`) get `taxonomy` `{name, label, url}`, `terms` `[{name, slug, url, count, feed_url}]`, and on term pages `term` plus `items` and `pagination`. Series pages (`series.html`) get `series` and `items` (the parts in order).
 
 ### Customizing Templates
 

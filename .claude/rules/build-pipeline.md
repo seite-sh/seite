@@ -11,12 +11,12 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 2. Load Tera templates (user + embedded defaults, collection-aware)
 2b. Load shortcode registry (built-in + user `templates/shortcodes/`)
 2.5. Load data files (`data/` → `{{ data.filename }}` in templates)
-3. Process each collection: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort
+3. Process each collection: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort; then build the `ContentModel` once (taxonomy terms, `page.related` via a term → pages index, series) and render item pages with `page.taxonomies` / `page.related` / `page.series` added
 4. Render index page(s) per language
 4b. Paginated collection index pages
 4b-extra. Non-paginated collection index pages
 4b. Generate 404 page (per-language for multilingual sites)
-4c. Generate tag pages
+4c. Generate taxonomy pages (tags + `[[taxonomies]]`: term index, term pages, optional pagination and per-term RSS/Atom) and series index pages — `ContentModel::render_pages` in `src/build/content_model.rs` (taxonomy.rs, series.rs); their URLs go to the sitemap
 5. Generate RSS and Atom feeds
 6. Generate sitemap (all non-private items, all languages, with `xhtml:link` alternates)
 7. Generate discovery files: `robots.txt`, `llms.txt`, `llms-full.txt`
@@ -67,6 +67,10 @@ struct Frontmatter {
     robots: Option<String>,        // per-page <meta name="robots">
     weight: Option<i32>,           // ordering for non-date collections
     extra: HashMap<String, Value>, // → {{ page.extra.field }}
+    series: Option<String>,        // → page.series, /series/<slug>/
+    series_order: Option<i32>,
+    other: BTreeMap<String, Value>, // #[serde(flatten)]: every other top-level key;
+                                    // [[taxonomies]] terms (`categories: [..]`) via taxonomy_terms()
 }
 
 struct ContentItem {
@@ -74,6 +78,13 @@ struct ContentItem {
     slug, collection, url, lang,
 }
 ```
+
+## Taxonomies, Related, Series
+
+- `taxonomy.rs`: `resolve_taxonomies()` = implicit `tags` (no feeds, legacy `tags.html`/`tag.html`, titles `Tags` / `Tag: x`) + `[[taxonomies]]`. Terms group by slug; tags display lowercased, others the most common spelling. Configured taxonomies default to per-term feeds. Implicit-tags output must stay byte-identical.
+- `related.rs`: score = shared tag 1, shared other-taxonomy term 2; tie-break date distance (undated last), title, URL. Same collection + language, no drafts, no `index` pages. Limit: collection `related` → `[build] related` → 3.
+- `series.rs`: group by (language, slug of `series`) over public collections; order `series_order`, date asc, source path. `/series/<slug>/` only when used.
+- The embedded `post.html` renders them with `{% if %}` blocks attached to existing lines, so pages without them render byte-identically. Sites keep their own `templates/post.html` from `init`.
 
 ## Data Files
 

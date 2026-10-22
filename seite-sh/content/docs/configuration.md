@@ -166,6 +166,7 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 | `mermaid` | bool | `false` | Render fenced ` ```mermaid ` blocks as [Mermaid](https://mermaid.js.org/) diagrams (client-side) |
+| `related` | int | `3` | Maximum `page.related` entries per page; `0` disables related pages. A collection's own `related` overrides it |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
@@ -266,6 +267,37 @@ purpose:
 ```
 
 Plain values are unchanged; only maps whose keys are *all* configured language codes are resolved. See [Per-Language Data Values](/docs/i18n#per-language-data-values).
+
+## [[taxonomies]]
+
+Group content by terms beyond tags, for example categories. Each entry adds a term index, a page per term and, by default, per-term RSS and Atom feeds, in every language:
+
+```toml
+[[taxonomies]]
+name = "categories"      # frontmatter key: categories: [rust, web]
+# label = "Categories"   # display name (default: t.categories, else the title-cased name)
+# url_prefix = "/topics" # default "/<name>"
+# feed = true            # per-term feed.xml + atom.xml (default true)
+# paginate = 10          # items per term page (default: one page per term)
+# template = "taxonomy.html"     # term index template
+# term_template = "term.html"    # term page template
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Taxonomy name and frontmatter key |
+| `label` | string | `t.<name>` or title-cased name | Display name |
+| `url_prefix` | string | `/<name>` | URL prefix of the index and term pages |
+| `feed` | bool | `true` | Write `<term>/feed.xml` and `<term>/atom.xml` (items of collections with `has_rss`) and link them from the term page |
+| `paginate` | int | none | Items per term page; later pages are at `<term>/page/N/` |
+| `template` | string | `taxonomy.html` | Template of the term index |
+| `term_template` | string | `term.html` | Template of each term page |
+
+Output for `name = "categories"`: `/categories/` (all terms with counts), `/categories/<slug>/` (pages with that term, newest first), `/categories/<slug>/feed.xml` and `atom.xml`, and the same under `/es/categories/...` for each extra language. All of them are in the sitemap. Terms group case-insensitively by slug (`Web Dev` and `web dev` are one term); the most common spelling is displayed.
+
+`tags` needs no entry: `/tags/` and `/tags/<slug>/` are always generated, with no per-tag feeds. Add `[[taxonomies]] name = "tags"` to give tags the same options, for example per-tag feeds (on by default once configured) or pagination; tags keep their `tags.html`/`tag.html` templates and URLs.
+
+Taxonomies and related pages also weigh into `page.related` (see [Related pages](/docs/collections#related-pages)).
 
 ## [deploy]
 
@@ -443,6 +475,9 @@ extra:
 | `image` | string | No | Social preview image |
 | `slug` | string | No | Override auto-generated slug |
 | `tags` | list | No | Content tags |
+| `categories` (or any `[[taxonomies]]` name) | list or string | No | Terms of that taxonomy |
+| `series` | string | No | Series this page belongs to (`page.series`, `/series/<slug>/`) |
+| `series_order` | int | No | Position in the series (lower first) |
 | `draft` | bool | No | Exclude from build unless `--drafts` |
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |

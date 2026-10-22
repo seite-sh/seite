@@ -61,6 +61,7 @@ paginate = 10
 | `subdomain` | string | none | Deploy to `{subdomain}.{base_domain}` |
 | `subdomain_base_url` | string | none | Explicit URL override for subdomain (e.g., `https://docs.example.com`) |
 | `deploy_project` | string | none | Cloudflare/Netlify project for subdomain |
+| `related` | int | `[build] related` (3) | Maximum related pages per item; `0` disables `page.related` for this collection |
 
 ## Posts
 
@@ -307,6 +308,43 @@ Tags are collected from all posts and generate archive pages:
 - `/tags/rust/`, all posts tagged "rust"
 
 Tag pages are i18n-aware and included in the sitemap.
+
+## Categories and Other Taxonomies
+
+Add a `[[taxonomies]]` entry to `seite.toml` (see [Configuration](/docs/configuration#taxonomies)) and assign terms with a frontmatter key of the same name:
+
+```yaml
+---
+title: "Borrowing explained"
+tags: [rust, beginners]
+categories: [Programming]
+---
+```
+
+This generates `/categories/`, `/categories/programming/`, and per-term feeds at `/categories/programming/feed.xml` and `atom.xml`. The default post template lists the categories next to the tags.
+
+## Related Pages
+
+Every content page gets `page.related`: up to 3 other pages from the same collection and language that share terms with it. Each shared tag scores 1 and each shared term of any other taxonomy (such as a category) scores 2. Ties go to the page closest in date (undated pages last), then by title. Drafts and pages sharing no terms are never related. The default post template shows them as a "Related" list.
+
+Set `[build] related = 5` to change the size site-wide, or `related = 0` on a collection (or under `[build]`) to turn it off.
+
+## Series
+
+Give the parts of a multi-part article the same `series` name:
+
+```yaml
+---
+title: "Ownership"
+date: 2026-03-01
+series: "Rust from scratch"
+series_order: 2   # optional
+---
+```
+
+Parts are ordered by `series_order` (parts that have one come first), then by date (oldest first), then by file path. Each part gets `page.series` (name, URL, all parts, its position, previous and next part), and the default post template shows a "Part 2 of 5" box with links to the neighboring parts. Each series gets an index page at `/series/rust-from-scratch/` listing its parts in order (per language, in the sitemap). Pages in private collections never join a series. Nothing is generated when no page uses `series`.
+
+`/series/` URLs are reserved for series index pages: avoid a collection or page whose URL starts with `/series/`.
 
 ## Next Steps
 

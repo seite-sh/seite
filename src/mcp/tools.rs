@@ -520,6 +520,12 @@ fn search_output_schema() -> serde_json::Value {
                         "lang": { "type": "string" },
                         "draft": { "type": "boolean" },
                         "tags": string_array(),
+                        "taxonomies": {
+                            "type": "object",
+                            "description": "Terms per configured taxonomy other than tags (e.g. categories); only taxonomies the page uses",
+                            "additionalProperties": string_array()
+                        },
+                        "series": nullable("string"),
                         "description": nullable("string"),
                         "date": nullable("string"),
                         "matched_in": string_array(),
@@ -1155,6 +1161,7 @@ fn call_search(state: &ServerState, arguments: &serde_json::Value) -> ToolResult
     });
 
     let total = hits.len();
+    let taxonomies = crate::build::taxonomy::resolve_taxonomies(config);
     let results: Vec<serde_json::Value> = hits
         .iter()
         .take(limit as usize)
@@ -1174,6 +1181,8 @@ fn call_search(state: &ServerState, arguments: &serde_json::Value) -> ToolResult
                 "lang": parsed.lang,
                 "draft": parsed.frontmatter.draft,
                 "tags": parsed.frontmatter.tags,
+                "taxonomies": content_index::taxonomy_terms(&taxonomies, &parsed.frontmatter),
+                "series": parsed.frontmatter.series,
                 "description": parsed.frontmatter.description,
                 "date": parsed.date.map(|d| d.to_string()),
                 "matched_in": matched,
@@ -1702,7 +1711,7 @@ mod tests {
         write(
             tmp.path(),
             "content/posts/2026-01-02-hello.md",
-            "---\ntitle: Hello\ndescription: d\ntags: [a]\n---\nHello {{< youtube(id=\"x\") >}} body\n",
+            "---\ntitle: Hello\ndescription: d\ntags: [a]\ncategories: [Rust]\nseries: S\ncustom_key: 1\n---\nHello {{< youtube(id=\"x\") >}} body\n",
         );
         write(
             tmp.path(),

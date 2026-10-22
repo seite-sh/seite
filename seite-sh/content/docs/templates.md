@@ -43,6 +43,9 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.excerpt }}` | Auto-extracted excerpt (HTML) |
 | `{{ page.toc }}` | Table of contents entries |
 | `{{ page.extra }}` | Custom frontmatter data |
+| `{{ page.taxonomies }}` | Content pages: terms per taxonomy, tags first: `page.taxonomies.categories` is a list of `{name, slug, url}` |
+| `{{ page.related }}` | Content pages: related pages of the same collection and language, `[{title, url, date, description, score}]` (empty when none; see [Related pages](/docs/collections#related-pages)) |
+| `{{ page.series }}` | Content pages in a series: `{name, slug, url, parts: [{title, url, current}], index, total, prev, next}` (`index` is 1-based; `prev`/`next` are `{title, url}` or unset); unset otherwise |
 | `{{ prev_post }}` | Previous (older) post link: `.title`, `.url`, `.date`, `.description` |
 | `{{ next_post }}` | Next (newer) post link: `.title`, `.url`, `.date`, `.description` |
 
@@ -59,6 +62,32 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
 | `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
 | `{{ pagination }}` | Pagination context |
+| `{{ taxonomy }}` | Taxonomy index and term pages: `{name, label, url}` |
+| `{{ terms }}` | Taxonomy index and term pages: every term `{name, slug, url, count, feed_url}` (`feed_url` only when the term has feeds) |
+| `{{ term }}` | Term pages: the listed term `{name, slug, url, count, feed_url}` |
+| `{{ series }}` | Series index pages (`series.html`): `{name, slug, url, parts, total}`; `items` lists the parts in order |
+
+Tag pages (`tags.html`, `tag.html`) also keep their original variables: `tags` (same as `terms`), `tag_name`, `tags_url`, and `items`.
+
+### Taxonomy, term and series templates
+
+| Template | Renders | Default |
+|----------|---------|---------|
+| `tags.html` / `tag.html` | `/tags/` and `/tags/<slug>/` | embedded |
+| `taxonomy.html` | Index of any other taxonomy (`/categories/`) | embedded; override per taxonomy with `template` |
+| `term.html` | Term pages (`/categories/rust/`, `/categories/rust/page/2/`) | embedded; override per taxonomy with `term_template` |
+| `series.html` | Series index pages (`/series/<slug>/`) | embedded |
+
+The default `post.html` renders categories (and any other taxonomy) next to the tags, a series box ("Part 2 of 5 · next/previous part") after the content, and a "Related" list after the post navigation. Sites created with an earlier seite have their own copy of `templates/post.html`; to show these, add for example:
+
+```html
+{% if page.series %}<nav class="article-nav series-nav" aria-label="{{ t.series }}">
+  <span>{{ t.series_part | replace(from="{n}", to=page.series.index ~ "") | replace(from="{total}", to=page.series.total ~ "") }} · <a href="{{ page.series.url }}">{{ page.series.name }}</a></span>
+</nav>{% endif %}
+{% if page.related %}<aside class="related"><h2>{{ t.related }}</h2><ul>
+  {% for r in page.related %}<li><a href="{{ r.url }}">{{ r.title }}</a></li>{% endfor %}
+</ul></aside>{% endif %}
+```
 
 ## Translatable UI Strings
 
@@ -91,6 +120,12 @@ All bundled themes and default templates use the `{{ t }}` object for UI text. T
 | `t.planned` | Planned |
 | `t.done` | Done |
 | `t.other` | Other |
+| `t.categories` | Categories |
+| `t.related` | Related |
+| `t.series` | Series |
+| `t.series_part` | Part {n} of {total} |
+
+A taxonomy without a configured `label` takes its display name from the UI string named after it (`t.tags`, `t.categories`, or a key you add in `data/i18n/{lang}.yaml`), so taxonomy labels translate like every other string.
 
 ### Overriding Strings
 

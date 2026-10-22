@@ -186,6 +186,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         trust: None,
         contact: None,
         access: None,
+        taxonomies: Vec::new(),
     };
 
     // If trust collection is included, run trust center scaffolding

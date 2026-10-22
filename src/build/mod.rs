@@ -13,6 +13,11 @@ pub mod mermaid;
 pub mod redirects;
 pub mod sitemap;
 
+pub(crate) mod content_model;
+pub(crate) mod related;
+pub(crate) mod series;
+pub(crate) mod taxonomy;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1345,6 +1350,9 @@ fn build_site_inner(
         HashMap::new()
     };
 
+    // Taxonomies, related pages and series, computed once for every page.
+    let content_model = content_model::ContentModel::build(config, &all_collections);
+
     // Render each item in each collection
     progress.step("Rendering pages");
     let step_start = Instant::now();
@@ -1533,6 +1541,11 @@ fn build_site_inner(
 
                     let mut ctx =
                         build_page_context(site_ctx_for_item, item, &data, collection.private);
+                    content_model.augment_page(
+                        &mut ctx,
+                        item,
+                        &lang_prefix_for(&item.lang, default_lang),
+                    );
 
                     // Inject adjacent post links (prev_post / next_post).
                     // Always insert both keys so Tera templates can check them without errors.
@@ -2349,163 +2362,18 @@ fn build_site_inner(
         }
     }
 
-    // Step 4c: Generate tag pages
-    // Collect all tags per language from all collections
-    let mut tag_page_urls: Vec<String> = Vec::new();
-    if tera.get_template("tags.html").is_ok() && tera.get_template("tag.html").is_ok() {
-        for lang in &config.all_languages() {
-            let lang_prefix = if *lang == *default_lang {
-                String::new()
-            } else {
-                format!("/{lang}")
-            };
-            let tags_base_url = format!("{lang_prefix}/tags");
-
-            // Gather all tags and their items for this language
-            let mut tag_map: HashMap<String, Vec<ItemSummary>> = HashMap::new();
-            for c in &config.collections {
-                // Private collections never contribute to public tag pages.
-                if c.private {
-                    continue;
-                }
-                if let Some(items) = all_collections.get(&c.name) {
-                    for item in items.iter().filter(|i| i.lang == *lang) {
-                        let summary = ItemSummary {
-                            title: item.frontmatter.title.clone(),
-                            date: item.frontmatter.date.map(|d| d.to_string()),
-                            description: item.frontmatter.description.clone(),
-                            slug: item.slug.clone(),
-                            tags: item.frontmatter.tags.clone(),
-                            url: item.url.clone(),
-                            word_count: item.word_count,
-                            reading_time: item.reading_time,
-                            excerpt: item.excerpt_html.clone(),
-                        };
-                        for tag in &item.frontmatter.tags {
-                            let normalized = tag.to_lowercase();
-                            tag_map.entry(normalized).or_default().push(summary.clone());
-                        }
-                    }
-                }
-            }
-
-            if tag_map.is_empty() {
-                continue;
-            }
-
-            // Sort tags alphabetically
-            let mut sorted_tags: Vec<(String, Vec<ItemSummary>)> = tag_map.into_iter().collect();
-            sorted_tags.sort_by(|a, b| a.0.cmp(&b.0));
-
-            let lang_site_ctx = SiteContext::for_lang(config, lang);
-
-            // Generate tags index page
-            #[derive(Serialize)]
-            struct TagIndexEntry {
-                name: String,
-                url: String,
-                count: usize,
-            }
-
-            let tag_entries: Vec<TagIndexEntry> = sorted_tags
-                .iter()
-                .map(|(tag, items)| {
-                    let tag_slug = slug::slugify(tag);
-                    TagIndexEntry {
-                        name: tag.clone(),
-                        url: format!("{tags_base_url}/{tag_slug}/"),
-                        count: items.len(),
-                    }
-                })
-                .collect();
-
-            let mut tags_ctx = tera::Context::new();
-            tags_ctx.insert("site", &lang_site_ctx);
-            tags_ctx.insert("data", &data);
-            tags_ctx.insert("lang", lang);
-            insert_i18n_context(&mut tags_ctx, lang, default_lang, &data);
-            insert_build_flags(&mut tags_ctx, config);
-            tags_ctx.insert("tags", &tag_entries);
-            tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
-            tags_ctx.insert(
-                "page",
-                &PageContext {
-                    title: "Tags".to_string(),
-                    content: String::new(),
-                    date: None,
-                    updated: None,
-                    description: None,
-                    image: None,
-                    slug: "tags".to_string(),
-                    tags: Vec::new(),
-                    url: format!("{tags_base_url}/"),
-                    markdown_url: None,
-                    collection: String::new(),
-                    robots: None,
-                    word_count: 0,
-                    reading_time: 0,
-                    excerpt: String::new(),
-                    toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
-                },
-            );
-            let tags_html = tera
-                .render("tags.html", &tags_ctx)
-                .map_err(|e| render_failure(&e, "tags.html", None, paths, &tags_ctx))?;
-            let tags_dir = paths.output.join(tags_base_url.trim_start_matches('/'));
-            fs::create_dir_all(&tags_dir)?;
-            fs::write(tags_dir.join("index.html"), tags_html)?;
-            tag_page_urls.push(format!("{tags_base_url}/"));
-
-            // Generate individual tag pages
-            for (tag, items) in &sorted_tags {
-                let tag_slug = slug::slugify(tag);
-                let tag_url = format!("{tags_base_url}/{tag_slug}/");
-                let mut tag_ctx = tera::Context::new();
-                tag_ctx.insert("site", &lang_site_ctx);
-                tag_ctx.insert("data", &data);
-                tag_ctx.insert("lang", lang);
-                insert_i18n_context(&mut tag_ctx, lang, default_lang, &data);
-                insert_build_flags(&mut tag_ctx, config);
-                tag_ctx.insert("tag_name", tag);
-                tag_ctx.insert("items", items);
-                tag_ctx.insert("tags_url", &format!("{tags_base_url}/"));
-                tag_ctx.insert("translations", &Vec::<TranslationLink>::new());
-                tag_ctx.insert(
-                    "page",
-                    &PageContext {
-                        title: format!("Tag: {tag}"),
-                        content: String::new(),
-                        date: None,
-                        updated: None,
-                        description: None,
-                        image: None,
-                        slug: format!("tags/{tag_slug}"),
-                        tags: Vec::new(),
-                        url: tag_url.clone(),
-                        markdown_url: None,
-                        collection: String::new(),
-                        robots: None,
-                        word_count: 0,
-                        reading_time: 0,
-                        excerpt: String::new(),
-                        toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
-                    },
-                );
-                let tag_html = tera
-                    .render("tag.html", &tag_ctx)
-                    .map_err(|e| render_failure(&e, "tag.html", None, paths, &tag_ctx))?;
-                let tag_dir = paths.output.join(format!(
-                    "{}/{tag_slug}",
-                    tags_base_url.trim_start_matches('/')
-                ));
-                fs::create_dir_all(&tag_dir)?;
-                fs::write(tag_dir.join("index.html"), tag_html)?;
-                tag_page_urls.push(tag_url);
-            }
-        }
-    }
+    // Step 4c: Generate taxonomy pages (tags + `[[taxonomies]]`, with term
+    // feeds) and series index pages; see taxonomy.rs and series.rs.
+    let tag_page_urls: Vec<String> = content_model.render_pages(
+        &taxonomy::RenderEnv {
+            config,
+            tera: &tera,
+            data: &data,
+            paths,
+            default_lang,
+        },
+        &all_collections,
+    )?;
 
     step_timings.push((
         "Render indexes".to_string(),
@@ -3754,7 +3622,11 @@ pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde
         "callout_info": "Info",
         "callout_tip": "Tip",
         "callout_warning": "Warning",
-        "callout_danger": "Danger"
+        "callout_danger": "Danger",
+        "categories": "Categories",
+        "related": "Related",
+        "series": "Series",
+        "series_part": "Part {n} of {total}"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults
@@ -3899,6 +3771,7 @@ mod tests {
             trust: None,
             contact: None,
             access: None,
+            taxonomies: Vec::new(),
         }
     }
 

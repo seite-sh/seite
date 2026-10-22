@@ -150,7 +150,7 @@ fn test_init_creates_one_routed_skill_with_references() {
 
     for dir in [".claude/skills", ".agents/skills"] {
         let skill = fs::read_to_string(site_dir.join(format!("{dir}/seite/SKILL.md"))).unwrap();
-        assert!(skill.contains("seite-skill-version: 3"), "{dir}");
+        assert!(skill.contains("seite-skill-version: 4"), "{dir}");
         for name in [
             "check",
             "new",
@@ -204,10 +204,10 @@ fn test_upgrade_replaces_outdated_seite_skill_and_references() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("updated v1 → v3"));
+        .stdout(predicate::str::contains("updated v1 → v4"));
 
     let content = fs::read_to_string(&skill_path).unwrap();
-    assert!(content.contains("seite-skill-version: 3"));
+    assert!(content.contains("seite-skill-version: 4"));
     assert!(fs::read_to_string(&reference)
         .unwrap()
         .starts_with("# /seite check"));
