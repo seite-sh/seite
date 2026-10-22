@@ -21,6 +21,7 @@ pub struct DocsArgs {
 
 pub fn run(args: &DocsArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let state = load_state(site_filter)?;
+    crate::cli::harness::ensure_local_docs(&state.cwd);
     let mut arguments = serde_json::Map::new();
     if let Some(query) = &args.query {
         arguments.insert("query".into(), json!(query));

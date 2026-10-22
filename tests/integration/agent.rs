@@ -168,22 +168,65 @@ mod fake_harness {
     }
 
     #[test]
-    fn test_agent_cursor_once_auto_approve_only_with_yes() {
-        let fake = Fake::new();
-        fake.cmd(&["agent", "--with", "cursor", "--once", "tidy"])
-            .assert()
-            .success();
-        assert_eq!(fake.only_call(), ["-p", "tidy", "--output-format", "text"]);
+    fn test_agent_yes_never_adds_auto_approve_flags() {
+        for (harness, expected) in [
+            ("cursor", &["-p", "tidy", "--output-format", "text"][..]),
+            ("opencode", &["run", "tidy"][..]),
+            ("gemini", &["-p", "tidy"][..]),
+        ] {
+            let fake = Fake::new();
+            fake.cmd(&["--yes", "agent", "--with", harness, "--once", "tidy"])
+                .env("SEITE_YES", "1")
+                .assert()
+                .success();
+            assert_eq!(fake.only_call(), expected, "{harness}");
+        }
+    }
 
+    #[test]
+    fn test_agent_auto_approve_ignored_without_a_terminal() {
+        // Tests have no TTY on stdin: the flag is refused with a warning.
         let fake = Fake::new();
-        fake.cmd(&["--yes", "agent", "--with", "cursor", "--once", "tidy"])
-            .assert()
-            .success();
-        let argv = fake.only_call();
-        assert_eq!(
-            argv[2..],
-            ["--output-format", "text", "--force", "--approve-mcps"]
-        );
+        fake.cmd(&[
+            "agent",
+            "--with",
+            "cursor",
+            "--once",
+            "--auto-approve",
+            "tidy",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--auto-approve ignored"));
+        assert_eq!(fake.only_call(), ["-p", "tidy", "--output-format", "text"]);
+    }
+
+    #[test]
+    fn test_agent_refuses_to_nest_inside_an_agent_session() {
+        for (var, agent) in [
+            ("CLAUDECODE", "Claude Code"),
+            ("CODEX_THREAD_ID", "Codex"),
+            ("GEMINI_CLI", "Gemini CLI"),
+            ("OPENCODE", "OpenCode"),
+            ("CURSOR_AGENT", "Cursor"),
+        ] {
+            let fake = Fake::new();
+            fake.cmd(&["agent", "--once", "hi"])
+                .env(var, "1")
+                .assert()
+                .failure()
+                .stderr(predicate::str::contains(format!("already inside {agent}")));
+            assert!(fake.calls().is_empty(), "{var}");
+
+            let fake = Fake::new();
+            fake.cmd(&["theme", "create", "dark teal"])
+                .env(var, "1")
+                .assert()
+                .failure()
+                .stderr(predicate::str::contains(format!("already inside {agent}")))
+                .stderr(predicate::str::contains("/seite theme dark teal"));
+            assert!(fake.calls().is_empty(), "{var}");
+        }
     }
 
     #[test]
@@ -193,12 +236,6 @@ mod fake_harness {
             .assert()
             .success();
         assert_eq!(fake.only_call(), ["run", "go"]);
-
-        let fake = Fake::new();
-        fake.cmd(&["--yes", "agent", "--with", "opencode", "--once", "go"])
-            .assert()
-            .success();
-        assert_eq!(fake.only_call(), ["run", "go", "--auto"]);
 
         let fake = Fake::new();
         fake.cmd(&["agent", "--with", "opencode", "go"])
@@ -221,12 +258,6 @@ mod fake_harness {
             .assert()
             .success();
         assert_eq!(fake.only_call(), ["-p", "go"]);
-
-        let fake = Fake::new();
-        fake.cmd(&["--yes", "agent", "--with", "gemini", "--once", "go"])
-            .assert()
-            .success();
-        assert_eq!(fake.only_call(), ["-p", "go", "--approval-mode=yolo"]);
 
         let fake = Fake::new();
         fake.cmd(&["agent", "--with", "gemini", "go"])

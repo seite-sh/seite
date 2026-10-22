@@ -188,6 +188,335 @@ fn find_pack(name: &str) -> Option<&'static SkillPack> {
     known_packs().iter().find(|p| p.name == name)
 }
 
+/// Every pack `seite skill install <name>` knows, impeccable included.
+fn known_pack_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = known_packs().iter().map(|p| p.name).collect();
+    names.push(IMPECCABLE);
+    names
+}
+
+/// Description of a known pack (impeccable included).
+fn known_pack_description(name: &str) -> Option<&'static str> {
+    if name == IMPECCABLE {
+        return Some(IMPECCABLE_DESCRIPTION);
+    }
+    find_pack(name).map(|p| p.description)
+}
+
+// ---------------------------------------------------------------------------
+// impeccable (third-party npm installer)
+// ---------------------------------------------------------------------------
+
+/// Pack name of the impeccable design skill (https://github.com/pbakaus/impeccable).
+///
+/// Unlike [`known_packs`], seite does not download its files: install and
+/// update delegate to the package's own installer, which knows each agent's
+/// layout. The installer is fetched (pinned, [`IMPECCABLE_VERSION`]) into a
+/// fresh temp prefix from a temp working directory, so a project-local
+/// `.npmrc` (e.g. a different registry) or `node_modules/.bin/impeccable`
+/// can't swap it; only then is its binary run in the site root.
+pub const IMPECCABLE: &str = "impeccable";
+
+/// The impeccable version seite installs (`npm view impeccable version`,
+/// 2026-10-22). Bump deliberately after reviewing a new release.
+pub const IMPECCABLE_VERSION: &str = "4.7.0";
+
+const IMPECCABLE_DESCRIPTION: &str =
+    "Design skill for frontend interfaces — by impeccable (npm package `impeccable`)";
+
+/// Manifest `source` recorded for impeccable.
+const IMPECCABLE_SOURCE: &str = "npm:impeccable";
+
+/// Skill folders impeccable creates (Claude's, and the shared `.agents/` one).
+const IMPECCABLE_SKILL_DIRS: [&str; 2] = [".claude/skills/impeccable", ".agents/skills/impeccable"];
+
+/// Whether impeccable is installed: recorded in the manifest, or its skill
+/// folder exists for some agent (e.g. installed with `npx impeccable` directly).
+pub fn impeccable_installed(root: &Path) -> bool {
+    load_manifest(root).packs.contains_key(IMPECCABLE)
+        || IMPECCABLE_SKILL_DIRS
+            .iter()
+            .any(|dir| root.join(dir).is_dir())
+}
+
+/// impeccable `--providers` for the agents recorded in `.seite/config.json`.
+/// seite's agent ids are also impeccable provider names; unknown ids are
+/// dropped, and no (known) agents means every agent seite supports.
+fn impeccable_providers(agents: Option<&[String]>) -> Vec<&'static str> {
+    let mut providers: Vec<&'static str> = Vec::new();
+    for id in agents.unwrap_or_default() {
+        if let Some(agent) = crate::cli::harness::Agent::from_id(id.trim()) {
+            if !providers.contains(&agent.id()) {
+                providers.push(agent.id());
+            }
+        }
+    }
+    if providers.is_empty() {
+        providers = crate::cli::harness::Agent::ALL
+            .iter()
+            .map(|a| a.id())
+            .collect();
+    }
+    providers
+}
+
+/// `npm` arguments that fetch the pinned installer into `prefix` (run with
+/// `prefix` as the working directory, never the project).
+fn impeccable_fetch_args(prefix: &Path) -> Vec<String> {
+    vec![
+        "install".into(),
+        "--prefix".into(),
+        prefix.display().to_string(),
+        "--no-save".into(),
+        "--no-package-lock".into(),
+        "--no-audit".into(),
+        "--no-fund".into(),
+        format!("{IMPECCABLE}@{IMPECCABLE_VERSION}"),
+    ]
+}
+
+/// The installer binary npm puts under `prefix`.
+fn impeccable_bin(prefix: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "impeccable.cmd"
+    } else {
+        "impeccable"
+    };
+    prefix.join("node_modules").join(".bin").join(name)
+}
+
+/// Installer arguments that install impeccable into the project for
+/// `providers`.
+fn impeccable_install_args(providers: &[&str]) -> Vec<String> {
+    vec![
+        "install".into(),
+        format!("--providers={}", providers.join(",")),
+        "--scope=project".into(),
+        "-y".into(),
+    ]
+}
+
+/// Installer arguments that update the project's impeccable install
+/// (`update` takes no `--providers`; it updates what is installed).
+fn impeccable_update_args() -> Vec<String> {
+    vec!["update".into(), "--scope=project".into(), "-y".into()]
+}
+
+/// How a run is described to the user and in `--json`.
+fn impeccable_command_label(args: &[String]) -> String {
+    format!("{IMPECCABLE}@{IMPECCABLE_VERSION} {}", args.join(" "))
+}
+
+/// The site root for impeccable: the nearest ancestor with `seite.toml`, so
+/// the third-party installer never runs outside a site.
+fn impeccable_root() -> anyhow::Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    crate::mcp::find_project_root(&cwd).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no seite.toml found in {} or its parents; run this from a seite site",
+            cwd.display()
+        )
+    })
+}
+
+/// Fail with an install hint unless `npm` runs.
+fn ensure_npm() -> anyhow::Result<()> {
+    let ok = crate::platform::npm_cmd("npm")
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        anyhow::bail!(
+            "npm not found: impeccable is installed with npm. Install Node.js (includes npm) from https://nodejs.org, then re-run this command"
+        );
+    }
+    Ok(())
+}
+
+/// Check for npm, confirm, fetch the pinned installer into a temp prefix
+/// (from a temp working directory), then run it with `args` in `root`.
+/// Returns `false` when the user declined.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_impeccable(root: &Path, verb: &str, args: &[String]) -> anyhow::Result<bool> {
+    ensure_npm()?;
+    let question = format!(
+        "`seite skill {verb} impeccable` runs the third-party npm package `{}` in {}, continue?",
+        impeccable_command_label(args),
+        root.display()
+    );
+    if !crate::cli::prompt::confirm(&question, true)? {
+        human::info("Cancelled; nothing was changed.");
+        return Ok(false);
+    }
+    let prefix = tempfile::TempDir::new()?;
+    let status = crate::platform::npm_cmd("npm")
+        .args(impeccable_fetch_args(prefix.path()))
+        .current_dir(prefix.path())
+        .stdin(std::process::Stdio::null())
+        .stdout(crate::output::child_stdout())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run npm: {e}"))?;
+    let bin = impeccable_bin(prefix.path());
+    if !status.success() || !bin.is_file() {
+        anyhow::bail!("fetching {IMPECCABLE}@{IMPECCABLE_VERSION} with npm failed");
+    }
+    let status = std::process::Command::new(&bin)
+        .args(args)
+        .current_dir(root)
+        .stdout(crate::output::child_stdout())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run the impeccable installer: {e}"))?;
+    if !status.success() {
+        let code = status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "a signal".into());
+        anyhow::bail!("`{}` failed (exit {code})", impeccable_command_label(args));
+    }
+    Ok(true)
+}
+
+/// Record impeccable in the skill-packs manifest.
+fn record_impeccable(root: &Path) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
+    manifest.packs.insert(
+        IMPECCABLE.to_string(),
+        PackEntry {
+            source: IMPECCABLE_SOURCE.to_string(),
+            branch: "external".to_string(),
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            files: Vec::new(),
+        },
+    );
+    save_manifest(root, &manifest)?;
+    ensure_gitignore_entries(root, &[".claude/.seite-skill-packs.json"])
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_impeccable() -> anyhow::Result<()> {
+    let root = impeccable_root()?;
+    let agents = crate::meta::load(&root).and_then(|m| m.agents);
+    let providers = impeccable_providers(agents.as_deref());
+    let args = impeccable_install_args(&providers);
+
+    human::info(&format!(
+        "Installing '{IMPECCABLE}': {IMPECCABLE_DESCRIPTION} (providers: {})",
+        providers.join(", ")
+    ));
+    let ran = run_impeccable(&root, "install", &args)?;
+    if ran {
+        record_impeccable(&root)?;
+        human::success(
+            "Installed 'impeccable'. In your agent, run `/impeccable` (Codex: `$impeccable`).",
+        );
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "install",
+        "installed": ran,
+        "providers": providers,
+        "command": impeccable_command_label(&args),
+    }));
+    Ok(())
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_update_impeccable(root: &Path) -> anyhow::Result<()> {
+    let args = impeccable_update_args();
+    human::info("Updating 'impeccable'...");
+    let ran = run_impeccable(root, "update", &args)?;
+    if ran {
+        record_impeccable(root)?;
+        human::success("Updated 'impeccable'.");
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "update",
+        "updated": ran,
+        "command": impeccable_command_label(&args),
+    }));
+    Ok(())
+}
+
+/// Whether `dir` looks like impeccable's skill folder: a `SKILL.md` whose
+/// frontmatter names it `impeccable`.
+fn looks_like_impeccable_skill(dir: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(dir.join("SKILL.md")) else {
+        return false;
+    };
+    let Some(rest) = content.strip_prefix("---") else {
+        return false;
+    };
+    let frontmatter = rest.split("\n---").next().unwrap_or("");
+    frontmatter.lines().any(|line| {
+        line.strip_prefix("name:")
+            .map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'') == IMPECCABLE)
+            .unwrap_or(false)
+    })
+}
+
+/// Remove impeccable: its manifest entry and the skill folders that look like
+/// impeccable's. Other files its installer added (commands, agents, hooks)
+/// are left in place.
+fn remove_impeccable(root: &Path) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
+    let recorded = manifest.packs.remove(IMPECCABLE).is_some();
+
+    let mut removed: Vec<&str> = Vec::new();
+    let mut kept: Vec<&str> = Vec::new();
+    for dir in IMPECCABLE_SKILL_DIRS {
+        let path = root.join(dir);
+        if fs::symlink_metadata(&path).is_err() {
+            continue;
+        }
+        // Refuse a symlinked skill dir (or parent) before looking inside it.
+        crate::safe_fs::guard(root, &path)?;
+        if !path.is_dir() {
+            continue;
+        }
+        if looks_like_impeccable_skill(&path) {
+            crate::safe_fs::remove(root, &path)?;
+            removed.push(dir);
+        } else {
+            kept.push(dir);
+        }
+    }
+
+    if !recorded && removed.is_empty() && kept.is_empty() {
+        anyhow::bail!("no skill or pack named '{IMPECCABLE}' is installed");
+    }
+    if recorded {
+        save_manifest(root, &manifest)?;
+    }
+    for dir in &kept {
+        human::warning(&format!(
+            "kept {dir}: its SKILL.md is not impeccable's (no `name: impeccable`); remove it by hand if you want it gone"
+        ));
+    }
+    human::success(&format!(
+        "Removed 'impeccable'{}",
+        if removed.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", removed.join(", "))
+        }
+    ));
+    human::info(
+        "Other files impeccable's installer added (agent commands, subagents, hooks) were left in place.",
+    );
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "remove",
+        "removed_dirs": removed,
+        "kept_dirs": kept,
+    }));
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Source tracking
 // ---------------------------------------------------------------------------
@@ -211,6 +540,10 @@ fn manifest_path(root: &Path) -> PathBuf {
 
 fn load_manifest(root: &Path) -> SkillPacksManifest {
     let path = manifest_path(root);
+    // Never read through a symlink planted in the project.
+    if crate::safe_fs::guard(root, &path).is_err() {
+        return SkillPacksManifest::default();
+    }
     if path.exists() {
         let content = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
@@ -222,10 +555,10 @@ fn load_manifest(root: &Path) -> SkillPacksManifest {
 fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<()> {
     let path = manifest_path(root);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        crate::safe_fs::create_dir_all(root, parent)?;
     }
     let json = serde_json::to_string_pretty(manifest)?;
-    fs::write(&path, json)?;
+    crate::safe_fs::write(root, &path, json)?;
     Ok(())
 }
 
@@ -257,8 +590,8 @@ pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
     let mut all_pack_skills: Vec<String> = Vec::new();
 
     for (name, entry) in &manifest.packs {
-        let description = find_pack(name)
-            .map(|p| p.description.to_string())
+        let description = known_pack_description(name)
+            .map(str::to_string)
             .unwrap_or_else(|| format!("from {}", entry.source));
 
         let mut agents = Vec::new();
@@ -565,6 +898,7 @@ fn strip_date_prefix(filename: &str) -> &str {
 
 fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()> {
     let gitignore_path = root.join(".gitignore");
+    crate::safe_fs::guard(root, &gitignore_path)?;
     let existing = if gitignore_path.exists() {
         fs::read_to_string(&gitignore_path)?
     } else {
@@ -588,7 +922,7 @@ fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()>
             content.push_str(entry);
             content.push('\n');
         }
-        fs::write(&gitignore_path, content)?;
+        crate::safe_fs::write(root, &gitignore_path, content)?;
     }
 
     Ok(())
@@ -698,7 +1032,8 @@ fn scaffold_env_example(root: &Path) -> anyhow::Result<()> {
     if env_path.exists() {
         return Ok(());
     }
-    fs::write(
+    crate::safe_fs::write(
+        root,
         &env_path,
         r#"# SEOMachine Analytics Configuration
 # Copy this file to .env and fill in your credentials.
@@ -752,7 +1087,7 @@ fn scaffold_requirements(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
                 .to_string()
         }
     };
-    fs::write(&req_path, content)?;
+    crate::safe_fs::write(root, &req_path, content)?;
     Ok(())
 }
 
@@ -804,6 +1139,10 @@ pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+    if source == IMPECCABLE {
+        return run_install_impeccable();
+    }
+
     let root = std::env::current_dir()?;
 
     // Check if it's a known pack
@@ -819,11 +1158,7 @@ fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> 
     Err(anyhow::anyhow!(
         "unknown skill pack '{}'. Known packs: {}. Or provide a URL to a SKILL.md file.",
         source,
-        known_packs()
-            .iter()
-            .map(|p| p.name)
-            .collect::<Vec<_>>()
-            .join(", ")
+        known_pack_names().join(", ")
     ))
 }
 
@@ -839,13 +1174,13 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Download agents
     let agents_dir = root.join(".claude").join("agents");
-    fs::create_dir_all(&agents_dir)?;
+    crate::safe_fs::create_dir_all(root, &agents_dir)?;
     human::info(&format!("Downloading {} agents...", pack.agents.len()));
     for agent in pack.agents {
         let url = raw_github_url(pack.repo, pack.branch, &format!(".claude/agents/{agent}"));
         match download_text(&url) {
             Ok(body) => {
-                fs::write(agents_dir.join(agent), &body)?;
+                crate::safe_fs::write(root, &agents_dir.join(agent), &body)?;
                 installed_files.push(format!(".claude/agents/{agent}"));
             }
             Err(e) => download_errors.push(format!("  agent {agent}: {e}")),
@@ -854,7 +1189,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Download commands
     let commands_dir = root.join(".claude").join("commands");
-    fs::create_dir_all(&commands_dir)?;
+    crate::safe_fs::create_dir_all(root, &commands_dir)?;
     human::info(&format!("Downloading {} commands...", pack.commands.len()));
     for command in pack.commands {
         // Skip publish-draft — we'll write our own seite-native version
@@ -868,7 +1203,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
         );
         match download_text(&url) {
             Ok(body) => {
-                fs::write(commands_dir.join(command), &body)?;
+                crate::safe_fs::write(root, &commands_dir.join(command), &body)?;
                 installed_files.push(format!(".claude/commands/{command}"));
             }
             Err(e) => download_errors.push(format!("  command {command}: {e}")),
@@ -876,8 +1211,9 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
     }
 
     // Write seite-native publish-draft override
-    fs::write(
-        commands_dir.join("publish-draft.md"),
+    crate::safe_fs::write(
+        root,
+        &commands_dir.join("publish-draft.md"),
         seite_publish_draft_command(),
     )?;
     installed_files.push(".claude/commands/publish-draft.md".to_string());
@@ -886,7 +1222,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
     human::info(&format!("Downloading {} skills...", pack.skills.len()));
     for skill in pack.skills {
         let skill_dir = root.join(".claude").join("skills").join(skill);
-        fs::create_dir_all(&skill_dir)?;
+        crate::safe_fs::create_dir_all(root, &skill_dir)?;
         let url = raw_github_url(
             pack.repo,
             pack.branch,
@@ -894,7 +1230,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
         );
         match download_text(&url) {
             Ok(body) => {
-                fs::write(skill_dir.join("SKILL.md"), &body)?;
+                crate::safe_fs::write(root, &skill_dir.join("SKILL.md"), &body)?;
                 installed_files.push(format!(".claude/skills/{skill}/SKILL.md"));
             }
             Err(e) => download_errors.push(format!("  skill {skill}: {e}")),
@@ -903,7 +1239,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Download context file templates (only if they don't already exist)
     let context_dir = root.join("context");
-    fs::create_dir_all(&context_dir)?;
+    crate::safe_fs::create_dir_all(root, &context_dir)?;
     human::info("Scaffolding context templates...");
     for context_file in pack.context_files {
         let dest = context_dir.join(context_file);
@@ -913,7 +1249,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
         let url = raw_github_url(pack.repo, pack.branch, &format!("context/{context_file}"));
         match download_text(&url) {
             Ok(body) => {
-                fs::write(&dest, &body)?;
+                crate::safe_fs::write(root, &dest, &body)?;
                 installed_files.push(format!("context/{context_file}"));
             }
             Err(e) => download_errors.push(format!("  context {context_file}: {e}")),
@@ -922,7 +1258,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Download Python scripts
     let scripts_dir = root.join("scripts").join("seo");
-    fs::create_dir_all(&scripts_dir)?;
+    crate::safe_fs::create_dir_all(root, &scripts_dir)?;
     human::info(&format!(
         "Downloading {} Python scripts...",
         pack.python_scripts.len()
@@ -930,12 +1266,12 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
     for script in pack.python_scripts {
         let dest = scripts_dir.join(script);
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
+            crate::safe_fs::create_dir_all(root, parent)?;
         }
         let url = raw_github_url(pack.repo, pack.branch, script);
         match download_text(&url) {
             Ok(body) => {
-                fs::write(&dest, &body)?;
+                crate::safe_fs::write(root, &dest, &body)?;
                 installed_files.push(format!("scripts/seo/{script}"));
             }
             Err(e) => download_errors.push(format!("  script {script}: {e}")),
@@ -948,7 +1284,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Create directories for SEOMachine workflow
     for dir in &["research", "output", "topics"] {
-        fs::create_dir_all(root.join(dir))?;
+        crate::safe_fs::create_dir_all(root, &root.join(dir))?;
     }
 
     // Add to .gitignore
@@ -966,7 +1302,7 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
 
     // Generate internal links map
     let links_map = generate_internal_links_map(root);
-    fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
+    crate::safe_fs::write(root, &context_dir.join("internal-links-map.md"), &links_map)?;
 
     // Append to the canonical cross-agent instructions.
     append_agent_instructions_section(root)?;
@@ -1025,11 +1361,11 @@ fn run_install_url(root: &Path, url: &str, name_override: Option<&str>) -> anyho
     }
 
     let skill_dir = root.join(".claude").join("skills").join(&skill_name);
-    fs::create_dir_all(&skill_dir)?;
-    fs::write(skill_dir.join("SKILL.md"), &body)?;
+    crate::safe_fs::create_dir_all(root, &skill_dir)?;
+    crate::safe_fs::write(root, &skill_dir.join("SKILL.md"), &body)?;
 
     // Save source URL for updates
-    fs::write(skill_dir.join(".source"), url)?;
+    crate::safe_fs::write(root, &skill_dir.join(".source"), url)?;
 
     human::success(&format!(
         "Installed skill '{}' to .claude/skills/{}/SKILL.md",
@@ -1051,25 +1387,42 @@ fn run_list() -> anyhow::Result<()> {
     let bundled: Vec<&str> = crate::cli::harness::SKILLS.iter().map(|s| s.name).collect();
 
     human::info("Bundled skills:");
+    let mut bundled_present: Vec<&str> = Vec::new();
     for name in &bundled {
         let skill_path = skills_dir.join(name).join("SKILL.md");
         if skill_path.exists() {
             human::info(&format!("  {} (bundled)", name));
+            bundled_present.push(name);
         }
     }
 
     // Installed packs
     let manifest = load_manifest(&root);
-    if !manifest.packs.is_empty() {
+    let impeccable = impeccable_installed(&root);
+    let mut installed: Vec<(&str, String)> = manifest
+        .packs
+        .iter()
+        .map(|(name, entry)| {
+            let detail = if entry.source == IMPECCABLE_SOURCE {
+                format!("via npm (from {})", entry.source)
+            } else {
+                format!("{} files (from {})", entry.files.len(), entry.source)
+            };
+            (name.as_str(), detail)
+        })
+        .collect();
+    if impeccable && !manifest.packs.contains_key(IMPECCABLE) {
+        installed.push((
+            IMPECCABLE,
+            "skill folder found (installed outside seite)".into(),
+        ));
+    }
+    installed.sort();
+    if !installed.is_empty() {
         human::info("");
         human::info("Installed packs:");
-        for (name, entry) in &manifest.packs {
-            human::info(&format!(
-                "  {} — {} files (from {})",
-                name,
-                entry.files.len(),
-                entry.source
-            ));
+        for (name, detail) in &installed {
+            human::info(&format!("  {name} — {detail}"));
         }
     }
 
@@ -1086,12 +1439,15 @@ fn run_list() -> anyhow::Result<()> {
         })
         .collect();
 
+    let mut custom_skills = Vec::new();
     if skills_dir.exists() {
-        let mut custom_skills = Vec::new();
         if let Ok(entries) = fs::read_dir(&skills_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if bundled.contains(&name.as_str()) || pack_skills.contains(&name) {
+                if bundled.contains(&name.as_str())
+                    || pack_skills.contains(&name)
+                    || name == IMPECCABLE
+                {
                     continue;
                 }
                 if entry.path().join("SKILL.md").exists() {
@@ -1099,6 +1455,7 @@ fn run_list() -> anyhow::Result<()> {
                 }
             }
         }
+        custom_skills.sort();
         if !custom_skills.is_empty() {
             human::info("");
             human::info("Custom skills:");
@@ -1109,21 +1466,61 @@ fn run_list() -> anyhow::Result<()> {
     }
 
     // Available packs (not yet installed)
-    let available: Vec<_> = known_packs()
-        .iter()
-        .filter(|p| !manifest.packs.contains_key(p.name))
+    let is_installed = |name: &str| {
+        if name == IMPECCABLE {
+            impeccable
+        } else {
+            manifest.packs.contains_key(name)
+        }
+    };
+    let available: Vec<&str> = known_pack_names()
+        .into_iter()
+        .filter(|name| !is_installed(name))
         .collect();
     if !available.is_empty() {
         human::info("");
         human::info("Available packs (not installed):");
-        for pack in &available {
-            human::info(&format!("  {} — {}", pack.name, pack.description));
+        for name in &available {
             human::info(&format!(
-                "    Install with: seite skill install {}",
-                pack.name
+                "  {} — {}",
+                name,
+                known_pack_description(name).unwrap_or_default()
             ));
+            human::info(&format!("    Install with: seite skill install {name}"));
         }
     }
+
+    let mut packs: Vec<serde_json::Value> = known_pack_names()
+        .into_iter()
+        .map(|name| {
+            serde_json::json!({
+                "name": name,
+                "description": known_pack_description(name),
+                "installed": is_installed(name),
+                "source": manifest.packs.get(name).map(|e| e.source.clone()),
+            })
+        })
+        .collect();
+    // Packs recorded in the manifest that this binary no longer knows.
+    let mut unknown: Vec<_> = manifest
+        .packs
+        .iter()
+        .filter(|(name, _)| !known_pack_names().contains(&name.as_str()))
+        .collect();
+    unknown.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, entry) in unknown {
+        packs.push(serde_json::json!({
+            "name": name,
+            "description": null,
+            "installed": true,
+            "source": entry.source,
+        }));
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "bundled": bundled_present,
+        "packs": packs,
+        "custom_skills": custom_skills,
+    }));
 
     Ok(())
 }
@@ -1138,6 +1535,10 @@ fn run_remove(name: &str) -> anyhow::Result<()> {
 }
 
 fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
+    if name == IMPECCABLE {
+        return remove_impeccable(root);
+    }
+
     let mut manifest = load_manifest(root);
 
     // Check if it's an installed pack
@@ -1147,12 +1548,14 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
         for file in &entry.files {
             let path = root.join(file);
-            if path.exists() {
-                fs::remove_file(&path)?;
+            if fs::symlink_metadata(&path).is_ok() {
+                crate::safe_fs::remove(root, &path)?;
             }
             // Clean up empty parent directories
             if let Some(parent) = path.parent() {
-                let _ = fs::remove_dir(parent); // ignore errors (dir not empty)
+                if crate::safe_fs::guard(root, parent).is_ok() {
+                    let _ = fs::remove_dir(parent); // ignore errors (dir not empty)
+                }
             }
         }
 
@@ -1180,8 +1583,8 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
     // Check if it's a custom skill
     let skill_dir = root.join(".claude").join("skills").join(name);
-    if skill_dir.exists() {
-        fs::remove_dir_all(&skill_dir)?;
+    if fs::symlink_metadata(&skill_dir).is_ok() {
+        crate::safe_fs::remove(root, &skill_dir)?;
         human::success(&format!("Removed skill '{}'", name));
         return Ok(());
     }
@@ -1198,6 +1601,16 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn run_update(name: Option<&str>) -> anyhow::Result<()> {
+    if name == Some(IMPECCABLE) {
+        let root = impeccable_root()?;
+        if !impeccable_installed(&root) {
+            anyhow::bail!(
+                "impeccable is not installed; install it with `seite skill install impeccable`"
+            );
+        }
+        return run_update_impeccable(&root);
+    }
+
     let root = std::env::current_dir()?;
     let manifest = load_manifest(&root);
 
@@ -1240,7 +1653,9 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
     }
 
     for pack_name in &pack_names {
-        if let Some(pack) = find_pack(pack_name) {
+        if pack_name == IMPECCABLE {
+            run_update_impeccable(&root)?;
+        } else if let Some(pack) = find_pack(pack_name) {
             human::info(&format!("Updating pack '{}'...", pack_name));
             run_install_pack(&root, pack)?;
         }
@@ -1250,7 +1665,11 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
     let context_dir = root.join("context");
     if context_dir.exists() {
         let links_map = generate_internal_links_map(&root);
-        fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
+        crate::safe_fs::write(
+            &root,
+            &context_dir.join("internal-links-map.md"),
+            &links_map,
+        )?;
         human::info("Regenerated internal links map");
     }
 
@@ -1958,5 +2377,175 @@ mod tests {
         assert!(summary.packs[0]
             .description
             .contains("github:someone/future-pack"));
+    }
+
+    // --- impeccable ---
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_impeccable_providers_map_recorded_agents() {
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["claude", "codex"]))),
+            ["claude", "codex"]
+        );
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["gemini", "cursor", "opencode"]))),
+            ["gemini", "cursor", "opencode"]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_providers_default_to_all_agents() {
+        let all = ["claude", "codex", "opencode", "cursor", "gemini"];
+        assert_eq!(impeccable_providers(None), all);
+        assert_eq!(impeccable_providers(Some(&[])), all);
+        // Unknown ids are dropped; nothing known left means all.
+        assert_eq!(impeccable_providers(Some(&ids(&["vim"]))), all);
+    }
+
+    #[test]
+    fn test_impeccable_providers_drop_unknown_and_duplicates() {
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["codex", "vim", "codex", " claude "]))),
+            ["codex", "claude"]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_install_args() {
+        assert_eq!(
+            impeccable_install_args(&["claude", "codex"]),
+            [
+                "install",
+                "--providers=claude,codex",
+                "--scope=project",
+                "-y"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_update_args_take_no_providers() {
+        let args = impeccable_update_args();
+        assert_eq!(args, ["update", "--scope=project", "-y"]);
+        assert!(!args.iter().any(|a| a.starts_with("--providers")));
+    }
+
+    #[test]
+    fn test_impeccable_fetch_is_pinned_and_confined_to_the_temp_prefix() {
+        let prefix = tempfile::TempDir::new().unwrap();
+        let args = impeccable_fetch_args(prefix.path());
+        assert_eq!(args[0], "install");
+        assert_eq!(args[1], "--prefix");
+        assert_eq!(args[2], prefix.path().display().to_string());
+        assert_eq!(
+            args.last().unwrap(),
+            &format!("impeccable@{IMPECCABLE_VERSION}")
+        );
+        assert!(args.contains(&"--no-save".to_string()));
+        assert!(impeccable_bin(prefix.path()).starts_with(prefix.path()));
+        assert!(impeccable_command_label(&impeccable_update_args()).starts_with("impeccable@"));
+    }
+
+    #[test]
+    fn test_impeccable_is_a_known_pack() {
+        assert!(known_pack_names().contains(&IMPECCABLE));
+        assert!(known_pack_description(IMPECCABLE)
+            .unwrap()
+            .contains("impeccable"));
+        assert!(known_pack_description("seomachine").is_some());
+        assert!(known_pack_description("nope").is_none());
+    }
+
+    #[test]
+    fn test_impeccable_installed_by_manifest_or_dir() {
+        for dir in IMPECCABLE_SKILL_DIRS {
+            let tmp = tempfile::TempDir::new().unwrap();
+            assert!(!impeccable_installed(tmp.path()));
+            fs::create_dir_all(tmp.path().join(dir)).unwrap();
+            assert!(impeccable_installed(tmp.path()), "{dir}");
+        }
+        let tmp = tempfile::TempDir::new().unwrap();
+        record_impeccable(tmp.path()).unwrap();
+        assert!(impeccable_installed(tmp.path()));
+        let entry = &load_manifest(tmp.path()).packs[IMPECCABLE];
+        assert_eq!(entry.source, IMPECCABLE_SOURCE);
+        assert_eq!(entry.branch, "external");
+        assert!(entry.files.is_empty());
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs[0].name, IMPECCABLE);
+        assert_eq!(summary.packs[0].description, IMPECCABLE_DESCRIPTION);
+    }
+
+    #[test]
+    fn test_looks_like_impeccable_skill() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        assert!(!looks_like_impeccable_skill(dir));
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: impeccable\ndescription: x\n---\nbody\n",
+        )
+        .unwrap();
+        assert!(looks_like_impeccable_skill(dir));
+        fs::write(dir.join("SKILL.md"), "---\nname: \"impeccable\"\n---\n").unwrap();
+        assert!(looks_like_impeccable_skill(dir));
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: my-design\n---\nname: impeccable\n",
+        )
+        .unwrap();
+        assert!(!looks_like_impeccable_skill(dir));
+        fs::write(dir.join("SKILL.md"), "# impeccable\n").unwrap();
+        assert!(!looks_like_impeccable_skill(dir));
+    }
+
+    #[test]
+    fn test_remove_impeccable_keeps_foreign_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        record_impeccable(root).unwrap();
+        let ours = root.join(".claude/skills/impeccable");
+        let foreign = root.join(".agents/skills/impeccable");
+        fs::create_dir_all(&ours).unwrap();
+        fs::create_dir_all(&foreign).unwrap();
+        fs::write(ours.join("SKILL.md"), "---\nname: impeccable\n---\n").unwrap();
+        fs::write(foreign.join("SKILL.md"), "---\nname: other\n---\n").unwrap();
+
+        remove_from(root, IMPECCABLE).unwrap();
+        assert!(!ours.exists());
+        assert!(foreign.exists());
+        assert!(!load_manifest(root).packs.contains_key(IMPECCABLE));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_remove_refuses_symlinked_skill_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("site");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("SKILL.md"), "---\nname: impeccable\n---\n").unwrap();
+        fs::create_dir_all(root.join(".claude/skills")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(".claude/skills/impeccable")).unwrap();
+        record_impeccable(&root).unwrap();
+        let err = remove_from(&root, IMPECCABLE).unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"), "{err:#}");
+        assert!(outside.join("SKILL.md").exists());
+
+        // A symlinked custom skill dir (or a symlinked `.claude/skills`).
+        std::os::unix::fs::symlink(&outside, root.join(".claude/skills/mine")).unwrap();
+        assert!(remove_from(&root, "mine").is_err());
+        assert!(outside.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_remove_impeccable_not_installed_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let err = remove_from(tmp.path(), IMPECCABLE).unwrap_err();
+        assert!(err.to_string().contains("no skill or pack named"));
     }
 }

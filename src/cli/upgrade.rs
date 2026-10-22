@@ -91,6 +91,12 @@ enum UpgradeAction {
         path: PathBuf,
         description: String,
     },
+    /// Remove 0.20's generated AGENTS.md sections for retired features
+    /// (recomputed when applied, after earlier AGENTS.md edits).
+    PruneLegacySections {
+        root: PathBuf,
+        description: String,
+    },
     /// Write several files at once (the version-matched `.seite/docs/`).
     WriteFiles {
         files: Vec<(PathBuf, String)>,
@@ -119,6 +125,7 @@ impl UpgradeAction {
                 vec![description.clone()]
             }
             UpgradeAction::MigrateAgentInstructions { description, .. }
+            | UpgradeAction::PruneLegacySections { description, .. }
             | UpgradeAction::Remove { description, .. }
             | UpgradeAction::WriteFiles { description, .. } => {
                 vec![description.clone()]
@@ -137,6 +144,7 @@ impl UpgradeAction {
             UpgradeAction::StampProjectVersion { .. }
             | UpgradeAction::MigrateAgentInstructions { .. }
             | UpgradeAction::SyncInstructionsBlock { .. }
+            | UpgradeAction::PruneLegacySections { .. }
             | UpgradeAction::WriteFiles { .. } => false,
         }
     }
@@ -501,6 +509,9 @@ struct UpgradePlan {
     hooks_installed: Vec<String>,
     /// The agent or hook selection differs from what `.seite/config.json` records.
     record_selection: bool,
+    /// One-time notices not shown yet (printed when applying, never with
+    /// `--check`).
+    notices: Vec<Notice>,
 }
 
 impl UpgradePlan {
@@ -545,13 +556,29 @@ impl UpgradePlan {
         let mut new_meta = meta::PageMeta::stamp_current_version(existing.as_ref());
         new_meta.agents = Some(harness::to_ids(&self.agents));
         new_meta.hooks_installed = Some(self.hooks_installed.clone());
+        if !self.notices.is_empty() {
+            let mut shown = new_meta.notices_shown.take().unwrap_or_default();
+            shown.extend(self.notices.iter().map(|n| n.key.clone()));
+            new_meta.notices_shown = Some(shown);
+        }
         meta::write(&self.root, &new_meta)?;
         Ok(())
     }
 
-    /// With no file changes, still stamp a stale version or a new selection.
+    fn show_notices(&self) {
+        for notice in &self.notices {
+            human::info(&notice.text);
+        }
+    }
+
+    /// With no file changes, still stamp a stale version or a new selection
+    /// (and show + record any one-time notices).
     fn finish_without_changes(&self) -> anyhow::Result<()> {
-        if self.project_ver < meta::binary_version() || self.record_selection {
+        self.show_notices();
+        if self.project_ver < meta::binary_version()
+            || self.record_selection
+            || !self.notices.is_empty()
+        {
             self.write_meta()?;
         }
         Ok(())
@@ -560,9 +587,10 @@ impl UpgradePlan {
     /// Apply every action, then stamp the new version and selection.
     fn apply(&mut self) -> anyhow::Result<()> {
         for action in std::mem::take(&mut self.actions) {
-            apply_action(action)?;
+            apply_action(&self.root, action)?;
         }
         report_deselected(&self.deselected);
+        self.show_notices();
         self.write_meta()
     }
 }
@@ -627,10 +655,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
 
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    extend_dedup(
-        &mut actions,
-        check_agent_harness(root, &agents, args.mcp, project_ver),
-    );
+    extend_dedup(&mut actions, check_agent_harness(root, &agents, args.mcp));
     // Turn-end `seite check` hooks, once per agent: merged into (or next to)
     // the actions above, and skipped for agents recorded as done so a hook
     // the user deleted stays deleted.
@@ -643,6 +668,18 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     );
     let record_hooks = stored_hooks.as_ref() != Some(&hooks_installed);
 
+    // Retired 0.20 skills and AGENTS.md sections: removed when untouched,
+    // otherwise kept with a notice shown once.
+    let (legacy_actions, mut notices) = check_legacy_skills(root);
+    actions.extend(legacy_actions);
+    let (section_actions, section_notices) = check_legacy_sections(root);
+    actions.extend(section_actions);
+    notices.extend(section_notices);
+    let shown = meta::load(root)
+        .and_then(|m| m.notices_shown)
+        .unwrap_or_default();
+    notices.retain(|n| !shown.contains(&n.key));
+
     let changes = actions.iter().flat_map(|a| a.describe()).collect();
     Ok(UpgradePlan {
         root: root.to_path_buf(),
@@ -653,6 +690,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
         deselected,
         hooks_installed,
         record_selection: record_agents || record_hooks,
+        notices,
     })
 }
 
@@ -676,18 +714,18 @@ fn hint_trim_instructions(root: &Path) {
     }
 }
 
-/// Apply one upgrade action.
-fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
+/// Apply one upgrade action. Every write and delete goes through
+/// [`crate::safe_fs`], so a symlink committed into the project can't redirect
+/// it outside `root`.
+fn apply_action(root: &Path, action: UpgradeAction) -> anyhow::Result<()> {
+    use crate::safe_fs;
     match action {
         UpgradeAction::Create {
             path,
             content,
             description,
         } => {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&path, &content)?;
+            safe_fs::write(root, &path, &content)?;
             human::success(&format!("Created {description}"));
         }
         UpgradeAction::MergeJson {
@@ -696,7 +734,7 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             additions,
         } => {
             let json = serde_json::to_string_pretty(&merged)?;
-            fs::write(&path, format!("{json}\n"))?;
+            safe_fs::write(root, &path, format!("{json}\n"))?;
             for desc in &additions {
                 human::success(desc);
             }
@@ -706,15 +744,16 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             content,
             description,
         } => {
-            fs::write(&path, &content)?;
+            safe_fs::write(root, &path, &content)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::SyncInstructionsBlock {
-            root,
+            root: site_root,
             block,
             description,
         } => {
-            let path = project_instructions_path(&root);
+            let path = project_instructions_path(&site_root);
+            safe_fs::guard(root, &path)?;
             if let Ok(existing) = fs::read_to_string(&path) {
                 if let Some(updated) = block.apply(&existing) {
                     crate::cli::agent_instructions::write_atomic(&path, &updated)?;
@@ -727,9 +766,10 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             content,
             description,
         } => {
+            safe_fs::guard(root, &path)?;
             let mut existing = fs::read_to_string(&path).unwrap_or_default();
             existing.push_str(&content);
-            fs::write(&path, existing)?;
+            safe_fs::write(root, &path, existing)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::InjectToml {
@@ -739,6 +779,7 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             value,
             description,
         } => {
+            safe_fs::guard(root, &path)?;
             let existing = fs::read_to_string(&path).unwrap_or_default();
             let key_prefix = format!("{key} =");
             let patched = if existing.contains(&key_prefix) {
@@ -752,32 +793,43 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
                     1,
                 )
             };
-            fs::write(&path, patched)?;
+            safe_fs::write(root, &path, patched)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::StampProjectVersion { .. } => {
             // The version marker is the upgrade's commit point and is
             // written only after every file migration succeeds.
         }
-        UpgradeAction::MigrateAgentInstructions { root, description } => {
-            if crate::cli::agent_instructions::migrate(&root)? {
+        UpgradeAction::MigrateAgentInstructions {
+            root: site_root,
+            description,
+        } => {
+            safe_fs::guard(root, &site_root.join("AGENTS.md"))?;
+            safe_fs::guard(root, &site_root.join("CLAUDE.md"))?;
+            if crate::cli::agent_instructions::migrate(&site_root)? {
                 human::success(&format!("Updated {description}"));
             }
         }
-        UpgradeAction::Remove { path, description } => {
-            if path.is_dir() {
-                fs::remove_dir_all(&path)?;
-            } else if path.exists() {
-                fs::remove_file(&path)?;
+        UpgradeAction::PruneLegacySections {
+            root: site_root,
+            description,
+        } => {
+            let path = project_instructions_path(&site_root);
+            safe_fs::guard(root, &path)?;
+            if let Ok(existing) = fs::read_to_string(&path) {
+                if let (Some(updated), _) = prune_legacy_sections(&existing) {
+                    crate::cli::agent_instructions::write_atomic(&path, &updated)?;
+                    human::success(&format!("Updated {description}"));
+                }
             }
+        }
+        UpgradeAction::Remove { path, description } => {
+            safe_fs::remove(root, &path)?;
             human::success(&format!("Removed {description}"));
         }
         UpgradeAction::WriteFiles { files, description } => {
             for (path, content) in files {
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&path, content)?;
+                safe_fs::write(root, &path, content)?;
             }
             human::success(&format!("Updated {description}"));
         }
@@ -945,6 +997,16 @@ fn check_claude_config(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
                 .entry("allow".to_string())
                 .or_insert_with(|| serde_json::json!([]));
             if let Some(allow) = allow.as_array_mut() {
+                if replace_rule(
+                    allow,
+                    harness::CLAUDE_LEGACY_THEME_ALLOW,
+                    harness::CLAUDE_THEME_ALLOW,
+                ) {
+                    additions.push(format!(
+                        "Narrowed {} to `seite theme apply|list` in .claude/settings.json",
+                        harness::CLAUDE_LEGACY_THEME_ALLOW
+                    ));
+                }
                 let mcp_rule = mcp.then_some(CLAUDE_MCP_ALLOW);
                 for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE.iter().copied().chain(mcp_rule) {
                     if !allow.iter().any(|v| v == rule) {
@@ -1148,7 +1210,7 @@ fn is_unmodified_legacy(name: &str, content: &str) -> bool {
 /// and the `design-prompts` rule seite wrote before 0.21 — only copies still
 /// exactly as seite shipped them. Modified copies stay, with a notice that
 /// `/seite` now covers them.
-fn check_legacy_skills(root: &Path) -> Vec<UpgradeAction> {
+fn check_legacy_skills(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
     let mut actions = Vec::new();
     let mut kept = Vec::new();
     for dir in [harness::CLAUDE_SKILLS_DIR, harness::SHARED_SKILLS_DIR] {
@@ -1190,41 +1252,209 @@ fn check_legacy_skills(root: &Path) -> Vec<UpgradeAction> {
             kept.push(rel);
         }
     }
-    if !kept.is_empty() {
-        human::info(&format!(
-            "Kept {} (edited since seite wrote it); `/seite theme`, `/seite brand`, and `/seite landing` now cover these, so delete them when you no longer need them.",
-            kept.join(", ")
-        ));
+    let notices = kept
+        .iter()
+        .map(|rel| Notice {
+            key: format!("kept-legacy:{rel}"),
+            text: format!(
+                "Kept {rel} (edited since seite wrote it); `/seite theme`, `/seite brand`, and `/seite landing` now cover it, so delete it when you no longer need it."
+            ),
+        })
+        .collect();
+    (actions, notices)
+}
+
+/// A message `seite upgrade` shows once per project (recorded in
+/// `.seite/config.json` `notices_shown`), never under `--check`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Notice {
+    key: String,
+    text: String,
+}
+
+/// AGENTS.md sections seite 0.20 generated for features 0.21 removed (the
+/// `/theme-builder`, `/brand-identity` and `/landing-page` skills, the dev
+/// server REPL), exactly as 0.20.x wrote them (`src/scaffold/legacy/`), with
+/// whether each is a skill section (replaced by the `/seite` pointer).
+const LEGACY_SECTIONS: &[(&str, bool)] = &[
+    (include_str!("../scaffold/legacy/repl.md"), false),
+    (
+        include_str!("../scaffold/legacy/landing-page-builder.md"),
+        true,
+    ),
+    (include_str!("../scaffold/legacy/theme-builder.md"), true),
+    (include_str!("../scaffold/legacy/brand-identity.md"), true),
+];
+
+/// The line that replaces the removed skill sections.
+const SEITE_DESIGN_POINTER: &str = "Design workflows: `/seite theme`, `/seite brand`, `/seite landing` (Codex: `$seite theme|brand|landing`) replace the old `/theme-builder`, `/brand-identity`, and `/landing-page` skills.";
+
+fn normalize_ws(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The line range `[start, end)` of the section headed by `heading` (a
+/// markdown heading line): up to the next heading of the same or a higher
+/// level, outside code fences.
+fn section_range(lines: &[&str], heading: &str) -> Option<(usize, usize)> {
+    let level = heading.chars().take_while(|c| *c == '#').count();
+    let start = lines.iter().position(|l| l.trim_end() == heading)?;
+    let mut in_fence = false;
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        let hashes = line.chars().take_while(|c| *c == '#').count();
+        if !in_fence && hashes > 0 && hashes <= level && line[hashes..].starts_with(' ') {
+            return Some((start, i));
+        }
+    }
+    Some((start, lines.len()))
+}
+
+/// Remove [`LEGACY_SECTIONS`] still exactly as seite wrote them (whitespace
+/// aside) from project instructions, putting [`SEITE_DESIGN_POINTER`] where
+/// the first skill section was (unless `/seite brand` is already mentioned).
+/// Returns the new content (`None` when nothing is removed) and the headings
+/// of legacy sections the user edited (kept).
+fn prune_legacy_sections(content: &str) -> (Option<String>, Vec<String>) {
+    let mut text = content.to_string();
+    let mut edited = Vec::new();
+    let mut changed = false;
+    let mut pointer_needed = !content.contains("/seite brand");
+    for (legacy, is_skill) in LEGACY_SECTIONS {
+        let heading = legacy.lines().next().unwrap_or_default().trim_end();
+        let lines: Vec<&str> = text.lines().collect();
+        let Some((start, end)) = section_range(&lines, heading) else {
+            continue;
+        };
+        if normalize_ws(&lines[start..end].join("\n")) != normalize_ws(legacy) {
+            edited.push(heading.trim_start_matches('#').trim().to_string());
+            continue;
+        }
+        let mut out: Vec<&str> = lines[..start].to_vec();
+        if *is_skill && pointer_needed {
+            out.push(SEITE_DESIGN_POINTER);
+            out.push("");
+            pointer_needed = false;
+        }
+        out.extend_from_slice(&lines[end..]);
+        let trailing_newline = text.ends_with('\n');
+        text = out.join("\n");
+        if trailing_newline {
+            text.push('\n');
+        }
+        changed = true;
+    }
+    (changed.then_some(text), edited)
+}
+
+/// Remove 0.20's legacy AGENTS.md sections (see [`prune_legacy_sections`]);
+/// edited ones are kept with a one-time notice.
+fn check_legacy_sections(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let path = project_instructions_path(root);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return (vec![], vec![]);
+    };
+    let (pruned, edited) = prune_legacy_sections(&content);
+    let notices = edited
+        .into_iter()
+        .map(|heading| Notice {
+            key: format!("kept-legacy-section:{heading}"),
+            text: format!(
+                "Kept the \"{heading}\" section in AGENTS.md (edited since seite wrote it); it describes a feature seite no longer ships (`/seite` covers it), so remove it when you no longer need it."
+            ),
+        })
+        .collect();
+    let actions = match pruned {
+        Some(_) => vec![UpgradeAction::PruneLegacySections {
+            root: root.to_path_buf(),
+            description: "Project instructions (removed sections for the retired /theme-builder, /brand-identity, /landing-page skills and the serve REPL)".into(),
+        }],
+        None => vec![],
+    };
+    (actions, notices)
+}
+
+/// Bring `.seite/docs/` up to date (see [`harness::local_docs_plan`]): write
+/// missing and (for another seite version's docs) changed pages, delete
+/// pages this version doesn't ship.
+fn check_local_docs(root: &Path) -> Vec<UpgradeAction> {
+    let (files, removes) = harness::local_docs_plan(root);
+    let mut actions: Vec<UpgradeAction> = removes
+        .into_iter()
+        .map(|path| {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            UpgradeAction::Remove {
+                path,
+                description: format!("{rel} (no longer part of seite's docs)"),
+            }
+        })
+        .collect();
+    let pages = files
+        .iter()
+        .filter(|(p, _)| p.extension().is_some_and(|e| e == "md"))
+        .count();
+    if !files.is_empty() {
+        let version = meta::format_version(meta::binary_version());
+        let description = if pages == 0 {
+            format!(
+                "{}/ (version stamp for seite {version})",
+                harness::LOCAL_DOCS_DIR
+            )
+        } else {
+            format!(
+                "{}/ ({} doc page{} for seite {version})",
+                harness::LOCAL_DOCS_DIR,
+                pages,
+                if pages == 1 { "" } else { "s" },
+            )
+        };
+        actions.push(UpgradeAction::WriteFiles { description, files });
     }
     actions
 }
 
-/// Write the embedded docs to `.seite/docs/`: missing files always, changed
-/// files when the project was set up by an older seite.
-fn check_local_docs(root: &Path, project_ver: (u64, u64, u64)) -> Vec<UpgradeAction> {
-    let refresh = project_ver < meta::binary_version();
-    let files: Vec<(PathBuf, String)> = harness::local_docs()
-        .into_iter()
-        .map(|f| (root.join(&f.path), f.content))
-        .filter(|(path, content)| match fs::read_to_string(path) {
-            Ok(existing) => refresh && existing != *content,
-            Err(_) => true,
+/// Add seite's machine-local paths (`.seite/docs/`, `.seite/dev.json`) to
+/// `.gitignore` when missing (add-only; created if there is none).
+fn check_gitignore_local_state(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join(".gitignore");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let present = |entry: &str| {
+        let bare = entry.trim_start_matches('/').trim_end_matches('/');
+        existing.lines().any(|l| {
+            let l = l.trim();
+            l.trim_start_matches('/').trim_end_matches('/') == bare
         })
+    };
+    let missing: Vec<&str> = harness::GITIGNORE_LOCAL_STATE
+        .iter()
+        .copied()
+        .filter(|e| !present(e))
         .collect();
-    if files.is_empty() {
+    if missing.is_empty() {
         return vec![];
     }
-    vec![UpgradeAction::WriteFiles {
-        description: format!(
-            "{}/ ({} doc page{} for seite {})",
-            harness::LOCAL_DOCS_DIR,
-            files.len(),
-            if files.len() == 1 { "" } else { "s" },
-            meta::format_version(meta::binary_version())
-        ),
-        files,
+    let mut content = String::new();
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        content.push('\n');
+    }
+    for entry in &missing {
+        content.push_str(entry);
+        content.push('\n');
+    }
+    vec![UpgradeAction::Append {
+        path,
+        content,
+        description: format!(".gitignore ({})", missing.join(", ")),
     }]
 }
+
 /// Extract the `# seite-skill-version: N` value from a SKILL.md file.
 /// Returns 0 if not found.
 fn extract_skill_version(content: &str) -> u32 {
@@ -1827,6 +2057,24 @@ fn check_mcp_servers_json(root: &Path, rel: &str, agent: &str) -> Vec<UpgradeAct
     }]
 }
 
+/// Replace `old` in an allow list (only an exact match, i.e. the rule seite
+/// generated) with `new` at the same position, skipping rules already there.
+/// `true` when `old` was found.
+fn replace_rule(allow: &mut Vec<serde_json::Value>, old: &str, new: &[&str]) -> bool {
+    let Some(pos) = allow.iter().position(|v| v == old) else {
+        return false;
+    };
+    allow.remove(pos);
+    let mut at = pos;
+    for rule in new {
+        if !allow.iter().any(|v| v == rule) {
+            allow.insert(at, serde_json::json!(rule));
+            at += 1;
+        }
+    }
+    true
+}
+
 /// Create `.cursor/cli.json`, or add seite's allow rules to an existing one
 /// (other rules, and any deny list, are kept). `Mcp(seite:*)` only with `mcp`.
 fn check_cursor_cli_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
@@ -1858,14 +2106,19 @@ fn check_cursor_cli_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
         return vec![];
     };
     let mut additions = Vec::new();
-    let mcp_rule = mcp.then_some(harness::CURSOR_MCP_ALLOW);
-    for rule in mcp_rule
-        .into_iter()
-        .chain(harness::CURSOR_ALLOW.iter().copied())
-    {
-        if !allow.iter().any(|v| v == rule) {
-            allow.push(serde_json::json!(rule));
+    let narrow = harness::cursor_shell_allow();
+    let narrow_refs: Vec<&str> = narrow.iter().map(String::as_str).collect();
+    if replace_rule(allow, harness::CURSOR_LEGACY_SHELL_ALLOW, &narrow_refs) {
+        additions.push(format!(
+            "Narrowed {} to the allowed seite subcommands in {rel}",
+            harness::CURSOR_LEGACY_SHELL_ALLOW
+        ));
+    }
+    let mcp_rule = mcp.then(|| harness::CURSOR_MCP_ALLOW.to_string());
+    for rule in mcp_rule.into_iter().chain(harness::cursor_allow()) {
+        if !allow.iter().any(|v| *v == rule) {
             additions.push(format!("Added {rule} to {rel}"));
+            allow.push(serde_json::json!(rule));
         }
     }
     if additions.is_empty() {
@@ -1920,6 +2173,30 @@ fn check_opencode_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
     if !json.contains_key("permission") {
         json.insert("permission".to_string(), harness::opencode_permission());
         additions.push("Added seite permission defaults to opencode.json".to_string());
+    } else if let Some(bash) = json
+        .get_mut("permission")
+        .and_then(|p| p.get_mut("bash"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        // seite 0.20's `"seite theme*": "allow"` also allowed `theme create`
+        // (a nested agent session): swap it, if untouched, for the narrow rules.
+        if bash.get(harness::OPENCODE_LEGACY_THEME_RULE) == Some(&serde_json::json!("allow")) {
+            let entries: Vec<(String, serde_json::Value)> =
+                std::mem::take(bash).into_iter().collect();
+            for (key, value) in entries {
+                if key == harness::OPENCODE_LEGACY_THEME_RULE {
+                    for rule in harness::OPENCODE_THEME_RULES {
+                        bash.insert((*rule).to_string(), serde_json::json!("allow"));
+                    }
+                } else {
+                    bash.insert(key, value);
+                }
+            }
+            additions.push(format!(
+                "Narrowed \"{}\" to `seite theme apply|list` in opencode.json",
+                harness::OPENCODE_LEGACY_THEME_RULE
+            ));
+        }
     }
     if additions.is_empty() {
         return vec![];
@@ -1981,12 +2258,7 @@ fn check_instructions_shim(root: &Path, agent: Agent) -> Vec<UpgradeAction> {
 
 /// Every harness file the selected agents need, merged into what exists.
 /// MCP config is only added or changed with `mcp`.
-fn check_agent_harness(
-    root: &Path,
-    agents: &[Agent],
-    mcp: bool,
-    project_ver: (u64, u64, u64),
-) -> Vec<UpgradeAction> {
+fn check_agent_harness(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeAction> {
     let features = SiteFeatures::detect(root);
     let mut actions = Vec::new();
 
@@ -2040,67 +2312,110 @@ fn check_agent_harness(
             harness::claude_rule,
         ));
     }
-    actions.extend(check_legacy_skills(root));
-    actions.extend(check_local_docs(root, project_ver));
+    actions.extend(check_local_docs(root));
+    actions.extend(check_gitignore_local_state(root));
     let show_mcp = mcp || harness::mcp_configured(root, agents);
     actions.extend(check_instructions_blocks(root, agents, show_mcp));
     actions
 }
 
-/// Hooks for each selected agent. Agents not in `installed` (the ids
-/// recorded in `.seite/config.json`) get both tiers. Recorded agents whose
-/// stop hook is still in place get what newer seite versions added (the
-/// post-edit tier, the missing-binary wrapper, the newer OpenCode plugin);
-/// recorded agents without it (the user deleted it or ran `seite hooks off`)
-/// are left alone. Returns the new record: `installed` plus every agent whose
-/// hooks are now in place. Agents whose config can't be merged are left out
-/// so a later upgrade retries them.
+/// Hooks for each selected agent, tier by tier. A tier not recorded in
+/// `installed` (`.seite/config.json` `hooks_installed`: `<agent>` = turn-end,
+/// `<agent>:post-edit` = after-edit) is added and recorded; a recorded tier is
+/// never re-added, so a hook the user deleted (or turned off) stays deleted.
+/// Recorded tiers still in place get refreshed (the missing-binary wrapper).
+/// Projects from seite 0.20 record only the turn-end tier: they get the
+/// after-edit tier only while their turn-end hook is still in place.
+/// Returns the new record. Tiers whose config can't be merged are left
+/// unrecorded so a later upgrade retries them.
 fn add_stop_hooks(
     root: &Path,
     agents: &[Agent],
     installed: &[String],
     actions: &mut Vec<UpgradeAction>,
 ) -> Vec<String> {
+    use crate::cli::harness_hooks::{installed_hooks, record_tier, tier_recorded, HookKind};
+
     let mut record = installed.to_vec();
     for &agent in agents {
-        if installed.iter().any(|id| id == agent.id()) {
+        let stop_recorded = tier_recorded(installed, agent, HookKind::Stop);
+        let mut kinds: Vec<HookKind> = Vec::new();
+        if !stop_recorded {
+            kinds.push(HookKind::Stop);
+        }
+        if !tier_recorded(installed, agent, HookKind::PostEdit)
+            && (!stop_recorded || installed_hooks(root, agent).0)
+        {
+            kinds.push(HookKind::PostEdit);
+        }
+        if stop_recorded {
             refresh_hooks(root, agent, actions);
+        }
+        if kinds.is_empty() {
             continue;
         }
-        if add_stop_hook(root, agent, actions) {
-            record.push(agent.id().to_string());
+        if add_hook_tiers(root, agent, &kinds, actions) {
+            for kind in kinds {
+                record_tier(&mut record, agent, kind);
+            }
         }
     }
     record
 }
 
-/// Bring an installed seite hook up to date (see [`add_stop_hooks`]).
+/// Rewrite 0.20's bare hook commands of a recorded agent to the wrapped form.
 fn refresh_hooks(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) {
-    use crate::cli::harness_hooks::{hook_path, installed_hooks, is_outdated_opencode_plugin};
-
-    let rel = hook_path(agent);
-    let path = root.join(rel);
+    use crate::cli::harness_hooks::{hook_path, merge_hook_kinds};
     if agent == Agent::Opencode {
-        if fs::read_to_string(&path).is_ok_and(|text| is_outdated_opencode_plugin(&text)) {
-            actions.push(UpgradeAction::Create {
-                path,
-                content: crate::cli::harness_hooks::opencode_plugin().to_string(),
-                description: format!("{rel} (adds the after-edit check)"),
-            });
-        }
         return;
     }
-    let (stop, _) = installed_hooks(root, agent);
-    if stop {
-        add_stop_hook(root, agent, actions);
+    let path = root.join(hook_path(agent));
+    if actions
+        .iter()
+        .any(|a| a.replaced_path() == Some(path.as_path()))
+    {
+        return;
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        return;
+    };
+    // Merging tiers that are already present only rewrites bare commands.
+    let (stop, post_edit) = crate::cli::harness_hooks::installed_hooks(root, agent);
+    let present: Vec<_> = [
+        (stop, crate::cli::harness_hooks::HookKind::Stop),
+        (post_edit, crate::cli::harness_hooks::HookKind::PostEdit),
+    ]
+    .into_iter()
+    .filter_map(|(on, kind)| on.then_some(kind))
+    .collect();
+    if let Ok(true) = merge_hook_kinds(agent, &mut doc, &present) {
+        actions.push(UpgradeAction::MergeJson {
+            path,
+            merged: serde_json::Value::Object(doc),
+            additions: vec![format!(
+                "Updated the seite check hooks in {}",
+                hook_path(agent)
+            )],
+        });
     }
 }
 
-/// Queue `agent`'s hooks: merged into a pending action on the same file
-/// (e.g. the `.claude/settings.json` the settings step creates), else created
-/// or merged on disk. `false` when the file can't be merged safely.
-fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) -> bool {
-    use crate::cli::harness_hooks::{hook_command, hook_path, merge_hook, new_hook_file, HookKind};
+/// Queue `agent`'s `kinds` hooks: merged into a pending action on the same
+/// file (e.g. the `.claude/settings.json` the settings step creates), else
+/// created or merged on disk. `false` when the file can't be merged safely.
+fn add_hook_tiers(
+    root: &Path,
+    agent: Agent,
+    kinds: &[crate::cli::harness_hooks::HookKind],
+    actions: &mut Vec<UpgradeAction>,
+) -> bool {
+    use crate::cli::harness_hooks::{
+        hook_command, hook_path, is_outdated_opencode_plugin, merge_hook_kinds, opencode_plugin,
+        HookKind,
+    };
+    let merge_hook = |agent, doc: &mut serde_json::Map<String, serde_json::Value>| {
+        merge_hook_kinds(agent, doc, kinds)
+    };
 
     let rel = hook_path(agent);
     let path = root.join(rel);
@@ -2153,16 +2468,35 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
         };
     }
 
-    if !path.exists() {
-        actions.push(UpgradeAction::Create {
-            path,
-            content: new_hook_file(agent),
-            description: format!("{rel} (seite check hooks for {})", agent.label()),
-        });
+    if agent == Agent::Opencode {
+        // One plugin file holds both tiers.
+        let existing = fs::read_to_string(&path).ok();
+        if existing.is_none() && fs::symlink_metadata(&path).is_err() {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: opencode_plugin().to_string(),
+                description: format!("{rel} (seite check hooks for {})", agent.label()),
+            });
+        } else if kinds.contains(&HookKind::PostEdit)
+            && existing.is_some_and(|t| is_outdated_opencode_plugin(&t))
+        {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: opencode_plugin().to_string(),
+                description: format!("{rel} (adds the after-edit check)"),
+            });
+        }
+        // Otherwise a plugin file already sits at our path; leave it alone.
         return true;
     }
-    if agent == Agent::Opencode {
-        // A plugin file already sits at our path; leave it alone.
+    if !path.exists() {
+        let mut doc = serde_json::Map::new();
+        let _ = merge_hook(agent, &mut doc);
+        actions.push(UpgradeAction::Create {
+            path,
+            content: pretty_json(&serde_json::Value::Object(doc)),
+            description: format!("{rel} (seite check hooks for {})", agent.label()),
+        });
         return true;
     }
     let Some(mut doc) = read_json_object(&path) else {
@@ -3082,7 +3416,7 @@ mod tests {
         let mut actions = check_claude_config(tmp.path(), true);
         let before = actions.len();
         let record = add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
-        assert_eq!(record, vec!["claude".to_string()]);
+        assert_eq!(record, ["claude", "claude:post-edit"]);
         // Merged into the MCP step's pending settings.json action, not a second one.
         assert_eq!(actions.len(), before);
         apply_json_actions(actions);
@@ -3148,7 +3482,7 @@ mod tests {
         )
         .unwrap();
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
-        assert_eq!(record, vec!["cursor".to_string()]);
+        assert_eq!(record, ["cursor", "cursor:post-edit"]);
         apply_json_actions(actions);
         let hooks = read_json(&root.join(".cursor/hooks.json"));
         assert_eq!(hooks["hooks"]["afterFileEdit"][0]["command"], "fmt");
@@ -3164,7 +3498,7 @@ mod tests {
         let mut actions = Vec::new();
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
         assert!(actions.is_empty());
-        assert_eq!(record, vec!["cursor".to_string()]);
+        assert_eq!(record, ["cursor", "cursor:post-edit"]);
     }
 
     #[test]

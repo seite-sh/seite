@@ -127,8 +127,31 @@ pub fn check_workspace(
 /// - data files (`.yaml`, `.yml`, `.json`, `.toml`): syntax
 ///
 /// Nothing is rendered, so render errors and broken links are left to the
-/// full `seite check`. Other files (and files that no longer exist) are
-/// skipped. Diagnostics are relative to `root`.
+/// full `seite check`. Any other file, a missing path, or a path outside
+/// `root` is not checked and yields a `check-file-skipped` warning (so a
+/// typo never reads as a pass). Diagnostics are relative to `root`.
+/// `path` with its deepest existing ancestor canonicalized and the missing
+/// rest appended; `None` when the missing rest would climb (`..`).
+fn resolve_lexically_existing(path: &Path) -> Option<std::path::PathBuf> {
+    let mut missing: Vec<&std::ffi::OsStr> = Vec::new();
+    let mut current = path;
+    loop {
+        if let Ok(canonical) = current.canonicalize() {
+            let mut out = canonical;
+            for part in missing.iter().rev() {
+                out.push(part);
+            }
+            return Some(out);
+        }
+        match current.components().next_back()? {
+            std::path::Component::Normal(part) => missing.push(part),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+        current = current.parent()?;
+    }
+}
+
 pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::Result<Diagnostics> {
     let mut all = Diagnostics::new();
     let (config, config_warnings) =
@@ -160,10 +183,37 @@ pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::R
         canon(&paths.templates),
         canon(&paths.data_dir),
     );
+    let canonical_root = canon(root);
     let mut config_reported = false;
     for file in files {
-        let abs = canon(&root.join(file));
+        let joined = root.join(file);
+        let skip = |message: &str, hint: &str| {
+            Diagnostic::warning("check-file-skipped", message)
+                .with_file(joined.clone())
+                .with_hint(hint)
+        };
+        // Decide "outside" before looking at existence, so the answer for a
+        // path outside the site never reveals whether it exists.
+        if !resolve_lexically_existing(&joined).is_some_and(|p| p.starts_with(&canonical_root)) {
+            all.push(skip(
+                "outside the site — not checked",
+                "only files under the site root (the directory with seite.toml) can be checked",
+            ));
+            continue;
+        }
+        let abs = canon(&joined);
+        if !abs.exists() {
+            all.push(skip(
+                "file not found",
+                "check the path; deleted files need no check",
+            ));
+            continue;
+        }
         if !abs.is_file() {
+            all.push(skip(
+                "not a file — not checked",
+                "pass file paths, not directories (or run `seite check` for the whole site)",
+            ));
             continue;
         }
         let ext = ext_of(&abs);
@@ -202,9 +252,13 @@ pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::R
             if let Err(d) = crate::data::parse_data_file(&abs) {
                 all.push(*d);
             }
+        } else {
+            all.push(skip(
+                "not a content/template/data file — not checked",
+                "`seite check --file` covers seite.toml, content .md files, templates .html and data .yaml/.yml/.json/.toml files; run `seite check` for the whole site",
+            ));
         }
     }
-    let canonical_root = canon(root);
     Ok(all.relative_to(&canonical_root).relative_to(root))
 }
 
@@ -387,5 +441,81 @@ mod tests {
         let first = d.iter().next().unwrap();
         assert_eq!(first.code, "config-invalid");
         assert_eq!(first.line, Some(2));
+    }
+
+    fn skipped(root: &Path, files: &[&str]) -> Vec<Diagnostic> {
+        let paths: Vec<std::path::PathBuf> = files.iter().map(std::path::PathBuf::from).collect();
+        check_files(root, &paths).unwrap().into_iter().collect()
+    }
+
+    fn site() -> tempfile::TempDir {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("seite.toml"),
+            "[site]\ntitle = \"T\"\nbase_url = \"http://localhost:3000\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(tmp.path().join("static")).unwrap();
+        std::fs::write(tmp.path().join("static/a.css"), "x").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn test_check_files_warns_on_missing_file() {
+        let tmp = site();
+        let found = skipped(tmp.path(), &["content/posts/nope.md"]);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].code, "check-file-skipped", "{found:#?}");
+        assert!(!found[0].is_error());
+        assert!(found[0].message.contains("not found"));
+        assert_eq!(
+            found[0].file.as_deref(),
+            Some(Path::new("content/posts/nope.md"))
+        );
+    }
+
+    #[test]
+    fn test_check_files_warns_on_unhandled_extension() {
+        let tmp = site();
+        let found = skipped(tmp.path(), &["static/a.css"]);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].code, "check-file-skipped", "{found:#?}");
+        assert!(found[0].message.contains("not checked"));
+        assert_eq!(found[0].file.as_deref(), Some(Path::new("static/a.css")));
+    }
+
+    #[test]
+    fn test_check_files_warns_on_path_outside_site() {
+        let tmp = site();
+        let other = tempfile::TempDir::new().unwrap();
+        let outside = other.path().join("x.md");
+        std::fs::write(&outside, "---\ntitle: x\n---\n").unwrap();
+        let found = skipped(tmp.path(), &[outside.to_str().unwrap()]);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].code, "check-file-skipped", "{found:#?}");
+        assert!(found[0].message.contains("outside the site"));
+        // Missing outside paths get the same answer (no existence oracle),
+        // including ones that climb out with `..`.
+        let missing = other.path().join("nope.md");
+        for path in [
+            missing.to_str().unwrap(),
+            "../../../../etc/nope.md",
+            "content/../../x.md",
+        ] {
+            let found = skipped(tmp.path(), &[path]);
+            assert_eq!(found.len(), 1, "{path}: {found:#?}");
+            assert!(
+                found[0].message.contains("outside the site"),
+                "{path}: {found:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_check_files_warns_on_directory_and_not_for_checked_files() {
+        let tmp = site();
+        let found = skipped(tmp.path(), &["static", "seite.toml"]);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert!(found[0].message.contains("not a file"));
     }
 }

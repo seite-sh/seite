@@ -13,8 +13,8 @@ seite is built so a coding agent can run a site end to end: write content, desig
 - **`AGENTS.md`**: a compact project guide every agent reads. It covers what the site is, the layout, the collections, the content format, the hard rules, and the workflow. Claude Code and Gemini CLI read it through one-line `CLAUDE.md` / `GEMINI.md` files that import it.
 - **The `seite` skill**: one routed skill, `/seite <command>` (Codex: `$seite <command>`), with a short `SKILL.md` and one reference file per command in `reference/`. Claude Code reads it from `.claude/skills/seite/`; Codex, Cursor, OpenCode, and Gemini CLI read `.agents/skills/seite/`. OpenCode gets a `/seite` command wrapper in `.opencode/commands/`, Gemini CLI in `.gemini/commands/seite.toml`.
 - **Context rules**: path-scoped guides (templates, SEO, i18n, shortcodes, data files, config) in `.claude/rules/` and `.cursor/rules/`, loaded automatically for matching files. Codex, OpenCode, and Gemini CLI find them through the index in `AGENTS.md` (`.agents/rules/` when no Claude or Cursor rules exist).
-- **Local docs**: `.seite/docs/` holds the documentation for the installed seite version, so agents look things up without a network call. `seite docs <query>` searches it.
-- **Permissions**: `.claude/settings.json`, `.cursor/cli.json`, and `opencode.json` let the agent read the site, edit `content/`, `templates/`, `static/`, `data/`, and `seite.toml`, and run the read-only and site-editing `seite` commands without asking. `seite deploy` still asks. `.env` files are never readable.
+- **Local docs**: `.seite/docs/` holds the documentation for the installed seite version, so agents look things up without a network call. `seite docs <query>` searches it. It is gitignored (not committed): `seite context`, `seite docs`, and `seite upgrade` write it when it is missing or from another seite version, and drop pages the version no longer ships.
+- **Permissions**: `.claude/settings.json`, `.cursor/cli.json`, and `opencode.json` let the agent read the site, edit `content/`, `templates/`, `static/`, `data/`, and `seite.toml`, and run the read-only and site-editing `seite` commands without asking. Themes are limited to `seite theme apply` and `seite theme list`; `seite theme create`, `seite agent`, and `seite deploy` still ask. `.env` files are never readable. `seite upgrade` narrows the broader rules seite 0.20 wrote (`Bash(seite theme:*)`, `Shell(seite)`, `"seite theme*"`) when they are still exactly as written.
 - **Check hooks**: see [Check hooks](#check-hooks).
 - **Claude desktop preview**: `.claude/launch.json` declares the `seite` dev server, so the Claude desktop app opens the site in its preview pane with live reload.
 
@@ -72,10 +72,11 @@ Every hook command is wrapped so a missing `seite` binary exits 0 silently (`com
 ```bash
 seite hooks status                 # installed / missing, per agent
 seite hooks off --agents cursor    # remove seite's hook entries only
+seite hooks off --tier post-edit   # keep the turn-end check, drop the after-edit one
 seite hooks on                     # install them again
 ```
 
-`.seite/config.json` records which agents seite installed hooks for (`hooks_installed`). `seite upgrade` adds hooks only for agents not recorded there, so hooks you turned off or deleted stay off. For recorded agents whose turn-end hook is still in place, upgrade adds the after-edit hook and the missing-binary wrapper.
+`.seite/config.json` records each hook tier seite installed (`hooks_installed`: `claude` for the turn-end hook, `claude:post-edit` for the after-edit hook). `seite upgrade` adds a tier only when it isn't recorded, so a hook you turned off or deleted stays off, tier by tier. Sites from seite 0.20 recorded only the turn-end tier: upgrade adds their after-edit hook while the turn-end hook is still in place. `seite hooks off` deletes OpenCode's plugin only while it is exactly as seite wrote it, and removes only hook entries whose command is one seite generated.
 
 ## `seite agent`
 
@@ -96,7 +97,11 @@ seite agent --with gemini "add a docs page"     # another agent
 | `cursor` | `cursor-agent` | `cursor-agent -p "<prompt>" --output-format text` | `curl https://cursor.com/install -fsS \| bash` |
 | `gemini` | `gemini` | `gemini -p "<prompt>"` | `npm install -g @google/gemini-cli` |
 
-`SEITE_AGENT` sets the default harness. Auto-approval stays opt-in: the global `--yes` adds `opencode run --auto`, `cursor-agent --force --approve-mcps`, or `gemini --approval-mode=yolo`. If the binary isn't on `PATH`, `seite agent` fails right away with the install command.
+`SEITE_AGENT` sets the default harness. If the binary isn't on `PATH`, `seite agent` fails right away with the install command.
+
+Auto-approval is a separate, explicit flag: `seite agent --once --auto-approve "<prompt>"` adds `opencode run --auto`, `cursor-agent --force --approve-mcps`, or `gemini --approval-mode=yolo`. It only takes effect from an interactive terminal outside any agent session; the global `--yes` (or `SEITE_YES=1`) never adds it.
+
+`seite agent` and `seite theme create` refuse to start a nested agent when they run inside a coding agent's session (detected from the variables the agents set for their commands: `CLAUDECODE`, `CODEX_THREAD_ID`, `GEMINI_CLI`, `OPENCODE`, `CURSOR_AGENT`, and the hook project-dir variables). The error tells you to run `/seite theme …` (or the request) directly in the session you are in.
 
 ## `seite theme create`
 
@@ -104,7 +109,9 @@ seite agent --with gemini "add a docs page"     # another agent
 seite theme create "dark mode with neon green accents"
 ```
 
-With impeccable installed, this prints how to run `/impeccable` with your description. Otherwise it runs your agent once with `/seite theme <description>` (`$seite theme …` in Codex), then suggests `seite skill install impeccable` for deeper design work.
+With impeccable installed, this prints how to run `/impeccable` with your description. Otherwise it runs your agent once with `/seite theme <description>` (`$seite theme …` in Codex), then suggests `seite skill install impeccable` for deeper design work. It never passes an auto-approve flag, so the agent asks before anything its permissions don't allow.
+
+With `SEITE_AGENT=gemini`, Gemini CLI may not expand custom commands such as `/seite` in headless (`-p`) mode (unverified); if the theme isn't generated, run `/seite theme <description>` in an interactive `gemini` session instead.
 
 ## Keeping a site current
 
@@ -115,9 +122,9 @@ seite upgrade --agents claude,gemini   # change the agent selection
 seite upgrade --mcp       # also wire in the MCP server
 ```
 
-Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, and refreshes `.seite/docs/` after a seite update. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`.
+Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, refreshes `.seite/docs/` after a seite update, and adds `/.seite/docs/` and `/.seite/dev.json` to `.gitignore`. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`. Every file it writes or deletes must be a real file inside the project: a symlink anywhere on the path (for example a committed `.claude/skills/seite/SKILL.md` pointing elsewhere) stops the upgrade with an error naming it.
 
-Sites from seite 0.20 and earlier also had the `theme-builder`, `brand-identity`, and `landing-page` skills and a `design-prompts` rule. `/seite theme`, `/seite brand`, and `/seite landing` replace them. Upgrade removes copies that are still exactly as seite wrote them (checked against the content hash of every released version) and keeps edited copies, with a notice.
+Sites from seite 0.20 and earlier also had the `theme-builder`, `brand-identity`, and `landing-page` skills and a `design-prompts` rule. `/seite theme`, `/seite brand`, and `/seite landing` replace them. Upgrade removes copies that are still exactly as seite wrote them (checked against the content hash of every released version) and keeps edited copies, with a notice shown once. It does the same for the `AGENTS.md` sections 0.20 wrote about those skills and the dev-server REPL, leaving a one-line pointer to `/seite theme`, `/seite brand`, and `/seite landing`.
 
 ## Next steps
 

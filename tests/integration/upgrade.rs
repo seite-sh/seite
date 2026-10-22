@@ -1054,14 +1054,28 @@ fn test_init_writes_stop_hooks_for_selected_agents() {
     assert!(plugin.contains("tool.execute.after"));
     assert_eq!(
         stop_hook_ids(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!([
+            "claude",
+            "claude:post-edit",
+            "codex",
+            "codex:post-edit",
+            "opencode",
+            "opencode:post-edit",
+            "cursor",
+            "cursor:post-edit",
+            "gemini",
+            "gemini:post-edit"
+        ])
     );
 
     init_site_with_agents(&tmp, "codex-only", "codex");
     let site_dir = tmp.path().join("codex-only");
     assert!(site_dir.join(".codex/hooks.json").exists());
     assert!(!site_dir.join(".cursor").exists() && !site_dir.join(".opencode").exists());
-    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["codex"]));
+    assert_eq!(
+        stop_hook_ids(&site_dir),
+        serde_json::json!(["codex", "codex:post-edit"])
+    );
 }
 
 #[test]
@@ -1117,7 +1131,18 @@ fn test_upgrade_adds_stop_hooks_to_existing_project() {
     );
     assert_eq!(
         stop_hook_ids(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!([
+            "claude",
+            "claude:post-edit",
+            "codex",
+            "codex:post-edit",
+            "opencode",
+            "opencode:post-edit",
+            "cursor",
+            "cursor:post-edit",
+            "gemini",
+            "gemini:post-edit"
+        ])
     );
     // Everything except the user's own Cursor hook file matches a fresh init
     // (the Claude hook lands in settings.json exactly where init puts it).
@@ -1568,7 +1593,11 @@ fn test_upgrade_adds_post_edit_tier_to_020_hooks_and_respects_hooks_off() {
     )
     .unwrap();
     set_project_version(&site_dir, "0.20.0");
-    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["claude"]));
+    // seite 0.20 recorded a bare id: the turn-end tier only.
+    let meta_path = site_dir.join(".seite/config.json");
+    let mut meta = read_json_file(&meta_path);
+    meta["hooks_installed"] = serde_json::json!(["claude"]);
+    fs::write(&meta_path, meta.to_string()).unwrap();
 
     page_cmd()
         .args(["upgrade", "--force"])
@@ -1614,5 +1643,197 @@ fn test_upgrade_adds_post_edit_tier_to_020_hooks_and_respects_hooks_off() {
         read_json_file(&settings_path).get("hooks").is_none(),
         "hooks off must survive upgrade"
     );
-    assert_eq!(stop_hook_ids(&site_dir), serde_json::json!(["claude"]));
+    assert_eq!(
+        stop_hook_ids(&site_dir),
+        serde_json::json!(["claude", "claude:post-edit"])
+    );
+}
+
+#[test]
+fn test_upgrade_keeps_a_deleted_post_edit_hook_deleted() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site_dir = tmp.path().join("site");
+    let settings_path = site_dir.join(".claude/settings.json");
+    let mut settings = read_json_file(&settings_path);
+    settings["hooks"]
+        .as_object_mut()
+        .unwrap()
+        .remove("PostToolUse");
+    fs::write(
+        &settings_path,
+        format!("{}\n", serde_json::to_string_pretty(&settings).unwrap()),
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let settings = read_json_file(&settings_path);
+    assert!(settings["hooks"].get("PostToolUse").is_none(), "{settings}");
+    assert!(settings["hooks"].get("Stop").is_some());
+}
+
+#[test]
+fn test_upgrade_narrows_legacy_theme_permissions() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Perms", "posts");
+    let site_dir = tmp.path().join("site");
+    // The permission files seite 0.20.1 generated (tests/fixtures/*-0.20.1.json).
+    let mut settings: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/claude-settings-0.20.1.json")).unwrap();
+    settings["permissions"]["allow"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!("Bash(my-tool:*)"));
+    fs::write(site_dir.join(".claude/settings.json"), settings.to_string()).unwrap();
+    fs::write(
+        site_dir.join("opencode.json"),
+        include_str!("../fixtures/opencode-0.20.1.json"),
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join(".cursor/cli.json"),
+        include_str!("../fixtures/cursor-cli-0.20.1.json"),
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Narrowed"));
+
+    let allow =
+        read_json_file(&site_dir.join(".claude/settings.json"))["permissions"]["allow"].to_string();
+    assert!(!allow.contains("Bash(seite theme:*)"), "{allow}");
+    assert!(allow.contains("Bash(seite theme apply:*)"), "{allow}");
+    assert!(allow.contains("Bash(my-tool:*)"), "{allow}");
+    assert!(!allow.contains("seite agent"), "{allow}");
+    let bash = read_json_file(&site_dir.join("opencode.json"))["permission"]["bash"].clone();
+    assert!(bash.get("seite theme*").is_none(), "{bash}");
+    assert_eq!(bash["seite theme apply*"], "allow");
+    assert_eq!(bash["*"], "ask");
+    let cursor =
+        read_json_file(&site_dir.join(".cursor/cli.json"))["permissions"]["allow"].to_string();
+    assert!(!cursor.contains("\"Shell(seite)\""), "{cursor}");
+    assert!(cursor.contains("Shell(seite:theme apply*)"), "{cursor}");
+
+    // A rule the user changed is theirs: left alone.
+    let mut oc = read_json_file(&site_dir.join("opencode.json"));
+    oc["permission"]["bash"]["seite theme*"] = serde_json::json!("ask");
+    fs::write(site_dir.join("opencode.json"), oc.to_string()).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let bash = read_json_file(&site_dir.join("opencode.json"))["permission"]["bash"].clone();
+    assert_eq!(bash["seite theme*"], "ask");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_upgrade_refuses_to_write_through_a_symlinked_skill() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Links", "posts");
+    let site_dir = tmp.path().join("site");
+    let outside = tmp.path().join("outside.md");
+    fs::write(&outside, "# seite-skill-version: 1\nmine\n").unwrap();
+    let skill = site_dir.join(".claude/skills/seite/SKILL.md");
+    fs::remove_file(&skill).unwrap();
+    std::os::unix::fs::symlink(&outside, &skill).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"))
+        .stderr(predicate::str::contains(".claude/skills/seite/SKILL.md"));
+    assert_eq!(
+        fs::read_to_string(&outside).unwrap(),
+        "# seite-skill-version: 1\nmine\n"
+    );
+
+    // A symlinked parent directory is refused too.
+    fs::remove_file(&skill).unwrap();
+    let outside_dir = tmp.path().join("outside-dir");
+    fs::create_dir_all(&outside_dir).unwrap();
+    fs::remove_dir_all(site_dir.join(".claude/skills")).unwrap();
+    std::os::unix::fs::symlink(&outside_dir, site_dir.join(".claude/skills")).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+    assert!(fs::read_dir(&outside_dir).unwrap().next().is_none());
+}
+
+#[test]
+fn test_upgrade_keeps_edited_legacy_sections_with_one_time_notice() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Fixture Site", "posts,docs,pages");
+    let site_dir = tmp.path().join("site");
+    let edited = include_str!("../fixtures/agents-md-0.20.1.md").replace(
+        "Run `/theme-builder` to create",
+        "Run `/theme-builder` (our fork) to create",
+    );
+    fs::write(site_dir.join("AGENTS.md"), &edited).unwrap();
+    let notice = "Kept the \"Theme Builder Skill\" section";
+
+    // --check never prints the notice.
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(notice).not());
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(notice));
+    let upgraded = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(upgraded.contains("(our fork)"));
+    assert!(!upgraded.contains("### Brand Identity Builder Skill"));
+    assert!(!upgraded.contains("### Dev Server REPL"));
+    // Shown once.
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(notice).not());
+}
+
+#[test]
+fn test_upgrade_kept_legacy_skill_notice_prints_once() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    let dir = site_dir.join(".claude/skills/theme-builder");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("SKILL.md"),
+        "---\nname: theme-builder\n---\nmine\n",
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        let out = page_cmd()
+            .args(args)
+            .current_dir(&site_dir)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    assert!(!run(&["upgrade", "--check"]).contains("Kept .claude/skills/theme-builder"));
+    assert!(run(&["upgrade", "--force"]).contains("Kept .claude/skills/theme-builder"));
+    assert!(!run(&["upgrade", "--force"]).contains("Kept .claude/skills/theme-builder"));
+    assert!(dir.join("SKILL.md").exists());
 }

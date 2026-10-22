@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write(content/**)",
+      "Write(templates/**)",
+      "Write(static/**)",
+      "Write(data/**)",
+      "Edit(content/**)",
+      "Edit(templates/**)",
+      "Edit(static/**)",
+      "Edit(data/**)",
+      "Edit(seite.toml)",
+      "Bash(seite build:*)",
+      "Bash(seite build)",
+      "Bash(seite check:*)",
+      "Bash(seite check)",
+      "Bash(seite new:*)",
+      "Bash(seite serve:*)",
+      "Bash(seite theme:*)",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "mcp__seite"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "seite"
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "seite check --hook claude",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

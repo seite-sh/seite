@@ -175,7 +175,18 @@ fn test_hooks_off_and_on_round_trip_keeps_user_hooks() {
     // `off` keeps the record so `seite upgrade` doesn't re-add the hooks.
     assert_eq!(
         read_json_file(&site_dir.join(".seite/config.json"))["hooks_installed"],
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!([
+            "claude",
+            "claude:post-edit",
+            "codex",
+            "codex:post-edit",
+            "opencode",
+            "opencode:post-edit",
+            "cursor",
+            "cursor:post-edit",
+            "gemini",
+            "gemini:post-edit"
+        ])
     );
 
     // A second `off` has nothing left to do.

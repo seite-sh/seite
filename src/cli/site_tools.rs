@@ -60,12 +60,29 @@ pub fn load_site(site_filter: Option<&str>) -> anyhow::Result<ServerState> {
 pub fn no_site_message(state: &ServerState) -> String {
     match &state.config_error {
         Some(err) => format!("{err}\nFix seite.toml (`seite check` shows every problem)."),
-        None => format!(
-            "not in a seite project: no seite.toml in {} or any parent directory. \
-             Run `seite init <name>` to create a site, or pass --dir <site>.",
-            state.cwd.display()
-        ),
+        None => match workspace_sites(&state.cwd) {
+            Some(names) => format!(
+                "this is a workspace: pass --site <name> (sites: {})",
+                if names.is_empty() {
+                    "none yet".to_string()
+                } else {
+                    names.join(", ")
+                }
+            ),
+            None => format!(
+                "not in a seite project: no seite.toml in {} or any parent directory. \
+                 Run `seite init <name>` to create a site, or pass --dir <site>.",
+                state.cwd.display()
+            ),
+        },
     }
+}
+
+/// The site names of the workspace `dir` belongs to, if any.
+fn workspace_sites(dir: &std::path::Path) -> Option<Vec<String>> {
+    let ws_root = workspace::find_workspace_root(dir)?;
+    let ws = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml")).ok()?;
+    Some(ws.sites.iter().map(|s| s.name.clone()).collect())
 }
 
 /// Call the MCP tool `name` with `arguments` and return its structured

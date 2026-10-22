@@ -152,7 +152,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join(".seite"))?;
 
     // Write .gitignore
-    fs::write(root.join(".gitignore"), "/dist\n/dist-subdomains\n")?;
+    fs::write(root.join(".gitignore"), harness::GITIGNORE)?;
 
     // Generate seite.toml
     let target = match deploy_target.as_str() {
@@ -392,7 +392,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         &root,
         &meta::PageMeta {
             agents: Some(harness::to_ids(&agents)),
-            hooks_installed: Some(harness::to_ids(&agents)),
+            hooks_installed: Some(crate::cli::harness_hooks::all_tier_ids(&agents)),
             ..meta::PageMeta::current()
         },
     )?;
@@ -844,7 +844,7 @@ fn generate_agents_md(
     md.push_str("1. Run `seite context` once per session: config, collections, theme, dev server, pending upgrades.\n");
     md.push_str("2. Work through the `seite` skill: `/seite <command>` (Codex: `$seite <command>`), e.g. `check`, `new`, `preview`, `theme`, `deploy`.\n");
     md.push_str(
-        "3. Reference: `.seite/docs/` (docs for this seite version) or `seite docs <query>`.\n\n",
+        "3. Reference: `.seite/docs/` (docs for this seite version, written by seite and gitignored) or `seite docs <query>`.\n\n",
     );
 
     md.push_str("## Layout\n\n```\n");

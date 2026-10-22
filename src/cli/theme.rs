@@ -216,9 +216,12 @@ fn run_create(description: &str) -> anyhow::Result<()> {
             }));
         }
         CreatePlan::RunAgent { prompt } => {
+            crate::cli::agent::refuse_nested(&format!(
+                "Run `/seite theme {description}` directly in this session (Codex: `$seite theme {description}`)."
+            ))?;
             crate::cli::agent::ensure_installed(harness)?;
             human::info(&format!("Designing theme: \"{description}\""));
-            crate::cli::agent::run_once(harness, &prompt)?;
+            crate::cli::agent::run_once(harness, &prompt, false)?;
             human::info(
                 "For deeper design work, add impeccable: `seite skill install impeccable`.",
             );

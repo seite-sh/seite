@@ -372,26 +372,106 @@ fn wrap_bare_commands(list: &mut [Value], agent: Agent, kind: HookKind) -> bool 
     changed
 }
 
+impl HookKind {
+    /// Both tiers.
+    pub const ALL: [HookKind; 2] = [HookKind::Stop, HookKind::PostEdit];
+
+    /// The tier's name in `--tier` and in `.seite/config.json`
+    /// `hooks_installed` (`<agent>:post-edit`).
+    pub fn tier_name(self) -> &'static str {
+        match self {
+            HookKind::Stop => "stop",
+            HookKind::PostEdit => "post-edit",
+        }
+    }
+}
+
+/// Whether `ids` (`.seite/config.json` `hooks_installed`) records `agent`'s
+/// `kind` tier. A bare `<agent>` id (what seite 0.20 wrote, when only the
+/// turn-end hook existed) records the stop tier; `<agent>:<tier>` records
+/// that tier.
+pub fn tier_recorded(ids: &[String], agent: Agent, kind: HookKind) -> bool {
+    let tagged = format!("{}:{}", agent.id(), kind.tier_name());
+    ids.iter()
+        .any(|id| *id == tagged || (kind == HookKind::Stop && id == agent.id()))
+}
+
+/// Record `agent`'s `kind` tier in `ids` (no-op when already recorded).
+pub fn record_tier(ids: &mut Vec<String>, agent: Agent, kind: HookKind) {
+    if !tier_recorded(ids, agent, kind) {
+        ids.push(match kind {
+            HookKind::Stop => agent.id().to_string(),
+            HookKind::PostEdit => format!("{}:{}", agent.id(), kind.tier_name()),
+        });
+    }
+}
+
+/// `hooks_installed` ids recording both tiers for every agent in `agents`.
+pub fn all_tier_ids(agents: &[Agent]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for &agent in agents {
+        for kind in HookKind::ALL {
+            record_tier(&mut ids, agent, kind);
+        }
+    }
+    ids
+}
+
+/// The tier of a handler `command` seite generated (any agent, current
+/// wrapped form or 0.20's bare form), or `None` for anything else.
+fn seite_command_kind(command: &str) -> Option<HookKind> {
+    Agent::ALL.iter().find_map(|&agent| {
+        HookKind::ALL.into_iter().find(|&kind| {
+            command == hook_command(agent, kind) || command == check_invocation(agent, kind)
+        })
+    })
+}
+
+/// Whether `handler` (a hook handler object) runs a seite-generated command
+/// of one of `kinds`.
+fn is_seite_handler(handler: &Value, kinds: &[HookKind]) -> bool {
+    handler
+        .get("command")
+        .and_then(Value::as_str)
+        .and_then(seite_command_kind)
+        .is_some_and(|k| kinds.contains(&k))
+}
+
 /// Remove seite's hooks (both tiers) from a JSON hook config, keeping every
-/// other hook. Event lists and the `hooks` object are dropped when they end
-/// up empty. `true` when anything was removed.
+/// other hook. See [`remove_hook_kinds`].
 pub fn remove_hooks(doc: &mut Map<String, Value>) -> bool {
+    remove_hook_kinds(doc, &HookKind::ALL)
+}
+
+/// Remove seite's `kinds` hooks from a JSON hook config, keeping every other
+/// hook: only handlers whose command is exactly one seite generates (any
+/// version) go, never one that merely mentions `seite check`. Event lists
+/// and the `hooks` object are dropped when they end up empty. `true` when
+/// anything was removed.
+pub fn remove_hook_kinds(doc: &mut Map<String, Value>, kinds: &[HookKind]) -> bool {
     let Some(hooks) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
         return false;
     };
     let mut removed = false;
     for list in hooks.values_mut().filter_map(Value::as_array_mut) {
         let before = list.len();
-        for entry in list.iter_mut() {
+        let mut emptied = vec![false; list.len()];
+        for (i, entry) in list.iter_mut().enumerate() {
             if let Some(handlers) = entry.get_mut("hooks").and_then(Value::as_array_mut) {
                 let n = handlers.len();
-                handlers.retain(|h| !h.to_string().contains(COMMAND_MARKER));
+                handlers.retain(|h| !is_seite_handler(h, kinds));
                 removed |= handlers.len() != n;
+                emptied[i] = n != handlers.len() && handlers.is_empty();
             }
         }
-        list.retain(|entry| match entry.get("hooks").and_then(Value::as_array) {
-            Some(handlers) => !handlers.is_empty(),
-            None => !entry.to_string().contains(COMMAND_MARKER),
+        let mut i = 0;
+        list.retain(|entry| {
+            let keep = match entry.get("hooks").and_then(Value::as_array) {
+                Some(_) => !emptied[i],
+                None => !is_seite_handler(entry, kinds),
+            };
+            i += 1;
+            keep
         });
         removed |= list.len() != before;
     }
@@ -402,6 +482,12 @@ pub fn remove_hooks(doc: &mut Map<String, Value>) -> bool {
         }
     }
     removed
+}
+
+/// Whether `text` is an OpenCode plugin exactly as some seite version wrote
+/// it (safe to delete or replace).
+pub fn is_bundled_opencode_plugin(text: &str) -> bool {
+    text == OPENCODE_PLUGIN || text == OPENCODE_PLUGIN_V1
 }
 
 /// Whether `text` (a hook config file) already contains a seite hook.
@@ -504,16 +590,23 @@ pub fn run(agent: Agent, include_drafts: bool, kind: HookKind) -> anyhow::Result
         HookKind::Stop => evaluate(agent, &input, include_drafts),
         HookKind::PostEdit => evaluate_post_edit(agent, &input),
     });
-    match outcome {
-        Ok(Ok(Some(doc))) => crate::output::json::emit_document(&doc),
-        Ok(Ok(None)) => {
-            // Cursor expects JSON on stdout for every run.
-            if agent == Agent::Cursor {
-                crate::output::json::emit_document(&json!({}));
-            }
+    let doc = match outcome {
+        Ok(Ok(doc)) => doc,
+        Ok(Err(e)) => {
+            eprintln!("seite check --hook: skipped ({e:#})");
+            None
         }
-        Ok(Err(e)) => eprintln!("seite check --hook: skipped ({e:#})"),
-        Err(_) => eprintln!("seite check --hook: skipped (internal error)"),
+        Err(_) => {
+            eprintln!("seite check --hook: skipped (internal error)");
+            None
+        }
+    };
+    match doc {
+        Some(doc) => crate::output::json::emit_document(&doc),
+        // Cursor expects a JSON document on stdout for every run, including
+        // Claude Code hooks it imports and runs, and failures.
+        None if needs_json_reply(agent, &input) => crate::output::json::emit_document(&json!({})),
+        None => {}
     }
     Ok(())
 }
@@ -759,6 +852,13 @@ pub fn encode_post_edit(agent: Agent, reason: &str) -> Value {
         Agent::Cursor => json!({ "additional_context": reason }),
         Agent::Opencode => json!({ "message": reason }),
     }
+}
+
+/// Whether the harness running the hook needs a JSON document on stdout even
+/// when there is nothing to report (Cursor, natively or running Claude's
+/// hooks).
+fn needs_json_reply(agent: Agent, input: &Value) -> bool {
+    agent == Agent::Cursor || runs_in_cursor(input)
 }
 
 /// Whether Cursor ran the hook (its input carries `cursor_version`).
@@ -1094,6 +1194,67 @@ mod tests {
             assert!(remove_hooks(&mut doc));
             assert!(doc.get("hooks").is_none(), "{agent:?}");
         }
+    }
+
+    #[test]
+    fn remove_hooks_only_removes_exact_seite_commands() {
+        let custom = "seite check --hook claude && notify-me";
+        let mut doc: Map<String, Value> = serde_json::from_value(json!({
+            "hooks": {
+                "Stop": [
+                    { "hooks": [{ "type": "command", "command": custom }] },
+                    { "hooks": [{ "type": "command", "command": "seite check --hook claude" }] }
+                ],
+            }
+        }))
+        .unwrap();
+        merge_hook(Agent::Claude, &mut doc).unwrap();
+        assert!(remove_hooks(&mut doc));
+        let stop = doc["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 1, "{stop:?}");
+        assert_eq!(stop[0]["hooks"][0]["command"], custom);
+        // A Cursor flat entry with a custom command stays too.
+        let mut doc: Map<String, Value> = serde_json::from_value(json!({
+            "hooks": { "stop": [{ "command": "echo seite check --hook cursor" }] }
+        }))
+        .unwrap();
+        assert!(!remove_hooks(&mut doc));
+    }
+
+    #[test]
+    fn json_reply_for_cursor_and_claude_in_cursor() {
+        assert!(needs_json_reply(Agent::Cursor, &json!({})));
+        assert!(needs_json_reply(
+            Agent::Claude,
+            &json!({ "cursor_version": "1.7" })
+        ));
+        assert!(!needs_json_reply(Agent::Claude, &json!({})));
+        assert!(!needs_json_reply(Agent::Codex, &json!({})));
+    }
+
+    #[test]
+    fn remove_hook_kinds_removes_one_tier() {
+        let mut doc = Map::new();
+        merge_hook(Agent::Claude, &mut doc).unwrap();
+        assert!(remove_hook_kinds(&mut doc, &[HookKind::PostEdit]));
+        assert!(doc["hooks"].get("PostToolUse").is_none());
+        assert!(doc["hooks"].get("Stop").is_some());
+    }
+
+    #[test]
+    fn tier_records_read_legacy_and_tagged_ids() {
+        let mut ids = vec!["claude".to_string()];
+        assert!(tier_recorded(&ids, Agent::Claude, HookKind::Stop));
+        assert!(!tier_recorded(&ids, Agent::Claude, HookKind::PostEdit));
+        record_tier(&mut ids, Agent::Claude, HookKind::PostEdit);
+        record_tier(&mut ids, Agent::Claude, HookKind::PostEdit);
+        record_tier(&mut ids, Agent::Codex, HookKind::Stop);
+        assert_eq!(ids, ["claude", "claude:post-edit", "codex"]);
+        assert!(tier_recorded(&ids, Agent::Claude, HookKind::PostEdit));
+        assert!(!tier_recorded(&ids, Agent::Codex, HookKind::PostEdit));
+        assert!(is_bundled_opencode_plugin(OPENCODE_PLUGIN));
+        assert!(is_bundled_opencode_plugin(OPENCODE_PLUGIN_V1));
+        assert!(!is_bundled_opencode_plugin("// mine seite check --hook"));
     }
 
     #[test]

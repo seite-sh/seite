@@ -97,6 +97,8 @@ getrandom = "0.4"
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["stdio", "process"] }
+# Remove .seite/dev.json on SIGINT/SIGTERM/SIGHUP
+signal-hook = "0.3"
 
 [features]
 default = ["math"]

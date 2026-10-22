@@ -29,6 +29,14 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 
 **How to fix:** read the message, which carries the underlying error, fix the named file, and run `seite check` again. `seite build --verbose` shows which step failed.
 
+## check-file-skipped
+
+**What it means:** `seite check --file <path>` was given a path it did not check, so a clean result does not cover it. Reported as a warning (an error with `--strict`). The message says why: the file was not found, it is outside the site, it is not a file, or it is not a content, template or data file.
+
+**Common causes:** a typo in the path, a file that was deleted or renamed, a path outside the site root, or a file type `--file` does not cover (images, CSS, scripts under `static/`).
+
+**How to fix:** correct the path. `--file` checks `seite.toml`, content `.md` files, templates `.html` and data `.yaml`/`.yml`/`.json`/`.toml` files; run `seite check` without `--file` to validate the whole site.
+
 ## config-invalid
 
 **What it means:** `seite.toml` could not be loaded: a TOML syntax error, or a value of the wrong type. Nothing else can be checked until it loads.

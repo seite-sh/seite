@@ -98,15 +98,46 @@ pub struct DevServer {
     pub url: String,
 }
 
-/// The dev server recorded in `.seite/dev.json`, if its process is alive.
-fn running_dev_server(root: &Path) -> Option<DevServer> {
-    let raw = std::fs::read_to_string(root.join(".seite").join("dev.json")).ok()?;
-    let server: DevServer = serde_json::from_str(&raw).ok()?;
-    process_alive(server.pid, server.port).then_some(server)
+/// The dev server recorded in `.seite/dev.json`, if it is really running.
+///
+/// The file lives in the project, so a cloned repository could plant one;
+/// nothing in it is trusted beyond the pid and port (and it is gitignored).
+/// It is ignored when `.seite` or the file is a symlink; the server must be
+/// listening on the loopback port (and, on unix, its pid alive); the URL is
+/// rebuilt locally from the port, never read from the file. (No `git`
+/// probe: running git in an untrusted repo can execute its config.)
+pub(crate) fn running_dev_server(root: &Path) -> Option<DevServer> {
+    let path = root.join(".seite").join("dev.json");
+    crate::safe_fs::guard(root, &path).ok()?;
+    if !std::fs::symlink_metadata(&path).ok()?.is_file() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let recorded: DevServer = serde_json::from_str(&raw).ok()?;
+    if recorded.port == 0 {
+        return None;
+    }
+    let alive = process_alive(recorded.pid) && port_open(recorded.port);
+    alive.then(|| DevServer {
+        pid: recorded.pid,
+        port: recorded.port,
+        url: dev_server_url(recorded.port),
+    })
+}
+
+/// The URL of a dev server on `port`, built locally (loopback).
+pub(crate) fn dev_server_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
+
+/// Whether something accepts TCP connections on the loopback `port`.
+fn port_open(port: u16) -> bool {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_ok()
 }
 
 #[cfg(unix)]
-fn process_alive(pid: u32, _port: u16) -> bool {
+fn process_alive(pid: u32) -> bool {
     let Some(pid) = i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)
@@ -120,10 +151,11 @@ fn process_alive(pid: u32, _port: u16) -> bool {
     }
 }
 
+// Windows (and other non-unix) has no cheap pid probe here, so liveness is
+// port-probe based only ([`port_open`]).
 #[cfg(not(unix))]
-fn process_alive(_pid: u32, port: u16) -> bool {
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok()
+fn process_alive(_pid: u32) -> bool {
+    true
 }
 
 fn impeccable_installed(root: &Path) -> bool {
@@ -135,6 +167,8 @@ fn impeccable_installed(root: &Path) -> bool {
 pub fn run(_args: &ContextArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let state = load_state(site_filter)?;
     let version = env!("CARGO_PKG_VERSION");
+    // Version-matched local docs, written lazily (gitignored, not committed).
+    crate::cli::harness::ensure_local_docs(&state.cwd);
 
     if state.config.is_none() && state.config_error.is_none() {
         let message = no_site_message(&state);
@@ -318,7 +352,7 @@ fn print_context(data: &Value) {
     };
     human_println!("{}{}", label("Skill packs:"), list("skill_packs"));
     human_println!(
-        "{}{} (stop hooks: {})",
+        "{}{} (hooks: {})",
         label("Agents:"),
         list("agents"),
         list("hooks_installed")
@@ -430,22 +464,45 @@ mod tests {
     }
 
     #[test]
-    fn test_dev_server_requires_live_pid() {
+    fn test_dev_server_requires_live_pid_and_open_port() {
         let tmp = tempfile::TempDir::new().unwrap();
         assert!(running_dev_server(tmp.path()).is_none());
         std::fs::create_dir_all(tmp.path().join(".seite")).unwrap();
         let own = std::process::id();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // A foreign URL in the file is never reported: it's rebuilt locally.
         std::fs::write(
             tmp.path().join(".seite/dev.json"),
-            format!(r#"{{"pid":{own},"port":1,"url":"http://localhost:1"}}"#),
+            format!(r#"{{"pid":{own},"port":{port},"url":"https://evil.example"}}"#),
         )
         .unwrap();
-        #[cfg(unix)]
         assert_eq!(
             running_dev_server(tmp.path()).map(|s| s.url),
-            Some("http://localhost:1".to_string())
+            Some(format!("http://127.0.0.1:{port}"))
         );
+        drop(listener);
+        assert!(running_dev_server(tmp.path()).is_none(), "port closed");
         std::fs::write(tmp.path().join(".seite/dev.json"), "not json").unwrap();
+        assert!(running_dev_server(tmp.path()).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_dev_server_ignores_symlinked_state() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(
+            outside.path().join("dev.json"),
+            format!(
+                r#"{{"pid":{},"port":{port},"url":"x"}}"#,
+                std::process::id()
+            ),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(outside.path(), tmp.path().join(".seite")).unwrap();
         assert!(running_dev_server(tmp.path()).is_none());
     }
 }

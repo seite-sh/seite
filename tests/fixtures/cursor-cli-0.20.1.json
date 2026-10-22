@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Mcp(seite:*)",
+      "Shell(seite)",
+      "Write(content/**)",
+      "Write(templates/**)",
+      "Write(static/**)",
+      "Write(data/**)",
+      "Write(seite.toml)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)"
+    ]
+  }
+}

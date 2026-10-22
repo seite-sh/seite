@@ -194,3 +194,36 @@ fn test_harness_snapshot_upgrade_legacy_claude_site() {
         upgrade_files(&["--agents", "claude"]),
     );
 }
+
+/// A real AGENTS.md from `seite init` 0.20.1 (tests/fixtures/agents-md-0.20.1.md)
+/// after `seite upgrade`: the sections for retired features are gone.
+#[test]
+fn test_harness_snapshot_upgrade_020_agents_md() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Fixture Site", "posts,docs,pages");
+    let site_dir = tmp.path().join("site");
+    let legacy = include_str!("../fixtures/agents-md-0.20.1.md");
+    fs::write(site_dir.join("AGENTS.md"), legacy).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let upgraded = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    for gone in [
+        "### Theme Builder Skill",
+        "### Brand Identity Builder Skill",
+        "### Landing Page Builder Skill",
+        "### Dev Server REPL",
+        "Run `/theme-builder`",
+    ] {
+        assert!(!upgraded.contains(gone), "{gone} still in:\n{upgraded}");
+    }
+    assert_eq!(upgraded.matches("/seite brand").count(), 1, "{upgraded}");
+    assert!(upgraded.contains("## Contact Forms"));
+    assert!(upgraded.contains("## Verify Your Change"));
+    assert_snapshot(
+        "upgrade-020-agents-md",
+        vec![("AGENTS.md".to_string(), upgraded)],
+    );
+}

@@ -182,14 +182,6 @@ fn test_init_creates_one_routed_skill_with_references() {
     assert!(gemini.contains("{{args}}"));
 }
 
-/// Downgrade the project's recorded version so version-gated steps run.
-fn downgrade(site_dir: &std::path::Path, to: &str) {
-    let meta_path = site_dir.join(".seite/config.json");
-    let meta_content = fs::read_to_string(&meta_path).unwrap();
-    let updated = meta_content.replace(env!("CARGO_PKG_VERSION"), to);
-    fs::write(&meta_path, &updated).unwrap();
-}
-
 #[test]
 fn test_upgrade_replaces_outdated_seite_skill_and_references() {
     let tmp = TempDir::new().unwrap();
@@ -307,8 +299,11 @@ fn test_upgrade_refreshes_local_docs_from_older_version() {
     assert!(missing.is_file());
     assert_eq!(fs::read_to_string(&doc).unwrap(), "old docs");
 
-    // From an older seite: every page is refreshed.
-    downgrade(&site_dir, "0.20.0");
+    // Written by an older seite: every page is refreshed and pages that
+    // version had but this one doesn't are pruned.
+    fs::write(site_dir.join(".seite/docs/.version"), "0.20.0\n").unwrap();
+    let retired = site_dir.join(".seite/docs/retired-page.md");
+    fs::write(&retired, "gone").unwrap();
     page_cmd()
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
@@ -316,4 +311,53 @@ fn test_upgrade_refreshes_local_docs_from_older_version() {
         .success()
         .stdout(predicate::str::contains(".seite/docs/"));
     assert_ne!(fs::read_to_string(&doc).unwrap(), "old docs");
+    assert!(!retired.exists());
+}
+
+#[test]
+fn test_context_and_docs_write_missing_local_docs() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Lazy Docs", "posts");
+    let site_dir = tmp.path().join("site");
+    let gitignore = fs::read_to_string(site_dir.join(".gitignore")).unwrap();
+    assert!(gitignore.contains("/.seite/docs/"), "{gitignore}");
+    assert!(gitignore.contains("/.seite/dev.json"), "{gitignore}");
+    for cmd in [&["context"][..], &["docs", "templates"][..]] {
+        fs::remove_dir_all(site_dir.join(".seite/docs")).unwrap();
+        page_cmd()
+            .args(cmd)
+            .current_dir(&site_dir)
+            .assert()
+            .success();
+        assert!(site_dir.join(".seite/docs/agent.md").is_file(), "{cmd:?}");
+    }
+    // Outside a site nothing is written.
+    page_cmd()
+        .arg("context")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    assert!(!tmp.path().join(".seite").exists());
+}
+
+#[test]
+fn test_upgrade_adds_local_state_to_gitignore() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Ignore", "posts");
+    let site_dir = tmp.path().join("site");
+    fs::write(site_dir.join(".gitignore"), "/dist\nnode_modules").unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let gitignore = fs::read_to_string(site_dir.join(".gitignore")).unwrap();
+    assert!(
+        gitignore.starts_with("/dist\nnode_modules\n"),
+        "{gitignore}"
+    );
+    assert!(
+        gitignore.contains("/.seite/docs/\n/.seite/dev.json\n"),
+        "{gitignore}"
+    );
 }

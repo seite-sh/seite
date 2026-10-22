@@ -170,6 +170,7 @@ seite serve [options]
 | `--build` | Build the site before serving |
 | `--open` | Open the site in the default browser after starting |
 | `--no-repl` | Don't read commands from stdin; just serve (with live reload) until interrupted |
+| `--force-new` | Start a server even when `.seite/dev.json` records one already running here |
 
 The server displays local and network URLs (Vite-style) and injects a live-reload script that polls for changes. Unless `--no-repl` is passed, an interactive REPL accepts commands:
 
@@ -179,6 +180,8 @@ The server displays local and network URLs (Vite-style) and injects a live-reloa
 - `build`: rebuild the site
 - `status`: show server info
 - `stop`: stop the server
+
+While it runs, the server records `{pid, port, url, started_at}` in `.seite/dev.json` (the workspace root in a workspace; gitignored) and removes it on `stop`, Ctrl-C, or SIGTERM. `seite context` reports it, and a second `seite serve` in the same directory prints the running server's URL and exits instead of starting another. A recorded server only counts when its pid is alive and its port accepts connections on 127.0.0.1; the URL is rebuilt from the port, never taken from the file, and a symlinked `dev.json` is ignored.
 
 The REPL prompt is only printed to a real terminal. If stdin isn't a TTY (piped, redirected from `/dev/null`, or a background job) the server keeps serving instead of exiting when stdin closes.
 
@@ -212,15 +215,16 @@ seite new roadmap "Dark Mode" --tags planned
 Open a coding agent in the site. The prompt is passed through unchanged; the agent reads `AGENTS.md` and the `/seite` skill and runs with the project's own permissions.
 
 ```bash
-seite agent [prompt] [--once] [--with <harness>]
+seite agent [prompt] [--once] [--with <harness>] [--auto-approve]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--once` | Run the prompt once and exit (`claude -p`, `codex exec`, `opencode run`, `cursor-agent -p`, `gemini -p`) |
 | `--with` | `claude` (default), `codex`, `opencode`, `cursor`, or `gemini`; `SEITE_AGENT` sets the default |
+| `--auto-approve` | With `--once`, pass the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`). Only honored from an interactive terminal outside an agent session; `--yes` never implies it |
 
-Without `--once`, the agent starts an interactive session, seeded with the prompt when one is given. The global `--yes` also passes the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`). If the harness isn't installed, the error names the install command. See [Coding Agents](/docs/agent).
+Without `--once`, the agent starts an interactive session, seeded with the prompt when one is given. Run inside a coding agent's session, `seite agent` (and `seite theme create`) refuses to start a nested agent. If the harness isn't installed, the error names the install command. See [Coding Agents](/docs/agent).
 
 ## seite collection
 
@@ -373,11 +377,33 @@ Turn the coding-agent `seite check` hooks on or off, or show their status. Each 
 
 ```bash
 seite hooks status [--agents <list>]
-seite hooks on [--agents <list>]
-seite hooks off [--agents <list>]
+seite hooks on [--agents <list>] [--tier stop|post-edit|all]
+seite hooks off [--agents <list>] [--tier stop|post-edit|all]
 ```
 
-`--agents` defaults to the project's agents. `on` installs both hooks and records the agent in `.seite/config.json` (`hooks_installed`). `off` removes only seite's hook entries (your other hooks stay) and keeps the record, so `seite upgrade` doesn't add them back. `status` reads the config files and reports installed, missing, or partial per agent; with `--json`, `data.agents` lists `{agent, file, stop, post_edit}`.
+`--agents` defaults to the project's agents, `--tier` to `all` (OpenCode's plugin holds both tiers, so it only takes `all`). `on` installs the hooks and records each tier in `.seite/config.json` (`hooks_installed`: `<agent>` for the turn-end tier, `<agent>:post-edit` for the after-edit tier). `off` removes only hook entries whose command is one seite generated (your other hooks stay; an edited OpenCode plugin is kept with a warning) and keeps the record, so `seite upgrade` doesn't add them back. `status` reads the config files and reports installed, missing, or partial per agent; with `--json`, `data.agents` lists `{agent, file, stop, post_edit}`.
+
+## seite skill
+
+Install, list, update, or remove skill packs and individual skills.
+
+```bash
+seite skill list
+seite skill install <pack|url> [--name <skill>]
+seite skill update [<name>]
+seite skill remove <name>
+```
+
+Known packs:
+
+| Pack | What it adds |
+|------|--------------|
+| `seomachine` | SEO research, writing, and optimization agents, commands, and skills, downloaded into `.claude/` |
+| `impeccable` | The [impeccable](https://github.com/pbakaus/impeccable) design skill (`/impeccable`, `$impeccable` in Codex) |
+
+`impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (all five when none are recorded). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
+
+Installed packs are recorded in `.claude/.seite-skill-packs.json`. With `--json`, `skill list` returns `data.bundled`, `data.packs` (`{name, description, installed, source}`), and `data.custom_skills`.
 
 ## seite mcp
 
@@ -419,7 +445,7 @@ Upgrade is **additive and non-destructive**:
 - Keeps `CLAUDE.md` as a compatibility import of `AGENTS.md`
 - Adds missing files for the selected coding agents (see [`seite init`](#seite-init)); projects created before agent selection existed are treated as `all`, and the selection is recorded. Existing configs are merged, never replaced. Rules files are only created when missing; the `seite` skill and its `reference/` files are refreshed when the bundled `seite-skill-version` is newer
 - Removes the pre-0.21 `theme-builder`, `brand-identity`, and `landing-page` skills and the `design-prompts` rule when they are unmodified (content-hash match against every released version); edited copies stay, with a notice
-- Writes `.seite/docs/` (missing pages always; every page after a seite update)
+- Writes `.seite/docs/` (missing pages always; every page after a seite update, dropping pages the new version doesn't ship) and gitignores it
 - Adds hooks for agents that never had them, and the after-edit hook to agents whose turn-end hook is still in place (hooks you removed stay removed)
 - Refreshes the seite-owned blocks in `AGENTS.md` (per-agent setup table, rules index) to match the selection
 - Deselecting an agent never deletes its files — they are left in place and no longer maintained

@@ -23,6 +23,83 @@ pub struct AgentArgs {
     /// gemini. Defaults to `SEITE_AGENT` when set, otherwise claude.
     #[arg(long, value_name = "HARNESS")]
     pub with: Option<String>,
+
+    /// With --once: pass the harness's own auto-approve flag (opencode
+    /// `--auto`, cursor `--force --approve-mcps`, gemini
+    /// `--approval-mode=yolo`). Honored only from an interactive terminal,
+    /// never inside another agent's session; the global `--yes` never
+    /// implies it.
+    #[arg(long)]
+    pub auto_approve: bool,
+}
+
+/// Environment variables that mark a process as running inside a coding
+/// agent's session (set for the shell commands the agent runs, or its
+/// hooks), as `(variable, agent)`. Checked in order; any non-empty value
+/// counts.
+const AGENT_SESSION_MARKERS: &[(&str, &str)] = &[
+    // Claude Code sets CLAUDECODE=1 for every Bash tool command (verified
+    // empirically in Claude Code's shell). CLAUDE_PROJECT_DIR is set for
+    // hooks and MCP servers (https://code.claude.com/docs/en/hooks).
+    ("CLAUDECODE", "Claude Code"),
+    // Codex CLI injects CODEX_THREAD_ID into every shell tool command
+    // (openai/codex codex-rs/core/src/exec_env.rs); CODEX_SANDBOX is set
+    // for sandboxed commands on macOS and CODEX_SANDBOX_NETWORK_DISABLED
+    // when the sandbox has network off (codex-rs/core/src/spawn.rs).
+    ("CODEX_THREAD_ID", "Codex"),
+    ("CODEX_SANDBOX", "Codex"),
+    ("CODEX_SANDBOX_NETWORK_DISABLED", "Codex"),
+    // Gemini CLI sets GEMINI_CLI=1 for shell tool commands
+    // (google-gemini/gemini-cli packages/core/src/services/
+    // shellExecutionService.ts); GEMINI_PROJECT_DIR is set for hooks.
+    ("GEMINI_CLI", "Gemini CLI"),
+    ("GEMINI_PROJECT_DIR", "Gemini CLI"),
+    // OpenCode sets OPENCODE=1 in its own process env at startup, which its
+    // shell commands inherit (seen in the 1.18 binary's strings; not in
+    // published docs — unverified against source).
+    ("OPENCODE", "OpenCode"),
+    // Cursor's agent CLI references CURSOR_AGENT (2026.10 binary strings;
+    // exact value unverified); CURSOR_PROJECT_DIR is set for its hooks
+    // (https://cursor.com/docs/agent/hooks).
+    ("CURSOR_AGENT", "Cursor"),
+    ("CURSOR_PROJECT_DIR", "Cursor"),
+    // Last: Gemini CLI also exports this alias to its hooks.
+    ("CLAUDE_PROJECT_DIR", "Claude Code"),
+];
+
+/// The coding agent whose session this process runs in, if any.
+pub fn agent_session() -> Option<&'static str> {
+    agent_session_with(|var| std::env::var_os(var).filter(|v| !v.is_empty()).is_some())
+}
+
+fn agent_session_with(is_set: impl Fn(&str) -> bool) -> Option<&'static str> {
+    AGENT_SESSION_MARKERS
+        .iter()
+        .find(|(var, _)| is_set(var))
+        .map(|(_, agent)| *agent)
+}
+
+/// Refuse to launch a nested coding agent from inside an agent's session:
+/// the child would run with seite's (or the harness's) approvals instead of
+/// the outer session's, and `what` can be done directly there.
+pub fn refuse_nested(what: &str) -> anyhow::Result<()> {
+    refuse_nested_in(agent_session(), what)
+}
+
+fn refuse_nested_in(session: Option<&str>, what: &str) -> anyhow::Result<()> {
+    match session {
+        Some(agent) => Err(PageError::Agent(format!(
+            "already inside {agent}; seite won't start a nested agent session. {what}"
+        ))
+        .into()),
+        None => Ok(()),
+    }
+}
+
+/// Whether `--auto-approve` takes effect: asked for, from an interactive
+/// terminal, and not inside another agent's session.
+fn auto_approve_effective(requested: bool, stdin_is_tty: bool, session: Option<&str>) -> bool {
+    requested && stdin_is_tty && session.is_none()
 }
 
 /// Coding-agent harnesses `seite agent --with` can drive.
@@ -99,8 +176,8 @@ impl Harness {
         }
     }
 
-    /// Args to run one prompt non-interactively and exit. `auto` is the
-    /// global `--yes`: the opt-in for a harness's own auto-approve flag.
+    /// Args to run one prompt non-interactively and exit. `auto` adds the
+    /// harness's own auto-approve flag (`seite agent --auto-approve` only).
     fn one_shot_args(self, prompt: &str, auto: bool) -> Vec<String> {
         let mut args: Vec<String> = match self {
             // https://code.claude.com/docs/en/cli-reference (`-p`, print mode)
@@ -177,13 +254,26 @@ fn resolve_harness_with_env(
 }
 
 pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
+    refuse_nested("Ask for the change directly in this session (the `/seite` skill covers seite's workflows).")?;
     let harness = resolve_harness(args.with.as_deref())?;
     ensure_installed(harness)?;
     // Only run inside a site, so the agent finds AGENTS.md and the skill.
     crate::config::SiteConfig::load(std::path::Path::new("seite.toml"))?;
 
+    use std::io::IsTerminal;
+    let auto = auto_approve_effective(
+        args.auto_approve,
+        std::io::stdin().is_terminal(),
+        agent_session(),
+    );
+    if args.auto_approve && !auto {
+        human::warning("--auto-approve ignored: it needs an interactive terminal");
+    } else if auto && !args.once {
+        human::warning("--auto-approve only applies with --once");
+    }
+
     match (&args.prompt, args.once) {
-        (Some(prompt), true) => run_once(harness, prompt),
+        (Some(prompt), true) => run_once(harness, prompt, auto),
         (prompt, _) => {
             human::info(&format!(
                 "Starting interactive {} agent session...",
@@ -194,10 +284,11 @@ pub fn run(args: &AgentArgs) -> anyhow::Result<()> {
     }
 }
 
-/// Run `prompt` once with `harness` and wait for it to finish.
-pub fn run_once(harness: Harness, prompt: &str) -> anyhow::Result<()> {
+/// Run `prompt` once with `harness` and wait for it to finish. `auto` adds
+/// the harness's auto-approve flag (only `seite agent --auto-approve`).
+pub fn run_once(harness: Harness, prompt: &str, auto: bool) -> anyhow::Result<()> {
     human::info(&format!("Starting {} agent...", harness.name()));
-    let cmd_args = harness.one_shot_args(prompt, crate::cli::prompt::assume_yes());
+    let cmd_args = harness.one_shot_args(prompt, auto);
     let status = npm_cmd(harness.binary())
         .args(&cmd_args)
         .stdout(crate::output::child_stdout())
@@ -244,6 +335,48 @@ pub fn ensure_installed(harness: Harness) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- nested sessions + auto-approve ---
+
+    #[test]
+    fn test_agent_session_detection() {
+        assert_eq!(agent_session_with(|_| false), None);
+        assert_eq!(
+            agent_session_with(|v| v == "CLAUDECODE"),
+            Some("Claude Code")
+        );
+        assert_eq!(
+            agent_session_with(|v| v == "CODEX_THREAD_ID"),
+            Some("Codex")
+        );
+        assert_eq!(
+            agent_session_with(|v| v == "GEMINI_CLI"),
+            Some("Gemini CLI")
+        );
+        assert_eq!(agent_session_with(|v| v == "OPENCODE"), Some("OpenCode"));
+        assert_eq!(agent_session_with(|v| v == "CURSOR_AGENT"), Some("Cursor"));
+        // Gemini's hooks get a CLAUDE_PROJECT_DIR alias: Gemini wins.
+        assert_eq!(
+            agent_session_with(|v| v == "GEMINI_PROJECT_DIR" || v == "CLAUDE_PROJECT_DIR"),
+            Some("Gemini CLI")
+        );
+    }
+
+    #[test]
+    fn test_refuse_nested_names_the_agent() {
+        assert!(refuse_nested_in(None, "x").is_ok());
+        let err = refuse_nested_in(Some("Codex"), "Run it directly.").unwrap_err();
+        assert!(err.to_string().contains("already inside Codex"), "{err}");
+        assert!(err.to_string().contains("Run it directly."), "{err}");
+    }
+
+    #[test]
+    fn test_auto_approve_needs_tty_and_no_outer_session() {
+        assert!(auto_approve_effective(true, true, None));
+        assert!(!auto_approve_effective(false, true, None));
+        assert!(!auto_approve_effective(true, false, None));
+        assert!(!auto_approve_effective(true, true, Some("Claude Code")));
+    }
 
     // --- harness resolution ---
 

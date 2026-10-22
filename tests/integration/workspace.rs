@@ -661,3 +661,47 @@ fn test_upgrade_inside_workspace_site_upgrades_only_that_site() {
         .join("sites/blog/.claude/skills/seite/SKILL.md")
         .exists());
 }
+
+#[test]
+fn test_agent_commands_at_workspace_root_ask_for_site() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+    for args in [
+        &["stats"][..],
+        &["templates"][..],
+        &["search", "hello"][..],
+        &["page", "content/posts/x.md"][..],
+    ] {
+        page_cmd()
+            .args(args)
+            .current_dir(tmp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "this is a workspace: pass --site <name>",
+            ))
+            .stderr(predicate::str::contains("blog, docs"));
+    }
+    page_cmd()
+        .arg("context")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("this is a workspace"));
+
+    // With --site, the commands work on that site.
+    for args in [&["stats"][..], &["templates"][..], &["context"][..]] {
+        page_cmd()
+            .args(["--site", "blog"])
+            .args(args)
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+    }
+    let (ok, doc) = run_json(tmp.path(), &["--site", "blog", "context"]);
+    assert!(ok);
+    assert!(doc["data"]["root"]
+        .as_str()
+        .unwrap()
+        .ends_with("sites/blog"));
+}

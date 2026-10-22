@@ -1055,3 +1055,83 @@ fn test_check_gemini_stop_hook_protocol() {
     let out = run_hook(&site, "gemini", r#"{"stop_hook_active":true}"#);
     assert!(out.stdout.is_empty());
 }
+
+#[test]
+fn test_check_file_warns_on_skipped_paths() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Skip", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "static/a.css", "body{}");
+
+    let output = page_cmd()
+        .args(["--json", "check", "--file", "nope.md", "static/a.css"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "warnings alone must not fail");
+    let doc = json_stdout(&output);
+    let diagnostics = doc["data"]["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2, "{doc}");
+    for d in diagnostics {
+        assert_eq!(d["code"], "check-file-skipped", "{doc}");
+        assert_eq!(d["severity"], "warning", "{doc}");
+    }
+    assert!(diagnostics.iter().any(|d| d["file"] == "nope.md"), "{doc}");
+
+    page_cmd()
+        .args(["check", "--strict", "--file", "nope.md"])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("check-file-skipped"));
+
+    // A real, valid file has no such warning.
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-ok.md",
+        "---\ntitle: Ok\ndate: 2024-01-01\n---\nfine\n",
+    );
+    let output = page_cmd()
+        .args([
+            "--json",
+            "check",
+            "--strict",
+            "--file",
+            "content/posts/2024-01-01-ok.md",
+        ])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("check-file-skipped"));
+}
+
+#[test]
+fn test_check_hook_claude_inside_cursor_always_prints_json() {
+    let tmp = TempDir::new().unwrap();
+    // Outside a site, and inside one with nothing to report: still `{}`.
+    for dir in [tmp.path().to_path_buf(), {
+        init_site(&tmp, "site", "Hooks", "posts");
+        tmp.path().join("site")
+    }] {
+        for extra in [&[][..], &["--post-edit"][..]] {
+            let output = page_cmd()
+                .args(["check", "--hook", "claude"])
+                .args(extra)
+                .current_dir(&dir)
+                .env_remove("CLAUDE_PROJECT_DIR")
+                .env_remove("CURSOR_PROJECT_DIR")
+                .env_remove("GEMINI_PROJECT_DIR")
+                .write_stdin(r#"{"cursor_version":"1.7","status":"completed","tool_input":{"file_path":"nope.md"}}"#)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(0));
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout).trim(),
+                "{}",
+                "{extra:?} in {}",
+                dir.display()
+            );
+        }
+    }
+}

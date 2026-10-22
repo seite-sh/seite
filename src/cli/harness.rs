@@ -1059,7 +1059,9 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
     "Bash(seite check)",
     "Bash(seite new:*)",
     "Bash(seite serve:*)",
-    "Bash(seite theme:*)",
+    "Bash(seite theme apply:*)",
+    "Bash(seite theme list:*)",
+    "Bash(seite theme list)",
     "Bash(seite context:*)",
     "Bash(seite context)",
     "Bash(seite docs:*)",
@@ -1082,6 +1084,17 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
 /// `mcp__seite` allows every tool of the `seite` MCP server (Claude Code's
 /// server-level MCP permission rule). Only with `--mcp`.
 pub const CLAUDE_MCP_ALLOW: &str = "mcp__seite";
+
+/// The broad theme rule seite 0.20 generated. It let an agent run `seite
+/// theme create`, which starts a nested agent session; `seite upgrade`
+/// replaces it (only when it is exactly this) with [`CLAUDE_THEME_ALLOW`].
+pub const CLAUDE_LEGACY_THEME_ALLOW: &str = "Bash(seite theme:*)";
+/// The narrow theme rules (no `theme create`, no `seite agent`).
+pub const CLAUDE_THEME_ALLOW: &[&str] = &[
+    "Bash(seite theme apply:*)",
+    "Bash(seite theme list:*)",
+    "Bash(seite theme list)",
+];
 
 /// Allow rules that `seite upgrade` adds to existing projects' settings
 /// (introduced after the original settings template).
@@ -1110,13 +1123,16 @@ pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] = &[
 /// OpenCode `edit` rules).
 const EDITABLE_PATHS: &[&str] = &["content/", "templates/", "static/", "data/"];
 /// `seite` subcommands the agent may run without asking (OpenCode `bash`
-/// rules; Claude's list is [`CLAUDE_ALLOWED_TOOLS`]).
+/// rules, Cursor `Shell(...)` rules; Claude's list is
+/// [`CLAUDE_ALLOWED_TOOLS`]). Never `seite theme create` or `seite agent`:
+/// those start another agent session, which must not inherit approval.
 const ALLOWED_COMMANDS: &[&str] = &[
     "seite build",
     "seite check",
     "seite new",
     "seite serve",
-    "seite theme",
+    "seite theme apply",
+    "seite theme list",
     "seite context",
     "seite docs",
     "seite page",
@@ -1183,30 +1199,61 @@ pub fn opencode_permission() -> serde_json::Value {
     })
 }
 
-/// Allow rules for the Cursor CLI's project `.cursor/cli.json`: the `seite`
-/// command and writes to site sources (plus [`CURSOR_MCP_ALLOW`] with
-/// `--mcp`). Cursor matches `Shell(...)` on the command's first token, so
-/// this allows every `seite` subcommand (Cursor still asks before anything
-/// not listed here).
-pub const CURSOR_ALLOW: &[&str] = &[
-    "Shell(seite)",
-    "Write(content/**)",
-    "Write(templates/**)",
-    "Write(static/**)",
-    "Write(data/**)",
-    "Write(seite.toml)",
-];
+/// The OpenCode `bash` rule seite 0.20 generated for themes (it allowed
+/// `seite theme create`); `seite upgrade` replaces it, only when it is still
+/// exactly `"allow"`, with the narrow rules.
+pub const OPENCODE_LEGACY_THEME_RULE: &str = "seite theme*";
+/// The narrow OpenCode theme rules.
+pub const OPENCODE_THEME_RULES: &[&str] = &["seite theme apply*", "seite theme list*"];
+
+/// The Cursor rule seite 0.20 generated: every `seite` subcommand, including
+/// `seite agent` and `seite theme create`. `seite upgrade` replaces it (only
+/// when it is exactly this) with [`cursor_shell_allow`].
+pub const CURSOR_LEGACY_SHELL_ALLOW: &str = "Shell(seite)";
+
+/// Cursor `Shell(...)` rules for the allowed `seite` subcommands. Cursor
+/// matches `Shell(commandBase)` on the first token; the `command:args` form
+/// globs the arguments too (https://cursor.com/docs/cli/reference/permissions),
+/// so `Shell(seite:theme apply*)` allows `seite theme apply …` only.
+pub fn cursor_shell_allow() -> Vec<String> {
+    ALLOWED_COMMANDS
+        .iter()
+        .map(|cmd| {
+            let args = cmd.strip_prefix("seite ").unwrap_or(cmd);
+            format!("Shell(seite:{args}*)")
+        })
+        .collect()
+}
+
+/// Allow rules for the Cursor CLI's project `.cursor/cli.json`: the allowed
+/// `seite` subcommands ([`cursor_shell_allow`]) and writes to site sources
+/// (plus [`CURSOR_MCP_ALLOW`] with `--mcp`). Cursor still asks before
+/// anything not listed here.
+pub fn cursor_allow() -> Vec<String> {
+    let mut allow = cursor_shell_allow();
+    allow.extend(
+        [
+            "Write(content/**)",
+            "Write(templates/**)",
+            "Write(static/**)",
+            "Write(data/**)",
+            "Write(seite.toml)",
+        ]
+        .map(String::from),
+    );
+    allow
+}
 
 /// Cursor's allow rule for the seite MCP server's tools.
 pub const CURSOR_MCP_ALLOW: &str = "Mcp(seite:*)";
 
 /// `.cursor/cli.json` for a new site (Cursor CLI permissions).
 pub fn cursor_cli_json(mcp: bool) -> serde_json::Value {
-    let mut allow: Vec<&str> = Vec::new();
+    let mut allow: Vec<String> = Vec::new();
     if mcp {
-        allow.push(CURSOR_MCP_ALLOW);
+        allow.push(CURSOR_MCP_ALLOW.to_string());
     }
-    allow.extend_from_slice(CURSOR_ALLOW);
+    allow.extend(cursor_allow());
     serde_json::json!({
         "permissions": {
             "allow": allow,
@@ -1553,13 +1600,9 @@ pub fn write_plan(
     agents: &[Agent],
     features: SiteFeatures,
     mcp: bool,
-) -> std::io::Result<()> {
+) -> anyhow::Result<()> {
     for f in plan(agents, features, mcp) {
-        let path = root.join(&f.path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, f.content)?;
+        crate::safe_fs::write(root, &root.join(&f.path), f.content)?;
     }
     Ok(())
 }
@@ -1583,16 +1626,80 @@ pub fn local_docs() -> Vec<PlannedFile> {
         .collect()
 }
 
-/// Write [`local_docs`] under `root`.
-pub fn write_local_docs(root: &Path) -> std::io::Result<()> {
-    for f in local_docs() {
-        let path = root.join(&f.path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+/// A new site's `.gitignore`: build output, plus seite's machine-local state
+/// (`.seite/docs/` is rewritten per seite version; `.seite/dev.json` names
+/// the running dev server).
+pub const GITIGNORE: &str = "/dist\n/dist-subdomains\n/.seite/docs/\n/.seite/dev.json\n";
+
+/// `.gitignore` lines `seite upgrade` adds when missing (add-only).
+pub const GITIGNORE_LOCAL_STATE: &[&str] = &["/.seite/docs/", "/.seite/dev.json"];
+
+/// Stamp file recording which seite version wrote `.seite/docs/`.
+pub const LOCAL_DOCS_STAMP: &str = ".seite/docs/.version";
+
+/// What bringing `.seite/docs/` up to date takes under `root`: files to
+/// write (missing ones always; changed ones when the stamp isn't this
+/// binary's version; the stamp itself) and stale `*.md` pages to delete
+/// (not in [`local_docs`]). Both empty when current.
+pub fn local_docs_plan(
+    root: &Path,
+) -> (Vec<(std::path::PathBuf, String)>, Vec<std::path::PathBuf>) {
+    let version = env!("CARGO_PKG_VERSION");
+    let stamp_path = root.join(LOCAL_DOCS_STAMP);
+    let stale = std::fs::read_to_string(&stamp_path)
+        .map(|v| v.trim() != version)
+        .unwrap_or(true);
+    let docs = local_docs();
+    let mut writes: Vec<(std::path::PathBuf, String)> = docs
+        .iter()
+        .map(|f| (root.join(&f.path), f.content.clone()))
+        .filter(|(path, content)| match std::fs::read_to_string(path) {
+            Ok(existing) => stale && existing != *content,
+            Err(_) => true,
+        })
+        .collect();
+    let mut removes = Vec::new();
+    if stale {
+        let keep: std::collections::HashSet<std::path::PathBuf> =
+            docs.iter().map(|f| root.join(&f.path)).collect();
+        if let Ok(entries) = std::fs::read_dir(root.join(LOCAL_DOCS_DIR)) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "md") && !keep.contains(&path) {
+                    removes.push(path);
+                }
+            }
         }
-        std::fs::write(path, f.content)?;
+        removes.sort();
+        writes.push((stamp_path, format!("{version}\n")));
     }
-    Ok(())
+    (writes, removes)
+}
+
+/// Bring `.seite/docs/` up to date under `root` ([`local_docs_plan`]).
+/// `true` when anything changed.
+pub fn write_local_docs(root: &Path) -> anyhow::Result<bool> {
+    let (writes, removes) = local_docs_plan(root);
+    for path in &removes {
+        crate::safe_fs::remove(root, path)?;
+    }
+    for (path, content) in &writes {
+        crate::safe_fs::write(root, path, content)?;
+    }
+    Ok(!writes.is_empty() || !removes.is_empty())
+}
+
+/// For read commands (`seite context`, `seite docs`): write `.seite/docs/`
+/// when missing or written by another seite version. Only inside a site
+/// (`root` holds `seite.toml`); a failure (e.g. a read-only checkout) is a
+/// warning, never an error.
+pub fn ensure_local_docs(root: &Path) {
+    if !root.join("seite.toml").is_file() {
+        return;
+    }
+    if let Err(e) = write_local_docs(root) {
+        crate::output::human::warning(&format!("couldn't refresh {LOCAL_DOCS_DIR}/: {e:#}"));
+    }
 }
 
 #[cfg(test)]
@@ -1680,7 +1787,13 @@ mod tests {
         let json = cursor_cli_json(false);
         let allow = json["permissions"]["allow"].as_array().unwrap();
         assert!(!allow.iter().any(|v| v == "Mcp(seite:*)"));
-        assert!(allow.iter().any(|v| v == "Shell(seite)"));
+        assert!(allow.iter().any(|v| v == "Shell(seite:theme apply*)"));
+        assert!(!allow.iter().any(|v| v == "Shell(seite)"));
+        assert!(!allow
+            .iter()
+            .any(|v| v.as_str().unwrap().contains("theme create")
+                || v.as_str().unwrap().contains("seite:agent")
+                || v == "Shell(seite:theme*)"));
         let deny = json["permissions"]["deny"].as_array().unwrap();
         assert!(deny.iter().any(|v| v == "Read(.env)"));
         let with_mcp = cursor_cli_json(true);
@@ -1730,7 +1843,9 @@ mod tests {
         let perm = &json["permission"];
         assert_eq!(perm["bash"]["*"], "ask");
         assert_eq!(perm["bash"]["seite build*"], "allow");
-        assert_eq!(perm["bash"]["seite theme*"], "allow");
+        assert_eq!(perm["bash"]["seite theme apply*"], "allow");
+        assert!(perm["bash"].get("seite theme*").is_none());
+        assert!(perm["bash"].get("seite agent*").is_none());
         assert_eq!(perm["bash"]["seite context*"], "allow");
         assert_eq!(perm["edit"]["*"], "ask");
         assert_eq!(perm["edit"]["content/*"], "allow");
@@ -2201,6 +2316,16 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         write_local_docs(tmp.path()).unwrap();
         assert!(tmp.path().join(".seite/docs/agent.md").is_file());
+        // Current: nothing to do. A stale page and an old stamp: pruned.
+        assert_eq!(local_docs_plan(tmp.path()), (vec![], vec![]));
+        std::fs::write(tmp.path().join(".seite/docs/retired.md"), "old").unwrap();
+        std::fs::write(tmp.path().join(".seite/docs/notes.txt"), "mine").unwrap();
+        assert_eq!(local_docs_plan(tmp.path()), (vec![], vec![]));
+        std::fs::write(tmp.path().join(LOCAL_DOCS_STAMP), "0.0.1\n").unwrap();
+        assert!(write_local_docs(tmp.path()).unwrap());
+        assert!(!tmp.path().join(".seite/docs/retired.md").exists());
+        assert!(tmp.path().join(".seite/docs/notes.txt").exists());
+        assert!(!write_local_docs(tmp.path()).unwrap());
     }
 
     fn touch(path: &Path) {

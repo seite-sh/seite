@@ -27,6 +27,7 @@ cargo run -- check --file content/posts/x.md  # fast per-file check
 cargo run -- theme create "coral brutalist with lime accents"
 cargo run -- deploy  # Commit, push, build, and deploy
 cargo run -- skill install seomachine
+cargo run -- skill install impeccable   # pinned npm installer, asks first
 cargo run -- upgrade # Upgrade project config to current binary
 cargo run -- self-update
 cargo run -- completions bash  # Generate shell completions
@@ -38,6 +39,7 @@ cargo run -- completions bash  # Generate shell completions
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
+  safe_fs.rs           Project-confined writes/deletes (refuse symlinked components) for init/upgrade/hooks/skill/serve
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
@@ -155,9 +157,11 @@ endpoint = "xpznqkdl"
   - MCP config only with `--mcp` (init and upgrade): `.mcp.json` + `enabledMcpjsonServers`/`mcp__seite`, `.cursor/mcp.json` + `Mcp(seite:*)`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`; upgrade without `--mcp` never touches existing MCP config
 - The `seite` skill (`src/scaffold/skill-seite/SKILL.md` + `reference/*.md`, version 3) is one routed skill: `/seite check|new|preview|build|deploy|theme|brand|landing|collection|upgrade|hooks` (`$seite` in Codex); references are written to `<skills dir>/seite/reference/` for every provider
 - Harness output is snapshot-tested in `tests/snapshots/harness/*.snap` (`SEITE_UPDATE_SNAPSHOTS=1 cargo test --test integration harness_snapshot` to regenerate)
-- Two-tier hooks (`src/cli/harness_hooks.rs`; only errors are reported, always exit 0, commands wrapped as `command -v seite … && seite check --hook <agent> [--post-edit] || true`): post-edit (`seite check --hook <agent> --post-edit` → `check::check_files` on the edited file) and turn-end (full check, one continuation per turn). claude `.claude/settings.json` `Stop` + `PostToolUse`, codex `.codex/hooks.json` `Stop` + `PostToolUse`, cursor `.cursor/hooks.json` `stop` + `postToolUse`, opencode `.opencode/plugins/seite-check.js` (`session.idle` + `tool.execute.after`), gemini `.gemini/settings.json` `AfterAgent` + `AfterTool`. `.seite/config.json` `hooks_installed` records them; `seite upgrade` adds hooks only for unrecorded agents (and the post-edit tier where the stop hook is still present), so a user-deleted hook stays deleted; `seite hooks on|off|status` (`src/cli/hooks.rs`) manages them
+- Two-tier hooks (`src/cli/harness_hooks.rs`; only errors are reported, always exit 0, commands wrapped as `command -v seite … && seite check --hook <agent> [--post-edit] || true`): post-edit (`seite check --hook <agent> --post-edit` → `check::check_files` on the edited file) and turn-end (full check, one continuation per turn). claude `.claude/settings.json` `Stop` + `PostToolUse`, codex `.codex/hooks.json` `Stop` + `PostToolUse`, cursor `.cursor/hooks.json` `stop` + `postToolUse`, opencode `.opencode/plugins/seite-check.js` (`session.idle` + `tool.execute.after`), gemini `.gemini/settings.json` `AfterAgent` + `AfterTool`. `.seite/config.json` `hooks_installed` records them per tier (`<agent>` = turn-end, `<agent>:post-edit` = after-edit); `seite upgrade` adds only unrecorded tiers (0.20's bare records get post-edit only while the stop hook is present), so a user-deleted hook stays deleted, tier by tier; `seite hooks on|off|status [--tier stop|post-edit|all]` (`src/cli/hooks.rs`) manages them, removing only exact seite-generated commands
 - AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent setup table; MCP column only when MCP is on) and `<!-- seite:context-rules -->` (rules index) blocks
 - `seite upgrade [--agents …] [--mcp]` adds missing harness files for the selected agents (ungated, idempotent), merges into existing configs (JSON: add keys only; Codex TOML: append table, comments kept), refreshes the marker blocks and `.seite/docs/`, and never deletes files of deselected agents
+- Generated permissions allow `seite theme apply|list` only (never `theme create`/`agent`; Cursor `Shell(seite:<sub>*)`); upgrade narrows the exact 0.20 rules. `seite agent`/`theme create` refuse to nest inside an agent session; `--yes` never adds auto-approve flags (`seite agent --auto-approve`, TTY only)
+- All harness/upgrade/hooks/skill/dev-server writes and deletes go through `crate::safe_fs`; `.seite/docs/` (lazily written, version-stamped, pruned) and `.seite/dev.json` are gitignored. Upgrade prunes 0.20's legacy AGENTS.md sections (`src/scaffold/legacy/`) when unedited; one-time notices are recorded in `notices_shown`
 - Rules files are created only when missing; skills (with their reference files) and command wrappers are replaced when the bundled `# seite-skill-version` is newer. Pre-0.21 `theme-builder`/`brand-identity`/`landing-page` skills and the `design-prompts` rule are removed only when unmodified (`LEGACY_BODY_HASHES` in `src/cli/upgrade.rs`: SHA-256 of every released body)
 
 ## Context Rules

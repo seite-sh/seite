@@ -15,6 +15,7 @@ pub mod meta;
 pub mod output;
 pub mod platform;
 pub mod progress;
+pub mod safe_fs;
 pub mod server;
 pub mod shortcodes;
 pub mod telemetry;

@@ -6,8 +6,29 @@ pub(crate) use assert_cmd::Command;
 pub(crate) use predicates::prelude::*;
 pub(crate) use tempfile::TempDir;
 
+/// Variables that mark a coding agent's session (see
+/// `cli::agent::AGENT_SESSION_MARKERS`). Tests run outside any agent unless
+/// they set one explicitly, even when `cargo test` itself runs inside one.
+pub(crate) const AGENT_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_PROJECT_DIR",
+    "CODEX_THREAD_ID",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "GEMINI_CLI",
+    "GEMINI_PROJECT_DIR",
+    "OPENCODE",
+    "CURSOR_AGENT",
+    "CURSOR_PROJECT_DIR",
+];
+
 pub(crate) fn page_cmd() -> Command {
-    assert_cmd::cargo::cargo_bin_cmd!("seite")
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("seite");
+    for var in AGENT_SESSION_VARS {
+        cmd.env_remove(var);
+    }
+    cmd
 }
 
 /// Run `seite --json <args>` in `dir`; return whether it succeeded and the
