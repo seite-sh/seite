@@ -58,6 +58,8 @@ Index template also gets:
 | `page` | object? | Homepage content (if `content/pages/index.md` exists) |
 | `pagination` | object? | Pagination context (when collection has `paginate = N` — see Key Conventions) |
 
+Link tags with `page.taxonomies.tags[].url` (it follows the tags `url_prefix`), not a hard-coded `/tags/` path.
+
 Taxonomy pages (`taxonomy.html`, `term.html`; tags use `tags.html`, `tag.html`) get `taxonomy` `{name, label, url}`, `terms` `[{name, slug, url, count, feed_url}]`, and on term pages `term` plus `items` and `pagination`. Series pages (`series.html`) get `series` and `items` (the parts in order).
 
 ### Customizing Templates

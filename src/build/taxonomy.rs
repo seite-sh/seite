@@ -507,9 +507,17 @@ fn write_term_feeds(
     );
     feed_config.site.language = lang.to_string();
     let base = env.config.site.base_url.trim_end_matches('/');
-    let rss = super::feed::generate_rss(&feed_config, items)?;
-    let atom =
-        super::feed::generate_atom(&feed_config, items, &format!("{base}{term_url}atom.xml"))?;
+    // The term page is the feeds' channel link, Atom id and alternate link,
+    // so every term feed has its own identity.
+    let page_url = format!("{base}{term_url}");
+    let rss = super::feed::generate_rss_channel(&feed_config, items, &page_url)?;
+    let atom = super::feed::generate_atom_with(
+        &feed_config,
+        items,
+        &format!("{base}{term_url}atom.xml"),
+        &page_url,
+        &page_url,
+    )?;
     let dir = env.paths.output.join(term_url.trim_matches('/'));
     fs::create_dir_all(&dir)?;
     fs::write(dir.join("feed.xml"), rss)?;
@@ -523,6 +531,108 @@ fn title_case_word(s: &str) -> String {
         Some(c) => format!("{}{}", c.to_uppercase(), chars.as_str()),
         None => String::new(),
     }
+}
+
+/// Frontmatter fields seite reads itself: a taxonomy with one of these names
+/// can never receive terms (`tags` is the built-in taxonomy, so it is fine).
+const RESERVED_NAMES: &[&str] = &[
+    "title",
+    "date",
+    "updated",
+    "description",
+    "image",
+    "slug",
+    "draft",
+    "template",
+    "robots",
+    "weight",
+    "aliases",
+    "extra",
+    "series",
+    "series_order",
+];
+
+/// Problems with `[[taxonomies]]`: `taxonomy-url-collision` errors (a URL
+/// prefix that equals a collection's, another taxonomy's, `/series`, or a
+/// language code, so its pages would overwrite others) and
+/// `taxonomy-reserved-name` warnings. `source` (the text of `seite.toml`), when
+/// given, locates each problem at its `[[taxonomies]]` line.
+pub(crate) fn config_diagnostics(
+    config: &SiteConfig,
+    source: Option<&str>,
+) -> Vec<crate::diagnostics::Diagnostic> {
+    use crate::diagnostics::Diagnostic;
+    let table_lines: Vec<usize> = source
+        .map(|src| {
+            src.lines()
+                .enumerate()
+                .filter(|(_, l)| l.trim() == "[[taxonomies]]")
+                .map(|(i, _)| i + 1)
+                .collect()
+        })
+        .unwrap_or_default();
+    let locate = |d: Diagnostic, idx: usize| {
+        let d = d.with_file("seite.toml");
+        match table_lines.get(idx) {
+            Some(&line) => d.with_line(line),
+            None => d,
+        }
+    };
+    let norm = |p: &str| p.trim().trim_matches('/').to_ascii_lowercase();
+
+    let resolved = resolve_taxonomies(config);
+    let mut out = Vec::new();
+    for (idx, tc) in config.taxonomies.iter().enumerate() {
+        let name = tc.name.trim();
+        if RESERVED_NAMES.contains(&name) {
+            out.push(locate(
+                Diagnostic::warning(
+                    "taxonomy-reserved-name",
+                    format!(
+                        "taxonomy `{name}` is named after a built-in frontmatter field, so no page can assign terms to it"
+                    ),
+                )
+                .with_hint("rename the taxonomy (e.g. `categories`, `topics`)"),
+                idx,
+            ));
+        }
+        let Some(tax) = resolved.iter().find(|t| t.name == name) else {
+            continue;
+        };
+        let prefix = norm(&tax.url_prefix);
+        let mut clash: Option<String> = None;
+        if let Some(c) = config
+            .collections
+            .iter()
+            .filter(|c| c.subdomain.is_none())
+            .find(|c| norm(&c.url_prefix) == prefix)
+        {
+            clash = Some(format!("collection `{}`", c.name));
+        } else if let Some(other) = resolved
+            .iter()
+            .find(|t| t.name != tax.name && norm(&t.url_prefix) == prefix)
+        {
+            clash = Some(format!("taxonomy `{}`", other.name));
+        } else if prefix == norm(super::series::SERIES_PREFIX) {
+            clash = Some("the series index pages".to_string());
+        } else if config.languages.contains_key(prefix.as_str()) {
+            clash = Some(format!("the `{prefix}` language's pages"));
+        }
+        if let Some(what) = clash {
+            out.push(locate(
+                Diagnostic::error(
+                    "taxonomy-url-collision",
+                    format!(
+                        "taxonomy `{}` uses URL prefix `/{prefix}`, already used by {what}; their pages would overwrite each other",
+                        tax.name
+                    ),
+                )
+                .with_hint("set a different `url_prefix` on the taxonomy"),
+                idx,
+            ));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -620,5 +730,25 @@ mod tests {
         assert_eq!(cats[1].name, "zeta");
         let tags = group_terms(&taxes[0], &items);
         assert_eq!(tags[0].name, "zed", "tags display lowercased");
+    }
+
+    #[test]
+    fn test_config_diagnostics_collisions_and_reserved_names() {
+        let mut cfg = config(
+            "[languages.es]\n[[taxonomies]]\nname = \"categories\"\nurl_prefix = \"/posts/\"\n[[taxonomies]]\nname = \"topics\"\nurl_prefix = \"tags\"\n[[taxonomies]]\nname = \"extra\"\nurl_prefix = \"/series\"\n[[taxonomies]]\nname = \"es\"\n[[taxonomies]]\nname = \"fine\"\n",
+        );
+        cfg.collections[0].url_prefix = "/posts".into();
+        let source = "[[taxonomies]]\n[[taxonomies]]\n";
+        let diags = config_diagnostics(&cfg, Some(source));
+        let codes: Vec<(&str, String)> =
+            diags.iter().map(|d| (d.code, d.message.clone())).collect();
+        assert_eq!(diags.len(), 5, "{codes:?}");
+        assert!(codes[0].1.contains("collection `posts`"), "{codes:?}");
+        assert_eq!(diags[0].line, Some(1));
+        assert!(codes[1].1.contains("taxonomy `tags`"), "{codes:?}");
+        assert_eq!(codes[2].0, "taxonomy-reserved-name");
+        assert!(codes[3].1.contains("series"), "{codes:?}");
+        assert!(codes[4].1.contains("language"), "{codes:?}");
+        assert!(config_diagnostics(&config(""), None).is_empty());
     }
 }

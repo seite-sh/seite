@@ -295,6 +295,8 @@ name = "categories"      # frontmatter key: categories: [rust, web]
 
 Output for `name = "categories"`: `/categories/` (all terms with counts), `/categories/<slug>/` (pages with that term, newest first), `/categories/<slug>/feed.xml` and `atom.xml`, and the same under `/es/categories/...` for each extra language. All of them are in the sitemap. Terms group case-insensitively by slug (`Web Dev` and `web dev` are one term); the most common spelling is displayed.
 
+Each taxonomy needs its own URL prefix: one that equals a collection's `url_prefix`, another taxonomy's (including `/tags`), `/series`, or a language code stops the build with [`taxonomy-url-collision`](/docs/errors#taxonomy-url-collision). Don't name a taxonomy after a built-in frontmatter field (`extra`, `series`, `draft`, …): [`taxonomy-reserved-name`](/docs/errors#taxonomy-reserved-name).
+
 `tags` needs no entry: `/tags/` and `/tags/<slug>/` are always generated, with no per-tag feeds. Add `[[taxonomies]] name = "tags"` to give tags the same options, for example per-tag feeds (on by default once configured) or pagination; tags keep their `tags.html`/`tag.html` templates and URLs.
 
 Taxonomies and related pages also weigh into `page.related` (see [Related pages](/docs/collections#related-pages)).

@@ -664,7 +664,19 @@ impl SiteConfig {
         })?;
         config.validate_subdomains()?;
         config.validate_access()?;
-        let warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        let mut warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        // Taxonomy URL collisions are errors (pages would overwrite each
+        // other); reserved taxonomy names are warnings.
+        let (errors, taxonomy_warnings): (Vec<_>, Vec<_>) =
+            crate::build::taxonomy::config_diagnostics(&config, Some(&contents))
+                .into_iter()
+                .partition(|d| d.severity == crate::diagnostics::Severity::Error);
+        if !errors.is_empty() {
+            let mut all = crate::diagnostics::Diagnostics::new();
+            all.extend(errors);
+            return Err(PageError::Diagnostics(all));
+        }
+        warnings.extend(taxonomy_warnings);
         Ok((config, warnings))
     }
 

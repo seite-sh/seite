@@ -136,6 +136,14 @@ tags: [rust, web]            # a list, not "rust, web"
 
 **How to fix:** add the file under `static/` (served from `/static/...`) or `public/` (served from the site root), or fix the path in the content or template.
 
+## series-url-collision
+
+**What it means:** a series index page (`/series/<slug>/`) has the same URL as a content page, so the series page replaces it. Reported as a warning.
+
+**Common causes:** a page whose URL starts with `/series/`, such as a `pages` entry with `slug: series/rust`, or a collection whose `url_prefix` is `/series`.
+
+**How to fix:** rename the series (`series:` frontmatter) or give the page a different `slug:`. `/series/` is reserved for series index pages.
+
 ## shortcode-render
 
 **What it means:** a shortcode was found and parsed, but rendering its template failed.
@@ -159,6 +167,28 @@ tags: [rust, web]            # a list, not "rust, web"
 **Common causes:** a typo in the name, a shortcode from another generator, or a custom shortcode file that is missing or misnamed.
 
 **How to fix:** use one of the available shortcodes listed in the message, or create `templates/shortcodes/<name>.html`.
+
+## taxonomy-reserved-name
+
+**What it means:** a `[[taxonomies]]` entry is named after a frontmatter field seite reads itself (`title`, `date`, `extra`, `series`, `draft`, …). Pages assign terms with a top-level key named after the taxonomy, and that key already means something else, so the taxonomy never gets terms. Reported as a warning.
+
+**Common causes:** naming a taxonomy `series` or `extra`.
+
+**How to fix:** rename the taxonomy, e.g. `topics`, and use that key in frontmatter.
+
+## taxonomy-url-collision
+
+**What it means:** a `[[taxonomies]]` entry's URL prefix is already used by a collection, another taxonomy (including `/tags`), the series index pages (`/series`), or a language (`/es`). Their pages would be written to the same paths and overwrite each other, so the build stops. Reported as an error.
+
+**Common causes:** `url_prefix = "/posts"` on a taxonomy, or a taxonomy named after a collection or a language code.
+
+**How to fix:** give the taxonomy its own `url_prefix`:
+
+```toml
+[[taxonomies]]
+name = "categories"
+url_prefix = "/categories"   # not "/posts"
+```
 
 ## template-markdown-link
 

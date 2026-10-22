@@ -8,6 +8,16 @@ use crate::content::ContentItem;
 use crate::error::{PageError, Result};
 
 pub fn generate_rss(config: &SiteConfig, items: &[&ContentItem]) -> Result<String> {
+    generate_rss_channel(config, items, &config.site.base_url)
+}
+
+/// [`generate_rss`] with an explicit channel `<link>` (e.g. a term page's
+/// absolute URL for a per-term feed).
+pub(crate) fn generate_rss_channel(
+    config: &SiteConfig,
+    items: &[&ContentItem],
+    channel_link: &str,
+) -> Result<String> {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let base = config.site.base_url.trim_end_matches('/');
 
@@ -22,7 +32,7 @@ pub fn generate_rss(config: &SiteConfig, items: &[&ContentItem]) -> Result<Strin
     write(&mut writer, Event::Start(BytesStart::new("channel")))?;
 
     write_text_element(&mut writer, "title", &config.site.title)?;
-    write_text_element(&mut writer, "link", &config.site.base_url)?;
+    write_text_element(&mut writer, "link", channel_link)?;
     write_text_element(&mut writer, "description", &config.site.description)?;
     write_text_element(&mut writer, "language", &config.site.language)?;
 
@@ -63,6 +73,19 @@ pub fn generate_atom(
     items: &[&ContentItem],
     feed_url: &str,
 ) -> Result<String> {
+    let base = config.site.base_url.trim_end_matches('/');
+    generate_atom_with(config, items, feed_url, &format!("{base}/"), base)
+}
+
+/// [`generate_atom`] with an explicit feed `<id>` and `rel="alternate"` link,
+/// so per-term feeds get their own identity (RFC 4287 §4.2.6).
+pub(crate) fn generate_atom_with(
+    config: &SiteConfig,
+    items: &[&ContentItem],
+    feed_url: &str,
+    feed_id: &str,
+    alternate: &str,
+) -> Result<String> {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let base = config.site.base_url.trim_end_matches('/');
 
@@ -82,7 +105,7 @@ pub fn generate_atom(
 
     // Alternate link to site
     let mut alt_link = BytesStart::new("link");
-    alt_link.push_attribute(("href", base));
+    alt_link.push_attribute(("href", alternate));
     alt_link.push_attribute(("rel", "alternate"));
     write(&mut writer, Event::Empty(alt_link))?;
 
@@ -94,7 +117,7 @@ pub fn generate_atom(
     write(&mut writer, Event::Empty(self_link))?;
 
     // Feed ID — uses base URL; note this changes if the domain changes.
-    write_text_element(&mut writer, "id", &format!("{base}/"))?;
+    write_text_element(&mut writer, "id", feed_id)?;
 
     // Feed-level <author> is required by Atom spec (RFC 4287 §4.1.1)
     // unless every <entry> has its own <author>. We always emit it to satisfy

@@ -54,7 +54,7 @@ pub const DEFAULT_POST: &str = r#"{% extends "base.html" %}
     {% if page.reading_time %}<span class="reading-time">{{ page.reading_time }} {{ t.min_read }}</span>{% endif %}
     {% if page.tags | length > 0 %}
     <div class="tags">
-        {% for tag in page.tags %}<a href="{{ lang_prefix }}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
+        {% if page.taxonomies and page.taxonomies.tags %}{% for tag in page.taxonomies.tags %}<a href="{{ tag.url }}">{{ tag.name }}</a> {% endfor %}{% else %}{% for tag in page.tags %}<a href="{{ lang_prefix }}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}{% endif %}
     </div>
     {% endif %}{% if page.taxonomies %}{% for tax_name, terms in page.taxonomies %}{% if tax_name != "tags" and terms | length > 0 %}
     <div class="tags terms-{{ tax_name }}">

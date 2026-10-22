@@ -327,6 +327,8 @@ This generates `/categories/`, `/categories/programming/`, and per-term feeds at
 
 Every content page gets `page.related`: up to 3 other pages from the same collection and language that share terms with it. Each shared tag scores 1 and each shared term of any other taxonomy (such as a category) scores 2. Ties go to the page closest in date (undated pages last), then by title. Drafts and pages sharing no terms are never related. The default post template shows them as a "Related" list.
 
+On large collections (more than 200 pages in one language), a term carried by more than 20% of the pages, such as a `blog` tag on every post, does not by itself make pages related; it still adds to the score of pages that share another term. This keeps builds fast.
+
 Set `[build] related = 5` to change the size site-wide, or `related = 0` on a collection (or under `[build]`) to turn it off.
 
 ## Series
@@ -341,6 +343,8 @@ series: "Rust from scratch"
 series_order: 2   # optional
 ---
 ```
+
+`series` may also be a list (Hugo style); its first entry is used. `series_order` accepts a number or a numeric string. Other shapes are ignored.
 
 Parts are ordered by `series_order` (parts that have one come first), then by date (oldest first), then by file path. Each part gets `page.series` (name, URL, all parts, its position, previous and next part), and the default post template shows a "Part 2 of 5" box with links to the neighboring parts. Each series gets an index page at `/series/rust-from-scratch/` listing its parts in order (per language, in the sitemap). Pages in private collections never join a series. Nothing is generated when no page uses `series`.
 

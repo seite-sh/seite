@@ -675,6 +675,10 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let (section_actions, section_notices) = check_legacy_sections(root);
     actions.extend(section_actions);
     notices.extend(section_notices);
+    // Default templates `seite init` copied: refreshed when untouched.
+    let (template_actions, template_notices) = check_default_templates(root);
+    actions.extend(template_actions);
+    notices.extend(template_notices);
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();
@@ -1262,6 +1266,72 @@ fn check_legacy_skills(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
         })
         .collect();
     (actions, notices)
+}
+
+// ---------------------------------------------------------------------------
+// Default templates copied by `seite init`
+// ---------------------------------------------------------------------------
+
+/// SHA-256 (CRLF→LF, trimmed) of every `post.html` that `seite init` wrote
+/// before categories, series and related posts were added to it: the
+/// `DEFAULT_POST` constant at 60e1456, 89da9cd, 42dbe4f, and f7a5557..0dc5dbc.
+/// Recompute from the history of `src/templates/mod.rs` (`log -S "pub const
+/// DEFAULT_POST"`, then `show <commit>:src/templates/mod.rs`).
+const LEGACY_POST_TEMPLATE_HASHES: &[&str] = &[
+    "c6600c4e5b34ff95d5733b948b25f083e2a899a5aa61bd85e5c00d1a0cd3aee3",
+    "14b31eb7e680a51665780ceb8b3541bf441d086b414e84c27722c8685eb02485",
+    "ca09ea84916e726a2fbad0d31204b2cca79d3ecf87e20ca6be1875f8e6bd6469",
+    "63ee8cde622a4ae2494533cf5c4df2ea48994297538c8d71a8b65aa34d2029ca",
+];
+
+fn template_hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(content.replace("\r\n", "\n").trim().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Replace `templates/post.html` with the current default when it is exactly
+/// a default an older `seite init` wrote, so the site gets categories, the
+/// series box and related posts. An edited copy is kept, with a one-time
+/// notice pointing at the snippet to add.
+fn check_default_templates(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let rel = format!("{template_dir}/post.html");
+    let path = root.join(&rel);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let current = crate::templates::DEFAULT_POST;
+    let hash = template_hash(&content);
+    if hash == template_hash(current) {
+        return (Vec::new(), Vec::new());
+    }
+    if LEGACY_POST_TEMPLATE_HASHES.contains(&hash.as_str()) {
+        return (
+            vec![UpgradeAction::Update {
+                path,
+                content: current.to_string(),
+                description: format!("{rel} (categories, series box, related posts)"),
+            }],
+            Vec::new(),
+        );
+    }
+    if content.contains("page.related") || content.contains("page.series") {
+        return (Vec::new(), Vec::new());
+    }
+    (
+        Vec::new(),
+        vec![Notice {
+            key: format!("post-template-content-model:{rel}"),
+            text: format!(
+                "Kept {rel} (edited since seite wrote it). To show categories, series and related posts, add the snippet from the Templates docs (`seite docs templates`, section \"Taxonomy, term and series templates\")."
+            ),
+        }],
+    )
 }
 
 /// A message `seite upgrade` shows once per project (recorded in
@@ -3499,6 +3569,49 @@ mod tests {
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
         assert!(actions.is_empty());
         assert_eq!(record, ["cursor", "cursor:post-edit"]);
+    }
+
+    #[test]
+    fn test_check_default_templates_refreshes_untouched_post_template() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("templates")).unwrap();
+        // DEFAULT_POST as v0.20.x shipped it (f7a5557..0dc5dbc).
+        let legacy = include_str!("../../tests/fixtures/legacy-post-0.20.html");
+        assert!(LEGACY_POST_TEMPLATE_HASHES.contains(&template_hash(legacy).as_str()));
+        fs::write(
+            root.join("templates/post.html"),
+            legacy.replace('\n', "\r\n"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(notices.is_empty());
+        match actions.as_slice() {
+            [UpgradeAction::Update { content, .. }] => {
+                assert_eq!(content, crate::templates::DEFAULT_POST)
+            }
+            other => panic!("expected one update, got {}", other.len()),
+        }
+
+        // Current default: nothing to do.
+        fs::write(
+            root.join("templates/post.html"),
+            crate::templates::DEFAULT_POST,
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // Edited copy: kept, with a notice.
+        fs::write(
+            root.join("templates/post.html"),
+            format!("{legacy}<!-- mine -->"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 1);
+        assert!(notices[0].text.contains("templates/post.html"));
     }
 
     #[test]

@@ -344,8 +344,17 @@ pub fn call_get_page(state: &ServerState, arguments: &serde_json::Value) -> Tool
     let date = build::resolve_item_date(&fm, &file.abs, file.collection);
     let mut resolved = fm.clone();
     resolved.date = date;
-    let frontmatter = serde_json::to_value(&resolved)
+    let mut frontmatter = serde_json::to_value(&resolved)
         .map_err(|e| ToolError::new(format!("seite_get_page: {e}")))?;
+    // Unknown top-level keys (taxonomy terms such as `categories`, custom
+    // keys) are not serialized with the struct; show them as written.
+    if let Some(obj) = frontmatter.as_object_mut() {
+        for (key, value) in &resolved.other {
+            if let Ok(v) = serde_json::to_value(value) {
+                obj.entry(key.clone()).or_insert(v);
+            }
+        }
+    }
 
     let (html, render_error) = match render_body(
         config, paths, &file, &fm, &body, body_line, &loc.slug, &loc.lang,

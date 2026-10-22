@@ -45,16 +45,61 @@ pub struct Frontmatter {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra: HashMap<String, serde_yaml_ng::Value>,
     /// Series this page belongs to (`series: "Rust from scratch"`) → `page.series`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Lenient: a list (Hugo style, `series: ["Rust"]`) uses its first entry;
+    /// any other shape is ignored rather than failing the page.
+    #[serde(
+        default,
+        deserialize_with = "lenient_series",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub series: Option<String>,
-    /// Position within the series (lower first). Unordered parts follow, by date then filename.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Position within the series (lower first). Unordered parts follow, by
+    /// date then filename. Accepts an integer or a numeric string (`"2"`);
+    /// anything else is ignored.
+    #[serde(
+        default,
+        deserialize_with = "lenient_order",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub series_order: Option<i32>,
     /// Every other top-level key, kept as written. Configured `[[taxonomies]]`
     /// read their terms from here (`categories: [rust, web]`); see
-    /// [`Frontmatter::taxonomy_terms`].
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// [`Frontmatter::taxonomy_terms`]. Never serialized with the struct: the
+    /// published `.md` copy only adds configured taxonomy keys back (see
+    /// [`generate_published_frontmatter`]), and source files are edited as YAML
+    /// mappings, so unknown keys there are kept as written.
+    #[serde(flatten, default, skip_serializing)]
     pub other: BTreeMap<String, serde_yaml_ng::Value>,
+}
+
+/// `series:` as a string, or the first string of a list; other shapes → None.
+fn lenient_series<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    use serde_yaml_ng::Value;
+    let scalar = |v: &Value| match v {
+        Value::String(s) => Some(s.trim().to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    };
+    let value = Value::deserialize(d)?;
+    let name = match &value {
+        Value::Sequence(seq) => seq.iter().find_map(scalar),
+        other => scalar(other),
+    };
+    Ok(name.filter(|s| !s.is_empty()))
+}
+
+/// `series_order:` as an integer or a numeric string; other shapes → None.
+fn lenient_order<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<i32>, D::Error> {
+    use serde_yaml_ng::Value;
+    Ok(match Value::deserialize(d)? {
+        Value::Number(n) => n.as_i64().and_then(|n| i32::try_from(n).ok()),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    })
 }
 
 impl Frontmatter {
@@ -260,6 +305,30 @@ fn split_frontmatter(raw: &str) -> Option<(&str, &str)> {
 /// Serialize frontmatter back to a YAML string wrapped in `---` delimiters.
 pub fn generate_frontmatter(fm: &Frontmatter) -> String {
     let yaml = serde_yaml_ng::to_string(fm).unwrap_or_default();
+    format!("---\n{}---", yaml)
+}
+
+/// Frontmatter for a page's published `.md` copy: the known fields (as
+/// [`generate_frontmatter`]) plus the keys in `extra_keys` (the configured
+/// taxonomies) that the page sets. Other unknown keys are not published.
+pub fn generate_published_frontmatter(fm: &Frontmatter, extra_keys: &[String]) -> String {
+    let present: Vec<&String> = extra_keys
+        .iter()
+        .filter(|k| fm.other.contains_key(k.as_str()))
+        .collect();
+    if present.is_empty() {
+        return generate_frontmatter(fm);
+    }
+    let Ok(serde_yaml_ng::Value::Mapping(mut map)) = serde_yaml_ng::to_value(fm) else {
+        return generate_frontmatter(fm);
+    };
+    for key in present {
+        map.insert(
+            serde_yaml_ng::Value::String(key.clone()),
+            fm.other[key.as_str()].clone(),
+        );
+    }
+    let yaml = serde_yaml_ng::to_string(&map).unwrap_or_default();
     format!("---\n{}---", yaml)
 }
 

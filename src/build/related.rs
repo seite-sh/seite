@@ -8,10 +8,15 @@
 //! are never related. Limit: the collection's `related`, else `[build]
 //! related`, else 3; `0` disables.
 //!
-//! Computed once per build from a term → pages index, so each page only
-//! visits pages that share at least one of its terms.
+//! Computed once per build (in parallel) from a term → pages index, so each
+//! page only visits pages that share at least one of its terms, and only the
+//! top `limit` candidates are ordered. In a group of more than 200 pages, a
+//! term carried by more than 20% of them (say a `blog` tag on every post) is
+//! "common": it still adds to the score of pages related by another term, but
+//! does not by itself make pages related. That keeps a build linear in the
+//! number of pages instead of quadratic.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use serde::Serialize;
@@ -71,19 +76,16 @@ pub(crate) fn compute_related(
     out
 }
 
-/// Term keys (taxonomy index, term slug) of an item, deduplicated.
-fn item_terms(item: &ContentItem, taxonomies: &[Taxonomy]) -> BTreeSet<(usize, String)> {
-    let mut terms = BTreeSet::new();
-    for (ti, tax) in taxonomies.iter().enumerate() {
-        for term in item.frontmatter.taxonomy_terms(&tax.name) {
-            let slug = term_slug(&term);
-            if !slug.is_empty() {
-                terms.insert((ti, slug));
-            }
-        }
-    }
-    terms
-}
+/// Related pages of one page: (its URL, the related entries).
+type PageRelated = (String, Vec<RelatedItem>);
+
+/// Groups with more pages than this apply the common-term rule.
+const COMMON_MIN_GROUP: usize = 200;
+/// In such a group, a term on more than 1/`COMMON_DIVISOR` (20%) of the pages
+/// is common: it does not by itself make two pages related (scanning its
+/// pages for every page would be quadratic), but it still adds its weight to
+/// pages that share another term.
+const COMMON_DIVISOR: usize = 5;
 
 /// Related pages within one collection + language group.
 pub(crate) fn related_within(
@@ -91,60 +93,128 @@ pub(crate) fn related_within(
     taxonomies: &[Taxonomy],
     limit: usize,
 ) -> Vec<(String, Vec<RelatedItem>)> {
-    let terms: Vec<BTreeSet<(usize, String)>> =
-        items.iter().map(|i| item_terms(i, taxonomies)).collect();
-    let mut index: HashMap<&(usize, String), Vec<usize>> = HashMap::new();
-    for (idx, set) in terms.iter().enumerate() {
-        for key in set {
-            index.entry(key).or_default().push(idx);
-        }
-    }
+    related_within_counted(items, taxonomies, limit).0
+}
 
-    let mut out = Vec::new();
+/// [`related_within`], plus the number of term → page postings visited (the
+/// dominant cost; tests bound it).
+fn related_within_counted(
+    items: &[&ContentItem],
+    taxonomies: &[Taxonomy],
+    limit: usize,
+) -> (Vec<(String, Vec<RelatedItem>)>, u64) {
+    use rayon::prelude::*;
+
+    let n = items.len();
+    if limit == 0 || n < 2 {
+        return (Vec::new(), 0);
+    }
+    // Dense term ids, each item's sorted term ids, and each term's pages.
+    let mut ids: HashMap<(usize, String), u32> = HashMap::new();
+    let mut weights: Vec<u32> = Vec::new();
+    let mut postings: Vec<Vec<u32>> = Vec::new();
+    let mut item_terms: Vec<Vec<u32>> = Vec::with_capacity(n);
     for (idx, item) in items.iter().enumerate() {
-        if terms[idx].is_empty() {
-            continue;
-        }
-        let mut scores: HashMap<usize, u32> = HashMap::new();
-        for key in &terms[idx] {
-            let weight = taxonomies[key.0].related_weight;
-            for &other in index.get(key).into_iter().flatten() {
-                if other != idx {
-                    *scores.entry(other).or_default() += weight;
+        let mut own: Vec<u32> = Vec::new();
+        for (ti, tax) in taxonomies.iter().enumerate() {
+            for term in item.frontmatter.taxonomy_terms(&tax.name) {
+                let slug = term_slug(&term);
+                if slug.is_empty() {
+                    continue;
                 }
+                let id = *ids.entry((ti, slug)).or_insert_with(|| {
+                    weights.push(tax.related_weight);
+                    postings.push(Vec::new());
+                    (weights.len() - 1) as u32
+                });
+                own.push(id);
             }
         }
-        if scores.is_empty() {
-            continue;
+        own.sort_unstable();
+        own.dedup();
+        for &id in &own {
+            postings[id as usize].push(idx as u32);
         }
-        let date = item.frontmatter.date;
-        let mut ranked: Vec<(usize, u32)> = scores.into_iter().collect();
-        ranked.sort_by(|&(a, sa), &(b, sb)| {
-            sb.cmp(&sa)
-                .then_with(|| {
-                    distance(date, items[a].frontmatter.date)
-                        .cmp(&distance(date, items[b].frontmatter.date))
-                })
-                .then_with(|| items[a].frontmatter.title.cmp(&items[b].frontmatter.title))
-                .then_with(|| items[a].url.cmp(&items[b].url))
-        });
-        let related: Vec<RelatedItem> = ranked
-            .into_iter()
-            .take(limit)
-            .map(|(i, score)| {
-                let r = items[i];
-                RelatedItem {
-                    title: r.frontmatter.title.clone(),
-                    url: r.url.clone(),
-                    date: r.frontmatter.date.map(|d| d.to_string()),
-                    description: r.frontmatter.description.clone(),
-                    score,
-                }
-            })
-            .collect();
-        out.push((item.url.clone(), related));
+        item_terms.push(own);
     }
-    out
+    let common: Vec<bool> = postings
+        .iter()
+        .map(|p| n > COMMON_MIN_GROUP && p.len() * COMMON_DIVISOR > n)
+        .collect();
+    let dates: Vec<Option<NaiveDate>> = items.iter().map(|i| i.frontmatter.date).collect();
+
+    let per_item: Vec<(Option<PageRelated>, u64)> = (0..n)
+        .into_par_iter()
+        .map_init(
+            || (vec![0u32; n], Vec::<u32>::new()),
+            |(scores, touched), idx| {
+                let mut visits = 0u64;
+                let own = &item_terms[idx];
+                for &t in own.iter().filter(|&&t| !common[t as usize]) {
+                    let w = weights[t as usize];
+                    let list = &postings[t as usize];
+                    visits += list.len() as u64;
+                    for &o in list {
+                        if o as usize == idx {
+                            continue;
+                        }
+                        if scores[o as usize] == 0 {
+                            touched.push(o);
+                        }
+                        scores[o as usize] += w;
+                    }
+                }
+                if touched.is_empty() {
+                    return (None, visits);
+                }
+                for &t in own.iter().filter(|&&t| common[t as usize]) {
+                    for &o in touched.iter() {
+                        if item_terms[o as usize].binary_search(&t).is_ok() {
+                            scores[o as usize] += weights[t as usize];
+                        }
+                    }
+                }
+                let date = dates[idx];
+                let cmp = |a: &u32, b: &u32| {
+                    let (a, b) = (*a as usize, *b as usize);
+                    scores[b]
+                        .cmp(&scores[a])
+                        .then_with(|| distance(date, dates[a]).cmp(&distance(date, dates[b])))
+                        .then_with(|| items[a].frontmatter.title.cmp(&items[b].frontmatter.title))
+                        .then_with(|| items[a].url.cmp(&items[b].url))
+                };
+                let mut ranked = touched.clone();
+                if ranked.len() > limit {
+                    ranked.select_nth_unstable_by(limit - 1, cmp);
+                    ranked.truncate(limit);
+                }
+                ranked.sort_by(cmp);
+                let related: Vec<RelatedItem> = ranked
+                    .iter()
+                    .map(|&o| {
+                        let r = items[o as usize];
+                        RelatedItem {
+                            title: r.frontmatter.title.clone(),
+                            url: r.url.clone(),
+                            date: r.frontmatter.date.map(|d| d.to_string()),
+                            description: r.frontmatter.description.clone(),
+                            score: scores[o as usize],
+                        }
+                    })
+                    .collect();
+                for &o in touched.iter() {
+                    scores[o as usize] = 0;
+                }
+                touched.clear();
+                (Some((items[idx].url.clone(), related)), visits)
+            },
+        )
+        .collect();
+    let visits = per_item.iter().map(|(_, v)| v).sum();
+    (
+        per_item.into_iter().filter_map(|(r, _)| r).collect(),
+        visits,
+    )
 }
 
 /// Days between two dates; `i64::MAX` when either is missing (sorts last).
@@ -226,6 +296,51 @@ mod tests {
         let out2: HashMap<String, Vec<RelatedItem>> =
             related_within(&rev, &taxes, 3).into_iter().collect();
         assert_eq!(out, out2);
+    }
+
+    #[test]
+    fn test_related_common_terms_stay_linear() {
+        let taxes = resolve_taxonomies(&config(""));
+        let owned: Vec<ContentItem> = (0..5000)
+            .map(|i| {
+                let mut it = item(
+                    &format!("P{i:05}"),
+                    &format!("date: 2024-01-01\ntags: [blog, t{}]\n", i % 50),
+                );
+                it.url = format!("/posts/p{i:05}");
+                it
+            })
+            .collect();
+        let items: Vec<&ContentItem> = owned.iter().collect();
+        let (out, visits) = related_within_counted(&items, &taxes, 3);
+        // `blog` is on every page: skipped as a seed, so each page visits only
+        // its t-term's 100 pages (quadratic would be 5000 * 5100).
+        assert!(visits <= 5000 * 100, "visited {visits} postings");
+        assert_eq!(out.len(), 5000);
+        let first = &out.iter().find(|(u, _)| u == "/posts/p00000").unwrap().1;
+        assert_eq!(first.len(), 3);
+        assert!(
+            first.iter().all(|r| r.score == 2),
+            "t-term + common blog: {first:?}"
+        );
+        assert_eq!(first[0].title, "P00050", "same date → title order");
+        // Deterministic regardless of input order.
+        let rev: Vec<&ContentItem> = items.iter().rev().copied().collect();
+        let mut a: Vec<_> = out;
+        let mut b = related_within(&rev, &taxes, 3);
+        a.sort_by(|x, y| x.0.cmp(&y.0));
+        b.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_related_small_groups_keep_common_terms() {
+        // Under 200 pages, a tag on every page still relates them.
+        let taxes = resolve_taxonomies(&config(""));
+        let a = item("A", "tags: [blog]\n");
+        let b = item("B", "tags: [blog]\n");
+        let out = related_within(&[&a, &b], &taxes, 3);
+        assert_eq!(out.len(), 2);
     }
 
     #[test]

@@ -78,7 +78,7 @@ Tag pages (`tags.html`, `tag.html`) also keep their original variables: `tags` (
 | `term.html` | Term pages (`/categories/rust/`, `/categories/rust/page/2/`) | embedded; override per taxonomy with `term_template` |
 | `series.html` | Series index pages (`/series/<slug>/`) | embedded |
 
-The default `post.html` renders categories (and any other taxonomy) next to the tags, a series box ("Part 2 of 5 · next/previous part") after the content, and a "Related" list after the post navigation. Sites created with an earlier seite have their own copy of `templates/post.html`; to show these, add for example:
+The default `post.html` renders categories (and any other taxonomy) next to the tags, a series box ("Part 2 of 5 · next/previous part") after the content, and a "Related" list after the post navigation. Tag links come from `page.taxonomies.tags[].url`, so they follow the tags taxonomy's `url_prefix`. Sites created with an earlier seite have their own copy of `templates/post.html`: `seite upgrade` replaces it with the new default when it is exactly a default seite wrote. To add the features to an edited copy, use for example:
 
 ```html
 {% if page.series %}<nav class="article-nav series-nav" aria-label="{{ t.series }}">

@@ -56,6 +56,8 @@ struct Series {
     lang: String,
     url: String,
     parts: Vec<ItemSummary>,
+    /// Collection of each part (parallel to `parts`).
+    collections: Vec<String>,
 }
 
 /// All series of a build.
@@ -63,6 +65,9 @@ pub(crate) struct SeriesIndex {
     series: Vec<Series>,
     /// Item URL → (series position in `series`, 0-based part index).
     by_url: HashMap<String, (usize, usize)>,
+    /// `series-url-collision` warnings: a series index URL that a content
+    /// page already uses (the series page would overwrite it).
+    pub(crate) warnings: Vec<crate::diagnostics::Diagnostic>,
 }
 
 impl SeriesIndex {
@@ -109,14 +114,48 @@ impl SeriesIndex {
                 slug,
                 lang,
                 parts: parts.iter().map(|i| item_summary(i)).collect(),
+                collections: parts.iter().map(|i| i.collection.clone()).collect(),
             });
         }
-        Self { series, by_url }
+        let page_urls: std::collections::HashSet<&str> = all_collections
+            .values()
+            .flatten()
+            .map(|i| i.url.trim_end_matches('/'))
+            .collect();
+        let warnings = series
+            .iter()
+            .filter(|s| page_urls.contains(s.url.trim_end_matches('/')))
+            .map(|s| {
+                crate::diagnostics::Diagnostic::warning(
+                    "series-url-collision",
+                    format!(
+                        "series \"{}\" has its index page at {}, which a content page already uses; the series page replaces it",
+                        s.name, s.url
+                    ),
+                )
+                .with_hint("rename the series or give the page a different `slug:`")
+            })
+            .collect();
+        Self {
+            series,
+            by_url,
+            warnings,
+        }
     }
 
     #[cfg(test)]
     fn is_empty(&self) -> bool {
         self.series.is_empty()
+    }
+
+    /// Collections of every part of the series the item at `url` belongs to
+    /// (empty when it is in none). An incremental rebuild re-renders them all
+    /// when one part changes, so prev/next and part lists stay current.
+    pub(crate) fn collections_of_series(&self, url: &str) -> Vec<String> {
+        self.by_url
+            .get(url)
+            .map(|&(si, _)| self.series[si].collections.clone())
+            .unwrap_or_default()
     }
 
     /// `page.series` for the item at `url`, if it is part of a series.
@@ -262,6 +301,8 @@ mod tests {
         assert_eq!(idx.for_page("/posts/d").unwrap().next, None);
         assert!(idx.for_page("/posts/z").is_none());
         assert!(idx.for_page("/posts/hidden").is_none());
+        assert_eq!(idx.collections_of_series("/posts/a").len(), 5);
+        assert!(idx.collections_of_series("/posts/z").is_empty());
 
         let es = idx.for_page("/es/posts/es1").unwrap();
         assert_eq!(es.url, "/es/series/rust/");
@@ -273,5 +314,19 @@ mod tests {
         let mut all = HashMap::new();
         all.insert("posts".to_string(), vec![item("a", "en", "")]);
         assert!(SeriesIndex::build(&config(), &all).is_empty());
+    }
+
+    #[test]
+    fn test_series_url_collision_warns() {
+        let mut all = HashMap::new();
+        let mut page = item("rust", "en", "");
+        page.url = "/series/rust".into();
+        all.insert(
+            "posts".to_string(),
+            vec![item("a", "en", "series: Rust\n"), page],
+        );
+        let idx = SeriesIndex::build(&config(), &all);
+        assert_eq!(idx.warnings.len(), 1);
+        assert_eq!(idx.warnings[0].code, "series-url-collision");
     }
 }

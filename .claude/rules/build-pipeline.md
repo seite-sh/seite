@@ -82,7 +82,11 @@ struct ContentItem {
 ## Taxonomies, Related, Series
 
 - `taxonomy.rs`: `resolve_taxonomies()` = implicit `tags` (no feeds, legacy `tags.html`/`tag.html`, titles `Tags` / `Tag: x`) + `[[taxonomies]]`. Terms group by slug; tags display lowercased, others the most common spelling. Configured taxonomies default to per-term feeds. Implicit-tags output must stay byte-identical.
-- `related.rs`: score = shared tag 1, shared other-taxonomy term 2; tie-break date distance (undated last), title, URL. Same collection + language, no drafts, no `index` pages. Limit: collection `related` → `[build] related` → 3.
+- `related.rs`: score = shared tag 1, shared other-taxonomy term 2; tie-break date distance (undated last), title, URL. Same collection + language, no drafts, no `index` pages. Limit: collection `related` → `[build] related` → 3. Dense term ids + reusable score vector, rayon, top-k via `select_nth_unstable_by`; in groups > 200 pages a term on > 20% of them is "common" (adds score, never seeds candidates) so it stays linear. `test_related_common_terms_stay_linear` bounds postings visited.
+- `taxonomy::config_diagnostics`: `taxonomy-url-collision` (error, from `SiteConfig::load_with_diagnostics` and `build_site_inner`) and `taxonomy-reserved-name` (warning); `series.rs` emits `series-url-collision`.
+- Frontmatter `other` is `skip_serializing`: published `.md` copies use `generate_published_frontmatter` (known fields + configured taxonomy keys); source edits go through YAML mappings, so unknown keys survive there. `series`/`series_order` deserialize leniently.
+- Incremental builds re-render every collection holding a part of a changed page's series.
+- `seite upgrade` (`check_default_templates`) replaces `templates/post.html` when its hash matches a historical `DEFAULT_POST` (`LEGACY_POST_TEMPLATE_HASHES`); add the old hash there whenever `DEFAULT_POST` changes.
 - `series.rs`: group by (language, slug of `series`) over public collections; order `series_order`, date asc, source path. `/series/<slug>/` only when used.
 - The embedded `post.html` renders them with `{% if %}` blocks attached to existing lines, so pages without them render byte-identically. Sites keep their own `templates/post.html` from `init`.
 

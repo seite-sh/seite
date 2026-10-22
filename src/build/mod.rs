@@ -979,6 +979,16 @@ fn build_site_inner(
     display_output: &Path,
     external_sources: &HashMap<PathBuf, String>,
 ) -> Result<BuildResult> {
+    // Taxonomy URL collisions would make pages overwrite each other (also
+    // reported when seite.toml is loaded; repeated here for every build path).
+    let taxonomy_errors: Vec<Diagnostic> = taxonomy::config_diagnostics(config, None)
+        .into_iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    if !taxonomy_errors.is_empty() {
+        return Err(PageError::Diagnostics(taxonomy_errors.into()));
+    }
+
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
     let mut progress = crate::progress::BuildProgress::new();
@@ -1352,6 +1362,17 @@ fn build_site_inner(
 
     // Taxonomies, related pages and series, computed once for every page.
     let content_model = content_model::ContentModel::build(config, &all_collections);
+    diagnostics.extend(content_model.diagnostics().iter().cloned());
+    // A changed series part changes its siblings' series box (any collection).
+    let series_dirty_collections: HashSet<String> = match &changed_content_paths {
+        Some(changed) => all_collections
+            .values()
+            .flatten()
+            .filter(|i| changed.contains(&i.source_path))
+            .flat_map(|i| content_model.series_collections(&i.url))
+            .collect(),
+        None => HashSet::new(),
+    };
 
     // Render each item in each collection
     progress.step("Rendering pages");
@@ -1516,7 +1537,7 @@ fn build_site_inner(
             // depend on sibling items, so a change to one post can affect its neighbors.
             let collection_has_changes = changed_content_paths.as_ref().is_some_and(|changed| {
                 items.iter().any(|item| changed.contains(&item.source_path))
-            });
+            }) || series_dirty_collections.contains(&collection.name);
 
             let render_results: Vec<std::result::Result<RenderedPage, Box<Diagnostic>>> = items
                 .par_iter()
@@ -2525,6 +2546,7 @@ fn build_site_inner(
     // Step 8: Output raw markdown alongside HTML for each page
     progress.step("Writing markdown copies");
     let step_start = Instant::now();
+    let published_keys = content_model.taxonomy_keys();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
             let md_results: Vec<(PathBuf, String)> = items
@@ -2533,7 +2555,7 @@ fn build_site_inner(
                     let md_path = url_to_md_path(&paths.output, &item.url);
                     let md_content = format!(
                         "{}\n\n{}",
-                        content::generate_frontmatter(&item.frontmatter),
+                        content::generate_published_frontmatter(&item.frontmatter, &published_keys),
                         item.raw_body
                     );
                     (md_path, md_content)
