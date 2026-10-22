@@ -6,156 +6,73 @@
     /* ── Fonts ─────────────────────────────────────── */
     @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
-    :root {
+    :root,
+    [data-theme="dark"] {
         --display: 'Instrument Sans', system-ui, -apple-system, sans-serif;
         --sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
         --cyan: #06b6d4;
-        --cyan-dim: rgba(6, 182, 212, 0.08);
+        /* Terminal surfaces: a step off the page so panels read as objects */
+        --term-bg: #121211;
+        --term-bar: #191918;
+        --term-border: rgba(255, 255, 255, 0.09);
+        --term-text: #e6e4df;
+        --term-dim: #8f8c86;
+        --term-ok: #5eead4;
+        --term-flag: #67e8f9;
+        --term-prompt: #2dd4bf;
+        --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    [data-theme="light"] {
+        --term-bg: #1d1b18;
+        --term-bar: #26241f;
+        --term-border: rgba(0, 0, 0, 0.12);
     }
 
     body { font-family: var(--sans); }
 
-    /* ── Keyframes ─────────────────────────────────── */
-    @keyframes rise {
-        from { opacity: 0; transform: translateY(32px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes glow-pulse {
-        0%, 100% { opacity: 0.5; }
-        50% { opacity: 1; }
-    }
-    @keyframes type-line {
-        from { opacity: 0; transform: translateX(-8px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes orb-drift {
-        0% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-48%, -52%) scale(1.08); }
-        100% { transform: translate(-50%, -50%) scale(1); }
-    }
-    @keyframes orb-drift-2 {
-        0% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-52%, -46%) scale(1.05); }
-        100% { transform: translate(-50%, -50%) scale(1); }
-    }
+    ::selection { background: rgba(20, 184, 166, 0.28); color: var(--heading); }
 
-    .anim-rise {
-        opacity: 0;
-        animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .reveal {
-        opacity: 0;
-        transform: translateY(32px);
-        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .reveal.visible { opacity: 1; transform: translateY(0); }
-
-    @media (prefers-reduced-motion: reduce) {
-        .anim-rise { animation: none; opacity: 1; }
-        .reveal { transition: none; opacity: 1; transform: none; }
+    .inline-code {
+        font-family: var(--mono);
+        font-size: 0.85em;
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        color: var(--green);
+        border: 1px solid var(--green-border);
     }
 
     /* ── Hero ──────────────────────────────────────── */
-    .hero {
-        padding: 5.5rem 0 3.5rem;
-        position: relative;
-        overflow: hidden;
-    }
+    .hero { padding: 5.5rem 0 3rem; }
 
-    /* Glow orbs */
-    .hero::before {
-        content: '';
-        position: absolute;
-        top: 5%;
-        left: 35%;
-        transform: translate(-50%, -50%);
-        width: 900px;
-        height: 700px;
-        background: radial-gradient(ellipse, rgba(20, 184, 166, 0.1) 0%, transparent 55%);
-        pointer-events: none;
-        animation: orb-drift 16s ease-in-out infinite;
-    }
-    .hero::after {
-        content: '';
-        position: absolute;
-        top: 40%;
-        left: 70%;
-        transform: translate(-50%, -50%);
-        width: 500px;
-        height: 400px;
-        background: radial-gradient(ellipse, rgba(6, 182, 212, 0.06) 0%, transparent 55%);
-        pointer-events: none;
-        animation: orb-drift-2 20s ease-in-out infinite;
-    }
-    [data-theme="light"] .hero::before {
-        background: radial-gradient(ellipse, rgba(15, 118, 110, 0.12) 0%, transparent 55%);
-    }
-    [data-theme="light"] .hero::after {
-        background: radial-gradient(ellipse, rgba(6, 140, 170, 0.08) 0%, transparent 55%);
-    }
-
-    .hero > .container { position: relative; z-index: 1; }
-
-    /* ── Hero grid (text left, terminal right) ────── */
     .hero-grid {
         display: grid;
-        grid-template-columns: 1.1fr 1fr;
-        gap: 3.5rem;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+        gap: 4rem;
         align-items: center;
-    }
-
-    .hero-content { text-align: left; }
-
-    .hero-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        border: 1px solid var(--green-border);
-        border-radius: 100px;
-        padding: 0.35rem 1.2rem;
-        font-size: 0.7rem;
-        font-family: var(--mono);
-        color: var(--green);
-        margin-bottom: 2rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        background: transparent;
-    }
-    .hero-badge-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--green);
-        flex-shrink: 0;
-        box-shadow: 0 0 10px var(--green);
-        animation: glow-pulse 2s ease-in-out infinite;
     }
 
     .hero h1 {
         font-family: var(--display);
-        font-size: clamp(2.4rem, 3.6vw, 3.4rem);
+        font-size: clamp(2.4rem, 3.4vw, 3.25rem);
         font-weight: 700;
-        letter-spacing: -0.04em;
-        line-height: 1.08;
+        letter-spacing: -0.035em;
+        line-height: 1.06;
         color: var(--heading);
         margin: 0 0 1.5rem;
+        text-wrap: balance;
     }
     .hero h1 em {
         font-style: normal;
-        background: linear-gradient(135deg, var(--green) 0%, var(--cyan) 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: var(--green);
     }
 
     .hero-sub {
-        font-size: 1.05rem;
+        font-size: 1.1rem;
         color: var(--text-muted);
-        max-width: 440px;
-        margin: 0 0 2.5rem;
-        line-height: 1.7;
-        font-weight: 400;
+        max-width: 34rem;
+        margin: 0 0 2.25rem;
+        line-height: 1.65;
+        text-wrap: pretty;
     }
 
     .hero-actions {
@@ -163,242 +80,175 @@
         align-items: center;
         gap: 0.75rem;
         flex-wrap: wrap;
-        margin-bottom: 1.5rem;
     }
 
-    /* ── Tech ribbon ─────────────────────────────── */
-    .hero-tech {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 2rem;
-        padding-top: 2rem;
-        margin-top: 2rem;
-        border-top: 1px solid var(--border);
-    }
-    .hero-tech-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        white-space: nowrap;
-    }
-    .hero-tech-items {
-        display: flex;
-        align-items: center;
-        gap: 1.75rem;
-    }
-    .hero-tech-item {
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        white-space: nowrap;
-        border: 1px solid var(--border);
-        border-radius: 100px;
-        padding: 0.35rem 0.9rem;
-        transition: border-color 0.2s, color 0.2s;
-    }
-    .hero-tech-item:hover {
-        border-color: var(--green-border);
-        color: var(--text);
-    }
-    .hero-tech-item svg { opacity: 0.65; flex-shrink: 0; }
-
-    /* ── Install bar ─────────────────────────────────── */
+    /* Install command: one control, copy button inside */
     .install-bar {
-        display: flex;
+        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
+        gap: 0.75rem;
+        margin-top: 1.75rem;
+        padding: 0.35rem 0.35rem 0.35rem 1rem;
+        border: 1px solid var(--border-light);
+        border-radius: 10px;
+        max-width: 100%;
     }
     .install-cmd {
         font-family: var(--mono);
-        font-size: 0.78rem;
-        color: var(--text-dim);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        letter-spacing: 0.02em;
+        font-size: 0.8rem;
+        color: var(--text);
         user-select: all;
-        transition: border-color 0.2s;
-        background: transparent;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
     }
-    .install-cmd:hover { border-color: var(--green-border); }
-    .install-cmd span { color: var(--green); }
-
+    .install-cmd span { color: var(--green); user-select: none; }
     .install-copy {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        background: none;
+        flex-shrink: 0;
+        font-family: var(--display);
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        background: var(--bg-raised);
         border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 0.5rem 0.7rem;
+        border-radius: 7px;
+        min-height: 34px;
+        padding: 0 0.8rem;
         cursor: pointer;
-        transition: all 0.15s;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        line-height: 1;
+        transition: color 0.15s, border-color 0.15s;
     }
-    .install-copy:hover {
-        color: var(--green);
-        border-color: var(--green-border);
+    .install-copy:hover { color: var(--green); border-color: var(--green-border); }
+
+    .hero-meta {
+        margin-top: 1rem;
+        font-size: 0.82rem;
+        color: var(--text-dim);
+    }
+
+    /* ── Works-with row ──────────────────────────────── */
+    .hero-tech {
+        display: flex;
+        align-items: baseline;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        margin-top: 4rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+        font-size: 0.9rem;
+    }
+    .hero-tech-label { color: var(--text-dim); }
+    .hero-tech-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 1.5rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        color: var(--text);
+        font-weight: 500;
     }
 
     /* ── Buttons ──────────────────────────────────── */
-    .btn-primary {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: var(--green);
-        color: #000;
-        font-weight: 700;
-        font-family: var(--sans);
-        font-size: 0.95rem;
-        padding: 0.8rem 2rem;
-        border-radius: 10px;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        text-decoration: none;
-        letter-spacing: -0.01em;
-    }
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(20, 184, 166, 0.2);
-        text-decoration: none;
-    }
-    [data-theme="light"] .btn-primary {
-        background: #0F766E;
-        color: #ffffff;
-    }
-    [data-theme="light"] .btn-primary:hover {
-        box-shadow: 0 8px 28px rgba(15, 118, 110, 0.25);
-    }
-
+    .btn-primary,
     .btn-secondary {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
-        background: transparent;
-        color: var(--text-muted);
-        font-family: var(--sans);
-        font-size: 0.95rem;
-        font-weight: 500;
-        padding: 0.8rem 1.6rem;
+        gap: 0.45rem;
+        min-height: 46px;
+        padding: 0 1.5rem;
         border-radius: 10px;
-        border: 1px solid var(--border-light);
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        font-family: var(--display);
+        font-size: 0.95rem;
         text-decoration: none;
+        transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.25s var(--ease-out);
+    }
+    .btn-primary {
+        background: var(--green);
+        color: #04110f;
+        font-weight: 650;
+    }
+    .btn-primary:hover {
+        text-decoration: none;
+        box-shadow: 0 6px 20px -6px rgba(20, 184, 166, 0.55);
+    }
+    [data-theme="light"] .btn-primary { background: #0F766E; color: #ffffff; }
+    [data-theme="light"] .btn-primary:hover { background: #0c5f59; box-shadow: 0 6px 20px -8px rgba(15, 118, 110, 0.5); }
+
+    .btn-secondary {
+        color: var(--text);
+        font-weight: 500;
+        border: 1px solid var(--border-light);
     }
     .btn-secondary:hover {
-        color: var(--text);
-        border-color: var(--text-dim);
-        transform: translateY(-2px);
         text-decoration: none;
+        border-color: var(--text-dim);
+        color: var(--heading);
     }
     .btn-secondary svg { flex-shrink: 0; }
 
     /* ── Terminal ───────────────────────────────────── */
-    .hero-terminal { min-width: 0; }
     .terminal-wrap {
-        border-radius: 16px;
+        border-radius: 14px;
         overflow: hidden;
-        border: 1px solid var(--border);
-        box-shadow:
-            0 0 0 1px rgba(20, 184, 166, 0.04),
-            0 0 80px rgba(20, 184, 166, 0.06),
-            0 32px 80px -24px rgba(0, 0, 0, 0.5);
-        text-align: left;
-        transition: box-shadow 0.4s ease;
-    }
-    .terminal-wrap:hover {
-        box-shadow:
-            0 0 0 1px rgba(20, 184, 166, 0.06),
-            0 0 120px rgba(20, 184, 166, 0.08),
-            0 40px 100px -24px rgba(0, 0, 0, 0.6);
+        border: 1px solid var(--term-border);
+        background: var(--term-bg);
+        box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.55), 0 12px 24px -16px rgba(0, 0, 0, 0.35);
     }
     [data-theme="light"] .terminal-wrap {
-        box-shadow:
-            0 0 0 1px rgba(15, 118, 110, 0.08),
-            0 0 50px rgba(15, 118, 110, 0.05),
-            0 24px 60px -20px rgba(60, 50, 40, 0.14);
+        box-shadow: 0 30px 60px -30px rgba(60, 45, 30, 0.35), 0 12px 24px -16px rgba(60, 45, 30, 0.2);
     }
-    [data-theme="light"] .terminal-wrap:hover {
-        box-shadow:
-            0 0 0 1px rgba(15, 118, 110, 0.10),
-            0 0 70px rgba(15, 118, 110, 0.07),
-            0 32px 80px -20px rgba(60, 50, 40, 0.18);
-    }
-
     .terminal-bar {
-        background: #141414;
-        padding: 0.75rem 1.1rem;
+        background: var(--term-bar);
+        padding: 0.7rem 1rem;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        gap: 0.45rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
-    .t-dot { width: 10px; height: 10px; border-radius: 50%; opacity: 0.65; }
-    .t-dot-red { background: #ff5f57; }
-    .t-dot-amber { background: #febc2e; }
-    .t-dot-green { background: #28c840; }
+    .t-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.16); }
     .terminal-title {
         font-family: var(--mono);
-        font-size: 0.62rem;
-        color: #555;
+        font-size: 0.7rem;
+        color: var(--term-dim);
         margin-left: auto;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
     }
     .terminal-body {
-        background: #0a0a0a;
-        padding: 1.5rem 1.6rem;
+        padding: 1.4rem 1.5rem 1.6rem;
         font-family: var(--mono);
-        font-size: 0.78rem;
-        line-height: 2;
+        font-size: 0.8rem;
+        line-height: 1.9;
+        color: var(--term-text);
     }
-    [data-theme="light"] .terminal-bar { background: #1a1a2e; }
-    [data-theme="light"] .terminal-body { background: #141428; }
-    .t-line {
-        display: flex;
-        gap: 0.5rem;
-        min-height: 1.8em;
-        opacity: 0;
-        animation: type-line 0.35s ease forwards;
-    }
-    .t-line:nth-child(1) { animation-delay: 0.6s; }
-    .t-line:nth-child(2) { animation-delay: 0.85s; }
-    .t-line:nth-child(3) { animation-delay: 1.0s; }
-    .t-line:nth-child(5) { animation-delay: 1.3s; }
-    .t-line:nth-child(6) { animation-delay: 1.5s; }
-    .t-line:nth-child(7) { animation-delay: 1.65s; }
-    .t-line:nth-child(9) { animation-delay: 2.0s; }
-    .t-line:nth-child(10) { animation-delay: 2.2s; }
-    .t-line:nth-child(11) { animation-delay: 2.35s; }
+    .t-line { display: flex; gap: 0.6rem; min-height: 1.9em; }
+    .t-prompt { color: var(--term-prompt); user-select: none; flex-shrink: 0; }
+    .t-flag { color: var(--term-flag); }
+    .t-ok { color: var(--term-ok); }
+    .t-dim { color: var(--term-dim); }
+    .t-gap { height: 0.6rem; }
 
-    .t-prompt { color: var(--green); user-select: none; flex-shrink: 0; }
-    .t-cmd { color: #e2e2e2; }
-    .t-flag { color: var(--cyan); }
-    .t-ok { color: #34d399; padding-left: 0.2rem; }
-    .t-dim { color: #444; padding-left: 0.2rem; font-style: italic; }
-    .t-gap { height: 0.5rem; }
+    /* The page's one authored moment: the session plays out line by line */
+    @keyframes type-line {
+        from { opacity: 0; transform: translateY(4px); filter: blur(2px); }
+        to { opacity: 1; transform: none; filter: none; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+        .t-line { animation: type-line 0.4s var(--ease-out) backwards; }
+        .t-line:nth-child(1) { animation-delay: 0.3s; }
+        .t-line:nth-child(2) { animation-delay: 0.7s; }
+        .t-line:nth-child(3) { animation-delay: 0.85s; }
+        .t-line:nth-child(5) { animation-delay: 1.4s; }
+        .t-line:nth-child(6) { animation-delay: 1.8s; }
+        .t-line:nth-child(7) { animation-delay: 2.4s; }
+        .t-line:nth-child(9) { animation-delay: 3.0s; }
+        .t-line:nth-child(10) { animation-delay: 3.4s; }
+        .t-line:nth-child(11) { animation-delay: 3.9s; }
+    }
 
     /* ── Shared section styles ─────────────────────── */
     .section {
-        padding: 4.5rem 0;
+        padding: 6rem 0;
         border-top: 1px solid var(--border);
-    }
-
-    .section-eyebrow {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        margin-bottom: 1rem;
     }
     .section-title {
         font-family: var(--display);
@@ -406,68 +256,101 @@
         font-weight: 700;
         letter-spacing: -0.035em;
         color: var(--heading);
-        line-height: 1.1;
+        line-height: 1.08;
+        text-wrap: balance;
     }
     .section-sub {
-        font-size: 1rem;
+        font-size: 1.05rem;
         color: var(--text-muted);
-        max-width: 560px;
-        line-height: 1.7;
+        max-width: 36rem;
+        line-height: 1.65;
         margin-top: 1rem;
+        text-wrap: pretty;
     }
+    .section-header { margin-bottom: 3.5rem; }
 
-    .section-header {
-        margin-bottom: 2.5rem;
-    }
-
-    /* ── Feature grid ─────────────────────────────── */
-    .feature-grid {
+    /* ── Agent showcase ──────────────────────────── */
+    .agent-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1px;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        overflow: hidden;
-        background: var(--border);
-    }
-    .feature-card {
-        background: var(--bg);
-        padding: 2.25rem 2rem;
-        transition: all 0.3s ease;
-        position: relative;
-    }
-    .feature-card:hover {
-        background: rgba(20, 184, 166, 0.04);
-    }
-    [data-theme="light"] .feature-card:hover {
-        background: rgba(15, 118, 110, 0.06);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 4rem;
+        align-items: center;
     }
 
-    .feature-icon {
-        width: 36px;
-        height: 36px;
-        margin-bottom: 1.25rem;
-        color: var(--green);
-        opacity: 0.75;
-        transition: opacity 0.25s;
+    .agent-flow { list-style: none; margin: 0; padding: 0; counter-reset: flow; }
+    .flow-step {
+        counter-increment: flow;
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr);
+        gap: 0.5rem;
+        padding: 1.5rem 0;
     }
-    .feature-card:hover .feature-icon { opacity: 1; }
-
-    .feature-card h3 {
-        font-family: var(--display);
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--heading);
-        margin-bottom: 0.6rem;
-        letter-spacing: -0.01em;
-        line-height: 1.3;
-    }
-    .feature-card p {
+    .flow-step:first-child { padding-top: 0; }
+    .flow-step:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .flow-step::before {
+        content: counter(flow);
+        font-family: var(--mono);
         font-size: 0.85rem;
+        color: var(--green);
+        line-height: 1.6;
+    }
+    .flow-body h3 {
+        font-family: var(--display);
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--heading);
+        margin-bottom: 0.35rem;
+        letter-spacing: -0.01em;
+    }
+    .flow-body p {
+        font-size: 0.92rem;
         color: var(--text-muted);
         line-height: 1.65;
     }
-    .feature-card p code {
+
+    /* Agent output shown as the diff you'd review */
+    .agent-visual .terminal-body { font-size: 0.78rem; line-height: 1.8; }
+    .diff-line { display: flex; gap: 0.9rem; }
+    .diff-flag { color: var(--term-ok); width: 1ch; flex-shrink: 0; }
+    .diff-path { overflow-wrap: anywhere; }
+    .diff-line--quiet { color: var(--term-dim); }
+    .diff-line--quiet .diff-flag { color: var(--term-dim); }
+    .diff-preview {
+        margin: 0.35rem 0 0.9rem calc(1ch + 0.9rem);
+        padding: 0.6rem 0.85rem;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--term-text);
+    }
+    .diff-preview .fp-key { color: var(--term-flag); }
+    .diff-note { margin-top: 1rem; color: var(--term-dim); }
+
+    /* ── Features: a spec sheet, not a card wall ──── */
+    .feature-list { list-style: none; margin: 0; padding: 0; }
+    .feature-row {
+        display: grid;
+        grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+        gap: 1rem 4rem;
+        padding: 2rem 0;
+        border-top: 1px solid var(--border);
+    }
+    .feature-row:last-child { border-bottom: 1px solid var(--border); }
+    .feature-row h3 {
+        font-family: var(--display);
+        font-size: clamp(1.25rem, 2vw, 1.5rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+        color: var(--heading);
+        text-wrap: balance;
+    }
+    .feature-row p {
+        font-size: 0.98rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+        max-width: 38rem;
+    }
+    .feature-row p code {
         font-family: var(--mono);
         font-size: 0.85em;
         padding: 0.1em 0.35em;
@@ -475,353 +358,136 @@
         color: var(--green);
         border: 1px solid var(--green-border);
         background: transparent;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
     }
-
-    /* ── Agent showcase ──────────────────────────── */
-    .agent-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-        position: relative;
-        overflow: hidden;
-    }
-    .agent-section::before {
-        content: '';
-        position: absolute;
-        top: -100px;
-        right: -200px;
-        width: 600px;
-        height: 600px;
-        background: radial-gradient(circle, rgba(20, 184, 166, 0.03) 0%, transparent 55%);
-        pointer-events: none;
-    }
-
-    .agent-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3.5rem;
-        align-items: center;
-        margin-top: 2rem;
-    }
-
-    .agent-flow { display: flex; flex-direction: column; gap: 0; }
-    .flow-step {
-        display: flex;
-        align-items: flex-start;
-        gap: 1.25rem;
-        padding: 1.5rem 0;
-    }
-    .flow-step:not(:last-child) { border-bottom: 1px solid var(--border); }
-
-    .flow-num {
-        flex-shrink: 0;
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        border: 1px solid var(--green-border);
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: var(--green);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-    }
-    .flow-body h4 {
-        font-family: var(--display);
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--heading);
-        margin-bottom: 0.35rem;
-        letter-spacing: -0.01em;
-    }
-    .flow-body p {
-        font-size: 0.85rem;
-        color: var(--text-muted);
-        line-height: 1.65;
-    }
-
-    .agent-visual {
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 2rem;
-        position: relative;
-        background: transparent;
-    }
-    .agent-visual-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 1.5rem;
-    }
-    .agent-files { display: flex; flex-direction: column; gap: 0.5rem; }
-    .agent-file {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.7rem 1rem;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        font-family: var(--mono);
-        font-size: 0.75rem;
-        color: var(--text);
-        transition: border-color 0.2s, background 0.2s;
-        background: rgba(255, 255, 255, 0.02);
-    }
-    .agent-file:hover { border-color: var(--green-border); background: rgba(255, 255, 255, 0.04); }
-    .agent-file-icon { color: var(--green); opacity: 0.75; flex-shrink: 0; }
-    [data-theme="light"] .agent-file { background: rgba(0, 0, 0, 0.02); }
-    [data-theme="light"] .agent-file:hover { background: rgba(0, 0, 0, 0.04); }
-    .agent-file-new {
-        margin-left: auto;
-        font-size: 0.6rem;
-        color: var(--green);
-        border: 1px solid var(--green-border);
-        padding: 0.1rem 0.45rem;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-family: var(--mono);
-        background: transparent;
-    }
-    .agent-file-auto {
-        margin-left: auto;
-        font-family: var(--mono);
-        font-size: 0.6rem;
-        color: var(--text-muted);
-        letter-spacing: 0.03em;
-    }
-
-    /* File appear animation */
-    @keyframes file-appear {
-        from { opacity: 0; transform: translateX(16px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
-    .agent-visual.visible .agent-file {
-        opacity: 0;
-        animation: file-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    .agent-visual.visible .agent-file:nth-child(1) { animation-delay: 0.15s; }
-    .agent-visual.visible .agent-file:nth-child(2) { animation-delay: 0.35s; }
-    .agent-visual.visible .agent-file:nth-child(3) { animation-delay: 0.55s; }
-    .agent-visual.visible .agent-file:nth-child(4) { animation-delay: 0.75s; }
-    @media (prefers-reduced-motion: reduce) {
-        .agent-visual.visible .agent-file { animation: none; opacity: 1; }
-    }
-
-    .agent-file-preview {
-        font-family: var(--mono);
-        font-size: 0.68rem;
-        color: var(--text-muted);
-        margin-top: 0.35rem;
-        padding: 0.5rem 0.75rem;
-        border-left: 2px solid var(--green-border);
-        line-height: 1.6;
-    }
-    .agent-file-preview .fp-key { color: var(--green); font-weight: 600; }
-    .agent-file-preview .fp-val { color: var(--text); }
 
     /* ── Comparison ───────────────────────────────── */
-    .compare-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .compare-section .section-title { margin-bottom: 0.75rem; }
-    .compare-sub {
-        font-size: 1rem;
-        color: var(--text-muted);
-        max-width: 540px;
-        line-height: 1.65;
-        margin-bottom: 2.5rem;
-    }
     .compare-columns {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 1.5rem;
     }
     .compare-col {
         border: 1px solid var(--border);
-        border-radius: 16px;
+        border-radius: 14px;
         padding: 2rem;
     }
     .compare-col--after {
         border-color: var(--green-border);
-        background: rgba(20, 184, 166, 0.03);
-    }
-    [data-theme="light"] .compare-col--after {
-        background: rgba(15, 118, 110, 0.04);
+        background: var(--green-dim);
     }
     .compare-col-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--text-dim);
+        font-family: var(--display);
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-muted);
         margin-bottom: 1.25rem;
     }
-    .compare-col--after .compare-col-label {
-        color: var(--green);
-    }
+    .compare-col--after .compare-col-label { color: var(--heading); }
     .compare-list {
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 0.65rem;
     }
     .compare-list li {
-        font-size: 0.88rem;
+        font-size: 0.92rem;
         color: var(--text-muted);
         display: flex;
-        align-items: flex-start;
+        align-items: baseline;
         gap: 0.6rem;
         line-height: 1.5;
+        padding: 0.65rem 0;
+        border-top: 1px solid var(--border);
     }
+    .compare-col--after .compare-list li { color: var(--text); }
     .compare-list li .compare-icon {
         flex-shrink: 0;
-        margin-top: 0.15rem;
-        opacity: 0.4;
+        align-self: center;
+        color: var(--text-dim);
     }
-    .compare-col--after .compare-list li .compare-icon {
-        color: var(--green);
-        opacity: 0.8;
-    }
+    .compare-col--after .compare-list li .compare-icon { color: var(--green); }
     .compare-list li .compare-tool {
         font-family: var(--mono);
         font-size: 0.75rem;
-        color: var(--text-muted);
+        color: var(--text-dim);
         margin-left: auto;
-        white-space: nowrap;
-        padding-left: 0.5rem;
+        text-align: right;
+        padding-left: 0.75rem;
     }
-    .compare-col--after .compare-list li .compare-tool {
-        color: var(--green);
-    }
+    .compare-col--after .compare-list li .compare-tool { color: var(--green); }
 
     /* ── Quickstart ────────────────────────────────── */
-    .quickstart-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-    }
     .quickstart-grid {
         display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
-        gap: 3rem;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+        gap: 4rem;
         align-items: start;
-        margin-top: 2rem;
-    }
-    .code-block {
-        background: #0a0a0a;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow:
-            0 0 60px rgba(20, 184, 166, 0.03),
-            0 20px 60px -20px rgba(0, 0, 0, 0.4);
-    }
-    [data-theme="light"] .code-block {
-        background: #141428;
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow:
-            0 0 40px rgba(15, 118, 110, 0.04),
-            0 16px 48px -16px rgba(60, 50, 40, 0.14);
     }
     .code-block-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.8rem 1.3rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        background: rgba(255, 255, 255, 0.02);
+        padding: 0.45rem 0.6rem 0.45rem 1.1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--term-bar);
     }
     .code-block-title {
         font-family: var(--mono);
-        font-size: 0.65rem;
-        color: rgba(255, 255, 255, 0.3);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-size: 0.7rem;
+        color: var(--term-dim);
     }
     .copy-btn {
-        font-family: var(--mono);
-        font-size: 0.6rem;
-        color: rgba(255, 255, 255, 0.3);
-        background: none;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 5px;
-        padding: 0.2rem 0.55rem;
-        cursor: pointer;
-        transition: all 0.15s;
-        line-height: 1.4;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-    .copy-btn:hover { color: #14B8A6; border-color: rgba(20, 184, 166, 0.3); }
-
-    .code-block-body {
-        padding: 1.5rem 1.4rem;
-        font-family: var(--mono);
+        font-family: var(--display);
         font-size: 0.78rem;
-        line-height: 2;
+        font-weight: 600;
+        color: var(--term-dim);
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        min-height: 30px;
+        padding: 0 0.7rem;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
     }
-    .c-comment { color: #383838; }
-    .c-cmd { color: #14B8A6; }
-    .c-arg { color: #e2e2e2; }
-    .c-flag { color: var(--cyan); }
+    .copy-btn:hover { color: var(--term-ok); border-color: rgba(94, 234, 212, 0.4); }
+    .c-comment { color: var(--term-dim); }
+    .c-cmd { color: var(--term-ok); }
+    .c-flag { color: var(--term-flag); }
     .c-blank { height: 0.6rem; }
-    [data-theme="light"] .c-comment { color: rgba(255,255,255,0.22); }
-    [data-theme="light"] .c-cmd { color: #34d399; }
-    [data-theme="light"] .c-arg { color: rgba(255,255,255,0.85); }
-    [data-theme="light"] .c-flag { color: #67d8ef; }
 
-    /* Steps */
     .steps-list {
         list-style: none;
         counter-reset: step-counter;
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 1.75rem;
     }
     .step-item {
         counter-increment: step-counter;
-        display: flex;
-        gap: 1.1rem;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr);
+        gap: 0.5rem;
     }
-    .step-num {
-        flex-shrink: 0;
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: transparent;
-        border: 1px solid var(--border-light);
+    .step-item::before {
+        content: counter(step-counter);
         font-family: var(--mono);
-        font-size: 0.72rem;
-        font-weight: 600;
-        color: var(--text-dim);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-top: 0.1rem;
-        transition: all 0.25s;
-    }
-    .step-item:hover .step-num {
-        border-color: var(--green-border);
+        font-size: 0.85rem;
         color: var(--green);
+        line-height: 1.6;
     }
-    .step-num::before { content: counter(step-counter); }
-    .step-body { padding-top: 0.1rem; }
     .step-body strong {
         color: var(--heading);
-        font-size: 0.95rem;
-        font-weight: 700;
+        font-family: var(--display);
+        font-size: 1.05rem;
+        font-weight: 600;
         display: block;
         margin-bottom: 0.3rem;
         letter-spacing: -0.01em;
     }
     .step-body span {
         color: var(--text-muted);
-        font-size: 0.85rem;
+        font-size: 0.92rem;
         line-height: 1.65;
     }
     .step-body code {
@@ -832,101 +498,66 @@
         border-radius: 4px;
         color: var(--green);
         background: transparent;
-    }
-
-    /* ── Dogfood line ─────────────────────────────── */
-    .dogfood-line {
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        color: var(--text-dim);
-        letter-spacing: 0.03em;
-        margin-bottom: 1.5rem !important;
-        opacity: 0.6;
+        overflow-wrap: anywhere;
     }
 
     /* ── CTA section ──────────────────────────────── */
     .cta-section {
         text-align: center;
-        padding: 6rem 0 5rem;
+        padding: 7rem 0 6rem;
         border-top: 1px solid var(--border);
-        position: relative;
-        overflow: hidden;
     }
-    .cta-section::before {
-        content: '';
-        position: absolute;
-        bottom: -250px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 1000px;
-        height: 600px;
-        background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(20, 184, 166, 0.07) 0%, transparent 60%),
-            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
-        pointer-events: none;
-        animation: orb-drift 18s ease-in-out infinite;
-    }
-    [data-theme="light"] .cta-section::before {
-        background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(15, 118, 110, 0.08) 0%, transparent 60%),
-            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 140, 170, 0.05) 0%, transparent 60%);
-    }
-    .cta-section > .container { position: relative; z-index: 1; }
-
     .cta-section h2 {
         font-family: var(--display);
-        font-size: clamp(2.4rem, 5vw, 4.2rem);
+        font-size: clamp(2.2rem, 4.6vw, 3.8rem);
         font-weight: 700;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.035em;
         color: var(--heading);
-        margin-bottom: 1rem;
-        line-height: 1.08;
+        margin: 0 auto 1.25rem;
+        line-height: 1.06;
+        max-width: 18ch;
+        text-wrap: balance;
     }
-    .cta-section > .container > p {
+    .cta-sub {
         color: var(--text-muted);
-        margin-bottom: 2.5rem;
+        margin: 0 auto 2.5rem;
         font-size: 1.1rem;
-        max-width: 480px;
-        margin-left: auto;
-        margin-right: auto;
-        line-height: 1.7;
+        max-width: 32rem;
+        line-height: 1.65;
+        text-wrap: pretty;
     }
     .cta-section .hero-actions { justify-content: center; }
-
-    /* ── Responsive ───────────────────────────────── */
-    @media (max-width: 1024px) {
-        .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .dogfood-line {
+        margin-top: 2.5rem;
+        font-size: 0.85rem;
+        color: var(--text-dim);
     }
 
+    /* ── Responsive ───────────────────────────────── */
     @media (max-width: 900px) {
-        .hero { padding: 4rem 0 2.5rem; }
-        .hero-grid {
-            grid-template-columns: 1fr;
-            gap: 2.5rem;
-        }
-        .hero-content { text-align: center; }
-        .hero h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); }
-        .hero-sub { margin-left: auto; margin-right: auto; }
-        .hero-actions { justify-content: center; }
-        .install-bar { justify-content: center; }
-        .agent-grid { grid-template-columns: 1fr; gap: 2.5rem; }
-        .hero-tech { flex-direction: column; gap: 1rem; }
+        .hero { padding: 3.5rem 0 2.5rem; }
+        .hero-grid,
+        .agent-grid,
+        .quickstart-grid { grid-template-columns: minmax(0, 1fr); gap: 3rem; }
+        .hero h1 { font-size: clamp(2.2rem, 7vw, 3.2rem); }
+        .hero-tech { margin-top: 3rem; }
+        .feature-row { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; padding: 1.6rem 0; }
     }
 
     @media (max-width: 768px) {
-        .quickstart-grid { grid-template-columns: 1fr; }
-        .section { padding: 3.5rem 0; }
-        .compare-section { padding: 3.5rem 0; }
-        .quickstart-section { padding: 3.5rem 0; }
-        .cta-section { padding: 4.5rem 0 3.5rem; }
-        .agent-section { padding: 3.5rem 0; }
-        .compare-columns { grid-template-columns: 1fr; }
-        .hero-tech-items { flex-wrap: wrap; justify-content: center; gap: 1rem; }
+        .section { padding: 4rem 0; }
+        .section-header { margin-bottom: 2.5rem; }
+        .cta-section { padding: 4.5rem 0 4rem; }
+        .compare-columns { grid-template-columns: minmax(0, 1fr); }
+        .compare-col { padding: 1.5rem; }
     }
 
     @media (max-width: 600px) {
-        .feature-grid { grid-template-columns: 1fr; }
-        .install-bar { flex-direction: column; gap: 0.4rem; }
+        .install-bar { display: flex; }
+        .terminal-body { padding: 1.1rem 1.1rem 1.3rem; font-size: 0.74rem; }
+        .hero-actions > a { flex: 1 1 auto; justify-content: center; }
+        .compare-list li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 0.6rem; row-gap: 0.15rem; }
+        .compare-list li .compare-tool { grid-column: 2; margin-left: 0; padding-left: 0; text-align: left; }
     }
 </style>
 {% endblock %}
@@ -938,18 +569,13 @@
     <div class="container">
         <div class="hero-grid">
             <div class="hero-content">
-                <div class="hero-badge anim-rise" style="animation-delay:0.1s">
-                    <span class="hero-badge-dot" aria-hidden="true"></span>
-                    {{ page.extra.hero_badge | default(value="Built in Rust · AI-native · Open source") }}
-                </div>
-
-                <h1 class="anim-rise" style="animation-delay:0.18s">
+                <h1>
                     {{ page.extra.hero_headline | default(value="Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint.") | safe }}
                 </h1>
 
-                <p class="hero-sub anim-rise" style="animation-delay:0.3s">{{ page.extra.hero_sub | default(value=page.description) }}</p>
+                <p class="hero-sub">{{ page.extra.hero_sub | default(value=page.description) }}</p>
 
-                <div class="hero-actions anim-rise" style="animation-delay:0.4s">
+                <div class="hero-actions">
                     <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStarted">{{ t.get_started | default(value="Get started") }} →</a>
                     <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHub" rel="noopener noreferrer">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
@@ -957,30 +583,32 @@
                     </a>
                 </div>
 
-                <div class="install-bar anim-rise" style="animation-delay:0.48s">
-                    <div class="install-cmd"><span>$</span> curl -fsSL seite.sh/install.sh | sh</div>
-                    <button class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='copied';setTimeout(function(){this.textContent='copy';}.bind(this),2000);}.bind(this)).catch(function(){});">copy</button>
+                <div class="install-bar">
+                    <code class="install-cmd"><span>$ </span>curl -fsSL seite.sh/install.sh | sh</code>
+                    <button type="button" class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy';}.bind(this),2000);}.bind(this)).catch(function(){});">Copy</button>
                 </div>
+
+                <p class="hero-meta">{{ page.extra.hero_badge | default(value="Built in Rust · AI-native · Open source") }}</p>
             </div>
 
-            <div class="hero-terminal anim-rise" style="animation-delay:0.4s">
-                <div class="terminal-wrap" role="img" aria-label="seite CLI demonstration">
+            <div class="hero-terminal">
+                <div class="terminal-wrap" role="img" aria-label="seite CLI demonstration: init a site, have the agent write a post, deploy">
                     <div class="terminal-bar" aria-hidden="true">
-                        <span class="t-dot t-dot-red"></span>
-                        <span class="t-dot t-dot-amber"></span>
-                        <span class="t-dot t-dot-green"></span>
-                        <span class="terminal-title">terminal</span>
+                        <span class="t-dot"></span>
+                        <span class="t-dot"></span>
+                        <span class="t-dot"></span>
+                        <span class="terminal-title">~/myblog</span>
                     </div>
-                    <div class="terminal-body">
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite init myblog <span class="t-flag">--title "My Blog"</span></span></div>
+                    <div class="terminal-body" aria-hidden="true">
+                        <div class="t-line"><span class="t-prompt">$</span><span>seite init myblog <span class="t-flag">--title "My Blog"</span></span></div>
                         <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
                         <div class="t-line"><span class="t-ok">✓ Scaffolded AGENTS.md</span></div>
                         <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite agent <span class="t-flag">"write a v1.2 release post"</span></span></div>
+                        <div class="t-line"><span class="t-prompt">$</span><span>seite agent <span class="t-flag">"write a v1.2 release post"</span></span></div>
                         <div class="t-line"><span class="t-dim">spawning Claude Code…</span></div>
                         <div class="t-line"><span class="t-ok">✓ content/posts/v1-2-release.md</span></div>
                         <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite deploy</span></div>
+                        <div class="t-line"><span class="t-prompt">$</span><span>seite deploy</span></div>
                         <div class="t-line"><span class="t-dim">building… pre-flight OK</span></div>
                         <div class="t-line"><span class="t-ok">✓ Deployed → myblog.github.io</span></div>
                     </div>
@@ -988,88 +616,62 @@
             </div>
         </div>
 
-        <div class="hero-tech anim-rise" style="animation-delay:0.56s">
+        <div class="hero-tech">
             <span class="hero-tech-label">Works with</span>
-            <div class="hero-tech-items">
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9.5 2l3 3.5L9.5 9"/><path d="M14.5 2l-3 3.5 3 3.5"/><rect x="2" y="12" width="20" height="10" rx="3"/><path d="M6 16h.01M10 16h.01"/></svg>
-                    Claude Code
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    GitHub Pages
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                    Cloudflare
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    Netlify
-                </span>
-            </div>
+            <ul class="hero-tech-items">
+                <li>Claude Code</li>
+                <li>GitHub Pages</li>
+                <li>Cloudflare</li>
+                <li>Netlify</li>
+            </ul>
         </div>
     </div>
 </section>
 
 <!-- ─── Agent showcase ────────────────────────────── -->
-<section class="agent-section" id="agent">
+<section class="section" id="agent">
     <div class="container">
-        <div class="section-header reveal">
-            <p class="section-eyebrow">// built for ai</p>
+        <div class="section-header">
             <h2 class="section-title">Your agent reads the schema.<br>Then writes the content.</h2>
-            <p class="section-sub">Every <code style="font-family:var(--mono);font-size:0.85em;border:1px solid var(--green-border);padding:0.1em 0.35em;border-radius:4px;color:var(--green);">seite init</code> scaffolds an AGENTS.md so your coding agent knows the project inside out.</p>
+            <p class="section-sub">Every <code class="inline-code">seite init</code> scaffolds an AGENTS.md so your coding agent knows the project inside out.</p>
         </div>
 
         <div class="agent-grid">
-            <div class="agent-flow reveal">
-                <div class="flow-step">
-                    <span class="flow-num">1</span>
+            <ol class="agent-flow">
+                <li class="flow-step">
                     <div class="flow-body">
-                        <h4>Agent reads context</h4>
+                        <h3>Agent reads context</h3>
                         <p>AGENTS.md contains your site config, collection schemas, frontmatter format, and template variables. The MCP server exposes content inventory and docs.</p>
                     </div>
-                </div>
-                <div class="flow-step">
-                    <span class="flow-num">2</span>
+                </li>
+                <li class="flow-step">
                     <div class="flow-body">
-                        <h4>Agent writes content</h4>
+                        <h3>Agent writes content</h3>
                         <p>It generates markdown with correct frontmatter, in the right directory, following your naming conventions. You review a diff — nothing hidden.</p>
                     </div>
-                </div>
-                <div class="flow-step">
-                    <span class="flow-num">3</span>
+                </li>
+                <li class="flow-step">
                     <div class="flow-body">
-                        <h4>Build + deploy</h4>
+                        <h3>Build + deploy</h3>
                         <p>One command builds HTML, markdown, RSS, sitemap, search index, and llms.txt. Another deploys to GitHub Pages, Cloudflare, or Netlify.</p>
                     </div>
-                </div>
-            </div>
+                </li>
+            </ol>
 
-            <div class="agent-visual reveal">
-                <div class="agent-visual-label">files generated by agent</div>
-                <div class="agent-files">
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        <span>content/posts/2026-02-18-v1-2-release.md
-                        <div class="agent-file-preview"><span class="fp-key">title:</span> <span class="fp-val">"v1.2 Release Notes"</span><br><span class="fp-key">tags:</span> <span class="fp-val">[release, new]</span></div></span>
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        content/docs/error-handling.md
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        content/changelog/v1-2-0.md
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file" style="opacity:0.6">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        AGENTS.md
-                        <span class="agent-file-auto">auto-scaffolded</span>
-                    </div>
+            <div class="agent-visual terminal-wrap" role="img" aria-label="Files generated by the agent: a release post, an error-handling doc, and a changelog entry">
+                <div class="terminal-bar" aria-hidden="true">
+                    <span class="t-dot"></span>
+                    <span class="t-dot"></span>
+                    <span class="t-dot"></span>
+                    <span class="terminal-title">git status --short</span>
+                </div>
+                <div class="terminal-body" aria-hidden="true">
+                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/posts/2026-02-18-v1-2-release.md</span></div>
+                    <div class="diff-preview"><span class="fp-key">title:</span> "v1.2 Release Notes"<br><span class="fp-key">tags:</span> [release, new]</div>
+                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/docs/error-handling.md</span></div>
+                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/changelog/v1-2-0.md</span></div>
+                    <div class="diff-line diff-line--quiet"><span class="diff-flag">·</span><span class="diff-path">AGENTS.md</span></div>
+                    <div class="diff-note"># AGENTS.md was scaffolded by seite init</div>
                 </div>
             </div>
         </div>
@@ -1079,121 +681,114 @@
 <!-- ─── Features ──────────────────────────────────── -->
 <section class="section" id="features">
     <div class="container">
-        <div class="section-header reveal">
-            <p class="section-eyebrow">{{ page.extra.features_eyebrow | default(value="// features") }}</p>
+        <div class="section-header">
             <h2 class="section-title">{{ page.extra.features_headline_1 | default(value="Everything you need.") }}<br>{{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}</h2>
-            <p class="section-sub">{{ page.extra.features_sub | default(value="") }}</p>
+            {% if page.extra.features_sub %}<p class="section-sub">{{ page.extra.features_sub }}</p>{% endif %}
         </div>
 
-        <div class="feature-grid reveal">
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4L6 10v16l12 6 12-6V10L18 4z"/><path d="M6 10l12 6m0 0l12-6m-12 6v16"/></svg>
+        <ul class="feature-list">
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_1_title | default(value="Sub-second builds. Always.") }}</h3>
                 <p>{{ page.extra.feature_1_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="24" height="24" rx="4"/><path d="M12 16h3l2 4 4-8 2 4h3"/></svg>
+            </li>
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_2_title | default(value="Your agent already knows how to use this.") }}</h3>
                 <p>{{ page.extra.feature_2_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="12"/><path d="M6 18h24M18 6c-4.4 4-6.6 8-6.6 12s2.2 8 6.6 12c4.4-4 6.6-8 6.6-12s-2.2-8-6.6-12z"/></svg>
+            </li>
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_3_title | default(value="Ship in every language your customers speak.") }}</h3>
                 <p>{{ page.extra.feature_3_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="15" r="10"/><path d="M23 23l8 8"/></svg>
+            </li>
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_4_title | default(value="Found by people. Found by models.") }}</h3>
                 <p>{{ page.extra.feature_4_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4v20m0 0l-7-7m7 7l7-7"/><path d="M6 28h24"/></svg>
+            </li>
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_5_title | default(value="One command. Three targets. Auto-generated CI.") }}</h3>
                 <p>{{ page.extra.feature_5_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="2"/><rect x="20" y="4" width="12" height="12" rx="2"/><rect x="4" y="20" width="12" height="12" rx="2"/><rect x="20" y="20" width="12" height="12" rx="2"/></svg>
+            </li>
+            <li class="feature-row">
                 <h3>{{ page.extra.feature_6_title | default(value="10 themes. Generate your own with a sentence.") }}</h3>
                 <p>{{ page.extra.feature_6_body | default(value="") | safe }}</p>
-            </div>
-        </div>
+            </li>
+        </ul>
     </div>
 </section>
 
 <!-- ─── Comparison ────────────────────────────────── -->
-<section class="compare-section" id="compare">
+<section class="section" id="compare">
     <div class="container">
-        <div class="reveal">
+        <div class="section-header">
             <h2 class="section-title">{{ page.extra.comparison_headline | default(value="Stop juggling six tools for one website.") }}</h2>
-            <p class="compare-sub">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool — then glue it with scripts. seite handles all of it.") }}</p>
+            <p class="section-sub">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool — then glue it with scripts. seite handles all of it.") }}</p>
         </div>
 
-        <div class="compare-columns reveal">
+        <div class="compare-columns">
             <div class="compare-col">
-                <div class="compare-col-label">The typical setup</div>
+                <h3 class="compare-col-label">The typical setup</h3>
                 <ul class="compare-list">
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         SSG + Node.js toolchain
                         <span class="compare-tool">Hugo / Astro / Next.js</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         Separate changelog &amp; roadmap
                         <span class="compare-tool">Headway / Notion / Canny</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         Contact form service
                         <span class="compare-tool">Formspree / Typeform</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         Deploy pipeline
                         <span class="compare-tool">Vercel / custom CI</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         SEO meta, sitemap, RSS
                         <span class="compare-tool">plugins / manual</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         LLM discoverability
                         <span class="compare-tool">DIY or nothing</span>
                     </li>
                 </ul>
             </div>
             <div class="compare-col compare-col--after">
-                <div class="compare-col-label">With seite</div>
+                <h3 class="compare-col-label">With seite</h3>
                 <ul class="compare-list">
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         Single Rust binary, zero dependencies
                         <span class="compare-tool">no Node.js</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         Blog, docs, changelog, roadmap
                         <span class="compare-tool">collection presets</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         Contact form shortcode
                         <span class="compare-tool">5 providers</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         Deploy to 3 targets
                         <span class="compare-tool">seite deploy</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         SEO + JSON-LD + sitemap + RSS
                         <span class="compare-tool">automatic</span>
                     </li>
                     <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
                         llms.txt + markdown for every page
                         <span class="compare-tool">automatic</span>
                     </li>
@@ -1204,56 +799,51 @@
 </section>
 
 <!-- ─── Quickstart ─────────────────────────────────── -->
-<section class="quickstart-section" id="quickstart">
+<section class="section" id="quickstart">
     <div class="container">
-        <div class="reveal">
-            <p class="section-eyebrow">{{ page.extra.quickstart_eyebrow | default(value="// quickstart") }}</p>
+        <div class="section-header">
             <h2 class="section-title">{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
         </div>
 
         <div class="quickstart-grid">
-            <div class="code-block reveal">
+            <div class="terminal-wrap">
                 <div class="code-block-header">
                     <span class="code-block-title">install + init</span>
-                    <button class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';}.bind(this)).catch(function(){});">copy</button>
+                    <button type="button" class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy';}.bind(this),2000);}.bind(this)).catch(function(){});">Copy</button>
                 </div>
-                <div class="code-block-body">
+                <div class="terminal-body">
                     <div><span class="c-comment"># install (macOS / Linux)</span></div>
-                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> <span class="c-arg">https://seite.sh/install.sh</span> | <span class="c-cmd">sh</span></div>
+                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> https://seite.sh/install.sh | <span class="c-cmd">sh</span></div>
                     <div class="c-blank"></div>
                     <div><span class="c-comment"># scaffold a new site</span></div>
-                    <div><span class="c-cmd">seite</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
-                    <div><span class="c-cmd">cd</span> <span class="c-arg">mysite</span></div>
+                    <div><span class="c-cmd">seite</span> init mysite <span class="c-flag">--title "My Site"</span></div>
+                    <div><span class="c-cmd">cd</span> mysite</div>
                     <div class="c-blank"></div>
                     <div><span class="c-comment"># start dev server with live reload</span></div>
-                    <div><span class="c-cmd">seite</span> <span class="c-arg">serve</span></div>
+                    <div><span class="c-cmd">seite</span> serve</div>
                 </div>
             </div>
 
-            <ol class="steps-list reveal" aria-label="Getting started steps">
+            <ol class="steps-list" aria-label="Getting started steps">
                 <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_1_title | default(value="Install seite") }}</strong>
                         <span>{{ page.extra.step_1_body | default(value="<code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_2_title | default(value="Scaffold your site") }}</strong>
                         <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>AGENTS.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_3_title | default(value="Create content with your agent") }}</strong>
                         <span>{{ page.extra.step_3_body | default(value="<code>seite agent</code> with your prompt. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.") | safe }}</span>
                     </div>
                 </li>
                 <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
                     <div class="step-body">
                         <strong>{{ page.extra.step_4_title | default(value="Deploy anywhere") }}</strong>
                         <span>{{ page.extra.step_4_body | default(value="<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.") | safe }}</span>
@@ -1265,41 +855,19 @@
 </section>
 
 <!-- ─── CTA ────────────────────────────────────────── -->
-<div class="cta-section">
+<section class="cta-section">
     <div class="container">
-        <p class="dogfood-line reveal">{{ page.extra.dogfood_line | default(value="This site is built with seite — the docs, the changelog, the llms.txt. All of it.") }}</p>
-        <h2 class="reveal">{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
-        <p class="reveal">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
-        <div class="hero-actions reveal">
+        <h2>{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
+        <p class="cta-sub">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
+        <div class="hero-actions">
             <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStartedCTA">{{ t.get_started | default(value="Get started") }} →</a>
             <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHubCTA" rel="noopener noreferrer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
                 {{ t.view_on_github | default(value="View on GitHub") }}
             </a>
         </div>
+        <p class="dogfood-line">{{ page.extra.dogfood_line | default(value="This site is built with seite — the docs, the changelog, the llms.txt. All of it.") }}</p>
     </div>
-</div>
+</section>
 
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    (function () {
-        var els = document.querySelectorAll('.reveal');
-        if (!els.length) return;
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            els.forEach(function (el) { el.classList.add('visible'); });
-            return;
-        }
-        var observer = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
-        els.forEach(function (el) { observer.observe(el); });
-    })();
-</script>
 {% endblock %}

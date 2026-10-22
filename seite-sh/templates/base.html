@@ -67,6 +67,11 @@
     {% endif %}
     </script>
 
+        <!-- Site-wide mono face: without it Chrome falls back to Courier New -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap">
+
         {% block head %}{% endblock %}
 
         <style>
@@ -98,7 +103,7 @@
                 --radius-sm: 5px;
                 --radius: 10px;
                 --radius-lg: 16px;
-                --mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, 'Courier New', monospace;
+                --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
             }
 
             /* ---- Design tokens: light ---- */
@@ -148,6 +153,10 @@
                 line-height: 1.65;
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
+            }
+
+            pre, code, kbd, samp {
+                font-family: var(--mono);
             }
 
             img {
