@@ -78,7 +78,7 @@ struct ContentItem {
 
 ## Schemas and Scheduling in Step 3
 
-Per collection, `content::schema::Schema::for_site` validates each parsed file (`ParsedContent.frontmatter_text`/`frontmatter_line` give exact key lines): errors are returned like parse errors (→ `fatal`), `frontmatter-schema-unknown` warnings go to `diagnostics` through a mutex. Drafts are validated only with `--drafts`; future-dated files always. After the filename date is resolved, `content::schedule::Schedule::is_published` drops future-dated (unless `config.build.future`) and expired items exactly like drafts, so they never reach feeds, sitemap, search, llms files, tags or listings.
+Per collection, `content::schema::Schema::for_site` validates each parsed file (`ParsedContent.frontmatter_text`/`frontmatter_line` give exact key lines): errors are returned like parse errors (→ `fatal`), `frontmatter-schema-unknown` warnings go to `diagnostics` through a mutex. Drafts are validated only with `--drafts`; future-dated files always. After the filename date is resolved, `content::schedule::Schedule::is_published(collection, fm)` — only with `[build] schedule = true` and `has_date` — drops future-dated (unless `config.build.future`) and expired items exactly like drafts, so they never reach feeds, sitemap, search, llms files, tags or listings.
 
 ## Data Files
 

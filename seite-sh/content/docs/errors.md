@@ -181,6 +181,18 @@ extra:
 
 **How to fix:** add the missing language key to the value named in the message, or remove the language from `seite.toml` if the site is not translated yet. See [multi-language sites](/docs/i18n).
 
+## link-to-scheduled
+
+**What it means:** with `[build] schedule = true`, a published page links to a post the build leaves out because it is scheduled (its `date` is in the future) or expired (its `expires:` date has passed). The link is broken on the live site until the target is published. The message names the target's go-live (or expiry) date. A warning, or an error with `--strict`, in both `seite check` and `seite build`.
+
+**Common causes:** a teaser linking to a post scheduled for later, a page still linking to an expired announcement.
+
+**How to fix:** remove the link until the target goes live, give the linking page the same or a later `date:` so both publish together, or bring the target forward. To preview the site as it will look once everything is published, use `seite build --future` / `seite check --future`.
+
+```markdown
+Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
+```
+
 ## missing-asset
 
 **What it means:** a page references a file (image, stylesheet, script, download) that does not exist in the build output. Reported as a warning, or as an error with `--strict`.

@@ -71,7 +71,7 @@ title = "My Site"
 description = ""
 base_url = "http://localhost:3000"
 language = "en"
-# timezone = "Europe/Berlin" # "today" for scheduled posts (IANA or "+02:00"; default UTC)
+# timezone = "Europe/Berlin" # "today" for scheduled posts (IANA or "+02:00"; default: local date)
 
 [[collections]]
 name = "posts"
@@ -79,7 +79,7 @@ name = "posts"
 
 [collections.fields.description]   # typed frontmatter schema (src/content/schema.rs)
 type = "string"          # string|text|number|integer|bool|date|datetime|url|image|enum|list|object
-max = 300                # also: required, enum/values, items, min, pattern, default, description
+description = "Summary for search results"  # also: required, enum/values, items, min, max, pattern, default
 # subdomain = "blog"     # optional: deploy separately
 # private = true         # optional: exclude from discovery
 # access_group = "members" # optional: password group when [access] is enabled
@@ -94,6 +94,7 @@ minify = true
 fingerprint = true
 math = true              # KaTeX
 mermaid = true           # Mermaid diagrams (```mermaid fences, client-side)
+schedule = true          # scheduled publishing for dated collections (init writes it; absent = off)
 # future = true          # build future-dated content (= `seite build --future`; serve always does)
 
 [deploy]
@@ -172,8 +173,8 @@ endpoint = "xpznqkdl"
 - Rules files are created only when missing; skills (with their reference files) and command wrappers are replaced when the bundled `# seite-skill-version` is newer. Pre-0.21 `theme-builder`/`brand-identity`/`landing-page` skills and the `design-prompts` rule are removed only when unmodified (`LEGACY_BODY_HASHES` in `src/cli/upgrade.rs`: SHA-256 of every released body)
 
 ### Content Model Checks
-- Frontmatter schemas (`src/content/schema.rs`, design note at the top): `CollectionConfig.fields` (`IndexMap<String, FieldSchema>`) + `strict_fields`. Built-in/top-level keys (`schema::top_level_keys`: `BUILTIN_KEYS` ∪ `Frontmatter`'s serde fields; add site-defined top-level keys such as taxonomy names there) validate at the top level, other fields under `extra:`. `Schema::for_site(config, collection)` validates `ParsedContent.frontmatter_text` with exact key lines → `frontmatter-schema` errors / `frontmatter-schema-unknown` warnings. Wired into build Step 3 (errors join `fatal`, non-drafts unless `--drafts`), `check --file`/post-edit hook (drafts too), `create_content_file` (defaults + placeholders; `reject_invalid` for MCP), and `seite_update_frontmatter` (refuses violations on touched keys; routes custom keys into `extra`). Config mistakes → located `config-invalid` via `schema::validate_config`; unknown schema keys via `unknown_keys.rs`. Presets (`schema::preset_fields`) are never `required`; `seite upgrade` adds no schemas.
-- Scheduled publishing (`src/content/schedule.rs`): `Schedule::new(config).is_published(fm)` in build Step 3 (future `date` hidden unless `[build] future`; `expires` past → hidden). `seite build --future` / `seite serve` / `seite check` set `config.build.future`. "Today" = `[site] timezone` (chrono-tz IANA or fixed offset; UTC default). Generated workflows carry `deploy::SCHEDULE_TRIGGER` (daily cron); upgrade step (0.20.2) adds it only to byte-identical generated workflows, else a one-time notice.
+- Frontmatter schemas (`src/content/schema.rs`, design note at the top): `CollectionConfig.fields` (`IndexMap<String, FieldSchema>`) + `strict_fields`. Built-in/top-level keys (`schema::top_level_keys`: `BUILTIN_KEYS` ∪ `Frontmatter`'s serde fields; add site-defined top-level keys such as taxonomy names there) validate at the top level, other fields under `extra:`. `Schema::for_site(config, collection)` validates `ParsedContent.frontmatter_text` with exact key lines → `frontmatter-schema` errors / `frontmatter-schema-unknown` warnings. Wired into build Step 3 (errors join `fatal`, non-drafts unless `--drafts`), `check --file`/post-edit hook (drafts too), `create_content_file` (defaults + placeholders; `reject_invalid` for MCP), and `seite_update_frontmatter` (refuses violations on touched keys; routes custom keys into `extra`). Config mistakes → located `config-invalid` via `schema::validate_config`; unknown schema keys via `unknown_keys.rs`. Presets (`schema::preset_fields`) are never `required` and have no bounds; list-of-string items accept numbers/bools (like the parser); `seite upgrade` adds no schemas.
+- Scheduled publishing (`src/content/schedule.rs`): opt-in `[build] schedule = true` (init writes it; absent = off; upgrade only shows the one-time `schedule-feature` notice), dated collections only. `Schedule::new(config).is_published(collection, fm)` in build Step 3 (future `date` hidden unless `[build] future`; past `expires` hidden). `seite build --future` / `seite check --future` / `seite serve` set `config.build.future`. "Today" = `schedule::today(config)`: `[site] timezone` (chrono-tz IANA or fixed offset), else `chrono::Local` — also used by every writer (new, init starter content, MCP create, serve REPL). `hidden_pages`/`hidden_summary` give the "N scheduled posts hidden; next goes live …" line (build, serve, check info note); `schedule::link_diagnostics` turns broken links to hidden pages into `link-to-scheduled` (check and `build --strict`). `seite check` builds like the real build, then renders scheduled pages in a second scratch build and keeps only their diagnostics. Generated workflows carry `deploy::SCHEDULE_TRIGGER` (daily cron); upgrade adds it (ungated, idempotent, only with `schedule = true`) to byte-identical generated workflows, else a one-time notice.
 - `seite check --external` (`src/build/external_links.rs`): runs inside `check_site_full` on the scratch output; ureq, 8 workers / 2 per host, cache `.seite/cache/links.json` via `safe_fs` (gitignored), skip list `DEFAULT_SKIP` + `[check] external_skip`; `external-link-broken` / `external-link-unreachable`. Never in build or hooks; tests use a local tiny_http server.
 
 ## Context Rules

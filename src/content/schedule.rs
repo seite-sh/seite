@@ -2,31 +2,42 @@
 //!
 //! # Design note
 //!
+//! - **Opt-in.** Scheduling applies only when `[build] schedule = true`
+//!   (written by `seite init` for new sites; absent = off, so existing sites
+//!   build exactly as before) and only to collections with `has_date = true`.
+//!   `seite upgrade` never turns it on; it shows a one-time notice instead.
 //! - **What is scheduled.** A page whose `date` (frontmatter, or the
-//!   `YYYY-MM-DD-` filename prefix in dated collections) is after *today* is
-//!   "future": it is left out of the build exactly like a draft (no HTML,
-//!   `.md`, feeds, sitemap, search index, llms files, tag pages, listings).
-//!   It goes live on the first build on or after its date, which is why the
-//!   generated GitHub Actions workflow also runs on a daily cron.
+//!   `YYYY-MM-DD-` filename prefix) is after *today* is "future": it is left
+//!   out of the build exactly like a draft (no HTML, `.md`, feeds, sitemap,
+//!   search index, llms files, tag pages, listings). It goes live on the
+//!   first build on or after its date, which is why the generated GitHub
+//!   Actions workflow also runs on a daily cron.
 //! - **Expiry.** `expires: YYYY-MM-DD` keeps the page up through that day and
-//!   removes it from builds from the next day on.
+//!   removes it from builds from the next day on (same switch).
 //! - **Including future content.** `seite build --future`, `[build] future =
 //!   true`, and `seite serve` (which previews drafts too) include future
-//!   content. `seite check` always renders it, so a scheduled post that will
-//!   publish on its own is validated today. Expired pages are never built
-//!   (delete `expires:` to bring one back).
+//!   content. `seite check` resolves links exactly like the build (links from
+//!   live pages to hidden pages are `link-to-scheduled` warnings) but still
+//!   renders scheduled pages, so a post that will publish on its own is
+//!   validated today. Expired pages are never built.
 //! - **Today.** Dates are plain dates, so "today" is the calendar date in
 //!   `[site] timezone`: an IANA name (`Europe/Berlin`, via chrono-tz, which
 //!   tera already compiles in) or a fixed offset (`+02:00`, `-0500`, `UTC`).
-//!   Without it, UTC — the clock of CI runners, so a local build and the
-//!   cron build agree.
+//!   Without it, the machine's local date — the same clock `seite new`,
+//!   `seite init` and MCP create use to date new files, so a post written
+//!   today is never hidden as "future". CI runners run in UTC: set
+//!   `timezone` when the cron build must agree with your local date.
 
 use std::str::FromStr;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 
+use std::path::{Path, PathBuf};
+
 use super::Frontmatter;
-use crate::config::SiteConfig;
+use crate::build::links;
+use crate::config::{CollectionConfig, ResolvedPaths, SiteConfig};
+use crate::diagnostics::Diagnostic;
 
 /// A parsed `[site] timezone`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,11 +87,18 @@ pub fn validate_timezone(tz: Option<&str>) -> Result<(), String> {
     }
 }
 
-/// Today's date in the site's time zone (UTC when unset or invalid).
+/// Today's date in the site's time zone, or the machine's local date when
+/// `[site] timezone` is unset (or invalid). Used both to date new files
+/// (`seite new`, `seite init`, MCP create, the serve REPL) and to decide what
+/// is scheduled, so the two always agree.
 pub fn today(config: &SiteConfig) -> NaiveDate {
-    today_at(config, Utc::now())
+    match config.site.timezone.as_deref().and_then(SiteTz::parse) {
+        Some(tz) => tz.date_at(Utc::now()),
+        None => chrono::Local::now().date_naive(),
+    }
 }
 
+/// [`today`] at instant `now` for a site with a timezone (UTC otherwise).
 pub fn today_at(config: &SiteConfig, now: DateTime<Utc>) -> NaiveDate {
     config
         .site
@@ -111,9 +129,12 @@ pub fn status(date: Option<NaiveDate>, expires: Option<NaiveDate>, today: NaiveD
     }
 }
 
-/// The build's view: today's date and whether future content is included.
+/// The build's view: whether scheduling is on, today's date, and whether
+/// future content is included.
 #[derive(Debug, Clone, Copy)]
 pub struct Schedule {
+    /// `[build] schedule = true`.
+    pub enabled: bool,
     pub today: NaiveDate,
     pub include_future: bool,
 }
@@ -121,20 +142,155 @@ pub struct Schedule {
 impl Schedule {
     pub fn new(config: &SiteConfig) -> Self {
         Self {
+            enabled: config.build.schedule,
             today: today(config),
             include_future: config.build.future,
         }
     }
 
-    /// Whether a page (with its date already resolved into `fm.date`) is
-    /// built.
-    pub fn is_published(&self, fm: &Frontmatter) -> bool {
+    /// Whether a page of `collection` (with its date already resolved into
+    /// `fm.date`) is built. Always true when scheduling is off or the
+    /// collection is not dated.
+    pub fn is_published(&self, collection: &CollectionConfig, fm: &Frontmatter) -> bool {
+        if !self.enabled || !collection.has_date {
+            return true;
+        }
         match status(fm.date, fm.expires, self.today) {
             Status::Live => true,
             Status::Future => self.include_future,
             Status::Expired => false,
         }
     }
+}
+
+/// A page the build leaves out because of scheduling.
+#[derive(Debug, Clone)]
+pub struct HiddenPage {
+    pub source: PathBuf,
+    pub url: String,
+    pub title: String,
+    pub status: Status,
+    /// Go-live date (future) or expiry date (expired).
+    pub date: NaiveDate,
+}
+
+/// Every non-draft page scheduling hides from a build of `config` (future
+/// pages only when `config.build.future` is off), sorted by date.
+pub fn hidden_pages(config: &SiteConfig, paths: &ResolvedPaths) -> Vec<HiddenPage> {
+    let schedule = Schedule::new(config);
+    if !schedule.enabled {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for collection in config.collections.iter().filter(|c| c.has_date) {
+        let dir = paths.content.join(&collection.directory);
+        for entry in walkdir::WalkDir::new(&dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+        {
+            let path = entry.path();
+            let Ok((fm, _)) = super::parse_content_file(path) else {
+                continue;
+            };
+            if fm.draft {
+                continue;
+            }
+            let date = crate::build::resolve_item_date(&fm, path, collection);
+            let (status, when) = match status(date, fm.expires, schedule.today) {
+                Status::Future if !schedule.include_future => (Status::Future, date),
+                Status::Expired => (Status::Expired, fm.expires),
+                _ => continue,
+            };
+            let Some(when) = when else { continue };
+            let rel = path.strip_prefix(&dir).unwrap_or(path);
+            let url = crate::build::resolve_item_location(config, collection, path, rel, &fm).url;
+            out.push(HiddenPage {
+                source: path.to_path_buf(),
+                url,
+                title: fm.title.clone(),
+                status,
+                date: when,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.title.cmp(&b.title)));
+    out
+}
+
+/// One line for `seite build`/`serve`/`check`: "N scheduled post(s) hidden;
+/// next goes live <date> (<title>)", plus expired pages. `None` when
+/// nothing is hidden.
+pub fn hidden_summary(hidden: &[HiddenPage]) -> Option<String> {
+    let future: Vec<&HiddenPage> = hidden
+        .iter()
+        .filter(|h| h.status == Status::Future)
+        .collect();
+    let expired = hidden
+        .iter()
+        .filter(|h| h.status == Status::Expired)
+        .count();
+    let mut parts = Vec::new();
+    if let Some(next) = future.first() {
+        parts.push(format!(
+            "{} scheduled post{} hidden; next goes live {} ({})",
+            future.len(),
+            if future.len() == 1 { "" } else { "s" },
+            next.date,
+            next.title
+        ));
+    }
+    if expired > 0 {
+        parts.push(format!(
+            "{expired} expired post{} hidden",
+            if expired == 1 { "" } else { "s" }
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
+/// [`links::link_diagnostics`], except that broken links whose target is a
+/// page hidden by scheduling become `link-to-scheduled` warnings (errors
+/// with `strict`) naming the go-live (or expiry) date.
+pub fn link_diagnostics(
+    check: &links::LinkCheckResult,
+    hidden: &[HiddenPage],
+    strict: bool,
+    root: &Path,
+) -> Vec<Diagnostic> {
+    let norm = |u: &str| u.trim_end_matches('/').to_string();
+    let target = |href: &str| hidden.iter().find(|h| norm(&h.url) == norm(href));
+    let mut rest = check.clone();
+    rest.broken_links.retain(|l| target(&l.href).is_none());
+    let mut out = links::link_diagnostics(&rest, strict);
+    let mut scheduled = check.clone();
+    scheduled.broken_links.retain(|l| target(&l.href).is_some());
+    scheduled.missing_assets.clear();
+    for link in links::distinct_links(&scheduled.broken_links) {
+        let Some(page) = target(&link.href) else {
+            continue;
+        };
+        let source = links::relative_display(root, &page.source);
+        let what = match page.status {
+            Status::Future => format!("a scheduled page that goes live on {}", page.date),
+            _ => format!("a page that expired after {}", page.date),
+        };
+        let message = format!("link to `{}` points at {what} ({source})", link.href);
+        let mut d = if strict {
+            Diagnostic::error("link-to-scheduled", message)
+        } else {
+            Diagnostic::warning("link-to-scheduled", message)
+        }
+        .with_file(PathBuf::from(link.file()))
+        .with_hint(
+            "the link is broken until the target is published: remove it for now, give this page the same or a later `date:`, or build with --future to preview",
+        );
+        if let Some(line) = link.line {
+            d = d.with_line(line);
+        }
+        out.push(d);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -198,14 +354,26 @@ mod tests {
             date: Some(d("2026-05-11")),
             ..Default::default()
         };
+        let posts = CollectionConfig::preset_posts();
+        let pages = CollectionConfig::preset_pages();
         let mut s = Schedule {
+            enabled: true,
             today,
             include_future: false,
         };
-        assert!(!s.is_published(&fm));
+        assert!(!s.is_published(&posts, &fm));
+        assert!(
+            s.is_published(&pages, &fm),
+            "undated collections are never scheduled"
+        );
         s.include_future = true;
-        assert!(s.is_published(&fm));
+        assert!(s.is_published(&posts, &fm));
         fm.expires = Some(d("2026-05-01"));
-        assert!(!s.is_published(&fm));
+        assert!(!s.is_published(&posts, &fm));
+        s.enabled = false;
+        assert!(
+            s.is_published(&posts, &fm),
+            "off unless [build] schedule = true"
+        );
     }
 }

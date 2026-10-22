@@ -76,7 +76,7 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         &paths.content,
         collection,
         &spec,
-        chrono::Local::now().date_naive(),
+        crate::content::schedule::today(&site_config),
     )?;
 
     human::success(&format!("Created {}", created.path.display()));

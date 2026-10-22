@@ -844,12 +844,22 @@ fn route_extra_keys(
     if set.contains_key("extra") || unset.iter().any(|k| k == "extra") {
         return Err("pass custom fields either as `extra` (the whole mapping) or one by one (`author` / `extra.author`), not both".into());
     }
+    // Never start from an empty `extra` when the existing one can't be read:
+    // writing it back would drop the user's data.
     let mut extra = match original.get("extra") {
-        Some(serde_yaml_ng::Value::Mapping(m)) => serde_json::to_value(m)
-            .ok()
+        None | Some(serde_yaml_ng::Value::Null) => serde_json::Map::new(),
+        Some(serde_yaml_ng::Value::Mapping(m)) => m
+            .keys()
+            .all(serde_yaml_ng::Value::is_string)
+            .then(|| serde_json::to_value(m).ok())
+            .flatten()
             .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default(),
-        _ => serde_json::Map::new(),
+            .ok_or_else(|| {
+                "the existing `extra:` mapping cannot be edited key by key (it has non-string keys or values JSON cannot hold); nothing was written — edit the file directly".to_string()
+            })?,
+        Some(_) => {
+            return Err("the existing `extra:` is not a mapping; nothing was written — fix it in the file (extra:\n  key: value) first".into())
+        }
     };
     let mut new_set = serde_json::Map::new();
     for (k, v) in set {

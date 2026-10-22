@@ -309,11 +309,11 @@ pub fn is_top_level(config: &SiteConfig, name: &str) -> bool {
 }
 
 /// The schema written into new sites' `seite.toml` by `seite init` and
-/// `seite collection add` (deliberately nothing `required`, so no existing
+/// `seite collection add` (deliberately nothing `required` and no length
+/// bounds, so no existing
 /// habit breaks).
 pub fn preset_fields(preset: &str) -> IndexMap<String, FieldSchema> {
     let description = || FieldSchema {
-        max: Some(300.into()),
         description: Some(
             "Summary for search results and social cards (aim for 50–160 characters)".into(),
         ),
@@ -719,6 +719,18 @@ impl<'a> Schema<'a> {
                 for (i, item) in items.iter().enumerate() {
                     let item_problem = match spec.items {
                         Some(FieldType::Enum) => check_enum(spec, item),
+                        // Like the frontmatter parser (`tags: [2024, rust]`),
+                        // numbers and bools are strings in a list of strings.
+                        Some(FieldType::String | FieldType::Text)
+                            if matches!(item, Yaml::Number(_) | Yaml::Bool(_)) =>
+                        {
+                            let text = match item {
+                                Yaml::Number(n) => n.to_string(),
+                                Yaml::Bool(b) => b.to_string(),
+                                _ => String::new(),
+                            };
+                            self.check_pattern(name, &text)
+                        }
                         Some(item_type) => check_scalar(item_type, item)
                             .or_else(|| item.as_str().and_then(|s| self.check_pattern(name, s))),
                         None => item.as_str().and_then(|s| self.check_pattern(name, s)),

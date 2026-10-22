@@ -397,7 +397,21 @@ fn test_init_writes_preset_schemas_and_site_checks_clean() {
     );
     let site = tmp.path().join("site");
     let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
-    assert!(toml.contains("[collections.fields.description]\ntype = \"string\"\nmax = 300"));
+    assert!(toml.contains("[collections.fields.description]\ntype = \"string\"\ndescription ="));
+    assert!(
+        !toml.contains("max ="),
+        "presets have no length bounds: {toml}"
+    );
+    assert!(toml.contains("\nschedule = true\n"), "{toml}");
+    // Scalars in tags and long descriptions pass the preset schema.
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-scalars.md",
+        &format!(
+            "---\ntitle: Scalars\ndescription: \"{}\"\ntags: [2024, rust, true]\n---\nBody\n",
+            "x".repeat(400)
+        ),
+    );
     assert!(toml.contains("[collections.fields.weight]"));
     assert!(
         !toml.contains("required"),
@@ -794,4 +808,214 @@ fn test_check_external_reports_broken_links_with_source_lines() {
     assert!(diagnostics_of(&doc)
         .iter()
         .any(|d| d["code"] == "external-link-broken" && d["severity"] == "error"));
+}
+
+// --- review follow-ups: opt-in scheduling, local clock, links, MCP extra ---
+
+#[test]
+fn test_build_existing_site_without_schedule_key_publishes_future_posts() {
+    let tmp = TempDir::new().unwrap();
+    let site = scheduled_site(&tmp);
+    let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+    assert!(toml.contains("schedule = true"));
+    // A site from before scheduling: no `schedule` key.
+    let old: String = toml
+        .lines()
+        .filter(|l| !l.contains("schedule = true") && !l.starts_with("# "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    fs::write(site.join("seite.toml"), old).unwrap();
+    let (ok, doc) = run_json(&site, &["build"]);
+    assert!(ok, "{doc}");
+    assert!(site.join("dist/posts/futurepost.html").exists());
+    assert!(
+        site.join("dist/posts/oldpost.html").exists(),
+        "expires follows the switch"
+    );
+    // Upgrade does not turn it on but explains it once.
+    let output = page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(all.contains("Scheduled publishing is available"), "{all}");
+    assert!(!fs::read_to_string(site.join("seite.toml"))
+        .unwrap()
+        .contains("schedule = true"));
+    let output = page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    let again = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !again.contains("Scheduled publishing is available"),
+        "once: {again}"
+    );
+}
+
+#[test]
+fn test_build_undated_collections_are_never_scheduled() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Docs", "posts,docs");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "content/docs/later.md",
+        "---\ntitle: Later\ndate: 2999-01-01\nexpires: 2000-01-01\n---\nx\n",
+    );
+    assert!(run_json(&site, &["build"]).0);
+    assert!(site.join("dist/docs/later.html").exists());
+}
+
+#[test]
+fn test_init_and_build_publish_starter_content_in_any_local_timezone() {
+    for tz in ["Pacific/Kiritimati", "Pacific/Pago_Pago"] {
+        let tmp = TempDir::new().unwrap();
+        page_cmd()
+            .env("TZ", tz)
+            .args([
+                "init",
+                "site",
+                "--title",
+                "T",
+                "--description",
+                "",
+                "--deploy-target",
+                "github-pages",
+                "--collections",
+                "posts,changelog",
+            ])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+        let site = tmp.path().join("site");
+        let output = page_cmd()
+            .env("TZ", tz)
+            .args(["--json", "build"])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{tz}");
+        let posts: Vec<_> = fs::read_dir(site.join("dist/posts")).unwrap().collect();
+        assert!(
+            site.join("dist/posts/hello-world.html").exists(),
+            "{tz}: starter post must be built ({posts:?})"
+        );
+        let changelog = fs::read_dir(site.join("dist/changelog"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                e.file_name().to_string_lossy().ends_with(".html") && e.file_name() != "index.html"
+            });
+        assert!(changelog, "{tz}: starter changelog entry must be built");
+        // `seite new` dates with the same clock: the new post is live too.
+        let output = page_cmd()
+            .env("TZ", tz)
+            .args(["new", "post", "Fresh"])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        page_cmd()
+            .env("TZ", tz)
+            .arg("build")
+            .current_dir(&site)
+            .assert()
+            .success();
+        assert!(site.join("dist/posts/fresh.html").exists(), "{tz}");
+    }
+}
+
+#[test]
+fn test_check_and_build_agree_on_links_to_scheduled_pages() {
+    let tmp = TempDir::new().unwrap();
+    let site = scheduled_site(&tmp);
+    write_site_file(
+        &site,
+        "content/posts/2020-02-02-teaser.md",
+        "---\ntitle: Teaser\n---\nIntro.\n\nComing: [soon](/posts/futurepost)\n",
+    );
+    let (ok, doc) = run_json(&site, &["check"]);
+    assert!(ok, "warning only: {doc}");
+    let d = diagnostics_of(&doc)
+        .into_iter()
+        .find(|d| d["code"] == "link-to-scheduled")
+        .unwrap_or_else(|| panic!("{doc}"));
+    assert_eq!(d["file"], "content/posts/2020-02-02-teaser.md");
+    assert_eq!(d["line"], 6);
+    assert!(
+        d["message"]
+            .as_str()
+            .unwrap()
+            .contains("goes live on 2999-01-01"),
+        "{d}"
+    );
+    // Human output: the info note (not a diagnostic).
+    let output = page_cmd().arg("check").current_dir(&site).output().unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        all.contains("1 scheduled post hidden; next goes live 2999-01-01 (Futurepost)"),
+        "{all}"
+    );
+    // --strict: check and build both fail on it.
+    let (ok, doc) = run_json(&site, &["check", "--strict"]);
+    assert!(!ok);
+    assert!(diagnostics_of(&doc)
+        .iter()
+        .any(|d| d["code"] == "link-to-scheduled"));
+    let (ok, doc) = run_json(&site, &["build", "--strict"]);
+    assert!(!ok, "{doc}");
+    assert!(
+        diagnostics_of(&doc)
+            .iter()
+            .any(|d| d["code"] == "link-to-scheduled"),
+        "{doc}"
+    );
+    // With --future the link resolves in both.
+    let (ok, doc) = run_json(&site, &["check", "--strict", "--future"]);
+    assert!(ok, "{doc}");
+    let (ok, doc) = run_json(&site, &["build", "--strict", "--future"]);
+    assert!(ok, "{doc}");
+    // Build prints the hidden-post line.
+    let output = page_cmd().arg("build").current_dir(&site).output().unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(all.contains("1 scheduled post hidden; next goes live 2999-01-01 (Futurepost); 1 expired post hidden"), "{all}");
+}
+
+#[test]
+fn test_mcp_update_frontmatter_refuses_unconvertible_extra() {
+    let tmp = TempDir::new().unwrap();
+    let site = schema_site(&tmp);
+    let original = "---\ntitle: P\nextra:\n  author: Me\n  1: numeric key\n---\nBody\n";
+    write_site_file(&site, "content/posts/2024-01-01-p.md", original);
+    let (is_error, text) = mcp_tool_call(
+        &site,
+        "seite_update_frontmatter",
+        serde_json::json!({ "path": "content/posts/2024-01-01-p.md", "set": { "status": "draft" } }),
+    );
+    assert!(is_error, "{text}");
+    assert!(text.contains("nothing was written"), "{text}");
+    assert_eq!(
+        fs::read_to_string(site.join("content/posts/2024-01-01-p.md")).unwrap(),
+        original
+    );
 }

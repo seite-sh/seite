@@ -131,6 +131,7 @@ seite check [options]
 | `--file <path>...` | Check only these files: frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
 | `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
+| `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine) |
 | `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks |
 
 Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on:
@@ -155,13 +156,14 @@ Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and
 | `i18n-partial` | warning | A data language map is missing some configured languages |
 | `broken-link` | warning (error with `--strict`) | Internal link, or relative `.md` link between content files, with no matching target (did-you-mean hint when a close match exists) |
 | `missing-asset` | warning (error with `--strict`) | Referenced image, script, stylesheet, or media file doesn't exist in the build output |
+| `link-to-scheduled` | warning (error with `--strict`) | Link from a published page to a post hidden by scheduling (future `date` or past `expires`); names the go-live date |
 | `external-link-broken` | warning (error with `--strict`) | `--external`: link returns 404/410 (or another 4xx) or its host does not exist |
 | `external-link-unreachable` | warning (error with `--strict`) | `--external`: timeout, connection failure, 5xx, 401/403/429 or a redirect loop — often temporary or bot blocking |
 | `build-failed` | error | Any other build failure |
 
 With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`. With `--external`, `data.external` adds `{found, checked, cached, skipped, broken, unreachable}`.
 
-`seite check` renders scheduled (future-dated) content too, so a post that will go live on its own is validated before its date.
+With `[build] schedule = true`, `seite check` resolves links like `seite build` (scheduled posts are hidden unless `--future`) but still renders scheduled posts, so one that will go live on its own is validated before its date; it also prints how many posts are hidden and when the next goes live (an info note, not a diagnostic).
 
 ## seite serve
 

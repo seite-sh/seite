@@ -11,7 +11,7 @@ use std::path::Path;
 use clap::Args;
 use serde_json::json;
 
-use crate::build::{self, external_links, links, BuildOptions};
+use crate::build::{self, external_links, BuildOptions};
 use crate::cli::harness::Agent;
 use crate::cli::harness_hooks;
 use crate::config::SiteConfig;
@@ -58,6 +58,11 @@ pub struct CheckArgs {
     /// `[check] external_skip`)
     #[arg(long, conflicts_with_all = ["hook", "files"])]
     pub external: bool,
+
+    /// Treat future-dated (scheduled) content as published, like
+    /// `seite build --future` (links to it are then not reported)
+    #[arg(long, conflicts_with_all = ["hook", "files"])]
+    pub future: bool,
 }
 
 /// Check the site in the current directory. In a workspace, `--site <name>`
@@ -103,12 +108,31 @@ pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     if site_filter.is_some() {
         human::warning("--site flag ignored (not in a workspace)");
     }
-    if args.external {
-        let (diagnostics, summary) = check_site_full(&cwd, args.drafts, None, Some(args.strict))?;
-        return report_with(diagnostics, args.strict, summary);
+    let (diagnostics, summary) = check_site_full(
+        &cwd,
+        args.drafts,
+        None,
+        args.external.then_some(args.strict),
+        args.future,
+    )?;
+    if !args.future {
+        print_schedule_note(&cwd);
     }
-    let diagnostics = check_site(&cwd, args.drafts)?;
-    report(diagnostics, args.strict)
+    report_with(diagnostics, args.strict, summary)
+}
+
+/// Info note (human output only, not a diagnostic) about pages scheduling
+/// hides from the build: "N scheduled post(s) hidden; next goes live …".
+fn print_schedule_note(root: &Path) {
+    let Ok(config) = SiteConfig::load(&root.join("seite.toml")) else {
+        return;
+    };
+    let paths = config.resolve_paths(root);
+    if let Some(line) = crate::content::schedule::hidden_summary(
+        &crate::content::schedule::hidden_pages(&config, &paths),
+    ) {
+        human::info(&line);
+    }
 }
 
 /// Check every (or the `site_filter`) site of a workspace. Each site is
@@ -299,7 +323,7 @@ fn check_site_with(
     include_drafts: bool,
     base_url: Option<&str>,
 ) -> crate::error::Result<Diagnostics> {
-    check_site_full(root, include_drafts, base_url, None).map(|(d, _)| d)
+    check_site_full(root, include_drafts, base_url, None, false).map(|(d, _)| d)
 }
 
 /// [`check_site_with`], plus — with `external: Some(strict)` — the external
@@ -310,6 +334,7 @@ fn check_site_full(
     include_drafts: bool,
     base_url: Option<&str>,
     external: Option<bool>,
+    future: bool,
 ) -> crate::error::Result<(Diagnostics, Option<external_links::Summary>)> {
     let mut external_summary = None;
     let mut all = Diagnostics::new();
@@ -328,11 +353,12 @@ fn check_site_full(
     if let Some(base_url) = base_url {
         config.site.base_url = base_url.to_string();
     }
-    // Scheduled (future-dated) content publishes on its own later (cron
-    // builds), so check it today.
-    config.build.future = true;
+    // Links resolve exactly like `seite build` (scheduled pages are hidden
+    // unless --future); scheduled pages are still rendered below.
+    config.build.future |= future;
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
+    let hidden = crate::content::schedule::hidden_pages(&config, &paths);
 
     // 2. Templates: every file that fails to parse (the build would silently
     //    fall back to the built-in templates, so these are errors here).
@@ -356,7 +382,12 @@ fn check_site_full(
     let build_diagnostics = match build::build_site(&config, &scratch_paths, &opts) {
         Ok(result) => {
             let mut found = result.diagnostics;
-            found.extend(links::link_diagnostics(&result.link_check, false));
+            found.extend(crate::content::schedule::link_diagnostics(
+                &result.link_check,
+                &hidden,
+                false,
+                root,
+            ));
             if let Some(strict) = external {
                 let page_sources: std::collections::HashMap<String, std::path::PathBuf> = result
                     .collections
@@ -391,6 +422,38 @@ fn check_site_full(
         Err(PageError::Diagnostics(d)) => d,
         Err(e) => Diagnostic::error("build-failed", e.to_string()).into(),
     };
+    let mut build_diagnostics: Vec<Diagnostic> = build_diagnostics.into_iter().collect();
+    // Scheduled pages publish on their own later (cron builds): render them
+    // in a second scratch build and keep only their own problems.
+    let scheduled: Vec<std::path::PathBuf> = hidden
+        .iter()
+        .filter(|h| h.status == crate::content::schedule::Status::Future)
+        .map(|h| h.source.clone())
+        .collect();
+    if !scheduled.is_empty() {
+        let scratch_future = tempfile::Builder::new().prefix("seite-check-").tempdir()?;
+        let mut future_paths = paths.clone();
+        future_paths.output = scratch_future.path().join("dist");
+        future_paths.subdomain_output_root = scratch_future.path().join("dist-subdomains");
+        let mut future_config = config.clone();
+        future_config.build.future = true;
+        let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
+            Ok(result) => result.diagnostics.into_iter().collect(),
+            Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
+            Err(_) => Vec::new(),
+        };
+        let wanted: Vec<std::path::PathBuf> = scheduled
+            .iter()
+            .map(|p| p.strip_prefix(root).unwrap_or(p).to_path_buf())
+            .collect();
+        build_diagnostics.extend(found.into_iter().filter_map(|d| {
+            let d = relativize(d, root, scratch_future.path());
+            d.file
+                .as_ref()
+                .is_some_and(|f| wanted.contains(f))
+                .then_some(d)
+        }));
+    }
     for d in build_diagnostics {
         // Already reported (as errors) by the template pass above.
         if has_template_errors && d.code == "template-parse" {

@@ -45,7 +45,7 @@ pub fn output_schema() -> serde_json::Value {
             "expired": {
                 "type": "array",
                 "items": path_date,
-                "description": "Past their `expires:` date (left out of builds); `date` is the expiry date"
+                "description": "Past their `expires:` date (left out of builds when [build] schedule = true); `date` is the expiry date"
             },
             "parse_errors": { "type": "array", "items": path_error },
             "missing_translations": {
@@ -71,7 +71,7 @@ pub fn output_schema() -> serde_json::Value {
     let count = || serde_json::json!({ "type": "integer" });
     object_schema(
         serde_json::json!({
-            "today": prop("string", "Today's date in the site's time zone ([site] timezone, default UTC)"),
+            "today": prop("string", "Today's date in the site's time zone ([site] timezone, else the local date)"),
             "next_scheduled": object_schema(
                 serde_json::json!({
                     "path": { "type": "string" },
@@ -185,30 +185,23 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             if collection.has_date && fm.tags.is_empty() {
                 missing_tags.push(item.path.clone());
             }
-            match crate::content::schedule::status(parsed.date, fm.expires, today) {
-                crate::content::schedule::Status::Future => {
-                    if let Some(date) = parsed.date {
-                        future_dated.push(
-                            serde_json::json!({ "path": item.path, "date": date.to_string() }),
-                        );
-                        if !fm.draft && next.as_ref().is_none_or(|(d, ..)| date < *d) {
-                            next = Some((
-                                date,
-                                item.path.clone(),
-                                collection.name.clone(),
-                                fm.title.clone(),
-                            ));
-                        }
-                    }
+            // `expired` and `next_scheduled` follow `[build] schedule`
+            // (dated collections only); `future_dated` is reported always.
+            let scheduling = config.build.schedule && collection.has_date;
+            if let Some(date) = parsed.date.filter(|d| *d > today) {
+                future_dated
+                    .push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
+                if scheduling && !fm.draft && next.as_ref().is_none_or(|(d, ..)| date < *d) {
+                    next = Some((
+                        date,
+                        item.path.clone(),
+                        collection.name.clone(),
+                        fm.title.clone(),
+                    ));
                 }
-                crate::content::schedule::Status::Expired => {
-                    if let Some(date) = fm.expires {
-                        expired.push(
-                            serde_json::json!({ "path": item.path, "date": date.to_string() }),
-                        );
-                    }
-                }
-                crate::content::schedule::Status::Live => {}
+            }
+            if let Some(date) = fm.expires.filter(|e| scheduling && *e < today) {
+                expired.push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
             }
             present.insert((parsed.lang.clone(), parsed.slug.clone()));
             if parsed.lang == default_lang {

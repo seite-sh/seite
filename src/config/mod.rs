@@ -326,6 +326,11 @@ pub struct BuildSection {
     /// (`seite build --future` sets it for one build; `seite serve` always does).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub future: bool,
+    /// Scheduled publishing for dated collections: hide posts dated in the
+    /// future until their date, and `expires:` posts after theirs. Default:
+    /// false (`seite init` turns it on for new sites).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub schedule: bool,
 }
 
 impl Default for BuildSection {
@@ -342,6 +347,7 @@ impl Default for BuildSection {
             math: false,
             mermaid: false,
             future: false,
+            schedule: false,
         }
     }
 }

@@ -1210,7 +1210,7 @@ fn build_site_inner(
                     if fm.date.is_none() && collection.has_date {
                         fm.date = parse_date_from_filename(path);
                     }
-                    if !schedule.is_published(&fm) {
+                    if !schedule.is_published(collection, &fm) {
                         return Ok(None);
                     }
 

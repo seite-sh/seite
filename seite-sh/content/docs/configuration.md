@@ -62,7 +62,7 @@ cookie_consent = true
 | `base_url` | string | `"http://localhost:3000"` | Full base URL for canonical links, sitemap, RSS |
 | `language` | string | `"en"` | Default language code |
 | `author` | string | `""` | Author name for JSON-LD and RSS |
-| `timezone` | string | UTC | Time zone that decides "today" for scheduled publishing: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`) |
+| `timezone` | string | local time | Time zone that decides "today" for scheduled publishing and for dating new files: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`). Unset: the machine's local date (CI runners use UTC, so set it when the cron build must agree with your local date) |
 
 {{% callout(type="warning") %}}
 Set `base_url` to your real domain before deploying. Leaving it as `localhost` will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.
@@ -138,7 +138,7 @@ max = 5
 
 **Required fields in new files.** `seite new` writes each default; a required field without a default is written empty (`''`, `[]`, `false` or `null`) and listed as "fill in", and `seite check` points at it until it has a value. MCP `seite_create_content` refuses (writes nothing) when a value it was given breaks the schema or a required field it could have passed is missing; `seite_update_frontmatter` refuses changes that break the schema and stores custom fields (`author`, or `extra.author`) under `extra:`.
 
-Drafts are validated with `--drafts` (and always by `seite check --file` and the after-edit hook). Scheduled (future-dated) pages are always validated. `seite init` writes small presets (for example `description` as a string of at most 300 characters); nothing is required unless you add `required = true`, and `seite upgrade` never adds schemas to existing sites.
+Drafts are validated with `--drafts` (and always by `seite check --file` and the after-edit hook). Scheduled (future-dated) pages are always validated. `seite init` writes small presets (types and descriptions only: no length bounds); nothing is required unless you add `required = true`, and `seite upgrade` never adds schemas to existing sites.
 
 ### Private collections
 
@@ -214,7 +214,8 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 | `mermaid` | bool | `false` | Render fenced ` ```mermaid ` blocks as [Mermaid](https://mermaid.js.org/) diagrams (client-side) |
-| `future` | bool | `false` | Build future-dated (scheduled) content too. `seite build --future` does the same for one build; `seite serve` always previews it |
+| `schedule` | bool | `false` | Scheduled publishing for dated collections: hide posts dated in the future until their date, and `expires:` posts after it. `seite init` sets it for new sites; existing sites build as before until you add it |
+| `future` | bool | `false` | With `schedule`: build future-dated content too. `seite build --future` does the same for one build; `seite serve` always previews it |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
@@ -510,12 +511,21 @@ extra:
 | `draft` | bool | No | Exclude from build unless `--drafts` |
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |
-| `expires` | date | No | Last day the page is published; later builds leave it out |
+| `expires` | date | No | Last day the page is published; later builds leave it out (dated collections, with `[build] schedule = true`) |
 | `extra` | map | No | Arbitrary data for templates |
 
 ### Scheduled publishing
 
-A page whose `date` (or `YYYY-MM-DD-` filename prefix) is after today is scheduled: like a draft, it is left out of the build — HTML, `.md`, feeds, sitemap, search index, `llms.txt`/`llms-full.txt`, tag pages and listings — until the first build on or after its date. `expires: 2026-12-31` keeps a page up through that day and removes it from builds from the next day on. "Today" is the date in `[site] timezone` (default UTC). `seite build --future` or `[build] future = true` includes scheduled pages, and `seite serve` always shows them; expired pages are never built. `seite check` always validates scheduled pages, so a post that will publish on its own is checked today. `seite stats` lists future-dated and expired pages and the next scheduled one, and `seite context` prints `next scheduled: <date> (<title>)`.
+Scheduled publishing is on when `[build] schedule = true` (new sites get it from `seite init`; existing sites keep building every page until you add it — `seite upgrade` only tells you about it) and applies to collections with `has_date = true`:
+
+```toml
+[build]
+schedule = true
+```
+
+A post whose `date` (or `YYYY-MM-DD-` filename prefix) is after today is scheduled: like a draft, it is left out of the build — HTML, `.md`, feeds, sitemap, search index, `llms.txt`/`llms-full.txt`, tag pages and listings — until the first build on or after its date. `expires: 2026-12-31` keeps a post up through that day and removes it from builds from the next day on. "Today" is the date in `[site] timezone`, or the machine's local date when it is unset — the same date `seite new` and `seite init` put on new posts, so a post written today is never hidden. `seite build --future` or `[build] future = true` includes scheduled posts, and `seite serve` always shows them; expired posts are never built.
+
+`seite build` and `seite serve` print one line when scheduling hides posts (`2 scheduled posts hidden; next goes live 2026-11-01 (Launch)`), and so does `seite check` (an info note, not a diagnostic). `seite check` resolves links exactly like the build — a link from a published page to a hidden one is a `link-to-scheduled` warning with the go-live date (`--strict` fails on it; `seite check --future` treats scheduled posts as published) — and still renders scheduled posts, so a post that will publish on its own is validated today. `seite stats` lists future-dated and expired posts and the next scheduled one, and `seite context` prints `next scheduled: <date> (<title>)`.
 
 Because a static site only changes when it is rebuilt, the GitHub Actions workflow `seite init` generates rebuilds daily (`schedule: - cron: '17 5 * * *'`). See [Deployment](/docs/deployment#scheduled-publishing) for each host.
 

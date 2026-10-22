@@ -114,14 +114,33 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
+    // Pages hidden by scheduling, and links to them (`link-to-scheduled`).
+    let hidden = crate::content::schedule::hidden_pages(&config, &paths);
+    if let Some(line) = crate::content::schedule::hidden_summary(&hidden) {
+        human::info(&line);
+    }
+
     // Link validation results from the post-process pass (no extra file walk)
     let problems = print_link_report(&result.link_check, args.strict, None);
     if args.strict && problems > 0 {
-        return Err(strict_link_failure(&result.link_check));
+        return Err(strict_failure(
+            format!("Build failed: {}", problem_summary(&result.link_check)),
+            Diagnostics::from(crate::content::schedule::link_diagnostics(
+                &result.link_check,
+                &hidden,
+                true,
+                &cwd,
+            )),
+        ));
     }
 
     let mut diagnostics = Diagnostics::from(config_diagnostics);
     diagnostics.extend(result.diagnostics.iter().cloned());
+    diagnostics.extend(
+        crate::content::schedule::link_diagnostics(&result.link_check, &hidden, false, &cwd)
+            .into_iter()
+            .filter(|d| d.code == "link-to-scheduled"),
+    );
     let mut data = build_data(&result, Some(&paths.output));
     data["diagnostics"] = serde_json::to_value(&diagnostics).unwrap_or_default();
     json_out::set_data(data);

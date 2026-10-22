@@ -1000,7 +1000,7 @@ fn call_create_content(state: &ServerState, arguments: &serde_json::Value) -> To
         &paths.content,
         collection,
         &spec,
-        chrono::Local::now().date_naive(),
+        crate::content::schedule::today(config),
     )
     .map_err(|e| {
         let msg = e.to_string();
