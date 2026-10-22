@@ -18,7 +18,7 @@ Canonical AGENTS.md project instructions
 .claude/rules/features.md
 .claude/rules/design-prompts.md
 .claude/rules/private-collections.md
-.claude/skills/theme-builder/SKILL.md (updated v0 → v1)
+.claude/skills/theme-builder/SKILL.md (updated v0 → v2)
 .claude/skills/brand-identity/SKILL.md (/brand-identity command)
 .claude/skills/seite/SKILL.md (/seite command)
 Project instructions (per-agent MCP setup table)
@@ -204,7 +204,7 @@ Prefer the seite MCP tools (`seite_*`) when they are available; the `seite` CLI 
 ---
 name: theme-builder
 description: Create or customize a site theme interactively. Walks through site purpose, audience, visual direction, and design specifics before generating a complete base.html template with all SEO, accessibility, search, pagination, and i18n requirements.
-# seite-skill-version: 1
+# seite-skill-version: 2
 ---
 [… body of skill `theme-builder` elided …]
 

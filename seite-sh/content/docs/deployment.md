@@ -249,7 +249,7 @@ dist/
 ├── index.md             # Homepage markdown
 ├── feed.xml             # RSS feed
 ├── sitemap.xml          # XML sitemap
-├── robots.txt           # Robots directives
+├── robots.txt           # Robots + AI crawler directives, Content Signals
 ├── llms.txt             # LLM summary
 ├── llms-full.txt        # Full LLM content
 ├── search-index.json    # Client-side search data

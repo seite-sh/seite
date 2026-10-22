@@ -25,7 +25,7 @@
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
     <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-    {% if page.url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
+    {% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
     {% endif %}
@@ -69,8 +69,8 @@
         #search-results a:last-child { border-bottom: none; }
         #search-results a:hover { background: #1a1a1a; }
         #search-results strong { color: #e8e8e8; }
-        #search-results .result-meta { font-size: 0.78rem; color: #555; margin-top: 0.1rem; }
-        #search-results .no-results { padding: 0.5rem 0.75rem; color: #555; font-size: 0.9rem; }
+        #search-results .result-meta { font-size: 0.78rem; color: #7a7a7a; margin-top: 0.1rem; }
+        #search-results .no-results { padding: 0.5rem 0.75rem; color: #7a7a7a; font-size: 0.9rem; }
         .homepage-content { margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 1px solid #1e1e1e; }
         .homepage-content > h1:first-child { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; line-height: 1.2; color: #e8e8e8; }
         .homepage-content > p { font-size: 1.05rem; line-height: 1.7; color: #9ca3af; margin-bottom: 0.75rem; }
@@ -237,10 +237,11 @@
         .docs-section-list { list-style: none; padding: 0; }
         .docs-section-list li { margin-bottom: 0.3rem; }
         .docs-section-list a { color: #8b5cf6; }
-        footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #1e1e1e; color: #555; font-size: 0.85rem; }
+        footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #1e1e1e; color: #7a7a7a; font-size: 0.85rem; }
         :focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #8b5cf6; color: #fff; z-index: 100; text-decoration: none; }
         .skip-link:focus { top: 0; }
+        .skip-link:hover, .skip-link:focus { color: #fff; }
         .toc-level-1 { padding-left: 0; }
         .toc-level-2 { padding-left: 1rem; }
         .toc-level-3 { padding-left: 2rem; }

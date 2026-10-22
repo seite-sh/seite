@@ -25,7 +25,7 @@
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
     <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-    {% if page.url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
+    {% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
     {% endif %}
@@ -250,6 +250,7 @@
         :focus-visible { outline: 3px solid #000; outline-offset: 2px; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #000; color: #ffe600; z-index: 100; text-decoration: none; font-weight: 900; text-transform: uppercase; border: 3px solid #ffe600; }
         .skip-link:focus { top: 0; }
+        .skip-link:hover, .skip-link:focus { background: #000; color: #ffe600; }
         .toc-level-1 { padding-left: 0; }
         .toc-level-2 { padding-left: 1rem; }
         .toc-level-3 { padding-left: 2rem; }

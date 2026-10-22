@@ -146,7 +146,7 @@ Prefer the seite MCP tools (`seite_*`) when they are available; the `seite` CLI 
 ---
 name: theme-builder
 description: Create or customize a site theme interactively. Walks through site purpose, audience, visual direction, and design specifics before generating a complete base.html template with all SEO, accessibility, search, pagination, and i18n requirements.
-# seite-skill-version: 1
+# seite-skill-version: 2
 ---
 [… body of skill `theme-builder` elided …]
 

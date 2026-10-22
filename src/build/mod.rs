@@ -165,6 +165,12 @@ struct PageContext {
     slug: String,
     tags: Vec<String>,
     url: String,
+    /// Path of the published markdown copy of this page (e.g. `/posts/hello.md`,
+    /// `/posts/index.md`), relative to `site.base_url` like `url`. `None` when the
+    /// build writes no `.md` file for the page (empty homepage, paginated pages
+    /// after the first, tag pages, 404), so themes can gate the
+    /// `<link rel="alternate" type="text/markdown">` tag on it.
+    markdown_url: Option<String>,
     /// Collection name ("posts", "docs", "pages", etc.).
     collection: String,
     /// Per-page robots meta value, e.g. "noindex".
@@ -1778,6 +1784,7 @@ fn build_site_inner(
                 ),
                 slug: homepage.slug.clone(),
                 tags: homepage.frontmatter.tags.clone(),
+                markdown_url: Some(index_markdown_url(&index_page_url)),
                 url: index_page_url,
                 collection: homepage.collection.clone(),
                 robots: homepage.frontmatter.robots.clone(),
@@ -1811,6 +1818,9 @@ fn build_site_inner(
                 slug: col_index.slug.clone(),
                 tags: col_index.frontmatter.tags.clone(),
                 url: index_page_url,
+                // No index.md is written at a subdomain root (steps 4b/4b-extra skip
+                // empty url_prefix collections), so there is no markdown alternate.
+                markdown_url: None,
                 collection: col_index.collection.clone(),
                 robots: col_index.frontmatter.robots.clone(),
                 word_count: col_index.word_count,
@@ -1830,6 +1840,7 @@ fn build_site_inner(
                 slug: "index".to_string(),
                 tags: Vec::new(),
                 url: index_page_url,
+                markdown_url: None,
                 collection: String::new(),
                 robots: None,
                 word_count: 0,
@@ -2027,6 +2038,7 @@ fn build_site_inner(
                             slug: url_prefix_trimmed.to_string(),
                             tags: ci.frontmatter.tags.clone(),
                             url: page_url(page_num),
+                            markdown_url: (page_num == 1).then(|| index_markdown_url(&page_url(1))),
                             collection: c.name.clone(),
                             robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                             word_count: ci.word_count,
@@ -2046,6 +2058,7 @@ fn build_site_inner(
                             slug: String::new(),
                             tags: Vec::new(),
                             url: page_url(page_num),
+                            markdown_url: (page_num == 1).then(|| index_markdown_url(&page_url(1))),
                             collection: String::new(),
                             robots: effective_robots(None, c.private),
                             word_count: 0,
@@ -2207,6 +2220,7 @@ fn build_site_inner(
                         slug: url_prefix_trimmed.to_string(),
                         tags: ci.frontmatter.tags.clone(),
                         url: collection_url.clone(),
+                        markdown_url: Some(index_markdown_url(&collection_url)),
                         collection: c.name.clone(),
                         robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                         word_count: ci.word_count,
@@ -2226,6 +2240,7 @@ fn build_site_inner(
                         slug: url_prefix_trimmed.to_string(),
                         tags: Vec::new(),
                         url: collection_url.clone(),
+                        markdown_url: Some(index_markdown_url(&collection_url)),
                         collection: c.name.clone(),
                         robots: effective_robots(None, c.private),
                         word_count: 0,
@@ -2308,6 +2323,7 @@ fn build_site_inner(
                     slug: "404".to_string(),
                     tags: Vec::new(),
                     url: format!("{lang_prefix}/404"),
+                    markdown_url: None,
                     collection: String::new(),
                     robots: Some("noindex".to_string()),
                     word_count: 0,
@@ -2421,6 +2437,7 @@ fn build_site_inner(
                     slug: "tags".to_string(),
                     tags: Vec::new(),
                     url: format!("{tags_base_url}/"),
+                    markdown_url: None,
                     collection: String::new(),
                     robots: None,
                     word_count: 0,
@@ -2464,6 +2481,7 @@ fn build_site_inner(
                         slug: format!("tags/{tag_slug}"),
                         tags: Vec::new(),
                         url: tag_url.clone(),
+                        markdown_url: None,
                         collection: String::new(),
                         robots: None,
                         word_count: 0,
@@ -3467,6 +3485,18 @@ fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     output_dir.join(format!("{clean}.md"))
 }
 
+/// Published URL of a content item's markdown copy — the URL form of
+/// [`url_to_md_path`], so it always names the file step 8 writes.
+fn item_markdown_url(url: &str) -> Option<String> {
+    let clean = url.trim_matches('/');
+    (!clean.is_empty()).then(|| format!("/{clean}.md"))
+}
+
+/// Published URL of the `index.md` written beside an index page whose URL ends in `/`.
+fn index_markdown_url(index_url: &str) -> String {
+    format!("{}/index.md", index_url.trim_end_matches('/'))
+}
+
 /// Generate a markdown listing for a collection index page.
 fn generate_collection_index_md(label: &str, items: &[ItemSummary]) -> String {
     let mut md = format!("# {label}\n\n");
@@ -3531,6 +3561,7 @@ fn build_page_context(
             slug: item.slug.clone(),
             tags: item.frontmatter.tags.clone(),
             url: item.url.clone(),
+            markdown_url: item_markdown_url(&item.url),
             collection: item.collection.clone(),
             robots: effective_robots(item.frontmatter.robots.clone(), collection_private),
             word_count: item.word_count,
@@ -4191,6 +4222,32 @@ mod tests {
     fn test_url_to_md_path_basic() {
         let p = url_to_md_path(Path::new("/out"), "/docs/setup");
         assert_eq!(p, PathBuf::from("/out/docs/setup.md"));
+    }
+
+    #[test]
+    fn test_item_markdown_url_matches_written_md_path() {
+        for url in [
+            "/posts/hello",
+            "/about/",
+            "/fr/docs/setup",
+            "/docs/guides/setup",
+        ] {
+            let md_url = item_markdown_url(url).unwrap();
+            assert_eq!(
+                url_to_md_path(Path::new("/out"), url),
+                Path::new("/out").join(md_url.trim_start_matches('/')),
+                "markdown_url for {url} must name the file step 8 writes"
+            );
+        }
+        assert_eq!(item_markdown_url("/"), None);
+    }
+
+    #[test]
+    fn test_index_markdown_url() {
+        assert_eq!(index_markdown_url("/"), "/index.md");
+        assert_eq!(index_markdown_url("/es/"), "/es/index.md");
+        assert_eq!(index_markdown_url("/posts/"), "/posts/index.md");
+        assert_eq!(index_markdown_url("/fr/docs/"), "/fr/docs/index.md");
     }
 
     #[test]
@@ -5141,6 +5198,7 @@ mod tests {
             slug: "my-page".into(),
             tags: vec!["tag1".into()],
             url: "/my-page".into(),
+            markdown_url: Some("/my-page.md".into()),
             collection: "pages".into(),
             robots: Some("noindex".into()),
             word_count: 100,
@@ -5161,6 +5219,7 @@ mod tests {
         assert_eq!(json["title"], "My Page");
         assert_eq!(json["updated"], "2025-06-01");
         assert_eq!(json["robots"], "noindex");
+        assert_eq!(json["markdown_url"], "/my-page.md");
         assert_eq!(json["toc"][0]["level"], 2);
         assert_eq!(json["toc"][0]["text"], "Section One");
         assert_eq!(json["toc"][0]["id"], "section-one");
@@ -5179,6 +5238,7 @@ mod tests {
             slug: String::new(),
             tags: Vec::new(),
             url: "/".into(),
+            markdown_url: None,
             collection: String::new(),
             robots: None,
             word_count: 0,
@@ -5191,6 +5251,7 @@ mod tests {
         assert!(json["date"].is_null());
         assert!(json["image"].is_null());
         assert!(json["robots"].is_null());
+        assert!(json["markdown_url"].is_null());
         assert_eq!(json["tags"].as_array().unwrap().len(), 0);
     }
 

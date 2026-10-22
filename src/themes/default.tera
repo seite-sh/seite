@@ -25,7 +25,7 @@
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
     <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-    {% if page.url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
+    {% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
     {% endif %}
@@ -47,6 +47,10 @@
         body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; font-family: 'Outfit', system-ui, -apple-system, sans-serif; line-height: 1.6; color: #222; }
         a { color: #0057b7; }
         a:hover { color: #003d82; }
+        h1, h2, h3 { line-height: 1.25; }
+        h1 { font-size: 2rem; }
+        h2 { font-size: 1.5rem; }
+        h3 { font-size: 1.2rem; }
         header { margin-bottom: 2rem; }
         header h1 { margin-bottom: 0.25rem; }
         header h1 a { text-decoration: none; color: inherit; }
@@ -235,6 +239,7 @@
         footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #eee; color: #666; font-size: 0.85rem; }
         .skip-link { position: absolute; top: -100%; left: 0; padding: 0.5rem 1rem; background: #0057b7; color: #fff; z-index: 100; text-decoration: none; }
         .skip-link:focus { top: 0; }
+        .skip-link:hover, .skip-link:focus { color: #fff; }
         .toc-level-1 { padding-left: 0; }
         .toc-level-2 { padding-left: 1rem; }
         .toc-level-3 { padding-left: 2rem; }

@@ -35,6 +35,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.slug }}` | URL slug |
 | `{{ page.tags }}` | List of tags |
 | `{{ page.url }}` | Page URL path |
+| `{{ page.markdown_url }}` | Path of the page's published markdown copy (e.g. `/posts/hello.md`, `/posts/index.md`); unset when no `.md` file is written (empty homepage, paginated pages after the first, tag pages, 404) |
 | `{{ page.collection }}` | Collection name |
 | `{{ page.robots }}` | Robots meta directive |
 | `{{ page.word_count }}` | Word count |

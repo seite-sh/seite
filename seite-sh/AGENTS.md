@@ -21,7 +21,7 @@ This is a static site built with the `seite` CLI tool.
    - `BlogPosting` for posts (include `datePublished`, `dateModified` if `page.updated` is set)
    - `Article` for docs and other collection pages
    - `WebSite` for the homepage/index
-5. **Markdown alternate link** — `<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">` (LLM-native differentiator)
+5. **Markdown alternate link** — `{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}` (LLM-native differentiator; `page.markdown_url` is only set when a `.md` copy is published)
 6. **llms.txt discovery** — `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
 7. **RSS autodiscovery** — `<link rel="alternate" type="application/rss+xml" ...>`
 8. **Language attribute** — `<html lang="{{ site.language }}">` (already in bundled themes)

@@ -5,7 +5,7 @@
 - **Multi-language** — Filename-based translations with per-language URLs, RSS, sitemap, and discovery files
 - **SEO+GEO optimized** — Every page gets canonical URL, Open Graph (with image absolutization, dimensions, `article:published_time`/`article:modified_time`), Twitter Card, JSON-LD structured data (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), and per-page robots meta. No plugins needed.
 - **LLM discoverability** — Generates `llms.txt` (summary) and `llms-full.txt` (full markdown with source URLs) for LLM consumption; `<link rel="alternate" type="text/markdown">` in every page's `<head>`
-- **AI crawler management** — `robots.txt` includes explicit directives: allows AI search crawlers (ChatGPT-User, OAI-SearchBot, PerplexityBot) and blocks AI training crawlers (GPTBot, Google-Extended, CCBot, Bytespider)
+- **AI crawler management** — `robots.txt` includes explicit directives: allows AI search and user-fetch crawlers (ChatGPT-User, OAI-SearchBot, PerplexityBot, Perplexity-User, Claude-SearchBot, Claude-User) and blocks AI training crawlers (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent, CCBot, Bytespider); the `User-agent: *` group carries a Cloudflare [Content Signals](https://contentsignals.org) line `Content-Signal: search=yes, ai-input=yes, ai-train=no`
 - **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)
 - **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates; `lastmod` uses `updated` date (with `date` fallback)
 - **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.

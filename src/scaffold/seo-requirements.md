@@ -21,7 +21,7 @@
    - `Article` for docs and other collection pages
    - `WebSite` for the homepage/index
    - `BreadcrumbList` for all collection pages (Home → Collection → Page)
-6. **Markdown alternate link** — `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">` (LLM-native differentiator — must include `title` attribute)
+6. **Markdown alternate link** — `{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}` (LLM-native differentiator — must include `title` attribute; gate on `page.markdown_url`, which is only set when a `.md` copy is actually published, never build the href from `page.url`)
 7. **llms.txt discovery** — `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
 8. **RSS autodiscovery** — `<link rel="alternate" type="application/rss+xml" ...>`
 9. **Language attribute** — `<html lang="{{ lang }}">` (already in bundled themes)

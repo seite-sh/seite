@@ -135,7 +135,7 @@ Search engines and social platforms need these tags. Add them to `<head>`:
 <!-- Discovery links -->
 <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
 <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-{% if page.url %}<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
+{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
 
 <!-- Multi-language alternates -->
 {% if translations %}{% for t in translations %}

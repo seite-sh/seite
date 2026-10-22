@@ -25,7 +25,7 @@
     <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
     <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">
     <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-    {% if page.url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
+    {% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
     {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
     {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
     {% endif %}
@@ -106,7 +106,7 @@
             margin-top: 0.3rem;
         }
         .lang-switcher a {
-            color: #999;
+            color: #737373;
             padding: 0.1rem 0.4rem;
             text-decoration: none;
             border: 1px solid #e0ddd5;
@@ -132,7 +132,7 @@
             color: #111;
         }
         .search-form input:focus { outline: none; border-bottom-color: #a00000; }
-        .search-form input::placeholder { color: #999; font-style: italic; }
+        .search-form input::placeholder { color: #737373; font-style: italic; }
         #search-results {
             background: #fffff8;
             border: 1px solid #e0ddd5;
@@ -151,8 +151,8 @@
         #search-results a:last-child { border-bottom: none; }
         #search-results a:hover { background: #f7f4ee; text-decoration: none; }
         #search-results strong { color: #111; font-weight: 600; }
-        #search-results .result-meta { font-size: 0.7rem; color: #999; margin-top: 0.15rem; }
-        #search-results .no-results { padding: 0.5rem 0.6rem; color: #999; font-size: 0.85rem; font-style: italic; }
+        #search-results .result-meta { font-size: 0.7rem; color: #737373; margin-top: 0.15rem; }
+        #search-results .no-results { padding: 0.5rem 0.6rem; color: #737373; font-size: 0.85rem; font-style: italic; }
 
         /* === MAIN CONTENT — Tufte wide layout === */
         main {
@@ -264,7 +264,7 @@
         section > article h3 a { color: #111; text-decoration: none; }
         section > article h3 a:hover { color: #a00000; }
         section > article p { color: #666; font-size: 0.9rem; margin: 0.2rem 0 0; line-height: 1.5; }
-        section > article time { font-size: 0.75rem; color: #999; font-style: italic; }
+        section > article time { font-size: 0.75rem; color: #737373; font-style: italic; }
 
         /* === SINGLE ARTICLE — scholarly typesetting === */
 
@@ -306,8 +306,8 @@
         main p { margin-bottom: 1rem; }
 
         /* Date, reading time, tags */
-        time { font-size: 0.8rem; color: #999; font-style: italic; }
-        .reading-time { color: #999; font-size: 0.8rem; font-style: italic; }
+        time { font-size: 0.8rem; color: #737373; font-style: italic; }
+        .reading-time { color: #737373; font-size: 0.8rem; font-style: italic; }
         .tags a, .tags span {
             color: #a00000;
             font-size: 0.75rem;
@@ -341,7 +341,7 @@
             color: #333;
         }
         blockquote p { margin-bottom: 0.5rem; }
-        blockquote footer { font-style: normal; font-size: 0.85rem; color: #999; margin-top: 0.25rem; border: none; padding: 0; }
+        blockquote footer { font-style: normal; font-size: 0.85rem; color: #737373; margin-top: 0.25rem; border: none; padding: 0; }
 
         /* Ornamental section divider */
         hr {
@@ -505,7 +505,7 @@
         }
         .pagination a { text-decoration: none; color: #a00000; }
         .pagination a:hover { text-decoration: underline; }
-        .pagination span { color: #999; font-size: 0.85rem; }
+        .pagination span { color: #737373; font-size: 0.85rem; }
         .docs-section-overview { margin-bottom: 2rem; }
         .docs-section-overview h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
         .docs-section-list { list-style: none; padding: 0; }
@@ -614,7 +614,7 @@
             padding-bottom: 0.25rem;
             border-bottom: 1px solid #e0ddd5;
         }
-        .trust-breadcrumb { font-size: 0.8rem; color: #999; margin-bottom: 1.5rem; }
+        .trust-breadcrumb { font-size: 0.8rem; color: #737373; margin-bottom: 1.5rem; }
         .trust-breadcrumb a { color: #a00000; text-decoration: none; }
         .trust-breadcrumb a:hover { text-decoration: underline; }
         .trust-description { color: #666; margin-bottom: 1.5rem; line-height: 1.6; }
@@ -642,7 +642,7 @@
         }
         .cert-status--active { background: #e8f0e4; color: #2e5a1e; }
         .cert-status--in_progress { background: #faf5e6; color: #8b6914; }
-        .cert-status--planned { background: #f0ede5; color: #999; }
+        .cert-status--planned { background: #f0ede5; color: #737373; }
         .cert-detail { margin-bottom: 2rem; padding: 1.25rem; border: 1px solid #e0ddd5; background: #f7f4ee; }
         .cert-meta { font-size: 0.85rem; color: #666; margin-bottom: 0.35rem; }
         .cert-meta strong { color: #111; }
@@ -683,7 +683,7 @@
             align-items: center;
             gap: 1rem;
             margin-top: 0.5rem;
-            color: #999;
+            color: #737373;
             font-size: 0.8rem;
         }
         .changelog-summary { color: #666; font-size: 0.95rem; margin-bottom: 1.5rem; font-style: italic; }
@@ -716,14 +716,14 @@
             align-items: center;
             gap: 0.4rem;
             font-size: 0.75rem;
-            color: #999;
+            color: #737373;
             text-decoration: none;
             padding: 0.2rem 0.5rem;
             border: 1px solid #e0ddd5;
         }
         .changelog-rss:hover { color: #a00000; border-color: #a00000; }
         .changelog-back { margin-bottom: 1.5rem; }
-        .changelog-back a { color: #999; text-decoration: none; font-size: 0.85rem; }
+        .changelog-back a { color: #737373; text-decoration: none; font-size: 0.85rem; }
         .changelog-back a:hover { color: #a00000; }
         .changelog-timeline { position: relative; padding-left: 2rem; }
         .changelog-timeline::before {
@@ -761,7 +761,7 @@
             gap: 0.5rem;
         }
         .changelog-item-header h2 { margin: 0; font-size: 1.05rem; font-weight: 400; font-variant: normal; }
-        .changelog-item-header time { color: #999; font-size: 0.75rem; white-space: nowrap; }
+        .changelog-item-header time { color: #737373; font-size: 0.75rem; white-space: nowrap; }
         .changelog-item .changelog-tags { margin-top: 0.5rem; }
         .changelog-item p, .changelog-item .excerpt { margin-top: 0.5rem; color: #666; font-size: 0.9rem; }
         .changelog-feed .changelog-item::before { display: none; }
@@ -769,7 +769,7 @@
 
         /* === ROADMAP === */
         .roadmap-back { margin-bottom: 1.5rem; }
-        .roadmap-back a { color: #999; text-decoration: none; font-size: 0.85rem; }
+        .roadmap-back a { color: #737373; text-decoration: none; font-size: 0.85rem; }
         .roadmap-back a:hover { color: #a00000; }
         .roadmap-entry-header { margin-bottom: 1.5rem; }
         .roadmap-summary { color: #666; font-size: 0.95rem; margin-bottom: 1.5rem; }
@@ -816,7 +816,7 @@
             gap: 0.5rem;
             font-variant: small-caps;
         }
-        .roadmap-count { font-size: 0.75rem; color: #999; font-weight: 400; }
+        .roadmap-count { font-size: 0.75rem; color: #737373; font-weight: 400; }
         .roadmap-timeline { position: relative; padding-left: 2rem; }
         .roadmap-timeline::before {
             content: '';
@@ -848,7 +848,7 @@
             margin-top: 4rem;
             padding-top: 1rem;
             border-top: 1px solid #e0ddd5;
-            color: #999;
+            color: #737373;
             font-size: 0.8rem;
             max-width: 60%;
         }
@@ -880,7 +880,7 @@
         .tags-index { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
         .tag-link { color: #a00000; font-size: 0.8rem; text-decoration: none; font-variant: small-caps; letter-spacing: 0.03em; }
         .tag-link:hover { text-decoration: underline; }
-        .tag-count { color: #999; font-size: 0.85em; font-variant: normal; letter-spacing: 0; }
+        .tag-count { color: #737373; font-size: 0.85em; font-variant: normal; letter-spacing: 0; }
         .excerpt { color: #666; font-size: 0.9rem; line-height: 1.65; margin: 0.3rem 0 0; font-style: italic; }
         .roadmap-milestone--left { border-left: 2px solid #a00000; padding-left: 1rem; }
         .roadmap-milestone--right { border-left: 2px solid #e0ddd5; padding-left: 1rem; }

@@ -30,11 +30,13 @@ Every bundled theme `<head>` must include:
 ## Discovery Links
 - `<link rel="alternate" type="application/rss+xml">` — RSS
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
-- `<link rel="alternate" type="text/markdown" title="Markdown">` (when `page.url` set, include `title` attr)
+- `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">` (only when `page.markdown_url` is set — never `page.url ~ ".md"`; include `title` attr)
 
 ## robots.txt
-- Allow AI search crawlers: ChatGPT-User, OAI-SearchBot, PerplexityBot
-- Disallow AI training crawlers: GPTBot, Google-Extended, CCBot, Bytespider
+- `User-agent: *` group carries `Content-Signal: search=yes, ai-input=yes, ai-train=no` (https://contentsignals.org)
+- Allow AI search / user-fetch crawlers: ChatGPT-User, OAI-SearchBot, PerplexityBot, Perplexity-User, Claude-SearchBot, Claude-User
+- Disallow AI training crawlers: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent, CCBot, Bytespider
+- Lists live in `AI_SEARCH_CRAWLERS` / `AI_TRAINING_CRAWLERS` in `src/build/discovery.rs`
 
 ## i18n in Themes
 - Use `{{ lang }}` (not `site.language`) for current page language

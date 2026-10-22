@@ -44,6 +44,7 @@ Available in all templates:
 | `page.image` | string? | Social-preview image URL (from `image:` frontmatter) |
 | `page.tags` | array | Tags |
 | `page.url` | string | URL path |
+| `page.markdown_url` | string? | Path of the published markdown copy (e.g. `/posts/hello.md`, `/posts/index.md`); unset when no `.md` is written for the page |
 | `page.slug` | string | URL slug (e.g., `hello-world`) |
 | `page.collection` | string | Collection name (e.g., `posts`) — empty string on homepage |
 | `page.lang` | string | Language code for this page |
@@ -109,7 +110,7 @@ All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO R
 - **Always** include JSON-LD structured data: `BlogPosting` for posts, `Article` for docs/pages, `WebSite` for index, plus `BreadcrumbList` on all collection pages
 - **Use** `og:type = article` when `page.collection` is set; `website` for the homepage
 - **Use** `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise
-- **Include** `<link rel="alternate" type="text/markdown">` — this is your LLM-native differentiator
+- **Include** `{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}` — this is your LLM-native differentiator (gate on `page.markdown_url`; don't append `.md` to `page.url`)
 - **Include** `<link rel="alternate" type="text/plain" href="/llms.txt">` — LLM discovery
 - **Add** `description:`, `image:`, and `updated:` to frontmatter for best SEO/GEO coverage
 - **Use** `robots: noindex` in frontmatter for pages that should not appear in search results

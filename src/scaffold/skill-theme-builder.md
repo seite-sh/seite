@@ -1,7 +1,7 @@
 ---
 name: theme-builder
 description: Create or customize a site theme interactively. Walks through site purpose, audience, visual direction, and design specifics before generating a complete base.html template with all SEO, accessibility, search, pagination, and i18n requirements.
-# seite-skill-version: 1
+# seite-skill-version: 2
 ---
 
 # Theme Builder
@@ -84,7 +84,7 @@ Every `<head>` must include ALL of the following — no exceptions:
   - Index/homepage: `WebSite` with name, description, url
 - `<link rel="alternate" type="application/rss+xml">` — RSS feed
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">` — LLM discovery
-- `<link rel="alternate" type="text/markdown" title="Markdown">` — markdown version (when page.url is set). Must include `title` attribute
+- `{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}` — markdown version, only when `page.markdown_url` is set (it is unset on pages with no published `.md`: empty homepage, paginated pages after the first, tag pages, 404). Never build it from `page.url`. Must include `title` attribute
 - `<meta name="robots">` — only when `page.robots` is set
 - hreflang `<link>` tags when `translations` is non-empty
 

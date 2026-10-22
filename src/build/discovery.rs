@@ -6,11 +6,39 @@
 use crate::config::SiteConfig;
 use crate::content::ContentItem;
 
+/// AI search / user-initiated fetch crawlers: allowed, so content can appear
+/// in (and be fetched for) AI-generated answers.
+const AI_SEARCH_CRAWLERS: &[&str] = &[
+    "ChatGPT-User",
+    "OAI-SearchBot",
+    "PerplexityBot",
+    "Perplexity-User",
+    "Claude-SearchBot",
+    "Claude-User",
+];
+
+/// AI training crawlers: disallowed, so content isn't collected for model training.
+const AI_TRAINING_CRAWLERS: &[&str] = &[
+    "GPTBot",
+    "ClaudeBot",
+    "Google-Extended",
+    "Applebot-Extended",
+    "meta-externalagent",
+    "CCBot",
+    "Bytespider",
+];
+
+/// Cloudflare Content Signals for the `User-agent: *` group — the same policy
+/// as the per-crawler groups: search and AI answers yes, training no.
+const CONTENT_SIGNAL: &str = "search=yes, ai-input=yes, ai-train=no";
+
 /// Generate robots.txt with sitemap reference and AI crawler directives.
 pub fn generate_robots_txt(config: &SiteConfig) -> String {
     let base = config.site.base_url.trim_end_matches('/');
     let mut out = String::new();
     out.push_str("User-agent: *\n");
+    out.push_str("# Content Signals: https://contentsignals.org\n");
+    out.push_str(&format!("Content-Signal: {CONTENT_SIGNAL}\n"));
     out.push_str("Allow: /\n");
     out.push('\n');
     out.push_str(&format!("Sitemap: {base}/sitemap.xml\n"));
@@ -18,16 +46,15 @@ pub fn generate_robots_txt(config: &SiteConfig) -> String {
 
     // AI search crawlers — allow so content appears in AI-generated answers
     out.push_str("# AI search crawlers (allow for AI search visibility)\n");
-    out.push_str("User-agent: ChatGPT-User\nAllow: /\n\n");
-    out.push_str("User-agent: OAI-SearchBot\nAllow: /\n\n");
-    out.push_str("User-agent: PerplexityBot\nAllow: /\n\n");
+    for agent in AI_SEARCH_CRAWLERS {
+        out.push_str(&format!("User-agent: {agent}\nAllow: /\n\n"));
+    }
 
     // AI training crawlers — disallow by default to prevent training use
     out.push_str("# AI training crawlers (block training, not search)\n");
-    out.push_str("User-agent: GPTBot\nDisallow: /\n\n");
-    out.push_str("User-agent: Google-Extended\nDisallow: /\n\n");
-    out.push_str("User-agent: CCBot\nDisallow: /\n\n");
-    out.push_str("User-agent: Bytespider\nDisallow: /\n\n");
+    for agent in AI_TRAINING_CRAWLERS {
+        out.push_str(&format!("User-agent: {agent}\nDisallow: /\n\n"));
+    }
 
     // LLM discovery files
     out.push_str("# LLM discovery\n");
@@ -169,15 +196,58 @@ mod tests {
         assert!(result.contains("Sitemap: https://example.com/sitemap.xml"));
         assert!(result.contains("LLMs-txt: https://example.com/llms.txt"));
         assert!(result.contains("LLMs-full-txt: https://example.com/llms-full.txt"));
-        // AI search crawlers allowed
-        assert!(result.contains("User-agent: ChatGPT-User\nAllow: /"));
-        assert!(result.contains("User-agent: OAI-SearchBot\nAllow: /"));
-        assert!(result.contains("User-agent: PerplexityBot\nAllow: /"));
+        // AI search / user-fetch crawlers allowed
+        for agent in [
+            "ChatGPT-User",
+            "OAI-SearchBot",
+            "PerplexityBot",
+            "Perplexity-User",
+            "Claude-SearchBot",
+            "Claude-User",
+        ] {
+            assert!(
+                result.contains(&format!("User-agent: {agent}\nAllow: /\n")),
+                "{agent} should be allowed"
+            );
+        }
         // AI training crawlers blocked
-        assert!(result.contains("User-agent: GPTBot\nDisallow: /"));
-        assert!(result.contains("User-agent: Google-Extended\nDisallow: /"));
-        assert!(result.contains("User-agent: CCBot\nDisallow: /"));
-        assert!(result.contains("User-agent: Bytespider\nDisallow: /"));
+        for agent in [
+            "GPTBot",
+            "ClaudeBot",
+            "Google-Extended",
+            "Applebot-Extended",
+            "meta-externalagent",
+            "CCBot",
+            "Bytespider",
+        ] {
+            assert!(
+                result.contains(&format!("User-agent: {agent}\nDisallow: /\n")),
+                "{agent} should be disallowed"
+            );
+        }
+    }
+
+    #[test]
+    fn test_robots_txt_content_signals_in_wildcard_group() {
+        let config = test_config("https://example.com", "");
+        let result = generate_robots_txt(&config);
+        // The signal belongs to the `User-agent: *` group, before the first blank line.
+        let wildcard_group = result.split("\n\n").next().unwrap();
+        assert!(wildcard_group.starts_with("User-agent: *\n"));
+        assert!(wildcard_group.contains("# Content Signals: https://contentsignals.org"));
+        assert!(wildcard_group.contains("Content-Signal: search=yes, ai-input=yes, ai-train=no"));
+        assert!(wildcard_group.contains("Allow: /"));
+        assert_eq!(result.matches("Content-Signal:").count(), 1);
+    }
+
+    #[test]
+    fn test_robots_txt_crawler_lists_disjoint() {
+        for agent in AI_SEARCH_CRAWLERS {
+            assert!(
+                !AI_TRAINING_CRAWLERS.contains(agent),
+                "{agent} is both allowed and disallowed"
+            );
+        }
     }
 
     #[test]

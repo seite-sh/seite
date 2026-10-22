@@ -186,7 +186,7 @@ fn test_upgrade_updates_outdated_theme_builder_skill() {
 
     let content = fs::read_to_string(&skill_path).unwrap();
     assert!(
-        content.contains("seite-skill-version: 1"),
+        content.contains("seite-skill-version: 2"),
         "upgrade should replace skill with newer version"
     );
     assert!(

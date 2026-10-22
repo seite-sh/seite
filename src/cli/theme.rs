@@ -358,6 +358,8 @@ It must define these blocks:
 | `page.description` | Page description |
 | `page.date` | Date string (posts only) |
 | `page.tags` | Array of tag strings |
+| `page.url` | Page URL path |
+| `page.markdown_url` | Published markdown copy path (may be undefined) |
 | `collections` | Array of `{{name, label, items[]}}` on index pages |
 | `item.title` | Collection item title |
 | `item.url` | Collection item URL |
@@ -425,6 +427,11 @@ Language switcher (include when translations exist):
 {{% if translations %}}<div class="lang-switcher">
     {{% for t in translations %}}<a href="{{{{ t.url }}}}">{{{{ t.lang }}}}</a>{{% endfor %}}
 </div>{{% endif %}}
+```
+
+Markdown alternate link in <head> (only when a markdown copy exists — never build it from `page.url`):
+```html
+{{% if page.markdown_url %}}<link rel="alternate" type="text/markdown" title="Markdown" href="{{{{ site.base_url }}}}{{{{ page.markdown_url }}}}">{{% endif %}}
 ```
 
 Hreflang links in <head>:
@@ -615,6 +622,9 @@ mod tests {
         assert!(prompt.contains("collections"));
         assert!(prompt.contains("pagination"));
         assert!(prompt.contains("translations"));
+        assert!(prompt.contains(
+            r#"{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}"#
+        ));
     }
 
     #[test]

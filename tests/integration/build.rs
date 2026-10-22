@@ -1429,3 +1429,173 @@ fn test_build_outputs_markdown_alongside_html() {
         }
     }
 }
+
+// --- markdown alternate links (`<link rel="alternate" type="text/markdown">`) ---
+
+/// Every `type="text/markdown"` alternate href across all HTML files in `dist`,
+/// as `(html file, href)` pairs.
+fn markdown_alternate_hrefs(dist: &std::path::Path) -> Vec<(std::path::PathBuf, String)> {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|e| e == "html") {
+                out.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(dist, &mut files);
+    let mut hrefs = Vec::new();
+    for file in files {
+        let html = fs::read_to_string(&file).unwrap();
+        for tag in html.split("<link ").skip(1) {
+            let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
+            if !tag.contains(r#"type="text/markdown""#) {
+                continue;
+            }
+            let start = tag
+                .find(r#"href=""#)
+                .expect("markdown alternate without href")
+                + 6;
+            let end = start + tag[start..].find('"').unwrap();
+            hrefs.push((file.clone(), tag[start..end].to_string()));
+        }
+    }
+    hrefs
+}
+
+/// Assert every markdown alternate href (with `base_url` stripped) names a file in `dist`.
+fn assert_markdown_alternates_resolve(dist: &std::path::Path, base_url: &str) -> usize {
+    let hrefs = markdown_alternate_hrefs(dist);
+    for (file, href) in &hrefs {
+        let path = href
+            .strip_prefix(base_url)
+            .unwrap_or_else(|| panic!("{href} in {} is not under {base_url}", file.display()));
+        assert!(
+            path.ends_with(".md") && dist.join(path.trim_start_matches('/')).is_file(),
+            "markdown alternate {href} in {} does not resolve to a file in dist",
+            file.display()
+        );
+    }
+    hrefs.len()
+}
+
+fn add_posts(site_dir: &std::path::Path, n: usize) {
+    for i in 1..=n {
+        fs::write(
+            site_dir.join(format!("content/posts/2025-01-{i:02}-post-{i}.md")),
+            format!(
+                "---\ntitle: Post {i}\ndate: 2025-01-{i:02}\ntags:\n- rust\n---\n\nBody {i}.\n"
+            ),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn test_build_markdown_alternate_links_resolve() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mdalt", "MD Alt", "posts,docs,pages");
+    let site_dir = tmp.path().join("mdalt");
+    add_posts(&site_dir, 3);
+    // Paginate posts so /posts/page/2/ exists (no markdown copy there).
+    let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    fs::write(
+        site_dir.join("seite.toml"),
+        toml.replacen("name = \"posts\"\n", "name = \"posts\"\npaginate = 2\n", 1),
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+    assert!(dist.join("posts/page/2/index.html").exists());
+
+    // Homepage without content/pages/index.md: no index.md is written, so no link.
+    assert!(!dist.join("index.md").exists());
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        !index.contains(r#"type="text/markdown""#),
+        "homepage without content must not advertise a markdown alternate"
+    );
+
+    // A post links to its own .md copy.
+    let post = fs::read_to_string(dist.join("posts/post-1.html")).unwrap();
+    assert!(post.contains(r#"href="http://localhost:3000/posts/post-1.md""#));
+    assert!(dist.join("posts/post-1.md").is_file());
+
+    // Collection indexes link to index.md (paginated page 1 and non-paginated).
+    let posts_index = fs::read_to_string(dist.join("posts/index.html")).unwrap();
+    assert!(posts_index.contains(r#"href="http://localhost:3000/posts/index.md""#));
+    let docs_index = fs::read_to_string(dist.join("docs/index.html")).unwrap();
+    assert!(docs_index.contains(r#"href="http://localhost:3000/docs/index.md""#));
+
+    // Pages with no markdown copy carry no alternate.
+    for page in [
+        "posts/page/2/index.html",
+        "tags/index.html",
+        "tags/rust/index.html",
+        "404.html",
+    ] {
+        let html = fs::read_to_string(dist.join(page)).unwrap();
+        assert!(
+            !html.contains(r#"type="text/markdown""#),
+            "{page} must not advertise a markdown alternate"
+        );
+    }
+
+    let count = assert_markdown_alternates_resolve(&dist, "http://localhost:3000");
+    assert!(count >= 5, "expected markdown alternates, found {count}");
+}
+
+#[test]
+fn test_build_markdown_alternate_homepage_with_content_multilingual() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "mdhome", "MD Home", "posts,pages");
+    let site_dir = tmp.path().join("mdhome");
+    add_language(&site_dir, "es", "Inicio");
+    let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    fs::write(
+        site_dir.join("seite.toml"),
+        toml.replacen(
+            "base_url = \"http://localhost:3000\"",
+            "base_url = \"https://example.github.io/repo\"",
+            1,
+        ),
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/pages/index.md"),
+        "---\ntitle: Home\n---\n\nWelcome home.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/pages/index.es.md"),
+        "---\ntitle: Inicio\n---\n\nBienvenido.\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/posts/2025-01-01-hola.es.md"),
+        "---\ntitle: Hola\ndate: 2025-01-01\n---\n\nHola.\n",
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(index.contains(r#"href="https://example.github.io/repo/index.md""#));
+    let es_index = fs::read_to_string(dist.join("es/index.html")).unwrap();
+    assert!(es_index.contains(r#"href="https://example.github.io/repo/es/index.md""#));
+    let es_posts = fs::read_to_string(dist.join("es/posts/index.html")).unwrap();
+    assert!(es_posts.contains(r#"href="https://example.github.io/repo/es/posts/index.md""#));
+
+    assert_markdown_alternates_resolve(&dist, "https://example.github.io/repo");
+}
