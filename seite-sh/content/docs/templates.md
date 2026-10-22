@@ -294,7 +294,7 @@ Generate a completely custom theme:
 seite theme create "minimal serif with warm earth tones and generous whitespace"
 ```
 
-This uses Claude Code to generate a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
+This runs your coding agent with `/seite theme <description>` (or points you to `/impeccable` when the impeccable design skill is installed) to build a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
 
 ```bash
 seite theme export earth-tones --description "Warm serif theme with earth tones"

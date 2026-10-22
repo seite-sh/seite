@@ -4,7 +4,7 @@ paths:
 ---
 # MCP Server
 
-`seite mcp` runs JSON-RPC 2.0 over stdio. Declared in `.mcp.json` (the only place Claude Code reads project MCP servers); `.claude/settings.json` pre-approves it via `enabledMcpjsonServers` so it starts without a prompt. `seite upgrade` migrates any legacy `mcpServers` block out of `settings.json`. Also used by Codex CLI, OpenCode, and Cursor — keep every client's constraints in mind (below).
+`seite mcp` runs JSON-RPC 2.0 over stdio. Aimed at MCP hosts without a shell (Claude Desktop chat: `seite mcp --dir /path`). Coding agents use the CLI; the server is only declared in their configs with `seite init --mcp` / `seite upgrade --mcp` (`.mcp.json` + `enabledMcpjsonServers`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json`, `.gemini/settings.json`). Keep every client's constraints in mind (below).
 
 ## Architecture
 Synchronous read loop on stdin, dispatches methods, writes to stdout. All logging to stderr (never stdout). No async runtime. Config is re-read before every resource/tool request.
@@ -21,7 +21,6 @@ Synchronous read loop on stdin, dispatches methods, writes to stdout. All loggin
 - `seite://content` / `seite://content/{collection}` — content inventory
 - `seite://themes` — bundled + installed themes
 - `seite://trust` — trust center state (when configured)
-- `seite://mcp-config` — `.mcp.json` + `.claude/settings.json`
 - `resources/templates/list` advertises `seite://content/{collection}` and `seite://docs/{slug}`
 
 ## Tools (`TOOLS` table in `src/mcp/tools.rs`; new tools in `src/mcp/tools/*.rs`)

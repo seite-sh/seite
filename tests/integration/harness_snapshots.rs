@@ -98,15 +98,15 @@ fn assert_snapshot(case: &str, files: Vec<(String, String)>) {
 
 /// Everything `seite init` generates for `agents` besides the site itself:
 /// the planned harness files plus the two AGENTS.md blocks.
-fn init_files(agents: &[Agent]) -> Vec<(String, String)> {
+fn init_files(agents: &[Agent], mcp: bool) -> Vec<(String, String)> {
     let features = SiteFeatures::default();
-    let mut files: Vec<(String, String)> = harness::plan(agents, features)
+    let mut files: Vec<(String, String)> = harness::plan(agents, features, mcp)
         .into_iter()
         .map(|f| (f.path, f.content))
         .collect();
     files.push((
         "AGENTS.md#agent-setup".into(),
-        harness::mcp_setup_table(agents),
+        harness::mcp_setup_table(agents, mcp),
     ));
     files.push((
         "AGENTS.md#context-rules".into(),
@@ -117,13 +117,18 @@ fn init_files(agents: &[Agent]) -> Vec<(String, String)> {
 
 #[test]
 fn test_harness_snapshot_init_all_agents() {
-    assert_snapshot("init-all", init_files(&Agent::ALL));
+    assert_snapshot("init-all", init_files(&Agent::ALL, false));
+}
+
+#[test]
+fn test_harness_snapshot_init_all_agents_with_mcp() {
+    assert_snapshot("init-all-mcp", init_files(&Agent::ALL, true));
 }
 
 #[test]
 fn test_harness_snapshot_init_each_agent_alone() {
     for agent in Agent::ALL {
-        assert_snapshot(&format!("init-{}", agent.id()), init_files(&[agent]));
+        assert_snapshot(&format!("init-{}", agent.id()), init_files(&[agent], false));
     }
 }
 

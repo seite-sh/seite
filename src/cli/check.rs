@@ -37,22 +37,47 @@ pub struct CheckArgs {
     #[arg(
         long,
         value_name = "AGENT",
-        value_parser = ["claude", "codex", "cursor", "opencode"],
+        value_parser = ["claude", "codex", "cursor", "opencode", "gemini"],
         conflicts_with = "strict"
     )]
     pub hook: Option<String>,
+
+    /// With --hook: run as the agent's after-edit hook, checking only the
+    /// file(s) named in the hook input
+    #[arg(long, requires = "hook")]
+    pub post_edit: bool,
+
+    /// Check only these files (frontmatter, shortcodes, template syntax,
+    /// data-file syntax; no render, no link check). Repeatable.
+    #[arg(long = "file", value_name = "PATH", num_args = 1.., conflicts_with = "hook")]
+    pub files: Vec<std::path::PathBuf>,
 }
 
 /// Check the site in the current directory. In a workspace, `--site <name>`
 /// (or running from the workspace root, which has no `seite.toml`) checks
 /// the workspace's sites instead, with workspace-relative file paths. With
-/// `--hook <agent>` it speaks that coding agent's stop-hook protocol.
+/// `--hook <agent>` it speaks that coding agent's hook protocol; with
+/// `--file` it checks only the given files.
 pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     if let Some(agent) = args.hook.as_deref().and_then(Agent::from_id) {
         if crate::output::is_json() {
             anyhow::bail!("--hook prints its own protocol output; drop --json");
         }
-        return harness_hooks::run(agent, args.drafts);
+        let kind = if args.post_edit {
+            harness_hooks::HookKind::PostEdit
+        } else {
+            harness_hooks::HookKind::Stop
+        };
+        return harness_hooks::run(agent, args.drafts, kind);
+    }
+    if !args.files.is_empty() {
+        let cwd = std::env::current_dir()?;
+        let root = harness_hooks::find_site_root(std::slice::from_ref(&cwd)).ok_or_else(|| {
+            anyhow::anyhow!("no seite.toml found in this directory or its parents")
+        })?;
+        let files: Vec<std::path::PathBuf> = args.files.iter().map(|f| cwd.join(f)).collect();
+        let diagnostics = check_files(&root, &files)?;
+        return report(diagnostics, args.strict);
     }
     let cwd = std::env::current_dir()?;
     if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
@@ -91,6 +116,96 @@ pub fn check_workspace(
         all.extend(found.into_iter().map(|d| d.under(site_dir)));
     }
     Ok(all)
+}
+
+/// Fast check of individual files of the site at `root` (paths absolute or
+/// relative to `root`): the config always (it has to load), plus per file:
+///
+/// - `seite.toml`: its unknown-key warnings
+/// - content markdown: frontmatter and shortcode syntax / unknown shortcodes
+/// - templates (`.html`): Tera syntax
+/// - data files (`.yaml`, `.yml`, `.json`, `.toml`): syntax
+///
+/// Nothing is rendered, so render errors and broken links are left to the
+/// full `seite check`. Other files (and files that no longer exist) are
+/// skipped. Diagnostics are relative to `root`.
+pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::Result<Diagnostics> {
+    let mut all = Diagnostics::new();
+    let (config, config_warnings) =
+        match SiteConfig::load_with_diagnostics(&root.join("seite.toml")) {
+            Ok(loaded) => loaded,
+            Err(PageError::Diagnostics(d)) => return Ok(d.relative_to(root)),
+            Err(PageError::ConfigInvalid { message }) => {
+                all.push(Diagnostic::error("config-invalid", message).with_file("seite.toml"));
+                return Ok(all);
+            }
+            Err(e) => return Err(e),
+        };
+    let paths = config.resolve_paths(root);
+    let registry =
+        crate::shortcodes::ShortcodeRegistry::new(&paths.templates.join("shortcodes")).ok();
+    let empty = json!({});
+    let ext_of = |p: &Path| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default()
+    };
+    // Compare canonical paths so `./content/x.md`, symlinked temp dirs, and
+    // absolute paths from hooks all match.
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let (config_file, content_dir, templates_dir, data_dir) = (
+        canon(&root.join("seite.toml")),
+        canon(&paths.content),
+        canon(&paths.templates),
+        canon(&paths.data_dir),
+    );
+    let mut config_reported = false;
+    for file in files {
+        let abs = canon(&root.join(file));
+        if !abs.is_file() {
+            continue;
+        }
+        let ext = ext_of(&abs);
+        if abs == config_file {
+            if !config_reported {
+                all.extend(config_warnings.clone());
+                config_reported = true;
+            }
+        } else if abs.starts_with(&content_dir) && ext == "md" {
+            match crate::content::parse_content_diagnostic(&abs) {
+                Err(d) => all.push(*d),
+                Ok(parsed) => {
+                    let Some(registry) = &registry else { continue };
+                    if let Err(problems) =
+                        registry.expand_diagnostic(&parsed.body, &abs, &empty, &empty, &empty)
+                    {
+                        // Syntax and unknown names only: rendering needs the
+                        // full page context, which the full check provides.
+                        for mut d in problems
+                            .into_iter()
+                            .filter(|d| matches!(d.code, "shortcode-syntax" | "shortcode-unknown"))
+                        {
+                            d.line = d.line.map(|l| parsed.file_line(l));
+                            all.push(d);
+                        }
+                    }
+                }
+            }
+        } else if abs.starts_with(&templates_dir) && ext == "html" {
+            if let Some(d) = templates::template_file_diagnostic(&templates_dir, &abs) {
+                all.push(d);
+            }
+        } else if abs.starts_with(&data_dir)
+            && matches!(ext.as_str(), "yaml" | "yml" | "json" | "toml")
+        {
+            if let Err(d) = crate::data::parse_data_file(&abs) {
+                all.push(*d);
+            }
+        }
+    }
+    let canonical_root = canon(root);
+    Ok(all.relative_to(&canonical_root).relative_to(root))
 }
 
 /// Collect every problem in the site at `root` as diagnostics (paths relative

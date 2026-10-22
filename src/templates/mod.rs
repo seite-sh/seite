@@ -650,29 +650,36 @@ pub fn template_parse_diagnostics(template_dir: &Path) -> Diagnostics {
         .collect();
     files.sort();
     for path in files {
-        let name = path
-            .strip_prefix(template_dir)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(e) => {
-                diagnostics.push(
-                    Diagnostic::error(
-                        "template-parse",
-                        format!("cannot read template `{name}`: {e}"),
-                    )
-                    .with_file(&path),
-                );
-                continue;
-            }
-        };
-        if let Err(e) = tera::Template::new(&name, None, &content) {
-            diagnostics.push(parse_error_diagnostic(&e, &name, &path));
+        if let Some(d) = template_file_diagnostic(template_dir, &path) {
+            diagnostics.push(d);
         }
     }
     diagnostics
+}
+
+/// Parse one template file (`path`, inside `template_dir`) and return its
+/// `template-parse` error, if any. Used by `seite check --file`.
+pub fn template_file_diagnostic(template_dir: &Path, path: &Path) -> Option<Diagnostic> {
+    let name = path
+        .strip_prefix(template_dir)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            return Some(
+                Diagnostic::error(
+                    "template-parse",
+                    format!("cannot read template `{name}`: {e}"),
+                )
+                .with_file(path),
+            );
+        }
+    };
+    tera::Template::new(&name, None, &content)
+        .err()
+        .map(|e| parse_error_diagnostic(&e, &name, path))
 }
 
 /// Build a `template-parse` diagnostic from a Tera parse error, extracting the

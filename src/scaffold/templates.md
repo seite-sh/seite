@@ -1,23 +1,14 @@
 ## Templates and Themes
 
-Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible). All templates extend `base.html`.
+Templates use [Tera](https://keats.github.io/tera/) syntax (Jinja2-compatible).
 
-### Available Themes
+Hard rules:
 
-| Theme | Description |
-|-------|-------------|
-| `default` | Clean, readable with system fonts |
-| `minimal` | Typography-first, serif |
-| `dark` | Dark mode (true black, violet accent) |
-| `docs` | Sidebar layout for documentation |
-| `brutalist` | Neo-brutalist: thick borders, hard shadows, yellow accent |
-| `bento` | Card grid layout with rounded corners and soft shadows |
-| `landing` | Marketing landing page with hero section |
-| `terminal` | Monospace hacker aesthetic, green-on-black |
-| `magazine` | Multi-column editorial layout |
-| `academic` | Clean scholarly style with serif typography |
-
-Apply with `seite theme apply <name>`. This overwrites `templates/base.html`.
+- `base.html` is the theme; every other template starts with `{% extends "base.html" %}`.
+- Render content with `{{ page.content | safe }}` (the `safe` filter is required).
+- Keep the SEO head from the `seo-requirements` guide whenever you change `base.html`.
+- Build designs directly in `templates/` and `content/` and preview with `seite serve`; never write standalone HTML mockups.
+- `seite theme apply <name>` overwrites `base.html` (a customized one is backed up first); `seite theme list` shows the bundled themes.
 
 ### Template Variables
 
@@ -96,22 +87,3 @@ Example — adding a custom stylesheet without overriding the full theme:
   {{ page.content | safe }}
 {% endblock %}
 ```
-
-### SEO and GEO Guardrails
-
-All bundled themes already emit the full SEO+GEO head block (see **SEO and GEO Requirements** at the top of this file). When writing a custom `base.html` or modifying an existing one, you **must** preserve all of the following:
-
-- **Always** include `<link rel="canonical">` pointing to `{{ site.base_url }}{{ page.url | default(value='/') }}`
-- **Always** use `{{ page.description | default(value=site.description) }}` for description meta — not `site.description` alone
-- **Always** include Open Graph (`og:*`) and Twitter Card (`twitter:*`) tags for social sharing
-- **Always** absolutize `og:image` and `twitter:image` — use `{% set _abs_image %}` pattern (see SEO Requirements section)
-- **Always** include `og:image:width` (1200) and `og:image:height` (630) alongside `og:image`
-- **Always** include `article:published_time` and `article:modified_time` OG tags on collection pages
-- **Always** include JSON-LD structured data: `BlogPosting` for posts, `Article` for docs/pages, `WebSite` for index, plus `BreadcrumbList` on all collection pages
-- **Use** `og:type = article` when `page.collection` is set; `website` for the homepage
-- **Use** `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise
-- **Include** `{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}` — this is your LLM-native differentiator (gate on `page.markdown_url`; don't append `.md` to `page.url`)
-- **Include** `<link rel="alternate" type="text/plain" href="/llms.txt">` — LLM discovery
-- **Add** `description:`, `image:`, and `updated:` to frontmatter for best SEO/GEO coverage
-- **Use** `robots: noindex` in frontmatter for pages that should not appear in search results
-

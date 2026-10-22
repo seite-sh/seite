@@ -25,9 +25,8 @@ fn test_skill_list_shows_bundled() {
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("theme-builder"))
-        .stdout(predicate::str::contains("brand-identity"))
-        .stdout(predicate::str::contains("landing-page"));
+        .stdout(predicate::str::contains("seite (bundled)"))
+        .stdout(predicate::str::contains("theme-builder").not());
 }
 
 #[test]

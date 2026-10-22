@@ -9,6 +9,7 @@ pub mod contact;
 pub mod deploy;
 pub mod harness;
 pub mod harness_hooks;
+pub mod hooks;
 pub mod init;
 pub mod mcp;
 pub mod new;
@@ -87,7 +88,7 @@ pub enum Command {
     /// Deploy the site to a hosting provider
     Deploy(deploy::DeployArgs),
 
-    /// Start an AI agent session with full site context
+    /// Open a coding agent (Claude Code, Codex, OpenCode, Cursor, Gemini CLI) in the site
     Agent(agent::AgentArgs),
 
     /// Manage collections
@@ -104,6 +105,9 @@ pub enum Command {
 
     /// Manage themes
     Theme(theme::ThemeArgs),
+
+    /// Turn the coding-agent `seite check` hooks on or off, or show their status
+    Hooks(hooks::HooksArgs),
 
     /// Manage multi-site workspaces
     Workspace(workspace::WorkspaceArgs),

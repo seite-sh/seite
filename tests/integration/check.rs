@@ -494,7 +494,7 @@ fn test_check_hook_blocks_on_errors_per_protocol() {
         "{context}"
     );
     assert!(context.contains(expected), "{context}");
-    assert!(context.ends_with("then finish. Run `seite check` to confirm."));
+    assert!(context.ends_with("then finish. Run `seite check` once to confirm."));
 
     let codex = hook_json(&run_hook(&site, "codex", r#"{"stop_hook_active":false}"#));
     assert_eq!(codex["decision"], "block");
@@ -816,4 +816,159 @@ fn test_build_broken_user_shortcode_template_is_located() {
         !site.join("dist").exists(),
         "a failed build writes no output"
     );
+}
+
+// --- `seite check --file` and the post-edit hook ---
+
+#[test]
+fn test_check_file_checks_only_the_given_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Files", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    write_site_file(
+        &site,
+        "content/posts/2024-01-02-ok.md",
+        "---\ntitle: Ok\ndate: 2024-01-02\n---\n{{< nope() >}}\n",
+    );
+    write_site_file(&site, "data/nav.yaml", "items: [unclosed\n");
+    write_site_file(&site, "templates/broken.html", "{% if x %}never closed");
+
+    // Unknown shortcode, reported at its file line.
+    page_cmd()
+        .args([
+            "check",
+            "--file",
+            "content/posts/2024-01-02-ok.md",
+            "--file",
+            "seite.toml",
+        ])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("shortcode-unknown"))
+        .stderr(predicate::str::contains("2024-01-02-ok.md:5"));
+
+    let output = page_cmd()
+        .args([
+            "--json",
+            "check",
+            "--file",
+            "content/posts/2024-01-01-broken.md",
+            "data/nav.yaml",
+            "templates/broken.html",
+            "static/missing.css",
+        ])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    for code in ["frontmatter-parse", "data-file-parse", "template-parse"] {
+        assert!(text.contains(code), "{code}: {text}");
+    }
+    // The other post isn't checked.
+    assert!(!text.contains("2024-01-02-ok.md"), "{text}");
+
+    page_cmd()
+        .args(["check", "--file", "seite.toml"])
+        .current_dir(&site)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_check_post_edit_hook_reports_errors_in_the_edited_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    let broken = site.join("content/posts/2024-01-01-broken.md");
+    let run = |agent: &str, input: String| {
+        let output = page_cmd()
+            .args(["check", "--hook", agent, "--post-edit"])
+            .current_dir(&site)
+            .env_remove("CLAUDE_PROJECT_DIR")
+            .env_remove("CURSOR_PROJECT_DIR")
+            .env_remove("GEMINI_PROJECT_DIR")
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "hooks always exit 0");
+        output
+    };
+    let path = broken.to_string_lossy().to_string();
+
+    let claude = hook_json(&run(
+        "claude",
+        serde_json::json!({ "tool_name": "Edit", "tool_input": { "file_path": path } }).to_string(),
+    ));
+    assert_eq!(claude["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+    assert!(claude["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap()
+        .contains("frontmatter-parse"));
+
+    let gemini = hook_json(&run(
+        "gemini",
+        serde_json::json!({ "tool_name": "replace", "tool_input": { "file_path": path } })
+            .to_string(),
+    ));
+    assert_eq!(gemini["hookSpecificOutput"]["hookEventName"], "AfterTool");
+
+    let patch =
+        "*** Begin Patch\n*** Update File: content/posts/2024-01-01-broken.md\n*** End Patch\n";
+    let codex = hook_json(&run(
+        "codex",
+        serde_json::json!({ "cwd": site, "tool_name": "apply_patch", "tool_input": { "command": patch } })
+            .to_string(),
+    ));
+    assert!(codex["hookSpecificOutput"]["additionalContext"].is_string());
+
+    let cursor = hook_json(&run(
+        "cursor",
+        serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": path } })
+            .to_string(),
+    ));
+    assert!(cursor["additional_context"].is_string());
+
+    // A clean file, a file outside the site, and malformed input: silent.
+    let ok = site.join("content/posts/ok.md");
+    std::fs::write(&ok, "---\ntitle: Ok\ndate: 2024-01-01\n---\nhi\n").unwrap();
+    for input in [
+        serde_json::json!({ "tool_input": { "file_path": ok } }).to_string(),
+        serde_json::json!({ "tool_input": { "file_path": "/elsewhere/x.md" } }).to_string(),
+        "not json".to_string(),
+        String::new(),
+    ] {
+        let out = run("claude", input.clone());
+        assert!(
+            out.stdout.is_empty(),
+            "{input}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        // Cursor always gets a JSON document.
+        assert_eq!(hook_json(&run("cursor", input)), serde_json::json!({}));
+    }
+}
+
+#[test]
+fn test_check_gemini_stop_hook_protocol() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    let gemini = hook_json(&run_hook(
+        &site,
+        "gemini",
+        r#"{"hook_event_name":"AfterAgent","stop_hook_active":false}"#,
+    ));
+    assert_eq!(gemini["decision"], "deny");
+    assert!(gemini["reason"]
+        .as_str()
+        .unwrap()
+        .contains("frontmatter-parse"));
+    // Already continued once: let the agent stop.
+    let out = run_hook(&site, "gemini", r#"{"stop_hook_active":true}"#);
+    assert!(out.stdout.is_empty());
 }

@@ -131,7 +131,7 @@ fn test_mcp_resources_list_with_project() {
     assert!(resources.iter().any(|r| r["uri"] == "seite://config"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://content"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://themes"));
-    assert!(resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
+    assert!(!resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
     // Per-collection resources
     assert!(resources
         .iter()
@@ -287,7 +287,7 @@ fn test_mcp_read_themes() {
 }
 
 #[test]
-fn test_mcp_read_mcp_config() {
+fn test_mcp_read_mcp_config_is_removed() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "mcpmcp", "MCP Config Test", "posts");
     let site_dir = tmp.path().join("mcpmcp");
@@ -303,11 +303,10 @@ fn test_mcp_read_mcp_config() {
     );
 
     assert_eq!(responses.len(), 1);
-    assert!(responses[0]["error"].is_null());
-    let contents = responses[0]["result"]["contents"].as_array().unwrap();
-    let text = contents[0]["text"].as_str().unwrap();
-    assert!(text.contains("mcpServers"));
-    assert!(text.contains("seite"));
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("Unknown resource URI"));
 }
 
 #[test]
