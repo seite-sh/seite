@@ -76,10 +76,38 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         &paths.content,
         collection,
         &spec,
-        chrono::Local::now().date_naive(),
+        crate::content::schedule::today(&site_config),
     )?;
 
     human::success(&format!("Created {}", created.path.display()));
+    // Required schema fields without a default were written empty: say which
+    // ones to fill in (`seite check` reports each at its line until then).
+    let cwd = std::env::current_dir()?;
+    let schema_problems: Vec<_> = created
+        .schema_problems
+        .iter()
+        .map(|d| d.clone().relative_to(&cwd))
+        .collect();
+    if !created.placeholders.is_empty() {
+        human::warning(&format!(
+            "fill in the required field{} {} (the {} schema in seite.toml)",
+            if created.placeholders.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            created
+                .placeholders
+                .iter()
+                .map(|f| format!("`{f}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            collection.name
+        ));
+    }
+    for d in &schema_problems {
+        crate::human_println!("{d}");
+    }
     crate::human_println!(
         "  {} edit this file and the dev server will auto-reload",
         console::style("→").dim()
@@ -109,6 +137,8 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         "url": url,
         "draft": args.draft,
         "lang": spec.lang,
+        "fill_in": created.placeholders,
+        "schema_problems": schema_problems,
     }));
 
     Ok(())

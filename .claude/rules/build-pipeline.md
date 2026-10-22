@@ -67,6 +67,7 @@ struct Frontmatter {
     robots: Option<String>,        // per-page <meta name="robots">
     weight: Option<i32>,           // ordering for non-date collections
     extra: HashMap<String, Value>, // → {{ page.extra.field }}
+    expires: Option<NaiveDate>,    // last published day (content::schedule)
     series: Option<String>,        // → page.series, /series/<slug>/
     series_order: Option<i32>,
     other: BTreeMap<String, Value>, // #[serde(flatten)]: every other top-level key;
@@ -89,6 +90,10 @@ struct ContentItem {
 - `seite upgrade` (`check_default_templates`) replaces `templates/post.html` when its hash matches a historical `DEFAULT_POST` (`LEGACY_POST_TEMPLATE_HASHES`); add the old hash there whenever `DEFAULT_POST` changes.
 - `series.rs`: group by (language, slug of `series`) over public collections; order `series_order`, date asc, source path. `/series/<slug>/` only when used.
 - The embedded `post.html` renders them with `{% if %}` blocks attached to existing lines, so pages without them render byte-identically. Sites keep their own `templates/post.html` from `init`.
+
+## Schemas and Scheduling in Step 3
+
+Per collection, `content::schema::Schema::for_site` validates each parsed file (`ParsedContent.frontmatter_text`/`frontmatter_line` give exact key lines): errors are returned like parse errors (→ `fatal`), `frontmatter-schema-unknown` warnings go to `diagnostics` through a mutex. Drafts are validated only with `--drafts`; future-dated files always. After the filename date is resolved, `content::schedule::Schedule::is_published(collection, fm)` — only with `[build] schedule = true` and `has_date` — drops future-dated (unless `config.build.future`) and expired items exactly like drafts, so they never reach feeds, sitemap, search, llms files, tags or listings.
 
 ## Data Files
 

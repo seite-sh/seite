@@ -4,6 +4,7 @@ pub mod base_path;
 pub mod cache;
 pub mod code_copy;
 pub mod discovery;
+pub mod external_links;
 pub mod feed;
 pub mod images;
 pub mod links;
@@ -1168,9 +1169,14 @@ fn build_site_inner(
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = shortcode_site_context(config);
 
+    // Scheduled publishing (future `date`, `expires`) and frontmatter schema
+    // warnings (errors join `fatal` through the per-file results).
+    let schedule = content::schedule::Schedule::new(config);
+    let schema_warnings = std::sync::Mutex::new(Vec::new());
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
         let mut items = Vec::new();
+        let field_schema = content::schema::Schema::for_site(config, collection);
 
         if !collection_dir.exists() {
             tracing::warn!(
@@ -1195,6 +1201,15 @@ fn build_site_inner(
                     let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
                     let parsed = content::parse_content_diagnostic(path).map_err(|d| vec![*d])?;
+                    let (schema_errors, warnings) = content::schema::split(field_schema.validate(
+                        &parsed,
+                        path,
+                        opts.include_drafts,
+                    ));
+                    schema_warnings.lock().map(|mut w| w.extend(warnings)).ok();
+                    if !schema_errors.is_empty() {
+                        return Err(schema_errors);
+                    }
                     let body_line = parsed.body_line;
                     let fm = parsed.frontmatter;
                     let raw_body = parsed.body;
@@ -1209,6 +1224,9 @@ fn build_site_inner(
                     let mut fm = fm;
                     if fm.date.is_none() && collection.has_date {
                         fm.date = parse_date_from_filename(path);
+                    }
+                    if !schedule.is_published(collection, &fm) {
+                        return Ok(None);
                     }
 
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
@@ -1281,6 +1299,8 @@ fn build_site_inner(
 
         all_collections.insert(collection.name.clone(), items);
     }
+
+    diagnostics.extend(schema_warnings.into_inner().unwrap_or_default());
 
     // Detect URL collisions: if two content items resolve to the same URL, that's an error.
     {
@@ -1539,6 +1559,8 @@ fn build_site_inner(
                 items.iter().any(|item| changed.contains(&item.source_path))
             }) || series_dirty_collections.contains(&collection.name);
 
+            // Custom schema fields written at the top level are also `page.extra.<name>`.
+            let custom_fields = content::schema::custom_field_names(config, collection);
             let render_results: Vec<std::result::Result<RenderedPage, Box<Diagnostic>>> = items
                 .par_iter()
                 .map(|item| {
@@ -1560,8 +1582,13 @@ fn build_site_inner(
                                 .expect("default language missing from site context cache")
                         });
 
-                    let mut ctx =
-                        build_page_context(site_ctx_for_item, item, &data, collection.private);
+                    let mut ctx = build_page_context(
+                        site_ctx_for_item,
+                        item,
+                        &data,
+                        collection.private,
+                        &custom_fields,
+                    );
                     content_model.augment_page(
                         &mut ctx,
                         item,
@@ -1828,7 +1855,7 @@ fn build_site_inner(
                 reading_time: homepage.reading_time,
                 excerpt: homepage.excerpt_html.clone(),
                 toc: homepage.toc.clone(),
-                extra: homepage.frontmatter.extra.clone(),
+                extra: index_page_extra(config, homepage),
             }
         } else if let Some(col_index) = config
             .collections
@@ -1863,7 +1890,7 @@ fn build_site_inner(
                 reading_time: col_index.reading_time,
                 excerpt: col_index.excerpt_html.clone(),
                 toc: col_index.toc.clone(),
-                extra: col_index.frontmatter.extra.clone(),
+                extra: index_page_extra(config, col_index),
             }
         } else {
             PageContext {
@@ -2081,7 +2108,7 @@ fn build_site_inner(
                             reading_time: ci.reading_time,
                             excerpt: ci.excerpt_html.clone(),
                             toc: ci.toc.clone(),
-                            extra: ci.frontmatter.extra.clone(),
+                            extra: index_page_extra(config, ci),
                         }
                     } else {
                         PageContext {
@@ -2263,7 +2290,7 @@ fn build_site_inner(
                         reading_time: ci.reading_time,
                         excerpt: ci.excerpt_html.clone(),
                         toc: ci.toc.clone(),
-                        extra: ci.frontmatter.extra.clone(),
+                        extra: index_page_extra(config, ci),
                     }
                 } else {
                     PageContext {
@@ -2546,9 +2573,13 @@ fn build_site_inner(
     // Step 8: Output raw markdown alongside HTML for each page
     progress.step("Writing markdown copies");
     let step_start = Instant::now();
-    let published_keys = content_model.taxonomy_keys();
+    let taxonomy_keys = content_model.taxonomy_keys();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
+            // Configured taxonomy keys plus the collection's declared custom
+            // schema fields; undeclared unknown keys stay out.
+            let mut published_keys = taxonomy_keys.clone();
+            published_keys.extend(content::schema::custom_field_names(config, collection));
             let md_results: Vec<(PathBuf, String)> = items
                 .par_iter()
                 .map(|item| {
@@ -3437,6 +3468,7 @@ fn build_page_context(
     item: &ContentItem,
     data: &serde_json::Value,
     collection_private: bool,
+    custom_fields: &[String],
 ) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
@@ -3460,10 +3492,25 @@ fn build_page_context(
             reading_time: item.reading_time,
             excerpt: item.excerpt_html.clone(),
             toc: item.toc.clone(),
-            extra: item.frontmatter.extra.clone(),
+            extra: content::schema::page_extra(&item.frontmatter, custom_fields),
         },
     );
     ctx
+}
+
+/// `page.extra` of a collection index or homepage page (see
+/// [`content::schema::page_extra`]).
+fn index_page_extra(
+    config: &SiteConfig,
+    item: &ContentItem,
+) -> std::collections::HashMap<String, serde_yaml_ng::Value> {
+    let custom = config
+        .collections
+        .iter()
+        .find(|c| c.name == item.collection)
+        .map(|c| content::schema::custom_field_names(config, c))
+        .unwrap_or_default();
+    content::schema::page_extra(&item.frontmatter, &custom)
 }
 
 /// Ensure an image URL is absolute by prepending `base_url` if it's a relative path.
@@ -3783,6 +3830,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "Author".into(),
+                timezone: None,
             },
             collections: vec![CollectionConfig::preset_posts()],
             build: BuildSection::default(),
@@ -3794,6 +3842,7 @@ mod tests {
             contact: None,
             access: None,
             taxonomies: Vec::new(),
+            check: None,
         }
     }
 
@@ -4809,7 +4858,7 @@ mod tests {
             excerpt_html: "<p>Some body</p>".into(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false);
+        let ctx = build_page_context(&site, &item, &data, false, &[]);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert_eq!(page["title"], "My Post");
@@ -4851,7 +4900,7 @@ mod tests {
             excerpt_html: String::new(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false);
+        let ctx = build_page_context(&site, &item, &data, false, &[]);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert!(page["image"].is_null());

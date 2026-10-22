@@ -43,7 +43,7 @@ src/
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model
+  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`)
   docs.rs              Embedded docs (16 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
@@ -53,7 +53,7 @@ src/
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
   config/              SiteConfig, CollectionConfig, defaults; unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
   data/                Data file loading (YAML/JSON/TOML)
-  content/             Frontmatter parsing, ContentItem, slug generation
+  content/             Frontmatter parsing, ContentItem, slug generation, schema (typed frontmatter), schedule (future `date`/`expires`, site timezone)
   deploy/              GitHub Pages + Cloudflare + Netlify
   workspace/           Multi-site workspaces (config, build, server, deploy)
   output/              CommandOutput trait, human (colored), json
@@ -71,9 +71,15 @@ title = "My Site"
 description = ""
 base_url = "http://localhost:3000"
 language = "en"
+# timezone = "Europe/Berlin" # "today" for scheduled posts (IANA or "+02:00"; default: local date)
 
 [[collections]]
 name = "posts"
+# strict_fields = true   # warn about frontmatter keys the schema does not declare
+
+[collections.fields.description]   # typed frontmatter schema (src/content/schema.rs)
+type = "string"          # string|text|number|integer|bool|date|datetime|url|image|enum|list|object
+description = "Summary for search results"  # also: required, enum/values, items, min, max, pattern, default
 # subdomain = "blog"     # optional: deploy separately
 # private = true         # optional: exclude from discovery
 # access_group = "members" # optional: password group when [access] is enabled
@@ -89,6 +95,8 @@ fingerprint = true
 math = true              # KaTeX
 mermaid = true           # Mermaid diagrams (```mermaid fences, client-side)
 related = 3              # page.related size (0 disables; per-collection `related` overrides)
+schedule = true          # scheduled publishing for dated collections (init writes it; absent = off)
+# future = true          # build future-dated content (= `seite build --future`; serve always does)
 
 [[taxonomies]]           # optional; `tags` is implicit (no feeds unless listed here)
 name = "categories"      # frontmatter `categories: [..]` → /categories/, /categories/<slug>/ (+ feed.xml/atom.xml)
@@ -160,7 +168,7 @@ endpoint = "xpznqkdl"
   - gemini: GEMINI.md `@AGENTS.md` shim, `.gemini/settings.json` (hooks), `.gemini/commands/seite.toml` (`/seite` custom command)
   - codex/opencode/cursor/gemini: `.agents/skills/` (portable frontmatter: `name`/`description` only); sites without claude/cursor: `.agents/rules/` (the AGENTS.md rules index target)
   - MCP config only with `--mcp` (init and upgrade): `.mcp.json` + `enabledMcpjsonServers`/`mcp__seite`, `.cursor/mcp.json` + `Mcp(seite:*)`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`; upgrade without `--mcp` never touches existing MCP config
-- The `seite` skill (`src/scaffold/skill-seite/SKILL.md` + `reference/*.md`, version 3) is one routed skill: `/seite check|new|preview|build|deploy|theme|brand|landing|collection|upgrade|hooks` (`$seite` in Codex); references are written to `<skills dir>/seite/reference/` for every provider
+- The `seite` skill (`src/scaffold/skill-seite/SKILL.md` + `reference/*.md`, version 4) is one routed skill: `/seite check|new|preview|build|deploy|theme|brand|landing|collection|upgrade|hooks` (`$seite` in Codex); references are written to `<skills dir>/seite/reference/` for every provider
 - Harness output is snapshot-tested in `tests/snapshots/harness/*.snap` (`SEITE_UPDATE_SNAPSHOTS=1 cargo test --test integration harness_snapshot` to regenerate)
 - Two-tier hooks (`src/cli/harness_hooks.rs`; only errors are reported, always exit 0, commands wrapped as `command -v seite … && seite check --hook <agent> [--post-edit] || true`): post-edit (`seite check --hook <agent> --post-edit` → `check::check_files` on the edited file) and turn-end (full check, one continuation per turn). claude `.claude/settings.json` `Stop` + `PostToolUse`, codex `.codex/hooks.json` `Stop` + `PostToolUse`, cursor `.cursor/hooks.json` `stop` + `postToolUse`, opencode `.opencode/plugins/seite-check.js` (`session.idle` + `tool.execute.after`), gemini `.gemini/settings.json` `AfterAgent` + `AfterTool`. `.seite/config.json` `hooks_installed` records them per tier (`<agent>` = turn-end, `<agent>:post-edit` = after-edit); `seite upgrade` adds only unrecorded tiers (0.20's bare records get post-edit only while the stop hook is present), so a user-deleted hook stays deleted, tier by tier; `seite hooks on|off|status [--tier stop|post-edit|all]` (`src/cli/hooks.rs`) manages them, removing only exact seite-generated commands
 - AGENTS.md carries seite-owned `<!-- seite:agent-setup -->` (per-agent setup table; MCP column only when MCP is on) and `<!-- seite:context-rules -->` (rules index) blocks
@@ -168,6 +176,11 @@ endpoint = "xpznqkdl"
 - Generated permissions allow `seite theme apply|list` only (never `theme create`/`agent`; Cursor `Shell(seite:<sub>*)`); upgrade narrows the exact 0.20 rules. `seite agent`/`theme create` refuse to nest inside an agent session; `--yes` never adds auto-approve flags (`seite agent --auto-approve`, TTY only)
 - All harness/upgrade/hooks/skill/dev-server writes and deletes go through `crate::safe_fs`; `.seite/docs/` (lazily written, version-stamped, pruned) and `.seite/dev.json` are gitignored. Upgrade prunes 0.20's legacy AGENTS.md sections (`src/scaffold/legacy/`) when unedited; one-time notices are recorded in `notices_shown`
 - Rules files are created only when missing; skills (with their reference files) and command wrappers are replaced when the bundled `# seite-skill-version` is newer. Pre-0.21 `theme-builder`/`brand-identity`/`landing-page` skills and the `design-prompts` rule are removed only when unmodified (`LEGACY_BODY_HASHES` in `src/cli/upgrade.rs`: SHA-256 of every released body)
+
+### Content Model Checks
+- Frontmatter schemas (`src/content/schema.rs`, design note at the top): `CollectionConfig.fields` (`IndexMap<String, FieldSchema>`) + `strict_fields`. Built-in/top-level keys (`schema::top_level_keys`: `BUILTIN_KEYS` ∪ `Frontmatter`'s serde fields ∪ `[[taxonomies]]` names) validate at the top level; custom fields (`schema::custom_field_names`) at the top level or under `extra:` (validated where they appear; both = error), exposed to templates as `page.extra.<name>` (`schema::page_extra`) and kept in published `.md` copies. `Schema::for_site(config, collection)` validates `ParsedContent.frontmatter_text` with exact key lines → `frontmatter-schema` errors / `frontmatter-schema-unknown` warnings. Wired into build Step 3 (errors join `fatal`, non-drafts unless `--drafts`), `check --file`/post-edit hook (drafts too), `create_content_file` (defaults + placeholders; `reject_invalid` for MCP), and `seite_update_frontmatter` (refuses violations on touched keys; edits an existing top-level custom key in place, routes new custom keys into `extra`). Config mistakes → located `config-invalid` via `schema::validate_config`; unknown schema keys via `unknown_keys.rs`. Presets (`schema::preset_fields`) are never `required` and have no bounds; list-of-string items accept numbers/bools (like the parser); `seite upgrade` adds no schemas.
+- Scheduled publishing (`src/content/schedule.rs`): opt-in `[build] schedule = true` (init writes it; absent = off; upgrade only shows the one-time `schedule-feature` notice), dated collections only. `Schedule::new(config).is_published(collection, fm)` in build Step 3 (future `date` hidden unless `[build] future`; past `expires` hidden). `seite build --future` / `seite check --future` / `seite serve` set `config.build.future`. "Today" = `schedule::today(config)`: `[site] timezone` (chrono-tz IANA or fixed offset), else `chrono::Local` — also used by every writer (new, init starter content, MCP create, serve REPL). `hidden_pages`/`hidden_summary` give the "N scheduled posts hidden; next goes live …" line (build, serve, check info note); `schedule::link_diagnostics` turns broken links to hidden pages into `link-to-scheduled` (check and `build --strict`). `seite check` builds like the real build, then renders scheduled pages in a second scratch build and keeps only their diagnostics. Generated workflows carry `deploy::SCHEDULE_TRIGGER` (daily cron); upgrade adds it (ungated, idempotent, only with `schedule = true`) to byte-identical generated workflows, else a one-time notice.
+- `seite check --external` (`src/build/external_links.rs`): runs inside `check_site_full` on the scratch output; ureq, 8 workers / 2 per host, cache `.seite/cache/links.json` via `safe_fs` (gitignored), skip list `DEFAULT_SKIP` + `[check] external_skip`; `external-link-broken` / `external-link-unreachable`. Never in build or hooks; tests use a local tiny_http server.
 
 ## Context Rules
 

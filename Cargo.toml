@@ -40,6 +40,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 toml = { version = "1.1", features = ["preserve_order"] }
 toml_edit = "0.25"  # comment-preserving edits (e.g. .codex/config.toml in `seite upgrade`)
 serde_yaml_ng = "0.10"
+# Ordered maps for `[collections.fields.*]` (already compiled in through toml)
+indexmap = { version = "2", features = ["serde"] }
+# Frontmatter schema `pattern` checks (already compiled in through tera)
+regex = "1"
 
 # Content processing
 pulldown-cmark = "0.13"
@@ -54,6 +58,8 @@ tiny_http = "0.12"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+# IANA time zones for `[site] timezone` (already compiled in through tera)
+chrono-tz = "0.9"
 
 # Parallelism
 rayon = "1.12"
@@ -109,6 +115,8 @@ assert_cmd = "2"
 predicates = "3"
 # Validates MCP tool outputs against their declared outputSchema in tests.
 jsonschema = { version = "0.57", default-features = false }
+# Local HTTP server for `seite check --external` tests (no real network).
+tiny_http = "0.12"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

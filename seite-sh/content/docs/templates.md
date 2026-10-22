@@ -42,7 +42,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.reading_time }}` | Reading time in minutes |
 | `{{ page.excerpt }}` | Auto-extracted excerpt (HTML) |
 | `{{ page.toc }}` | Table of contents entries |
-| `{{ page.extra }}` | Custom frontmatter data |
+| `{{ page.extra }}` | Custom frontmatter data (`extra:`). Custom schema fields appear here wherever they are written (top level or under `extra:`), e.g. `{{ page.extra.author }}` |
 | `{{ page.taxonomies }}` | Content pages: terms per taxonomy, tags first: `page.taxonomies.categories` is a list of `{name, slug, url}` |
 | `{{ page.related }}` | Content pages: related pages of the same collection and language, `[{title, url, date, description, score}]` (empty when none; see [Related pages](/docs/collections#related-pages)) |
 | `{{ page.series }}` | Content pages in a series: `{name, slug, url, parts: [{title, url, current}], index, total, prev, next}` (`index` is 1-based; `prev`/`next` are `{title, url}` or unset); unset otherwise |

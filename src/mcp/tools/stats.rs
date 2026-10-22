@@ -42,6 +42,11 @@ pub fn output_schema() -> serde_json::Value {
                 "description": "Dated collections only (tags drive tag pages and feeds)"
             },
             "future_dated": { "type": "array", "items": path_date },
+            "expired": {
+                "type": "array",
+                "items": path_date,
+                "description": "Past their `expires:` date (left out of builds when [build] schedule = true); `date` is the expiry date"
+            },
             "parse_errors": { "type": "array", "items": path_error },
             "missing_translations": {
                 "type": "object",
@@ -57,6 +62,7 @@ pub fn output_schema() -> serde_json::Value {
             "missing_description",
             "missing_tags",
             "future_dated",
+            "expired",
             "parse_errors",
             "missing_translations",
             "truncated",
@@ -69,6 +75,16 @@ pub fn output_schema() -> serde_json::Value {
             "taxonomies": taxonomies,
             "series": series,
             "today": { "type": "string" },
+            "today": prop("string", "Today's date in the site's time zone ([site] timezone, else the local date)"),
+            "next_scheduled": object_schema(
+                serde_json::json!({
+                    "path": { "type": "string" },
+                    "collection": { "type": "string" },
+                    "title": { "type": "string" },
+                    "date": { "type": "string" }
+                }),
+                &["path", "collection", "title", "date"],
+            ),
             "languages": string_array(),
             "collections": { "type": "array", "items": collection },
             "totals": object_schema(
@@ -78,6 +94,7 @@ pub fn output_schema() -> serde_json::Value {
                     "missing_description": count(),
                     "missing_tags": count(),
                     "future_dated": count(),
+                    "expired": count(),
                     "parse_errors": count(),
                     "missing_translations": count()
                 }),
@@ -87,6 +104,7 @@ pub fn output_schema() -> serde_json::Value {
                     "missing_description",
                     "missing_tags",
                     "future_dated",
+                    "expired",
                     "parse_errors",
                     "missing_translations",
                 ],
@@ -213,6 +231,7 @@ struct Totals {
     missing_description: usize,
     missing_tags: usize,
     future_dated: usize,
+    expired: usize,
     parse_errors: usize,
     missing_translations: usize,
 }
@@ -233,7 +252,9 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         None => config.collections.iter().collect(),
     };
 
-    let today = chrono::Local::now().date_naive();
+    let today = crate::content::schedule::today(config);
+    // Earliest future-dated, non-draft item: (date, path, collection, title).
+    let mut next: Option<(chrono::NaiveDate, String, String, String)> = None;
     let default_lang = config.site.language.as_str();
     let other_langs: Vec<String> = config
         .all_languages()
@@ -252,6 +273,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         let mut missing_description = Vec::new();
         let mut missing_tags = Vec::new();
         let mut future_dated = Vec::new();
+        let mut expired = Vec::new();
         let mut parse_errors = Vec::new();
         let mut present: HashSet<(String, String)> = HashSet::new();
         let mut defaults: Vec<(String, String)> = Vec::new(); // (slug, path)
@@ -281,9 +303,23 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             if collection.has_date && fm.tags.is_empty() {
                 missing_tags.push(item.path.clone());
             }
+            // `expired` and `next_scheduled` follow `[build] schedule`
+            // (dated collections only); `future_dated` is reported always.
+            let scheduling = config.build.schedule && collection.has_date;
             if let Some(date) = parsed.date.filter(|d| *d > today) {
                 future_dated
                     .push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
+                if scheduling && !fm.draft && next.as_ref().is_none_or(|(d, ..)| date < *d) {
+                    next = Some((
+                        date,
+                        item.path.clone(),
+                        collection.name.clone(),
+                        fm.title.clone(),
+                    ));
+                }
+            }
+            if let Some(date) = fm.expires.filter(|e| scheduling && *e < today) {
+                expired.push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
             }
             present.insert((parsed.lang.clone(), parsed.slug.clone()));
             if parsed.lang == default_lang {
@@ -307,6 +343,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         totals.missing_description += missing_description.len();
         totals.missing_tags += missing_tags.len();
         totals.future_dated += future_dated.len();
+        totals.expired += expired.len();
         totals.parse_errors += parse_errors.len();
 
         let mut truncated = false;
@@ -326,6 +363,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             "missing_description": capped(&missing_description, &mut truncated),
             "missing_tags": capped(&missing_tags, &mut truncated),
             "future_dated": capped(&future_dated, &mut truncated),
+            "expired": capped(&expired, &mut truncated),
             "parse_errors": capped(&parse_errors, &mut truncated),
             "missing_translations": missing_translations,
             "truncated": truncated,
@@ -333,7 +371,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
     }
 
     let (taxonomies, series) = model.to_json(&taxes);
-    Ok(serde_json::json!({
+    let mut result = serde_json::json!({
         "today": today.to_string(),
         "languages": config.all_languages(),
         "collections": out,
@@ -345,10 +383,20 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             "missing_description": totals.missing_description,
             "missing_tags": totals.missing_tags,
             "future_dated": totals.future_dated,
+            "expired": totals.expired,
             "parse_errors": totals.parse_errors,
             "missing_translations": totals.missing_translations,
         },
-    }))
+    });
+    if let Some((date, path, collection, title)) = next {
+        result["next_scheduled"] = serde_json::json!({
+            "path": path,
+            "collection": collection,
+            "title": title,
+            "date": date.to_string(),
+        });
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

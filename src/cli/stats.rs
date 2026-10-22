@@ -70,6 +70,13 @@ fn print_stats(result: &Value) {
         print_list("future-dated", array_of(c, "future_dated"), |v| {
             format!("{} ({})", str_of(v, "path"), str_of(v, "date"))
         });
+        print_list("expired", array_of(c, "expired"), |v| {
+            format!(
+                "{} (expired after {})",
+                str_of(v, "path"),
+                str_of(v, "date")
+            )
+        });
         print_list("parse errors", array_of(c, "parse_errors"), |v| {
             format!("{}: {}", str_of(v, "path"), str_of(v, "error"))
         });
@@ -108,15 +115,25 @@ fn print_stats(result: &Value) {
     if let Some(totals) = result.get("totals") {
         human_println!();
         human_println!(
-            "{} {} items, {} drafts, {} missing a description, {} missing tags, {} future-dated, {} unparseable, {} missing translations",
+            "{} {} items, {} drafts, {} missing a description, {} missing tags, {} future-dated, {} expired, {} unparseable, {} missing translations",
             style("Total:").bold(),
             count(totals, "items"),
             count(totals, "drafts"),
             count(totals, "missing_description"),
             count(totals, "missing_tags"),
             count(totals, "future_dated"),
+            count(totals, "expired"),
             count(totals, "parse_errors"),
             count(totals, "missing_translations"),
+        );
+    }
+    if let Some(next) = result.get("next_scheduled") {
+        human_println!(
+            "{} {} — {} ({})",
+            style("Next scheduled:").bold(),
+            str_of(next, "date"),
+            str_of(next, "title"),
+            str_of(next, "path")
         );
     }
 }

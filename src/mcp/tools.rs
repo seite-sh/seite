@@ -999,13 +999,14 @@ fn call_create_content(state: &ServerState, arguments: &serde_json::Value) -> To
         subdir,
         body,
         overwrite,
+        reject_invalid: true,
     };
     let created = create_content_file(
         config,
         &paths.content,
         collection,
         &spec,
-        chrono::Local::now().date_naive(),
+        crate::content::schedule::today(config),
     )
     .map_err(|e| {
         let msg = e.to_string();
@@ -1050,6 +1051,16 @@ fn call_create_content(state: &ServerState, arguments: &serde_json::Value) -> To
     if body.trim().is_empty() {
         notes.push(format!(
             "The body is empty — edit {rel_path} to add content."
+        ));
+    }
+    for d in &created.schema_problems {
+        notes.push(format!(
+            "schema: {}{} — fix it with seite_update_frontmatter",
+            d.message,
+            d.hint
+                .as_deref()
+                .map(|h| format!(" (hint: {h})"))
+                .unwrap_or_default()
         ));
     }
     if !notes.is_empty() {

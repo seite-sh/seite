@@ -18,6 +18,12 @@ paths:
 
 Optional `subdomain` deploys collection separately. Optional `deploy_project` for per-subdomain Cloudflare/Netlify.
 
+## Frontmatter Schemas
+`[collections.fields.<name>]` (`FieldSchema` in `src/content/schema.rs`) + `strict_fields`. Presets get `schema::preset_fields(preset)` (never `required`), written by `seite init` / `seite collection add`; `seite upgrade` never adds schemas. Custom (non-top-level: not built-in, not a `[[taxonomies]]` name) fields may be written at the top level or under `extra:` (both = error); `schema::page_extra` exposes either as `page.extra.<name>`, and published `.md` copies add declared top-level custom fields (`custom_field_names`).
+
+## Scheduling
+Opt-in `[build] schedule = true` (init writes it), dated collections only: future `date` → excluded like drafts until due; `expires:` → excluded after that day; "today" = `[site] timezone` else local date (`schedule::today`, also used to date new files); `[build] future` / `--future` / serve include future (`src/content/schedule.rs`).
+
 ## Adding a New Collection Preset
 1. Add to `CollectionConfig::from_preset()` in `src/config/mod.rs`
 2. Add default template in `src/templates/mod.rs` + `get_default_template()` match

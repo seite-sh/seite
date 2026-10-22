@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
 
-use super::{generate_frontmatter, slug_from_title, Frontmatter};
+use super::{generate_frontmatter, schema, slug_from_title, Frontmatter};
 use crate::config::{CollectionConfig, SiteConfig};
 use crate::error::{PageError, Result};
 
@@ -32,6 +32,11 @@ pub struct NewContent<'a> {
     pub body: &'a str,
     /// Replace an existing file instead of refusing.
     pub overwrite: bool,
+    /// Refuse (write nothing) when the frontmatter breaks the collection's
+    /// schema in a way the caller could have avoided: a wrong value, or a
+    /// missing required field it could have passed (MCP create). `seite new`
+    /// leaves this off and reports the problems instead.
+    pub reject_invalid: bool,
 }
 
 /// The file that was written.
@@ -42,6 +47,10 @@ pub struct CreatedContent {
     pub slug: String,
     /// True when an existing file was replaced (only possible with `overwrite`).
     pub overwritten: bool,
+    /// Required schema fields written as empty placeholders (no default).
+    pub placeholders: Vec<String>,
+    /// Schema problems left in the written file (with file lines).
+    pub schema_problems: Vec<crate::diagnostics::Diagnostic>,
 }
 
 /// Validate an explicit slug: lowercase ASCII letters, digits, `-` and `_`,
@@ -205,8 +214,46 @@ pub fn create_content_file(
         ..Default::default()
     };
 
+    // Schema defaults and required placeholders, then validation.
+    let mut placeholders = Vec::new();
+    let mut schema_problems = Vec::new();
+    let frontmatter = if collection.fields.is_empty() && !collection.strict_fields {
+        generate_frontmatter(&fm)
+    } else {
+        let mut map = match serde_yaml_ng::to_value(&fm) {
+            Ok(serde_yaml_ng::Value::Mapping(m)) => m,
+            _ => serde_yaml_ng::Mapping::new(),
+        };
+        placeholders = schema::apply_defaults(config, collection, &mut map);
+        let yaml = serde_yaml_ng::to_string(&map)
+            .map_err(|e| PageError::Other(format!("cannot serialize frontmatter: {e}")))?;
+        let field_schema = schema::Schema::for_site(config, collection);
+        let problems = field_schema.check_text(&yaml, 2, &path);
+        if spec.reject_invalid {
+            let blocking: Vec<String> = problems
+                .iter()
+                .filter(|p| blocks_creation(&field_schema, p))
+                .map(|p| {
+                    let d = &p.diagnostic;
+                    match &d.hint {
+                        Some(h) => format!("{} (hint: {h})", d.message),
+                        None => d.message.clone(),
+                    }
+                })
+                .collect();
+            if !blocking.is_empty() {
+                return Err(PageError::Other(format!(
+                    "the frontmatter does not match the '{}' schema, nothing was written:\n- {}",
+                    collection.name,
+                    blocking.join("\n- ")
+                )));
+            }
+        }
+        schema_problems = problems.into_iter().map(|p| p.diagnostic).collect();
+        format!("---\n{yaml}---")
+    };
+
     std::fs::create_dir_all(&dir)?;
-    let frontmatter = generate_frontmatter(&fm);
     let file_content = if spec.body.trim().is_empty() {
         format!("{frontmatter}\n")
     } else {
@@ -218,7 +265,26 @@ pub fn create_content_file(
         path,
         slug,
         overwritten: existed,
+        placeholders,
+        schema_problems,
     })
+}
+
+/// Built-in keys MCP create can set (the rest — `image`, `updated`, … —
+/// are filled in later with `seite_update_frontmatter`).
+const SETTABLE_BUILTINS: &[&str] = &["title", "description", "tags", "draft", "weight"];
+
+/// Whether a schema problem in a file about to be created is the caller's
+/// to fix now (see [`NewContent::reject_invalid`]).
+fn blocks_creation(field_schema: &schema::Schema, problem: &schema::Problem) -> bool {
+    match problem.kind {
+        schema::ProblemKind::Unknown => false,
+        schema::ProblemKind::Missing => {
+            !field_schema.is_top(&problem.field)
+                || SETTABLE_BUILTINS.contains(&problem.field.as_str())
+        }
+        schema::ProblemKind::Invalid | schema::ProblemKind::Duplicate => true,
+    }
 }
 
 #[cfg(test)]
@@ -243,6 +309,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: String::new(),
+                timezone: None,
             },
             collections: vec![
                 CollectionConfig::preset_posts(),
@@ -257,6 +324,7 @@ mod tests {
             contact: None,
             access: None,
             taxonomies: Vec::new(),
+            check: None,
         }
     }
 

@@ -493,6 +493,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: "Tester".into(),
+                timezone: None,
             },
             collections,
             build: BuildSection::default(),
@@ -504,6 +505,7 @@ mod tests {
             contact: None,
             access: None,
             taxonomies: Vec::new(),
+            check: None,
         }
     }
 

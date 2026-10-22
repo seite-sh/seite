@@ -167,10 +167,12 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             base_url: "http://localhost:3000".into(),
             language: "en".into(),
             author: String::new(),
+            timezone: None,
         },
         collections: collections.clone(),
         build: crate::config::BuildSection {
             minify: true,
+            schedule: true,
             ..Default::default()
         },
         deploy: crate::config::DeploySection {
@@ -187,6 +189,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         contact: None,
         access: None,
         taxonomies: Vec::new(),
+        check: None,
     };
 
     // If trust collection is included, run trust center scaffolding
@@ -234,7 +237,11 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         }
     }
 
-    let toml_str = toml::to_string_pretty(&config)?;
+    let toml_str = toml::to_string_pretty(&config)?.replacen(
+        "\nschedule = true\n",
+        "\n# Hide posts dated in the future until their date (and `expires:` posts after it).\n# The generated deploy workflow rebuilds daily so they go live on their own.\nschedule = true\n",
+        1,
+    );
     fs::write(root.join("seite.toml"), toml_str)?;
 
     // Write default templates
@@ -263,10 +270,11 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 
     // Create sample hello-world post if posts collection is included
     if collections.iter().any(|c| c.name == "posts") {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_date = content::schedule::today(&config);
+        let today = today_date.format("%Y-%m-%d").to_string();
         let fm = content::Frontmatter {
             title: "Hello World".into(),
-            date: Some(chrono::Local::now().date_naive()),
+            date: Some(today_date),
             description: Some("Welcome to your new site!".into()),
             tags: vec!["intro".into()],
             draft: false,
@@ -284,10 +292,11 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 
     // Create sample changelog entry if changelog collection is included
     if collections.iter().any(|c| c.name == "changelog") {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_date = content::schedule::today(&config);
+        let today = today_date.format("%Y-%m-%d").to_string();
         let fm = content::Frontmatter {
             title: "v0.1.0".into(),
-            date: Some(chrono::Local::now().date_naive()),
+            date: Some(today_date),
             description: Some("Initial release".into()),
             tags: vec!["new".into()],
             draft: false,

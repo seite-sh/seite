@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::{PageError, Result};
 
 pub mod create;
+pub mod schedule;
+pub mod schema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Frontmatter {
@@ -44,6 +46,10 @@ pub struct Frontmatter {
     /// Use this for custom per-page data that doesn't fit standard fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra: HashMap<String, serde_yaml_ng::Value>,
+    /// Last day the page is published; builds after this date leave it out
+    /// (see `content::schedule`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires: Option<NaiveDate>,
     /// Series this page belongs to (`series: "Rust from scratch"`) → `page.series`.
     /// Lenient: a list (Hugo style, `series: ["Rust"]`) uses its first entry;
     /// any other shape is ignored rather than failing the page.
@@ -174,6 +180,11 @@ pub struct ParsedContent {
     pub body: String,
     /// 1-based file line on which `body` starts.
     pub body_line: usize,
+    /// The raw frontmatter YAML (between the `---` lines), for schema checks
+    /// that need key positions.
+    pub frontmatter_text: String,
+    /// 1-based file line on which `frontmatter_text` starts.
+    pub frontmatter_line: usize,
 }
 
 impl ParsedContent {
@@ -241,6 +252,8 @@ pub fn parse_content_diagnostic(
         frontmatter,
         body: body.to_string(),
         body_line,
+        frontmatter_text: fm_str.to_string(),
+        frontmatter_line: fm_line,
     })
 }
 

@@ -62,6 +62,20 @@ paginate = 10
 | `subdomain_base_url` | string | none | Explicit URL override for subdomain (e.g., `https://docs.example.com`) |
 | `deploy_project` | string | none | Cloudflare/Netlify project for subdomain |
 | `related` | int | `[build] related` (3) | Maximum related pages per item; `0` disables `page.related` for this collection |
+| `fields` | tables | preset-based | Typed frontmatter schema: `[collections.fields.<name>]` with `type`, `required`, `enum`, `min`/`max`, `pattern`, `default`, `description`. See [Frontmatter schemas](/docs/configuration#frontmatter-schemas) |
+| `strict_fields` | bool | `false` | Warn about frontmatter keys the schema does not declare |
+
+`seite init` and `seite collection add` write a small schema for each preset (for example posts: `description` a string, `image`, `tags` a list of strings; docs: `weight` an integer). Nothing in a preset is required and presets set no length bounds. In a list of strings, numbers and booleans count as strings (`tags: [2024, rust]`), like the frontmatter parser. Tighten it in `seite.toml`, for example:
+
+```toml
+[collections.fields.description]
+type = "string"
+required = true
+max = 160
+description = "Summary for search results (50–160 characters)"
+```
+
+`seite check` then reports `content/posts/x.md:3: error[frontmatter-schema]: field `description` is too long: 212 characters, at most 160 allowed` with the description as the hint. `seite templates` lists every collection's fields.
 
 ## Posts
 
@@ -75,6 +89,8 @@ content/posts/
 ```
 
 The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter. Posts are sorted by date (newest first) and included in the RSS feed.
+
+With `[build] schedule = true` (set by `seite init`), a post dated in the future is scheduled: it stays out of the build until its date, and `expires: YYYY-MM-DD` takes a post down after that day. The generated GitHub Actions workflow rebuilds daily so scheduled posts go live on their own. See [Scheduled publishing](/docs/configuration#scheduled-publishing).
 
 {{% callout(type="tip") %}}
 Use `seite serve --drafts` to preview draft posts during development. Drafts are excluded from production builds by default.

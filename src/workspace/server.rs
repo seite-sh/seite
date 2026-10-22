@@ -382,7 +382,9 @@ fn watch_and_rebuild_workspace(
                     // Rebuild only the affected site
                     human::info(&format!("Changes detected in '{site_name}', rebuilding..."));
                     if let Some(ws_site) = ws_config.find_site(site_name) {
-                        if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
+                        if let Ok((mut config, paths)) = load_site_in_workspace(ws_root, ws_site) {
+                            // The dev server previews scheduled content, like drafts.
+                            config.build.future = true;
                             let opts = BuildOptions {
                                 include_drafts: true,
                                 incremental: true,
@@ -402,7 +404,9 @@ fn watch_and_rebuild_workspace(
                     // Could not determine site — rebuild all
                     human::info("Changes detected, rebuilding all sites...");
                     for ws_site in &ws_config.sites {
-                        if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
+                        if let Ok((mut config, paths)) = load_site_in_workspace(ws_root, ws_site) {
+                            // The dev server previews scheduled content, like drafts.
+                            config.build.future = true;
                             let opts = BuildOptions {
                                 include_drafts: true,
                                 incremental: true,

@@ -230,6 +230,42 @@ seite deploy
 
 The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
 
+## Scheduled publishing
+
+With `[build] schedule = true`, posts with a future `date` are left out of the build until their date, and `expires:` posts drop out after theirs (see [Scheduled publishing](/docs/configuration#scheduled-publishing)). A static site only changes when it is rebuilt, so something has to rebuild it daily. All options below are free.
+
+- **GitHub Pages:** the workflow `seite init` generates (`.github/workflows/deploy.yml`) has a daily trigger, so scheduled posts go live on free GitHub Actions minutes:
+
+  ```yaml
+  on:
+    push:
+      branches: [main]
+    workflow_dispatch:
+    schedule:
+      - cron: '17 5 * * *'   # daily, 05:17 UTC
+  ```
+
+  With `schedule = true`, `seite upgrade` adds it to a workflow that is still exactly as seite generated it; if you edited yours, it prints the lines to add instead.
+
+  GitHub disables scheduled workflows in public repositories after 60 days without repository activity (and emails you first). Re-enable it under *Actions → Deploy → Enable workflow* (or `gh workflow enable deploy.yml`), or push any commit before then; manual runs (`workflow_dispatch`) keep working meanwhile.
+- **Cloudflare Pages / Netlify via GitHub Actions:** the generated workflow for these targets has the same daily trigger (the build runs in Actions, then deploys with your `CLOUDFLARE_*` / `NETLIFY_*` secrets).
+- **Cloudflare Pages / Netlify with `seite deploy` from your machine:** either commit the generated workflow (and its secrets) so GitHub Actions rebuilds daily, or use the host's free **build hook**: Netlify (*Site configuration → Build & deploy → Build hooks*) and Cloudflare Pages Git-connected projects (*Settings → Builds → Deploy hooks*) give you a URL that starts a build when called. Call it daily from any free scheduler, for example a scheduled GitHub Actions workflow:
+
+  ```yaml
+  on:
+    schedule:
+      - cron: '17 5 * * *'
+  jobs:
+    rebuild:
+      runs-on: ubuntu-latest
+      steps:
+        - run: curl -fsS -X POST "${{ secrets.BUILD_HOOK_URL }}"
+  ```
+
+  A build hook needs the host to build the site itself (Netlify reads the generated `netlify.toml`; Cloudflare Pages needs a Git-connected project with `seite build` as its build command).
+
+Pick a cron hour after midnight in your `[site] timezone`, so posts dated today are published that morning.
+
 ## Override Target
 
 Override the configured target on the command line:

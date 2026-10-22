@@ -117,6 +117,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -128,6 +129,7 @@ mod tests {
             contact: None,
             access: None,
             taxonomies: Vec::new(),
+            check: None,
         }
     }
 

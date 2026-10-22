@@ -178,6 +178,8 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
             let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+            // The dev server previews scheduled content, like drafts.
+            config.build.future = true;
 
             let port = match args.port {
                 Some(p) => ensure_port_free(host, p)?,
@@ -230,6 +232,7 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 include_drafts: true,
                 strict: false,
                 site_filter: None,
+                future: true,
             };
             workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
         }
@@ -307,7 +310,14 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    // The dev server previews scheduled (future-dated) content, like drafts.
+    config.build.future = true;
     let paths = config.resolve_paths(&cwd);
+    if let Some(line) = crate::content::schedule::hidden_summary(
+        &crate::content::schedule::hidden_pages(&config, &paths),
+    ) {
+        human::info(&line);
+    }
 
     // Resolve the exact port we'll bind *before* building, then point base_url
     // at that live address. Otherwise absolute URLs (og:image, canonical,
@@ -613,7 +623,7 @@ fn cmd_new(
 
     let slug = content::slug_from_title(title);
     let date = if collection.has_date {
-        Some(chrono::Local::now().date_naive())
+        Some(crate::content::schedule::today(config))
     } else {
         None
     };
@@ -625,7 +635,9 @@ fn cmd_new(
     };
 
     let filename = if collection.has_date {
-        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let date_str = crate::content::schedule::today(config)
+            .format("%Y-%m-%d")
+            .to_string();
         if let Some(lang) = lang_suffix {
             format!("{date_str}-{slug}.{lang}.md")
         } else {

@@ -263,6 +263,93 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
     ]
 }
 
+/// What the deploy workflow needs for scheduled publishing.
+enum WorkflowSchedule {
+    /// Nothing to do: no workflow, or it already has a `schedule:` trigger.
+    Done,
+    /// Still exactly as seite generated it (without the cron): replace it.
+    Generated(String),
+    /// Edited by hand: tell the user how to add the cron.
+    Modified,
+}
+
+fn workflow_schedule(root: &Path) -> WorkflowSchedule {
+    let path = root.join(".github/workflows/deploy.yml");
+    let Ok(existing) = fs::read_to_string(&path) else {
+        return WorkflowSchedule::Done;
+    };
+    if existing.contains("schedule:") {
+        return WorkflowSchedule::Done;
+    }
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return WorkflowSchedule::Done;
+    };
+    // The daily rebuild only matters when scheduled publishing is on.
+    if !config.build.schedule {
+        return WorkflowSchedule::Done;
+    }
+    let current = match config.deploy.target {
+        crate::config::DeployTarget::GithubPages => {
+            crate::deploy::generate_github_actions_workflow(&config)
+        }
+        crate::config::DeployTarget::Cloudflare => {
+            crate::deploy::generate_cloudflare_workflow(&config)
+        }
+        crate::config::DeployTarget::Netlify => crate::deploy::generate_netlify_workflow(&config),
+    };
+    let previous = current.replace(crate::deploy::SCHEDULE_TRIGGER, "");
+    let normalize = |s: &str| s.replace("\r\n", "\n").trim_end().to_string();
+    if normalize(&existing) == normalize(&previous) {
+        WorkflowSchedule::Generated(current)
+    } else {
+        WorkflowSchedule::Modified
+    }
+}
+
+/// Add the daily cron to a deploy workflow still exactly as seite generated
+/// it, when `[build] schedule = true` (an edited workflow gets
+/// [`workflow_schedule_notice`] instead). Not version-gated: idempotent, and
+/// it applies whenever a site turns scheduling on.
+fn check_workflow_schedule(root: &Path) -> Vec<UpgradeAction> {
+    match workflow_schedule(root) {
+        WorkflowSchedule::Generated(content) => vec![UpgradeAction::Update {
+            path: root.join(".github/workflows/deploy.yml"),
+            content,
+            description: ".github/workflows/deploy.yml (daily cron rebuild for scheduled posts)"
+                .into(),
+        }],
+        WorkflowSchedule::Done | WorkflowSchedule::Modified => vec![],
+    }
+}
+
+/// One-time notice about scheduled publishing for sites with a dated
+/// collection that have not set `[build] schedule` (upgrade never turns it
+/// on: it would hide existing future-dated posts).
+fn schedule_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    let has_dated = config.collections.iter().any(|c| c.has_date);
+    let mentioned = text.lines().any(|l| {
+        l.trim_start().starts_with("schedule ") || l.trim_start().starts_with("schedule=")
+    });
+    (has_dated && !mentioned).then(|| Notice {
+        key: "schedule-feature".into(),
+        text: "Scheduled publishing is available: add `schedule = true` under [build] in seite.toml to keep posts dated in the future out of the build until their date (and `expires:` posts after it). It is off for existing sites; `seite upgrade` then also adds a daily rebuild to an unedited deploy workflow. See https://seite.sh/docs/configuration#scheduled-publishing".into(),
+    })
+}
+
+/// One-time notice for an edited deploy workflow without a `schedule:`.
+fn workflow_schedule_notice(root: &Path) -> Option<Notice> {
+    matches!(workflow_schedule(root), WorkflowSchedule::Modified).then(|| Notice {
+        key: "workflow-schedule".into(),
+        text: format!(
+            "Scheduled publishing: .github/workflows/deploy.yml was edited, so seite left it alone. \
+             To publish future-dated posts on their date, add a daily trigger under `on:`:\n{}",
+            crate::deploy::SCHEDULE_TRIGGER.trim_end()
+        ),
+    })
+}
+
 /// Return the canonical project instructions file, falling back to the legacy
 /// Claude-specific file for projects that have not reached the migration step.
 fn project_instructions_path(root: &Path) -> PathBuf {
@@ -653,6 +740,9 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
         }
     }
 
+    // Daily cron for scheduled publishing (only with `[build] schedule`).
+    extend_dedup(&mut actions, check_workflow_schedule(root));
+
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
     extend_dedup(&mut actions, check_agent_harness(root, &agents, args.mcp));
@@ -679,6 +769,8 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let (template_actions, template_notices) = check_default_templates(root);
     actions.extend(template_actions);
     notices.extend(template_notices);
+    notices.extend(workflow_schedule_notice(root));
+    notices.extend(schedule_feature_notice(root));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();

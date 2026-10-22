@@ -32,6 +32,9 @@ pub struct SiteConfig {
     /// categories). See `crate::build::taxonomy`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub taxonomies: Vec<TaxonomyConfig>,
+    /// `[check]`: options for `seite check` (external link checking).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<CheckSection>,
 }
 
 /// One `[[taxonomies]]` entry. Pages assign terms with a top-level frontmatter
@@ -120,6 +123,14 @@ pub struct CollectionConfig {
     /// Override `[build] related` for this collection (`0` disables `page.related`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub related: Option<usize>,
+    /// Typed frontmatter schema (`[collections.fields.<name>]`), validated by
+    /// `seite build`/`check` (see `crate::content::schema`). Empty = no schema.
+    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    pub fields: indexmap::IndexMap<String, crate::content::schema::FieldSchema>,
+    /// Warn (`frontmatter-schema-unknown`) about frontmatter keys the schema
+    /// does not declare.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict_fields: bool,
 }
 
 impl CollectionConfig {
@@ -141,6 +152,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("posts"),
+            strict_fields: false,
         }
     }
 
@@ -162,6 +175,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("docs"),
+            strict_fields: false,
         }
     }
 
@@ -183,6 +198,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("pages"),
+            strict_fields: false,
         }
     }
 
@@ -204,6 +221,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("changelog"),
+            strict_fields: false,
         }
     }
 
@@ -225,6 +244,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("roadmap"),
+            strict_fields: false,
         }
     }
 
@@ -246,6 +267,8 @@ impl CollectionConfig {
             private: false,
             access_group: None,
             related: None,
+            fields: crate::content::schema::preset_fields("trust"),
+            strict_fields: false,
         }
     }
 
@@ -307,6 +330,10 @@ pub struct SiteSection {
     pub language: String,
     #[serde(default)]
     pub author: String,
+    /// Time zone for scheduled publishing (`date` in the future, `expires`):
+    /// an IANA name (`Europe/Berlin`) or a fixed offset (`+02:00`). Default UTC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,6 +365,15 @@ pub struct BuildSection {
     /// Maximum `page.related` items per page (default 3; `0` disables).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub related: Option<usize>,
+    /// Build future-dated content (scheduled posts) too. Default: false
+    /// (`seite build --future` sets it for one build; `seite serve` always does).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub future: bool,
+    /// Scheduled publishing for dated collections: hide posts dated in the
+    /// future until their date, and `expires:` posts after theirs. Default:
+    /// false (`seite init` turns it on for new sites).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub schedule: bool,
 }
 
 impl Default for BuildSection {
@@ -354,6 +390,8 @@ impl Default for BuildSection {
             math: false,
             mermaid: false,
             related: None,
+            future: false,
+            schedule: false,
         }
     }
 }
@@ -548,6 +586,19 @@ pub struct ContactSection {
     pub subject: Option<String>,
 }
 
+/// `[check]`: options for `seite check --external`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CheckSection {
+    /// Hosts never checked by `seite check --external` (a host also matches
+    /// its subdomains). Added to the built-in list of hosts that block bots
+    /// (linkedin.com, twitter.com, x.com, instagram.com, facebook.com).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external_skip: Vec<String>,
+    /// Per-request timeout in seconds for `seite check --external`. Default: 10.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_timeout: Option<u64>,
+}
+
 /// Resolved absolute paths for the project directories.
 #[derive(Clone)]
 pub struct ResolvedPaths {
@@ -632,6 +683,7 @@ impl SiteConfig {
             })?;
         config.validate_subdomains()?;
         config.validate_access()?;
+        config.validate_content_model(None)?;
         Ok(config)
     }
 
@@ -664,6 +716,7 @@ impl SiteConfig {
         })?;
         config.validate_subdomains()?;
         config.validate_access()?;
+        config.validate_content_model(Some((&contents, file_name)))?;
         let mut warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
         // Taxonomy URL collisions are errors (pages would overwrite each
         // other); reserved taxonomy names are warnings.
@@ -678,6 +731,33 @@ impl SiteConfig {
         }
         warnings.extend(taxonomy_warnings);
         Ok((config, warnings))
+    }
+
+    /// Frontmatter schemas (`[collections.fields.*]`) and `[site] timezone`.
+    /// With the config `source`, errors are located `config-invalid`
+    /// diagnostics; without it, plain `ConfigInvalid` errors.
+    fn validate_content_model(&self, source: Option<(&str, &Path)>) -> Result<()> {
+        let problem = crate::content::schedule::validate_timezone(self.site.timezone.as_deref())
+            .err()
+            .map(|message| (message, "timezone".to_string()))
+            .or_else(|| crate::content::schema::validate_config(self).err());
+        let Some((message, key)) = problem else {
+            return Ok(());
+        };
+        match source {
+            None => Err(PageError::ConfigInvalid { message }),
+            Some((contents, file)) => {
+                let mut d = crate::diagnostics::Diagnostic::error(
+                    "config-invalid",
+                    format!("invalid config: {message}"),
+                )
+                .with_file(file);
+                if let Some(line) = crate::content::schema::config_line(contents, &key) {
+                    d = d.with_line(line);
+                }
+                Err(PageError::Diagnostics(d.into()))
+            }
+        }
     }
 
     fn validate_access(&self) -> Result<()> {
@@ -954,6 +1034,7 @@ mod tests {
                 base_url: base_url.into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections,
             build: BuildSection::default(),
@@ -965,6 +1046,7 @@ mod tests {
             contact: None,
             access: None,
             taxonomies: Vec::new(),
+            check: None,
         }
     }
 
