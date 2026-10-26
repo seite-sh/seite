@@ -573,8 +573,45 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
 </div>
 {% endblock %}"##;
 
+/// seite-owned partials under the reserved `seite/` namespace. Every bundled
+/// theme includes them (`{% include "seite/head.html" %}` etc.), so SEO/GEO,
+/// search and i18n fixes ship with the binary instead of living in 10 copies
+/// of `base.html`. A user file at `templates/seite/<name>` overrides one, at
+/// the cost of no longer receiving those fixes.
+///
+/// Extension points for later features (documented in the partials):
+/// - `seite/head.html`: generated OG cards hook in next to the `og:image` block.
+/// - `seite/scripts.html`: new seite-owned scripts are added as one more include.
+/// - `seite/search-script.html`: the search implementation (index format and ranking).
+pub const SEITE_PARTIALS: &[(&str, &str)] = &[
+    ("seite/head.html", include_str!("seite/head.html")),
+    ("seite/search.html", include_str!("seite/search.html")),
+    (
+        "seite/search-script.html",
+        include_str!("seite/search-script.html"),
+    ),
+    (
+        "seite/lang-switcher.html",
+        include_str!("seite/lang-switcher.html"),
+    ),
+    ("seite/scripts.html", include_str!("seite/scripts.html")),
+];
+
+/// The embedded seite partial with this name (`seite/head.html`, ...), if any.
+pub fn seite_partial(name: &str) -> Option<&'static str> {
+    SEITE_PARTIALS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, content)| *content)
+}
+
 /// Names of every embedded default template (see [`embedded_default`]).
 pub const EMBEDDED_TEMPLATE_NAMES: &[&str] = &[
+    "seite/head.html",
+    "seite/search.html",
+    "seite/search-script.html",
+    "seite/lang-switcher.html",
+    "seite/scripts.html",
     "base.html",
     "index.html",
     "post.html",
@@ -625,7 +662,7 @@ fn get_default_template(name: &str) -> Option<&'static str> {
         "roadmap-index.html" => Some(DEFAULT_ROADMAP_INDEX),
         "roadmap-kanban.html" => Some(DEFAULT_ROADMAP_KANBAN),
         "roadmap-timeline.html" => Some(DEFAULT_ROADMAP_TIMELINE),
-        _ => None,
+        _ => seite_partial(name),
     }
 }
 
@@ -670,6 +707,14 @@ pub fn load_templates_with_warnings(
     // already uses `| safe`. Auto-escaping causes URLs to be mangled with &#x2F;
     // in href attributes (e.g. `href="&#x2F;posts"` instead of `href="/posts"`).
     tera.autoescape_on(vec![]);
+
+    // seite-owned partials: the embedded copy unless the site overrides it
+    // with templates/seite/<name>.
+    for (name, content) in SEITE_PARTIALS {
+        if tera.get_template(name).is_err() {
+            tera.add_raw_template(name, content)?;
+        }
+    }
 
     // Always ensure essential templates exist
     for name in [
@@ -777,6 +822,52 @@ pub fn stale_markdown_link_diagnostics(template_dir: &Path) -> Diagnostics {
             }
         }
     }
+    diagnostics
+}
+
+/// The snippet that adopts seite's partials in a custom `base.html`.
+pub const SEITE_PARTIALS_SNIPPET: &str = r#"{% include "seite/head.html" %}      inside <head>, right after <title>
+{% include "seite/search.html" %}    where the search box goes
+{% include "seite/scripts.html" %}   right before </body>"#;
+
+/// Warn (`template-missing-seite-head`) when the site's own `base.html`
+/// does not include `seite/head.html`, the partial that carries canonical,
+/// description, Open Graph/Twitter, JSON-LD, hreflang, feed and markdown
+/// links. A `base.html` that still has its own copy of that head (an older
+/// bundled theme or a copy of one) is reported as a legacy theme: it works,
+/// but no longer gets SEO/GEO fixes. No `base.html` (the embedded default)
+/// is fine.
+pub fn seite_head_diagnostics(template_dir: &Path) -> Diagnostics {
+    let mut diagnostics = Diagnostics::new();
+    let path = template_dir.join("base.html");
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return diagnostics;
+    };
+    if content.contains("seite/head.html") {
+        return diagnostics;
+    }
+    // Point at <title> (the include goes right after it), else at <head>.
+    let find = |needle: &str| content.lines().position(|l| l.contains(needle));
+    let line = find("</title>")
+        .or_else(|| find("<head"))
+        .map_or(1, |i| i + 1);
+    let legacy = content.contains("og:title") || content.contains("application/ld+json");
+    let diagnostic = if legacy {
+        Diagnostic::warning(
+            "template-missing-seite-head",
+            "legacy theme: base.html has its own copy of the SEO head instead of including `seite/head.html`, so it gets no automatic SEO/GEO updates",
+        )
+        .with_hint(
+            "run `seite upgrade` (replaces an unedited bundled theme) or `seite theme apply <name>` to get automatic SEO updates; to keep your design, replace the SEO tags after <title> with `{% include \"seite/head.html\" %}`",
+        )
+    } else {
+        Diagnostic::warning(
+            "template-missing-seite-head",
+            "missing SEO head: base.html does not include `seite/head.html`, so pages have no canonical URL, description, Open Graph/Twitter tags or JSON-LD",
+        )
+        .with_hint("add `{% include \"seite/head.html\" %}` inside <head>, right after <title>")
+    };
+    diagnostics.push(diagnostic.with_file(&path).with_line(line));
     diagnostics
 }
 
@@ -1231,5 +1322,142 @@ mod tests {
                 name
             );
         }
+    }
+
+    // --- seite partials ---
+
+    #[test]
+    fn test_seite_partials_resolve_and_start_with_marker() {
+        for (name, content) in SEITE_PARTIALS {
+            assert_eq!(seite_partial(name), Some(*content));
+            assert_eq!(embedded_default(name), Some(*content));
+            assert!(EMBEDDED_TEMPLATE_NAMES.contains(name), "{name}");
+            let short = name
+                .strip_prefix("seite/")
+                .and_then(|n| n.strip_suffix(".html"))
+                .unwrap();
+            assert!(
+                content.starts_with(&format!(
+                    "{{# seite partial: {short} — managed by seite, updated on upgrade"
+                )),
+                "{name}"
+            );
+            for line in content.lines() {
+                assert!(find_page_url_md(line).is_none(), "{name}: {line}");
+            }
+        }
+        assert!(seite_partial("seite/nope.html").is_none());
+    }
+
+    #[test]
+    fn test_every_bundled_theme_includes_the_partials() {
+        for theme in crate::themes::all() {
+            for partial in [
+                "seite/head.html",
+                "seite/search.html",
+                "seite/scripts.html",
+                "seite/lang-switcher.html",
+            ] {
+                let include = format!("{{% include \"{partial}\" %}}");
+                assert_eq!(
+                    theme.base_html.matches(&include).count(),
+                    1,
+                    "{}: {partial}",
+                    theme.name
+                );
+            }
+            // Themes own layout and CSS only: no copy of the SEO head.
+            for tag in [
+                "og:title",
+                "application/ld+json",
+                "rel=\"canonical\"",
+                "search-index.json",
+            ] {
+                assert!(!theme.base_html.contains(tag), "{}: {tag}", theme.name);
+            }
+            assert!(
+                theme.base_html.contains("{% block title %}"),
+                "{}",
+                theme.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_load_templates_registers_partials_and_honors_overrides() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (tera, _) = load_templates_with_warnings(&tmp.path().join("missing"), &[]).unwrap();
+        for (name, _) in SEITE_PARTIALS {
+            assert!(tera.get_template(name).is_ok(), "{name}");
+        }
+
+        // A user file under templates/seite/ wins over the embedded partial,
+        // and a user base.html can include partials it does not define.
+        std::fs::create_dir_all(tmp.path().join("seite")).unwrap();
+        std::fs::write(tmp.path().join("seite/head.html"), "<meta name=\"mine\">").unwrap();
+        std::fs::write(
+            tmp.path().join("base.html"),
+            "<head>{% include \"seite/head.html\" %}</head>{% include \"seite/search.html\" %}",
+        )
+        .unwrap();
+        let (tera, warnings) = load_templates_with_warnings(tmp.path(), &[]).unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut ctx = tera::Context::new();
+        ctx.insert(
+            "t",
+            &serde_json::json!({"search_label": "Search", "search_placeholder": "Find"}),
+        );
+        let html = tera.render("base.html", &ctx).unwrap();
+        assert!(html.contains("<meta name=\"mine\">"), "{html}");
+        assert!(html.contains("id=\"search-input\""), "{html}");
+    }
+
+    #[test]
+    fn test_seite_head_diagnostics() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No base.html: the embedded default theme is used.
+        assert!(seite_head_diagnostics(tmp.path()).is_empty());
+
+        // A bundled (partial-based) theme: fine.
+        std::fs::write(
+            tmp.path().join("base.html"),
+            crate::themes::dark().base_html,
+        )
+        .unwrap();
+        assert!(seite_head_diagnostics(tmp.path()).is_empty());
+
+        // A pre-partials theme: legacy message pointing at upgrade/apply.
+        let legacy = include_str!("../../tests/fixtures/themes-pre-partials/dark.tera");
+        std::fs::write(tmp.path().join("base.html"), legacy).unwrap();
+        let found: Vec<_> = seite_head_diagnostics(tmp.path()).into_iter().collect();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].code, "template-missing-seite-head");
+        assert_eq!(found[0].severity, crate::diagnostics::Severity::Warning);
+        assert!(
+            found[0].message.starts_with("legacy theme"),
+            "{}",
+            found[0].message
+        );
+        let hint = found[0].hint.clone().unwrap();
+        assert!(
+            hint.contains("seite upgrade") && hint.contains("seite theme apply"),
+            "{hint}"
+        );
+        assert_eq!(found[0].line, Some(7));
+
+        // A head without any SEO tags: missing message.
+        std::fs::write(
+            tmp.path().join("base.html"),
+            "<html>\n<head>\n<title>x</title>\n</head>\n<body></body></html>",
+        )
+        .unwrap();
+        let found: Vec<_> = seite_head_diagnostics(tmp.path()).into_iter().collect();
+        assert_eq!(found.len(), 1);
+        assert!(
+            found[0].message.starts_with("missing SEO head"),
+            "{}",
+            found[0].message
+        );
+        assert_eq!(found[0].line, Some(3));
     }
 }

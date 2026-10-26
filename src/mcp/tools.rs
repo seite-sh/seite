@@ -1267,7 +1267,7 @@ fn call_apply_theme(state: &ServerState, arguments: &serde_json::Value) -> ToolR
     let name = args.req_str("name")?;
     let (_, paths) = state.site()?;
 
-    let applied = themes::apply_theme(&paths.root, &paths.templates, name)
+    let applied = themes::apply_theme(&paths.root, &paths.templates, &paths.static_dir, name)
         .map_err(|e| ToolError::new(format!("seite_apply_theme: {e}")))?;
 
     let mut response = serde_json::json!({

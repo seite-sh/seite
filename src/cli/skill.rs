@@ -410,8 +410,13 @@ fn run_install_impeccable() -> anyhow::Result<()> {
     let ran = run_impeccable(&root, "install", &args)?;
     if ran {
         record_impeccable(&root)?;
+        // Point impeccable's live mode at the site's base.html (add-only).
+        if let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) {
+            let templates = config.resolve_paths(&root).templates;
+            crate::cli::theme::configure_impeccable_live(&root, &templates)?;
+        }
         human::success(
-            "Installed 'impeccable'. In your agent, run `/impeccable` (Codex: `$impeccable`).",
+            "Installed 'impeccable'. In your agent, run `/impeccable init`, then `/impeccable <describe your design>` (Codex: `$impeccable`). For a fresh design: `seite theme new`.",
         );
     }
     crate::output::json::set_data(serde_json::json!({

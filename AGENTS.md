@@ -24,6 +24,7 @@ cargo run -- new post "My Post" --tags rust,web
 cargo run -- agent "create a blog post about Rust"
 cargo run -- hooks status        # coding-agent check hooks (on|off|status)
 cargo run -- check --file content/posts/x.md  # fast per-file check
+cargo run -- theme new           # blank starter for a custom design
 cargo run -- theme create "coral brutalist with lime accents"
 cargo run -- deploy  # Commit, push, build, and deploy
 cargo run -- skill install seomachine
@@ -41,7 +42,7 @@ src/
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
   safe_fs.rs           Project-confined writes/deletes (refuse symlinked components) for init/upgrade/hooks/skill/serve
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
-  themes.rs            10 bundled themes + src/themes/*.tera
+  themes.rs            11 bundled themes (starters default/docs/landing/blank + gallery) from src/themes/*.tera; layout + CSS only
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`)
   docs.rs              Embedded docs (16 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
@@ -58,7 +59,7 @@ src/
   workspace/           Multi-site workspaces (config, build, server, deploy)
   output/              CommandOutput trait, human (colored), json
   server/              tiny_http dev server, file watcher, live reload
-  templates/           Tera template loading with embedded defaults
+  templates/           Tera template loading with embedded defaults; seite/*.html partials (SEO head, search, lang switcher, scripts) every theme includes
 tests/integration/     Integration tests, one module per command (assert_cmd + tempfile)
 build.rs               Generates releases.md from changelog at compile time
 ```
@@ -187,7 +188,7 @@ endpoint = "xpznqkdl"
 Detailed reference guides are in `.claude/rules/` and load automatically when working with matching files:
 - `build-pipeline.md` — build pipeline steps, content model, data files, shortcodes
 - `seo-guardrails.md` — SEO/GEO meta tags, JSON-LD, robots.txt, i18n in themes
-- `templates-themes.md` — template variables, blocks, 10 bundled themes, gallery
+- `templates-themes.md` — template variables, blocks, seite partials, starters + gallery, theme hash table
 - `collections-content.md` — 6 presets, i18n, trust center, contact forms, changelog/roadmap
 - `cli-commands.md` — subcommands, agent, dev server, workspace, deploy, skills
 - `mcp-server.md` — resources, tools, architecture

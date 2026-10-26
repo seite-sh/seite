@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
@@ -14,8 +14,19 @@ pub struct ThemeArgs {
 
 #[derive(Subcommand)]
 pub enum ThemeCommand {
-    /// List available themes (bundled and installed)
+    /// List available themes: starters, the gallery of examples, installed
     List,
+
+    /// Start a custom design: scaffold the blank starter (templates/base.html
+    /// plus static/css/site.css) and print how to design it with your agent
+    New {
+        /// Name for your theme (used when you export it later)
+        name: Option<String>,
+
+        /// Replace a customized base.html (it is backed up first)
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Apply a theme to the current site
     Apply {
@@ -56,6 +67,9 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
         ThemeCommand::List => {
             run_list()?;
         }
+        ThemeCommand::New { name, force } => {
+            run_new(name.as_deref(), *force)?;
+        }
         ThemeCommand::Apply { name } => {
             run_apply(name)?;
         }
@@ -72,19 +86,41 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_list() -> anyhow::Result<()> {
-    human::header("Bundled themes");
-    // Find the longest theme name for alignment
-    let all_themes = themes::all();
-    let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
-    for theme in &all_themes {
+fn theme_json(t: &themes::Theme) -> serde_json::Value {
+    serde_json::json!({ "name": t.name, "description": t.description, "kind": t.kind.as_str() })
+}
+
+fn print_theme_group(title: &str, group: &[themes::Theme], max_len: usize) {
+    human::header(title);
+    for theme in group {
         crate::human_println!(
             "  {}  {}",
             console::style(format!("{:<max_len$}", theme.name)).bold(),
             theme.description,
         );
     }
+}
+
+fn run_list() -> anyhow::Result<()> {
+    let all_themes = themes::all();
+    let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
+    let starters = themes::of_kind(themes::ThemeKind::Starter);
+    let gallery = themes::of_kind(themes::ThemeKind::Gallery);
+    print_theme_group("Starters", &starters, max_len);
     crate::human_println!();
+    print_theme_group(
+        "Gallery (examples: seite theme apply <name>)",
+        &gallery,
+        max_len,
+    );
+    crate::human_println!();
+    crate::human_println!(
+        "  {}",
+        console::style(
+            "Bundled themes are examples and starting points. For your own design: seite theme new"
+        )
+        .dim()
+    );
     crate::human_println!(
         "  {} {}",
         console::style("Preview all:").dim(),
@@ -96,10 +132,9 @@ fn run_list() -> anyhow::Result<()> {
     let project_root = PathBuf::from(".");
     let installed = themes::installed_themes(&project_root);
     crate::output::json::set_data(serde_json::json!({
-        "bundled": all_themes
-            .iter()
-            .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
-            .collect::<Vec<_>>(),
+        "starters": starters.iter().map(theme_json).collect::<Vec<_>>(),
+        "gallery": gallery.iter().map(theme_json).collect::<Vec<_>>(),
+        "bundled": all_themes.iter().map(theme_json).collect::<Vec<_>>(),
         "installed": installed
             .iter()
             .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
@@ -138,11 +173,18 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     let paths = config.resolve_paths(&project_root);
 
     if themes::by_name(name).is_some() || themes::installed_by_name(&project_root, name).is_some() {
-        let applied = themes::apply_theme(&project_root, &paths.templates, name)?;
+        let applied =
+            themes::apply_theme(&project_root, &paths.templates, &paths.static_dir, name)?;
         if let Some(ref backup) = applied.backup {
             human::info(&format!(
                 "Backed up your customized base.html to {}",
                 backup.display()
+            ));
+        }
+        if let Some(ref css) = applied.stylesheet {
+            human::info(&format!(
+                "Wrote the theme's stylesheet to {}",
+                css.display()
             ));
         }
         human::success(&format!(
@@ -169,53 +211,98 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
 enum CreatePlan {
     /// impeccable is installed: print how to run it (design decisions are
     /// its job; seite's template rules load automatically).
-    Impeccable { lines: Vec<String> },
+    Impeccable {
+        scaffold_blank: bool,
+        lines: Vec<String>,
+    },
     /// Run the agent one-shot with the `seite` skill's theme workflow.
-    RunAgent { prompt: String },
+    RunAgent {
+        scaffold_blank: bool,
+        prompt: String,
+    },
 }
 
 /// Whether the impeccable design skill is installed in the project.
-fn impeccable_installed(root: &std::path::Path) -> bool {
-    [".claude/skills/impeccable", ".agents/skills/impeccable"]
-        .iter()
-        .any(|dir| root.join(dir).is_dir())
+fn impeccable_installed(root: &Path) -> bool {
+    crate::cli::skill::impeccable_installed(root)
+}
+
+/// Whether `active` (from [`themes::active_theme`]) is one of the bundled
+/// example looks. A custom design starts from the blank starter instead of
+/// being painted over one of them.
+fn is_bundled_example(active: &str) -> bool {
+    active != themes::BLANK && themes::by_name(active).is_some()
+}
+
+/// How to design the theme with impeccable, including `/impeccable init`
+/// when the project has no PRODUCT.md yet.
+fn impeccable_lines(root: &Path, description: Option<&str>) -> Vec<String> {
+    let design = description.unwrap_or("<describe your design>");
+    let mut lines = Vec::new();
+    if !root.join("PRODUCT.md").exists() {
+        lines.push("impeccable is installed: in your agent, run `/impeccable init` first (it writes PRODUCT.md, the site brief).".to_string());
+    }
+    lines.push(format!(
+        "Design with `/impeccable {design}` (Codex: `$impeccable {design}`). It edits templates/base.html and static/css/site.css; keep the `{{% include \"seite/...\" %}}` lines."
+    ));
+    lines.push("seite's template rules load automatically when the agent edits templates/, and `/seite theme` has the base.html contract.".into());
+    lines.push(
+        "Afterwards: `seite check`, `seite build`, then one `impeccable detect dist/`; preview with `seite serve`."
+            .into(),
+    );
+    lines
 }
 
 fn create_plan(
-    root: &std::path::Path,
+    root: &Path,
+    templates_dir: &Path,
     description: &str,
     harness: crate::cli::agent::Harness,
 ) -> CreatePlan {
+    let scaffold_blank = is_bundled_example(&themes::active_theme(root, templates_dir));
     if impeccable_installed(root) {
         return CreatePlan::Impeccable {
-            lines: vec![
-                format!("impeccable is installed: in your agent, run `/impeccable {description}` (Codex: `$impeccable {description}`)."),
-                "seite's template rules load automatically when the agent edits templates/, and `/seite theme` has the base.html contract.".into(),
-                "Afterwards: `seite check`, then preview with `seite serve`.".into(),
-            ],
+            scaffold_blank,
+            lines: impeccable_lines(root, Some(description)),
         };
     }
     CreatePlan::RunAgent {
+        scaffold_blank,
         prompt: harness.skill_prompt(&format!("theme {description}")),
     }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn run_create(description: &str) -> anyhow::Result<()> {
-    SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let root = std::env::current_dir()?;
+    let paths = config.resolve_paths(&root);
     let harness = crate::cli::agent::resolve_harness(None)?;
-    match create_plan(&root, description, harness) {
-        CreatePlan::Impeccable { lines } => {
+    let plan = create_plan(&root, &paths.templates, description, harness);
+    let scaffold = match &plan {
+        CreatePlan::Impeccable { scaffold_blank, .. }
+        | CreatePlan::RunAgent { scaffold_blank, .. } => *scaffold_blank,
+    };
+    if scaffold {
+        let applied = scaffold_blank(&root, &paths, false)?;
+        human::info(&format!(
+            "Started from the blank starter: {} (CSS in static/{}), so the design is not painted over an example theme.",
+            applied.path.display(),
+            themes::BLANK_STYLESHEET
+        ));
+    }
+    match plan {
+        CreatePlan::Impeccable { lines, .. } => {
             for line in lines {
                 human::info(&line);
             }
             crate::output::json::set_data(serde_json::json!({
                 "mode": "impeccable",
                 "description": description,
+                "scaffolded_blank": scaffold,
             }));
         }
-        CreatePlan::RunAgent { prompt } => {
+        CreatePlan::RunAgent { prompt, .. } => {
             crate::cli::agent::refuse_nested(&format!(
                 "Run `/seite theme {description}` directly in this session (Codex: `$seite theme {description}`)."
             ))?;
@@ -229,10 +316,134 @@ fn run_create(description: &str) -> anyhow::Result<()> {
                 "mode": "agent",
                 "agent": harness.name(),
                 "prompt": prompt,
+                "scaffolded_blank": scaffold,
             }));
         }
     }
     Ok(())
+}
+
+/// Scaffold the blank starter into `templates/base.html` and
+/// `static/css/site.css` (an existing stylesheet is kept). A customized
+/// `base.html` is replaced only with `force`, after a backup (as `apply`).
+/// With impeccable installed, also point its live mode at the template.
+fn scaffold_blank(
+    root: &Path,
+    paths: &crate::config::ResolvedPaths,
+    force: bool,
+) -> anyhow::Result<themes::AppliedTheme> {
+    if !force && themes::active_theme(root, &paths.templates) == "custom" {
+        anyhow::bail!(
+            "{} is customized; `seite theme new --force` replaces it (after a backup), or keep it with `seite theme export <name>` first",
+            paths.templates.join("base.html").display()
+        );
+    }
+    let applied = themes::apply_theme(root, &paths.templates, &paths.static_dir, themes::BLANK)?;
+    if impeccable_installed(root) {
+        configure_impeccable_live(root, &paths.templates)?;
+    }
+    Ok(applied)
+}
+
+/// Next steps printed by `seite theme new`.
+fn new_theme_next_steps(root: &Path, name: &str) -> Vec<String> {
+    let mut lines = vec![
+        "Layout lives in templates/base.html, the look in static/css/site.css. Keep the `{% include \"seite/...\" %}` lines: they carry SEO, search and i18n.".to_string(),
+    ];
+    if impeccable_installed(root) {
+        lines.extend(impeccable_lines(root, None));
+    } else {
+        lines.push(
+            "Design it with your agent: `/seite theme <description>` (Codex: `$seite theme <description>`), or `seite theme create \"<description>\"`."
+                .into(),
+        );
+        lines.push("For deeper design tooling: `seite skill install impeccable`.".into());
+        lines.push("Afterwards: `seite check`; preview with `seite serve`.".into());
+    }
+    lines.push(format!(
+        "To reuse it elsewhere: `seite theme export {name}`."
+    ));
+    lines
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_new(name: Option<&str>, force: bool) -> anyhow::Result<()> {
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let root = std::env::current_dir()?;
+    let paths = config.resolve_paths(&root);
+    let name = name.unwrap_or("my-theme");
+    themes::validate_theme_name(name)?;
+    let applied = scaffold_blank(&root, &paths, force)?;
+    if let Some(ref backup) = applied.backup {
+        human::info(&format!(
+            "Backed up your customized base.html to {}",
+            backup.display()
+        ));
+    }
+    human::success(&format!(
+        "Scaffolded the blank starter for '{name}': {}{}",
+        applied.path.display(),
+        applied
+            .stylesheet
+            .as_ref()
+            .map(|css| format!(" and {}", css.display()))
+            .unwrap_or_default()
+    ));
+    for line in new_theme_next_steps(&root, name) {
+        human::info(&line);
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "theme": name,
+        "starter": themes::BLANK,
+        "written": applied.path.display().to_string(),
+        "stylesheet": applied.stylesheet.as_ref().map(|p| p.display().to_string()),
+        "backup": applied.backup.as_ref().map(|p| p.display().to_string()),
+        "impeccable": impeccable_installed(&root),
+    }));
+    Ok(())
+}
+
+/// impeccable's live-mode config (see its `reference/live-setup.md`).
+pub const IMPECCABLE_LIVE_CONFIG: &str = ".impeccable/live/config.json";
+
+/// Point impeccable's live mode at the site's `base.html` (every page
+/// renders through it, and the dev server re-renders on change), merging
+/// add-only: keys the file already has are never changed. Leaves an
+/// unparsable file alone. Returns whether anything was written.
+///
+/// `cspChecked` is left for impeccable to ask about.
+pub fn configure_impeccable_live(root: &Path, templates_dir: &Path) -> anyhow::Result<bool> {
+    let path = root.join(IMPECCABLE_LIVE_CONFIG);
+    let mut config = match std::fs::read_to_string(&path) {
+        Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => return Ok(false),
+        },
+        Err(_) => serde_json::Map::new(),
+    };
+    let base = templates_dir.join("base.html");
+    let base = base
+        .strip_prefix(root)
+        .unwrap_or(&base)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let mut added = false;
+    for (key, value) in [
+        ("files", serde_json::json!([base])),
+        ("insertBefore", serde_json::json!("</body>")),
+        ("commentSyntax", serde_json::json!("html")),
+    ] {
+        if !config.contains_key(key) {
+            config.insert(key.to_string(), value);
+            added = true;
+        }
+    }
+    if !added {
+        return Ok(false);
+    }
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(config))? + "\n";
+    crate::safe_fs::write(root, &path, text)?;
+    Ok(true)
 }
 
 /// Derive a theme name from a URL or explicit override.
@@ -517,35 +728,200 @@ mod tests {
     fn test_create_plan_with_impeccable_installed() {
         for dir in [".claude/skills/impeccable", ".agents/skills/impeccable"] {
             let tmp = tempfile::TempDir::new().unwrap();
+            let tpl = tmp.path().join("templates");
             assert!(!impeccable_installed(tmp.path()));
             std::fs::create_dir_all(tmp.path().join(dir)).unwrap();
             assert!(impeccable_installed(tmp.path()));
-            match create_plan(tmp.path(), "coral brutalist", Harness::Claude) {
-                CreatePlan::Impeccable { lines } => {
+            match create_plan(tmp.path(), &tpl, "coral brutalist", Harness::Claude) {
+                CreatePlan::Impeccable {
+                    lines,
+                    scaffold_blank,
+                } => {
+                    // No base.html: the build uses the default example theme.
+                    assert!(scaffold_blank);
                     let text = lines.join("\n");
+                    assert!(text.contains("/impeccable init"), "{text}");
                     assert!(text.contains("/impeccable coral brutalist"), "{text}");
                     assert!(text.contains("$impeccable"), "{text}");
-                    assert!(text.contains("templates"), "{text}");
+                    assert!(text.contains("static/css/site.css"), "{text}");
+                    assert!(text.contains("impeccable detect dist/"), "{text}");
                 }
                 other => panic!("{other:?}"),
             }
+            // With a PRODUCT.md the init step is skipped.
+            std::fs::write(tmp.path().join("PRODUCT.md"), "brief").unwrap();
+            let lines = impeccable_lines(tmp.path(), None).join("\n");
+            assert!(!lines.contains("/impeccable init"), "{lines}");
+            assert!(lines.contains("<describe your design>"), "{lines}");
         }
     }
 
     #[test]
     fn test_create_plan_without_impeccable_runs_the_seite_skill() {
         let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
         assert_eq!(
-            create_plan(tmp.path(), "dark teal", Harness::Claude),
+            create_plan(tmp.path(), &tpl, "dark teal", Harness::Claude),
             CreatePlan::RunAgent {
+                scaffold_blank: true,
                 prompt: "/seite theme dark teal".into()
             }
         );
         assert_eq!(
-            create_plan(tmp.path(), "dark teal", Harness::Codex),
+            create_plan(tmp.path(), &tpl, "dark teal", Harness::Codex),
             CreatePlan::RunAgent {
+                scaffold_blank: true,
                 prompt: "$seite theme dark teal".into()
             }
         );
+    }
+
+    #[test]
+    fn test_create_plan_scaffolds_blank_only_over_bundled_examples() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
+        std::fs::create_dir_all(&tpl).unwrap();
+        let scaffold = |root: &Path| match create_plan(root, &tpl, "x", Harness::Claude) {
+            CreatePlan::RunAgent { scaffold_blank, .. }
+            | CreatePlan::Impeccable { scaffold_blank, .. } => scaffold_blank,
+        };
+        for theme in ["dark", "docs", "landing", "terminal"] {
+            std::fs::write(
+                tpl.join("base.html"),
+                themes::by_name(theme).unwrap().base_html,
+            )
+            .unwrap();
+            assert!(scaffold(tmp.path()), "{theme}");
+        }
+        // Already on blank, or a custom design: keep it.
+        std::fs::write(tpl.join("base.html"), themes::blank().base_html).unwrap();
+        assert!(!scaffold(tmp.path()));
+        std::fs::write(tpl.join("base.html"), "<html>mine</html>").unwrap();
+        assert!(!scaffold(tmp.path()));
+        assert!(!is_bundled_example("custom"));
+        assert!(!is_bundled_example(themes::BLANK));
+        assert!(is_bundled_example("default"));
+    }
+
+    // --- theme new ---
+
+    fn site_paths(root: &Path) -> crate::config::ResolvedPaths {
+        let config: SiteConfig =
+            toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
+        config.resolve_paths(root)
+    }
+
+    #[test]
+    fn test_scaffold_blank_fresh_writes_base_and_stylesheet() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        let base = std::fs::read_to_string(paths.templates.join("base.html")).unwrap();
+        assert_eq!(base, themes::blank().base_html);
+        assert!(base.contains(r#"{% include "seite/head.html" %}"#));
+        assert!(base.contains(r#"href="/static/css/site.css""#));
+        let css = paths.static_dir.join("css/site.css");
+        assert_eq!(applied.stylesheet.as_deref(), Some(css.as_path()));
+        assert!(std::fs::read_to_string(&css).unwrap().contains(":root"));
+        // No impeccable: no live config.
+        assert!(!tmp.path().join(IMPECCABLE_LIVE_CONFIG).exists());
+    }
+
+    #[test]
+    fn test_scaffold_blank_refuses_custom_base_without_force() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), "<html>mine</html>").unwrap();
+        let err = scaffold_blank(tmp.path(), &paths, false).unwrap_err();
+        assert!(err.to_string().contains("--force"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            "<html>mine</html>"
+        );
+
+        // --force backs the custom file up first.
+        let applied = scaffold_blank(tmp.path(), &paths, true).unwrap();
+        let backup = applied.backup.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(backup).unwrap(),
+            "<html>mine</html>"
+        );
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            themes::blank().base_html
+        );
+    }
+
+    #[test]
+    fn test_scaffold_blank_over_bundled_theme_needs_no_force_and_keeps_css() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), themes::dark().base_html).unwrap();
+        let css = paths.static_dir.join("css/site.css");
+        std::fs::create_dir_all(css.parent().unwrap()).unwrap();
+        std::fs::write(&css, "body { color: red; }").unwrap();
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        // The site's own stylesheet is never overwritten.
+        assert!(applied.stylesheet.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&css).unwrap(),
+            "body { color: red; }"
+        );
+    }
+
+    #[test]
+    fn test_new_theme_next_steps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let text = new_theme_next_steps(tmp.path(), "coral").join("\n");
+        assert!(text.contains("/seite theme <description>"), "{text}");
+        assert!(text.contains("seite skill install impeccable"), "{text}");
+        assert!(text.contains("seite theme export coral"), "{text}");
+        assert!(text.contains("static/css/site.css"), "{text}");
+
+        std::fs::create_dir_all(tmp.path().join(".claude/skills/impeccable")).unwrap();
+        let text = new_theme_next_steps(tmp.path(), "coral").join("\n");
+        assert!(text.contains("/impeccable init"), "{text}");
+        assert!(!text.contains("seite skill install impeccable"), "{text}");
+    }
+
+    #[test]
+    fn test_scaffold_blank_with_impeccable_configures_live_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(tmp.path().join(".claude/skills/impeccable")).unwrap();
+        scaffold_blank(tmp.path(), &paths, false).unwrap();
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(IMPECCABLE_LIVE_CONFIG)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(config["files"], serde_json::json!(["templates/base.html"]));
+        assert_eq!(config["insertBefore"], "</body>");
+        assert_eq!(config["commentSyntax"], "html");
+        assert!(config.get("cspChecked").is_none());
+    }
+
+    #[test]
+    fn test_configure_impeccable_live_is_add_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
+        let path = tmp.path().join(IMPECCABLE_LIVE_CONFIG);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"files":["dist/**/*.html"],"cspChecked":true}"#).unwrap();
+        assert!(configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(config["files"], serde_json::json!(["dist/**/*.html"]));
+        assert_eq!(config["cspChecked"], true);
+        assert_eq!(config["insertBefore"], "</body>");
+        // Nothing left to add: no write.
+        assert!(!configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        // Unparsable config is left alone.
+        std::fs::write(&path, "not json").unwrap();
+        assert!(!configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json");
     }
 }

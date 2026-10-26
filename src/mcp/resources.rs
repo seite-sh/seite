@@ -349,6 +349,7 @@ fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
             "name": theme.name,
             "description": theme.description,
             "source": "bundled",
+            "kind": theme.kind.as_str(),
             "active": is_active,
         }));
     }
@@ -1221,7 +1222,7 @@ mod tests {
         assert!(bundled_names.contains(&"terminal"));
         assert!(bundled_names.contains(&"magazine"));
         assert!(bundled_names.contains(&"academic"));
-        assert_eq!(bundled_names.len(), 10);
+        assert_eq!(bundled_names.len(), 11);
     }
 
     #[test]

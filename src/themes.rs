@@ -2,16 +2,49 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{PageError, Result};
 
-/// Bundled themes. Each is a self-contained base.html Tera template embedded
-/// at compile time via include_str!. Binary ships with all themes — no downloads needed.
+/// Bundled themes. Each is a `base.html` Tera template embedded at compile
+/// time via include_str!, so the binary ships with all of them: no downloads,
+/// works offline, and every theme is versioned with the binary.
 ///
-/// To edit a theme, modify the corresponding file in src/themes/:
-///   default.tera, minimal.tera, dark.tera, docs.tera, brutalist.tera, bento.tera
+/// Themes own layout and CSS only. Everything seite must keep correct (the
+/// SEO/GEO head, search, language switcher, end-of-body scripts) comes from
+/// the `seite/*` partials in `src/templates/seite/`, which every theme
+/// includes. Edit the theme files in `src/themes/`; editing one changes its
+/// hash, so append the new hash to `LEGACY_THEME_HASHES` in
+/// `src/cli/upgrade.rs` (a test fails with instructions until you do).
 pub struct Theme {
     pub name: &'static str,
     pub description: &'static str,
     pub base_html: &'static str,
+    pub kind: ThemeKind,
+    /// A stylesheet the theme links (`static/<path>`) and `apply` writes when
+    /// it does not exist yet: `(path under static/, content)`.
+    pub stylesheet: Option<(&'static str, &'static str)>,
 }
+
+/// How a bundled theme is offered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeKind {
+    /// Offered by `seite init` and listed first.
+    Starter,
+    /// Example looks, applied with `seite theme apply <name>`.
+    Gallery,
+}
+
+impl ThemeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ThemeKind::Starter => "starter",
+            ThemeKind::Gallery => "gallery",
+        }
+    }
+}
+
+/// The starter made for designing your own theme (`seite theme new`).
+pub const BLANK: &str = "blank";
+
+/// Where the `blank` starter's stylesheet lives, relative to `static/`.
+pub const BLANK_STYLESHEET: &str = "css/site.css";
 
 /// An installed theme loaded from `templates/themes/<name>.tera` on disk.
 pub struct InstalledTheme {
@@ -20,19 +53,26 @@ pub struct InstalledTheme {
     pub base_html: String,
 }
 
+/// Every bundled theme: the starters first, then the gallery.
 pub fn all() -> Vec<Theme> {
     vec![
         default(),
+        docs(),
+        landing(),
+        blank(),
         minimal(),
         dark(),
-        docs(),
         brutalist(),
         bento(),
-        landing(),
         terminal(),
         magazine(),
         academic(),
     ]
+}
+
+/// The bundled themes of one kind, in [`all`] order.
+pub fn of_kind(kind: ThemeKind) -> Vec<Theme> {
+    all().into_iter().filter(|t| t.kind == kind).collect()
 }
 
 pub fn by_name(name: &str) -> Option<Theme> {
@@ -149,6 +189,8 @@ pub struct AppliedTheme {
     pub path: PathBuf,
     /// Backup of a customized `base.html` that was replaced, if any.
     pub backup: Option<PathBuf>,
+    /// The theme's stylesheet, when this apply created it.
+    pub stylesheet: Option<PathBuf>,
 }
 
 /// Identify which theme `templates_dir/base.html` currently corresponds to.
@@ -181,17 +223,31 @@ pub fn active_theme(project_root: &Path, templates_dir: &Path) -> String {
 /// existing `base.html` has been customized — i.e. it matches no bundled or
 /// installed theme — it is copied to `base.html.bak` (or `base.html.bak.N`
 /// if that name is taken) before being replaced, so no work is lost.
-pub fn apply_theme(project_root: &Path, templates_dir: &Path, name: &str) -> Result<AppliedTheme> {
+///
+/// A theme with its own stylesheet (`blank`) also gets `static_dir/<path>`
+/// written, unless that file already exists.
+pub fn apply_theme(
+    project_root: &Path,
+    templates_dir: &Path,
+    static_dir: &Path,
+    name: &str,
+) -> Result<AppliedTheme> {
     validate_theme_name(name)?;
 
-    let (html, description, source) = if let Some(theme) = by_name(name) {
+    let (html, description, source, stylesheet) = if let Some(theme) = by_name(name) {
         (
             theme.base_html.to_string(),
             theme.description.to_string(),
             ThemeSource::Bundled,
+            theme.stylesheet,
         )
     } else if let Some(theme) = installed_by_name(project_root, name) {
-        (theme.base_html, theme.description, ThemeSource::Installed)
+        (
+            theme.base_html,
+            theme.description,
+            ThemeSource::Installed,
+            None,
+        )
     } else {
         let mut available: Vec<String> = all().iter().map(|t| t.name.to_string()).collect();
         available.extend(installed_themes(project_root).into_iter().map(|t| t.name));
@@ -212,13 +268,35 @@ pub fn apply_theme(project_root: &Path, templates_dir: &Path, name: &str) -> Res
     };
 
     std::fs::write(&base_path, html)?;
+    let stylesheet = match stylesheet {
+        Some((rel, css)) => write_stylesheet(project_root, static_dir, rel, css)?,
+        None => None,
+    };
     Ok(AppliedTheme {
         name: name.to_string(),
         description,
         source,
         path: base_path,
         backup,
+        stylesheet,
     })
+}
+
+/// Write a theme's stylesheet to `static_dir/rel` unless it already exists
+/// (from then on it is the site's own CSS). Returns the path when written.
+fn write_stylesheet(
+    project_root: &Path,
+    static_dir: &Path,
+    rel: &str,
+    css: &str,
+) -> Result<Option<PathBuf>> {
+    let path = static_dir.join(rel);
+    if path.exists() {
+        return Ok(None);
+    }
+    crate::safe_fs::write(project_root, &path, css)
+        .map_err(|e| PageError::Other(format!("{e:#}")))?;
+    Ok(Some(path))
 }
 
 /// First free backup path: `base.html.bak`, then `base.html.bak.1`, `.2`, ...
@@ -259,6 +337,8 @@ pub fn default() -> Theme {
         name: "default",
         description: "Clean, readable theme with system fonts",
         base_html: include_str!("themes/default.tera"),
+        kind: ThemeKind::Starter,
+        stylesheet: None,
     }
 }
 
@@ -267,6 +347,8 @@ pub fn minimal() -> Theme {
         name: "minimal",
         description: "Ultra-minimal, typography-first theme",
         base_html: include_str!("themes/minimal.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -275,6 +357,8 @@ pub fn dark() -> Theme {
         name: "dark",
         description: "Dark mode theme, easy on the eyes",
         base_html: include_str!("themes/dark.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -283,6 +367,8 @@ pub fn docs() -> Theme {
         name: "docs",
         description: "Documentation-focused theme with sidebar layout",
         base_html: include_str!("themes/docs.tera"),
+        kind: ThemeKind::Starter,
+        stylesheet: None,
     }
 }
 
@@ -291,6 +377,8 @@ pub fn brutalist() -> Theme {
         name: "brutalist",
         description: "Neo-brutalist theme with thick borders and hard shadows",
         base_html: include_str!("themes/brutalist.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -299,6 +387,8 @@ pub fn bento() -> Theme {
         name: "bento",
         description: "Card grid layout inspired by bento box design",
         base_html: include_str!("themes/bento.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -307,6 +397,8 @@ pub fn landing() -> Theme {
         name: "landing",
         description: "Marketing and landing page theme with hero sections and CTAs",
         base_html: include_str!("themes/landing.tera"),
+        kind: ThemeKind::Starter,
+        stylesheet: None,
     }
 }
 
@@ -315,6 +407,8 @@ pub fn terminal() -> Theme {
         name: "terminal",
         description: "Monospace hacker theme with green-on-black terminal aesthetic",
         base_html: include_str!("themes/terminal.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -323,6 +417,18 @@ pub fn magazine() -> Theme {
         name: "magazine",
         description: "Multi-column editorial layout with featured articles",
         base_html: include_str!("themes/magazine.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
+    }
+}
+
+pub fn blank() -> Theme {
+    Theme {
+        name: BLANK,
+        description: "Bare semantic layout with its CSS in static/css/site.css, made for designing your own theme",
+        base_html: include_str!("themes/blank.tera"),
+        kind: ThemeKind::Starter,
+        stylesheet: Some((BLANK_STYLESHEET, include_str!("themes/blank.css"))),
     }
 }
 
@@ -331,6 +437,8 @@ pub fn academic() -> Theme {
         name: "academic",
         description: "Scholarly serif theme for research and long-form writing",
         base_html: include_str!("themes/academic.tera"),
+        kind: ThemeKind::Gallery,
+        stylesheet: None,
     }
 }
 
@@ -359,7 +467,7 @@ mod tests {
         let mut names: Vec<_> = themes.iter().map(|t| t.name).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), 10);
+        assert_eq!(names.len(), 11);
     }
 
     #[test]
@@ -547,7 +655,8 @@ mod tests {
     fn test_apply_theme_rejects_invalid_name() {
         let tmp = tempfile::TempDir::new().unwrap();
         let tpl = tmp.path().join("templates");
-        let err = apply_theme(tmp.path(), &tpl, "/etc/evil").unwrap_err();
+        let err =
+            apply_theme(tmp.path(), &tpl, &tmp.path().join("static"), "/etc/evil").unwrap_err();
         assert!(err.to_string().contains("invalid theme name"));
         assert!(!tpl.join("base.html").exists());
     }
@@ -556,7 +665,7 @@ mod tests {
     fn test_apply_theme_unknown_lists_available() {
         let tmp = tempfile::TempDir::new().unwrap();
         let tpl = tmp.path().join("templates");
-        let err = apply_theme(tmp.path(), &tpl, "nope").unwrap_err();
+        let err = apply_theme(tmp.path(), &tpl, &tmp.path().join("static"), "nope").unwrap_err();
         assert!(err.to_string().contains("unknown theme 'nope'"));
         assert!(err.to_string().contains("dark"));
     }
@@ -567,7 +676,7 @@ mod tests {
         let tpl = tmp.path().join("my-templates");
         std::fs::create_dir_all(&tpl).unwrap();
         std::fs::write(tpl.join("base.html"), minimal().base_html).unwrap();
-        let applied = apply_theme(tmp.path(), &tpl, "dark").unwrap();
+        let applied = apply_theme(tmp.path(), &tpl, &tmp.path().join("static"), "dark").unwrap();
         assert_eq!(applied.source, ThemeSource::Bundled);
         assert!(applied.backup.is_none());
         assert_eq!(
@@ -583,7 +692,7 @@ mod tests {
         let tpl = tmp.path().join("templates");
         std::fs::create_dir_all(&tpl).unwrap();
         std::fs::write(tpl.join("base.html"), "<html>custom one</html>").unwrap();
-        let applied = apply_theme(tmp.path(), &tpl, "dark").unwrap();
+        let applied = apply_theme(tmp.path(), &tpl, &tmp.path().join("static"), "dark").unwrap();
         let backup = applied.backup.unwrap();
         assert_eq!(backup, tpl.join("base.html.bak"));
         assert_eq!(
@@ -593,7 +702,7 @@ mod tests {
 
         // A second customization gets a fresh backup name instead of clobbering.
         std::fs::write(tpl.join("base.html"), "<html>custom two</html>").unwrap();
-        let applied = apply_theme(tmp.path(), &tpl, "minimal").unwrap();
+        let applied = apply_theme(tmp.path(), &tpl, &tmp.path().join("static"), "minimal").unwrap();
         assert_eq!(applied.backup.unwrap(), tpl.join("base.html.bak.1"));
         assert_eq!(
             std::fs::read_to_string(tpl.join("base.html.bak")).unwrap(),
