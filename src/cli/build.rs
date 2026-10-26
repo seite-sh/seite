@@ -103,6 +103,9 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         if let Some(timings) = result.stats.timings_display() {
             crate::human_println!("{timings}");
         }
+        if let Some(search) = result.stats.search_display() {
+            crate::human_println!("{search}");
+        }
     }
 
     // Display subdomain build results
@@ -211,6 +214,8 @@ fn build_data(result: &BuildResult, output_dir: Option<&Path>) -> Value {
         "broken_links": broken_links,
         "missing_assets": missing_assets,
         "subdomains": subdomains,
+        // Full-text search index sizes (`[build] search = "full"`), else null.
+        "search_index": stats.search_index,
         "warnings": json_out::warnings(),
         "diagnostics": result.diagnostics,
     })

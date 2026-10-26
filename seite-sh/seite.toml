@@ -62,6 +62,7 @@ default_template = "post.html"
 
 [build]
 minify = true
+search = "full"
 output_dir = "dist"
 content_dir = "content"
 template_dir = "templates"

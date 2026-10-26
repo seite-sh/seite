@@ -12,6 +12,7 @@ pub mod markdown;
 pub mod math;
 pub mod mermaid;
 pub mod redirects;
+pub mod search;
 pub mod sitemap;
 
 pub(crate) mod content_model;
@@ -89,6 +90,9 @@ pub struct BuildStats {
     pub incremental: bool,
     /// Number of content items skipped (unchanged).
     pub items_skipped: usize,
+    /// Full-text search index sizes (all languages), when `[build] search =
+    /// "full"`.
+    pub search_index: Option<search::IndexStats>,
 }
 
 impl CommandOutput for BuildStats {
@@ -143,6 +147,20 @@ impl BuildStats {
             }
         }
         Some(out)
+    }
+
+    /// One-line full-text search index summary for `--verbose` output.
+    pub fn search_display(&self) -> Option<String> {
+        let s = self.search_index.as_ref()?;
+        Some(format!(
+            "  Search index: {} pages, {} terms, {:.1} KB in {} files (largest shard {:.1} KB, meta {:.1} KB)",
+            s.pages,
+            s.terms,
+            s.bytes as f64 / 1024.0,
+            s.files,
+            s.largest_shard_bytes as f64 / 1024.0,
+            s.meta_bytes as f64 / 1024.0,
+        ))
     }
 }
 
@@ -343,6 +361,7 @@ pub fn build_site(
                     step_timings: Vec::new(),
                     incremental: true,
                     items_skipped: cs.total_content,
+                    search_index: None,
                 },
                 link_check: links::LinkCheckResult::default(),
                 subdomain_builds: Vec::new(),
@@ -2615,34 +2634,16 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 9: Generate search index
+    // Step 9: Generate search indexes (`[build] search`)
     progress.step("Generating search index");
     let step_start = Instant::now();
-    let all_search_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-
-    // Root index: default language only
-    let default_search_items: Vec<&ContentItem> = all_search_items
-        .iter()
-        .filter(|i| i.lang == *default_lang)
-        .copied()
-        .collect();
-    let search_json = generate_search_index(&default_search_items, config);
-    fs::write(paths.output.join("search-index.json"), &search_json)?;
-
-    // Per-language indexes for non-default languages
-    if is_multilingual {
-        for lang_code in config.languages.keys() {
-            let lang_items: Vec<&ContentItem> = all_search_items
-                .iter()
-                .filter(|i| i.lang == *lang_code)
-                .copied()
-                .collect();
-            let lang_json = generate_search_index(&lang_items, config);
-            let lang_dir = paths.output.join(lang_code);
-            fs::create_dir_all(&lang_dir)?;
-            fs::write(lang_dir.join("search-index.json"), lang_json)?;
-        }
-    }
+    let search_index = write_search_indexes(
+        config,
+        &all_collections,
+        &paths.output,
+        default_lang,
+        is_multilingual,
+    )?;
 
     step_timings.push((
         "Generate search index".to_string(),
@@ -2896,7 +2897,8 @@ fn build_site_inner(
         "asset-manifest.json",
     ];
     for rel_path in &public_file_paths {
-        if known_generated.contains(&rel_path.as_str()) {
+        let full_search_file = search_index.is_some() && rel_path.starts_with("search/");
+        if known_generated.contains(&rel_path.as_str()) || full_search_file {
             crate::output::human::warning(&format!(
                 "public/{rel_path} was overwritten by the generated {rel_path} — remove it from public/ or configure the feature that generates it"
             ));
@@ -2930,6 +2932,7 @@ fn build_site_inner(
         step_timings,
         incremental: is_incremental,
         items_skipped,
+        search_index,
     };
 
     Ok(BuildResult {
@@ -3641,6 +3644,8 @@ pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde
         "older": "Older",
         "page_n_of_total": "Page {n} of {total}",
         "search_label": "Search site content",
+        "search_results": "{n} results",
+        "search_result": "1 result",
         "min_read": "min read",
         "contents": "Contents",
         "tags": "Tags",
@@ -3751,9 +3756,101 @@ fn insert_i18n_context_cached(
 /// Insert build feature flags into template context.
 fn insert_build_flags(ctx: &mut tera::Context, config: &SiteConfig) {
     ctx.insert("math_enabled", &config.build.math);
+    ctx.insert("search_mode", config.build.search.as_str());
     if config.build.math {
         ctx.insert("katex_css_url", math::KATEX_CSS_URL);
     }
+}
+
+/// Step 9: `search-index.json` per language (unchanged format), plus the
+/// full-text index under `search/` (see [`search`]) with `[build] search =
+/// "full"`; nothing with `search = false`. The default language's files go
+/// to the output root, the others' to `<lang>/`.
+fn write_search_indexes(
+    config: &SiteConfig,
+    all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
+    output: &Path,
+    default_lang: &str,
+    is_multilingual: bool,
+) -> Result<Option<search::IndexStats>> {
+    use crate::config::SearchMode;
+    if config.build.search == SearchMode::Off {
+        return Ok(None);
+    }
+    let full = config.build.search == SearchMode::Full;
+    let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
+    // Full-text: listed, public collections only (private ones must never
+    // leak), no drafts (`--drafts`), no `noindex` pages. Scheduled pages are
+    // already out of `all_collections`.
+    let indexable: HashSet<&str> = config
+        .collections
+        .iter()
+        .filter(|c| c.listed && !c.private)
+        .map(|c| c.name.as_str())
+        .collect();
+    let mut langs: Vec<(&str, PathBuf)> = vec![(default_lang, output.to_path_buf())];
+    if is_multilingual {
+        langs.extend(
+            config
+                .languages
+                .keys()
+                .map(|code| (code.as_str(), output.join(code))),
+        );
+    }
+    let mut total: Option<search::IndexStats> = None;
+    for (lang, dir) in langs {
+        let items: Vec<&ContentItem> = all_items
+            .iter()
+            .filter(|i| i.lang == lang)
+            .copied()
+            .collect();
+        fs::create_dir_all(&dir)?;
+        fs::write(
+            dir.join("search-index.json"),
+            generate_search_index(&items, config),
+        )?;
+        if !full {
+            continue;
+        }
+        let docs: Vec<search::SearchDoc> = items
+            .iter()
+            .filter(|i| indexable.contains(i.collection.as_str()) && !i.frontmatter.draft)
+            .filter(|i| {
+                !i.frontmatter
+                    .robots
+                    .as_deref()
+                    .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
+            })
+            .map(|i| search::SearchDoc {
+                url: &i.url,
+                title: &i.frontmatter.title,
+                description: i.frontmatter.description.as_deref(),
+                tags: &i.frontmatter.tags,
+                collection: &i.collection,
+                date: i.frontmatter.date.map(|d| d.to_string()),
+                html: &i.html_body,
+            })
+            .collect();
+        let built = search::build_index(&docs, lang);
+        for (rel, body) in &built.files {
+            let path = dir.join(rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, body)?;
+        }
+        let t = total.get_or_insert_with(Default::default);
+        let s = built.stats;
+        t.pages += s.pages;
+        t.terms += s.terms;
+        t.files += s.files;
+        t.bytes += s.bytes;
+        t.shards += s.shards;
+        t.largest_shard_bytes = t.largest_shard_bytes.max(s.largest_shard_bytes);
+        t.meta_bytes = t.meta_bytes.max(s.meta_bytes);
+        t.largest_page_bytes = t.largest_page_bytes.max(s.largest_page_bytes);
+    }
+    Ok(total)
 }
 
 /// Build a JSON search index from a slice of content items.
@@ -4548,6 +4645,7 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
         };
         let display = stats.human_display();
         assert!(display.contains("5 posts"));
@@ -4568,6 +4666,7 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
         };
         let display = stats.human_display();
         assert!(display.contains("2 public files copied"));
@@ -4585,6 +4684,7 @@ mod tests {
             step_timings: vec![("Fast step".into(), 0.5), ("Slow step".into(), 15.3)],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
         };
         // Timings are verbose-only: not part of the summary line.
         assert!(!stats.human_display().contains("Timings:"));
@@ -4605,6 +4705,7 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
         };
         assert!(stats.timings_display().is_none());
     }
@@ -4624,6 +4725,7 @@ mod tests {
             step_timings: vec![],
             incremental: true,
             items_skipped: 18,
+            search_index: None,
         };
         let display = stats.human_display();
         assert!(display.contains("Incremental build"));
@@ -5388,6 +5490,8 @@ mod tests {
             "older",
             "page_n_of_total",
             "search_label",
+            "search_results",
+            "search_result",
             "min_read",
             "contents",
             "tags",

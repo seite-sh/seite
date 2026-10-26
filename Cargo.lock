@@ -2498,6 +2498,7 @@ dependencies = [
  "toml_edit",
  "tracing",
  "tracing-subscriber",
+ "unicode-normalization",
  "ureq",
  "urlencoding",
  "walkdir",

@@ -21,7 +21,7 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 6. Generate sitemap (all non-private items, all languages, with `xhtml:link` alternates)
 7. Generate discovery files: `robots.txt`, `llms.txt`, `llms-full.txt`
 8. Output raw markdown alongside HTML for each page
-9. Generate search index JSON
+9. Generate search indexes (`write_search_indexes`, `[build] search`): `search-index.json` per language (format frozen: custom scripts read it; written unless `search = false`), plus with `"full"` the full-text index from `src/build/search.rs` — `search/meta.json` + `search/terms/<n>.json` (UTF-16-sorted term ranges cut at `SHARD_BYTES`, postings `[Δpage, weight]`, field weights title > headings > tags > description > body) + `search/pages/<id>.json` (title/url/collection/date/description/first `TEXT_CHARS` of text). Source = `item.html_body` (no theme chrome; script/style/nav/footer/svg dropped, headings weighted). Listed public collections only, no drafts, no `robots: noindex`. Tokenizer (fold: lowercase/NFD/strip U+0300–036F/NFC + `ß→ss` map; CJK bigrams; English-only stopwords + `stem_en`) is mirrored in `seite/search-script.html` — change both together; `tests/integration/search_full.rs` runs the script under Node. Sizes go to `BuildStats.search_index` (`--verbose`, `build --json` `data.search_index`)
 9b. Generate redirect pages from `aliases:` frontmatter
 10. Copy static files (with optional minification and fingerprinting)
 11. Process images (resize, WebP/AVIF variants, srcset)

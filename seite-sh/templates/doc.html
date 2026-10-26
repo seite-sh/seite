@@ -124,38 +124,75 @@
         border-color: var(--green-border);
     }
 
-    .sidebar-search .sidebar-results {
+    .sidebar-search .search-form {
+        margin: 0;
+    }
+
+    .sidebar-search #search-results {
         position: absolute;
         top: 100%;
         left: 0;
         right: 0;
         margin-top: 4px;
+        max-height: 70vh;
+        overflow-y: auto;
         background: var(--bg-card);
         border: 1px solid var(--border-light);
         border-radius: 8px;
-        overflow: hidden;
         z-index: 50;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     }
 
-    .sidebar-search .sidebar-results a {
+    .sidebar-search #search-results:empty {
+        display: none;
+    }
+
+    .sidebar-search #search-results a {
         display: block;
         padding: 0.5rem 0.6rem;
         font-size: 0.75rem;
         color: var(--text);
         border-bottom: 1px solid var(--border);
         background: none;
+        text-decoration: none;
     }
 
-    .sidebar-search .sidebar-results a:last-child {
+    .sidebar-search #search-results a:last-child {
         border-bottom: none;
     }
 
-    .sidebar-search .sidebar-results a:hover {
+    .sidebar-search #search-results a:hover,
+    .sidebar-search #search-results a.active {
         background: var(--bg-card-hover);
     }
 
-    .sidebar-search .sidebar-results .no-results {
+    .sidebar-search #search-results strong {
+        color: var(--heading);
+        font-weight: 600;
+    }
+
+    .sidebar-search #search-results .result-meta {
+        font-size: 0.68rem;
+        color: var(--text-dim);
+        margin-top: 0.1rem;
+    }
+
+    .sidebar-search #search-results .result-snippet {
+        display: block;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 0.2rem;
+        line-height: 1.45;
+    }
+
+    .sidebar-search #search-results mark {
+        background: var(--green-dim);
+        color: var(--green);
+        border-radius: 2px;
+        padding: 0 0.1em;
+    }
+
+    .sidebar-search #search-results .no-results {
         padding: 0.5rem 0.6rem;
         color: var(--text-dim);
         font-size: 0.75rem;
@@ -545,13 +582,12 @@
 {% if nav %}
 <div class="docs-layout">
     <aside class="docs-sidebar" aria-label="Documentation navigation">
-        <div class="sidebar-search" role="search" aria-label="{{ t.search_documentation | default(value='Search documentation') }}">
+        <div class="sidebar-search">
             <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.3-4.3" />
             </svg>
-            <input type="search" id="doc-search-input" placeholder="{{ t.search_docs | default(value='Search docs…') }}" autocomplete="off" aria-label="{{ t.search_documentation | default(value='Search documentation') }}">
-            <div id="doc-search-results" class="sidebar-results" style="display:none" aria-live="polite"></div>
+            {% include "seite/search.html" %}
         </div>
         <nav>
             {% for section in nav %}
@@ -653,35 +689,13 @@
 
 {% block extra_js %}
 <script>
+    // ── Close search results on an outside click ──
     (function () {
-        var input = document.getElementById('doc-search-input');
-        var results = document.getElementById('doc-search-results');
+        var input = document.getElementById('search-input');
+        var results = document.getElementById('search-results');
         if (!input || !results) return;
-        var index = null;
-        var indexUrl = '/search-index.json';
-        function load(cb) {
-            if (index) { cb(); return; }
-            fetch(indexUrl).then(function (r) { return r.json(); }).then(function (d) {
-                index = d.filter(function (e) { return e.collection === 'docs'; });
-                cb();
-            }).catch(function () { index = []; });
-        }
-        function search(q) {
-            q = q.toLowerCase().trim();
-            if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
-            var hits = index.filter(function (e) {
-                return (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q);
-            }).slice(0, 6);
-            results.style.display = 'block';
-            if (!hits.length) { results.innerHTML = '<div class="no-results">No results</div>'; return; }
-            results.innerHTML = hits.map(function (e) {
-                return '<a href="' + e.url + '">' + e.title + '</a>';
-            }).join('');
-        }
-        input.addEventListener('input', function () { load(function () { search(input.value); }); });
-        input.addEventListener('focus', function () { if (input.value) load(function () { search(input.value); }); });
         document.addEventListener('click', function (e) {
-            if (!results.contains(e.target) && e.target !== input) { results.style.display = 'none'; }
+            if (!results.contains(e.target) && e.target !== input) { results.textContent = ''; }
         });
     })();
 

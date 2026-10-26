@@ -8,6 +8,7 @@ These sections in `seite.toml` enable additional features. Omit them entirely to
 [build]
 math = true     # enable $inline$ and $$display$$ math rendering via KaTeX
 mermaid = true  # render fenced ```mermaid blocks as client-side Mermaid diagrams
+search = "full" # full-text search index under dist/search/; "basic" = search-index.json only (default); false = off
 ```
 
 When `math = true`, the build pipeline renders LaTeX math expressions to HTML using server-side KaTeX. KaTeX CSS is automatically loaded from CDN. Code blocks and inline code spans are skipped.

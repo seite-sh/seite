@@ -181,6 +181,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         build: crate::config::BuildSection {
             minify: true,
             schedule: true,
+            search: crate::config::SearchMode::Full,
             ..Default::default()
         },
         deploy: crate::config::DeploySection {
@@ -248,6 +249,11 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     let toml_str = toml::to_string_pretty(&config)?.replacen(
         "\nschedule = true\n",
         "\n# Hide posts dated in the future until their date (and `expires:` posts after it).\n# The generated deploy workflow rebuilds daily so they go live on their own.\nschedule = true\n",
+        1,
+    )
+    .replacen(
+        "\nsearch = \"full\"\n",
+        "\n# Full-text search over page text (dist/search/), loaded lazily by the theme.\n# \"basic\" searches titles, descriptions and tags only; false turns search off.\nsearch = \"full\"\n",
         1,
     );
     let timezone = content::schedule::detect_system_timezone();

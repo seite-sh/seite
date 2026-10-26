@@ -268,6 +268,13 @@ fn test_build_no_new_output_without_new_config() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Compat", "posts");
     let site = tmp.path().join("site");
+    // Configs from before full-text search have no `search` key (= "basic").
+    let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+    fs::write(
+        site.join("seite.toml"),
+        toml.replace("search = \"full\"\n", ""),
+    )
+    .unwrap();
     for entry in fs::read_dir(site.join("content/posts")).unwrap() {
         fs::remove_file(entry.unwrap().path()).unwrap();
     }

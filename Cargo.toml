@@ -47,6 +47,8 @@ regex = "1"
 
 # Content processing
 pulldown-cmark = "0.13"
+# Search tokenizer: diacritic folding (already in Cargo.lock through katex-rs)
+unicode-normalization = "0.1"
 syntect = "5"
 katex-rs = { version = "0.3", optional = true }
 
