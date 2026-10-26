@@ -68,6 +68,10 @@ content_dir = "content"
 template_dir = "templates"
 static_dir = "static"
 
+# Generated social cards (og:image) in data/brand.yaml colors.
+[og]
+generate = true
+
 [deploy]
 target = "cloudflare"
 project = "seite-sh"

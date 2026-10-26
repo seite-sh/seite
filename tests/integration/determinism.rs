@@ -135,11 +135,22 @@ fn test_build_is_byte_identical_across_runs() {
         "posts/post-1.md",
         "categories/index.html",
         "es/posts/post-1.html",
+        "og/index.png",
+        "og/posts/post-1.png",
+        "og/es/index.png",
+        "search/meta.json",
     ] {
         assert!(first.contains_key(f), "missing {f}: {:?}", first.keys());
     }
+    assert!(
+        first.keys().any(|k| k.starts_with("search/terms/")),
+        "no search shards: {:?}",
+        first.keys()
+    );
     // Hash-map order differs per process, so a few runs catch it reliably.
+    // Cards are re-rendered (not copied from the cache) on every run.
     for run in 2..=3 {
+        let _ = fs::remove_dir_all(site.join(".seite/cache/og"));
         let next = build_into(&site, &format!("out{run}"));
         assert_eq!(
             first.keys().collect::<Vec<_>>(),
