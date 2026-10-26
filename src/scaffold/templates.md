@@ -6,9 +6,12 @@ Hard rules:
 
 - `base.html` is the theme; every other template starts with `{% extends "base.html" %}`.
 - Render content with `{{ page.content | safe }}` (the `safe` filter is required).
-- Keep the SEO head from the `seo-requirements` guide whenever you change `base.html`.
+- A theme owns layout and CSS only. seite owns SEO, search and i18n through partials that `base.html` includes: keep `{% include "seite/head.html" %}` (right after `<title>`), `{% include "seite/search.html" %}`, `{% include "seite/lang-switcher.html" %}` and `{% include "seite/scripts.html" %}` (before `</body>`). Move them within the layout freely; never copy a partial's contents into `base.html` and never delete an include when redesigning.
+- Keep `<title>{% block title %}...{% endblock %}</title>` in `base.html` (blocks cannot live in a partial).
+- Designers and agents (impeccable included) edit the layout in `base.html` and the look in CSS (`static/css/site.css` for themes started with `seite theme new`, the `<style>` element in the bundled examples).
 - Build designs directly in `templates/` and `content/` and preview with `seite serve`; never write standalone HTML mockups.
-- `seite theme apply <name>` overwrites `base.html` (a customized one is backed up first); `seite theme list` shows the bundled themes.
+- `seite theme apply <name>` overwrites `base.html` (a customized one is backed up first); `seite theme new` starts a custom design from the `blank` starter; `seite theme list` shows the starters and the gallery of examples.
+- `templates/seite/<name>.html` overrides a seite partial and stops its automatic updates: only when nothing else works.
 
 ### Template Variables
 
@@ -72,7 +75,7 @@ Edit files in `templates/` to customize. Key rules:
 
 ### Overridable Blocks
 
-All bundled themes provide these blocks for extension without copying the full `base.html`:
+All bundled themes provide these blocks for extension without copying the full `base.html` (a custom theme must keep them too):
 
 | Block | Purpose |
 |-------|---------|

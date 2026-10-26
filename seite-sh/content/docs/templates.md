@@ -1,10 +1,10 @@
 ---
 title: "Templates and Themes"
-description: "Customize your seite static site with Tera templates, overridable blocks, 10 bundled themes, and data-driven navigation. No JavaScript framework needed."
+description: "Customize your seite static site with Tera templates, overridable blocks, seite-managed SEO partials, bundled starter and gallery themes, and data-driven navigation."
 weight: 4
 ---
 
-seite uses Tera templates to give you full control over your site's HTML output. The static site generator ships 10 bundled themes and supports AI-generated custom themes, all as single self-contained files with no external dependencies.
+seite uses Tera templates to give you full control over your site's HTML output. Themes own layout and CSS; seite's partials own the SEO and GEO head, search and the language switcher, so those stay correct in every theme, including the ones you design.
 
 ## Template Engine
 
@@ -275,39 +275,51 @@ Use in templates:
 {% endif %}
 ```
 
-All 10 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+All bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+
+## seite partials
+
+seite ships five partials under the reserved `seite/` template namespace. Every bundled theme includes them, and so should yours:
+
+| Partial | Include it | What it renders |
+|---------|------------|-----------------|
+| `seite/head.html` | inside `<head>`, right after `<title>` | description, canonical URL, Open Graph and Twitter tags (absolute `og:image`), `article:*` times, JSON-LD (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), robots, RSS/Atom/`llms.txt` links, the markdown alternate (`page.markdown_url`), hreflang, the KaTeX stylesheet when `math` is on |
+| `seite/search.html` | where the search box goes | the `role="search"` form (labelled by `t.search_label`) and the `#search-results` live region |
+| `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, which loads `search-index.json` on first input) |
+| `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |
+| `seite/lang-switcher.html` | where the language links go | links to the page's translations; renders nothing on single-language pages |
+
+The partials escape what they print: attribute values go through the `escape_attr` filter (`"`, `<`, `>` and a bare `&` become entities) and JSON-LD values through `json_script` (JSON with every `<` written as `\u003c`). Both filters are available to your own templates.
+
+`<title>{% block title %}…{% endblock %}</title>` stays in the theme: Tera blocks cannot live in an included file, and collection templates override the title through that block.
+
+The partials are embedded in the binary and **updated with seite**: SEO, GEO and search fixes reach every site on the next build, without touching `templates/base.html`. `seite check` warns (`template-missing-seite-head`) when a custom `base.html` does not include `seite/head.html`, directly or through templates it includes or extends.
+
+**Overriding a partial.** A file at `templates/seite/<name>.html` replaces the embedded one, e.g. `templates/seite/search.html` for a different search box. An overridden partial is yours: it no longer receives seite's fixes, so override the smallest one that does what you need, and prefer CSS or the theme's own markup around the include.
 
 ## Bundled Themes
 
-10 themes ship with the binary, no downloads needed:
+seite ships 11 themes inside the binary. They are examples and starting points; for your own look, see [Design your own theme](/docs/custom-themes).
 
-### default
-Clean baseline. 720px centered column, system-ui font, blue links. Good starting point.
+**Starters** (offered by `seite init`, which picks `docs` for a docs-only site and `default` otherwise; `--theme` chooses):
 
-### minimal
-Literary/essay feel. 600px column, Georgia serif, bottom-border-only search input. Typography carries all personality.
+- `default`: clean baseline. 720px column, system-ui font, blue links.
+- `docs`: documentation layout with a fixed sidebar and auto-generated navigation.
+- `landing`: marketing page with hero sections and calls to action.
+- `blank`: bare semantic layout with its CSS in `static/css/site.css`, made for designing your own (`seite theme new`).
 
-### dark
-True black (`#0a0a0a`) background, violet (`#8b5cf6`) accent. Styled focus rings, high-contrast text.
-
-### docs
-Documentation layout. Fixed 260px sidebar with auto-generated navigation, GitHub-style colors. Best for technical documentation.
-
-### brutalist
-Neo-brutalist design. Cream background, 3px black borders, hard non-blurred shadows, yellow (`#ffe600`) accent. No border-radius.
-
-### bento
-Card grid layout. 1000px column, CSS grid with mixed card sizes, border-radius 20px, soft shadows. Dark/indigo accent cards.
+**Gallery** (examples, applied with `seite theme apply <name>`): `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`.
 
 ## Applying Themes
 
 ```bash
-seite theme list              # Show all bundled + installed themes
+seite theme list              # Starters, gallery, installed themes
 seite theme apply dark        # Apply a bundled theme
 seite theme apply my-custom   # Apply an installed theme
+seite theme new               # Start your own design from the blank starter
 ```
 
-See the [Theme Gallery](/docs/theme-gallery) for visual previews of all bundled themes.
+Applying writes `templates/base.html` (a customized one is backed up to `base.html.bak` first). `seite upgrade` replaces a bundled theme you never edited with its newest version. See the [Theme Gallery](/docs/theme-gallery) for previews.
 
 ## Installing & Sharing Themes
 
@@ -323,17 +335,12 @@ Installed themes are saved to `templates/themes/<name>.tera` and appear in `seit
 
 ## Custom Themes with AI
 
-Generate a completely custom theme:
-
 ```bash
-seite theme create "minimal serif with warm earth tones and generous whitespace"
+seite theme new                                             # blank starter
+seite theme create "minimal serif with warm earth tones"   # run your agent once
 ```
 
-This runs your coding agent with `/seite theme <description>` (or points you to `/impeccable` when the impeccable design skill is installed) to build a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
-
-```bash
-seite theme export earth-tones --description "Warm serif theme with earth tones"
-```
+`seite theme create` runs your coding agent with `/seite theme <description>` (or points you to `/impeccable` when the impeccable design skill is installed). When the site is still on a bundled example it scaffolds `blank` first. The agent edits layout and CSS and keeps the `seite/*` includes. See [Design your own theme](/docs/custom-themes).
 
 ## Table of Contents
 
@@ -354,6 +361,6 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 ## Next Steps
 
 - [Building Custom Themes](/docs/custom-themes): step-by-step guide to creating a theme from scratch
-- [Theme Gallery](/docs/theme-gallery): browse all 10 bundled themes with visual previews
+- [Theme Gallery](/docs/theme-gallery): the starters and the gallery of example themes
 - [Shortcodes](/docs/shortcodes): add videos, callouts, and figures to your content
 - [Configuration](/docs/configuration): data file setup and all `seite.toml` options

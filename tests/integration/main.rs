@@ -32,6 +32,7 @@ mod skill;
 mod stats;
 mod templates;
 mod theme;
+mod theme_partials;
 mod trust;
 mod upgrade;
 mod workspace;

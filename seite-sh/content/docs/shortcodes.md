@@ -114,7 +114,7 @@ Be careful with this operation. It **cannot be undone**.
 |-----------|----------|-------------|
 | `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
 
-All 10 bundled themes include styled callout boxes with appropriate colors for each type.
+All bundled themes include styled callout boxes with appropriate colors for each type.
 
 ## Custom shortcodes
 

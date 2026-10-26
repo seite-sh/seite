@@ -502,9 +502,14 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "theme" => {
             if args.is_empty() {
-                // List bundled themes
+                // List bundled themes: starters, then the gallery of examples
                 for t in crate::themes::all() {
-                    println!("  {} - {}", console::style(t.name).bold(), t.description);
+                    println!(
+                        "  {} - {} ({})",
+                        console::style(t.name).bold(),
+                        t.description,
+                        t.kind.as_str()
+                    );
                 }
                 // List installed themes
                 let project_root = std::path::PathBuf::from(".");
@@ -521,40 +526,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                     }
                 }
             } else {
-                let name = &args[0];
-                // Try bundled first, then installed
-                let template_content: Option<String> = crate::themes::by_name(name)
-                    .map(|t| t.base_html.to_string())
-                    .or_else(|| {
-                        let project_root = std::path::PathBuf::from(".");
-                        crate::themes::installed_by_name(&project_root, name).map(|t| t.base_html)
-                    });
-
-                match template_content {
-                    Some(content) => {
-                        let template_dir = paths.templates.clone();
-                        let _ = std::fs::create_dir_all(&template_dir);
-                        match std::fs::write(template_dir.join("base.html"), content) {
-                            Ok(()) => {
-                                human::success(&format!("Applied theme '{name}'"));
-                                // Rebuild site to reflect the new theme
-                                human::info("Rebuilding site...");
-                                let opts = BuildOptions {
-                                    include_drafts: true,
-                                    incremental: false,
-                                };
-                                match build::build_site(config, paths, &opts) {
-                                    Ok(result) => human::success(&result.stats.human_display()),
-                                    Err(e) => human::error(&format!("Rebuild failed: {e}")),
-                                }
-                            }
-                            Err(e) => human::error(&format!("Failed to apply theme: {e}")),
-                        }
-                    }
-                    None => human::error(&format!(
-                        "Unknown theme '{name}'. Type 'theme' to list available themes."
-                    )),
-                }
+                repl_apply_theme(config, paths, &args[0]);
             }
         }
 
@@ -579,6 +551,38 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
     }
 
     LoopAction::Continue
+}
+
+/// REPL `theme <name>`: the same as `seite theme apply` (bundled first,
+/// then installed; a customized base.html is backed up, blank's stylesheet
+/// is written), then a rebuild. Returns whether the theme was applied.
+fn repl_apply_theme(config: &SiteConfig, paths: &crate::config::ResolvedPaths, name: &str) -> bool {
+    match crate::themes::apply_theme(&paths.root, &paths.templates, &paths.static_dir, name) {
+        Ok(applied) => {
+            if let Some(backup) = &applied.backup {
+                human::info(&format!(
+                    "Backed up your customized base.html to {}",
+                    backup.display()
+                ));
+            }
+            human::success(&format!("Applied theme '{name}'"));
+            // Rebuild site to reflect the new theme
+            human::info("Rebuilding site...");
+            let opts = BuildOptions {
+                include_drafts: true,
+                incremental: false,
+            };
+            match build::build_site(config, paths, &opts) {
+                Ok(result) => human::success(&result.stats.human_display()),
+                Err(e) => human::error(&format!("Rebuild failed: {e}")),
+            }
+            true
+        }
+        Err(e) => {
+            human::error(&format!("{e}. Type 'theme' to list available themes."));
+            false
+        }
+    }
 }
 
 fn cmd_new(
@@ -711,6 +715,36 @@ fn shell_split(input: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod devfile_tests {
+    #[test]
+    fn test_repl_theme_goes_through_apply_theme() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config: crate::config::SiteConfig =
+            toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
+        let paths = config.resolve_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), "<html>mine</html>").unwrap();
+
+        // blank: base.html replaced, customized one backed up, CSS written.
+        assert!(super::repl_apply_theme(&config, &paths, "blank"));
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            crate::themes::blank().base_html
+        );
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html.bak")).unwrap(),
+            "<html>mine</html>"
+        );
+        assert!(paths.static_dir.join("css/site.css").exists());
+
+        // Unknown or unsafe names are refused without writing.
+        assert!(!super::repl_apply_theme(&config, &paths, "nope"));
+        assert!(!super::repl_apply_theme(&config, &paths, "../evil"));
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            crate::themes::blank().base_html
+        );
+    }
+
     use super::devfile;
 
     #[test]

@@ -79,7 +79,7 @@ Every build generates `llms.txt` (summary) and `llms-full.txt` (complete markdow
 
 ## Features
 
-- **10 bundled themes** — default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic — or generate a custom one with `seite theme create "coral brutalist with lime accents"`
+- **Bundled themes** — starters (default, docs, landing, blank) and a gallery of examples (minimal, dark, brutalist, bento, terminal, magazine, academic); SEO, search and i18n come from seite-managed partials, so redesigns keep them — or design your own with `seite theme new` and your agent / impeccable
 - **6 collection presets** — posts, docs, pages, changelog, roadmap, and trust center
 - **Multi-language** — filename-based i18n with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags
 - **Image pipeline** — auto-resize, WebP conversion, srcset/`<picture>` elements, lazy loading

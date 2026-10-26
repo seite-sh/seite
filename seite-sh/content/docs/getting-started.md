@@ -203,7 +203,7 @@ The REPL is the fastest way to iterate. Create content, switch themes, and rebui
 
 ## Choose a Theme
 
-seite ships with [10 bundled themes](/docs/templates) compiled into the binary, no downloads or CDN required.
+seite ships 11 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads or CDN required: four starters (`default`, `docs`, `landing`, and `blank` for designing your own) and a gallery of seven example looks. `seite init` picks a starter (`--theme` chooses).
 
 List available themes:
 
@@ -217,9 +217,15 @@ Apply a bundled theme:
 seite theme apply dark
 ```
 
-The bundled themes include `default`, `minimal`, `dark`, `docs` (sidebar navigation), `brutalist`, and `bento` (card grid). Browse them in the [Theme Gallery](/docs/theme-gallery).
+The bundled themes are examples and starting points. Browse them in the [Theme Gallery](/docs/theme-gallery).
 
-You can also generate a custom theme with AI:
+For your own design, start from the blank starter and design it with your coding agent (see [Design your own theme](/docs/custom-themes)):
+
+```bash
+seite theme new
+```
+
+Or generate a custom theme in one step:
 
 ```bash
 seite theme create "minimal serif with warm colors"
@@ -272,7 +278,7 @@ Now that your static site generator is up and running, explore these guides to g
 
 - [Collections](/docs/collections): understand how posts, docs, pages, changelog, and roadmap collections work and how to add custom ones
 - [Configuration](/docs/configuration): the full `seite.toml` reference for images, analytics, contact forms, and more
-- [Templates & Themes](/docs/templates): customize the look, override template blocks, and browse all 10 bundled themes
+- [Templates & Themes](/docs/templates): customize the look, override template blocks, and browse the bundled starter and gallery themes
 - [Building Custom Themes](/docs/custom-themes): create a theme from scratch or modify a bundled one with the theme builder skill
 - [Deployment](/docs/deployment): detailed setup for GitHub Pages, Cloudflare Pages, and Netlify including custom domains
 - [Multi-Language](/docs/i18n): add translations with filename-based i18n and per-language RSS, sitemap, and search

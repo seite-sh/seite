@@ -91,6 +91,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             d.code,
             "template-parse"
                 | "template-markdown-link"
+                | "template-missing-seite-head"
                 | "series-url-collision"
                 | "frontmatter-schema-unknown"
         )

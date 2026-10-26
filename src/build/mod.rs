@@ -1077,6 +1077,11 @@ fn build_site_inner(
     }
     // Stale `{{ page.url }}.md` alternate links in user templates (warnings).
     diagnostics.extend(templates::stale_markdown_link_diagnostics(&paths.templates));
+    // A custom base.html without seite's SEO head partial (warning). Not
+    // when the user templates failed to load: the defaults were used then.
+    if warnings.is_empty() {
+        diagnostics.extend(templates::seite_head_diagnostics(&paths.templates));
+    }
     step_timings.push((
         "Load templates".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,

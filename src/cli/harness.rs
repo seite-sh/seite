@@ -2154,7 +2154,7 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("[check | new"));
-        assert_eq!(extract_version(&rendered), 4);
+        assert_eq!(extract_version(&rendered), 5);
         assert!(body.contains("## Routing"));
         assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
@@ -2208,7 +2208,10 @@ mod tests {
             "/impeccable",
             "impeccable detect dist/",
             "never make standalone HTML mockups",
-            "search-index.json",
+            "{% include \"seite/head.html\" %}",
+            "never copied or removed",
+            "seite theme new",
+            "static/css/site.css",
             "{{ t.",
             "`content` (inside",
         ] {
@@ -2254,7 +2257,7 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 4);
+        assert_eq!(extract_version(content), 5);
 
         let (_, gemini) = &files[1];
         let parsed: toml::Table = toml::from_str(gemini).unwrap();
@@ -2263,7 +2266,7 @@ mod tests {
             Some(skill("seite").unwrap().description())
         );
         assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
-        assert_eq!(extract_version(gemini), 4);
+        assert_eq!(extract_version(gemini), 5);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );

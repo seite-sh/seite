@@ -1,33 +1,36 @@
 ---
-title: "Building Custom Themes"
-description: "Step-by-step guide to creating a custom seite theme from scratch: template structure, inline CSS, SEO meta tags, search, accessibility, and testing."
+title: "Design Your Own Theme"
+description: "Design a custom seite theme with impeccable or your coding agent: start from the blank starter, keep seite's SEO partials, put the look in static/css/site.css, verify with seite check."
 weight: 5
 ---
 
-seite takes a single-file approach to theming: every static site generator theme is one self-contained Tera template with HTML, CSS, SEO tags, and JavaScript built in.
+The bundled themes are examples. A site that looks like yours starts from the `blank` starter and gets designed by your coding agent, ideally with the impeccable design skill. seite keeps the parts that must stay correct (SEO and GEO head, search, language switcher) in its own partials, so a redesign cannot drop them.
 
-## Overview
-
-Every seite theme is a single Tera template file that serves as `base.html`. It contains the full HTML structure, all CSS (inline), SEO meta tags, search, pagination, and accessibility features. No external stylesheets, no build tools, no preprocessors: one file, completely self-contained.
-
-This guide walks you through creating a theme from scratch. If you'd rather start from an existing theme and modify it, see [Copying a Bundled Theme](#copying-a-bundled-theme).
-
-## Quick Start: Copy and Modify
-
-The fastest path to a custom theme:
+## Design your own theme
 
 ```bash
-# Apply a bundled theme as your starting point
-seite theme apply default
-
-# The theme is now at templates/base.html — edit it directly
+seite theme new                  # blank starter: templates/base.html + static/css/site.css
 ```
 
-Open `templates/base.html` and start changing CSS values, colors, fonts, and layout. Run `seite serve` and changes reload instantly.
+`seite theme new [name]` writes a bare, semantic layout (header, navigation, main, footer, docs sidebar, skip link) to `templates/base.html` and a neutral stylesheet to `static/css/site.css`. It refuses to replace a customized `base.html` unless you pass `--force`, and then backs it up first (`base.html.bak`), like `seite theme apply`.
 
-## Starting from Scratch
+### With impeccable (recommended)
 
-Create `templates/base.html` with this minimal skeleton:
+[impeccable](https://github.com/pbakaus/impeccable) is a design skill for coding agents: direction, typography, color, layout, and a detector for common design problems.
+
+1. **Install**: `seite skill install impeccable` (asks before running its npm installer). It also points impeccable's live mode at `templates/base.html`.
+2. **Brief**: in your agent, `/impeccable init`. It writes `PRODUCT.md`, the site brief.
+3. **Design**: `/impeccable <describe your design>` (Codex: `$impeccable …`). It edits `templates/base.html` (layout) and `static/css/site.css` (the look).
+4. **Verify**: `seite check`, then `seite build` and one `impeccable detect dist/`. Fix what they report; don't loop on taste.
+5. **Preview**: `seite serve` and open the URL in your agent's built-in browser (or give it to `impeccable live`).
+
+### Without impeccable
+
+In your agent, run `/seite theme <description>` (Codex: `$seite theme <description>`), or from the shell `seite theme create "<description>"`, which runs your agent once. When the site is still on a bundled example, `theme create` scaffolds `blank` first, so the design starts clean instead of being painted over another look.
+
+## The theme contract
+
+A theme owns **layout and CSS**. seite owns everything that has to be right on every page, in partials you include:
 
 ```html
 <!DOCTYPE html>
@@ -35,379 +38,127 @@ Create `templates/base.html` with this minimal skeleton:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{{ page.title | default(value=site.title) }} — {{ site.title }}{% endblock %}</title>
-
-    <!-- SEO meta tags (required — see SEO section below) -->
-    <meta name="description" content="{{ page.description | default(value=site.description) }}">
-    <link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
-
+    <link rel="icon" href="/favicon.ico">
+    <title>{% block title %}{{ site.title }}{% endblock %}</title>
+    {% include "seite/head.html" %}
+    <link rel="stylesheet" href="/static/css/site.css">
+    {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
-
-    <style>
-        {% block extra_css %}{% endblock %}
-
-        /* Your CSS here */
-        body {
-            max-width: 720px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-            font-family: system-ui, sans-serif;
-            line-height: 1.6;
-        }
-    </style>
 </head>
 <body>
-    <a href="#main" class="skip-link">{{ t.skip_to_content | default(value="Skip to main content") }}</a>
-
-    {% block header %}
+    <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
     <header>
-        <h1><a href="{{ lang_prefix }}/">{{ site.title }}</a></h1>
+    {% block header %}
+        <a href="{{ lang_prefix }}/">{{ site.title }}</a>
+        {% include "seite/lang-switcher.html" %}
+        {% include "seite/search.html" %}
+    {% endblock %}
     </header>
-    {% endblock %}
-
     <main id="main">
-        {% block content %}
-        {{ page.content | safe }}
-        {% endblock %}
+        {% block content %}{% endblock %}
     </main>
-
-    {% block footer %}
-    <footer>
-        <p>&copy; {{ site.title }}</p>
-    </footer>
-    {% endblock %}
-
+    <footer>{% block footer %}{% endblock %}</footer>
+    {% include "seite/scripts.html" %}
     {% block extra_js %}{% endblock %}
 </body>
 </html>
 ```
 
-This is a valid (if minimal) theme. Build it and verify:
+Rules for designers and agents:
 
-```bash
-seite build
-seite serve
-```
+- **Keep the `{% include "seite/…" %}` lines.** Move them around the layout as you like, but never copy a partial's contents into `base.html`: the copy stops receiving fixes, and `seite check` reports `template-missing-seite-head`.
+- **Keep `<title>{% block title %}…{% endblock %}</title>` in the theme**, right before `seite/head.html`. Collection templates override the title through that block.
+- **Keep the blocks** `title`, `head`, `extra_css`, `header`, `content`, `footer`, `extra_js`. `post.html`, `doc.html` and the other templates extend `base.html` and fill them.
+- **Build in `templates/` and `static/`**, preview with `seite serve`. No standalone HTML mockups to port later.
+- Put the look in `static/css/site.css`. Links are root-relative (`/static/…`); seite rewrites them for a `base_path` and keeps the plain file next to fingerprinted copies, so they work with `minify` and `fingerprint`.
 
-## Required Template Blocks
+What each partial does, and how to override one, is in [Templates → seite partials](/docs/templates#seite-partials).
 
-Every theme must define these 7 blocks so that collection-specific templates (`post.html`, `doc.html`, etc.) can extend and override them:
+### Template blocks
 
 | Block | Purpose |
 |-------|---------|
-| `{% block title %}` | Page `<title>` tag |
-| `{% block head %}` | Extra content in `<head>` (meta tags, preloads) |
-| `{% block extra_css %}` | Page-specific CSS injected inside `<style>` |
+| `{% block title %}` | Page `<title>` |
+| `{% block head %}` | Extra tags in `<head>` (preloads, page-specific meta) |
+| `{% block extra_css %}` | Extra CSS (`<style>` or `<link>`) |
 | `{% block header %}` | Site header and navigation |
 | `{% block content %}` | Main page content |
-| `{% block footer %}` | Site footer |
+| `{% block footer %}` | Extra markup after the footer |
 | `{% block extra_js %}` | Page-specific JavaScript before `</body>` |
 
-## Adding SEO Meta Tags
+## Navigation
 
-Search engines and social platforms need these tags. Add them to `<head>`:
-
-```html
-<!-- Core SEO -->
-<meta name="description" content="{{ page.description | default(value=site.description) }}">
-<link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
-{% if page.robots %}<meta name="robots" content="{{ page.robots }}">{% endif %}
-
-<!-- Open Graph -->
-<meta property="og:type" content="{% if page.collection %}article{% else %}website{% endif %}">
-<meta property="og:url" content="{{ site.base_url }}{{ page.url | default(value='/') }}">
-<meta property="og:title" content="{{ page.title | default(value=site.title) }}">
-<meta property="og:description" content="{{ page.description | default(value=site.description) }}">
-{% if page.image %}{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}
-<meta property="og:image" content="{{ _abs_image }}">
-<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% endif %}
-<meta property="og:site_name" content="{{ site.title }}">
-<meta property="og:locale" content="{{ lang }}">
-{% if page.collection and page.date %}<meta property="article:published_time" content="{{ page.date }}">{% endif %}
-{% if page.collection and page.updated %}<meta property="article:modified_time" content="{{ page.updated }}">{% endif %}
-
-<!-- Twitter Card -->
-<meta name="twitter:card" content="{% if page.image %}summary_large_image{% else %}summary{% endif %}">
-<meta name="twitter:title" content="{{ page.title | default(value=site.title) }}">
-<meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
-{% if page.image %}<meta name="twitter:image" content="{{ _abs_image }}">{% endif %}
-
-<!-- Discovery links -->
-<link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
-<link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-{% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
-
-<!-- Multi-language alternates -->
-{% if translations %}{% for t in translations %}
-<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
-{% endfor %}
-<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
-{% endif %}
-```
-
-## Adding JSON-LD Structured Data
-
-Add this before `</head>` for rich search results:
-
-```html
-<script type="application/ld+json">
-{% set _url = site.base_url ~ page.url | default(value='/') %}
-{% set _title = page.title | default(value=site.title) %}
-{% set _desc = page.description | default(value=site.description) %}
-{% if page.collection == 'posts' %}
-{"@context":"https://schema.org","@type":"BlogPosting",
- "headline":{{ _title | json_encode() }},
- "description":{{ _desc | json_encode() }},
- "datePublished":{{ page.date | default(value='') | json_encode() }},
- {% if page.updated %}"dateModified":{{ page.updated | json_encode() }},{% endif %}
- "author":{"@type":"Person","name":{{ site.author | json_encode() }}},
- "url":{{ _url | json_encode() }}}
-{% elif page.collection %}
-{"@context":"https://schema.org","@type":"Article",
- "headline":{{ _title | json_encode() }},
- "description":{{ _desc | json_encode() }},
- "url":{{ _url | json_encode() }}}
-{% else %}
-{"@context":"https://schema.org","@type":"WebSite",
- "name":{{ site.title | json_encode() }},
- "description":{{ site.description | json_encode() }},
- "url":{{ site.base_url | json_encode() }}}
-{% endif %}
-</script>
-```
-
-All bundled themes also emit a **BreadcrumbList** on collection pages (Home → Collection → Page):
-
-```html
-{% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BreadcrumbList",
- "itemListElement":[
-   {"@type":"ListItem","position":1,"name":{{ site.title | json_encode() }},"item":{{ site.base_url | json_encode() }}},
-   {"@type":"ListItem","position":2,"name":{{ page.collection | title | json_encode() }},"item":{{ _bc_col_url | json_encode() }}},
-   {"@type":"ListItem","position":3,"name":{{ _title | json_encode() }}}
- ]}
-</script>
-{% endif %}
-```
-
-## Adding Navigation
-
-Render `data.nav` for header links (all bundled themes do this):
+Render `data.nav` (from `data/nav.yaml`) for header links:
 
 ```html
 {% if data.nav %}
 <nav class="site-nav" aria-label="Main navigation">
-    {% for item in data.nav %}
-    {% if item.external %}
-    <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
-    {% else %}
-    <a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>
-    {% endif %}
-    {% endfor %}
+    {% for item in data.nav %}{% if item.external %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>{% endif %}{% endfor %}
 </nav>
 {% endif %}
 ```
 
-Note the `{{ lang_prefix }}` on internal links. This ensures URLs are correct for multilingual sites.
+Prefix internal links with `{{ lang_prefix }}` so they work on translated pages. Docs pages also get `nav` (sidebar sections with `items[].active`); the `blank` starter renders it as a sidebar.
 
-## Adding Search
+## Pagination
 
-Search uses a JSON index generated at build time. Add the search UI and JavaScript:
-
-```html
-<!-- In your header or sidebar -->
-<form class="search-form" role="search" aria-label="{{ t.search_label | default(value='Search site content') }}">
-    <input type="search" id="search-input"
-           placeholder="{{ t.search_placeholder | default(value='Search…') }}"
-           autocomplete="off">
-</form>
-<div id="search-results" aria-live="polite"></div>
-
-<!-- Before </body> -->
-<script>
-(function(){
-    var input = document.getElementById('search-input');
-    var results = document.getElementById('search-results');
-    if (!input) return;
-    var index = null;
-    input.addEventListener('focus', function() {
-        if (index) return;
-        fetch('{{ lang_prefix }}/search-index.json')
-            .then(function(r) { return r.json(); })
-            .then(function(data) { index = data; });
-    });
-    input.addEventListener('input', function() {
-        var q = input.value.toLowerCase().trim();
-        if (!q || !index) { results.innerHTML = ''; return; }
-        var matches = index.filter(function(item) {
-            return item.title.toLowerCase().includes(q)
-                || (item.description || '').toLowerCase().includes(q)
-                || (item.tags || []).some(function(t) { return t.toLowerCase().includes(q); });
-        }).slice(0, 8);
-        if (!matches.length) {
-            results.innerHTML = '<div class="no-results">{{ t.no_results | default(value="No results") }}</div>';
-            return;
-        }
-        results.innerHTML = matches.map(function(m) {
-            return '<a href="' + m.url + '">' + m.title +
-                   (m.description ? '<div class="result-meta">' + m.description + '</div>' : '') +
-                   '</a>';
-        }).join('');
-    });
-})();
-</script>
-```
-
-## Adding Pagination
-
-When a collection has `paginate = N` in config, the `{{ pagination }}` context is available:
+When a collection has `paginate = N`, index templates get `pagination`. The default `index.html` renders it; a theme only styles `.pagination`:
 
 ```html
 {% if pagination %}
-<nav class="pagination" aria-label="Pagination">
-    {% if pagination.previous_url %}
-    <a href="{{ pagination.previous_url }}">{{ t.newer | default(value="Newer") }}</a>
-    {% endif %}
-    <span>{{ t.page_n_of_total | default(value="Page") | replace(from="{n}", to=pagination.current_page) | replace(from="{total}", to=pagination.total_pages) }}</span>
-    {% if pagination.next_url %}
-    <a href="{{ pagination.next_url }}">{{ t.older | default(value="Older") }}</a>
-    {% endif %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
 </nav>
 {% endif %}
 ```
 
-## Adding a Language Switcher
+## Accessibility checklist
 
-For multilingual sites, show available translations:
+- **Skip link**: `<a href="#main" class="skip-link">{{ t.skip_to_content }}</a>` first in `<body>`, pointing at `<main id="main">`.
+- **One `<h1>` per page**: collection templates write the page title as `<h1>`; keep the site name in the header out of `<h1>`.
+- **Focus**: visible focus styles on every interactive element.
+- **Reduced motion**: `@media (prefers-reduced-motion: reduce)` disables animations.
+- **Language**: `<html lang="{{ lang }}">` and UI text from `{{ t.<key> }}`, never hardcoded English.
 
-```html
-{% if translations | length > 0 %}
-<div class="lang-switcher">
-    <strong>{{ lang | upper }}</strong>
-    {% for tr in translations %}
-    <a href="{{ tr.url }}">{{ tr.lang | upper }}</a>
-    {% endfor %}
-</div>
-{% endif %}
-```
+The search partial already has `role="search"`, labels from `t.search_label`, and an `aria-live` results region.
 
-## Accessibility Checklist
+## CSS
 
-Every theme should include:
+The `blank` starter keeps its CSS in `static/css/site.css`: agents and design tools edit CSS files well, and impeccable's detector scans them. The bundled example themes keep theirs inline in `<style>`, so a single `.tera` file can be shared and installed from a URL.
 
-- **Skip-to-main link**: `<a href="#main" class="skip-link">Skip to main content</a>` as the first element in `<body>`
-- **Landmark roles**: `role="search"` on search forms, `aria-label` on navigation
-- **Live regions**: `aria-live="polite"` on search results for screen reader announcements
-- **Focus rings**: visible focus indicators on all interactive elements (don't remove `outline`)
-- **Reduced motion**: `@media (prefers-reduced-motion: reduce)` to disable animations
+Modern CSS covers what preprocessors were used for: custom properties, native nesting, `color-mix()`, `clamp()`. If you need Sass, compile it into `static/` and link the output.
 
-```css
-.skip-link {
-    position: absolute;
-    left: -9999px;
-    top: 0;
-    z-index: 100;
-    padding: 0.5rem 1rem;
-    background: #fff;
-}
-.skip-link:focus {
-    left: 1rem;
-}
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-```
+### Classes the default templates and shortcodes use
 
-## CSS Approach: Why Inline Styles
+Style these if your content uses them (the `blank` stylesheet has neutral versions): `.toc`, `.pagination`, `.article-nav`, `.tags`, `.tag-link`, `.related`, `.excerpt`, `.homepage-content`, `.docs-section-list`, `.callout` (`-info`, `-warning`, `-danger`, `-tip`, `-note`), `.video-embed`, `figure`/`figcaption`, `.contact-form*`, `.katex-display`, `#search-results` (`.result-meta`, `.no-results`), `.lang-switcher`.
 
-seite themes use inline CSS (inside `<style>` tags in the template) rather than external stylesheets or preprocessors like Sass. This is a deliberate design choice:
+## Testing your theme
 
-- **Single-file themes**: one `.tera` file contains everything. Copy it, share it, install it from a URL. No asset dependencies to manage.
-- **Zero build tools**, no Sass compiler, no PostCSS, no Node.js. The single Rust binary handles everything.
-- **Instant portability**: themes work identically on any machine without toolchain setup.
-- **AI-friendly**, when `seite theme create` generates a theme, it produces one complete file. No multi-file coordination needed.
+1. `seite check` (add `--strict` to treat warnings as errors): templates, links, the SEO head.
+2. With impeccable: `seite build`, then one `impeccable detect dist/`.
+3. In `seite serve`: the homepage, a post (tags, date), a doc (table of contents, sidebar), search, a tag page, a translated page if you have languages.
+4. Narrow the window below 768px; tab through the page and check focus.
 
-If you need advanced CSS features, modern CSS covers most use cases that previously required preprocessors:
-
-| Sass feature | CSS equivalent |
-|-------------|----------------|
-| Variables (`$color`) | Custom properties (`--color`) |
-| Nesting (`.a { .b {} }`) | Native CSS nesting (`.a { .b {} }`) |
-| Color functions | `color-mix()`, `oklch()` |
-| Math | `calc()`, `min()`, `max()`, `clamp()` |
-
-For projects that genuinely need Sass, compile it externally (`sass style.scss static/style.css`) and reference the output in your template. seite copies everything in `static/` to the output directory.
-
-## Copying a Bundled Theme
-
-To customize a bundled theme without starting from scratch:
+## Starting from a bundled example instead
 
 ```bash
-# Apply the theme you want to start from
-seite theme apply dark
-
-# Now edit templates/base.html directly
+seite theme apply dark      # writes templates/base.html
 ```
 
-The applied theme becomes your `templates/base.html`. Modify colors, fonts, spacing, layout: anything you want. The dev server (`seite serve`) live-reloads your changes instantly.
+Edit its layout and CSS; keep the includes. A bundled theme you never edit is replaced with its newest version by `seite upgrade`; once you edit it, it is yours.
 
-## Shortcode CSS
-
-If your content uses built-in shortcodes, include CSS for them:
-
-```css
-/* Video embeds (YouTube, Vimeo) */
-.video-embed { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin: 1.5rem 0; }
-.video-embed iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-
-/* Callouts */
-.callout { border-left: 4px solid #0057b7; background: #f0f4ff; padding: 1rem 1.25rem; margin: 1.5rem 0; border-radius: 0 4px 4px 0; }
-.callout-title { font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
-.callout-info { border-left-color: #0057b7; background: #f0f4ff; }
-.callout-warning { border-left-color: #d97706; background: #fffbeb; }
-.callout-tip { border-left-color: #059669; background: #ecfdf5; }
-
-/* Figures */
-figure { margin: 1.5rem 0; }
-figure img { display: block; max-width: 100%; }
-figcaption { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
-```
-
-## Testing Your Theme
-
-After building your theme, verify these work:
-
-1. **Build succeeds**: `seite build` with no errors
-2. **Homepage renders**: check `/` in the dev server
-3. **Posts render**: check a post page with tags, date, reading time
-4. **Docs render**: check a doc page (sidebar navigation if using docs theme)
-5. **Search works**: type in the search box, results appear
-6. **Pagination works**: if you have enough posts, page navigation renders
-7. **Tags work**: click a tag, `/tags/{tag}/` shows filtered results
-8. **RSS link**: `/feed.xml` returns valid XML
-9. **Mobile**: resize browser below 768px, layout adapts
-10. **Accessibility**: Tab through the page, focus rings are visible
-
-## Exporting and Sharing
-
-Package your theme for others:
+## Exporting and sharing
 
 ```bash
 seite theme export my-theme --description "Dark theme with green accents"
 ```
 
-This saves `templates/themes/my-theme.tera` with metadata. Host the file anywhere and others install it with:
+This saves `templates/themes/my-theme.tera` (your `base.html`, includes and all). Stylesheets it links from `static/` (such as `static/css/site.css`) are inlined as a `<style>` element, so the exported file works on its own. Others install it with `seite theme install <url>`.
 
-```bash
-seite theme install https://your-site.com/themes/my-theme.tera
-```
+## Next steps
 
-## Next Steps
-
-- [Templates & Themes](/docs/templates), all template variables, blocks, and data file integration
-- [Theme Gallery](/docs/theme-gallery): visual previews of all 10 bundled themes
-- [Shortcodes](/docs/shortcodes): content components your theme CSS should support
+- [Templates](/docs/templates): variables, blocks, seite partials, data files
+- [Theme Gallery](/docs/theme-gallery): the starters and the example looks
+- [Shortcodes](/docs/shortcodes): content components your CSS should support

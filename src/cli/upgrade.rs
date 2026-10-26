@@ -769,6 +769,10 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let (template_actions, template_notices) = check_default_templates(root);
     actions.extend(template_actions);
     notices.extend(template_notices);
+    // Bundled themes from before the seite/* partials: replaced when untouched.
+    let (theme_actions, theme_notices) = check_bundled_theme_base(root);
+    extend_dedup(&mut actions, theme_actions);
+    notices.extend(theme_notices);
     notices.extend(workflow_schedule_notice(root));
     notices.extend(schedule_feature_notice(root));
     let shown = meta::load(root)
@@ -1426,6 +1430,325 @@ fn check_default_templates(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Bundled themes written to templates/base.html
+// ---------------------------------------------------------------------------
+
+/// SHA-256 (CRLF→LF, trimmed, as [`template_hash`]) of every `base.html` a
+/// bundled theme has ever had, per theme: every commit of
+/// `src/themes/<name>.tera`, plus the inline `base_html: r#"..."#` strings in
+/// `src/themes.rs` from before the `.tera` files existed. `seite init` and
+/// `seite theme apply` write the theme verbatim, so an untouched copy hashes
+/// to one of these. The last entry of each list is the current theme.
+///
+/// **Editing a bundled theme? Append its new hash to its list** (the test
+/// `current_bundled_themes_are_in_legacy_table` prints it), so sites with the
+/// previous version keep upgrading.
+const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
+    (
+        "default",
+        &[
+            "a90a8c533823dc9acffa73663a9e98fcf627c7fffd3686cbf42cc1908bb065a0",
+            "220f6e5221148bdedf1987d1ff6adce279008811f1c03255610fcd9fb0e8c50b",
+            "2ee2d6673a834af54151fcb500bb83917c21e743c762c40a29180d5f3e7b864d",
+            "2981d61dd79e933c240c0495e70a74c7fc595b40c73ed9047682095b1a7e4d88",
+            "5f2ed3af520097ad4b301af8849703adc10f1523eea94bd91d7e7059c1035f13",
+            "a0ed7ddffab746c691d2fcb05e71c66bfcc192cfea45a2c2dd3e4d252e9a0810",
+            "d4d473cc4d000d80751423331a6676d6c5274317794a38e4f611287e19474f11",
+            "24f9f79fa8bfd4a488ff340509e2fd53dae7f036d63ad6aaed5bcd9d4726b785",
+            "68532be5fbde48c04fc6ef870dbf75d18504524b9e0f3e1acabcfd25e85d093f",
+            "4e26f9701dc7298c9281ace7d42b03ba8781b048bfc3fed7b748dea57d96732d",
+            "0ce2c0bc85779d80943c552561c14337200b89cdefeacb165e2aae718540633e",
+            "dd7f96210e92499a5cfd792a4f28afb9e9583dbcc16426d3b9f1b13cd94de4c2",
+            "08668162d70762021941c19af606d446726016f358fb95e917c1095d42b39bd8",
+            "ac8f801fb34a1306ff3818ce97e2abf54e39f743611ea339783a9919bb0d9ff8",
+            "a7d37ccc2130902d6134f23dfca95af2ee6612cc40704746362d0423ba6951cd",
+            "21593a5af2f1417dca44de174dce511c51b17b4ef027bf4d7b2922304fa1701b",
+            "45482b37d30a18b2f58a7a3b4572d601ee5f2575999d9d880f55f9bdede90193",
+            "f3e634c4ca05485ce7248172b53ff0e8069bd84f890419d4b31ab74a00a6f4e5",
+            "9e6f8804c0d69f928c3855087aa7d9c930efda4fdd78516feabcb0af2bb7160f",
+            "50dd3c9ec6045d35486fa87eae57d44aeda24d8ac8c2714c858ff0ffc97fe328",
+            "77249a03e2ddecabff6182e8c6a8e6e66d99cf984800c92b997c1ad0948116eb",
+            "5a40e887bc7e83c6cf3fa36e86e9714ba0ff7afc2926b8a0daad159f8afae1b8",
+            "7698e00076d18442fb0d7b6177900cfdd2f3f4acf30c1867b2b07c3ee314e7f9",
+            "d564410184a4ebd56c3569782c343c91d5ee36497a2b829821572d1705eef4c4",
+            "06de5f742f090647bb3b072a3ae1b29bd8543ba57edc39a9150b71e340f2bd28",
+            "50d702148735f7b8946e79b9631dc4a8b72e152274d12c220dd509c1ca42a7c5",
+            "dd2ec66f4f544217097508197ef07840d4e080726b9ae094b34e7d4c2de5ad24",
+        ],
+    ),
+    (
+        "docs",
+        &[
+            "d41e1df30d1ca84c8a498a23f0d5cd05db949cd09ffb335cfacca7ab6073012b",
+            "2bb170623b03bf1bc56c03b219b743477ccbf54b20ed08157a02387fc3dc8cc6",
+            "95756f966f43e9eb6903364247e318f74543a950814954bcb06428f1d247e501",
+            "9d1d5377bd5d259a26f13af98f2e6baabcbb64c0dc2d7cc210651f7bc961877f",
+            "2a1ae04c67ee06344b2caa29cbca47c38efc3c84c76e44d7cc68ebde1a58e790",
+            "de6bc882e812792775c134202c210de492525262fb4b5ee668e02d6566bcd1d6",
+            "4293fd38cb9f5d7ee3f6f01efed45d397d275f173ca3c7afac25feb3ef040d09",
+            "5e0e6566fca6227d364dd0d27c42bac5856003a9539b9d691d834e83dff4a75c",
+            "0c38ddd8e2f75a2a178d5ad3a6d79fb926abb7fe0e8b94a3fb5b49586b0709a2",
+            "44982601ac62da39b0885be3844438bdf8c2ab84e66e3232b48c816e1cb6003f",
+            "27aa68a0befb1bd9adbd2333cac682a7aed9951c754cff70b679158fa62ff211",
+            "303cdeb2a16fd93dd2f1dac938f3f70a855c7b52641f01c88c7f90614b5bd098",
+            "b294702ecf16dd848d0456d22b483bdad922680c184bcc76b28a245fdad7be60",
+            "9aa6082367f31856f2aa0db0fd4aa8b600cc352010eb724598ab6ea95c4fab70",
+            "b1d3db5fe1f268c18c23c5f2155899e5d18ec68049d2fb0993b71acce41df579",
+            "a6e2157301e9fc1367c053437ebe76052a16fbf4acd5ff3cc2b0c24c7db083b2",
+            "bcd90c27069901f39c2865ed5c2e713195bb6a5abba051bc005f0c0650a90d8e",
+            "319f27442a4881e6615452e11ffb7748e95638d3cbafff569c18b67fdc6e9757",
+            "ec6567fc2f864a43eedac2709c7fdbba0150bf21a8fbab55bc54cfc1c848b8e1",
+            "ad70b101d9ad99796cc7e481ca60cc87e78ad7e31ab00f25ec05f3d8901d9f53",
+            "63cb5cf07db152d6dbcc839f811c9813e6c3ae3e24a7d887d79c15579cb2732e",
+            "67d2ab2e5cd888eaa9e7a3406046fb5ffd3e7002d062c815a5e5db9e60d15758",
+            "13d21288125b4ce74dc2a8a1664b62f9a9ef38d04d995c815bbce851ce671cab",
+            "aed48911c56bea2f750cf880427a442ebadd48bc7422aa34f95a12eed9b9e419",
+            "b9d7d6b516236214d3dd5c5a95f85fa1e84d771ae13f5144e14d1fbd8efc09ef",
+            "67d4c8039ed0538ca34020304249019e16fc1ce2d3a62719404814443afb4140",
+            "23e5570a2dc970bc9fa7f9e96b132b20d3867156e66051a90074cc9e157d5ad9",
+            "e9ec1aeb94ffb008f68ded0eb02a12f55ab495e78aed05cb768f27d01dacfb0d",
+        ],
+    ),
+    (
+        "landing",
+        &[
+            "3ade55868c66e2adb90f5957de48509047a316397f0387e5e68605167376d12e",
+            "7f1dbb2fb2ef9dc4f208a60a4ea5da379373c505f1ceb53dfc16a54908d29290",
+            "948f00f969f826470594b937a8118391ee4ce506084569d6250d15cc4f79a07a",
+            "61b494102d94e5264f483212ca045dbdd4dab48eaa471882fbb87f7fece1803a",
+            "e78187030059098ced2093081419f1340cb2b5aa2738f99545e9b2148159b43d",
+            "fdf3edd9113b2c9df03e456191241876f89669011890ca8ecee1d6d07f8772be",
+        ],
+    ),
+    (
+        "blank",
+        &["5fba48b8862df4b95f7cfc2474192feae35e145591ef68ef1e6b7b1aee7c0ea3"],
+    ),
+    (
+        "minimal",
+        &[
+            "f771f18184b99ea5aed2a17ab7ae501e97384bb58bdc5da74915fa86b8a7d55f",
+            "fad41995a6ca6904a802a824f755f2c3747e58ef0ddf6d6ffeabca33c89d94d4",
+            "e7e42cb2e59ce07508bd545017c76bd6977facec3a8c1fd7bd6b6689087efce9",
+            "5c3f4e92ae58630c0ccdf6ad49d11563371e0ff509eb5c437a28adbf3172e220",
+            "4f743c9fb341375a4209230d1ccbd8fb3ca28e58f7e913ab71c482689c66fade",
+            "187509fb298ff02b70187eb5d8362e032af5391a7d174652b5251016aea3b945",
+            "d15624c062580064ad855a699a4b4252f3e0784ee46d1eb7cd02dc4b21d21f87",
+            "adaf12de14f513f82424ab8b6bf04e57819c950c68e46c36c84fc1a2cdeb32b7",
+            "2866ce3bb60a0b1da72369ae12d8e82aac54247acfb1266a4dd9abab450bfb8a",
+            "6a84188c99cedbe50a11a76cd2d5ee4b612f00a958c7f2b38a116e49e962de33",
+            "c97008ad96aa12b846e734c689b0cc1570adb427d6fc4c9eecfca670f53fdfc4",
+            "9a44ffc8f3b56b3c475bacc63113ce8041459f71621f4a5a3f3e5e207bba4020",
+            "f126d181320e89f3743409ccf96e0d82abe077a9ec766563554913c4a93835c4",
+            "bf00b213729ff824f366658bdad8943f37391e176ce0d8a70896a9be5147d6c5",
+            "adb1236fec8af037f1c4be6a6a1252f4fb27077725013ba946fb0a26947952d8",
+            "672419d484d9f4de01c2bc03b5eafd00b929994aab649d567fbfc65c1a487670",
+            "233b13882910785de60bab14d9345f18efbb419458b9769eae49f9f1a9b52847",
+            "955b45edb57936443b084ab421d0cabcd08efb4f8e026106b6d1d1f2e9af6b59",
+            "8b261156686bfa5b8e47e98d6cdd06fbb5ae5de42c3b444b60ec31e1d3e7058f",
+            "4c8119305369be1cf6cf070e158c09333946a2297af1d62eb71ed802d1112acd",
+            "07d614b221b52913f62951d803480810d258a18301c8033e97a5b723c067f29f",
+            "07cde97fac333a3671d18e7ec8430600f839f91513f131a2fad730330a482f88",
+            "a937357cef63fbbd3b41ab1e4a552242e117afe825c6ae3f417b74902231fa33",
+            "a51d7dd48f7cd7730e40aa426616a9942bca36b09a6810ad765f72ddea03b128",
+            "dfb02d635bbe791c96d1fa7e7a9b731a6462515daa177675f0fa88d69c816b5a",
+            "b0e2eb4b08dccd20b979be4bc729163e22efd995253cb37d9523af14b0b04aed",
+            "d64bb60b1c7e2cdc544ca5833072f6891e39625e2631352bd5eea8c1d76fc427",
+        ],
+    ),
+    (
+        "dark",
+        &[
+            "655f71f67ca3bb13d5b7d6942cc284dc2a966c27f934248a5c7a1b00c052e056",
+            "0fa0300e04dfb721f9e8809edd095bab6534ded3754d300912873b4bbd1483bd",
+            "1b7da9bce81b6fc827e3a48f032f0bb00bde6fbd3cefd3c0711b5485ab55dc0d",
+            "9f173c4a3b71cd5000c7c212545aa1407231741129dc6ee456bcb8ae8c5e3b9d",
+            "47bab6964eb828411cd91433b8e08ed16162d4f5777888e790d6be3f5fc44da5",
+            "f670640d210e30c5c48242bdef2749aeb1e8f03c0dc2dc61e48b4ea2a28c7626",
+            "1baa8dff66ed7f594d4b533b48ea68a78bff438560bb994a71e280a1d9a49620",
+            "56dbb0ae5de4e12fb6e546828d542a50070542e8a3025aa734d719b61522fff6",
+            "2ee3bd487b48c5a05ca6070ad4f23b966df234c23f085a5e617b3da60e6d6a64",
+            "df530cfc93795c5f6da0f2907efeb90ac85414d8debf282badb27dd04bafb959",
+            "a54905607456dc88af9bf4570160b54e736666db02f68a2723550188bc6b83ac",
+            "f295c93cbad1d94cd098f9f7dde27c57b124099e892999e333eb0e8a3e88d723",
+            "509789404ff3008cdd3707ba9cf9870f5b67ce2d5860b3f5443d60c32fd5afb1",
+            "eebaae38759f40c164010d1132e21bdaedc6d12c96542c339a73d985a8304f11",
+            "0ef9e71026651c06343d5e3bacd609087c84a0a948b340c1ef5257cf28a13be1",
+            "d99b83f67c7ef21647a42ebaa4c60a7d8a83d8f972232129c99ea62f6dc687ae",
+            "ed71e4973f74b68280a6065e084cd05a40e4d49cfa43b7789c1c42599b729331",
+            "7f6081e501c669dd52fe61689b02b308db2e4f9253491634538862917c19d688",
+            "a66c7a083a59e0cfe2eb361d7202876304eaaa921f8072d6699cd10abde56e56",
+            "293acf6a31800771b8565aaf7bf361f1ad2d71b8903a6b51bd5b0b82080ad0ab",
+            "a41d09bfc2d93da3c749776d2be65959930c09604b167a7462309f47918c5162",
+            "e6bcfe0c91dad307fc2d3f75c21f0a776e3d381ee2bab6a7a075401d7c238c2c",
+            "96f8ef92ab2dfc6dc70b29f6dfcacb12e484371a8ce605ebc38e6c30d58f6b3d",
+            "9f7be6f321ebdc0bdcc2abea56264ae8f16ca78780b4835e0a3b3397392ca4fd",
+            "ae097eabe405888b84265a523b63d306932657ed8b048f7f0a893d728e43e976",
+            "520251acfb14348f471ec93d7cd1aa78cd64c841e341fd151cc1cd29a450e85d",
+            "724794a6a2e401271dc7787fec722239be103c0bbc2acc82d11900b7fcd79471",
+        ],
+    ),
+    (
+        "brutalist",
+        &[
+            "b62dd29a08e0865cf9cafc777589f1c3bc9eed1d09189f3e540e4611022641ff",
+            "24230b0eb0e120eba25acffa96f4152a4ac8de626b51c79cca2597184bd8c7a9",
+            "f156f357a672f384bcdfc75a364bd8b105801d443e0d23f1bdf191b6a450a267",
+            "fe6dda96ca93e8c102de130c61cb95c58ea03abafc6c9b014bb60540c535b526",
+            "4057962628763effaa059c379b6aca103e5fc9938c7073a891a80efd82c747b4",
+            "a45900ffbb3f3cf8665c264834980b8020466b5e710c80e44c5442503ad88cd9",
+            "cac41c78eeff66612a4595a525c5cc2febfb21dd15ed1d38086880557b66f8be",
+            "e599d5a1b386b9acb53b56189d5caf4aa7fbd8ae9cfd50ee67f3130327aba941",
+            "94d35e66e3e940e07180aba391cfe7eba8689cc2fe5c57f8ab5149a7346921b8",
+            "739ff4d16c34783c002346bed659eaf1bf4d781ab7d2f0452268cf152a48316a",
+            "53f5d69ecc71c098f7bf6427ee1ddb5efd3708d6723023495738d6f2da9d470c",
+            "bbd33b9507f7c8e14a4dc239b2a5771c2f7b47961a6c164a4da4f3ce4add12f5",
+            "89345a741013c466baebaa323b0535eb8feb0a5b3225eadaa6a9901fe638238e",
+            "42d1e8a8155706426c40352899770af8431aa697bd3c22c77e75f642891893c7",
+            "3791545b88c4aab1cec1c345e56b4777fefd1c1b4b2ff954f4f4cca107802932",
+            "3c66e983ea90d1a0213fa3b45d1da37980ad801733c23eb6b06a3a7310cb3a7c",
+            "9d48ecd6eeba015bbf9318776118461b8d237020cb5256016cc46dd87a5db93a",
+            "610ce5a424388f176538fac1843280e2892de86ff198e6432166e90ad572a920",
+            "9cbf90264e4f24676c77c84aabc5fb995dc5b359468de6e948f54ede7fff1a8f",
+            "52c292e91c215eb66859a42e5cacbe1b0b0bfb8dbbf2f28441d0f486049ce659",
+            "ffd435c6a19d9385d1af3bbc836ccb02357f76288e548e9d5fe9a31ffda1b394",
+            "21475e7cf8badae085c279989e6d42061c53181c2db9e800c8901af508771869",
+            "6661e028e79eba4a480239fc11566aedf485b42fb21291da801d85b1a84f09b9",
+            "8467f522983a8eed778887a737688cb258bfbdbfc173d5a54995d51b4903abb7",
+            "63fa19e04d563818fe23726d67498e19147b1f28d39531f19723cfc6bf0bd44a",
+        ],
+    ),
+    (
+        "bento",
+        &[
+            "73042f8b7b7c052a589778f3d319ce2a224b98369ea7b6e1e4e1911e5c67ba25",
+            "34117f6ed4efd0394b74dbdf4c12757b8edb2f94506591cae7529567d300b6eb",
+            "d13fe9ed5a17b1a9341606e2b31f91d74f0f228041883d9871e2cd299094a561",
+            "4426796a9744171fa20585aa4fdcadea984466d9fc5bbfba90e1b095b388e5df",
+            "59fc7c2058dee677de487c566ecac4639bddeb94e4100d3865af1ad24741fdf9",
+            "525f1f725db0155e8d395bf738d6cafed37a0de2b05edc5dfaf3cc08b9c160ef",
+            "279935aecee7fd38bc7cca2ff2b2e389fd9e2f5f521617f857dae9abd3ca66ed",
+            "8e786a837252267bad9867e8f188a42c229b2a273478ad9cc7248fe996d62a4f",
+            "7fde4e0ba35b413767d045c2aab4cceb64e14f617aed9e05e5e5324792770591",
+            "9eacbfc016582de7d40deaf20a03fb8f8c69909f05c14114b636da49dc67424f",
+            "3d31b6259be8c7e153c14a41a6842f892711bf39339903080ac495b1fb53d963",
+            "5db3d082634b68ad7d96917e9120724d88ee03529359938cfa36832f5c11bd56",
+            "692999f613d73fa2a41e451b11f0ea47d61c8cd05a19d468e78061428154e835",
+            "f0e7105d19f993829355c75887e226f2834d58c3314614af1df467a843223999",
+            "06948ddb4d6eeb200a8f625bd2c24a2a9b1dbc59a92f570bdc73407f8ce6436f",
+            "fa7aefc16ad95209a7b4a0171c04135312ce65b96c9fe6bca197f785033b5476",
+            "e22c4f5a2d11660a7a9b8cfba37f941c698f25e33e042d999b0b57fe224cb25f",
+            "c94d01e9e5b361b0459c69688247e17f313c82cea3a02af33f014382190cd152",
+            "bd26a28c7dacf2cca52c58982c30c24ee76b4da7a574b57d61e8479c0e54dc8e",
+            "49026a33710bcc6b4e718ea18c4e5b63b2b37166f5e8c50434a025d9650bc582",
+            "4cb57a028c7a5681d1e4b88fb9b2c05cf296a16c6a8f57014e309b3f4ba2785f",
+            "62f5defd8e549909f4f1a503fd4919b589ab0ee01dd863df76cda57abcc3b888",
+            "ea4a43ed2f011b1ac4f1e79e89d0cee9a034fad492c9bf46d6d2586e3782168c",
+            "18da3adfc0983acaa1de7e7951f990926aae2bce424c63e8384263d955468312",
+            "22f6e094348547ef0e71c718d49fcc87a8ea96c8222aeb59ad1f6fd4924e55ec",
+        ],
+    ),
+    (
+        "terminal",
+        &[
+            "cb21b14af919c7311d6049d9ab4d04449059b9bfaa010326b0120effa32f56e0",
+            "d229ebbf585b2d98c94aae22fff256412d7d1b96e433f4424d0021215b993c88",
+            "27fd3ac2dac8d76a3b5ee1457e23b5ffcbb27592ecf5133bcddf889559e1c923",
+            "2177b18b92f4b4b385f84148765e35367e1b141fcd42aef5bd70453f2f91fc06",
+            "297cde2ed99d71a88a17486541cd6f6bb9e2f44ca7fc7c138fede60ddc61ebf2",
+            "b1d9cbc5ffcfc5d219b8fd863ef18c9fe1b8204568be69a5feca4929ebd970b7",
+        ],
+    ),
+    (
+        "magazine",
+        &[
+            "3573e9fbf51525608af6edb78f0458b069df8218917227d09bdb0fc6619d10f7",
+            "8189b0593ee79613a05ca0cd4f1e172086a867860366e5015fe4bce7e2edd2f1",
+            "ba02fe464a5ab7581f03cd50dce483be6dadba86c908e33c0d490c66c5760282",
+            "83eb867c64c4809ef7c8c6a9e8f46baa15af19f7146fe8a67bfb71be72e9c7b9",
+            "8b15b677c3d364dca85703408aa2d6ce4d0fcfdb51af82cd5e001008ca03ed17",
+            "95eec46b34053a662e6a06d16d29f17b1abbb2cd7b0fa9ffc2480468abf718bb",
+            "c10197ce9620c1a3004799517287ec618422c6c431d4fde972e33f472b3be1ba",
+        ],
+    ),
+    (
+        "academic",
+        &[
+            "c3870c4852c60003415be20a9b0a1dfad5bf20655906c00c81562dfbe2544559",
+            "52786ced85652ddb4c1da123a1f2de721991a3e1c92da37fb940cc49acce2a81",
+            "730ac39afa2004f01036987b72ec43927280cb1d52df2b07eeba9b69d18c2e5c",
+            "b1a8c13ba9c5cb984a86da0e3078013a61513a5be0927a015f3cb45fadb353c2",
+            "99e4bf5611d3f8209642bcdf4eae519e5a7929f881d22560b7eb8e08d588cb65",
+            "9a692e0451c2e271b0578d210f5876673b73c68d9efd775410275cb3d2b7ef57",
+        ],
+    ),
+];
+
+/// The bundled theme `content` (a `base.html`) is an unedited copy of, in
+/// any released version.
+pub(crate) fn legacy_bundled_theme(content: &str) -> Option<&'static str> {
+    bundled_theme_for_hash(&template_hash(content))
+}
+
+/// The bundled theme a `base.html` is an unedited copy of (any version).
+fn bundled_theme_for_hash(hash: &str) -> Option<&'static str> {
+    LEGACY_THEME_HASHES
+        .iter()
+        .find(|(_, hashes)| hashes.contains(&hash))
+        .map(|(name, _)| *name)
+}
+
+/// Replace `templates/base.html` with the current version of its bundled
+/// theme when it is an unedited copy of any earlier version, so the site
+/// moves to the theme that includes seite's partials (`seite/head.html`,
+/// ...) and gets SEO/GEO fixes automatically from then on. An edited copy
+/// that does not include the partials is kept, with a one-time notice
+/// showing how to adopt them.
+fn check_bundled_theme_base(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let rel = format!("{template_dir}/base.html");
+    let path = root.join(&rel);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let hash = template_hash(&content);
+    let current = crate::themes::all()
+        .into_iter()
+        .find(|t| template_hash(t.base_html) == hash);
+    if current.is_some() {
+        return (Vec::new(), Vec::new());
+    }
+    if let Some(theme) = bundled_theme_for_hash(&hash).and_then(crate::themes::by_name) {
+        return (
+            vec![UpgradeAction::Update {
+                path,
+                content: theme.base_html.to_string(),
+                description: format!(
+                    "{rel} ({} theme, now with seite's SEO/search partials)",
+                    theme.name
+                ),
+            }],
+            Vec::new(),
+        );
+    }
+    if content.contains("seite/head.html") {
+        return (Vec::new(), Vec::new());
+    }
+    (
+        Vec::new(),
+        vec![Notice {
+            key: format!("theme-partials:{rel}"),
+            text: format!(
+                "Kept {rel} (edited since seite wrote it). It has its own copy of the SEO head, so it gets no automatic SEO/GEO updates. To adopt seite's partials, replace the SEO tags after <title>, the search box and the search script with:\n{}\nSee `seite docs templates` (section \"seite partials\").",
+                crate::templates::SEITE_PARTIALS_SNIPPET
+            ),
+        }],
+    )
+}
+
 /// A message `seite upgrade` shows once per project (recorded in
 /// `.seite/config.json` `notices_shown`), never under `--check`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1901,7 +2224,10 @@ aliases:
 /// Bundled themes are auto-upgraded, but custom `templates/base.html` files need
 /// the user to add the Atom link manually.
 fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
-    let base_html = root.join("templates/base.html");
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let base_html = root.join(template_dir).join("base.html");
     if !base_html.exists() {
         return vec![]; // Using bundled theme — auto-upgraded
     }
@@ -1911,8 +2237,13 @@ fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
         Err(_) => return vec![],
     };
 
-    // Skip if already has Atom autodiscovery
-    if content.contains("application/atom+xml") {
+    // Skip if already has Atom autodiscovery (directly or via seite's head
+    // partial), or is an unedited bundled theme that `check_bundled_theme_base`
+    // replaces with the current, partial-based version.
+    if content.contains("application/atom+xml")
+        || content.contains("seite/head.html")
+        || legacy_bundled_theme(&content).is_some()
+    {
         return vec![];
     }
 
@@ -3761,5 +4092,171 @@ mod tests {
         assert!(!allow.iter().any(|v| v == "mcp__seite"));
         assert!(allow.iter().any(|v| v == "Bash(seite context)"));
         assert!(!tmp.path().join(".mcp.json").exists());
+    }
+
+    // --- bundled themes → seite partials ---
+
+    #[test]
+    fn current_bundled_themes_are_in_legacy_table() {
+        for theme in crate::themes::all() {
+            let hash = template_hash(theme.base_html);
+            let listed = LEGACY_THEME_HASHES
+                .iter()
+                .find(|(name, _)| *name == theme.name)
+                .map(|(_, hashes)| hashes.contains(&hash.as_str()))
+                .unwrap_or(false);
+            assert!(
+                listed,
+                "src/themes/{name}.tera changed: append \"{hash}\" to the \"{name}\" list in \
+                 LEGACY_THEME_HASHES (src/cli/upgrade.rs), so sites with the previous version \
+                 keep upgrading",
+                name = theme.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_legacy_theme_hashes_are_unique_across_themes() {
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0;
+        for (name, hashes) in LEGACY_THEME_HASHES {
+            assert!(crate::themes::by_name(name).is_some(), "{name}");
+            for hash in *hashes {
+                assert_eq!(hash.len(), 64, "{name}: {hash}");
+                assert!(seen.insert(*hash), "{hash} listed twice");
+                count += 1;
+            }
+        }
+        // Every version of every bundled theme since the first release.
+        assert!(count >= 185, "{count}");
+    }
+
+    fn write_base(root: &Path, content: &str) {
+        fs::create_dir_all(root.join("templates")).unwrap();
+        fs::write(root.join("templates/base.html"), content).unwrap();
+    }
+
+    #[test]
+    fn test_check_bundled_theme_base_replaces_every_unedited_version() {
+        // The 0.20.x themes (pre-partials) and dark as 0.2.4 shipped it.
+        let mut cases: Vec<(&str, &str)> = vec![(
+            "dark",
+            include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera"),
+        )];
+        for name in [
+            "default",
+            "minimal",
+            "dark",
+            "docs",
+            "brutalist",
+            "bento",
+            "landing",
+            "terminal",
+            "magazine",
+            "academic",
+        ] {
+            let path = format!(
+                "{}/tests/fixtures/themes-pre-partials/{name}.tera",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            let content: &'static str =
+                Box::leak(fs::read_to_string(path).unwrap().into_boxed_str());
+            cases.push((name, content));
+        }
+        for (name, legacy) in cases {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            // CRLF checkouts hash the same.
+            write_base(root, &legacy.replace('\n', "\r\n"));
+            let (actions, notices) = check_bundled_theme_base(root);
+            assert!(notices.is_empty(), "{name}");
+            match actions.as_slice() {
+                [UpgradeAction::Update {
+                    content,
+                    description,
+                    ..
+                }] => {
+                    assert_eq!(content, crate::themes::by_name(name).unwrap().base_html);
+                    assert!(content.contains(r#"{% include "seite/head.html" %}"#));
+                    assert!(description.contains(name), "{description}");
+                }
+                other => panic!("{name}: expected one update, got {}", other.len()),
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_bundled_theme_base_keeps_current_and_edited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // No base.html: nothing to do.
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // Current themes (blank included): nothing to do.
+        for theme in crate::themes::all() {
+            write_base(root, theme.base_html);
+            let (actions, notices) = check_bundled_theme_base(root);
+            assert!(actions.is_empty() && notices.is_empty(), "{}", theme.name);
+        }
+
+        // A custom design that includes the partials: nothing to do.
+        write_base(
+            root,
+            "<html><head>{% include \"seite/head.html\" %}</head><body></body></html>",
+        );
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // An edited legacy theme: kept, with the adoption snippet.
+        let legacy = include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera");
+        write_base(root, &format!("{legacy}<!-- mine -->"));
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].key, "theme-partials:templates/base.html");
+        assert!(notices[0].text.contains("Kept templates/base.html"));
+        assert!(notices[0]
+            .text
+            .contains(r#"{% include "seite/head.html" %}"#));
+        assert!(notices[0]
+            .text
+            .contains(r#"{% include "seite/scripts.html" %}"#));
+    }
+
+    #[test]
+    fn test_atom_hint_skips_partial_based_base() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_base(tmp.path(), crate::themes::default().base_html);
+        assert!(check_atom_autodiscovery_template(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_atom_hint_skips_unedited_bundled_theme_and_uses_template_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("CLAUDE.md"), "# Project").unwrap();
+        // dark as 0.2.4 shipped it has RSS but no Atom link; upgrade replaces
+        // it, so no hint about adding Atom by hand.
+        let legacy = include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera");
+        assert!(!legacy.contains("atom"));
+        write_base(root, legacy);
+        assert!(check_atom_autodiscovery_template(root).is_empty());
+
+        // The configured template_dir is the one checked.
+        fs::write(
+            root.join("seite.toml"),
+            "collections = []\n[site]\ntitle = \"T\"\n\n[build]\ntemplate_dir = \"layouts\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("layouts")).unwrap();
+        fs::write(
+            root.join("layouts/base.html"),
+            r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#,
+        )
+        .unwrap();
+        assert_eq!(check_atom_autodiscovery_template(root).len(), 1);
+        fs::remove_file(root.join("layouts/base.html")).unwrap();
+        assert!(check_atom_autodiscovery_template(root).is_empty());
     }
 }

@@ -64,6 +64,7 @@ seite init <name> [options]
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
+| `--theme` | Starter theme: `default`, `docs`, `landing`, or `blank` (for designing your own). Default: `docs` for a docs-only site, `default` otherwise. Gallery themes are applied later with `seite theme apply <name>` |
 | `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
 
@@ -294,22 +295,24 @@ seite theme <subcommand>
 
 | Subcommand | Description |
 |------------|-------------|
-| `list` | Show all available themes (bundled + installed) |
-| `apply <name>` | Apply a bundled or installed theme |
-| `create "<description>"` | Design a custom theme: with impeccable installed, prints how to run `/impeccable`; otherwise runs your coding agent once with `/seite theme <description>` |
+| `list` | Show the starters, the gallery of example themes, and installed themes |
+| `apply <name>` | Apply a bundled or installed theme (`blank` also writes `static/css/site.css` if missing) |
+| `new [name] [--force]` | Start your own design: scaffold the `blank` starter (`templates/base.html` + `static/css/site.css`) and print how to design it with impeccable or `/seite theme`. Refuses to replace a customized `base.html` without `--force` (which backs it up first) |
+| `create "<description>"` | Design a custom theme: scaffolds `blank` first when the site is on a bundled example; then, with impeccable installed, prints how to run `/impeccable`, otherwise runs your coding agent once with `/seite theme <description>` |
 | `install <url>` | Download and install a theme from a URL |
 | `export <name>` | Export the current theme as a shareable `.tera` file |
 
 ```bash
 seite theme list
 seite theme apply dark
+seite theme new
 seite theme create "brutalist with neon green accents"
 seite theme install https://example.com/themes/aurora.tera
 seite theme install https://example.com/themes/aurora.tera --name my-aurora
 seite theme export my-theme --description "My custom dark theme"
 ```
 
-10 bundled themes: `default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
+Bundled themes: the starters `default`, `docs`, `landing`, `blank`, and the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`. They are examples and starting points; every theme includes seite's [partials](/docs/templates#seite-partials) for the SEO head, search and language switcher. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
 ## seite deploy
 

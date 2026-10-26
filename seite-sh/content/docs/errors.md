@@ -270,6 +270,26 @@ url_prefix = "/categories"   # not "/posts"
 {% if page.markdown_url %}<link rel="alternate" type="text/markdown" href="{{ site.base_url }}{{ page.markdown_url }}">{% endif %}
 ```
 
+## template-missing-seite-head
+
+**What it means:** your `templates/base.html` does not include `seite/head.html` (directly, or through a template it includes or extends, such as `templates/partials/head.html`), the partial that writes the canonical URL, description, Open Graph and Twitter tags, JSON-LD, hreflang, feed, `llms.txt` and markdown links. Reported as a warning (it fails only `--strict` builds and checks). The message says which case applies:
+
+- **legacy theme**: the file still has its own copy of those tags (a bundled theme from before seite 0.21, or a copy of one). The site works, but SEO and GEO fixes in new seite versions never reach it.
+- **missing SEO head**: the file has neither the include nor its own tags, so pages ship without them.
+
+**Common causes:** a theme applied or customized before 0.21; a redesign that rewrote `<head>` and dropped the include.
+
+**How to fix:** run `seite upgrade` (it replaces a bundled theme you never edited), or `seite theme apply <name>`. To keep a customized design, replace the SEO tags after `<title>` with the include, and use the other partials the same way:
+
+```html
+<title>{% block title %}{{ site.title }}{% endblock %}</title>
+{% include "seite/head.html" %}      {# inside <head>, right after <title> #}
+{% include "seite/search.html" %}    {# where the search box goes #}
+{% include "seite/scripts.html" %}   {# right before </body> #}
+```
+
+See [Templates → seite partials](/docs/templates#seite-partials).
+
 ## template-parse
 
 **What it means:** a template has a Tera syntax error. In `seite check` this is an error; in `seite build` it is a warning because the build falls back to the built-in templates (so your customizations are silently missing from the output).

@@ -57,6 +57,12 @@ pub struct InitArgs {
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
 
+    /// Starter theme: default, docs, landing, or blank (for designing your
+    /// own). Default: docs for a docs-only site, else default. The gallery
+    /// themes are examples: `seite theme apply <name>` later
+    #[arg(long, value_name = "STARTER")]
+    pub theme: Option<String>,
+
     /// Also wire the seite MCP server into each agent's config (coding agents
     /// use the `seite` CLI; MCP is meant for chat apps without a shell)
     #[arg(long)]
@@ -132,6 +138,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     if collections.is_empty() {
         anyhow::bail!("at least one collection is required");
     }
+
+    let starter = resolve_starter(args, &collections)?;
 
     // Coding agents to generate config for (AGENTS.md is always written).
     let agents = harness::resolve_init_agents(args.agents.as_deref())?;
@@ -245,7 +253,10 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::write(root.join("seite.toml"), toml_str)?;
 
     // Write default templates
-    fs::write(root.join("templates/base.html"), templates::default_base())?;
+    fs::write(root.join("templates/base.html"), starter.base_html)?;
+    if let Some((rel, css)) = starter.stylesheet {
+        crate::safe_fs::write(&root, &root.join("static").join(rel), css)?;
+    }
     fs::write(root.join("templates/index.html"), templates::DEFAULT_INDEX)?;
     for c in &collections {
         let tmpl_name = &c.default_template;
@@ -439,6 +450,15 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     }
 
     crate::human_println!();
+    human::info(&if starter.name == crate::themes::BLANK {
+        "Theme: blank, ready for your own design: `/seite theme <description>` in your agent (or `/impeccable` with `seite skill install impeccable`)".to_string()
+    } else {
+        format!(
+            "Theme: {} (a starting point; for your own design run `seite theme new`, examples: `seite theme list`)",
+            starter.name
+        )
+    });
+    crate::human_println!();
     human::info("Next steps:");
     crate::human_println!("  cd {name}");
     crate::human_println!(
@@ -468,12 +488,62 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "title": title,
         "collections": collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
         "deploy_target": deploy_target,
+        "theme": starter.name,
         "contact": config.contact.is_some(),
         "agents": harness::to_ids(&agents),
         "mcp": args.mcp,
     }));
 
     Ok(())
+}
+
+/// The starter theme for a new site: `--theme`, else a pick in the
+/// interactive flow, else docs for a docs-only site and default otherwise.
+fn resolve_starter(
+    args: &InitArgs,
+    collections: &[CollectionConfig],
+) -> anyhow::Result<crate::themes::Theme> {
+    let starters = crate::themes::of_kind(crate::themes::ThemeKind::Starter);
+    let names: Vec<&str> = starters.iter().map(|t| t.name).collect();
+    let fallback = starter_for(collections);
+    let name = match &args.theme {
+        Some(name) => {
+            if !names.contains(&name.as_str()) {
+                let gallery = if crate::themes::by_name(name).is_some() {
+                    format!(" '{name}' is a gallery example: apply it after init with `seite theme apply {name}`.")
+                } else {
+                    String::new()
+                };
+                anyhow::bail!(
+                    "unknown starter '{name}'. Starters: {}.{gallery}",
+                    names.join(", ")
+                );
+            }
+            name.clone()
+        }
+        None if args.name.is_none() => {
+            let labels: Vec<String> = starters
+                .iter()
+                .map(|t| format!("{} — {}", t.name, t.description))
+                .collect();
+            let items: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let default = names.iter().position(|n| *n == fallback);
+            names[prompt::select("Starter theme", &items, default, "--theme", &names)?].to_string()
+        }
+        None => fallback.to_string(),
+    };
+    Ok(crate::themes::by_name(&name).expect("starter names are bundled themes"))
+}
+
+/// The starter that fits the collections: `docs` for a docs-only site,
+/// `default` otherwise. `landing` and `blank` are only chosen explicitly.
+pub fn starter_for(collections: &[CollectionConfig]) -> &'static str {
+    let docs_only = !collections.is_empty() && collections.iter().all(|c| c.name == "docs");
+    if docs_only {
+        "docs"
+    } else {
+        "default"
+    }
 }
 
 /// Lines of the "what was created" tree shown after `seite init`.
@@ -940,6 +1010,7 @@ fn generate_agents_md(
     md.push_str(
         "- Templates extend `base.html`; render content with `{{ page.content | safe }}`.\n",
     );
+    md.push_str("- Themes: keep the `{% include \"seite/…\" %}` partials; seite updates them.\n");
     md.push_str("- Shortcodes: `{{< name(arg=\"v\") >}}`, or `{{% name() %}}…{{% end %}}` with a body. No `{{< /name >}}`.\n\n");
 
     md.push_str("## Verify\n\n");
