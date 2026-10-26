@@ -238,7 +238,7 @@ search = "full"   # or "basic", or false
 - **`"basic"`** (the default when the key is absent, so existing sites build exactly as before): only `search-index.json`, matching titles, descriptions and tags.
 - **`false`**: no index and no search box.
 
-Results are ranked by where the words occur (title, then headings, then tags and description, then body text). All words must match; the last word also matches as a prefix while you type ("deplo" finds "deploy"). Matching ignores case and accents ("cafe" finds "Café"). English sites (`language = "en"`, or an `en` translation) also match word forms ("posts" finds "post", "running" finds "run") and skip words like "the" and "of"; other languages match whole words. Chinese, Japanese and Korean text is matched by pairs of characters. Each result shows a snippet with the matching words highlighted. Use the arrow keys to move through results, Enter to open one, Escape to close them.
+Results are ranked by where the words occur (title, then headings, then tags and description, then body text). All words must match; the last word also matches as a prefix while you type ("deplo" finds "deploy", and on English sites "buildin" finds "building"). A last word that matches nothing yet (or is a word like "the") does not empty the results of the words before it. Matching ignores case and accents ("cafe" finds "Café"). English sites (`language = "en"`, or an `en` translation) also match word forms ("posts" finds "post", "running" finds "run") and skip words like "the" and "of"; other languages match whole words. Chinese, Japanese and Korean text is matched by pairs of characters. Each result shows a snippet with the matching words highlighted. Use the arrow keys to move through results, Enter to open one, Escape to close them.
 
 Drafts, scheduled posts, pages with `robots: noindex`, unlisted collections and private collections are never indexed. Multilingual sites get one index per language (`search/` for the default language, `<lang>/search/` for the others), and the search box on a page searches that page's language.
 
@@ -250,7 +250,7 @@ Index layout (for custom scripts; `search-index.json` keeps its format in every 
 | `search/terms/<n>.json` | `{"term": [page id delta, weight, …]}` for a sorted range of terms, about 8 KB per file |
 | `search/pages/<id>.json` | One page: title, URL, collection, date, description and the first 3,000 characters of its text |
 
-`seite build --verbose` prints the index size, and `seite build --json` reports it as `data.search_index` (`pages`, `terms`, `files`, `bytes`, `shards`, `largest_shard_bytes`, `meta_bytes`, `largest_page_bytes`). To limit a search box to some collections, give its input `data-collections="docs,posts"`; see [Templates](/docs/templates#search) for the markup and result styling.
+`seite build --verbose` prints the index size, and `seite build --json` reports it as `data.search_index` (`pages`, `terms`, `files`, `bytes`, `shards`, `largest_shard_bytes`, `meta_bytes`, `largest_page_bytes`). To limit a search box to some collections, put `{% set search_collections = "docs,posts" %}` right before its include; see [Templates](/docs/templates#search) for the markup and result styling.
 
 ### Mermaid diagrams
 

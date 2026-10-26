@@ -587,7 +587,7 @@
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.3-4.3" />
             </svg>
-            {% include "seite/search.html" %}
+            {% set search_collections = "docs" %}{% include "seite/search.html" %}
         </div>
         <nav>
             {% for section in nav %}

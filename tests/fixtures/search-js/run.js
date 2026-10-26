@@ -108,7 +108,10 @@ input.value = '';
 const results = body.appendChild(new Node_('div'));
 results.id = 'search-results';
 results.setAttribute('aria-live', 'polite');
-const dataCollections = process.env.SEARCH_COLLECTIONS;
+// The page's own `data-collections` (from `search_collections`), unless the
+// test overrides it.
+const fromPage = html.match(/id="search-input"[^>]*data-collections="([^"]*)"/);
+const dataCollections = process.env.SEARCH_COLLECTIONS || (fromPage && fromPage[1]);
 if (dataCollections) input.setAttribute('data-collections', dataCollections);
 
 let fetched = [];
@@ -123,8 +126,10 @@ global.document = {
   },
 };
 global.location = { href: '' };
-global.fetch = (url) => {
+const cacheModes = {};
+global.fetch = (url, opts) => {
   const clean = url.split('?')[0];
+  cacheModes[clean] = (opts && opts.cache) || 'default';
   const file = path.join(dist, decodeURIComponent(clean));
   fetched.push(clean);
   allFetched.push(clean);
@@ -176,6 +181,7 @@ function describe() {
       location: global.location.href,
       fetched: fetched.slice(),
       allFetched: allFetched.slice(),
+      cacheModes: Object.assign({}, cacheModes),
       bytes: fetched.bytes || 0,
     });
     global.location.href = '';

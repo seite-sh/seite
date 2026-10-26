@@ -633,10 +633,15 @@ pub fn query_bytes(index: &BuiltIndex, words: &str, results: usize, lang_code: &
         .unwrap_or_default();
     let mut total = index.files.get("search/meta.json").map_or(0, String::len);
     let mut seen = std::collections::BTreeSet::new();
-    let query_terms = terms(words, Lang::for_code(lang_code));
-    let last = query_terms.len().saturating_sub(1);
-    for (k, term) in query_terms.iter().enumerate() {
-        for n in shards_for(&firsts, term, k == last) {
+    let lang = Lang::for_code(lang_code);
+    let mut query_terms: Vec<(String, bool)> =
+        terms(words, lang).into_iter().map(|t| (t, false)).collect();
+    // The last word is also a prefix: every candidate the client tries.
+    if let Some(raw) = terms(words, Lang { english: false }).pop() {
+        query_terms.extend(prefix_candidates(&raw, lang).into_iter().map(|p| (p, true)));
+    }
+    for (term, prefix) in &query_terms {
+        for n in shards_for(&firsts, term, *prefix) {
             if seen.insert(n) {
                 total += index
                     .files
@@ -653,6 +658,75 @@ pub fn query_bytes(index: &BuiltIndex, words: &str, results: usize, lang_code: &
         .collect();
     pages.sort_unstable_by(|a, b| b.cmp(a));
     total + pages.iter().take(results).sum::<usize>()
+}
+
+/// Prefixes the client matches for the word being typed (`raw`: folded, not
+/// stemmed): its stem, and for English all-ASCII words also `raw` minus 1–3
+/// trailing letters (keeping at least 3), so a partly typed word whose stem
+/// differs ("buildin" → "build", "everythin" → "everyth") still matches.
+/// The first candidate ranks highest; mirrored in the search script.
+pub fn prefix_candidates(raw: &str, lang: Lang) -> Vec<String> {
+    let mut out = vec![if lang.english {
+        stem_en(raw)
+    } else {
+        raw.to_string()
+    }];
+    if lang.english && raw.bytes().all(|b| b.is_ascii_lowercase()) {
+        for k in 1..=3 {
+            if raw.len() >= k + 3 {
+                let p = raw[..raw.len() - k].to_string();
+                if !out.contains(&p) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Write a built index under `dir` (a language root) and delete shard and
+/// page files a previous build left there that the new index does not have
+/// (incremental `seite serve` rebuilds keep `dist/`).
+pub fn write_index(dir: &std::path::Path, index: &BuiltIndex) -> std::io::Result<()> {
+    // Shards and pages first, `meta.json` (which names them) last.
+    let meta = "search/meta.json";
+    let ordered = index
+        .files
+        .iter()
+        .filter(|(rel, _)| rel.as_str() != meta)
+        .chain(index.files.get_key_value(meta));
+    for (rel, body) in ordered {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, body)?;
+    }
+    prune_index(dir, Some(index))
+}
+
+/// Delete generated index files under `dir/search/` not in `keep` (all of
+/// them, and `meta.json`, when `keep` is `None`). Only `terms/*.json`,
+/// `pages/*.json` and `meta.json` are touched.
+pub fn prune_index(dir: &std::path::Path, keep: Option<&BuiltIndex>) -> std::io::Result<()> {
+    let search = dir.join("search");
+    for sub in ["terms", "pages"] {
+        let Ok(entries) = std::fs::read_dir(search.join(sub)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rel = format!("search/{sub}/{name}");
+            let generated = name.ends_with(".json") && entry.path().is_file();
+            if generated && !keep.is_some_and(|k| k.files.contains_key(&rel)) {
+                std::fs::remove_file(entry.path())?;
+            }
+        }
+    }
+    if keep.is_none() && search.join("meta.json").is_file() {
+        std::fs::remove_file(search.join("meta.json"))?;
+    }
+    Ok(())
 }
 
 /// Shard numbers holding `term` (exact) or every term starting with it
@@ -895,6 +969,59 @@ mod tests {
         assert_eq!(shards_for(&firsts, "c", true), vec![0, 1, 2]);
         assert_eq!(shards_for(&firsts, "0", false), Vec::<usize>::new());
         assert_eq!(shards_for(&firsts, "zz", true), vec![3]);
+    }
+
+    #[test]
+    fn test_prefix_candidates_cover_partly_typed_stems() {
+        assert_eq!(
+            prefix_candidates("buildin", EN),
+            ["buildin", "buildi", "build", "buil"]
+        );
+        assert!(prefix_candidates("everythin", EN).contains(&"everyth".to_string()));
+        assert!(prefix_candidates("relate", EN).contains(&"relat".to_string()));
+        assert_eq!(prefix_candidates("running", EN)[0], "run");
+        assert_eq!(prefix_candidates("bu", EN), ["bu"]);
+        // Other languages and non-ASCII words: the word itself only.
+        assert_eq!(prefix_candidates("buildin", OTHER), ["buildin"]);
+        assert_eq!(prefix_candidates("café", EN), ["café"]);
+        // Every partial spelling of an indexed word reaches its index term.
+        for word in ["building", "everything", "related", "stories"] {
+            let indexed = stem_en(word);
+            for n in 1..=word.len() {
+                let typed = &word[..n];
+                assert!(
+                    prefix_candidates(typed, EN)
+                        .iter()
+                        .any(|p| indexed.starts_with(p.as_str())),
+                    "{typed} misses {indexed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_index_prunes_stale_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let big: Vec<String> = (0..400).map(|i| format!("<p>w{i} x{i} y{i}</p>")).collect();
+        let urls: Vec<String> = (0..400).map(|i| format!("/p/{i}")).collect();
+        let docs: Vec<SearchDoc> = urls.iter().zip(&big).map(|(u, b)| doc(u, "T", b)).collect();
+        let first = build_index(&docs, "en");
+        write_index(tmp.path(), &first).unwrap();
+        std::fs::write(tmp.path().join("search/keep.txt"), "user file").unwrap();
+        let second = build_index(&docs[..1], "en");
+        assert!(first.stats.shards > second.stats.shards);
+        write_index(tmp.path(), &second).unwrap();
+        let on_disk = |sub: &str| {
+            std::fs::read_dir(tmp.path().join("search").join(sub))
+                .unwrap()
+                .count()
+        };
+        assert_eq!(on_disk("pages"), 1);
+        assert_eq!(on_disk("terms"), second.stats.shards);
+        prune_index(tmp.path(), None).unwrap();
+        assert_eq!(on_disk("pages") + on_disk("terms"), 0);
+        assert!(!tmp.path().join("search/meta.json").exists());
+        assert!(tmp.path().join("search/keep.txt").exists());
     }
 
     #[test]

@@ -315,7 +315,7 @@ Each result is built with DOM calls (never `innerHTML`):
 <div class="no-results">No results</div>   <!-- when nothing matches -->
 ```
 
-Style `#search-results a`, `.result-meta`, `.result-snippet`, `mark` and `a.active` (the result picked with the arrow keys; Enter opens it, Escape closes the list). The result count is announced through a visually hidden `role="status"` element the script adds after `#search-results`. The strings come from `t.no_results`, `t.search_result` ("1 result") and `t.search_results` ("{n} results"). To limit a box to some collections, give its input `data-collections="docs,posts"`; the script reads the attribute from your own markup, so you keep the embedded partials.
+Style `#search-results a`, `.result-meta`, `.result-snippet`, `mark` and `a.active` (the result picked with the arrow keys; Enter opens it, Escape closes the list). The result count is announced through a visually hidden `role="status"` element the script adds after `#search-results`. The strings come from `t.no_results`, `t.search_result` ("1 result") and `t.search_results` ("{n} results"). To limit a box to some collections, set `search_collections` right before the include, e.g. `{% set search_collections = "docs" %}{% include "seite/search.html" %}` (comma-separated names); the partial renders it as `data-collections="docs"` on the input, which the script reads (in your own markup, write the attribute yourself). `search/meta.json` is fetched with `cache: "no-cache"` so a new deploy is picked up at once; shard and page files carry `?v=<hash>` and can be cached freely.
 
 ## Bundled Themes
 

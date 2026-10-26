@@ -3774,9 +3774,7 @@ fn write_search_indexes(
     is_multilingual: bool,
 ) -> Result<Option<search::IndexStats>> {
     use crate::config::SearchMode;
-    if config.build.search == SearchMode::Off {
-        return Ok(None);
-    }
+    let off = config.build.search == SearchMode::Off;
     let full = config.build.search == SearchMode::Full;
     let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
     // Full-text: listed, public collections only (private ones must never
@@ -3799,6 +3797,10 @@ fn write_search_indexes(
     }
     let mut total: Option<search::IndexStats> = None;
     for (lang, dir) in langs {
+        if off {
+            search::prune_index(&dir, None)?;
+            continue;
+        }
         let items: Vec<&ContentItem> = all_items
             .iter()
             .filter(|i| i.lang == lang)
@@ -3810,6 +3812,8 @@ fn write_search_indexes(
             generate_search_index(&items, config),
         )?;
         if !full {
+            // A previous full build's index (incremental serve rebuilds).
+            search::prune_index(&dir, None)?;
             continue;
         }
         let docs: Vec<search::SearchDoc> = items
@@ -3832,13 +3836,7 @@ fn write_search_indexes(
             })
             .collect();
         let built = search::build_index(&docs, lang);
-        for (rel, body) in &built.files {
-            let path = dir.join(rel);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(path, body)?;
-        }
+        search::write_index(&dir, &built)?;
         let t = total.get_or_insert_with(Default::default);
         let s = built.stats;
         t.pages += s.pages;

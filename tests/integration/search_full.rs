@@ -51,7 +51,8 @@ fn search_site(tmp: &TempDir) -> PathBuf {
         "content/posts/2025-01-02-cafe.md",
         "---\ntitle: Café culture\ndate: 2025-01-02\ndescription: About coffee shops.\ntags: [drinks]\n---\n\n\
          We love running to the café every morning. Naïve baristas brew espresso.\n\n\
-         ## Brewing methods\n\nPour over and French press. We visit Tokyo rarely.\n",
+         ## Brewing methods\n\nPour over and French press. We visit Tokyo rarely.\n\n\
+         What we drink: everything related to building better coffee.\n",
     );
     write_site_file(
         &site,
@@ -387,11 +388,21 @@ fn test_full_search_size_budget_on_1000_pages() {
 
 // --- the search script under Node ---
 
+/// Node on PATH. Locally a missing Node skips the script tests; in CI (`CI`
+/// set, as on GitHub runners, which ship Node) it fails them.
 fn node() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join(if cfg!(windows) { "node.exe" } else { "node" }))
-        .find(|p| p.is_file())
+    let found = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|d| d.join(if cfg!(windows) { "node.exe" } else { "node" }))
+            .find(|p| p.is_file())
+    });
+    if found.is_none() && std::env::var_os("CI").is_some_and(|v| !v.is_empty()) {
+        panic!("node is not on PATH in CI: the search script tests need it");
+    }
+    if found.is_none() {
+        eprintln!("node not on PATH: skipping the search script test");
+    }
+    found
 }
 
 fn run_script(
@@ -432,7 +443,6 @@ fn titles(r: &serde_json::Value) -> Vec<String> {
 #[test]
 fn test_search_script_under_node() {
     let Some(node) = node() else {
-        eprintln!("node not on PATH: skipping the search script test");
         return;
     };
     let tmp = TempDir::new().unwrap();
@@ -517,6 +527,56 @@ fn test_search_script_under_node() {
     // Stopwords only: nothing to search for.
     assert_eq!(get("the ")["noResults"], true);
 
+    // meta.json bypasses the HTTP cache (shards and pages carry ?v=hash).
+    assert_eq!(espresso["cacheModes"]["/search/meta.json"], "no-cache");
+
+    // A query ending in a stopword (still being typed) keeps the results of
+    // the complete words.
+    let more = run_script(
+        &node,
+        &dist,
+        &dist.join("index.html"),
+        &serde_json::json!([
+            {"q": "tokyo the"},
+            {"q": "espresso for"},
+            {"q": "what is"},
+            {"q": "getting started with"},
+            {"q": "espresso zzz"},
+        ]),
+        None,
+    );
+    let m = more.as_array().unwrap();
+    assert_eq!(titles(&m[0]), ["Tokyo notes", "Café culture"], "{}", m[0]);
+    assert_eq!(titles(&m[1]), ["Café culture"], "{}", m[1]);
+    assert_eq!(titles(&m[2]), ["Café culture"], "{}", m[2]);
+    assert_eq!(m[3]["noResults"], true, "no page has these words");
+    assert_eq!(
+        titles(&m[4]),
+        ["Café culture"],
+        "an unmatched prefix does not veto"
+    );
+
+    // Typing a word letter by letter never empties the results, even where
+    // the partial word's stem differs from the indexed one.
+    for word in ["building", "everything", "related"] {
+        let steps: Vec<serde_json::Value> = (1..=word.len())
+            .map(|n| serde_json::json!({"q": &word[..n]}))
+            .collect();
+        let out = run_script(
+            &node,
+            &dist,
+            &dist.join("index.html"),
+            &serde_json::Value::Array(steps),
+            None,
+        );
+        for r in out.as_array().unwrap() {
+            assert!(
+                titles(r).contains(&"Café culture".to_string()),
+                "typing {word}: {r}"
+            );
+        }
+    }
+
     // data-collections filters results.
     let filtered = run_script(
         &node,
@@ -543,4 +603,166 @@ fn test_search_script_under_node() {
         .unwrap()
         .iter()
         .any(|u| u == "/search-index.json"));
+}
+
+/// Rust and the script agree on term order (UTF-16 code units, which put
+/// supplementary-plane characters before U+E000–U+FFFF) and on tokenizing
+/// mixed scripts, across many shards: every special term is found through
+/// the client's shard lookup.
+#[test]
+fn test_search_script_finds_mixed_script_terms_across_shards() {
+    let Some(node) = node() else {
+        return;
+    };
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Scripts", "posts");
+    let site = tmp.path().join("site");
+    let chars =
+        |codes: &[u32]| -> String { codes.iter().map(|c| char::from_u32(*c).unwrap()).collect() };
+    // Unique per page: three fullwidth letters (U+FF41..), a CJK Extension B
+    // pair (non-BMP, one bigram) and a Hangul pair.
+    let fullwidth = |i: usize| {
+        chars(&[
+            0xFF41 + (i / 676) as u32,
+            0xFF41 + ((i / 26) % 26) as u32,
+            0xFF41 + (i % 26) as u32,
+        ])
+    };
+    let ext_b = |i: usize| chars(&[0x20000 + 2 * i as u32, 0x20001 + 2 * i as u32]);
+    let hangul = |i: usize| chars(&[0xAC00 + 3 * i as u32, 0xAC01 + 3 * i as u32]);
+    for i in 0..600 {
+        write_site_file(
+            &site,
+            &format!("content/posts/2024-01-01-f{i:03}.md"),
+            &format!(
+                "---\ntitle: Filler {i}\ndate: 2024-01-01\n---\n\nw{i:04}q {} {} {} ελλη{i} кири{i}\n",
+                fullwidth(i),
+                ext_b(i),
+                hangul(i)
+            ),
+        );
+    }
+    write_site_file(
+        &site,
+        "content/posts/2024-01-02-special.md",
+        "---\ntitle: Special\ndate: 2024-01-02\n---\n\nZürich ελληνικά кириллица हिन्दी 𝒳ylophone ｗｉｄｅ\n",
+    );
+    build(&site, &[]);
+    let dist = site.join("dist");
+    let meta = read_json_file(&dist.join("search/meta.json"));
+    let firsts: Vec<&str> = meta["shards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(firsts.len() >= 6, "{} shards", firsts.len());
+    // UTF-16 order: non-BMP terms sort before fullwidth ones (code point
+    // order would put them after).
+    let mut sorted = firsts.clone();
+    sorted.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+    assert_eq!(firsts, sorted);
+    let queries = serde_json::json!([
+        {"q": fullwidth(137)},
+        {"q": ext_b(250)},
+        {"q": hangul(420)},
+        {"q": "w0599q"},
+        {"q": "ελλη77 "},
+        {"q": "ZURICH "},
+        {"q": "ελληνικά кириллица"},
+        {"q": "हिन्दी"},
+        {"q": "𝒳ylophone"},
+        {"q": "ｗｉｄｅ"},
+    ]);
+    let out = run_script(&node, &dist, &dist.join("index.html"), &queries, None);
+    let expect = [
+        "Filler 137",
+        "Filler 250",
+        "Filler 420",
+        "Filler 599",
+        "Filler 77",
+        "Special",
+        "Special",
+        "Special",
+        "Special",
+        "Special",
+    ];
+    for (r, want) in out.as_array().unwrap().iter().zip(expect) {
+        assert_eq!(titles(r).first().map(String::as_str), Some(want), "{r}");
+    }
+}
+
+/// `[access]` password mode with a private collection and a private
+/// subdomain collection: no word of theirs reaches any search file.
+#[test]
+fn test_search_never_indexes_password_or_private_subdomain_content() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    add_collection_line(&site, "docs", "private = true");
+    add_collection_line(&site, "posts", "private = true");
+    add_collection_line(&site, "posts", "access_group = \"members\"");
+    enable_password_access(&site);
+    let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+    fs::write(
+        site.join("seite.toml"),
+        toml.replace("target = \"github-pages\"", "target = \"cloudflare\""),
+    )
+    .unwrap();
+    write_site_file(
+        &site,
+        "content/posts/2025-01-01-members.md",
+        "---\ntitle: Members zzmembertitle\ndate: 2025-01-01\n---\n\nzzmemberbody\n",
+    );
+    write_site_file(
+        &site,
+        "content/docs/sub.md",
+        "---\ntitle: Sub zzsubtitle\n---\n\nzzsubbody\n",
+    );
+    build(&site, &[]);
+    let mut seen = 0;
+    for root in ["dist", "dist-subdomains"] {
+        for entry in walkdir::WalkDir::new(site.join(root)) {
+            let entry = entry.unwrap();
+            let rel = entry.path().to_string_lossy().replace('\\', "/");
+            let is_search = rel.contains("/search/") || rel.ends_with("search-index.json");
+            if !entry.file_type().is_file() || !is_search {
+                continue;
+            }
+            seen += 1;
+            let text = fs::read_to_string(entry.path()).unwrap();
+            for marker in ["zzmember", "zzsub"] {
+                assert!(!text.contains(marker), "{marker} leaked into {rel}");
+            }
+        }
+    }
+    assert!(seen > 0, "no search files were written");
+}
+
+/// `{% set search_collections = "…" %}` before the include limits that box.
+#[test]
+fn test_search_collections_variable_sets_data_collections() {
+    let tmp = TempDir::new().unwrap();
+    let site = search_site(&tmp);
+    write_site_file(
+        &site,
+        "templates/post.html",
+        "{% extends \"base.html\" %}{% block content %}{% set search_collections = \"pages\" %}\
+         {% include \"seite/search.html\" %}{{ page.content | safe }}{% endblock %}",
+    );
+    build(&site, &[]);
+    let dist = site.join("dist");
+    let post = fs::read_to_string(dist.join("posts/tokyo.html")).unwrap();
+    assert!(post.contains(r#"data-collections="pages""#), "{post}");
+    let index = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(!index.contains("data-collections=\""));
+    if let Some(node) = node() {
+        let out = run_script(
+            &node,
+            &dist,
+            &dist.join("posts/tokyo.html"),
+            &serde_json::json!([{"q": "tokyo"}]),
+            None,
+        );
+        assert_eq!(out[0]["noResults"], true, "{out}");
+    }
 }
