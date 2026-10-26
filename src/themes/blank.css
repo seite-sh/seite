@@ -96,6 +96,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
 #search-results:empty { display: none; }
 #search-results a { display: block; padding: 0.5rem 0; text-decoration: none; border-bottom: 1px solid var(--border); }
 #search-results .result-meta, #search-results .no-results { font-size: 0.85rem; color: var(--muted); }
+#search-results .result-snippet { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; }
+#search-results mark { background: rgba(255, 196, 0, 0.35); color: inherit; padding: 0 0.1em; border-radius: 2px; }
+#search-results a.active { outline: 2px solid currentColor; outline-offset: -2px; }
 
 /* Listings, posts and docs (the default collection templates) */
 article { margin-bottom: 2.5rem; }

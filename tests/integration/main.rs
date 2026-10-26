@@ -28,6 +28,7 @@ mod page;
 mod pagination;
 mod search;
 mod search_cmd;
+mod search_full;
 mod self_update;
 mod shortcodes;
 mod skill;

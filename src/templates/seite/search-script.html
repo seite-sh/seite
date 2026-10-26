@@ -1,42 +1,91 @@
-{# seite partial: search-script — managed by seite, updated on upgrade. Loads search-index.json on first input. #}<script>
-    (function(){
-        var index = null;
-        var input = document.getElementById('search-input');
-        var results = document.getElementById('search-results');
-        var basePath = {{ site.base_path | json_script }};
-        var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_script }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
-        function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
-        function doSearch(q) {
-            q = q.toLowerCase().trim();
-            if (!q) { results.textContent = ''; return; }
-            var hits = index.filter(function(e){
-                return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
-            }).slice(0, 8);
-            if (!hits.length) {
-                var noRes = document.createElement('div');
-                noRes.className = 'no-results';
-                noRes.textContent = {{ t.no_results | json_script }};
-                results.textContent = '';
-                results.appendChild(noRes);
-                return;
-            }
-            results.textContent = '';
-            hits.forEach(function(e){
-                var a = document.createElement('a');
-                a.href = basePath + e.url;
-                var strong = document.createElement('strong');
-                strong.textContent = e.title;
-                a.appendChild(strong);
-                var meta = [e.collection, e.date].filter(Boolean).join(' \u00b7 ');
-                if (meta) {
-                    var div = document.createElement('div');
-                    div.className = 'result-meta';
-                    div.textContent = meta;
-                    a.appendChild(div);
-                }
-                results.appendChild(a);
-            });
-        }
-        input.addEventListener('input', function(){ load(function(){ doSearch(input.value); }); });
-    })();
-    </script>
+{# seite partial: search-script — managed by seite, updated on upgrade. Full-text search over search/ (meta.json, term shards, page fragments; see src/build/search.rs, whose tokenizer this mirrors), falling back to search-index.json. Results are built with createElement/textContent only. #}{% if search_mode | default(value="basic") != "off" %}<script>
+(()=>{
+const input=document.getElementById('search-input'),results=document.getElementById('search-results');
+if(!input||!results)return;
+const bp={{ site.base_path | json_script }},dir=bp+{% if lang != default_language %}'/'+{{ lang | json_script }}+{% endif %}'/',mode={{ search_mode | default(value="basic") | json_script }},
+T=[{{ t.no_results | default(value="No results") | json_script }},{{ t.search_result | default(value="1 result") | json_script }},{{ t.search_results | default(value="{n} results") | json_script }}],
+only=(input.getAttribute('data-collections')||'').split(',').filter(Boolean),
+W=/[\p{Alphabetic}\p{N}\p{M}]+/gu,CJK=/[\u{3040}-\u{30ff}\u{3400}-\u{4dbf}\u{4e00}-\u{9fff}\u{f900}-\u{faff}\u{ac00}-\u{d7af}\u{20000}-\u{2ffff}]/u,
+F={'\u{df}':'ss','\u{e6}':'ae','\u{153}':'oe','\u{f8}':'o','\u{142}':'l','\u{111}':'d','\u{f0}':'d','\u{fe}':'th','\u{131}':'i','\u{3c2}':'\u{3c3}'},
+STOP='a an and are as at be but by for if in into is it no not of on or such that the their then there these they this to was will with'.split(' '),
+S={},SP={},PP={},st=document.createElement('div'),
+get=(u,o)=>fetch(u,o).then(r=>{if(!r.ok)throw r;return r.json()}),
+fold=s=>s.toLowerCase().normalize('NFD').replace(/[\u{300}-\u{36f}]/gu,'').normalize('NFC').replace(/[\u{df}\u{e6}\u{153}\u{f8}\u{142}\u{111}\u{f0}\u{fe}\u{131}\u{3c2}]/gu,c=>F[c]),
+el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e},
+hit=(t,G)=>G.some(g=>g.p?g.ps.some(p=>t.startsWith(p)):t==g.t),
+say=s=>{st.textContent=s},
+links=()=>results.getElementsByTagName('a');
+let meta=null,basic=null,ready,seq=0,timer,cur=-1;
+st.setAttribute('role','status');st.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)';
+results.removeAttribute('aria-live');results.parentNode.insertBefore(st,results.nextSibling);
+function stem(w){
+if(w.length<4||!/^[a-z]+$/.test(w))return w;
+if(/ies$/.test(w)&&w.length>4)w=w.slice(0,-3)+'y';
+else if(/(sses|xes|ches|shes|zzes)$/.test(w))w=w.slice(0,-2);
+else if(/s$/.test(w)&&!/(ss|us|is)$/.test(w))w=w.slice(0,-1);
+const n=/ing$/.test(w)&&w.length>=7?3:/ed$/.test(w)&&w.length>=6?2:0;
+if(n){w=w.slice(0,-n);const l=w.length;if(l>=4&&w[l-1]==w[l-2]&&!'aeiouylsz'.includes(w[l-1]))w=w.slice(0,-1)}
+return w}
+function tok(text,en,stop){
+const out=[],re=new RegExp(W.source,'gu');let m;
+while((m=re.exec(text))){const a=Array.from(fold(m[0])),s=m.index,e=re.lastIndex;let i=0;
+while(i<a.length){const c=CJK.test(a[i]);let j=i;while(j<a.length&&CJK.test(a[j])==c)j++;const p=a.slice(i,j);
+if(c){if(p.length==1)out.push([p[0],s,e]);for(let k=0;k+1<p.length;k++)out.push([p[k]+p[k+1],s,e])}
+else if(p.length<=40){const t=p.join('');if(!(stop&&STOP.includes(t)))out.push([en?stem(t):t,s,e,t])}
+i=j}}
+return out}
+const init=()=>ready||(ready=(mode=='full'?get(dir+'search/meta.json',{cache:'no-cache'}).then(m=>{meta=m}):Promise.reject()).catch(()=>get(dir+'search-index.json').then(d=>{basic=d})).catch(()=>{basic=[]})),
+shard=i=>SP[i]||(SP[i]=get(dir+'search/terms/'+i+'.json?v='+meta.hash).then(d=>{S[i]=d},()=>{})),
+page=i=>PP[i]||(PP[i]=get(dir+'search/pages/'+i+'.json?v='+meta.hash).catch(()=>null));
+function find(t,p){const f=meta.shards;let lo=0,hi=f.length;while(lo<hi){const m=(lo+hi)>>1;if(f[m]<=t)lo=m+1;else hi=m}
+const o=lo?[lo-1]:[];if(p)for(let n=lo;n<f.length&&n<lo+3&&f[n].startsWith(t);n++)o.push(n);return o}
+function post(l,m,f){if(l)for(let i=0,id=0;i<l.length;i+=2){id+=l[i];const w=l[i+1]*f;if(!(m.get(id)>=w))m.set(id,w)}}
+function cands(r,en){const o=[en?stem(r):r];if(en&&/^[a-z]+$/.test(r))for(let k=1;k<4;k++){const p=r.slice(0,-k);if(r.length>=k+3&&!o.includes(p))o.push(p)}return o}
+function terms(q,en,pre){const ws=q.match(W)||[],G=[];
+ws.forEach((w,i)=>{const last=pre&&i==ws.length-1,ts=tok(w,en,en&&!last);
+ts.forEach((t,k)=>{const p=last&&k==ts.length-1;G.push({t:t[0],p,ps:p&&(t[3]?cands(t[3],en):[t[0]]),sw:p&&en&&STOP.includes(t[3])})})});
+if(G.length>1&&G[G.length-1].sw)G.pop();return G}
+function full(q,my){const en=meta.stem,G=terms(q,en,/[\p{Alphabetic}\p{N}\p{M}]$/u.test(q));
+if(!G.length)return render([],0,G,en);
+G.forEach(g=>{g.s=g.p?[...new Set(g.ps.flatMap(p=>find(p,1)))]:find(g.t,0)});
+return Promise.all(G.flatMap(g=>g.s).map(shard)).then(()=>{
+let sc=null;
+G.forEach(g=>{const m=new Map(),nx=new Map(),a=g.ps&&g.ps[0];
+g.s.forEach(i=>{const sh=S[i]||{};if(!g.p)post(sh[g.t],m,1);else for(const k in sh){const f=k==a?1:k.startsWith(a)?.8:g.ps.some(p=>k.startsWith(p))?.6:0;if(f)post(sh[k],m,f)}});
+const idf=Math.log(1+meta.pages/(m.size||1));m.forEach((w,id)=>{if(!sc||sc.has(id))nx.set(id,(sc?sc.get(id):0)+w*idf)});
+if(!(g.p&&sc&&!nx.size))sc=nx});
+const hits=[...sc].filter(h=>!only.length||only.includes(meta.collections[meta.pc[h[0]]])).sort((a,b)=>b[1]-a[1]||a[0]-b[0]);
+return Promise.all(hits.slice(0,8).map(h=>page(h[0]))).then(ps=>{if(my==seq)render(ps,hits.length,G,en)})})}
+function basicSearch(q){const ws=fold(q).match(W)||[],G=ws.map(w=>({t:w,p:1,ps:[w]})),has=(s,w)=>fold(s).includes(w),
+hits=basic.filter(e=>ws.length&&ws.every(w=>has([e.title,e.description||'',(e.tags||[]).join(' ')].join(' '),w))&&(!only.length||only.includes(e.collection)));
+hits.sort((a,b)=>has(b.title,ws[0])-has(a.title,ws[0]));
+render(hits.slice(0,8).map(e=>({t:e.title,u:e.url,c:e.collection,d:e.date,x:e.description})),hits.length,G,false)}
+function mark(par,text,G,en){let pos=0;const add=s=>par.appendChild(document.createTextNode(s));
+tok(text,en,false).forEach(t=>{if(t[1]<pos||!hit(t[0],G))return;add(text.slice(pos,t[1]));par.appendChild(el('mark',0,text.slice(t[1],t[2])));pos=t[2]});
+add(text.slice(pos));return par}
+function snip(p,G,en){const b=p.b||'',m=tok(b,en,false).find(t=>hit(t[0],G));
+if(!m)return p.x||b.slice(0,160);let s=Math.max(0,m[1]-60),e=Math.min(b.length,s+200);
+if(s)s=b.lastIndexOf(' ',s)+1;if(e<b.length&&b.lastIndexOf(' ',e)>m[2])e=b.lastIndexOf(' ',e);
+return(s?'\u{2026} ':'')+b.slice(s,e)+(e<b.length?' \u{2026}':'')}
+function clear(){results.textContent='';cur=-1;input.removeAttribute('aria-activedescendant')}
+function render(ps,n,G,en){clear();
+if(!n){results.appendChild(el('div','no-results',T[0]));say(T[0]);return}
+ps.forEach((p,i)=>{if(!p)return;const a=el('a'),mt=[p.c,p.d].filter(Boolean).join(' \u{b7} '),s=snip(p,G,en);
+a.href=bp+p.u;a.id='search-result-'+i;a.appendChild(mark(el('strong'),p.t,G,en));
+if(mt)a.appendChild(el('div','result-meta',mt));if(s)a.appendChild(mark(el('div','result-snippet'),s,G,en));results.appendChild(a)});
+say(n==1?T[1]:T[2].replace('{n}',n))}
+function move(d){const l=links();if(!l.length)return;if(cur>=0){l[cur].classList.remove('active');l[cur].removeAttribute('aria-selected')}
+cur+=d;if(cur<-1)cur=l.length-1;if(cur>=l.length)cur=-1;
+if(cur<0)return input.removeAttribute('aria-activedescendant');
+const a=l[cur];a.classList.add('active');a.setAttribute('aria-selected','true');input.setAttribute('aria-activedescendant',a.id);if(a.scrollIntoView)a.scrollIntoView({block:'nearest'})}
+function go(){const q=input.value,my=++seq;if(!q.trim()){clear();say('');return}
+init().then(()=>{if(my==seq)return meta?full(q,my):basicSearch(q)})}
+input.setAttribute('aria-controls','search-results');
+input.addEventListener('focus',init);
+input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(go,120)});
+input.addEventListener('keydown',e=>{const l=links(),k=e.key;
+if(k=='ArrowDown'||k=='ArrowUp'){move(k=='ArrowDown'?1:-1);e.preventDefault()}
+else if(k=='Enter'&&l.length){e.preventDefault();location.href=l[Math.max(cur,0)].href}
+else if(k=='Escape'){clear();say('')}});
+})();
+</script>{% endif %}

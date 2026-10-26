@@ -46,7 +46,7 @@ src/
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            11 bundled themes (starters default/docs/landing/blank + gallery) from src/themes/*.tera; layout + CSS only
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`)
+  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`), search (full-text index + tokenizer)
   docs.rs              Embedded docs (17 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
@@ -99,6 +99,7 @@ math = true              # KaTeX
 mermaid = true           # Mermaid diagrams (```mermaid fences, client-side)
 related = 3              # page.related size (0 disables; per-collection `related` overrides)
 schedule = true          # scheduled publishing for dated collections (init writes it; absent = off)
+search = "full"          # full-text index under dist/search/ (init writes it); absent = "basic" (search-index.json only); false = off
 # future = true          # build future-dated content (= `seite build --future`; serve always does)
 
 [[taxonomies]]           # optional; `tags` is implicit (no feeds unless listed here)
@@ -186,6 +187,9 @@ endpoint = "xpznqkdl"
 - `seite audit` (`src/audit/`): reuses `cli::check::scratch_build` (or `--dist <dir>`), scans every HTML page once, maps pages to `BuildResult.collections` items for source attribution (`Site::locate*`: markdown source line, else templates/data, else the generated page), collapses findings that share a template file+line. Codes live in `audit::CODES` (each needs a `## <code>` in errors.md; `test_every_constructed_code_is_registered` + the explain coverage test enforce it). Score = 100 − Σ per category min(30, Σ per code weight×min(count, 3)) (error 10, warning 3, notice 0). `Report::limit` (CLI `--min-severity`, MCP `top`/`min_severity`) trims `findings` but never `summary`. Findings are sorted; the JSON shape is fixed (all keys always present). MCP `seite_audit` (read-only).
 - Determinism: builds are byte-identical run to run (`tests/integration/determinism.rs`). Collections are an `IndexMap` in `seite.toml` order, `Frontmatter.extra` an `IndexMap` (source order), asset manifest and build stats `BTreeMap`; never iterate a `HashMap` into output.
 - `seite check --external` (`src/build/external_links.rs`): runs inside `check_site_full` on the scratch output; ureq, 8 workers / 2 per host, cache `.seite/cache/links.json` via `safe_fs` (gitignored), skip list `DEFAULT_SKIP` + `[check] external_skip`; `external-link-broken` / `external-link-unreachable`. Never in build or hooks; tests use a local tiny_http server.
+
+### Search
+- `[build] search = "full" | "basic" | false` (`config::SearchMode`; absent = `"basic"` so existing output is unchanged; init writes `"full"`; upgrade shows the one-time `search-feature` notice). `search-index.json` keeps its exact format in every mode but `false`. Full mode adds the sharded full-text index from `src/build/search.rs` (Step 9, `write_search_indexes`), per language, never for drafts/`noindex`/unlisted/private/scheduled pages; sizes in `BuildStats.search_index` (`build --verbose`, `build --json` `data.search_index`). The client is `seite/search-script.html`, whose tokenizer mirrors `search.rs` (keep them in sync; `tests/integration/search_full.rs` runs it under Node, and asserts the 1,000-page budget: shards ≤ 8 KB, a query < 100 KB). `seite search`/MCP keep their own server-side index.
 
 ## Context Rules
 

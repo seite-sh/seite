@@ -55,7 +55,7 @@ Template variables: `{{ lang }}` (current), `{{ default_language }}`, `{{ lang_p
 
 Key files: `src/content/mod.rs` (language detection), `src/build/mod.rs` (translation map, `ui_strings_for_lang()`)
 
-Per-language outputs: index, RSS, llms.txt, search-index.json. Sitemap has xhtml:link alternates.
+Per-language outputs: index, RSS, llms.txt, search-index.json, `search/` (full-text; English stemming only for `en*` languages). Sitemap has xhtml:link alternates.
 
 ## Trust Center
 Collection preset with data files (`data/trust/`), content pages, templates. Config: `[trust]` with `company` and `frameworks`. MCP: `seite://trust` resource.

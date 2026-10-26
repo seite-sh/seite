@@ -338,6 +338,21 @@ fn schedule_feature_notice(root: &Path) -> Option<Notice> {
     })
 }
 
+/// One-time notice about full-text search for sites that have not set
+/// `[build] search` (absent = "basic"; upgrade never switches it, so the
+/// output of existing sites stays unchanged until they opt in).
+fn search_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let mentioned = text.lines().any(|l| {
+        let l = l.trim_start();
+        l.starts_with("search ") || l.starts_with("search=")
+    });
+    (!mentioned).then(|| Notice {
+        key: "search-feature".into(),
+        text: "Full-text search is available: add `search = \"full\"` under [build] in seite.toml to index page text (not just titles, descriptions and tags) into a sharded index under dist/search/ that the bundled themes load lazily; any static host serves it. Without the key, sites keep the basic search-index.json. See https://seite.sh/docs/configuration#search".into(),
+    })
+}
+
 /// Shared by the schedule notices and the `TIMEZONE_UNSET` directive.
 const TIMEZONE_ADVICE: &str = "Also set `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site], so \"today\" is the same on every machine and in CI.";
 
@@ -790,6 +805,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(theme_notices);
     notices.extend(workflow_schedule_notice(root));
     notices.extend(schedule_feature_notice(root));
+    notices.extend(search_feature_notice(root));
     notices.extend(timezone_notice(root));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
@@ -1548,6 +1564,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "06de5f742f090647bb3b072a3ae1b29bd8543ba57edc39a9150b71e340f2bd28",
             "50d702148735f7b8946e79b9631dc4a8b72e152274d12c220dd509c1ca42a7c5",
             "dd2ec66f4f544217097508197ef07840d4e080726b9ae094b34e7d4c2de5ad24",
+            "8f53eea39d36f27d80588b2d13be68aa659b5c0e44d160369a241d7413fdf83d",
         ],
     ),
     (
@@ -1581,6 +1598,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "67d4c8039ed0538ca34020304249019e16fc1ce2d3a62719404814443afb4140",
             "23e5570a2dc970bc9fa7f9e96b132b20d3867156e66051a90074cc9e157d5ad9",
             "e9ec1aeb94ffb008f68ded0eb02a12f55ab495e78aed05cb768f27d01dacfb0d",
+            "bac947d8408c456c35c5244c9c23d352ac9e195a074a3797de85acec0de22b9a",
         ],
     ),
     (
@@ -1592,6 +1610,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "61b494102d94e5264f483212ca045dbdd4dab48eaa471882fbb87f7fece1803a",
             "e78187030059098ced2093081419f1340cb2b5aa2738f99545e9b2148159b43d",
             "fdf3edd9113b2c9df03e456191241876f89669011890ca8ecee1d6d07f8772be",
+            "f34d4793be84e9aa96e6256c012bd83161029980cb9365ac7e46d0ca1151aab9",
         ],
     ),
     (
@@ -1631,6 +1650,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "dfb02d635bbe791c96d1fa7e7a9b731a6462515daa177675f0fa88d69c816b5a",
             "b0e2eb4b08dccd20b979be4bc729163e22efd995253cb37d9523af14b0b04aed",
             "d64bb60b1c7e2cdc544ca5833072f6891e39625e2631352bd5eea8c1d76fc427",
+            "3ab28d59da8c926b74d62ae5a27947df00d0346cb51cd3d2bb31784c03bfdff6",
         ],
     ),
     (
@@ -1663,6 +1683,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "ae097eabe405888b84265a523b63d306932657ed8b048f7f0a893d728e43e976",
             "520251acfb14348f471ec93d7cd1aa78cd64c841e341fd151cc1cd29a450e85d",
             "724794a6a2e401271dc7787fec722239be103c0bbc2acc82d11900b7fcd79471",
+            "7b4e157e98a3d7b19721f88ac26792fdd2fa6e94490e18b73e1ea200ba3a8ea7",
         ],
     ),
     (
@@ -1693,6 +1714,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "6661e028e79eba4a480239fc11566aedf485b42fb21291da801d85b1a84f09b9",
             "8467f522983a8eed778887a737688cb258bfbdbfc173d5a54995d51b4903abb7",
             "63fa19e04d563818fe23726d67498e19147b1f28d39531f19723cfc6bf0bd44a",
+            "32ac5aa459691e572d4ba20bee595aff2580f6b6e47091a640d790a82ab2c79a",
         ],
     ),
     (
@@ -1723,6 +1745,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "ea4a43ed2f011b1ac4f1e79e89d0cee9a034fad492c9bf46d6d2586e3782168c",
             "18da3adfc0983acaa1de7e7951f990926aae2bce424c63e8384263d955468312",
             "22f6e094348547ef0e71c718d49fcc87a8ea96c8222aeb59ad1f6fd4924e55ec",
+            "3aba02ba86b0e79f7d8de9f1af74763e2fa15e871471ed241ed62692d76fafe3",
         ],
     ),
     (
@@ -1734,6 +1757,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "2177b18b92f4b4b385f84148765e35367e1b141fcd42aef5bd70453f2f91fc06",
             "297cde2ed99d71a88a17486541cd6f6bb9e2f44ca7fc7c138fede60ddc61ebf2",
             "b1d9cbc5ffcfc5d219b8fd863ef18c9fe1b8204568be69a5feca4929ebd970b7",
+            "20f690a9805b2a6e990fc666217ec32bb14d0e9d6595de8d2e4721681684f243",
         ],
     ),
     (
@@ -1746,6 +1770,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "8b15b677c3d364dca85703408aa2d6ce4d0fcfdb51af82cd5e001008ca03ed17",
             "95eec46b34053a662e6a06d16d29f17b1abbb2cd7b0fa9ffc2480468abf718bb",
             "c10197ce9620c1a3004799517287ec618422c6c431d4fde972e33f472b3be1ba",
+            "3b20c6ff0e0620b18f72c0f4f5c19ffd45da4606df4b9c75c1316355f927fcf0",
         ],
     ),
     (
@@ -1757,6 +1782,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "b1a8c13ba9c5cb984a86da0e3078013a61513a5be0927a015f3cb45fadb353c2",
             "99e4bf5611d3f8209642bcdf4eae519e5a7929f881d22560b7eb8e08d588cb65",
             "9a692e0451c2e271b0578d210f5876673b73c68d9efd775410275cb3d2b7ef57",
+            "04aed39b34e7f8c24a251bd3de9fa7312b969182a91770da0ce2c7f6885d5d31",
         ],
     ),
 ];

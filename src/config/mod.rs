@@ -375,6 +375,73 @@ pub struct BuildSection {
     /// false (`seite init` turns it on for new sites).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub schedule: bool,
+    /// Client-side search: `"full"` (full-text index under `search/` plus
+    /// `search-index.json`), `"basic"` (`search-index.json` only: titles,
+    /// descriptions, tags) or `false` (no index, no search box). Absent =
+    /// `"basic"`, so existing sites build unchanged; `seite init` writes
+    /// `"full"`. See `crate::build::search`.
+    #[serde(default, skip_serializing_if = "SearchMode::is_basic")]
+    pub search: SearchMode,
+}
+
+/// `[build] search`: which client-side search index the build writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchMode {
+    /// Full-text index (`search/meta.json`, term shards, page fragments)
+    /// plus the basic `search-index.json`.
+    Full,
+    /// `search-index.json` only (title, description, tags).
+    #[default]
+    Basic,
+    /// No search index and no search box.
+    Off,
+}
+
+impl SearchMode {
+    pub fn is_basic(&self) -> bool {
+        *self == SearchMode::Basic
+    }
+
+    /// The value templates see as `search_mode`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SearchMode::Full => "full",
+            SearchMode::Basic => "basic",
+            SearchMode::Off => "off",
+        }
+    }
+}
+
+impl Serialize for SearchMode {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            SearchMode::Off => s.serialize_bool(false),
+            other => s.serialize_str(other.as_str()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SearchMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Bool(bool),
+            Str(String),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Bool(true) => Ok(SearchMode::Full),
+            Raw::Bool(false) => Ok(SearchMode::Off),
+            Raw::Str(s) => match s.as_str() {
+                "full" => Ok(SearchMode::Full),
+                "basic" => Ok(SearchMode::Basic),
+                "off" => Ok(SearchMode::Off),
+                other => Err(serde::de::Error::custom(format!(
+                    "invalid search mode \"{other}\": expected \"full\", \"basic\" or false"
+                ))),
+            },
+        }
+    }
 }
 
 impl Default for BuildSection {
@@ -393,6 +460,7 @@ impl Default for BuildSection {
             related: None,
             future: false,
             schedule: false,
+            search: SearchMode::Basic,
         }
     }
 }

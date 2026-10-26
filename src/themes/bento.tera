@@ -39,6 +39,7 @@
         #search-results strong { color: #1a1a1a; }
         #search-results .result-meta { font-size: 0.75rem; color: #646b78; margin-top: 0.1rem; }
         #search-results .no-results { padding: 0.6rem 1rem; color: #646b78; font-size: 0.9rem; }
+        #search-results .result-snippet { display: block; font-size: 0.85em; opacity: 0.8; margin-top: 0.15rem; } #search-results mark { background: rgba(255, 196, 0, 0.35); color: inherit; padding: 0 0.1em; border-radius: 2px; } #search-results a.active { outline: 2px solid currentColor; outline-offset: -2px; }
         .homepage-content { margin-bottom: 2.5rem; padding-bottom: 2rem; }
         .homepage-content > h1:first-child { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 0.5rem; line-height: 1.15; }
         .homepage-content > p { font-size: 1.05rem; line-height: 1.7; color: #555; margin-bottom: 0.75rem; }

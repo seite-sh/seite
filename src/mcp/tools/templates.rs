@@ -25,6 +25,7 @@ const VARIABLES: &[(&str, &str)] = &[
     ("t", "UI strings for this language (defaults merged with data/i18n/<lang>.yaml)"),
     ("math_enabled", "Whether [build] math (KaTeX) is on"),
     ("katex_css_url", "KaTeX stylesheet URL (only set when math is enabled)"),
+    ("search_mode", "[build] search: \"full\" (full-text index under search/), \"basic\" (search-index.json only) or \"off\" (no search box)"),
     ("translations", "[{lang, url}] versions of this page in other languages (empty when none)"),
     ("page", "The page: title, content (rendered HTML), date, updated, description, image, slug, tags, url, collection, robots, word_count, reading_time, excerpt, toc, extra; content pages also get taxonomies ({<taxonomy>: [{name, slug, url}]}), related ([{title, url, date, description, score}]) and series ({name, slug, url, parts: [{title, url, current}], index, total, prev, next} or null)"),
     ("prev_post", "Previous item in the collection {title, url, date, description}, or null"),
@@ -66,6 +67,7 @@ const COMMON: &[&str] = &[
     "t",
     "math_enabled",
     "katex_css_url",
+    "search_mode",
     "translations",
 ];
 

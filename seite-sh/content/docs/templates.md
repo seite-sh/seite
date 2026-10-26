@@ -61,6 +61,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ default_language }}` | Default language code (from `seite.toml`) |
 | `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
 | `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
+| `{{ search_mode }}` | `[build] search`: `"full"`, `"basic"` or `"off"` |
 | `{{ pagination }}` | Pagination context |
 | `{{ taxonomy }}` | Taxonomy index and term pages: `{name, label, url}` |
 | `{{ terms }}` | Taxonomy index and term pages: every term `{name, slug, url, count, feed_url}` (`feed_url` only when the term has feeds) |
@@ -104,6 +105,8 @@ All bundled themes and default templates use the `{{ t }}` object for UI text. T
 | `t.older` | Older |
 | `t.page_n_of_total` | Page {n} of {total} |
 | `t.search_label` | Search site content |
+| `t.search_results` | {n} results |
+| `t.search_result` | 1 result |
 | `t.min_read` | min read |
 | `t.contents` | Contents |
 | `t.tags` | Tags |
@@ -285,7 +288,7 @@ seite ships five partials under the reserved `seite/` template namespace. Every 
 |---------|------------|-----------------|
 | `seite/head.html` | inside `<head>`, right after `<title>` | description, canonical URL, Open Graph and Twitter tags (absolute `og:image`), `article:*` times, JSON-LD (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), robots, RSS/Atom/`llms.txt` links, the markdown alternate (`page.markdown_url`), hreflang, the KaTeX stylesheet when `math` is on |
 | `seite/search.html` | where the search box goes | the `role="search"` form (labelled by `t.search_label`) and the `#search-results` live region |
-| `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, which loads `search-index.json` on first input) |
+| `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, the full-text search client; see [Search](#search)) |
 | `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |
 | `seite/lang-switcher.html` | where the language links go | links to the page's translations; renders nothing on single-language pages |
 
@@ -296,6 +299,23 @@ The partials escape what they print: attribute values go through the `escape_att
 The partials are embedded in the binary and **updated with seite**: SEO, GEO and search fixes reach every site on the next build, without touching `templates/base.html`. `seite check` warns (`template-missing-seite-head`) when a custom `base.html` does not include `seite/head.html`, directly or through templates it includes or extends.
 
 **Overriding a partial.** A file at `templates/seite/<name>.html` replaces the embedded one, e.g. `templates/seite/search.html` for a different search box. An overridden partial is yours: it no longer receives seite's fixes, so override the smallest one that does what you need, and prefer CSS or the theme's own markup around the include.
+
+### Search
+
+The search script drives any page that has an `<input id="search-input">` and a `<div id="search-results">` (what `seite/search.html` renders); pages without them pay only for the inline script, which then does nothing. With `[build] search = "full"` it searches the full-text index under `search/`, otherwise (or when `search/` is missing) `search-index.json`; with `search = false` neither partial renders anything. Templates see the mode as `{{ search_mode }}` (`"full"`, `"basic"` or `"off"`). See [Configuration](/docs/configuration#search) for what is indexed and how results are ranked.
+
+Each result is built with DOM calls (never `innerHTML`):
+
+```html
+<a href="/docs/deploy" id="search-result-0">
+  <strong>Deploy <mark>Guide</mark></strong>
+  <div class="result-meta">docs · 2026-01-02</div>
+  <div class="result-snippet">… push to GitHub and the <mark>guide</mark> …</div>
+</a>
+<div class="no-results">No results</div>   <!-- when nothing matches -->
+```
+
+Style `#search-results a`, `.result-meta`, `.result-snippet`, `mark` and `a.active` (the result picked with the arrow keys; Enter opens it, Escape closes the list). The result count is announced through a visually hidden `role="status"` element the script adds after `#search-results`. The strings come from `t.no_results`, `t.search_result` ("1 result") and `t.search_results` ("{n} results"). To limit a box to some collections, set `search_collections` right before the include, e.g. `{% set search_collections = "docs" %}{% include "seite/search.html" %}` (comma-separated names); the partial renders it as `data-collections="docs"` on the input, which the script reads (in your own markup, write the attribute yourself). `search/meta.json` is fetched with `cache: "no-cache"` so a new deploy is picked up at once; shard and page files carry `?v=<hash>` and can be cached freely.
 
 ## Bundled Themes
 

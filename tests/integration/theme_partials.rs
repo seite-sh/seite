@@ -76,10 +76,13 @@ fn build_html(site: &Path) -> BTreeMap<String, String> {
 }
 
 /// Replace the inline search script (the one that loads search-index.json)
-/// with a marker: landing and terminal had an `innerHTML` variant that the
-/// shared partial replaces with the DOM-safe one every other theme used.
+/// with a marker: the shared partial replaced every theme's copy (landing and
+/// terminal had an `innerHTML` variant) and later became the full-text one.
 fn without_search_script(html: &str) -> String {
-    let Some(index) = html.find("var index = null;") else {
+    let Some(index) = html
+        .find("var index = null;")
+        .or_else(|| html.find("getElementById('search-input')"))
+    else {
         return html.to_string();
     };
     let start = html[..index].rfind("<script>").unwrap();
@@ -126,18 +129,19 @@ fn trimmed_lines(html: &str) -> String {
 ///   indentation, so themes that nest the search box or switcher deeper differ
 ///   in leading whitespace only.
 ///
-/// For every theme, the "no results" text is now a JSON string literal
-/// (`json_script`) instead of a single-quoted one.
+/// For every theme, the search script is the shared full-text one
+/// (`seite/search-script.html`), compared as a marker, and the theme CSS has
+/// one added line styling result snippets, highlights and the active result.
 fn normalize(theme: &str, html: &str) -> String {
-    let html = &html.replace(
-        "noRes.textContent = 'No results';",
-        "noRes.textContent = \"No results\";",
-    );
+    let html: String = without_search_script(html)
+        .split_inclusive('\n')
+        .filter(|l| !l.contains("#search-results .result-snippet"))
+        .collect();
+    let html = &html;
     match theme {
         "academic" => html.to_string(),
         "default" | "minimal" | "dark" | "brutalist" => without_blank_lines(html),
         "docs" => trimmed_lines(&docs_switcher_as_nav(html)),
-        "landing" | "terminal" => trimmed_lines(&without_search_script(html)),
         _ => trimmed_lines(html),
     }
 }

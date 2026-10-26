@@ -51,6 +51,7 @@
         #search-results strong { color: #111; font-size: 0.9rem; }
         #search-results .result-meta { font-size: 0.7rem; color: #888; margin-top: 0.15rem; text-transform: uppercase; letter-spacing: 0.04em; }
         #search-results .no-results { padding: 0.6rem 0.9rem; color: #888; font-size: 0.85rem; font-style: italic; }
+        #search-results .result-snippet { display: block; font-size: 0.85em; opacity: 0.8; margin-top: 0.15rem; } #search-results mark { background: rgba(255, 196, 0, 0.35); color: inherit; padding: 0 0.1em; border-radius: 2px; } #search-results a.active { outline: 2px solid currentColor; outline-offset: -2px; }
 
         /* ===== CONTENT AREA ===== */
         .content-area { max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem; }

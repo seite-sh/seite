@@ -217,12 +217,40 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `related` | int | `3` | Maximum `page.related` entries per page; `0` disables related pages. A collection's own `related` overrides it |
 | `schedule` | bool | `false` | Scheduled publishing for dated collections: hide posts dated in the future until their date, and `expires:` posts after it. `seite init` sets it for new sites; existing sites build as before until you add it |
 | `future` | bool | `false` | With `schedule`: build future-dated content too. `seite build --future` does the same for one build; `seite serve` always previews it |
+| `search` | `"full"` \| `"basic"` \| `false` | `"basic"` | Client-side search. `"full"`: full-text index of page text under `search/` (see [Search](#search)); `"basic"`: `search-index.json` only (titles, descriptions, tags); `false`: no index and no search box. `seite init` writes `"full"`; existing sites keep `"basic"` until they add it |
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
 {{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
+
+### Search
+
+Every bundled theme has a search box. What it searches depends on `search`:
+
+```toml
+[build]
+search = "full"   # or "basic", or false
+```
+
+- **`"full"`** (new sites): the build writes a full-text index next to the pages, so search works on any static host with no service or API key. It indexes the text of each page (the rendered content, not the theme's navigation or footer) plus its title, headings, tags and description. The browser downloads only what a query needs: a small `search/meta.json` on first focus, then the index shard that holds each search term and one small file per result shown. On a 1,000-page site a typical query downloads well under 100 KB.
+- **`"basic"`** (the default when the key is absent, so existing sites build exactly as before): only `search-index.json`, matching titles, descriptions and tags.
+- **`false`**: no index and no search box.
+
+Results are ranked by where the words occur (title, then headings, then tags and description, then body text). All words must match; the last word also matches as a prefix while you type ("deplo" finds "deploy", and on English sites "buildin" finds "building"). A last word that matches nothing yet (or is a word like "the") does not empty the results of the words before it. Matching ignores case and accents ("cafe" finds "Café"). English sites (`language = "en"`, or an `en` translation) also match word forms ("posts" finds "post", "running" finds "run") and skip words like "the" and "of"; other languages match whole words. Chinese, Japanese and Korean text is matched by pairs of characters. Each result shows a snippet with the matching words highlighted. Use the arrow keys to move through results, Enter to open one, Escape to close them.
+
+Drafts, scheduled posts, pages with `robots: noindex`, unlisted collections and private collections are never indexed. Multilingual sites get one index per language (`search/` for the default language, `<lang>/search/` for the others), and the search box on a page searches that page's language.
+
+Index layout (for custom scripts; `search-index.json` keeps its format in every mode):
+
+| File | Contents |
+|------|----------|
+| `search/meta.json` | Format version, language, whether English stemming is on, page count, a content hash (`hash`, added to the other URLs as `?v=`), collection names, each page's collection, and the first term of each shard |
+| `search/terms/<n>.json` | `{"term": [page id delta, weight, …]}` for a sorted range of terms, about 8 KB per file |
+| `search/pages/<id>.json` | One page: title, URL, collection, date, description and the first 3,000 characters of its text |
+
+`seite build --verbose` prints the index size, and `seite build --json` reports it as `data.search_index` (`pages`, `terms`, `files`, `bytes`, `shards`, `largest_shard_bytes`, `meta_bytes`, `largest_page_bytes`). To limit a search box to some collections, put `{% set search_collections = "docs,posts" %}` right before its include; see [Templates](/docs/templates#search) for the markup and result styling.
 
 ### Mermaid diagrams
 
