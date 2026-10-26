@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 
+pub mod audit;
 pub mod build;
 pub mod cli;
 pub mod config;

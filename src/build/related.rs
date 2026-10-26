@@ -50,7 +50,7 @@ pub(crate) fn related_limit(config: &SiteConfig, collection: &CollectionConfig) 
 /// Related pages for every eligible item, keyed by item URL.
 pub(crate) fn compute_related(
     config: &SiteConfig,
-    all_collections: &HashMap<String, Vec<ContentItem>>,
+    all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
     taxonomies: &[Taxonomy],
 ) -> HashMap<String, Vec<RelatedItem>> {
     let mut out = HashMap::new();
@@ -351,7 +351,7 @@ mod tests {
         let draft = item("Draft", "tags: [t]\ndraft: true\n");
         let mut index = item("Index", "tags: [t]\n");
         index.slug = "index".into();
-        let mut all = HashMap::new();
+        let mut all = indexmap::IndexMap::new();
         all.insert("posts".to_string(), vec![a, b, draft, index]);
         let taxes = resolve_taxonomies(&cfg);
         let out = compute_related(&cfg, &all, &taxes);

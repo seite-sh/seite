@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use crate::build::{self, BuildOptions};
@@ -161,7 +160,8 @@ fn check_domain_conflicts(
     sites: &[&super::WorkspaceSite],
 ) {
     // Map: effective domain → vec of (site_name, description)
-    let mut domain_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut domain_map: std::collections::BTreeMap<String, Vec<(String, String)>> =
+        std::collections::BTreeMap::new();
 
     for ws_site in sites {
         let Ok((config, _paths)) = load_site_in_workspace(ws_root, ws_site) else {

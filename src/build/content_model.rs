@@ -22,7 +22,7 @@ pub(crate) struct ContentModel {
 impl ContentModel {
     pub(crate) fn build(
         config: &SiteConfig,
-        all_collections: &HashMap<String, Vec<ContentItem>>,
+        all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
     ) -> Self {
         let taxonomies = resolve_taxonomies(config);
         let related = compute_related(config, all_collections, &taxonomies);
@@ -94,7 +94,7 @@ impl ContentModel {
     pub(crate) fn render_pages(
         &self,
         env: &RenderEnv<'_>,
-        all_collections: &HashMap<String, Vec<ContentItem>>,
+        all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
     ) -> Result<Vec<String>> {
         let mut urls = render_taxonomy_pages(env, &self.taxonomies, all_collections)?;
         urls.extend(self.series.render_pages(env)?);

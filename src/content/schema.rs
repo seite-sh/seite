@@ -333,7 +333,7 @@ pub fn custom_field_names(config: &SiteConfig, collection: &CollectionConfig) ->
 pub fn page_extra(
     fm: &super::Frontmatter,
     custom: &[String],
-) -> HashMap<String, serde_yaml_ng::Value> {
+) -> indexmap::IndexMap<String, serde_yaml_ng::Value> {
     let mut extra = fm.extra.clone();
     for name in custom {
         if let Some(value) = fm.other.get(name) {

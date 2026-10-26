@@ -2,7 +2,37 @@ use super::common::*;
 
 fn site(tmp: &TempDir) -> std::path::PathBuf {
     init_site(tmp, "site", "Context Site", "posts,docs,pages");
-    tmp.path().join("site")
+    let dir = tmp.path().join("site");
+    // Machines where no zone is detectable get a commented line; pin one so
+    // the directive list does not depend on the test machine.
+    let toml = fs::read_to_string(dir.join("seite.toml")).unwrap();
+    if !toml.contains("\ntimezone = ") {
+        let toml = toml.replace("# timezone = ", "timezone = ");
+        fs::write(dir.join("seite.toml"), toml).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn test_context_timezone_unset_directive() {
+    let tmp = TempDir::new().unwrap();
+    let dir = site(&tmp);
+    let toml = fs::read_to_string(dir.join("seite.toml")).unwrap();
+    let toml: String = toml
+        .lines()
+        .filter(|l| !l.starts_with("timezone = "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    fs::write(dir.join("seite.toml"), toml).unwrap();
+    let (ok, doc) = run_json(&dir, &["context"]);
+    assert!(ok, "{doc}");
+    let names: Vec<&str> = doc["data"]["directives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"TIMEZONE_UNSET"), "{names:?}");
 }
 
 #[test]
@@ -22,6 +52,7 @@ fn test_context_human_summary_and_directives() {
         .stdout(predicate::str::contains("content/posts"))
         .stdout(predicate::str::contains("Theme:"))
         .stdout(predicate::str::contains("Dev server:"))
+        .stdout(predicate::str::contains("`seite audit`"))
         // Fresh site: default theme, no impeccable.
         .stdout(predicate::str::contains("ADDON_SUGGESTION: optional"));
 }

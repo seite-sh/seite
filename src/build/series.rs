@@ -73,7 +73,7 @@ pub(crate) struct SeriesIndex {
 impl SeriesIndex {
     pub(crate) fn build(
         config: &crate::config::SiteConfig,
-        all_collections: &HashMap<String, Vec<ContentItem>>,
+        all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
     ) -> Self {
         let default_lang = config.site.language.as_str();
         // (lang, slug) → parts; BTreeMap for a deterministic series order.
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_series_order_prev_next() {
-        let mut all = HashMap::new();
+        let mut all = indexmap::IndexMap::new();
         all.insert(
             "posts".to_string(),
             vec![
@@ -311,14 +311,14 @@ mod tests {
 
     #[test]
     fn test_series_empty_when_unused() {
-        let mut all = HashMap::new();
+        let mut all = indexmap::IndexMap::new();
         all.insert("posts".to_string(), vec![item("a", "en", "")]);
         assert!(SeriesIndex::build(&config(), &all).is_empty());
     }
 
     #[test]
     fn test_series_url_collision_warns() {
-        let mut all = HashMap::new();
+        let mut all = indexmap::IndexMap::new();
         let mut page = item("rust", "en", "");
         page.url = "/series/rust".into();
         all.insert(

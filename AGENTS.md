@@ -16,6 +16,7 @@ cargo clippy         # Lint — must be zero warnings
 cargo run -- init mysite --title "My Site" --collections posts,docs,pages
 cargo run -- build   # Build site from seite.toml
 cargo run -- check   # Validate config/content/templates/links (no dist/ writes)
+cargo run -- audit   # SEO/GEO/a11y/content/perf findings + score (scratch build; --json, --fail-on, --dist)
 cargo run -- context # Agent orientation: site summary + DIRECTIVES (also: docs, page, search, stats, templates, frontmatter, explain)
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
@@ -39,12 +40,13 @@ cargo run -- completions bash  # Generate shell completions
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
+  audit/               `seite audit`: html.rs (one-pass scanner → PageFacts), seo/geo/a11y/content/perf checks, CODES table (category, severity, hint), score, source attribution, collapse of template findings
   safe_fs.rs           Project-confined writes/deletes (refuse symlinked components) for init/upgrade/hooks/skill/serve
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            10 bundled themes + src/themes/*.tera
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`)
-  docs.rs              Embedded docs (16 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
+  docs.rs              Embedded docs (17 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
@@ -71,7 +73,7 @@ title = "My Site"
 description = ""
 base_url = "http://localhost:3000"
 language = "en"
-# timezone = "Europe/Berlin" # "today" for scheduled posts (IANA or "+02:00"; default: local date)
+# timezone = "Europe/Berlin" # "today" for scheduled posts (IANA or "+02:00"; default: local date; `seite init` writes the system zone)
 
 [[collections]]
 name = "posts"
@@ -180,6 +182,8 @@ endpoint = "xpznqkdl"
 ### Content Model Checks
 - Frontmatter schemas (`src/content/schema.rs`, design note at the top): `CollectionConfig.fields` (`IndexMap<String, FieldSchema>`) + `strict_fields`. Built-in/top-level keys (`schema::top_level_keys`: `BUILTIN_KEYS` ∪ `Frontmatter`'s serde fields ∪ `[[taxonomies]]` names) validate at the top level; custom fields (`schema::custom_field_names`) at the top level or under `extra:` (validated where they appear; both = error), exposed to templates as `page.extra.<name>` (`schema::page_extra`) and kept in published `.md` copies. `Schema::for_site(config, collection)` validates `ParsedContent.frontmatter_text` with exact key lines → `frontmatter-schema` errors / `frontmatter-schema-unknown` warnings. Wired into build Step 3 (errors join `fatal`, non-drafts unless `--drafts`), `check --file`/post-edit hook (drafts too), `create_content_file` (defaults + placeholders; `reject_invalid` for MCP), and `seite_update_frontmatter` (refuses violations on touched keys; edits an existing top-level custom key in place, routes new custom keys into `extra`). Config mistakes → located `config-invalid` via `schema::validate_config`; unknown schema keys via `unknown_keys.rs`. Presets (`schema::preset_fields`) are never `required` and have no bounds; list-of-string items accept numbers/bools (like the parser); `seite upgrade` adds no schemas.
 - Scheduled publishing (`src/content/schedule.rs`): opt-in `[build] schedule = true` (init writes it; absent = off; upgrade only shows the one-time `schedule-feature` notice), dated collections only. `Schedule::new(config).is_published(collection, fm)` in build Step 3 (future `date` hidden unless `[build] future`; past `expires` hidden). `seite build --future` / `seite check --future` / `seite serve` set `config.build.future`. "Today" = `schedule::today(config)`: `[site] timezone` (chrono-tz IANA or fixed offset), else `chrono::Local` — also used by every writer (new, init starter content, MCP create, serve REPL). `hidden_pages`/`hidden_summary` give the "N scheduled posts hidden; next goes live …" line (build, serve, check info note); `schedule::link_diagnostics` turns broken links to hidden pages into `link-to-scheduled` (check and `build --strict`). `seite check` builds like the real build, then renders scheduled pages in a second scratch build and keeps only their diagnostics. Generated workflows carry `deploy::SCHEDULE_TRIGGER` (daily cron); upgrade adds it (ungated, idempotent, only with `schedule = true`) to byte-identical generated workflows, else a one-time notice.
+- `seite audit` (`src/audit/`): reuses `cli::check::scratch_build` (or `--dist <dir>`), scans every HTML page once, maps pages to `BuildResult.collections` items for source attribution (`Site::locate*`: markdown source line, else templates/data, else the generated page), collapses findings that share a template file+line. Codes live in `audit::CODES` (each needs a `## <code>` in errors.md; `test_every_constructed_code_is_registered` + the explain coverage test enforce it). Score = 100 − Σ per code weight×min(count, 3) (error 10, warning 3, notice 1). Findings are sorted; the JSON shape is fixed (all keys always present). MCP `seite_audit` (read-only).
+- Determinism: builds are byte-identical run to run (`tests/integration/determinism.rs`). Collections are an `IndexMap` in `seite.toml` order, `Frontmatter.extra` an `IndexMap` (source order), asset manifest and build stats `BTreeMap`; never iterate a `HashMap` into output.
 - `seite check --external` (`src/build/external_links.rs`): runs inside `check_site_full` on the scratch output; ureq, 8 workers / 2 per host, cache `.seite/cache/links.json` via `safe_fs` (gitignored), skip list `DEFAULT_SKIP` + `[check] external_skip`; `external-link-broken` / `external-link-unreachable`. Never in build or hooks; tests use a local tiny_http server.
 
 ## Context Rules

@@ -1,7 +1,7 @@
 ---
 name: seite
-description: Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
-# seite-skill-version: 4
+description: Work on this seite static site — write or edit content, check and fix errors, audit SEO and accessibility, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
+# seite-skill-version: 5
 ---
 
 # seite
@@ -11,6 +11,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 | Command | Use it to | Steps |
 |---|---|---|
 | `check` | find and fix every error | [reference/check.md](reference/check.md) |
+| `audit` | fix SEO, AI-visibility and accessibility findings | [reference/audit.md](reference/audit.md) |
 | `new <type> "<title>"` | create a post, doc, page, … | [reference/new.md](reference/new.md) |
 | `preview` | show the site in a browser | [reference/preview.md](reference/preview.md) |
 | `build` | build `dist/` and report problems | [reference/build.md](reference/build.md) |
@@ -25,7 +26,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 ## Routing
 
 - Command given: open its reference file and follow it.
-- No command: choose one from the request ("write a post about X" → `new`, "is the site OK?" → `check`, "publish" → `deploy`, "make it look like X" → `theme`). If two fit equally well, ask the user once.
+- No command: choose one from the request ("write a post about X" → `new`, "is the site OK?" → `check`, "improve SEO" → `audit`, "publish" → `deploy`, "make it look like X" → `theme`). If two fit equally well, ask the user once.
 
 ## Principles
 

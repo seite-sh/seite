@@ -313,7 +313,7 @@ pub(super) fn listing_page(title: String, slug: String, url: String) -> PageCont
         reading_time: 0,
         excerpt: String::new(),
         toc: Vec::new(),
-        extra: std::collections::HashMap::new(),
+        extra: indexmap::IndexMap::new(),
     }
 }
 
@@ -334,7 +334,7 @@ pub(super) fn item_summary(item: &ContentItem) -> ItemSummary {
 /// Items of public collections in `lang`, in config-collection order.
 fn public_items_for_lang<'a>(
     config: &SiteConfig,
-    all_collections: &'a HashMap<String, Vec<ContentItem>>,
+    all_collections: &'a indexmap::IndexMap<String, Vec<ContentItem>>,
     lang: &str,
 ) -> Vec<&'a ContentItem> {
     config
@@ -352,7 +352,7 @@ fn public_items_for_lang<'a>(
 pub(crate) fn render_taxonomy_pages(
     env: &RenderEnv<'_>,
     taxonomies: &[Taxonomy],
-    all_collections: &HashMap<String, Vec<ContentItem>>,
+    all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
 ) -> Result<Vec<String>> {
     let mut urls = Vec::new();
     for tax in taxonomies {

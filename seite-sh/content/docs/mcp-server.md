@@ -111,7 +111,7 @@ A successful result is compact JSON text; clients on `2025-06-18` or newer also 
 
 | Tool | Changes files? |
 |------|----------------|
-| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check` | No (read-only — `seite_check` renders into a temporary directory that's discarded, never touching `dist/`) |
+| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check`, `seite_audit` | No (read-only — `seite_check` and `seite_audit` render into a temporary directory that's discarded, never touching `dist/`) |
 | `seite_build` | Writes the output directory |
 | `seite_create_content` | Creates a content file (replaces one only with `overwrite: true`) |
 | `seite_update_frontmatter` | Rewrites one file's frontmatter |
@@ -139,6 +139,16 @@ Report every problem in the site without touching the output directory — the s
 | `strict` | boolean | No | Treat warnings as failures too (default: false) |
 
 Returns `ok` (false when there are errors, or any warning with `strict: true`), `summary` (`{errors, warnings}` counts), and `diagnostics` — each with `severity`, a stable `code` (e.g. `frontmatter-parse`, `broken-link`, `config-unknown-key`), `message`, and `file`/`line`/`column`/`hint` when known. Run it after making changes to catch problems before building.
+
+### seite_audit
+
+Free offline SEO, GEO (AI visibility), accessibility, content and performance audit of the built site — the same report as `seite audit --json` (see [Audit](/docs/audit)).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `categories` | string[] | No | Only these categories: `seo`, `geo`, `a11y`, `content`, `perf` (default: all) |
+
+Returns `summary` (`{score, errors, warnings, notices, pages, by_category}`) and `findings` — each with a stable `code` (e.g. `seo-thin-content`, `a11y-img-alt`), `severity` (`error`, `warning` or `notice`), `category`, `page_url`, the `file` and `line` to edit, `message`, `hint` and `docs_url`.
 
 ### seite_create_content
 

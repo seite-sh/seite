@@ -849,6 +849,7 @@ macro_rules! reference {
 /// The `seite` skill's command references, in SKILL.md table order.
 pub const SEITE_REFERENCES: &[Reference] = &[
     reference!("check"),
+    reference!("audit"),
     reference!("new"),
     reference!("preview"),
     reference!("build"),
@@ -866,7 +867,7 @@ pub const SKILLS: &[Skill] = &[Skill {
     content: include_str!("../scaffold/skill-seite/SKILL.md"),
     needs: Needs::Always,
     argument_hint: Some(
-        "[check | new <type> \"<title>\" | preview | build | deploy | theme [name|description] | brand | landing [page] | collection [preset] | upgrade | hooks [on|off|status]]",
+        "[check | audit | new <type> \"<title>\" | preview | build | deploy | theme [name|description] | brand | landing [page] | collection [preset] | upgrade | hooks [on|off|status]]",
     ),
     references: SEITE_REFERENCES,
 }];
@@ -2153,8 +2154,8 @@ mod tests {
         assert!(fm["argument-hint"]
             .as_str()
             .unwrap()
-            .starts_with("[check | new"));
-        assert_eq!(extract_version(&rendered), 4);
+            .starts_with("[check | audit | new"));
+        assert_eq!(extract_version(&rendered), 5);
         assert!(body.contains("## Routing"));
         assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
@@ -2177,6 +2178,7 @@ mod tests {
             names,
             [
                 "check",
+                "audit",
                 "new",
                 "preview",
                 "build",
@@ -2254,7 +2256,7 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 4);
+        assert_eq!(extract_version(content), 5);
 
         let (_, gemini) = &files[1];
         let parsed: toml::Table = toml::from_str(gemini).unwrap();
@@ -2263,7 +2265,7 @@ mod tests {
             Some(skill("seite").unwrap().description())
         );
         assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
-        assert_eq!(extract_version(gemini), 4);
+        assert_eq!(extract_version(gemini), 5);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );

@@ -60,6 +60,8 @@ tiny_http = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
 # IANA time zones for `[site] timezone` (already compiled in through tera)
 chrono-tz = "0.9"
+# System time zone for `seite init` (already compiled in through chrono)
+iana-time-zone = "0.1"
 
 # Parallelism
 rayon = "1.12"

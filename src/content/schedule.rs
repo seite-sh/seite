@@ -87,6 +87,30 @@ pub fn validate_timezone(tz: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// The machine's IANA time zone, for `seite init` to write as `[site]
+/// timezone`; `None` when it can't be named.
+///
+/// `TZ` wins when set (the local clock follows it): an IANA name, optionally
+/// `:`-prefixed or given as a `.../zoneinfo/<name>` path. A `TZ` that is not
+/// an IANA name gives `None` rather than the OS zone, which the local clock
+/// is then not following. Otherwise the OS setting via `iana-time-zone`.
+pub fn detect_system_timezone() -> Option<String> {
+    let valid = |name: &str| {
+        chrono_tz::Tz::from_str(name)
+            .is_ok()
+            .then(|| name.to_string())
+    };
+    match std::env::var("TZ") {
+        Ok(tz) if !tz.trim().is_empty() => {
+            let tz = tz.trim().trim_start_matches(':');
+            valid(tz.rsplit_once("zoneinfo/").map_or(tz, |(_, name)| name))
+        }
+        _ => iana_time_zone::get_timezone()
+            .ok()
+            .and_then(|name| valid(name.trim())),
+    }
+}
+
 /// Today's date in the site's time zone, or the machine's local date when
 /// `[site] timezone` is unset (or invalid). Used both to date new files
 /// (`seite new`, `seite init`, MCP create, the serve REPL) and to decide what
