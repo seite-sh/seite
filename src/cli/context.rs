@@ -43,6 +43,8 @@ pub struct DirectiveInputs {
     pub impeccable_installed: bool,
     /// `seite.toml` exists but failed to load.
     pub config_error: Option<String>,
+    /// `[build] schedule = true` without a `[site] timezone`.
+    pub schedule_without_timezone: bool,
 }
 
 /// The directives for a site, in a stable order.
@@ -78,6 +80,12 @@ pub fn compute_directives(inputs: &DirectiveInputs) -> Vec<Directive> {
         out.push(Directive {
             name: "NO_STOP_HOOK",
             message: "no turn-end check hook is installed; run `seite check` before finishing and fix every error it reports".into(),
+        });
+    }
+    if inputs.schedule_without_timezone {
+        out.push(Directive {
+            name: "TIMEZONE_UNSET",
+            message: "[build] schedule is on but [site] timezone is unset, so what is live depends on each machine's clock (CI often runs in UTC); ask the user for their zone and add `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site]".into(),
         });
     }
     let plain_theme = inputs.active_theme == "custom" || inputs.active_theme == "default";
@@ -261,6 +269,10 @@ fn gather(state: &ServerState, version: &str) -> Value {
         active_theme: active_theme.clone(),
         impeccable_installed: impeccable,
         config_error: state.config_error.clone(),
+        schedule_without_timezone: state
+            .config
+            .as_ref()
+            .is_some_and(|c| c.build.schedule && c.site.timezone.is_none()),
     });
 
     json!({
@@ -409,6 +421,10 @@ fn print_context(data: &Value) {
         ),
         None => human_println!("{}not running (`seite serve`)", label("Dev server:")),
     }
+    human_println!(
+        "{}`seite check` after changes; `seite audit` for SEO, AI-visibility and accessibility fixes",
+        label("Next:")
+    );
     let directives = array_of(data, "directives");
     if !directives.is_empty() {
         human_println!();
@@ -435,7 +451,17 @@ mod tests {
             active_theme: "dark".into(),
             impeccable_installed: false,
             config_error: None,
+            schedule_without_timezone: false,
         }
+    }
+
+    #[test]
+    fn test_timezone_unset_directive() {
+        let mut inputs = up_to_date();
+        inputs.schedule_without_timezone = true;
+        let d = compute_directives(&inputs);
+        assert_eq!(names(&d), ["TIMEZONE_UNSET"]);
+        assert!(d[0].message.contains("timezone = "));
     }
 
     #[test]
@@ -492,6 +518,7 @@ mod tests {
             active_theme: "custom".into(),
             impeccable_installed: false,
             config_error: Some("Failed to load seite.toml: bad\nmore".into()),
+            schedule_without_timezone: false,
         };
         let d = compute_directives(&inputs);
         assert_eq!(

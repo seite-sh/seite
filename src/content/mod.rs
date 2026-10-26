@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
@@ -44,8 +44,8 @@ pub struct Frontmatter {
     pub aliases: Vec<String>,
     /// Arbitrary key-value data passed through to templates as `page.extra`.
     /// Use this for custom per-page data that doesn't fit standard fields.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub extra: HashMap<String, serde_yaml_ng::Value>,
+    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    pub extra: indexmap::IndexMap<String, serde_yaml_ng::Value>,
     /// Last day the page is published; builds after this date leave it out
     /// (see `content::schedule`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -596,7 +596,7 @@ mod tests {
             robots: Some("noindex".into()),
             weight: Some(5),
             aliases: vec!["/old-url".into()],
-            extra: HashMap::new(),
+            extra: indexmap::IndexMap::new(),
             ..Default::default()
         };
         let generated = generate_frontmatter(&fm);

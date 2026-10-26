@@ -74,6 +74,11 @@ fn test_every_emitted_diagnostic_code_is_documented() {
     // Codes chosen at runtime (`let (code, ..) = match ...` in links.rs).
     emitted.insert("broken-link".to_string());
     emitted.insert("missing-asset".to_string());
+    // `seite audit` findings (constructed through `audit::CODES`, which a
+    // unit test checks against the checks' sources).
+    for info in seite::audit::CODES {
+        emitted.insert(info.code.to_string());
+    }
     assert!(emitted.len() >= 18, "scan found too few codes: {emitted:?}");
 
     let missing: Vec<&String> = emitted

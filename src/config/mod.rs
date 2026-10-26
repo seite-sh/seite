@@ -331,7 +331,8 @@ pub struct SiteSection {
     #[serde(default)]
     pub author: String,
     /// Time zone for scheduled publishing (`date` in the future, `expires`):
-    /// an IANA name (`Europe/Berlin`) or a fixed offset (`+02:00`). Default UTC.
+    /// an IANA name (`Europe/Berlin`) or a fixed offset (`+02:00`). Unset: the
+    /// machine's local date (`seite init` writes the detected system zone).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
 }

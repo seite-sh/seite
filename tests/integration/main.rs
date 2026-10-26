@@ -1,5 +1,6 @@
 mod agent;
 mod assets;
+mod audit;
 mod build;
 mod check;
 mod cli_agent_friendly;
@@ -11,6 +12,7 @@ mod content_model;
 mod context;
 mod context_rules;
 mod deploy;
+mod determinism;
 mod docs;
 mod explain;
 mod feeds;

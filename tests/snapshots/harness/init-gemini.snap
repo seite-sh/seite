@@ -62,7 +62,7 @@ paths:
 ==> .agents/skills/seite/SKILL.md <==
 ---
 name: seite
-description: Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
+description: Work on this seite static site — write or edit content, check and fix errors, audit SEO and accessibility, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
 # seite-skill-version: 5
 ---
 
@@ -73,6 +73,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 | Command | Use it to | Steps |
 |---|---|---|
 | `check` | find and fix every error | [reference/check.md](reference/check.md) |
+| `audit` | fix SEO, AI-visibility and accessibility findings | [reference/audit.md](reference/audit.md) |
 | `new <type> "<title>"` | create a post, doc, page, … | [reference/new.md](reference/new.md) |
 | `preview` | show the site in a browser | [reference/preview.md](reference/preview.md) |
 | `build` | build `dist/` and report problems | [reference/build.md](reference/build.md) |
@@ -87,7 +88,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 ## Routing
 
 - Command given: open its reference file and follow it.
-- No command: choose one from the request ("write a post about X" → `new`, "is the site OK?" → `check`, "publish" → `deploy`, "make it look like X" → `theme`). If two fit equally well, ask the user once.
+- No command: choose one from the request ("write a post about X" → `new`, "is the site OK?" → `check`, "improve SEO" → `audit`, "publish" → `deploy`, "make it look like X" → `theme`). If two fit equally well, ask the user once.
 
 ## Principles
 
@@ -96,6 +97,16 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
 - Look up seite features in `.seite/docs/` or with `seite docs <query>`; `seite explain <code>` explains a diagnostic code.
 - Verify once: `seite check`, fix every error, run `seite check` again, then stop. Report errors that remain instead of looping.
+
+==> .agents/skills/seite/reference/audit.md <==
+# /seite audit
+
+1. Run `seite audit --json` (add `--category seo|geo|a11y|content|perf` to focus). `data.summary` has the score and counts; each entry of `data.findings` has a `code`, `severity`, the `page_url`, the `file` and `line` to edit, a `message` and a `hint`.
+2. Fix errors first, then warnings, in the file each finding names: content `.md` files (title, description, word count, alt text, links), then templates (a finding that names a template affects every page using it — fix it once). Never edit `dist/`. `seite explain <code>` explains a code.
+3. Don't invent content to pass a check: for a thin page or a missing description, write real text from what the page is about, or ask the user. Notices are suggestions; fix them only when the user asks for a polished site.
+4. Run `seite check`, then `seite audit` once more. Report the new score and the findings that remain (with file and line), and stop. Don't loop.
+
+For CI, `seite audit --fail-on error` exits 1 on any error-level finding.
 
 ==> .agents/skills/seite/reference/brand.md <==
 # /seite brand
@@ -250,7 +261,7 @@ If the installed `seite` is older than the project expects, tell the user to run
 
 ==> .gemini/commands/seite.toml <==
 # seite-skill-version: 5
-description = "Work on this seite static site — write or edit content, check and fix errors, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml."
+description = "Work on this seite static site — write or edit content, check and fix errors, audit SEO and accessibility, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml."
 prompt = """
 Activate the `seite` skill (.agents/skills/seite/SKILL.md) and follow its Routing section and command table for: {{args}}
 """

@@ -1271,7 +1271,13 @@ fn test_build_timezone_decides_what_today_is() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Tz", "posts");
     let site = tmp.path().join("site");
-    let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+    // Without the zone `seite init` detected.
+    let toml: String = fs::read_to_string(site.join("seite.toml"))
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with("timezone = "))
+        .map(|l| format!("{l}\n"))
+        .collect();
     let with_tz = |tz: &str| {
         fs::write(
             site.join("seite.toml"),
@@ -1653,6 +1659,101 @@ fn test_init_and_build_publish_starter_content_in_any_local_timezone() {
             .success();
         assert!(site.join("dist/posts/fresh.html").exists(), "{tz}");
     }
+}
+
+fn init_with_tz(tmp: &TempDir, tz: &str) -> std::path::PathBuf {
+    page_cmd()
+        .env("TZ", tz)
+        .args([
+            "init",
+            "site",
+            "--title",
+            "T",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    tmp.path().join("site")
+}
+
+#[test]
+fn test_init_writes_detected_timezone() {
+    for (tz, expected) in [
+        ("Asia/Tokyo", "Asia/Tokyo"),
+        (":America/New_York", "America/New_York"),
+        ("/usr/share/zoneinfo/Europe/Paris", "Europe/Paris"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let site = init_with_tz(&tmp, tz);
+        let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+        let line = format!("\ntimezone = \"{expected}\"\n");
+        assert!(toml.contains(&line), "{tz}: {toml}");
+        assert!(
+            toml.contains("identical on every machine and in CI"),
+            "{toml}"
+        );
+        // Under [site], and the site loads and checks cleanly.
+        let site_table = toml.split("[[collections]]").next().unwrap();
+        assert!(site_table.contains(&line), "{toml}");
+        let (ok, doc) = run_json(&site, &["check"]);
+        assert!(ok, "{tz}: {doc}");
+    }
+}
+
+#[test]
+fn test_init_unknown_timezone_writes_commented_line() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_with_tz(&tmp, "Not/AZone");
+    let toml = fs::read_to_string(site.join("seite.toml")).unwrap();
+    assert!(
+        toml.contains("\n# timezone = \"Europe/Berlin\"\n"),
+        "{toml}"
+    );
+    assert!(!toml.contains("\ntimezone = "), "{toml}");
+    let (ok, doc) = run_json(&site, &["check"]);
+    assert!(ok, "{doc}");
+}
+
+#[test]
+fn test_upgrade_recommends_timezone_once_when_scheduling_without_one() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_with_tz(&tmp, "Not/AZone");
+    let upgrade = || {
+        let output = page_cmd()
+            .args(["upgrade", "--force"])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    };
+    let first = upgrade();
+    assert!(first.contains("without [site] timezone"), "{first}");
+    assert!(!fs::read_to_string(site.join("seite.toml"))
+        .unwrap()
+        .contains("\ntimezone = "));
+    assert!(!upgrade().contains("without [site] timezone"), "once");
+
+    // With a timezone: no notice.
+    let tmp = TempDir::new().unwrap();
+    let site = init_with_tz(&tmp, "Asia/Tokyo");
+    let output = page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("without [site] timezone"));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("without [site] timezone"));
 }
 
 #[test]

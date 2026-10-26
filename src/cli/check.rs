@@ -371,15 +371,12 @@ fn check_site_full(
     //    subdomain sites) move; every source path (root, content, templates,
     //    data, ...) stays the real site's, so links such as
     //    `/content/pages/x.md` resolve exactly as they do in `seite build`.
-    let scratch = tempfile::Builder::new().prefix("seite-check-").tempdir()?;
-    let mut scratch_paths = paths.clone();
-    scratch_paths.output = scratch.path().join("dist");
-    scratch_paths.subdomain_output_root = scratch.path().join("dist-subdomains");
+    let (scratch, _scratch_paths, built) = scratch_build(&config, &paths, include_drafts)?;
     let opts = BuildOptions {
         include_drafts,
         incremental: false,
     };
-    let build_diagnostics = match build::build_site(&config, &scratch_paths, &opts) {
+    let build_diagnostics = match built {
         Ok(result) => {
             let mut found = result.diagnostics;
             found.extend(crate::content::schedule::link_diagnostics(
@@ -470,6 +467,33 @@ fn check_site_full(
         }
     }
     Ok((unique, external_summary))
+}
+
+/// Run the real build pipeline with only the output locations (main site and
+/// subdomain sites) moved into a new scratch directory. Every source path
+/// (root, content, templates, data, ...) stays the real site's, so links such
+/// as `/content/pages/x.md` resolve exactly as in `seite build`, and the
+/// project's `dist/` is never touched. The output lives as long as the
+/// returned `TempDir` (shared by `seite check` and `seite audit`).
+pub fn scratch_build(
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+    include_drafts: bool,
+) -> crate::error::Result<(
+    tempfile::TempDir,
+    crate::config::ResolvedPaths,
+    crate::error::Result<build::BuildResult>,
+)> {
+    let scratch = tempfile::Builder::new().prefix("seite-check-").tempdir()?;
+    let mut scratch_paths = paths.clone();
+    scratch_paths.output = scratch.path().join("dist");
+    scratch_paths.subdomain_output_root = scratch.path().join("dist-subdomains");
+    let opts = BuildOptions {
+        include_drafts,
+        incremental: false,
+    };
+    let built = build::build_site(config, &scratch_paths, &opts);
+    Ok((scratch, scratch_paths, built))
 }
 
 /// Make paths in a diagnostic relative: sources to the real site `root`, and

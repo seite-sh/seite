@@ -506,7 +506,7 @@ fn extract_refs(html: &str, normalize: fn(&str) -> Option<String>) -> Vec<Intern
 }
 
 /// Case-insensitive ASCII substring search.
-fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
+pub(crate) fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
     let h = haystack.as_bytes();
     let n = needle.as_bytes();
     if n.is_empty() || h.len() < n.len() {
@@ -516,7 +516,7 @@ fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
 }
 
 /// Find the `>` that closes the tag starting at `start`, honoring quotes.
-fn find_tag_end(html: &str, start: usize) -> Option<usize> {
+pub(crate) fn find_tag_end(html: &str, start: usize) -> Option<usize> {
     let bytes = html.as_bytes();
     let mut in_quote: Option<u8> = None;
     for (i, &b) in bytes.iter().enumerate().skip(start + 1) {
@@ -533,7 +533,7 @@ fn find_tag_end(html: &str, start: usize) -> Option<usize> {
 
 /// Parse `name="value"` / `name='value'` / `name=value` / bare `name`
 /// attributes from the inside of a tag (after the tag name).
-fn parse_attrs(s: &str) -> Vec<(&str, &str)> {
+pub(crate) fn parse_attrs(s: &str) -> Vec<(&str, &str)> {
     let bytes = s.as_bytes();
     let mut attrs = Vec::new();
     let mut i = 0;

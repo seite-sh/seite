@@ -46,7 +46,7 @@ pub struct BuildOptions {
 }
 
 pub struct BuildResult {
-    pub collections: HashMap<String, Vec<ContentItem>>,
+    pub collections: indexmap::IndexMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
     /// Broken links and missing assets across the whole site: the main
     /// output plus every subdomain output (each subdomain's own results are
@@ -78,7 +78,7 @@ pub struct SubdomainBuildInfo {
 
 #[derive(Debug, Serialize)]
 pub struct BuildStats {
-    pub items_built: HashMap<String, usize>,
+    pub items_built: std::collections::BTreeMap<String, usize>,
     pub static_files_copied: usize,
     pub public_files_copied: usize,
     pub data_files_loaded: usize,
@@ -190,7 +190,7 @@ struct PageContext {
     /// Table of contents entries extracted from heading hierarchy.
     toc: Vec<markdown::TocEntry>,
     /// Arbitrary key-value data from frontmatter `extra` field.
-    extra: std::collections::HashMap<String, serde_yaml_ng::Value>,
+    extra: indexmap::IndexMap<String, serde_yaml_ng::Value>,
 }
 
 /// Lightweight previous/next post link exposed to templates as `prev_post` / `next_post`.
@@ -333,9 +333,9 @@ pub fn build_site(
             refresh_access_artifacts(effective_config, paths)?;
             refresh_subdomain_access_artifacts(config, paths)?;
             return Ok(BuildResult {
-                collections: HashMap::new(),
+                collections: indexmap::IndexMap::new(),
                 stats: BuildStats {
-                    items_built: HashMap::new(),
+                    items_built: std::collections::BTreeMap::new(),
                     static_files_copied: 0,
                     public_files_copied: 0,
                     data_files_loaded: 0,
@@ -1143,7 +1143,8 @@ fn build_site_inner(
     // Step 3: Process each collection
     progress.step("Processing content");
     let step_start = Instant::now();
-    let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    let mut all_collections: indexmap::IndexMap<String, Vec<ContentItem>> =
+        indexmap::IndexMap::new();
 
     // For incremental builds, track changed content paths to skip re-rendering unchanged items.
     // We still parse all items (needed for indexes/feeds), but skip writing unchanged pages.
@@ -1192,6 +1193,7 @@ fn build_site_inner(
         }
         if collection_dir.exists() {
             let entries: Vec<_> = WalkDir::new(&collection_dir)
+                .sort_by_file_name()
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
@@ -1722,7 +1724,8 @@ fn build_site_inner(
     // collection's index page — the same pattern as content/pages/index.md for the
     // site homepage. This also powers subdomain root pages: when a collection is
     // deployed to its own subdomain, its index.md becomes the subdomain root content.
-    let mut collection_index_pages: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    let mut collection_index_pages: indexmap::IndexMap<String, Vec<ContentItem>> =
+        indexmap::IndexMap::new();
     for (name, items) in all_collections.iter_mut() {
         if name == "pages" {
             continue; // pages/index.md is already handled above as the site homepage
@@ -1915,7 +1918,7 @@ fn build_site_inner(
                 reading_time: 0,
                 excerpt: String::new(),
                 toc: Vec::new(),
-                extra: std::collections::HashMap::new(),
+                extra: indexmap::IndexMap::new(),
             }
         };
         index_ctx.insert("page", &index_page_ctx);
@@ -2133,7 +2136,7 @@ fn build_site_inner(
                             reading_time: 0,
                             excerpt: String::new(),
                             toc: Vec::new(),
-                            extra: std::collections::HashMap::new(),
+                            extra: indexmap::IndexMap::new(),
                         }
                     },
                 );
@@ -2315,7 +2318,7 @@ fn build_site_inner(
                         reading_time: 0,
                         excerpt: String::new(),
                         toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
+                        extra: indexmap::IndexMap::new(),
                     }
                 },
             );
@@ -2398,7 +2401,7 @@ fn build_site_inner(
                     reading_time: 0,
                     excerpt: String::new(),
                     toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
+                    extra: indexmap::IndexMap::new(),
                 },
             );
             let html_404 = tera
@@ -2662,8 +2665,8 @@ fn build_site_inner(
     let step_start = Instant::now();
     let mut static_count = 0;
     // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
-    let mut asset_manifest: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut asset_manifest: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
     let protected_asset_groups = config.password_access_groups();
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
@@ -2900,7 +2903,7 @@ fn build_site_inner(
         }
     }
 
-    let items_built: HashMap<String, usize> = all_collections
+    let items_built: std::collections::BTreeMap<String, usize> = all_collections
         .iter()
         .map(|(name, items)| (name.clone(), items.len()))
         .collect();
@@ -3339,7 +3342,7 @@ fn output_rel_html(url: &str) -> String {
 /// `Markdown`-kind broken link for each relative `.md` link that matched no
 /// content file, located at its line in the source file.
 fn rewrite_source_links(
-    all_collections: &mut HashMap<String, Vec<ContentItem>>,
+    all_collections: &mut indexmap::IndexMap<String, Vec<ContentItem>>,
     paths: &ResolvedPaths,
     default_lang: &str,
     external_sources: &HashMap<PathBuf, String>,
@@ -3508,7 +3511,7 @@ fn build_page_context(
 fn index_page_extra(
     config: &SiteConfig,
     item: &ContentItem,
-) -> std::collections::HashMap<String, serde_yaml_ng::Value> {
+) -> indexmap::IndexMap<String, serde_yaml_ng::Value> {
     let custom = config
         .collections
         .iter()
@@ -3803,7 +3806,7 @@ mod tests {
         SiteSection,
     };
     use crate::content::Frontmatter;
-    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::collections::{BTreeMap, HashSet};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -4534,7 +4537,7 @@ mod tests {
     fn test_build_stats_human_display_basic() {
         let stats = BuildStats {
             items_built: {
-                let mut m = HashMap::new();
+                let mut m = std::collections::BTreeMap::new();
                 m.insert("posts".into(), 5);
                 m
             },
@@ -4557,7 +4560,7 @@ mod tests {
     #[test]
     fn test_build_stats_human_display_with_public_and_data() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 2,
             data_files_loaded: 4,
@@ -4574,7 +4577,7 @@ mod tests {
     #[test]
     fn test_build_stats_human_display_with_step_timings() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 0,
             data_files_loaded: 0,
@@ -4594,7 +4597,7 @@ mod tests {
     #[test]
     fn test_build_stats_timings_display_empty() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 0,
             data_files_loaded: 0,
@@ -4610,7 +4613,7 @@ mod tests {
     fn test_build_stats_human_display_incremental() {
         let stats = BuildStats {
             items_built: {
-                let mut m = HashMap::new();
+                let mut m = std::collections::BTreeMap::new();
                 m.insert("posts".into(), 20);
                 m
             },
@@ -5161,7 +5164,7 @@ mod tests {
                 id: "section-one".into(),
             }],
             extra: {
-                let mut m = HashMap::new();
+                let mut m = indexmap::IndexMap::new();
                 m.insert("author".into(), serde_yaml_ng::Value::String("Jane".into()));
                 m
             },
@@ -5196,7 +5199,7 @@ mod tests {
             reading_time: 0,
             excerpt: String::new(),
             toc: Vec::new(),
-            extra: HashMap::new(),
+            extra: indexmap::IndexMap::new(),
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert!(json["date"].is_null());

@@ -1,12 +1,62 @@
 ---
 title: "Error Reference"
-description: "Every diagnostic code reported by seite check and seite build: what it means, common causes, and how to fix it."
+description: "Every diagnostic code reported by seite check and seite build, and every seite audit finding: what it means, common causes, and how to fix it."
 weight: 12
 ---
 
 `seite check` and `seite build` report problems as compiler-style lines such as `content/posts/a.md:3:1: error[frontmatter-parse]: ...`. The part in brackets is a stable **diagnostic code**. Each code has a section below; run `seite explain <code>` to print it in the terminal. In `--json` output every diagnostic carries a `docs_url` pointing at its section here.
 
 Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
+
+`seite audit` findings use the same reference: their codes start with `seo-`, `geo-`, `a11y-`, `content-` or `perf-`, and their severity is `error`, `warning` or `notice` (they never fail a build; `seite audit --fail-on` turns them into an exit code). See [Audit](/docs/audit).
+
+## a11y-button-name
+
+**What it means:** A `seite audit` finding (error): a `<button>` has no text, image alt, `aria-label` or `title`.
+
+**How to fix:** Give the button text, or an `aria-label` for icon buttons.
+
+## a11y-duplicate-id
+
+**What it means:** A `seite audit` finding (warning): the same `id` appears more than once on a page; links and labels pointing at it hit the first one only.
+
+**How to fix:** Make ids unique. Repeated heading texts in markdown and copied template snippets are the usual causes.
+
+## a11y-html-lang
+
+**What it means:** A `seite audit` finding (error): `<html>` has no `lang` attribute, so screen readers guess the pronunciation language.
+
+**How to fix:** Use `<html lang="{{ lang }}">` in the layout template.
+
+## a11y-img-alt
+
+**What it means:** A `seite audit` finding (error): an `<img>` has no `alt` attribute. Screen readers then read the file name. (Also hurts image search.)
+
+**How to fix:** Describe the image: `![A diagram of the build pipeline](/static/pipeline.png)` in markdown, `alt="..."` in templates. Use `alt=""` only for purely decorative images.
+
+## a11y-input-label
+
+**What it means:** A `seite audit` finding (error): a form control (`input`, `select`, `textarea`) has no label: no `<label for>`, no wrapping `<label>`, no `aria-label`/`aria-labelledby`/`title`.
+
+**How to fix:** Add `<label for="email">Email</label>` with a matching `id`, or an `aria-label`.
+
+## a11y-link-ambiguous
+
+**What it means:** A `seite audit` finding (warning): a link's whole text is generic ("click here", "read more", "learn more", "here", "more", "link", ...) and it has no `aria-label`. Out of context (screen-reader link lists) it says nothing. Not reported when the same target is also linked with a descriptive text on the page.
+
+**How to fix:** Use text that names the target (`[Read the install guide](/docs/install)`), or add `aria-label="Read the install guide"` in templates.
+
+## a11y-link-empty
+
+**What it means:** A `seite audit` finding (error): a link has no text, image alt or `aria-label`, so assistive technology announces only "link".
+
+**How to fix:** Give the link visible text, or an `aria-label` for icon-only links.
+
+## a11y-skip-link
+
+**What it means:** A `seite audit` finding (notice): the page has no skip link (an `<a href="#...">` whose text contains "skip"), so keyboard users tab through the whole header on every page.
+
+**How to fix:** Add `<a href="#main" class="skip-link">Skip to main content</a>` as the first element in `<body>` and `id="main"` on `<main>` (the bundled themes have it).
 
 ## broken-link
 
@@ -66,6 +116,24 @@ minify = true    # fixed
 **Common causes:** the file is not valid UTF-8 (for example a file saved in another encoding, or a binary file with a `.md` extension), or it is not readable.
 
 **How to fix:** re-save the file as UTF-8, or move non-markdown files out of `content/` (images belong in `static/`).
+
+## content-link-to-draft
+
+**What it means:** A `seite audit` finding (error): a published page links to a page marked `draft: true`. Drafts are not built, so the link is broken on the live site.
+
+**How to fix:** Publish the target (remove `draft: true`) or remove the link until it is ready.
+
+## content-link-to-scheduled
+
+**What it means:** A `seite audit` finding (warning): a published page links to a page that scheduling hides: its `date` is in the future (it goes live later) or its `expires:` date has passed. The message names the date. Same situation as the `link-to-scheduled` diagnostic of `seite check`.
+
+**How to fix:** Remove the link until the target is live, or give the linking page the same or a later date.
+
+## content-missing-date
+
+**What it means:** A `seite audit` finding (warning): a page in a dated collection (`has_date = true`, e.g. posts, changelog) has no `date:` and no `YYYY-MM-DD-` filename prefix. Feeds, sorting and scheduling need a date.
+
+**How to fix:** Add `date: 2026-01-31` to the frontmatter, or rename the file with a date prefix.
 
 ## data-conflict
 
@@ -173,6 +241,66 @@ extra:
 
 **How to fix:** rename the key to a declared field (the hint suggests the closest one), declare it with `[collections.fields.<name>]` in `seite.toml`, or remove it. Built-in keys (`title`, `date`, `tags`, …) are always allowed.
 
+## geo-content-signal-missing
+
+**What it means:** A `seite audit` finding (notice): `robots.txt` has no `Content-Signal:` line saying how AI may use the content (see contentsignals.org).
+
+**How to fix:** Add `Content-Signal: search=yes, ai-input=yes, ai-train=no` (seite's generated robots.txt has it).
+
+## geo-jsonld-invalid
+
+**What it means:** A `seite audit` finding (error): a JSON-LD block does not parse as JSON, so consumers ignore it entirely.
+
+**How to fix:** Fix the template that writes it. Insert values with `| json_encode` so quotes and newlines are escaped: `"headline": {{ page.title | json_encode() | safe }}`.
+
+## geo-jsonld-missing
+
+**What it means:** A `seite audit` finding (warning): the page has no JSON-LD structured data (`<script type="application/ld+json">`), which search engines and AI assistants use to understand what the page is.
+
+**How to fix:** Add a JSON-LD block to the layout (the bundled themes emit `BlogPosting`, `WebPage`, `BreadcrumbList`, ...).
+
+## geo-jsonld-no-type
+
+**What it means:** A `seite audit` finding (warning): a JSON-LD object (or an item of its array or `@graph`) has no `@type`, so it describes nothing.
+
+**How to fix:** Add `"@type"` to every object, e.g. `"@type": "WebPage"`.
+
+## geo-llms-no-summary
+
+**What it means:** A `seite audit` finding (notice): `llms.txt` lists the page without a summary because the page has no `description:`. AI assistants choose pages by these summaries. When the SEO category is audited too, the page is reported once, as `seo-description-missing`.
+
+**How to fix:** Add `description:` to the page's frontmatter.
+
+## geo-llms-txt-missing
+
+**What it means:** A `seite audit` finding (error): the output has no `llms.txt`, the index AI assistants read to find a site's content.
+
+**How to fix:** Build with seite (it writes `llms.txt` and `llms-full.txt`). With `--dist`, point at a complete build output.
+
+## geo-llms-txt-unlisted
+
+**What it means:** A `seite audit` finding (warning): a content page in the default language is not listed in `llms.txt` (pages of `private` collections are expected to be missing).
+
+**How to fix:** Rebuild; if a custom `llms.txt` in `static/` or `public/` replaces the generated one, add the page or remove the custom file.
+
+## geo-markdown-alternate-missing
+
+**What it means:** A `seite audit` finding (warning): a content page has no `<link rel="alternate" type="text/markdown">` pointing at its `.md` copy, which AI agents prefer over HTML.
+
+**How to fix:** Add `<link rel="alternate" type="text/markdown" href="{{ page.markdown_url }}">` to the layout `<head>` (the bundled themes have it).
+
+## geo-robots-blocks-ai-search
+
+**What it means:** A `seite audit` finding (warning): `robots.txt` blocks at least one AI *search* crawler (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot) from `/`, so AI assistants can't fetch or cite the site. Blocking AI *training* crawlers (GPTBot, ClaudeBot, ...) is fine and not reported.
+
+**How to fix:** Allow the search crawlers (`User-agent: OAI-SearchBot` / `Allow: /`) and block training crawlers by name instead. seite's generated robots.txt already does this; the finding usually means the audited output came from elsewhere (`--dist`) or a post-build step replaced the file.
+
+## geo-robots-missing
+
+**What it means:** A `seite audit` finding (warning): the output has no `robots.txt`.
+
+**How to fix:** Build with seite (it writes one that allows search and AI search crawlers) or add `static/robots.txt`.
+
 ## i18n-partial
 
 **What it means:** a per-language value in a data file (a "language map" such as `description: {en: ..., de: ...}`) is missing one of the site's configured languages. Pages in that language fall back to the default language's text. Reported as a warning.
@@ -200,6 +328,156 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 **Common causes:** the file was never added to `static/` or `public/`, a typo in the path, a path relative to the wrong directory, or a wrong case (`Logo.png` vs `logo.png`) that works on macOS but breaks on Linux hosts.
 
 **How to fix:** add the file under `static/` (served from `/static/...`) or `public/` (served from the site root), or fix the path in the content or template.
+
+## perf-image-large
+
+**What it means:** A `seite audit` finding (warning): an image used by a page is larger than **300 KB**. For an `<img>` with `srcset`, the smallest candidate counts. Reported once per image.
+
+**How to fix:** Compress or resize it. Local images under `static/` get resized WebP copies when `[images]` is configured; for very large photos, export a smaller original.
+
+## perf-img-lazy
+
+**What it means:** A `seite audit` finding (notice): an image in `<main>` after its first image has no `loading="lazy"`, so it loads before the reader scrolls to it. The first image in `<main>` and images in the header are skipped (they are usually above the fold).
+
+**How to fix:** Add `loading="lazy"`. For markdown images, `[images] lazy_loading = true` does it.
+
+## perf-page-weight
+
+**What it means:** A `seite audit` finding (warning): the page's HTML plus its local stylesheets, scripts and images (same rule as `perf-image-large`) exceed **1.5 MB**. Remote assets are not counted.
+
+**How to fix:** Remove or compress the heaviest images, drop unused scripts, and split very long pages.
+
+## perf-render-blocking-script
+
+**What it means:** A `seite audit` finding (warning): a `<script src>` in `<head>` has neither `defer` nor `async` (and is not `type="module"`), so the browser stops rendering until it downloads and runs.
+
+**How to fix:** Add `defer` (order-preserving) or `async`, or move the script to the end of `<body>`.
+
+## seo-broken-anchor
+
+**What it means:** A `seite audit` finding (warning): an internal link has a `#fragment` that matches no `id` on the target page (the page exists; `seite check` reports missing pages).
+
+**How to fix:** Use the heading's real id (seite builds ids from heading text: `## Install steps` → `#install-steps`; `seite page <path>` lists them), or drop the fragment.
+
+## seo-canonical-missing
+
+**What it means:** A `seite audit` finding (warning): the page has no `<link rel="canonical">`, so search engines may index duplicate URLs (with and without a trailing slash, or the `.html` file) separately.
+
+**How to fix:** Add `<link rel="canonical" href="{{ page_url }}">` to the `<head>` of the layout template (the bundled themes have it).
+
+## seo-description-duplicate
+
+**What it means:** A `seite audit` finding (warning): two or more content pages have the same description.
+
+**How to fix:** Write a description specific to each page.
+
+## seo-description-long
+
+**What it means:** A `seite audit` finding (warning): the description is longer than **160 characters**; search results truncate it.
+
+**How to fix:** Shorten `description:` to at most 160 characters, with the key point first.
+
+## seo-description-missing
+
+**What it means:** A `seite audit` finding (warning): a content page has no `description:` in its frontmatter, so search engines and link previews pick their own snippet (the bundled themes fall back to the site description, which then repeats on every such page).
+
+**How to fix:** Add `description:` with 50–160 characters that summarize the page.
+
+## seo-description-short
+
+**What it means:** A `seite audit` finding (notice): the description is shorter than **50 characters**, too short to be a useful search snippet.
+
+**How to fix:** Expand `description:` to 50–160 characters that say what the reader gets from the page.
+
+## seo-h1-missing
+
+**What it means:** A `seite audit` finding (warning): the page has no `<h1>` at all.
+
+**How to fix:** Give every page one `<h1>`, usually the page title in the template (`<h1>{{ page.title }}</h1>`).
+
+## seo-h1-multiple
+
+**What it means:** A `seite audit` finding (warning): there is more than one `<h1>` inside `<main>` (or in the whole page when it has no `<main>`). A site-title `<h1>` in the header does not count.
+
+**How to fix:** Keep one `<h1>` per page. The usual cause is a markdown `# Heading` in a page whose template already prints the title as `<h1>`: use `##` for sections in the body.
+
+## seo-heading-skip
+
+**What it means:** A `seite audit` finding (notice): a heading skips a level, e.g. an `<h3>` right after an `<h1>`. Screen readers and search engines use heading levels as the page outline.
+
+**How to fix:** Use `##` before `###` in markdown. In listing templates, use `<h2>` for item titles under the page's `<h1>`.
+
+## seo-hreflang
+
+**What it means:** A `seite audit` finding (warning): in a multilingual site, a page's `<link rel="alternate" hreflang>` points at a translation that was not built, or at a page that does not link back with its own hreflang. Search engines ignore one-way hreflang.
+
+**How to fix:** Make sure the translation file exists (`about.es.md` next to `about.md`) and that the layout prints the hreflang links for every page (the bundled themes do).
+
+## seo-img-dimensions
+
+**What it means:** A `seite audit` finding (warning): an `<img>` has no `width` and `height`, so the page jumps when it loads (layout shift, a Core Web Vitals metric).
+
+**How to fix:** Local images that seite processes get `width`/`height` automatically; for images in templates or raw HTML add both attributes with the intrinsic size.
+
+## seo-noindex-in-sitemap
+
+**What it means:** A `seite audit` finding (error): a page is listed in `sitemap.xml` but tells search engines not to index it (`robots: noindex`). The signals contradict each other.
+
+**How to fix:** Remove `robots: noindex` if the page should be found, or keep it out of the sitemap (draft it, or move it to a `private` collection).
+
+## seo-og-image-missing
+
+**What it means:** A `seite audit` finding (notice): a content page has no `og:image`, so links shared on social networks and chat apps show no preview image.
+
+**How to fix:** Set `image:` in the frontmatter (a path under `static/` or a URL).
+
+## seo-orphan-page
+
+**What it means:** A `seite audit` finding (warning): no other page of the site links to this content page, so readers and crawlers only find it through the sitemap. Listing pages, the homepage and `noindex` pages are not checked.
+
+**How to fix:** Link to it from a related page, its collection index, or the navigation (`data/nav.yaml`).
+
+## seo-page-not-in-sitemap
+
+**What it means:** A `seite audit` finding (warning): an indexable content page is missing from `sitemap.xml` (pages of `private` collections are expected to be missing).
+
+**How to fix:** Rebuild the site. If a custom `sitemap.xml` in `static/` or `public/` replaces the generated one, remove it or add the page.
+
+## seo-sitemap-missing
+
+**What it means:** A `seite audit` finding (error): the output has no `sitemap.xml`.
+
+**How to fix:** Build with seite (it always writes one). With `--dist`, point at a complete build output.
+
+## seo-sitemap-stale-url
+
+**What it means:** A `seite audit` finding (error): `sitemap.xml` lists a URL that has no built page.
+
+**How to fix:** Rebuild the site; if it persists, check the page's `slug`/URL and `base_url` in `seite.toml`.
+
+## seo-thin-content
+
+**What it means:** A `seite audit` finding (warning): a content page has fewer than **150 words** (body text, from the markdown). Thin pages rank poorly and are rarely cited. Changelog and roadmap entries are exempt; `robots: noindex` pages are skipped.
+
+**How to fix:** Expand the page, merge it into a related page, or mark it `draft: true` until it is ready.
+
+## seo-title-duplicate
+
+**What it means:** A `seite audit` finding (warning): two or more indexable pages share the same `<title>`. Search engines show one result per title and treat the pages as competing. Pages with `robots: noindex` are ignored.
+
+**How to fix:** Make each title unique. When the duplicates are generated pages (for example a collection index that reuses the site title), fix the template's `{% block title %}`. Each page gets its own finding (at its `title:` line, or the generated page), naming the pages it collides with.
+
+## seo-title-long
+
+**What it means:** A `seite audit` finding (warning): the `<title>` (page title plus the site name the theme appends) is longer than **60 characters**, so search results truncate it.
+
+**How to fix:** Shorten `title:` in the frontmatter, or make the template's title suffix shorter.
+
+## seo-title-missing
+
+**What it means:** A `seite audit` finding (error): the page has no `<title>`, or it is empty. Search results and browser tabs have nothing to show.
+
+**How to fix:** Give the page a `title:` in its frontmatter; the layout template must print it inside `<title>` (the bundled themes do). For a listing page, check the template's `{% block title %}`.
 
 ## series-url-collision
 

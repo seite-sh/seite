@@ -31,6 +31,7 @@ pub fn all() -> Vec<DocPage> {
         mcp_server(),
         theme_gallery(),
         cli_reference(),
+        audit(),
         errors(),
         releases(),
     ];
@@ -209,11 +210,21 @@ fn cli_reference() -> DocPage {
     }
 }
 
+fn audit() -> DocPage {
+    DocPage {
+        slug: "audit",
+        title: "Audit",
+        description: "seite audit: a free, offline SEO, AI-visibility (GEO), accessibility, content and performance audit of your built site, with the source file to fix for every finding.",
+        weight: 11,
+        raw_content: include_str!("../seite-sh/content/docs/audit.md"),
+    }
+}
+
 fn errors() -> DocPage {
     DocPage {
         slug: "errors",
         title: "Error Reference",
-        description: "Every diagnostic code reported by seite check and seite build: what it means, common causes, and how to fix it.",
+        description: "Every diagnostic code reported by seite check and seite build, and every seite audit finding: what it means, common causes, and how to fix it.",
         weight: 12,
         raw_content: include_str!("../seite-sh/content/docs/errors.md"),
     }
@@ -259,8 +270,8 @@ mod tests {
     fn test_all_returns_all_docs() {
         let docs = all();
         assert!(
-            docs.len() >= 17,
-            "Expected at least 17 docs, got {}",
+            docs.len() >= 18,
+            "Expected at least 18 docs, got {}",
             docs.len()
         );
     }
@@ -285,6 +296,7 @@ mod tests {
         assert!(by_slug("configuration").is_some());
         assert!(by_slug("getting-started").is_some());
         assert!(by_slug("cli-reference").is_some());
+        assert!(by_slug("audit").is_some());
     }
 
     #[test]

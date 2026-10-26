@@ -334,7 +334,22 @@ fn schedule_feature_notice(root: &Path) -> Option<Notice> {
     });
     (has_dated && !mentioned).then(|| Notice {
         key: "schedule-feature".into(),
-        text: "Scheduled publishing is available: add `schedule = true` under [build] in seite.toml to keep posts dated in the future out of the build until their date (and `expires:` posts after it). It is off for existing sites; `seite upgrade` then also adds a daily rebuild to an unedited deploy workflow. See https://seite.sh/docs/configuration#scheduled-publishing".into(),
+        text: format!("Scheduled publishing is available: add `schedule = true` under [build] in seite.toml to keep posts dated in the future out of the build until their date (and `expires:` posts after it). It is off for existing sites; `seite upgrade` then also adds a daily rebuild to an unedited deploy workflow. {TIMEZONE_ADVICE} See https://seite.sh/docs/configuration#scheduled-publishing"),
+    })
+}
+
+/// Shared by the schedule notices and the `TIMEZONE_UNSET` directive.
+const TIMEZONE_ADVICE: &str = "Also set `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site], so \"today\" is the same on every machine and in CI.";
+
+/// One-time notice for sites that already use scheduled publishing
+/// (`[build] schedule = true`) without a `[site] timezone` (upgrade never
+/// adds one: the right zone is the author's call).
+fn timezone_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    (config.build.schedule && config.site.timezone.is_none()).then(|| Notice {
+        key: "timezone-unset".into(),
+        text: format!("Scheduled publishing decides what is live by \"today\", which without [site] timezone is each machine's own clock (CI often runs in UTC). {TIMEZONE_ADVICE}"),
     })
 }
 
@@ -775,6 +790,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(theme_notices);
     notices.extend(workflow_schedule_notice(root));
     notices.extend(schedule_feature_notice(root));
+    notices.extend(timezone_notice(root));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();

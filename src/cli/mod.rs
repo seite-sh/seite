@@ -1,6 +1,7 @@
 pub mod access;
 pub mod agent;
 mod agent_instructions;
+pub mod audit;
 pub mod build;
 pub mod check;
 pub mod collection;
@@ -90,6 +91,10 @@ pub enum Command {
     /// Validate config, content, data, templates, and links without building
     /// (renders into a temporary directory; exit code 1 when problems are found)
     Check(check::CheckArgs),
+
+    /// Free SEO, GEO (AI visibility), accessibility, content and performance
+    /// audit of the built site (offline; scratch build, `dist/` untouched)
+    Audit(audit::AuditArgs),
 
     /// Start a local development server
     Serve(serve::ServeArgs),
@@ -187,6 +192,7 @@ mod tests {
         assert!(subcommands.contains(&"init"));
         assert!(subcommands.contains(&"build"));
         assert!(subcommands.contains(&"check"));
+        assert!(subcommands.contains(&"audit"));
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
         assert!(subcommands.contains(&"access"));

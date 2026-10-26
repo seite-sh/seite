@@ -87,6 +87,41 @@ pub fn validate_timezone(tz: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// The machine's IANA time zone, for `seite init` (and `workspace add`) to
+/// write as `[site] timezone`; `None` when it can't be named. See
+/// [`timezone_from`].
+pub fn detect_system_timezone() -> Option<String> {
+    timezone_from(std::env::var("TZ").ok().as_deref(), || {
+        iana_time_zone::get_timezone().ok()
+    })
+}
+
+/// The IANA zone the local clock follows, given `TZ` and the OS setting.
+///
+/// `TZ` wins when set, with libc semantics: empty means UTC; an IANA name,
+/// optionally `:`-prefixed or given as a `.../zoneinfo/<name>` path, is that
+/// zone; anything else (a POSIX rule such as `CET-1CEST`, an unknown name)
+/// gives `None` rather than the OS zone, which the local clock is then not
+/// following. Without `TZ`, the OS setting (via `iana-time-zone`).
+pub fn timezone_from(
+    tz_env: Option<&str>,
+    system: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    let valid = |name: &str| {
+        chrono_tz::Tz::from_str(name)
+            .is_ok()
+            .then(|| name.to_string())
+    };
+    match tz_env {
+        Some(tz) if tz.trim().is_empty() => Some("UTC".to_string()),
+        Some(tz) => {
+            let tz = tz.trim().trim_start_matches(':');
+            valid(tz.rsplit_once("zoneinfo/").map_or(tz, |(_, name)| name))
+        }
+        None => system().and_then(|name| valid(name.trim())),
+    }
+}
+
 /// Today's date in the site's time zone, or the machine's local date when
 /// `[site] timezone` is unset (or invalid). Used both to date new files
 /// (`seite new`, `seite init`, MCP create, the serve REPL) and to decide what
@@ -300,6 +335,32 @@ mod tests {
 
     fn d(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn test_timezone_from_tz_env_and_system() {
+        let none = || -> Option<String> { panic!("TZ set: the OS zone is not consulted") };
+        assert_eq!(
+            timezone_from(Some("Asia/Tokyo"), none).as_deref(),
+            Some("Asia/Tokyo")
+        );
+        assert_eq!(
+            timezone_from(Some(":America/New_York"), none).as_deref(),
+            Some("America/New_York")
+        );
+        assert_eq!(
+            timezone_from(Some("/usr/share/zoneinfo/Europe/Paris"), none).as_deref(),
+            Some("Europe/Paris")
+        );
+        assert_eq!(timezone_from(Some(""), none).as_deref(), Some("UTC"));
+        assert_eq!(timezone_from(Some("CET-1CEST"), none), None);
+        assert_eq!(timezone_from(Some("Not/AZone"), none), None);
+        assert_eq!(
+            timezone_from(None, || Some("Europe/Berlin\n".into())).as_deref(),
+            Some("Europe/Berlin")
+        );
+        assert_eq!(timezone_from(None, || Some("Bogus".into())), None);
+        assert_eq!(timezone_from(None, || None), None);
     }
 
     #[test]

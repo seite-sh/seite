@@ -62,7 +62,7 @@ cookie_consent = true
 | `base_url` | string | `"http://localhost:3000"` | Full base URL for canonical links, sitemap, RSS |
 | `language` | string | `"en"` | Default language code |
 | `author` | string | `""` | Author name for JSON-LD and RSS |
-| `timezone` | string | local time | Time zone that decides "today" for scheduled publishing and for dating new files: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`). Unset: the machine's local date (CI runners use UTC, so set it when the cron build must agree with your local date) |
+| `timezone` | string | local time | Time zone that decides "today" for scheduled publishing and for dating new files: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`). Unset: the machine's local date (CI runners use UTC, so set it when the cron build must agree with your local date). `seite init` writes the detected system zone; `seite upgrade` never adds it (it recommends it once when `schedule = true`), and `seite context` reports `TIMEZONE_UNSET` |
 
 {{% callout(type="warning") %}}
 Set `base_url` to your real domain before deploying. Leaving it as `localhost` will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.

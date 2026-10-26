@@ -2468,6 +2468,7 @@ dependencies = [
  "dialoguer",
  "fs_extra",
  "getrandom 0.4.3",
+ "iana-time-zone",
  "image",
  "indexmap",
  "indicatif",

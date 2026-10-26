@@ -112,7 +112,7 @@ Trust center content files use the standard markdown + YAML frontmatter format. 
 ```yaml
 ---
 title: "Security Overview"
-description: "How Acme Corp protects your data"
+description: "How Acme Corp protects your data: infrastructure, application security, encryption and access control"
 weight: 1                    # controls section ordering (lower = first)
 extra:
   type: overview             # overview | certification | policy | changelog

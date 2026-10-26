@@ -1,7 +1,6 @@
 //! Creating new content files — shared by `seite new` and the MCP server's
 //! `seite_create_content` tool so both produce identical files.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
@@ -21,7 +20,7 @@ pub struct NewContent<'a> {
     pub draft: bool,
     pub weight: Option<i32>,
     /// Arbitrary frontmatter data exposed to templates as `page.extra`.
-    pub extra: HashMap<String, serde_yaml_ng::Value>,
+    pub extra: indexmap::IndexMap<String, serde_yaml_ng::Value>,
     /// Language code for a translation (`about.es.md`). The default language
     /// needs no suffix; other codes must be configured under `[languages]`.
     pub lang: Option<&'a str>,
@@ -401,7 +400,7 @@ mod tests {
     #[test]
     fn test_create_with_all_fields() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let mut extra = HashMap::new();
+        let mut extra = indexmap::IndexMap::new();
         extra.insert(
             "hero".to_string(),
             serde_yaml_ng::Value::String("big".into()),

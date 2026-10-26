@@ -250,6 +250,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "\n# Hide posts dated in the future until their date (and `expires:` posts after it).\n# The generated deploy workflow rebuilds daily so they go live on their own.\nschedule = true\n",
         1,
     );
+    let timezone = content::schedule::detect_system_timezone();
+    let toml_str = with_site_timezone(&toml_str, timezone.as_deref());
+    config.site.timezone = timezone;
     fs::write(root.join("seite.toml"), toml_str)?;
 
     // Write default templates
@@ -286,15 +289,15 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         let fm = content::Frontmatter {
             title: "Hello World".into(),
             date: Some(today_date),
-            description: Some("Welcome to your new site!".into()),
+            description: Some(
+                "Welcome to your new site: how posts work and what to do next with seite.".into(),
+            ),
             tags: vec!["intro".into()],
             draft: false,
             ..Default::default()
         };
         let frontmatter_str = content::generate_frontmatter(&fm);
-        let post_content = format!(
-            "{frontmatter_str}\n\nWelcome to your new site built with **seite**.\n\nEdit this post or create new ones with `seite new post \"My Post\"`.\n"
-        );
+        let post_content = format!("{frontmatter_str}\n\n{STARTER_POST_BODY}");
         fs::write(
             root.join(format!("content/posts/{today}-hello-world.md")),
             post_content,
@@ -308,7 +311,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         let fm = content::Frontmatter {
             title: "v0.1.0".into(),
             date: Some(today_date),
-            description: Some("Initial release".into()),
+            description: Some(
+                "Initial release: the first version of the project and its feature set.".into(),
+            ),
             tags: vec!["new".into()],
             draft: false,
             ..Default::default()
@@ -330,7 +335,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Dark Mode",
                 "planned",
                 1,
-                "Add dark mode support to the application.",
+                "Add a dark color scheme that follows the reader's system setting.",
             ),
             (
                 "API v2",
@@ -342,7 +347,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Initial Release",
                 "done",
                 3,
-                "Ship the first public version.",
+                "Ship the first public version with the core features and documentation.",
             ),
         ];
         for (title, status, weight, description) in &items {
@@ -545,6 +550,46 @@ pub fn starter_for(collections: &[CollectionConfig]) -> &'static str {
         "default"
     }
 }
+
+/// `seite.toml` text with a commented `timezone` line appended to the
+/// `[site]` table: the detected zone, or a commented-out example when there
+/// is none.
+pub(crate) fn with_site_timezone(toml_str: &str, timezone: Option<&str>) -> String {
+    let comment = "# Time zone for \"today\" (scheduled posts, dates of new content). Set, it keeps\n# \"today\" identical on every machine and in CI; unset, each machine uses its own clock.\n";
+    let line = match timezone {
+        Some(tz) => format!("{comment}timezone = \"{tz}\"\n"),
+        None => format!("{comment}# timezone = \"Europe/Berlin\"\n"),
+    };
+    let Some(site) = toml_str.find("[site]\n") else {
+        return toml_str.to_string();
+    };
+    let end = toml_str[site..]
+        .find("\n\n")
+        .map_or(toml_str.len(), |i| site + i + 1);
+    format!("{}{line}{}", &toml_str[..end], &toml_str[end..])
+}
+
+/// Body of the starter post: real guidance, long enough that a fresh site's
+/// `seite audit` doesn't flag its only post as thin content.
+const STARTER_POST_BODY: &str =
+    "Welcome to your new site built with **seite**. This post is a starting point: \
+edit it, replace it, or delete it once you have published something of your own.
+
+## How posts work
+
+Every post is a Markdown file in `content/posts/`. The block between the `---` lines at the top \
+is the frontmatter: the title, the publication date, a short description that search engines and \
+link previews show, and tags that group related posts on their own pages. Everything below it is \
+the post itself, written in plain Markdown with headings, lists, links and images.
+
+## What to do next
+
+1. Create a post with `seite new post \"My Post\"`, or ask your coding agent to write one.
+2. Preview the site while you edit with `seite serve`; the browser reloads on every save.
+3. Run `seite check` to catch broken links and frontmatter mistakes before you publish.
+4. Run `seite audit` for a free SEO, AI-visibility and accessibility report with fixes.
+5. Publish with `seite deploy` when everything looks right.
+";
 
 /// Lines of the "what was created" tree shown after `seite init`.
 fn project_tree_lines(name: &str, collections: &[CollectionConfig]) -> Vec<String> {
@@ -794,7 +839,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Security overview
     if opts.sections.iter().any(|s| s == "overview") {
         let overview = format!(
-            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
+            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data: infrastructure, application security, encryption and access control\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
             ## Our Commitment to Security\n\n\
             At {company}, security is foundational to everything we build. We maintain industry-standard certifications and follow security best practices across our entire platform.\n\n\
             ## Infrastructure Security\n\n\
@@ -804,7 +849,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             ## Data Protection\n\n\
             All customer data is encrypted at rest (AES-256) and in transit (TLS 1.2+). Encryption keys are managed through a dedicated key management service.\n\n\
             ## Access Management\n\n\
-            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n",
+            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n\n\
+            ## Incident Response\n\n\
+            We maintain a documented incident response plan with clear roles and escalation paths. Security events are triaged around the clock, and affected customers are notified promptly with what happened, what data was involved, and what we are doing about it.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/security-overview.md"), overview)?;
@@ -828,7 +875,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - We will keep you informed of our progress\n\
             - We will not take legal action against good-faith researchers\n\n\
             ## Scope\n\n\
-            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n",
+            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n\n\
+            ## Safe Harbor\n\n\
+            Research carried out in good faith under this policy is authorized. Avoid privacy violations, data destruction and service disruption, give us reasonable time to fix an issue before you disclose it, and we will work with you to understand and resolve it quickly.\n",
             company = opts.company,
         );
         fs::write(
@@ -840,7 +889,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Data Processing Agreement
     if opts.sections.iter().any(|s| s == "dpa") {
         let dpa = format!(
-            "---\ntitle: \"Data Processing\"\ndescription: \"Data processing practices at {company}\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
+            "---\ntitle: \"Data Processing\"\ndescription: \"How {company} processes, protects and retains customer data, and how to request a DPA\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
             ## Data Processing Overview\n\n\
             {company} processes customer data in accordance with applicable data protection regulations.\n\n\
             ## Data Processing Agreement\n\n\
@@ -851,7 +900,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - Usage data (application logs, analytics)\n\
             - Customer-provided content\n\n\
             ## Data Retention\n\n\
-            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n",
+            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n\n\
+            ## Subprocessors\n\n\
+            We use a small number of subprocessors to deliver the service. Each one is bound by a written agreement with data protection terms at least as strict as ours, and the current list is published on this trust center.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/data-processing.md"), dpa)?;
@@ -872,7 +923,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 _ => format!("{} has {name} certification on its roadmap.", opts.company),
             };
             let cert_page = format!(
-                "---\ntitle: \"{name}\"\ndescription: \"{desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
+                "---\ntitle: \"{name}\"\ndescription: \"{company}'s {name} status: {desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
                 ## {name}\n\n\
                 {status_text}\n\n\
                 {desc}.\n\n\
@@ -880,7 +931,12 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 <!-- Describe the scope of your certification here -->\n\n\
                 ## Resources\n\n\
                 <!-- Link to reports, certificates, or contact information -->\n\
-                For access to our {name} report, contact security@yourcompany.com.\n",
+                For access to our {name} report, contact security@yourcompany.com.\n\n\
+                ## How We Maintain It\n\n\
+                Compliance is an ongoing program, not a one-time project. We review our controls on a regular schedule, track every finding to resolution, train our team on the policies that apply to their work, and monitor the systems in scope continuously. When our practices change, we update this page and the related documents so customers always see the current state.\n\n\
+                ## Questions\n\n\
+                Security and procurement teams can ask us about this framework at any time. We answer questionnaires, share evidence under NDA where appropriate, and walk through how our controls apply to your use of the service.\n",
+                company = opts.company,
             );
             fs::write(
                 root.join(format!("content/trust/certifications/{slug}.md")),
@@ -1044,5 +1100,30 @@ fn singularize(name: &str) -> &str {
         "pages" => "page",
         "trust" => "trust",
         _ => name,
+    }
+}
+
+#[cfg(test)]
+mod timezone_tests {
+    use super::with_site_timezone;
+
+    #[test]
+    fn test_with_site_timezone_appends_to_site_table() {
+        let toml = "[site]\ntitle = \"T\"\nauthor = \"\"\n\n[build]\nminify = true\n";
+        let out = with_site_timezone(toml, Some("Asia/Tokyo"));
+        assert!(out.contains("author = \"\"\n# Time zone"), "{out}");
+        assert!(
+            out.contains("timezone = \"Asia/Tokyo\"\n\n[build]"),
+            "{out}"
+        );
+        let parsed: toml::Table = toml::from_str(&out).unwrap();
+        assert_eq!(parsed["site"]["timezone"].as_str(), Some("Asia/Tokyo"));
+
+        let out = with_site_timezone(toml, None);
+        assert!(
+            out.contains("# timezone = \"Europe/Berlin\"\n\n[build]"),
+            "{out}"
+        );
+        assert!(!out.contains("\ntimezone ="), "{out}");
     }
 }

@@ -24,8 +24,6 @@ mod page;
 mod stats;
 mod templates;
 
-use std::collections::HashMap;
-
 use super::content_index::{self, IndexedItem};
 use super::protocol::Protocol;
 use super::{JsonRpcError, ServerState};
@@ -108,6 +106,16 @@ pub static TOOLS: &[ToolDef] = &[
         // Renders into a scratch directory that is deleted afterwards.
         annotations: READ_ONLY,
         handler: call_check,
+    },
+    ToolDef {
+        name: "seite_audit",
+        title: "Audit site (SEO, GEO, a11y)",
+        description: "Free offline audit of the built site: SEO (titles, descriptions, canonical, headings, thin/orphan pages, broken #anchors, sitemap, hreflang), GEO/AI visibility (llms.txt, markdown alternates, JSON-LD, robots.txt AI crawlers, Content-Signal), accessibility (lang, alt text, link/button names, labels, skip link, duplicate ids), content (links to drafts/scheduled pages, missing dates) and performance (image size, page weight, render-blocking scripts, lazy loading). Builds into a scratch dir (the output dir is untouched). Returns `summary` {score 0-100, errors, warnings, notices, pages, by_category} and `findings` [{code, severity, category, page_url, file, line, message, hint, docs_url}] with the source file to edit. Fix the findings in their files and re-run once.",
+        input_schema: audit_input_schema,
+        output_schema: Some(audit_output_schema),
+        // Renders into a scratch directory that is deleted afterwards.
+        annotations: READ_ONLY,
+        handler: call_audit,
     },
     ToolDef {
         name: "seite_create_content",
@@ -422,6 +430,77 @@ fn check_output_schema() -> serde_json::Value {
             "diagnostics": { "type": "array", "items": diagnostic_schema() }
         }),
         &["ok", "summary", "diagnostics"],
+    )
+}
+
+fn audit_input_schema() -> serde_json::Value {
+    input_object(
+        serde_json::json!({
+            "categories": {
+                "type": "array",
+                "items": { "type": "string", "enum": ["seo", "geo", "a11y", "content", "perf"] },
+                "description": "Only these categories (default: all)"
+            },
+            "top": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Return at most this many findings, most severe first (default 50; summary counts all)",
+                "default": 50
+            },
+            "min_severity": {
+                "type": "string",
+                "enum": ["error", "warning", "notice"],
+                "description": "Return findings of this severity or worse (default warning; notices are suggestions)",
+                "default": "warning"
+            }
+        }),
+        &[],
+    )
+}
+
+fn audit_output_schema() -> serde_json::Value {
+    let counts = object_schema(
+        serde_json::json!({
+            "errors": { "type": "integer" },
+            "warnings": { "type": "integer" },
+            "notices": { "type": "integer" }
+        }),
+        &["errors", "warnings", "notices"],
+    );
+    let finding = object_schema(
+        serde_json::json!({
+            "code": prop("string", "Stable code, e.g. seo-title-missing (also: `seite explain <code>`)"),
+            "severity": { "type": "string", "enum": ["error", "warning", "notice"] },
+            "category": { "type": "string", "enum": ["seo", "geo", "a11y", "content", "perf"] },
+            "page_url": nullable("string"),
+            "file": nullable("string"),
+            "line": nullable("integer"),
+            "message": { "type": "string" },
+            "hint": { "type": "string" },
+            "docs_url": { "type": "string" }
+        }),
+        &[
+            "code", "severity", "category", "page_url", "file", "line", "message", "hint",
+            "docs_url",
+        ],
+    );
+    object_schema(
+        serde_json::json!({
+            "summary": object_schema(
+                serde_json::json!({
+                    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+                    "errors": { "type": "integer" },
+                    "warnings": { "type": "integer" },
+                    "notices": { "type": "integer" },
+                    "pages": { "type": "integer" },
+                    "by_category": { "type": "object", "additionalProperties": counts }
+                }),
+                &["score", "errors", "warnings", "notices", "pages", "by_category"],
+            ),
+            "findings": { "type": "array", "items": finding },
+            "omitted": prop("integer", "Findings left out by top/min_severity (still counted in summary)")
+        }),
+        &["summary", "findings", "omitted"],
     )
 }
 
@@ -928,6 +1007,53 @@ fn call_check(state: &ServerState, arguments: &serde_json::Value) -> ToolResult 
 }
 
 // ---------------------------------------------------------------------------
+// seite_audit
+// ---------------------------------------------------------------------------
+
+fn call_audit(state: &ServerState, arguments: &serde_json::Value) -> ToolResult {
+    let args = Args::new(
+        "seite_audit",
+        arguments,
+        &["categories", "top", "min_severity"],
+    )?;
+    let top = match args.int("top")? {
+        None => 50,
+        Some(n) => usize::try_from(n).map_err(|_| {
+            ToolError::new(format!("seite_audit: argument 'top' must be >= 0 ({n})"))
+        })?,
+    };
+    let min_severity = match args.str("min_severity")? {
+        None => crate::audit::Severity::Warning,
+        Some(s) => {
+            <crate::audit::Severity as clap::ValueEnum>::from_str(s, true).map_err(|_| {
+                ToolError::new(format!(
+                    "seite_audit: unknown min_severity '{s}' (error, warning, notice)"
+                ))
+            })?
+        }
+    };
+    let mut categories = Vec::new();
+    for name in args.str_array("categories")?.unwrap_or_default() {
+        let category =
+            <crate::audit::Category as clap::ValueEnum>::from_str(&name, true).map_err(|_| {
+                ToolError::new(format!(
+                    "seite_audit: unknown category '{name}' (seo, geo, a11y, content, perf)"
+                ))
+            })?;
+        categories.push(category);
+    }
+    let (_config, paths) = state.site()?;
+    let mut report = crate::audit::run(&crate::audit::AuditOptions {
+        root: &paths.root,
+        dist: None,
+        categories: &categories,
+    })
+    .map_err(|e| ToolError::new(format!("seite_audit: {e}")))?;
+    report.limit(min_severity, Some(top));
+    serde_json::to_value(&report).map_err(|e| ToolError::new(format!("seite_audit: {e}")))
+}
+
+// ---------------------------------------------------------------------------
 // seite_create_content
 // ---------------------------------------------------------------------------
 
@@ -965,8 +1091,8 @@ fn call_create_content(state: &ServerState, arguments: &serde_json::Value) -> To
             ))
         })?),
     };
-    let extra: HashMap<String, serde_yaml_ng::Value> = match args.object("extra")? {
-        None => HashMap::new(),
+    let extra: indexmap::IndexMap<String, serde_yaml_ng::Value> = match args.object("extra")? {
+        None => indexmap::IndexMap::new(),
         Some(map) => map
             .iter()
             .map(|(k, v)| {
@@ -1790,6 +1916,12 @@ mod tests {
             serde_json::json!({ "strict": true }),
         );
         run(&mut state, "seite_build", serde_json::json!({}));
+        run(&mut state, "seite_audit", serde_json::json!({}));
+        run(
+            &mut state,
+            "seite_audit",
+            serde_json::json!({ "categories": ["seo", "a11y"], "top": 1, "min_severity": "notice" }),
+        );
         run(
             &mut state,
             "seite_get_page",

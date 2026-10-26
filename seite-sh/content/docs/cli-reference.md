@@ -12,13 +12,14 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has nineteen subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
+`seite` has twenty subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
 | `init` | Create a new site |
 | `build` | Build the site |
 | `check` | Validate the site without building it |
+| `audit` | Free SEO, AI-visibility, accessibility and performance audit |
 | `serve` | Development server with live reload |
 | `new` | Create content files |
 | `agent` | Open a coding agent in the site |
@@ -68,6 +69,8 @@ seite init <name> [options]
 | `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
 
+`seite.toml` gets `[site] timezone` set to the system's IANA time zone (from `TZ` — empty means UTC; a POSIX rule such as `CET-1CEST` is not an IANA name — else the OS setting; `seite workspace add` does the same), so "today" for scheduled posts is the same on every machine and in CI; when no zone can be detected, the line is written commented out.
+
 If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
 ```bash
@@ -91,7 +94,7 @@ Every site gets an `AGENTS.md` (read by every agent) and the docs for the instal
 | `opencode` (OpenCode) | `opencode.json` (permission defaults), `.opencode/commands/seite.md`, `.opencode/plugins/seite-check.js` |
 | `gemini` (Gemini CLI) | `GEMINI.md` (`@AGENTS.md` import), `.gemini/settings.json` (hooks), `.gemini/commands/seite.toml` |
 
-Codex, Cursor, OpenCode, and Gemini CLI read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
+Codex, Cursor, OpenCode, and Gemini CLI read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 
@@ -165,6 +168,24 @@ Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and
 With `--json`, `data` is `{"diagnostics": [...], "summary": {"errors": n, "warnings": n}}`; on failure the same list is in `error.diagnostics`. With `--external`, `data.external` adds `{found, checked, cached, skipped, broken, unreachable}`.
 
 With `[build] schedule = true`, `seite check` resolves links like `seite build` (scheduled posts are hidden unless `--future`) but still renders scheduled posts, so one that will go live on its own is validated before its date; it also prints how many posts are hidden and when the next goes live (an info note, not a diagnostic).
+
+## seite audit
+
+Free, offline SEO, GEO (AI visibility), accessibility, content and performance audit of the built site. Like `seite check`, it builds into a temporary directory (`dist/` is untouched). Every finding has a stable code (`seo-…`, `geo-…`, `a11y-…`, `content-…`, `perf-…`; `seite explain <code>`), the page, and the source file and line to edit. See [Audit](/docs/audit) for every check, its threshold and the score formula.
+
+```bash
+seite audit [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--category <c>,...` | Only these categories: `seo`, `geo`, `a11y`, `content`, `perf` (repeatable or comma-separated) |
+| `--fail-on <severity>` | Exit 1 when there is a finding of this severity or worse: `error` or `warning` (default: report only, exit 0) |
+| `--dist <dir>` | Audit an existing output directory instead of building (findings point at the generated files; `content` checks are skipped) |
+| `--min-severity <s>` | List only findings of this severity or worse: `error`, `warning`, `notice` (default; also filters `--json`, the summary counts everything) |
+| `--top <n>` | Findings listed per category in the human report (default 10; `--json` has all) |
+
+With `--json`, `data` is `{"summary": {"score", "errors", "warnings", "notices", "pages", "by_category"}, "omitted", "findings": [{"code", "severity", "category", "page_url", "file", "line", "message", "hint", "docs_url"}]}`, sorted deterministically. The MCP tool `seite_audit` returns the same document.
 
 ## seite serve
 
@@ -559,6 +580,7 @@ The output ends with a `DIRECTIVES` list, one `NAME: message` line each:
 | `NO_STOP_HOOK` | No turn-end `seite check` hook is installed: run `seite check` before finishing |
 | `ADDON_SUGGESTION` | The site uses the default or a custom theme and no `impeccable` skill is installed: optionally suggest `seite skill install impeccable` for design work |
 | `CONFIG_INVALID` | `seite.toml` exists but does not load |
+| `TIMEZONE_UNSET` | `[build] schedule = true` but no `[site] timezone`: what is live depends on each machine's clock; add `timezone = "<IANA name>"` |
 
 Outside a seite project, `seite context` says so and exits successfully, so an agent can run it unconditionally.
 
