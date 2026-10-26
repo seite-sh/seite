@@ -3,14 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
-        --geist: 'Geist Mono', var(--mono);
-        --amber: #ffb224;
-        --purple: #8b5cf6;
-        --code-bg: #1a1e26;
     }
 
     @keyframes ri-fade-in {
@@ -29,7 +23,7 @@
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
-        font-family: var(--geist);
+        font-family: inherit;
         font-size: 0.75rem;
         color: var(--text-dim);
         text-decoration: none;
@@ -39,11 +33,10 @@
     .ri-back:hover { color: var(--green); text-decoration: none; }
 
     .ri-page article > h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin-bottom: 0.75rem;
         line-height: 1.1;
@@ -57,37 +50,37 @@
         margin-bottom: 1.5rem;
     }
     .ri-badge {
-        font-family: var(--geist);
-        font-size: 0.68rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
         padding: 0.2rem 0.7rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
     .ri-badge--planned {
-        background: rgba(139,92,246,0.08);
-        border: 1px solid rgba(139,92,246,0.2);
-        color: var(--purple);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
     }
     .ri-badge--in-progress {
-        background: rgba(255,178,36,0.08);
-        border: 1px solid rgba(255,178,36,0.2);
-        color: var(--amber);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--warning);
     }
     .ri-badge--done {
-        background: rgba(0,255,135,0.08);
-        border: 1px solid rgba(0,255,135,0.2);
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
         color: var(--green);
     }
     .ri-badge--cancelled {
-        background: rgba(107,114,128,0.08);
-        border: 1px solid rgba(107,114,128,0.2);
-        color: #6b7280;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
     }
 
     .ri-summary {
-        font-size: 0.92rem;
+        font-size: 0.9rem;
         color: var(--text-muted);
         margin-bottom: 2.5rem;
         line-height: 1.65;
@@ -96,7 +89,8 @@
 
     /* Content */
     .ri-page .content h2 {
-        font-size: 1.25rem;
+        font-family: var(--display);
+        font-size: 1.35rem;
         font-weight: 700;
         color: var(--heading);
         margin: 3rem 0 1rem;
@@ -125,18 +119,18 @@
     .ri-page .content strong { color: var(--strong); }
 
     .ri-page .content code {
-        font-family: var(--geist);
+        font-family: var(--mono);
         font-size: 0.82em;
-        background: rgba(0,255,135,0.06);
-        border: 1px solid rgba(0,255,135,0.15);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
         padding: 0.12em 0.38em;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         color: var(--green);
     }
     .ri-page .content pre {
-        background: var(--code-bg) !important;
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 10px;
+        background: var(--term-bg) !important;
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius-lg);
         padding: 1.25rem 1.5rem;
         overflow-x: auto;
         margin-bottom: 1.5rem;
@@ -145,8 +139,8 @@
         background: none !important;
         border: none;
         padding: 0;
-        font-family: var(--geist);
-        font-size: 0.82rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
         color: var(--text);
         line-height: 1.85;
     }

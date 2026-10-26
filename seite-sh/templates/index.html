@@ -1,873 +1,626 @@
 {% extends "base.html" %}
 {% block title %}{{ site.title }} — AI-native static site generator{% endblock %}
 
+{% block announce %}
+{% set_global latest = false %}
+{% for c in collections %}{% if c.name == "changelog" and c.items | length > 0 %}{% set_global latest = c.items | first %}{% endif %}{% endfor %}
+{% if latest %}
+<div class="announce">
+    <a href="{{ lang_prefix }}{{ latest.url }}" class="plausible-event-name=AnnounceRelease">seite {{ latest.title }} is out. Read the release notes <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+</div>
+{% endif %}
+{% endblock %}
+
 {% block extra_css %}
 <style>
-    /* ── Fonts ─────────────────────────────────────── */
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
+    .home .container { max-width: calc(1040px + 3rem); }
+    .mono { font-family: var(--mono); font-size: 0.9em; }
 
-    :root,
-    [data-theme="dark"] {
-        --display: 'Instrument Sans', system-ui, -apple-system, sans-serif;
-        --sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
-        --cyan: #06b6d4;
-        /* Terminal surfaces: a step off the page so panels read as objects */
-        --term-bg: #121211;
-        --term-bar: #191918;
-        --term-border: rgba(255, 255, 255, 0.09);
-        --term-text: #e6e4df;
-        --term-dim: #8f8c86;
-        --term-ok: #5eead4;
-        --term-flag: #67e8f9;
-        --term-prompt: #2dd4bf;
-        --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    [data-theme="light"] {
-        --term-bg: #1d1b18;
-        --term-bar: #26241f;
-        --term-border: rgba(0, 0, 0, 0.12);
-    }
-
-    body { font-family: var(--sans); }
-
-    ::selection { background: rgba(20, 184, 166, 0.28); color: var(--heading); }
-
-    .inline-code {
-        font-family: var(--mono);
-        font-size: 0.85em;
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        color: var(--green);
-        border: 1px solid var(--green-border);
-    }
-
-    /* ── Hero ──────────────────────────────────────── */
-    .hero { padding: 5.5rem 0 3rem; }
-
-    .hero-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-        gap: 4rem;
-        align-items: center;
-    }
-
-    .hero h1 {
-        font-family: var(--display);
-        font-size: clamp(2.4rem, 3.4vw, 3.25rem);
-        font-weight: 700;
-        letter-spacing: -0.035em;
-        line-height: 1.06;
-        color: var(--heading);
-        margin: 0 0 1.5rem;
-        text-wrap: balance;
-    }
-    .hero h1 em {
-        font-style: normal;
-        color: var(--green);
-    }
-
-    .hero-sub {
-        font-size: 1.1rem;
-        color: var(--text-muted);
-        max-width: 34rem;
-        margin: 0 0 2.25rem;
-        line-height: 1.65;
-        text-wrap: pretty;
-    }
-
-    .hero-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-    }
-
-    /* Install command: one control, copy button inside */
-    .install-bar {
+    /* ── Buttons ─────────────────────────────────── */
+    .btn {
         display: inline-flex;
         align-items: center;
-        gap: 0.75rem;
-        margin-top: 1.75rem;
-        padding: 0.35rem 0.35rem 0.35rem 1rem;
-        border: 1px solid var(--border-light);
-        border-radius: 10px;
-        max-width: 100%;
-    }
-    .install-cmd {
-        font-family: var(--mono);
-        font-size: 0.8rem;
-        color: var(--text);
-        user-select: all;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-    }
-    .install-cmd span { color: var(--green); user-select: none; }
-    .install-copy {
-        flex-shrink: 0;
-        font-family: var(--display);
-        font-size: 0.8rem;
+        gap: 0.5rem;
+        min-height: 44px;
+        padding: 0 1.15rem;
+        border-radius: var(--radius-sm);
+        font-size: 1rem;
         font-weight: 600;
-        color: var(--text-muted);
-        background: var(--bg-raised);
-        border: 1px solid var(--border);
-        border-radius: 7px;
-        min-height: 34px;
-        padding: 0 0.8rem;
-        cursor: pointer;
-        transition: color 0.15s, border-color 0.15s;
-    }
-    .install-copy:hover { color: var(--green); border-color: var(--green-border); }
-
-    .hero-meta {
-        margin-top: 1rem;
-        font-size: 0.82rem;
-        color: var(--text-dim);
-    }
-
-    /* ── Works-with row ──────────────────────────────── */
-    .hero-tech {
-        display: flex;
-        align-items: baseline;
-        gap: 1.5rem;
-        flex-wrap: wrap;
-        margin-top: 4rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid var(--border);
-        font-size: 0.9rem;
-    }
-    .hero-tech-label { color: var(--text-dim); }
-    .hero-tech-items {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.4rem 1.5rem;
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        color: var(--text);
-        font-weight: 500;
-    }
-
-    /* ── Buttons ──────────────────────────────────── */
-    .btn-primary,
-    .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        min-height: 46px;
-        padding: 0 1.5rem;
-        border-radius: 10px;
-        font-family: var(--display);
-        font-size: 0.95rem;
         text-decoration: none;
-        transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.25s var(--ease-out);
+        transition: opacity 0.15s, border-color 0.15s;
     }
-    .btn-primary {
-        background: var(--green);
-        color: #04110f;
-        font-weight: 650;
-    }
-    .btn-primary:hover {
-        text-decoration: none;
-        box-shadow: 0 6px 20px -6px rgba(20, 184, 166, 0.55);
-    }
-    [data-theme="light"] .btn-primary { background: #0F766E; color: #ffffff; }
-    [data-theme="light"] .btn-primary:hover { background: #0c5f59; box-shadow: 0 6px 20px -8px rgba(15, 118, 110, 0.5); }
+    .btn:hover { text-decoration: none; }
+    .btn-ink { background: var(--ink); color: var(--on-ink); }
+    .btn-ink:hover { opacity: 0.85; }
+    .btn-line { border: 1px solid var(--border-light); color: var(--heading); }
+    .btn-line:hover { border-color: var(--text-dim); }
+    .btn svg { flex-shrink: 0; }
+    .arr { display: inline-block; vertical-align: -0.15em; }
 
-    .btn-secondary {
-        color: var(--text);
-        font-weight: 500;
-        border: 1px solid var(--border-light);
-    }
-    .btn-secondary:hover {
-        text-decoration: none;
-        border-color: var(--text-dim);
-        color: var(--heading);
-    }
-    .btn-secondary svg { flex-shrink: 0; }
-
-    /* ── Terminal ───────────────────────────────────── */
-    .terminal-wrap {
-        border-radius: 14px;
-        overflow: hidden;
-        border: 1px solid var(--term-border);
+    /* ── Terminal panel ──────────────────────────── */
+    .term {
         background: var(--term-bg);
-        box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.55), 0 12px 24px -16px rgba(0, 0, 0, 0.35);
-    }
-    [data-theme="light"] .terminal-wrap {
-        box-shadow: 0 30px 60px -30px rgba(60, 45, 30, 0.35), 0 12px 24px -16px rgba(60, 45, 30, 0.2);
-    }
-    .terminal-bar {
-        background: var(--term-bar);
-        padding: 0.7rem 1rem;
-        display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    .t-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.16); }
-    .terminal-title {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--term-dim);
-        margin-left: auto;
-    }
-    .terminal-body {
-        padding: 1.4rem 1.5rem 1.6rem;
-        font-family: var(--mono);
-        font-size: 0.8rem;
-        line-height: 1.9;
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius);
+        overflow: hidden;
         color: var(--term-text);
     }
-    .t-line { display: flex; gap: 0.6rem; min-height: 1.9em; }
-    .t-prompt { color: var(--term-prompt); user-select: none; flex-shrink: 0; }
+    .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.55rem 0.8rem;
+        background: var(--term-bar);
+        border-bottom: 1px solid var(--term-rule);
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--term-dim);
+    }
+    .term-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--term-rule); }
+    .term-title { margin-left: 0.5rem; }
+    .term-body {
+        padding: 1rem 1.1rem 1.2rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        line-height: 1.85;
+        letter-spacing: -0.01em;
+    }
+    .term-body .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .t-prompt { color: var(--term-ok); user-select: none; }
     .t-flag { color: var(--term-flag); }
     .t-ok { color: var(--term-ok); }
     .t-dim { color: var(--term-dim); }
-    .t-gap { height: 0.6rem; }
+    .caret {
+        display: inline-block;
+        width: 0.55em;
+        height: 1.1em;
+        vertical-align: -0.2em;
+        background: var(--term-ok);
+        animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
 
-    /* The page's one authored moment: the session plays out line by line */
-    @keyframes type-line {
-        from { opacity: 0; transform: translateY(4px); filter: blur(2px); }
-        to { opacity: 1; transform: none; filter: none; }
+    /* ── Hero ────────────────────────────────────── */
+    .hero { padding: 4.5rem 0 3.5rem; }
+    .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+        gap: 3rem;
+        align-items: start;
     }
-    @media (prefers-reduced-motion: no-preference) {
-        .t-line { animation: type-line 0.4s var(--ease-out) backwards; }
-        .t-line:nth-child(1) { animation-delay: 0.3s; }
-        .t-line:nth-child(2) { animation-delay: 0.7s; }
-        .t-line:nth-child(3) { animation-delay: 0.85s; }
-        .t-line:nth-child(5) { animation-delay: 1.4s; }
-        .t-line:nth-child(6) { animation-delay: 1.8s; }
-        .t-line:nth-child(7) { animation-delay: 2.4s; }
-        .t-line:nth-child(9) { animation-delay: 3.0s; }
-        .t-line:nth-child(10) { animation-delay: 3.4s; }
-        .t-line:nth-child(11) { animation-delay: 3.9s; }
-    }
-
-    /* ── Shared section styles ─────────────────────── */
-    .section {
-        padding: 6rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .section-title {
+    .hero h1 {
         font-family: var(--display);
-        font-size: clamp(2rem, 4vw, 3rem);
-        font-weight: 700;
-        letter-spacing: -0.035em;
+        font-weight: 800;
+        font-size: clamp(2.5rem, 4.4vw, 3.4rem);
+        line-height: 1.02;
+        letter-spacing: -0.025em;
         color: var(--heading);
-        line-height: 1.08;
         text-wrap: balance;
     }
-    .section-sub {
+    .hero h1 em { font-style: normal; color: var(--green); }
+    .hero-sub {
+        margin-top: 1.25rem;
         font-size: 1.05rem;
+        line-height: 1.6;
         color: var(--text-muted);
-        max-width: 36rem;
-        line-height: 1.65;
-        margin-top: 1rem;
+        max-width: 31rem;
         text-wrap: pretty;
     }
-    .section-header { margin-bottom: 3.5rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.75rem; }
 
-    /* ── Agent showcase ──────────────────────────── */
-    .agent-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 4rem;
+    .install { margin-top: 2rem; max-width: 31rem; }
+    .install-label {
+        display: flex;
         align-items: center;
-    }
-
-    .agent-flow { list-style: none; margin: 0; padding: 0; counter-reset: flow; }
-    .flow-step {
-        counter-increment: flow;
-        display: grid;
-        grid-template-columns: 2rem minmax(0, 1fr);
-        gap: 0.5rem;
-        padding: 1.5rem 0;
-    }
-    .flow-step:first-child { padding-top: 0; }
-    .flow-step:not(:last-child) { border-bottom: 1px solid var(--border); }
-    .flow-step::before {
-        content: counter(flow);
-        font-family: var(--mono);
-        font-size: 0.85rem;
-        color: var(--green);
-        line-height: 1.6;
-    }
-    .flow-body h3 {
-        font-family: var(--display);
-        font-size: 1.1rem;
+        justify-content: space-between;
+        font-size: 0.9rem;
         font-weight: 600;
         color: var(--heading);
-        margin-bottom: 0.35rem;
-        letter-spacing: -0.01em;
+        margin-bottom: 0.5rem;
     }
-    .flow-body p {
-        font-size: 0.92rem;
+    .install-tabs { display: flex; gap: 0.25rem; }
+    .install-tabs button,
+    .agent-tabs button {
+        font: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
         color: var(--text-muted);
-        line-height: 1.65;
+        background: none;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        min-height: 28px;
+        padding: 0 0.55rem;
+        cursor: pointer;
     }
-
-    /* Agent output shown as the diff you'd review */
-    .agent-visual .terminal-body { font-size: 0.78rem; line-height: 1.8; }
-    .diff-line { display: flex; gap: 0.9rem; }
-    .diff-flag { color: var(--term-ok); width: 1ch; flex-shrink: 0; }
-    .diff-path { overflow-wrap: anywhere; }
-    .diff-line--quiet { color: var(--term-dim); }
-    .diff-line--quiet .diff-flag { color: var(--term-dim); }
-    .diff-preview {
-        margin: 0.35rem 0 0.9rem calc(1ch + 0.9rem);
-        padding: 0.6rem 0.85rem;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.04);
+    .install-tabs button[aria-selected="true"] { color: var(--heading); border-color: var(--border-light); }
+    .install-tabs button:hover { color: var(--heading); }
+    .install-cmd {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: var(--term-bg);
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius-sm);
+        padding: 0.3rem 0.3rem 0.3rem 0.9rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
         color: var(--term-text);
     }
-    .diff-preview .fp-key { color: var(--term-flag); }
-    .diff-note { margin-top: 1rem; color: var(--term-dim); }
-
-    /* ── Features: a spec sheet, not a card wall ──── */
-    .feature-list { list-style: none; margin: 0; padding: 0; }
-    .feature-row {
-        display: grid;
-        grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-        gap: 1rem 4rem;
-        padding: 2rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .feature-row:last-child { border-bottom: 1px solid var(--border); }
-    .feature-row h3 {
-        font-family: var(--display);
-        font-size: clamp(1.25rem, 2vw, 1.5rem);
+    .install-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; user-select: all; scrollbar-width: none; }
+    .install-cmd code::-webkit-scrollbar { display: none; }
+    .copy {
+        flex-shrink: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 0.75rem;
         font-weight: 600;
-        letter-spacing: -0.02em;
-        line-height: 1.25;
+        color: var(--term-text);
+        background: var(--term-bar);
+        border: 1px solid var(--term-rule);
+        border-radius: var(--radius-sm);
+        min-height: 32px;
+        padding: 0 0.7rem;
+        cursor: pointer;
+    }
+    .copy:hover { background: var(--term-rule); }
+
+    /* Agent panel */
+    .agent-panel { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; background: var(--bg-card); }
+    .agent-panel-head { margin-bottom: 0.75rem; padding: 0 0.15rem; }
+    .agent-panel-head strong, .agent-panel-head span { display: block; }
+    .agent-panel-head strong { font-size: 0.9rem; color: var(--heading); }
+    .agent-panel-head span { font-size: 0.75rem; color: var(--text-dim); }
+    .agent-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 0.75rem; }
+    .agent-tabs button { border-radius: 0; border: 0; border-left: 1px solid var(--border); min-height: 34px; padding: 0 0.25rem; white-space: nowrap; }
+    .agent-tabs button:first-child { border-left: 0; }
+    .agent-tabs button[aria-selected="true"] { background: var(--ink); color: var(--on-ink); }
+    .agent-tabs button:hover:not([aria-selected="true"]) { color: var(--heading); background: var(--bg-raised); }
+    .agent-panel .term-body { min-height: 16rem; }
+    .panel-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.6rem; padding: 0 0.15rem; font-size: 0.75rem; color: var(--text-dim); }
+    .replay { font: inherit; font-size: 0.75rem; color: var(--text-muted); background: none; border: 1px solid var(--border-light); border-radius: var(--radius-sm); min-height: 28px; padding: 0 0.65rem; cursor: pointer; }
+    .replay:hover { color: var(--heading); }
+
+    /* Works with */
+    .works { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 1.25rem 0; }
+    .works-inner { display: flex; align-items: center; gap: 0.75rem 2rem; flex-wrap: wrap; }
+    .works-label { font-size: 0.75rem; color: var(--text-dim); }
+    .works ul { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; list-style: none; margin: 0; padding: 0; }
+    .works li { font-family: var(--display); font-weight: 700; font-size: 1rem; color: var(--heading); letter-spacing: -0.01em; }
+    .works .sep { width: 1px; height: 1.1rem; background: var(--border-light); }
+
+    /* ── Sections ────────────────────────────────── */
+    .sec { padding: 5.5rem 0; }
+    .sec + .sec { border-top: 1px solid var(--border); }
+    .sec-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem 3.5rem; align-items: end; margin-bottom: 2.5rem; }
+    .sec h2 {
+        font-family: var(--display);
+        font-weight: 800;
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        line-height: 1.04;
+        letter-spacing: -0.025em;
         color: var(--heading);
         text-wrap: balance;
     }
-    .feature-row p {
-        font-size: 0.98rem;
-        color: var(--text-muted);
-        line-height: 1.7;
-        max-width: 38rem;
-    }
-    .feature-row p code {
+    .sec h2 span { color: var(--text-dim); }
+    .sec-lede { font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 30rem; text-wrap: pretty; }
+    .tool p code, .feat p code {
         font-family: var(--mono);
-        font-size: 0.85em;
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        color: var(--green);
-        border: 1px solid var(--green-border);
-        background: transparent;
+        font-size: 0.8em;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.05em 0.3em;
+        color: var(--heading);
         -webkit-box-decoration-break: clone;
         box-decoration-break: clone;
     }
 
-    /* ── Comparison ───────────────────────────────── */
-    .compare-columns {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 1.5rem;
-    }
-    .compare-col {
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 2rem;
-    }
-    .compare-col--after {
-        border-color: var(--green-border);
-        background: var(--green-dim);
-    }
-    .compare-col-label {
-        font-family: var(--display);
-        font-size: 1rem;
-        font-weight: 600;
-        color: var(--text-muted);
-        margin-bottom: 1.25rem;
-    }
-    .compare-col--after .compare-col-label { color: var(--heading); }
-    .compare-list {
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-    }
-    .compare-list li {
-        font-size: 0.92rem;
-        color: var(--text-muted);
-        display: flex;
-        align-items: baseline;
-        gap: 0.6rem;
-        line-height: 1.5;
-        padding: 0.65rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .compare-col--after .compare-list li { color: var(--text); }
-    .compare-list li .compare-icon {
-        flex-shrink: 0;
-        align-self: center;
-        color: var(--text-dim);
-    }
-    .compare-col--after .compare-list li .compare-icon { color: var(--green); }
-    .compare-list li .compare-tool {
+    /* Four tools */
+    .tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .tool { padding: 1.4rem 1.25rem 1.25rem; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+    .tool:first-child { border-left: 0; }
+    .tool h3 { font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--heading); }
+    .tool .replaces { margin-top: 0.25rem; font-size: 0.9rem; line-height: 1.45; color: var(--text-dim); }
+    .tool p { margin-top: 0.85rem; font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); flex: 1; }
+    .tool .cmd {
+        margin-top: 1.1rem;
         font-family: var(--mono);
         font-size: 0.75rem;
-        color: var(--text-dim);
-        margin-left: auto;
-        text-align: right;
-        padding-left: 0.75rem;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.45rem 0.6rem;
+        color: var(--heading);
+        white-space: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
     }
-    .compare-col--after .compare-list li .compare-tool { color: var(--green); }
+    .tool .cmd span { color: var(--green); user-select: none; }
 
-    /* ── Quickstart ────────────────────────────────── */
-    .quickstart-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-        gap: 4rem;
-        align-items: start;
-    }
-    .code-block-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.45rem 0.6rem 0.45rem 1.1rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        background: var(--term-bar);
-    }
-    .code-block-title {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--term-dim);
-    }
-    .copy-btn {
-        font-family: var(--display);
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--term-dim);
+    /* A minute with seite */
+    .walk { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 2.5rem; align-items: start; }
+    .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+    .step button {
+        font: inherit;
+        color: inherit;
+        text-align: left;
         background: none;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 6px;
-        min-height: 30px;
-        padding: 0 0.7rem;
-        cursor: pointer;
-        transition: color 0.15s, border-color 0.15s;
-    }
-    .copy-btn:hover { color: var(--term-ok); border-color: rgba(94, 234, 212, 0.4); }
-    .c-comment { color: var(--term-dim); }
-    .c-cmd { color: var(--term-ok); }
-    .c-flag { color: var(--term-flag); }
-    .c-blank { height: 0.6rem; }
-
-    .steps-list {
-        list-style: none;
-        counter-reset: step-counter;
-        display: flex;
-        flex-direction: column;
-        gap: 1.75rem;
-    }
-    .step-item {
-        counter-increment: step-counter;
         display: grid;
         grid-template-columns: 2rem minmax(0, 1fr);
-        gap: 0.5rem;
+        gap: 0.15rem 0.5rem;
+        width: 100%;
+        padding: 0.8rem 0.9rem;
+        border-radius: var(--radius);
+        cursor: pointer;
+        border: 1px solid transparent;
     }
-    .step-item::before {
-        content: counter(step-counter);
-        font-family: var(--mono);
-        font-size: 0.85rem;
-        color: var(--green);
-        line-height: 1.6;
-    }
-    .step-body strong {
-        color: var(--heading);
-        font-family: var(--display);
-        font-size: 1.05rem;
-        font-weight: 600;
-        display: block;
-        margin-bottom: 0.3rem;
-        letter-spacing: -0.01em;
-    }
-    .step-body span {
-        color: var(--text-muted);
-        font-size: 0.92rem;
-        line-height: 1.65;
-    }
-    .step-body code {
-        font-family: var(--mono);
-        font-size: 0.85em;
-        border: 1px solid var(--green-border);
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        color: var(--green);
-        background: transparent;
-        overflow-wrap: anywhere;
-    }
+    .step button:hover { background: var(--bg-raised); }
+    .step button[aria-pressed="true"] { background: var(--bg-raised); border-color: var(--border); }
+    .step-n { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); line-height: 1.6rem; }
+    .step button[aria-pressed="true"] .step-n { color: var(--green); }
+    .step-t { font-weight: 600; font-size: 1rem; color: var(--heading); line-height: 1.6rem; }
+    .step-c { grid-column: 2; font-family: var(--mono); font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+    .step-d { grid-column: 2; display: none; font-size: 0.9rem; line-height: 1.55; color: var(--text-muted); margin-top: 0.4rem; }
+    .step button[aria-pressed="true"] .step-d { display: block; }
+    .walk .term-body { min-height: 10.5rem; }
 
-    /* ── CTA section ──────────────────────────────── */
-    .cta-section {
-        text-align: center;
-        padding: 7rem 0 6rem;
-        border-top: 1px solid var(--border);
-    }
-    .cta-section h2 {
-        font-family: var(--display);
-        font-size: clamp(2.2rem, 4.6vw, 3.8rem);
-        font-weight: 700;
-        letter-spacing: -0.035em;
-        color: var(--heading);
-        margin: 0 auto 1.25rem;
-        line-height: 1.06;
-        max-width: 18ch;
-        text-wrap: balance;
-    }
-    .cta-sub {
-        color: var(--text-muted);
-        margin: 0 auto 2.5rem;
-        font-size: 1.1rem;
-        max-width: 32rem;
-        line-height: 1.65;
-        text-wrap: pretty;
-    }
-    .cta-section .hero-actions { justify-content: center; }
-    .dogfood-line {
-        margin-top: 2.5rem;
-        font-size: 0.85rem;
-        color: var(--text-dim);
-    }
+    /* Release + stats */
+    .release { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3.5rem; align-items: start; }
+    .release p { margin-top: 1rem; font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 30rem; }
+    .release p.release-meta { margin-top: 0.6rem; font-size: 0.9rem; color: var(--text-dim); }
+    .release p.release-desc { color: var(--heading); font-size: 1.05rem; }
+    .release .hero-actions { margin-top: 1.5rem; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 0; }
+    .stat { padding: 1.25rem 1.3rem; border-top: 1px solid var(--border); }
+    .stat:nth-child(-n+2) { border-top: 0; }
+    .stat:nth-child(even) { border-left: 1px solid var(--border); }
+    .stat dt { font-size: 0.9rem; font-weight: 500; color: var(--text-muted); }
+    .stat dd { margin: 0.35rem 0 0; }
+    .stat .num { display: block; font-family: var(--display); font-weight: 800; font-size: 2.1rem; letter-spacing: -0.03em; color: var(--heading); line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stat .note { display: block; margin-top: 0.3rem; font-size: 0.9rem; line-height: 1.45; color: var(--text-muted); }
 
-    /* ── Responsive ───────────────────────────────── */
-    @media (max-width: 900px) {
-        .hero { padding: 3.5rem 0 2.5rem; }
-        .hero-grid,
-        .agent-grid,
-        .quickstart-grid { grid-template-columns: minmax(0, 1fr); gap: 3rem; }
-        .hero h1 { font-size: clamp(2.2rem, 7vw, 3.2rem); }
-        .hero-tech { margin-top: 3rem; }
-        .feature-row { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; padding: 1.6rem 0; }
-    }
+    /* Everything else */
+    .feats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 3.5rem; list-style: none; margin: 0; padding: 0; }
+    .feat { padding: 1.5rem 0; border-top: 1px solid var(--border); }
+    .feat h3 { font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--heading); line-height: 1.3; }
+    .feat p { margin-top: 0.5rem; font-size: 0.9rem; line-height: 1.65; color: var(--text-muted); }
 
-    @media (max-width: 768px) {
-        .section { padding: 4rem 0; }
-        .section-header { margin-bottom: 2.5rem; }
-        .cta-section { padding: 4.5rem 0 4rem; }
-        .compare-columns { grid-template-columns: minmax(0, 1fr); }
-        .compare-col { padding: 1.5rem; }
-    }
+    /* Close */
+    .close { text-align: center; padding: 6rem 0 5rem; }
+    .close h2 { margin: 0 auto; max-width: 20ch; }
+    .close .sec-lede { margin: 1rem auto 0; }
+    .close .hero-actions { justify-content: center; }
+    .dogfood { margin-top: 2rem; font-size: 0.9rem; color: var(--text-dim); }
 
-    @media (max-width: 600px) {
-        .install-bar { display: flex; }
-        .terminal-body { padding: 1.1rem 1.1rem 1.3rem; font-size: 0.74rem; }
-        .hero-actions > a { flex: 1 1 auto; justify-content: center; }
-        .compare-list li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: 0.6rem; row-gap: 0.15rem; }
-        .compare-list li .compare-tool { grid-column: 2; margin-left: 0; padding-left: 0; text-align: left; }
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 960px) {
+        .hero-grid, .walk, .release, .sec-head { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+        .sec-head { gap: 1rem; }
+        .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tool:nth-child(3) { border-left: 0; }
+        .tool:nth-child(n+3) { border-top: 1px solid var(--border); }
+        .walk-out { order: -1; position: sticky; top: 64px; z-index: 2; background: var(--bg); padding-bottom: 0.5rem; }
+    }
+    @media (max-width: 640px) {
+        .hero { padding: 3rem 0 2.5rem; }
+        .sec { padding: 4rem 0; }
+        .tools, .feats { grid-template-columns: minmax(0, 1fr); }
+        .tool { border-left: 0; border-top: 1px solid var(--border); }
+        .tool:first-child { border-top: 0; }
+        .agent-tabs button { font-size: 0.75rem; padding: 0 0.2rem; }
+        .works .sep { display: none; }
+        .hero-actions .btn { flex: 1 1 auto; justify-content: center; }
+        .install-cmd { align-items: flex-start; }
+        .install-cmd code { white-space: normal; overflow-wrap: anywhere; padding: 0.45rem 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .caret { animation: none; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
+{% set_global latest = false %}
+{% for c in collections %}{% if c.name == "changelog" and c.items | length > 0 %}{% set_global latest = c.items | first %}{% endif %}{% endfor %}
+<div class="home">
 
 <!-- ─── Hero ──────────────────────────────────────── -->
 <section class="hero">
-    <div class="container">
-        <div class="hero-grid">
-            <div class="hero-content">
-                <h1>
-                    {{ page.extra.hero_headline | default(value="Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint.") | safe }}
-                </h1>
-
-                <p class="hero-sub">{{ page.extra.hero_sub | default(value=page.description) }}</p>
-
-                <div class="hero-actions">
-                    <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStarted">{{ t.get_started | default(value="Get started") }} →</a>
-                    <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHub" rel="noopener noreferrer">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                        {{ t.view_on_github | default(value="GitHub") }}
-                    </a>
-                </div>
-
-                <div class="install-bar">
-                    <code class="install-cmd"><span>$ </span>curl -fsSL seite.sh/install.sh | sh</code>
-                    <button type="button" class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy';}.bind(this),2000);}.bind(this)).catch(function(){});">Copy</button>
-                </div>
-
-                <p class="hero-meta">{{ page.extra.hero_badge | default(value="Built in Rust · AI-native · Open source") }}</p>
+    <div class="container hero-grid">
+        <div>
+            <h1>{{ page.extra.hero_headline | default(value="Your coding agent can build and manage your website. <em>No new subscription required.</em>") | safe }}</h1>
+            <p class="hero-sub">{{ page.extra.hero_sub | default(value=page.description) }}</p>
+            <div class="hero-actions">
+                <a href="{{ lang_prefix }}/docs/getting-started" class="btn btn-ink plausible-event-name=GetStarted">Read Getting Started <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+                <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn btn-line plausible-event-name=ViewGitHub" rel="noopener noreferrer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    {{ t.view_on_github | default(value="GitHub") }}
+                </a>
             </div>
 
-            <div class="hero-terminal">
-                <div class="terminal-wrap" role="img" aria-label="seite CLI demonstration: init a site, have the agent write a post, deploy">
-                    <div class="terminal-bar" aria-hidden="true">
-                        <span class="t-dot"></span>
-                        <span class="t-dot"></span>
-                        <span class="t-dot"></span>
-                        <span class="terminal-title">~/myblog</span>
+            <div class="install">
+                <div class="install-label">
+                    <span>Install seite</span>
+                    <div class="install-tabs" role="tablist" aria-label="Operating system">
+                        <button type="button" role="tab" aria-selected="true" data-cmd="curl -fsSL https://seite.sh/install.sh | sh">macOS &amp; Linux</button>
+                        <button type="button" role="tab" aria-selected="false" data-cmd="irm https://seite.sh/install.ps1 | iex">Windows</button>
                     </div>
-                    <div class="terminal-body" aria-hidden="true">
-                        <div class="t-line"><span class="t-prompt">$</span><span>seite init myblog <span class="t-flag">--title "My Blog"</span></span></div>
-                        <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
-                        <div class="t-line"><span class="t-ok">✓ Scaffolded AGENTS.md</span></div>
-                        <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span>seite agent <span class="t-flag">"write a v1.2 release post"</span></span></div>
-                        <div class="t-line"><span class="t-dim">spawning Claude Code…</span></div>
-                        <div class="t-line"><span class="t-ok">✓ content/posts/v1-2-release.md</span></div>
-                        <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span>seite deploy</span></div>
-                        <div class="t-line"><span class="t-dim">building… pre-flight OK</span></div>
-                        <div class="t-line"><span class="t-ok">✓ Deployed → myblog.github.io</span></div>
-                    </div>
+                </div>
+                <div class="install-cmd">
+                    <code id="install-cmd">curl -fsSL https://seite.sh/install.sh | sh</code>
+                    <button type="button" class="copy plausible-event-name=CopyInstall" data-copy-from="install-cmd" aria-label="Copy install command">Copy</button>
                 </div>
             </div>
         </div>
 
-        <div class="hero-tech">
-            <span class="hero-tech-label">Works with</span>
-            <ul class="hero-tech-items">
-                <li>Claude Code</li>
-                <li>GitHub Pages</li>
-                <li>Cloudflare</li>
-                <li>Netlify</li>
-            </ul>
+        <div class="agent-panel">
+            <div class="agent-panel-head">
+                <strong>Hand the site to your agent</strong>
+                <span>same command, four agents</span>
+            </div>
+            <div class="agent-tabs" role="tablist" aria-label="Coding agent">
+                <button type="button" role="tab" aria-selected="true" data-agent="claude">Claude Code</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="codex">Codex</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="opencode">OpenCode</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="cursor">Cursor</button>
+            </div>
+            <div class="term">
+                <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-title">~/mysite</span></div>
+                <div class="term-body" id="agent-term"></div>
+            </div>
+            <div class="panel-foot">
+                <span>Illustrative session, output abridged.</span>
+                <button type="button" class="replay" id="agent-replay">Replay</button>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- ─── Agent showcase ────────────────────────────── -->
-<section class="section" id="agent">
-    <div class="container">
-        <div class="section-header">
-            <h2 class="section-title">Your agent reads the schema.<br>Then writes the content.</h2>
-            <p class="section-sub">Every <code class="inline-code">seite init</code> scaffolds an AGENTS.md so your coding agent knows the project inside out.</p>
-        </div>
+<div class="works">
+    <div class="container works-inner">
+        <span class="works-label">Works with</span>
+        <ul aria-label="Coding agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li><li>Cursor</li></ul>
+        <span class="sep" aria-hidden="true"></span>
+        <ul aria-label="Deploy targets"><li>GitHub Pages</li><li>Cloudflare Pages</li><li>Netlify</li></ul>
+    </div>
+</div>
 
-        <div class="agent-grid">
-            <ol class="agent-flow">
-                <li class="flow-step">
-                    <div class="flow-body">
-                        <h3>Agent reads context</h3>
-                        <p>AGENTS.md contains your site config, collection schemas, frontmatter format, and template variables. The MCP server exposes content inventory and docs.</p>
-                    </div>
-                </li>
-                <li class="flow-step">
-                    <div class="flow-body">
-                        <h3>Agent writes content</h3>
-                        <p>It generates markdown with correct frontmatter, in the right directory, following your naming conventions. You review a diff — nothing hidden.</p>
-                    </div>
-                </li>
-                <li class="flow-step">
-                    <div class="flow-body">
-                        <h3>Build + deploy</h3>
-                        <p>One command builds HTML, markdown, RSS, sitemap, search index, and llms.txt. Another deploys to GitHub Pages, Cloudflare, or Netlify.</p>
-                    </div>
-                </li>
+<!-- ─── One binary ────────────────────────────────── -->
+<section class="sec" id="features">
+    <div class="container">
+        <div class="sec-head">
+            <h2>One binary for the whole site. <span>Your agent drives all of it.</span></h2>
+            <p class="sec-lede">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool, then glue it with scripts. seite handles all of it.") }}</p>
+        </div>
+        <div class="tools">
+            <div class="tool">
+                <h3>Agent context</h3>
+                <div class="replaces">replaces onboarding docs · prompt files</div>
+                <p>AGENTS.md, path-scoped rules, a <code>/seite</code> skill, an MCP server with 11 tools, and a stop hook that runs <code>seite check</code>.</p>
+                <div class="cmd"><span>$ </span>seite init mysite</div>
+            </div>
+            <div class="tool">
+                <h3>Content</h3>
+                <div class="replaces">replaces CMS · Notion · Headway</div>
+                <p>Blog, docs, changelog, roadmap and pages as markdown collections, in every language you ship.</p>
+                <div class="cmd"><span>$ </span>seite new post "Hello"</div>
+            </div>
+            <div class="tool">
+                <h3>Build</h3>
+                <div class="replaces">replaces Node toolchain · SEO plugins</div>
+                <p>HTML for people, Markdown and <code>llms.txt</code> for models, plus RSS, sitemap, JSON-LD and search. Sub-second.</p>
+                <div class="cmd"><span>$ </span>seite build</div>
+            </div>
+            <div class="tool">
+                <h3>Deploy</h3>
+                <div class="replaces">replaces Vercel · custom CI</div>
+                <p>GitHub Pages, Cloudflare Pages or Netlify, with pre-flight checks, preview deploys and password protection.</p>
+                <div class="cmd"><span>$ </span>seite deploy</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ─── A minute with seite ───────────────────────── -->
+<section class="sec" id="quickstart">
+    <div class="container">
+        <div class="sec-head">
+            <h2>{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
+            <p class="sec-lede">Install, scaffold, hand it to your agent, check, deploy. Pick a step to see what it does.</p>
+        </div>
+        <div class="walk">
+            <ol class="steps">
+                <li class="step"><button type="button" aria-pressed="true" data-step="0"><span class="step-n">01</span><span class="step-t">Install</span><span class="step-c">curl -fsSL seite.sh/install.sh | sh</span><span class="step-d">One static binary for macOS, Linux and Windows. No Node.js, no runtime dependencies.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="1"><span class="step-n">02</span><span class="step-t">Scaffold</span><span class="step-c">seite init mysite</span><span class="step-d">Config, templates, collections and the agent files: AGENTS.md, rules, skill and MCP config.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="2"><span class="step-n">03</span><span class="step-t">Hand it to your agent</span><span class="step-c">seite agent "write the launch post"</span><span class="step-d">Your agent reads the site's context and writes content in the right place, with the right frontmatter. You review a diff.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="3"><span class="step-n">04</span><span class="step-t">Check</span><span class="step-c">seite check</span><span class="step-d">Validates config, content, templates and links without writing anything. The agent's stop hook runs it too.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="4"><span class="step-n">05</span><span class="step-t">Deploy</span><span class="step-c">seite deploy</span><span class="step-d">Pre-flight checks, build and push to GitHub Pages, Cloudflare Pages or Netlify.</span></button></li>
             </ol>
-
-            <div class="agent-visual terminal-wrap" role="img" aria-label="Files generated by the agent: a release post, an error-handling doc, and a changelog entry">
-                <div class="terminal-bar" aria-hidden="true">
-                    <span class="t-dot"></span>
-                    <span class="t-dot"></span>
-                    <span class="t-dot"></span>
-                    <span class="terminal-title">git status --short</span>
+            <div class="walk-out">
+                <div class="term">
+                    <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-title">~/mysite</span></div>
+                    <div class="term-body" id="walk-term"></div>
                 </div>
-                <div class="terminal-body" aria-hidden="true">
-                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/posts/2026-02-18-v1-2-release.md</span></div>
-                    <div class="diff-preview"><span class="fp-key">title:</span> "v1.2 Release Notes"<br><span class="fp-key">tags:</span> [release, new]</div>
-                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/docs/error-handling.md</span></div>
-                    <div class="diff-line"><span class="diff-flag">A</span><span class="diff-path">content/changelog/v1-2-0.md</span></div>
-                    <div class="diff-line diff-line--quiet"><span class="diff-flag">·</span><span class="diff-path">AGENTS.md</span></div>
-                    <div class="diff-note"># AGENTS.md was scaffolded by seite init</div>
+                <div class="panel-foot">
+                    <span>Output abridged.</span>
+                    <button type="button" class="replay" id="walk-replay">Replay</button>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- ─── Features ──────────────────────────────────── -->
-<section class="section" id="features">
-    <div class="container">
-        <div class="section-header">
-            <h2 class="section-title">{{ page.extra.features_headline_1 | default(value="Everything you need.") }}<br>{{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}</h2>
-            {% if page.extra.features_sub %}<p class="section-sub">{{ page.extra.features_sub }}</p>{% endif %}
+{% if latest %}
+<!-- ─── Latest release ────────────────────────────── -->
+<section class="sec" id="release">
+    <div class="container release">
+        <div>
+            <h2>What's new in {{ latest.title }}</h2>
+            {% if latest.date %}<p class="release-meta">Released {{ latest.date | date(format="%B %-d, %Y") }}</p>{% endif %}
+            <p class="release-desc">{{ latest.description | default(value="") | replace(from="`", to="") }}</p>
+            <p>Every release ships with a changelog entry, written in this repo and built by seite like the rest of this site.</p>
+            <div class="hero-actions">
+                <a href="{{ lang_prefix }}{{ latest.url }}" class="btn btn-ink plausible-event-name=ReadRelease">Read the release notes <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+                <a href="{{ lang_prefix }}/changelog" class="btn btn-line">Full changelog</a>
+            </div>
         </div>
+        <dl class="stats">
+            <div class="stat"><dt>Build time</dt><dd><span class="num">0.1 s</span><span class="note">All 111 pages of this site, docs to roadmap.</span></dd></div>
+            <div class="stat"><dt>Coding agents</dt><dd><span class="num">4</span><span class="note">Claude Code, Codex, OpenCode and Cursor.</span></dd></div>
+            <div class="stat"><dt>MCP tools</dt><dd><span class="num">11</span><span class="note">Check, build, create, search and more, typed.</span></dd></div>
+            <div class="stat"><dt>Bundled themes</dt><dd><span class="num">10</span><span class="note">Or describe one: <span class="mono">seite theme create</span>.</span></dd></div>
+        </dl>
+    </div>
+</section>
+{% endif %}
 
-        <ul class="feature-list">
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_1_title | default(value="Sub-second builds. Always.") }}</h3>
-                <p>{{ page.extra.feature_1_body | default(value="") | safe }}</p>
-            </li>
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_2_title | default(value="Your agent already knows how to use this.") }}</h3>
-                <p>{{ page.extra.feature_2_body | default(value="") | safe }}</p>
-            </li>
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_3_title | default(value="Ship in every language your customers speak.") }}</h3>
-                <p>{{ page.extra.feature_3_body | default(value="") | safe }}</p>
-            </li>
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_4_title | default(value="Found by people. Found by models.") }}</h3>
-                <p>{{ page.extra.feature_4_body | default(value="") | safe }}</p>
-            </li>
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_5_title | default(value="One command. Three targets. Auto-generated CI.") }}</h3>
-                <p>{{ page.extra.feature_5_body | default(value="") | safe }}</p>
-            </li>
-            <li class="feature-row">
-                <h3>{{ page.extra.feature_6_title | default(value="10 themes. Generate your own with a sentence.") }}</h3>
-                <p>{{ page.extra.feature_6_body | default(value="") | safe }}</p>
-            </li>
+<!-- ─── Everything else ───────────────────────────── -->
+<section class="sec" id="compare">
+    <div class="container">
+        <div class="sec-head">
+            <h2>{{ page.extra.features_headline_1 | default(value="Everything you need.") }} <span>{{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}</span></h2>
+            {% if page.extra.features_sub %}<p class="sec-lede">{{ page.extra.features_sub }}</p>{% endif %}
+        </div>
+        <ul class="feats">
+            <li class="feat"><h3>{{ page.extra.feature_1_title | default(value="Sub-second builds. Always.") }}</h3><p>{{ page.extra.feature_1_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_2_title | default(value="Your agent already knows how to use this.") }}</h3><p>{{ page.extra.feature_2_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_3_title | default(value="Ship in every language your customers speak.") }}</h3><p>{{ page.extra.feature_3_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_4_title | default(value="Found by people. Found by models.") }}</h3><p>{{ page.extra.feature_4_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_5_title | default(value="One command. Three targets. Auto-generated CI.") }}</h3><p>{{ page.extra.feature_5_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_6_title | default(value="10 themes. Generate your own with a sentence.") }}</h3><p>{{ page.extra.feature_6_body | default(value="") | safe }}</p></li>
         </ul>
     </div>
 </section>
 
-<!-- ─── Comparison ────────────────────────────────── -->
-<section class="section" id="compare">
-    <div class="container">
-        <div class="section-header">
-            <h2 class="section-title">{{ page.extra.comparison_headline | default(value="Stop juggling six tools for one website.") }}</h2>
-            <p class="section-sub">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool — then glue it with scripts. seite handles all of it.") }}</p>
-        </div>
-
-        <div class="compare-columns">
-            <div class="compare-col">
-                <h3 class="compare-col-label">The typical setup</h3>
-                <ul class="compare-list">
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        SSG + Node.js toolchain
-                        <span class="compare-tool">Hugo / Astro / Next.js</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Separate changelog &amp; roadmap
-                        <span class="compare-tool">Headway / Notion / Canny</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Contact form service
-                        <span class="compare-tool">Formspree / Typeform</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Deploy pipeline
-                        <span class="compare-tool">Vercel / custom CI</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        SEO meta, sitemap, RSS
-                        <span class="compare-tool">plugins / manual</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        LLM discoverability
-                        <span class="compare-tool">DIY or nothing</span>
-                    </li>
-                </ul>
-            </div>
-            <div class="compare-col compare-col--after">
-                <h3 class="compare-col-label">With seite</h3>
-                <ul class="compare-list">
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        Single Rust binary, zero dependencies
-                        <span class="compare-tool">no Node.js</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        Blog, docs, changelog, roadmap
-                        <span class="compare-tool">collection presets</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        Contact form shortcode
-                        <span class="compare-tool">5 providers</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        Deploy to 3 targets
-                        <span class="compare-tool">seite deploy</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        SEO + JSON-LD + sitemap + RSS
-                        <span class="compare-tool">automatic</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-                        llms.txt + markdown for every page
-                        <span class="compare-tool">automatic</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ─── Quickstart ─────────────────────────────────── -->
-<section class="section" id="quickstart">
-    <div class="container">
-        <div class="section-header">
-            <h2 class="section-title">{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
-        </div>
-
-        <div class="quickstart-grid">
-            <div class="terminal-wrap">
-                <div class="code-block-header">
-                    <span class="code-block-title">install + init</span>
-                    <button type="button" class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='Copied';setTimeout(function(){this.textContent='Copy';}.bind(this),2000);}.bind(this)).catch(function(){});">Copy</button>
-                </div>
-                <div class="terminal-body">
-                    <div><span class="c-comment"># install (macOS / Linux)</span></div>
-                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> https://seite.sh/install.sh | <span class="c-cmd">sh</span></div>
-                    <div class="c-blank"></div>
-                    <div><span class="c-comment"># scaffold a new site</span></div>
-                    <div><span class="c-cmd">seite</span> init mysite <span class="c-flag">--title "My Site"</span></div>
-                    <div><span class="c-cmd">cd</span> mysite</div>
-                    <div class="c-blank"></div>
-                    <div><span class="c-comment"># start dev server with live reload</span></div>
-                    <div><span class="c-cmd">seite</span> serve</div>
-                </div>
-            </div>
-
-            <ol class="steps-list" aria-label="Getting started steps">
-                <li class="step-item">
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_1_title | default(value="Install seite") }}</strong>
-                        <span>{{ page.extra.step_1_body | default(value="<code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_2_title | default(value="Scaffold your site") }}</strong>
-                        <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>AGENTS.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_3_title | default(value="Create content with your agent") }}</strong>
-                        <span>{{ page.extra.step_3_body | default(value="<code>seite agent</code> with your prompt. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_4_title | default(value="Deploy anywhere") }}</strong>
-                        <span>{{ page.extra.step_4_body | default(value="<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.") | safe }}</span>
-                    </div>
-                </li>
-            </ol>
-        </div>
-    </div>
-</section>
-
-<!-- ─── CTA ────────────────────────────────────────── -->
-<section class="cta-section">
+<!-- ─── Close ─────────────────────────────────────── -->
+<section class="close sec">
     <div class="container">
         <h2>{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
-        <p class="cta-sub">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
+        <p class="sec-lede">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
         <div class="hero-actions">
-            <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStartedCTA">{{ t.get_started | default(value="Get started") }} →</a>
-            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHubCTA" rel="noopener noreferrer">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                {{ t.view_on_github | default(value="View on GitHub") }}
-            </a>
+            <a href="{{ lang_prefix }}/docs/getting-started" class="btn btn-ink plausible-event-name=GetStartedCTA">Read Getting Started <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn btn-line plausible-event-name=ViewGitHubCTA" rel="noopener noreferrer">{{ t.view_on_github | default(value="View on GitHub") }}</a>
         </div>
-        <p class="dogfood-line">{{ page.extra.dogfood_line | default(value="This site is built with seite — the docs, the changelog, the llms.txt. All of it.") }}</p>
+        <p class="dogfood">{{ page.extra.dogfood_line | default(value="This site is built with seite: the docs, the changelog, the llms.txt. All of it.") }}</p>
     </div>
 </section>
 
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    // Line kinds: c = command, o = success, d = dim note
+    function inner(line) {
+        var t = esc(line[1]);
+        if (line[0] === 'c') return '<span class="t-prompt">$ </span>' + t.replace(/(--[a-z-]+|"[^"]*"?)/g, '<span class="t-flag">$1</span>');
+        return t;
+    }
+    function render(line) {
+        var cls = line[0] === 'o' ? 'ln t-ok' : line[0] === 'd' ? 'ln t-dim' : 'ln';
+        return '<span class="' + cls + '">' + inner(line) + '</span>';
+    }
+
+    // Plays lines into a terminal: commands type out, output lands line by line.
+    function player(el) {
+        var timer = null;
+        return function play(lines) {
+            clearTimeout(timer);
+            el.setAttribute('aria-label', lines.map(function (l) { return (l[0] === 'c' ? '$ ' : '') + l[1]; }).join('. '));
+            if (reduce) { el.innerHTML = lines.map(render).join(''); return; }
+            el.innerHTML = '';
+            var i = 0;
+            function next() {
+                if (i >= lines.length) { el.insertAdjacentHTML('beforeend', '<span class="ln"><span class="t-prompt">$ </span><span class="caret"></span></span>'); return; }
+                var line = lines[i++];
+                if (line[0] !== 'c') { el.insertAdjacentHTML('beforeend', render(line)); timer = setTimeout(next, 240); return; }
+                var full = line[1], n = 0, span = document.createElement('span');
+                span.className = 'ln';
+                el.appendChild(span);
+                (function type() {
+                    n = Math.min(full.length, n + 2);
+                    span.innerHTML = inner(['c', full.slice(0, n)]) + (n < full.length ? '<span class="caret"></span>' : '');
+                    timer = setTimeout(n < full.length ? type : next, n < full.length ? 20 : 360);
+                })();
+            }
+            next();
+        };
+    }
+
+    // One selected button per group
+    function group(root, attr, onSelect) {
+        var buttons = Array.prototype.slice.call(root.querySelectorAll('button'));
+        buttons.forEach(function (b) {
+            b.addEventListener('click', function () {
+                buttons.forEach(function (o) { o.setAttribute(attr, o === b ? 'true' : 'false'); });
+                onSelect(b);
+            });
+        });
+    }
+
+    // Install command
+    var installCode = document.getElementById('install-cmd');
+    group(document.querySelector('.install-tabs'), 'aria-selected', function (b) { installCode.textContent = b.getAttribute('data-cmd'); });
+
+    document.querySelectorAll('[data-copy-from]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var text = document.getElementById(b.getAttribute('data-copy-from')).textContent;
+            navigator.clipboard.writeText(text).then(function () {
+                b.textContent = 'Copied';
+                setTimeout(function () { b.textContent = 'Copy'; }, 2000);
+            }).catch(function () {});
+        });
+    });
+
+    // Hero: the same request, handed to each agent
+    var agents = {
+        claude: { cmd: 'seite agent "write the v1.2 release post"', files: 'AGENTS.md, .mcp.json, .claude/rules, .claude/skills/seite' },
+        codex: { cmd: 'seite agent --with codex "write the v1.2 release post"', files: 'AGENTS.md, .codex/config.toml, .agents/skills/seite' },
+        opencode: { cmd: 'seite agent --with opencode "write the v1.2 release post"', files: 'AGENTS.md, opencode.json, .opencode/commands/seite.md' },
+        cursor: { cmd: 'seite agent --with cursor "write the v1.2 release post"', files: 'AGENTS.md, .cursor/mcp.json, .cursor/rules' }
+    };
+    var agentPlay = player(document.getElementById('agent-term'));
+    var currentAgent = 'claude';
+    function playAgent() {
+        var a = agents[currentAgent];
+        agentPlay([
+            ['c', a.cmd],
+            ['d', 'reads ' + a.files],
+            ['d', 'MCP server "seite" connected, 11 tools'],
+            ['o', '✓ content/posts/2026-10-22-v1-2-release.md'],
+            ['d', 'stop hook: seite check'],
+            ['o', '✓ No problems found'],
+            ['c', 'seite deploy'],
+            ['o', '✓ Deployed to Cloudflare Pages']
+        ]);
+    }
+    group(document.querySelector('.agent-tabs'), 'aria-selected', function (b) { currentAgent = b.getAttribute('data-agent'); playAgent(); });
+    document.getElementById('agent-replay').addEventListener('click', playAgent);
+    playAgent();
+
+    // A minute with seite
+    var steps = [
+        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed seite to ~/.local/bin/seite']],
+        [['c', 'seite init mysite --title "My Site"'], ['o', '✓ Created mysite/ with posts, docs and pages'], ['d', 'AGENTS.md, .mcp.json, .claude/, .codex/, .cursor/'], ['c', 'cd mysite']],
+        [['c', 'seite agent "write the launch post"'], ['d', 'launching Claude Code with site context'], ['o', '✓ content/posts/2026-10-22-launch.md'], ['d', 'review the diff, then ask for changes or keep it']],
+        [['c', 'seite check'], ['o', '✓ No problems found']],
+        [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 14 pages'], ['o', '✓ Deployed to Cloudflare Pages']]
+    ];
+    var walkPlay = player(document.getElementById('walk-term'));
+    var currentStep = 0, started = false;
+    function playStep() { started = true; walkPlay(steps[currentStep]); }
+    group(document.querySelector('.steps'), 'aria-pressed', function (b) { currentStep = +b.getAttribute('data-step'); playStep(); });
+    document.getElementById('walk-replay').addEventListener('click', playStep);
+    if ('IntersectionObserver' in window && !reduce) {
+        document.getElementById('walk-term').innerHTML = steps[0].map(render).join('');
+        var io = new IntersectionObserver(function (entries) {
+            if (entries[0].isIntersecting && !started) { playStep(); io.disconnect(); }
+        }, { threshold: 0.4 });
+        io.observe(document.querySelector('.walk'));
+    } else { playStep(); }
+})();
+</script>
 {% endblock %}

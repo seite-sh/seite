@@ -3,15 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
-        --geist: 'Geist Mono', var(--mono);
-        --amber: #ffb224;
-        --purple: #8b5cf6;
-        --purple-dim: rgba(139, 92, 246, 0.08);
-        --purple-border: rgba(139, 92, 246, 0.2);
     }
 
     @keyframes rm-fade-in {
@@ -33,12 +26,11 @@
         animation: rm-fade-in 0.5s ease both;
     }
 
-    .rm-seite>h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+    .rm-page h1 {
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin-bottom: 0.5rem;
         line-height: 1.1;
@@ -71,42 +63,42 @@
     }
 
     .rm-status {
-        font-family: var(--geist);
-        font-size: 0.68rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
         padding: 0.2rem 0.7rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
 
     .rm-status--in-progress {
-        background: rgba(255, 178, 36, 0.08);
-        border: 1px solid rgba(255, 178, 36, 0.2);
-        color: var(--amber);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--warning);
     }
 
     .rm-status--planned {
-        background: var(--purple-dim);
-        border: 1px solid var(--purple-border);
-        color: var(--purple);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
     }
 
     .rm-status--done {
-        background: rgba(0, 255, 135, 0.08);
-        border: 1px solid rgba(0, 255, 135, 0.2);
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
         color: var(--green);
     }
 
     .rm-status--cancelled {
-        background: rgba(107, 114, 128, 0.08);
-        border: 1px solid rgba(107, 114, 128, 0.2);
-        color: #6b7280;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
     }
 
     .rm-count {
-        font-family: var(--geist);
-        font-size: 0.72rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
         color: var(--text-dim);
     }
 
@@ -120,7 +112,7 @@
     .rm-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         padding: 1.4rem 1.5rem;
         transition: border-color 0.15s, background 0.15s, transform 0.15s;
     }
@@ -132,7 +124,7 @@
     }
 
     .rm-card h3 {
-        font-size: 0.92rem;
+        font-size: 0.9rem;
         font-weight: 600;
         color: var(--heading);
         margin-bottom: 0.4rem;
@@ -152,7 +144,7 @@
 
     .rm-card p,
     .rm-card .excerpt {
-        font-size: 0.82rem;
+        font-size: 0.9rem;
         color: var(--text-muted);
         line-height: 1.6;
         margin: 0;

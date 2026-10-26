@@ -3,10 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
     }
 
     @keyframes bl-fade-in {
@@ -29,14 +27,6 @@
         margin-bottom: 3rem;
     }
 
-    .bl-eyebrow {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        margin-bottom: 0.75rem;
-    }
 
     .bl-header-row {
         display: flex;
@@ -46,11 +36,10 @@
     }
 
     .bl-page > .bl-header h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin: 0 0 0.5rem;
         line-height: 1.1;
@@ -68,12 +57,12 @@
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
-        font-size: 0.72rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
         text-decoration: none;
         padding: 0.3rem 0.7rem;
         border: 1px solid var(--border);
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         transition: color 0.12s, border-color 0.12s;
         flex-shrink: 0;
     }
@@ -89,20 +78,11 @@
         margin-bottom: 2.5rem;
     }
 
-    .bl-featured-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        margin-bottom: 0.75rem;
-    }
 
     .bl-featured h2 {
-        font-family: var(--serif);
-        font-size: clamp(1.3rem, 3vw, 1.6rem);
-        font-weight: 400;
-        font-style: italic;
+        font-family: var(--display);
+        font-size: 1.35rem;
+        font-weight: 800;
         color: var(--heading);
         margin: 0 0 0.5rem;
         line-height: 1.2;
@@ -120,7 +100,7 @@
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
         margin-bottom: 0.65rem;
     }
@@ -144,8 +124,8 @@
         background: var(--green-dim);
         border: 1px solid var(--green-border);
         padding: 0.12rem 0.5rem;
-        border-radius: 4px;
-        font-size: 0.7rem;
+        border-radius: var(--radius-sm);
+        font-size: 0.75rem;
         color: var(--green);
         text-decoration: none;
         transition: filter 0.1s;
@@ -159,7 +139,7 @@
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        font-size: 0.8rem;
+        font-size: 0.9rem;
         color: var(--green);
         text-decoration: none;
         margin-top: 1rem;
@@ -171,18 +151,9 @@
     }
 
     /* ── Post list ── */
-    .bl-list-heading {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        margin-bottom: 1rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid var(--border);
-    }
 
     .bl-list {
+        border-top: 1px solid var(--border);
         list-style: none;
         padding: 0;
         margin: 0;
@@ -197,8 +168,8 @@
     }
 
     .bl-item h2 {
-        font-size: 1.1rem;
-        font-weight: 600;
+        font-size: 1.05rem;
+        font-weight: 700;
         color: var(--heading);
         margin: 0 0 0.35rem;
         letter-spacing: -0.01em;
@@ -216,7 +187,7 @@
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
         margin-bottom: 0.4rem;
     }
@@ -224,7 +195,7 @@
     .bl-item-meta .meta-sep { color: var(--border-light); user-select: none; }
 
     .bl-item p {
-        font-size: 0.87rem;
+        font-size: 0.9rem;
         color: var(--text-muted);
         line-height: 1.65;
         margin: 0;
@@ -240,8 +211,8 @@
         background: var(--green-dim);
         border: 1px solid var(--green-border);
         padding: 0.12rem 0.5rem;
-        border-radius: 4px;
-        font-size: 0.7rem;
+        border-radius: var(--radius-sm);
+        font-size: 0.75rem;
         color: var(--green);
         text-decoration: none;
         transition: filter 0.1s;
@@ -260,7 +231,7 @@
         margin-top: 3rem;
         padding-top: 2rem;
         border-top: 1px solid var(--border);
-        font-size: 0.85rem;
+        font-size: 0.9rem;
     }
     .bl-pagination a {
         color: var(--green);
@@ -275,14 +246,14 @@
         border-color: var(--green-border);
         text-decoration: none;
     }
-    .bl-page-info { color: var(--text-dim); font-size: 0.8rem; }
+    .bl-page-info { color: var(--text-dim); font-size: 0.9rem; }
 
     /* ── Empty state ── */
     .bl-empty {
         text-align: center;
         padding: 4rem 1rem;
         color: var(--text-dim);
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
 
     @media (max-width: 640px) {
@@ -304,7 +275,6 @@
 {% block content %}
 <div class="bl-page">
     <div class="bl-header">
-        <div class="bl-eyebrow">Blog</div>
         <div class="bl-header-row">
             <div>
                 <h1>Thoughts &amp; Ideas</h1>
@@ -326,7 +296,6 @@
     {# Featured: first post gets a card treatment #}
     {% set featured = items | first %}
     <div class="bl-featured">
-        <div class="bl-featured-label">{{ t.latest | default(value="Latest") }}</div>
         <h2><a href="{{ featured.url }}">{{ featured.title }}</a></h2>
         <div class="bl-featured-meta">
             {% if featured.date %}<time datetime="{{ featured.date }}">{{ featured.date }}</time>{% endif %}
@@ -344,7 +313,6 @@
     {# Remaining posts #}
     {% set rest = items | slice(start=1) %}
     {% if rest | length > 0 %}
-    <div class="bl-list-heading">{{ t.older_posts | default(value="All posts") }}</div>
     <ul class="bl-list">
         {% for item in rest %}
         <li class="bl-item">

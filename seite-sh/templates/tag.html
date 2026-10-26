@@ -3,10 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
     }
 
     @keyframes tag-fade-in {
@@ -29,21 +27,12 @@
         margin-bottom: 3rem;
     }
 
-    .tg-eyebrow {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        margin-bottom: 0.75rem;
-    }
 
     .tg-header h1 {
-        font-family: var(--serif);
-        font-size: clamp(1.8rem, 4vw, 2.5rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin: 0 0 0.5rem;
         line-height: 1.1;
@@ -55,7 +44,7 @@
     }
 
     .tg-count {
-        font-size: 0.875rem;
+        font-size: 0.9rem;
         color: var(--text-dim);
         margin: 0;
     }
@@ -65,8 +54,8 @@
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
-        font-family: var(--mono);
-        font-size: 0.72rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         color: var(--text-dim);
         text-decoration: none;
         text-transform: uppercase;
@@ -81,21 +70,12 @@
 
     /* ── Post list ── */
     .tg-list {
+        border-top: 1px solid var(--border);
         list-style: none;
         padding: 0;
         margin: 0;
     }
 
-    .tg-list-heading {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        margin-bottom: 1rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid var(--border);
-    }
 
     .tg-item {
         padding: 1.25rem 0;
@@ -106,8 +86,8 @@
     }
 
     .tg-item h2 {
-        font-size: 1.1rem;
-        font-weight: 600;
+        font-size: 1.05rem;
+        font-weight: 700;
         color: var(--heading);
         margin: 0 0 0.35rem;
         letter-spacing: -0.01em;
@@ -128,7 +108,7 @@
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
         margin-bottom: 0.4rem;
     }
@@ -136,7 +116,7 @@
     .tg-item-meta .meta-sep { color: var(--border-light); user-select: none; }
 
     .tg-item p {
-        font-size: 0.875rem;
+        font-size: 0.9rem;
         color: var(--text-muted);
         line-height: 1.65;
         margin: 0;
@@ -147,7 +127,7 @@
         text-align: center;
         padding: 4rem 1rem;
         color: var(--text-dim);
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
 
     @media (max-width: 640px) {
@@ -166,7 +146,6 @@
     </a>
 
     <div class="tg-header">
-        <div class="tg-eyebrow">Tag</div>
         <h1>{{ t.tagged | default(value="Tagged") }} <span class="tg-tag-name">#{{ tag_name }}</span></h1>
         <p class="tg-count">{{ items | length }} {{ t.post | default(value="post") }}{% if items | length != 1 %}s{% endif %}</p>
     </div>
@@ -174,7 +153,6 @@
     {% if items | length == 0 %}
     <div class="tg-empty">{{ t.no_posts | default(value="No posts yet.") }}</div>
     {% else %}
-    <div class="tg-list-heading">{{ t.older_posts | default(value="All posts") }}</div>
     <ul class="tg-list">
         {% for item in items %}
         <li class="tg-item">
