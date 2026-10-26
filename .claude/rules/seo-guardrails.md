@@ -29,7 +29,7 @@ The SEO/GEO head lives in ONE place: `src/templates/seite/head.html`. Themes inc
 - Posts (`page.collection == 'posts'`): `BlogPosting` with headline, description, datePublished, dateModified, author, publisher, url
 - Docs/pages (collection set but not posts): `Article` with same fields
 - Index/homepage: `WebSite` with name, description, url
-- `BreadcrumbList` on all collection pages (Home → Collection → Page)
+- `BreadcrumbList` on all collection pages except the homepage: Home (`site.base_url ~ lang_prefix`) → Collection (`page.collection_url`: base URL + language prefix + `url_prefix`, set by the build) → Page; root-mounted collections (empty `url_prefix`, e.g. `pages`) get Home → Page. Never build crumb URLs from the collection name (`og::test_breadcrumb_urls_resolve_to_built_pages` checks every crumb is a built page)
 
 ## Discovery Links
 - `<link rel="alternate" type="application/rss+xml">` and Atom — RSS/Atom

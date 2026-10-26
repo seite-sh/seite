@@ -315,6 +315,7 @@ pub(super) fn listing_page(title: String, slug: String, url: String) -> PageCont
         toc: Vec::new(),
         extra: indexmap::IndexMap::new(),
         og_image: None,
+        collection_url: None,
     }
 }
 

@@ -202,6 +202,11 @@ struct PageContext {
     /// the page has `image:` or gets no card of its own.
     #[serde(skip_serializing_if = "Option::is_none")]
     og_image: Option<String>,
+    /// Absolute URL of the page's collection index (`base_url` + language
+    /// prefix + `url_prefix`), for the BreadcrumbList JSON-LD. Unset for
+    /// root-mounted collections (empty `url_prefix`) and non-collection pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collection_url: Option<String>,
 }
 
 /// Lightweight previous/next post link exposed to templates as `prev_post` / `next_post`.
@@ -1633,6 +1638,7 @@ fn build_site_inner(
                                 _ => None,
                             }
                         }),
+                        breadcrumb_collection_url(config, &collection.name, &item.lang),
                     );
                     content_model.augment_page(
                         &mut ctx,
@@ -1903,6 +1909,7 @@ fn build_site_inner(
                 toc: homepage.toc.clone(),
                 extra: index_page_extra(config, homepage),
                 og_image: None,
+                collection_url: None,
             }
         } else if let Some(col_index) = config
             .collections
@@ -1939,6 +1946,7 @@ fn build_site_inner(
                 toc: col_index.toc.clone(),
                 extra: index_page_extra(config, col_index),
                 og_image: None,
+                collection_url: None,
             }
         } else {
             PageContext {
@@ -1960,6 +1968,7 @@ fn build_site_inner(
                 toc: Vec::new(),
                 extra: indexmap::IndexMap::new(),
                 og_image: None,
+                collection_url: None,
             }
         };
         index_ctx.insert("page", &index_page_ctx);
@@ -2159,6 +2168,7 @@ fn build_site_inner(
                             toc: ci.toc.clone(),
                             extra: index_page_extra(config, ci),
                             og_image: None,
+                            collection_url: breadcrumb_collection_url(config, &c.name, lang),
                         }
                     } else {
                         PageContext {
@@ -2180,6 +2190,7 @@ fn build_site_inner(
                             toc: Vec::new(),
                             extra: indexmap::IndexMap::new(),
                             og_image: None,
+                            collection_url: None,
                         }
                     },
                 );
@@ -2343,6 +2354,7 @@ fn build_site_inner(
                         toc: ci.toc.clone(),
                         extra: index_page_extra(config, ci),
                         og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 } else {
                     PageContext {
@@ -2364,6 +2376,7 @@ fn build_site_inner(
                         toc: Vec::new(),
                         extra: indexmap::IndexMap::new(),
                         og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 },
             );
@@ -2448,6 +2461,7 @@ fn build_site_inner(
                     toc: Vec::new(),
                     extra: indexmap::IndexMap::new(),
                     og_image: None,
+                    collection_url: None,
                 },
             );
             let html_404 = tera
@@ -3561,6 +3575,7 @@ fn build_page_context(
     collection_private: bool,
     custom_fields: &[String],
     og_image: Option<String>,
+    collection_url: Option<String>,
 ) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
@@ -3586,6 +3601,7 @@ fn build_page_context(
             toc: item.toc.clone(),
             extra: content::schema::page_extra(&item.frontmatter, custom_fields),
             og_image,
+            collection_url,
         },
     );
     ctx
@@ -3619,6 +3635,22 @@ fn absolutize_image(image: Option<&str>, base_url: &str) -> Option<String> {
 }
 
 /// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.
+/// `page.collection_url`: the absolute URL of collection `name`'s index in
+/// `lang` (`site.base_url` already carries any base path), or `None` for a
+/// root-mounted collection (empty `url_prefix`) or an unknown name.
+fn breadcrumb_collection_url(config: &SiteConfig, name: &str, lang: &str) -> Option<String> {
+    let collection = config.collections.iter().find(|c| c.name == name)?;
+    let prefix = collection.url_prefix.trim_matches('/');
+    if prefix.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}{}/{prefix}",
+        config.site.base_url,
+        lang_prefix_for(lang, &config.site.language)
+    ))
+}
+
 fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
     if lang == default_lang {
         String::new()
@@ -4957,7 +4989,7 @@ mod tests {
             excerpt_html: "<p>Some body</p>".into(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false, &[], None);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert_eq!(page["title"], "My Post");
@@ -4999,7 +5031,7 @@ mod tests {
             excerpt_html: String::new(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false, &[], None);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert!(page["image"].is_null());
@@ -5260,6 +5292,7 @@ mod tests {
                 m
             },
             og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert_eq!(json["title"], "My Page");
@@ -5293,6 +5326,7 @@ mod tests {
             toc: Vec::new(),
             extra: indexmap::IndexMap::new(),
             og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert!(json["date"].is_null());

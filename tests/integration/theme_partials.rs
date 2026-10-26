@@ -119,6 +119,16 @@ fn trimmed_lines(html: &str) -> String {
         .join("\n")
 }
 
+/// `html` without its BreadcrumbList `<script>` (and the line it sat on).
+fn without_breadcrumbs(html: &str) -> String {
+    let Some(at) = html.find("\"@type\":\"BreadcrumbList\"") else {
+        return html.to_string();
+    };
+    let start = html[..at].rfind("<script").unwrap();
+    let end = at + html[at..].find("</script>").unwrap() + "</script>".len();
+    format!("{}{}", &html[..start], &html[end..])
+}
+
 /// How closely each theme's output must match its pre-partial version.
 /// - exact: byte-identical.
 /// - blank lines: identical except one whitespace-only line (the empty
@@ -129,12 +139,14 @@ fn trimmed_lines(html: &str) -> String {
 ///   in leading whitespace only.
 ///
 /// For every theme, the "no results" text is now a JSON string literal
-/// (`json_script`) instead of a single-quoted one.
+/// (`json_script`) instead of a single-quoted one, and the BreadcrumbList
+/// JSON-LD is left out: it now uses the collection's real URL (checked in
+/// `og::test_breadcrumb_urls_resolve_to_built_pages`).
 fn normalize(theme: &str, html: &str) -> String {
-    let html = &html.replace(
+    let html = &without_breadcrumbs(&html.replace(
         "noRes.textContent = 'No results';",
         "noRes.textContent = \"No results\";",
-    );
+    ));
     match theme {
         "academic" => html.to_string(),
         "default" | "minimal" | "dark" | "brutalist" => without_blank_lines(html),

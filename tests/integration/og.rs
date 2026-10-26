@@ -362,6 +362,12 @@ fn test_og_invalid_config_is_located() {
 fn test_og_check_renders_no_cards() {
     let tmp = TempDir::new().unwrap();
     let site = site(&tmp);
+    // A scheduled post makes check render a second scratch build too.
+    post(
+        &site,
+        "2099-01-01-later.md",
+        "title: Later\ndate: 2099-01-01",
+    );
     page_cmd()
         .arg("check")
         .current_dir(&site)
@@ -466,4 +472,102 @@ fn test_og_upgrade_notice_once() {
         .unwrap()
         .contains("[og]"));
     assert!(!run().contains("Social preview cards are available"));
+}
+
+/// Every BreadcrumbList item URL on a site with a custom `url_prefix`, a
+/// root-mounted `pages` collection and a second language is a built page.
+#[test]
+fn test_breadcrumb_urls_resolve_to_built_pages() {
+    let tmp = TempDir::new().unwrap();
+    let site = site(&tmp);
+    let toml = fs::read_to_string(site.join("seite.toml"))
+        .unwrap()
+        .replacen("url_prefix = \"/posts\"", "url_prefix = \"/blog\"", 1);
+    fs::write(site.join("seite.toml"), toml).unwrap();
+    add_language(&site, "es", "Sitio");
+    post(
+        &site,
+        "2025-01-01-first.md",
+        "title: First\ndate: 2025-01-01",
+    );
+    post(
+        &site,
+        "2025-01-01-first.es.md",
+        "title: Primero\ndate: 2025-01-01",
+    );
+    write_site_file(
+        &site,
+        "content/pages/about.md",
+        "---\ntitle: About\n---\n\nabout\n",
+    );
+    write_site_file(
+        &site,
+        "content/pages/about.es.md",
+        "---\ntitle: Acerca\n---\n\nacerca\n",
+    );
+    write_site_file(
+        &site,
+        "content/docs/intro.md",
+        "---\ntitle: Intro\n---\n\nintro\n",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+
+    let dist = site.join("dist");
+    let resolves = |url: &str| -> bool {
+        let path = url
+            .strip_prefix("http://localhost:3000")
+            .unwrap_or_else(|| panic!("not absolute: {url}"))
+            .trim_matches('/');
+        if path.is_empty() {
+            return dist.join("index.html").is_file();
+        }
+        dist.join(format!("{path}.html")).is_file() || dist.join(path).join("index.html").is_file()
+    };
+    let mut checked = 0;
+    let mut crumbs_by_page = std::collections::BTreeMap::new();
+    for file in files_under(&dist)
+        .into_iter()
+        .filter(|f| f.ends_with(".html"))
+    {
+        let html = read(&site, &file);
+        let Some(at) = html.find("\"@type\":\"BreadcrumbList\"") else {
+            continue;
+        };
+        let start = html[..at].rfind('{').unwrap();
+        let end = at + html[at..].find("</script>").unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(html[start..end].trim()).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let mut urls = Vec::new();
+        for item in json["itemListElement"].as_array().unwrap() {
+            if let Some(url) = item["item"].as_str() {
+                assert!(
+                    resolves(url),
+                    "{file}: breadcrumb {url} is not a built page"
+                );
+                urls.push(url.to_string());
+                checked += 1;
+            }
+        }
+        crumbs_by_page.insert(file, urls);
+    }
+    assert!(checked >= 8, "{crumbs_by_page:?}");
+    let crumbs = |page: &str| crumbs_by_page[page].clone();
+    assert_eq!(
+        crumbs("blog/first.html"),
+        ["http://localhost:3000", "http://localhost:3000/blog"]
+    );
+    assert_eq!(
+        crumbs("es/blog/first.html"),
+        ["http://localhost:3000/es", "http://localhost:3000/es/blog"]
+    );
+    // Root-mounted pages: Home > page, no collection crumb.
+    assert_eq!(crumbs("about.html"), ["http://localhost:3000"]);
+    assert_eq!(crumbs("es/about.html"), ["http://localhost:3000/es"]);
+    // No breadcrumb on the homepage.
+    assert!(!crumbs_by_page.contains_key("index.html"));
+    assert!(!crumbs_by_page.contains_key("es/index.html"));
 }

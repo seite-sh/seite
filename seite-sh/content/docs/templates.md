@@ -33,6 +33,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.updated }}` | Last modified date |
 | `{{ page.description }}` | Page description |
 | `{{ page.image }}` | Social preview image URL |
+| `{{ page.collection_url }}` | Absolute URL of the page's collection index (with language prefix and `url_prefix`); unset for root-mounted collections such as `pages` |
 | `{{ page.og_image }}` | Absolute URL of the page's generated social card (`[og]`); unset when the page has `image:` or no card of its own |
 | `{{ page.slug }}` | URL slug |
 | `{{ page.tags }}` | List of tags |

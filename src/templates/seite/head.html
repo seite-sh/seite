@@ -30,7 +30,7 @@
     {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_script }},"description":{{ site.description | json_script }},"url":{{ site.base_url | json_script }}}
     {% endif %}
     </script>
-    {% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}<script type="application/ld+json">
-    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_script }},"item":{{ site.base_url | json_script }}},{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_script }},"item":{{ _bc_col_url | json_script }}},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_script }}}]}
-    </script>{% endif %}{% if math_enabled %}
+    {% set _bc_root = lang_prefix ~ "/" %}{% if page.collection and page.url != _bc_root %}{% set _bc_home = site.base_url ~ lang_prefix %}<script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_script }},"item":{{ _bc_home | json_script }}},{% if page.collection_url %}{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_script }},"item":{{ page.collection_url | json_script }}},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_script }}}{% else %}{"@type":"ListItem","position":2,"name":{{ _ld_title | json_script }}}{% endif %}]}
+    </script>{% endif %}{# page.collection_url: the collection index under its url_prefix (unset for root-mounted collections, which get Home > page); no breadcrumb on the homepage #}{% if math_enabled %}
     <link rel="stylesheet" href="{{ katex_css_url | escape_attr }}" crossorigin="anonymous">{% endif %}

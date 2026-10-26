@@ -19,7 +19,7 @@ paths:
 
 ## seite partials (`src/templates/seite/*.html`, `SEITE_PARTIALS` in `src/templates/mod.rs`)
 seite owns correctness, themes own layout + CSS. Registered under the reserved `seite/` namespace unless the site has `templates/seite/<name>` (override = no more automatic fixes). Each starts with `{# seite partial: <name> — managed by seite, updated on upgrade … #}` (comment and content on one line: Tera's `-#}` does not trim, and the partials are byte-tuned so themes render identically).
-- `seite/head.html` — everything SEO/GEO after `<title>`: description, canonical, OG/Twitter, JSON-LD, BreadcrumbList, robots, RSS/Atom/llms.txt, markdown alternate, hreflang, KaTeX css. Extension point for generated OG cards next to the `og:image` block.
+- `seite/head.html` — everything SEO/GEO after `<title>`: description, canonical, OG/Twitter, JSON-LD, BreadcrumbList, robots, RSS/Atom/llms.txt, markdown alternate, hreflang, KaTeX css. Generated OG cards: `page.og_image` / `site.og_image` branch next to the `og:image` block.
 - `seite/search.html` (form + `#search-results`), `seite/search-script.html` (search JS), `seite/scripts.html` (end-of-body aggregator: add new seite-owned scripts as one more include), `seite/lang-switcher.html`
 - `<title>{% block title %}` stays in the theme: Tera blocks cannot live in includes
 - First line has no indent and the file has no trailing newline: the include site supplies both

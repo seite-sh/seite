@@ -434,6 +434,9 @@ fn check_site_full(
         future_paths.subdomain_output_root = scratch_future.path().join("dist-subdomains");
         let mut future_config = config.clone();
         future_config.build.future = true;
+        if let Some(og) = future_config.og.as_mut() {
+            og.skip_render = true;
+        }
         let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
             Ok(result) => result.diagnostics.into_iter().collect(),
             Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
