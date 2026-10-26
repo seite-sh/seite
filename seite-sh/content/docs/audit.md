@@ -83,7 +83,7 @@ Starter content passes every check above notice level. On a fresh `seite init` s
 | `seo-broken-anchor` | warning | `#fragment` links match an `id` on the target page |
 | `seo-noindex-in-sitemap` | error | no `noindex` page in `sitemap.xml` |
 | `seo-img-dimensions` | warning | `<img>` has `width` and `height` (layout shift) |
-| `seo-og-image-missing` | notice | content pages have an `og:image` |
+| `seo-og-image-missing` | notice | content pages have an `og:image` (generated `[og]` cards count) |
 | `seo-hreflang` | warning | hreflang targets exist and link back |
 | `seo-sitemap-missing` / `seo-sitemap-stale-url` | error | `sitemap.xml` exists and every URL in it was built |
 | `seo-page-not-in-sitemap` | warning | every indexable content page is in the sitemap |

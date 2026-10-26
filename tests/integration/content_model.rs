@@ -268,6 +268,7 @@ fn test_build_no_new_output_without_new_config() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Compat", "posts");
     let site = tmp.path().join("site");
+    remove_og_section(&site);
     for entry in fs::read_dir(site.join("content/posts")).unwrap() {
         fs::remove_file(entry.unwrap().path()).unwrap();
     }

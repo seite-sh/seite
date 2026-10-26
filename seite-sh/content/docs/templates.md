@@ -21,6 +21,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ site.base_url }}` | Base URL (e.g., `https://example.com`) |
 | `{{ site.language }}` | Default language code |
 | `{{ site.author }}` | Site author |
+| `{{ site.og_image }}` | Absolute URL of the language's generated site card (`[og]`), the `og:image` fallback; unset when cards are off |
 
 ### Page variables
 
@@ -32,6 +33,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.updated }}` | Last modified date |
 | `{{ page.description }}` | Page description |
 | `{{ page.image }}` | Social preview image URL |
+| `{{ page.og_image }}` | Absolute URL of the page's generated social card (`[og]`); unset when the page has `image:` or no card of its own |
 | `{{ page.slug }}` | URL slug |
 | `{{ page.tags }}` | List of tags |
 | `{{ page.url }}` | Page URL path |
@@ -283,7 +285,7 @@ seite ships five partials under the reserved `seite/` template namespace. Every 
 
 | Partial | Include it | What it renders |
 |---------|------------|-----------------|
-| `seite/head.html` | inside `<head>`, right after `<title>` | description, canonical URL, Open Graph and Twitter tags (absolute `og:image`), `article:*` times, JSON-LD (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), robots, RSS/Atom/`llms.txt` links, the markdown alternate (`page.markdown_url`), hreflang, the KaTeX stylesheet when `math` is on |
+| `seite/head.html` | inside `<head>`, right after `<title>` | description, canonical URL, Open Graph and Twitter tags (absolute `og:image`: `page.image`, else the generated card `page.og_image`, else the site card `site.og_image`), `article:*` times, JSON-LD (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), robots, RSS/Atom/`llms.txt` links, the markdown alternate (`page.markdown_url`), hreflang, the KaTeX stylesheet when `math` is on |
 | `seite/search.html` | where the search box goes | the `role="search"` form (labelled by `t.search_label`) and the `#search-results` live region |
 | `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, which loads `search-index.json` on first input) |
 | `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |

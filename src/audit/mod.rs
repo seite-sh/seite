@@ -149,7 +149,7 @@ codes! {
     "seo-broken-anchor", Seo, Warning, "point the link at an existing heading id (see the target page's table of contents) or remove the #fragment";
     "seo-noindex-in-sitemap", Seo, Error, "remove `robots: noindex` from the page, or keep it out of the sitemap";
     "seo-img-dimensions", Seo, Warning, "give the <img> width and height attributes (local images processed by seite get them automatically)";
-    "seo-og-image-missing", Seo, Notice, "set `image:` in the frontmatter so shares show a preview card";
+    "seo-og-image-missing", Seo, Notice, "add `[og]` with `generate = true` to seite.toml (generated cards), or set `image:` in the frontmatter";
     "seo-hreflang", Seo, Warning, "every translation must link back with a matching hreflang; check the translation files exist and the language switcher template";
     "seo-sitemap-missing", Seo, Error, "build the site with seite (it writes sitemap.xml) or restore sitemap.xml in the output";
     "seo-sitemap-stale-url", Seo, Error, "the sitemap lists a URL with no built page; rebuild, or check the page's slug/url";

@@ -18,6 +18,7 @@ pub mod hooks;
 pub mod init;
 pub mod mcp;
 pub mod new;
+pub mod og;
 pub mod page;
 pub mod perf;
 pub mod prompt;
@@ -156,6 +157,9 @@ pub enum Command {
 
     /// Show one content file as the build sees it (by source path or URL)
     Page(page::PageArgs),
+
+    /// Social preview cards ([og]): render one to a PNG
+    Og(og::OgArgs),
 
     /// Search site content (drafts included) by keyword
     Search(search::SearchArgs),

@@ -17,9 +17,10 @@ The SEO/GEO head lives in ONE place: `src/templates/seite/head.html`. Themes inc
 - `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
 - `og:image` (conditional on `page.image`, absolutized): use `{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}`
 - `og:image:width` (1200), `og:image:height` (630) alongside `og:image`
+- Generated cards (`[og]`): `{% elif page.og_image or site.og_image %}` branch after the `page.image` one sets `_abs_image` to `page.og_image | default(value=site.og_image)` (already absolute) and adds `og:image:alt` (page title); `twitter:card`/`twitter:image` test `_abs_image`. Without `[og]` both are unset (skipped in serialization), so output is byte-identical to before. Never generate a card for private-collection pages (titles would leak)
 - `article:published_time` (when `page.collection` + `page.date`)
 - `article:modified_time` (when `page.collection` + `page.updated`)
-- `twitter:card` — `"summary_large_image"` with image, `"summary"` without
+- `twitter:card` — `"summary_large_image"` with an image (own or generated card), `"summary"` without
 - `twitter:title`, `twitter:description`, `twitter:image`
 - `<meta name="robots">` (only when `page.robots` is set)
 - KaTeX stylesheet when `math_enabled`

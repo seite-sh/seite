@@ -35,6 +35,10 @@ pub struct SiteConfig {
     /// `[check]`: options for `seite check` (external link checking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check: Option<CheckSection>,
+    /// `[og]`: generated social preview cards (`og:image`), see
+    /// `crate::build::og`. Absent = off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub og: Option<OgSection>,
 }
 
 /// One `[[taxonomies]]` entry. Pages assign terms with a top-level frontmatter
@@ -600,6 +604,72 @@ pub struct CheckSection {
     pub external_timeout: Option<u64>,
 }
 
+/// `[og]`: social preview cards generated at build time (`dist/og/*.png`).
+/// See `crate::build::og`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OgSection {
+    /// Generate cards. Default: true once `[og]` is present.
+    #[serde(default = "defaults::bool_true")]
+    pub generate: bool,
+    /// Card layout: `default`, `minimal` or `bold`.
+    #[serde(default)]
+    pub template: OgTemplate,
+    /// Card colors (`#rgb` / `#rrggbb`). Default: `data/brand.yaml`
+    /// `colors.background` / `colors.text` / `colors.primary`, else the theme's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    /// Logo drawn on every card (SVG or PNG), relative to the site root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
+    /// A `.ttf`/`.otf` font (relative to the site root) used instead of the
+    /// bundled Inter, e.g. one with CJK glyphs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    /// Runtime only: compute card URLs and validate, but write no PNGs
+    /// (`seite check`'s scratch build).
+    #[serde(skip)]
+    pub skip_render: bool,
+}
+
+impl Default for OgSection {
+    fn default() -> Self {
+        Self {
+            generate: true,
+            template: OgTemplate::default(),
+            background: None,
+            foreground: None,
+            accent: None,
+            logo: None,
+            font: None,
+            skip_render: false,
+        }
+    }
+}
+
+/// Built-in social card layouts (`[og] template`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OgTemplate {
+    #[default]
+    Default,
+    Minimal,
+    Bold,
+}
+
+impl OgTemplate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OgTemplate::Default => "default",
+            OgTemplate::Minimal => "minimal",
+            OgTemplate::Bold => "bold",
+        }
+    }
+}
+
 /// Resolved absolute paths for the project directories.
 #[derive(Clone)]
 pub struct ResolvedPaths {
@@ -988,6 +1058,12 @@ impl SiteConfig {
         map
     }
 
+    /// Whether social cards are generated (`[og]` present with `generate`
+    /// not set to false).
+    pub fn og_enabled(&self) -> bool {
+        self.og.as_ref().is_some_and(|og| og.generate)
+    }
+
     /// Extract the URL path prefix from `base_url`.
     ///
     /// For GitHub Pages project sites and other subpath deployments:
@@ -1048,6 +1124,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         }
     }
 

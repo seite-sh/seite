@@ -2562,6 +2562,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         };
 
         // Override takes precedence
@@ -2599,6 +2600,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         };
         let check = check_base_url(&config);
         assert!(!check.passed);
@@ -2632,6 +2634,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         }
     }
 
@@ -5818,6 +5821,7 @@ target = "github-pages"
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         }
     }
 

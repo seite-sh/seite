@@ -509,6 +509,41 @@ external_timeout = 10                               # seconds per request
 | `external_skip` | list | `[]` | Hosts never requested, in addition to the built-in list of hosts that block bots (`linkedin.com`, `twitter.com`, `x.com`, `instagram.com`, `facebook.com`) |
 | `external_timeout` | integer | `10` | Seconds per request |
 
+## [og]
+
+### Social cards
+
+Every page gets a social preview card: a 1200x630 PNG generated at build time (offline, free, the same bytes on every run) and set as its `og:image` and `twitter:image`. New sites have it on; for existing sites add the section:
+
+```toml
+[og]
+generate = true
+template = "default"          # default | minimal | bold
+# background = "#ffffff"      # colors: #rgb or #rrggbb
+# foreground = "#1a1a1a"
+# accent = "#0057b7"
+# logo = "static/logo.svg"    # SVG or PNG, drawn on every card
+# font = "static/fonts/NotoSansJP-Bold.ttf"  # replaces the bundled Inter
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `generate` | bool | `true` | Generate cards (absent `[og]` = off) |
+| `template` | string | `"default"` | Layout: `default` (accent bar, site name on top), `minimal` (title first, quiet footer), `bold` (full accent background) |
+| `background` / `foreground` / `accent` | string | brand, else theme | Card colors. Default: `colors.background` / `colors.text` / `colors.primary` from `data/brand.yaml`, else the active theme's palette |
+| `logo` | string | none | SVG or PNG, relative to the site root |
+| `font` | string | bundled Inter | A `.ttf`/`.otf`, relative to the site root, for titles in scripts Inter lacks |
+
+**Which pages.** Each public, non-draft content page without `image:` in its frontmatter gets `og/<url>.png` (`/posts/hello-world` → `/og/posts/hello-world.png`, translations under `og/<lang>/`). Each language's homepage gets the *site card*, `og/index.png` (site name and description), which every other page uses: collection indexes, tag pages, 404, drafts and private pages. Private collections never get cards of their own: they would publish their titles. A page with `image:` keeps its image.
+
+**What a card shows.** Site name (or host), the page title (wrapped to three lines, shrunk and finally cut with an ellipsis), and the collection, date and reading time; plus the logo.
+
+**Fonts.** Cards use a bundled subset of [Inter](https://rsms.me/inter/) (SIL Open Font License) with Latin, Greek and Cyrillic, and never system fonts, so output does not depend on the machine. A title with characters the font lacks (Chinese, Japanese, Korean, emoji) gets no card of its own rather than empty boxes, and the build warns once (`og-missing-glyphs`); set `font` to a font that has them.
+
+**Cache.** Cards are cached in `.seite/cache/og/` (gitignored), keyed by everything that affects them (text, colors, layout, font and logo bytes, seite version), so rebuilds only render changed cards. `seite serve` generates them too; a content edit re-renders only that page's card. `seite check` validates `[og]` (bad colors, missing logo or font: `og-config-invalid`) but renders nothing. Delete the cache directory any time.
+
+**Try it.** `seite og preview /posts/hello-world` writes `.seite/cache/og-preview.png` (`--out card.png`, `--template bold` to compare layouts without editing the config; `/` is the site card).
+
 ## Frontmatter
 
 Content files use YAML frontmatter between `---` delimiters:

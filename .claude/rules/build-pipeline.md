@@ -25,6 +25,7 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 9b. Generate redirect pages from `aliases:` frontmatter
 10. Copy static files (with optional minification and fingerprinting)
 11. Process images (resize, WebP/AVIF variants, srcset)
+11b. Social cards (`[og]`, `src/build/og/`): PNG per public page without `image:` + each language's site card into `og/`, via `.seite/cache/og/`; `page.og_image` / `site.og_image` were already set at render time by `OgPlan::page_card` / `SiteContext`
 12. Post-process all HTML files in a single pass: image srcset/`<picture>`, `loading="lazy"` (skip first image per page for LCP), code-copy buttons, subdomain/base-path link rewriting, analytics + cookie-consent injection, Mermaid client script injection, and internal-link validation
 13. Generate the Cloudflare Pages advanced-mode Worker for any password-protected routes in this output (see `src/cli/access.rs`)
 

@@ -488,11 +488,17 @@ pub fn scratch_build(
     let mut scratch_paths = paths.clone();
     scratch_paths.output = scratch.path().join("dist");
     scratch_paths.subdomain_output_root = scratch.path().join("dist-subdomains");
+    // Social cards: validate `[og]` and compute card URLs, but render no PNGs
+    // (the scratch output is thrown away; `seite build` renders them).
+    let mut config = config.clone();
+    if let Some(og) = config.og.as_mut() {
+        og.skip_render = true;
+    }
     let opts = BuildOptions {
         include_drafts,
         incremental: false,
     };
-    let built = build::build_site(config, &scratch_paths, &opts);
+    let built = build::build_site(&config, &scratch_paths, &opts);
     Ok((scratch, scratch_paths, built))
 }
 

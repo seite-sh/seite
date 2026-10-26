@@ -2155,7 +2155,7 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("[check | audit | new"));
-        assert_eq!(extract_version(&rendered), 5);
+        assert_eq!(extract_version(&rendered), 6);
         assert!(body.contains("## Routing"));
         assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
@@ -2259,7 +2259,7 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 5);
+        assert_eq!(extract_version(content), 6);
 
         let (_, gemini) = &files[1];
         let parsed: toml::Table = toml::from_str(gemini).unwrap();
@@ -2268,7 +2268,7 @@ mod tests {
             Some(skill("seite").unwrap().description())
         );
         assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
-        assert_eq!(extract_version(gemini), 5);
+        assert_eq!(extract_version(gemini), 6);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );

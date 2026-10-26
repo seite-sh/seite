@@ -34,6 +34,8 @@ fn pre_partial(name: &str) -> String {
 fn full_site(tmp: &TempDir) -> std::path::PathBuf {
     init_site(tmp, "site", "Partials", "posts,docs,pages");
     let site = tmp.path().join("site");
+    // Compared with the pre-partial themes, from before generated social cards.
+    remove_og_section(&site);
     add_language(&site, "es", "Parciales");
     let post = fs::read_dir(site.join("content/posts"))
         .unwrap()
