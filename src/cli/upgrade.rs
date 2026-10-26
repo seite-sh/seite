@@ -1685,6 +1685,12 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
     ),
 ];
 
+/// The bundled theme `content` (a `base.html`) is an unedited copy of, in
+/// any released version.
+pub(crate) fn legacy_bundled_theme(content: &str) -> Option<&'static str> {
+    bundled_theme_for_hash(&template_hash(content))
+}
+
 /// The bundled theme a `base.html` is an unedited copy of (any version).
 fn bundled_theme_for_hash(hash: &str) -> Option<&'static str> {
     LEGACY_THEME_HASHES
@@ -2218,7 +2224,10 @@ aliases:
 /// Bundled themes are auto-upgraded, but custom `templates/base.html` files need
 /// the user to add the Atom link manually.
 fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
-    let base_html = root.join("templates/base.html");
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let base_html = root.join(template_dir).join("base.html");
     if !base_html.exists() {
         return vec![]; // Using bundled theme — auto-upgraded
     }
@@ -2228,8 +2237,13 @@ fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
         Err(_) => return vec![],
     };
 
-    // Skip if already has Atom autodiscovery (directly or via seite's head partial)
-    if content.contains("application/atom+xml") || content.contains("seite/head.html") {
+    // Skip if already has Atom autodiscovery (directly or via seite's head
+    // partial), or is an unedited bundled theme that `check_bundled_theme_base`
+    // replaces with the current, partial-based version.
+    if content.contains("application/atom+xml")
+        || content.contains("seite/head.html")
+        || legacy_bundled_theme(&content).is_some()
+    {
         return vec![];
     }
 
@@ -4215,5 +4229,34 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         write_base(tmp.path(), crate::themes::default().base_html);
         assert!(check_atom_autodiscovery_template(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_atom_hint_skips_unedited_bundled_theme_and_uses_template_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("CLAUDE.md"), "# Project").unwrap();
+        // dark as 0.2.4 shipped it has RSS but no Atom link; upgrade replaces
+        // it, so no hint about adding Atom by hand.
+        let legacy = include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera");
+        assert!(!legacy.contains("atom"));
+        write_base(root, legacy);
+        assert!(check_atom_autodiscovery_template(root).is_empty());
+
+        // The configured template_dir is the one checked.
+        fs::write(
+            root.join("seite.toml"),
+            "collections = []\n[site]\ntitle = \"T\"\n\n[build]\ntemplate_dir = \"layouts\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("layouts")).unwrap();
+        fs::write(
+            root.join("layouts/base.html"),
+            r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#,
+        )
+        .unwrap();
+        assert_eq!(check_atom_autodiscovery_template(root).len(), 1);
+        fs::remove_file(root.join("layouts/base.html")).unwrap();
+        assert!(check_atom_autodiscovery_template(root).is_empty());
     }
 }

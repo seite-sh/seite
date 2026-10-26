@@ -13,7 +13,7 @@ pub fn default_base() -> &'static str {
 }
 
 pub const DEFAULT_INDEX: &str = r#"{% extends "base.html" %}
-{% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
+{% block title %}{% set _home_url = lang_prefix ~ "/" %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% elif page and page.collection and page.title and page.url != _home_url %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
 {% block content %}
 {% if page.content %}
 <div class="homepage-content">{{ page.content | safe }}</div>
@@ -174,7 +174,7 @@ pub const DEFAULT_TAG: &str = r##"{% extends "base.html" %}
 <div class="tag-items">
     {% for item in items %}
     <article>
-        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
         {% if item.date %}<time>{{ item.date }}</time>{% endif %}
         {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} {{ t.min_read }}</span>{% endif %}
         {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
@@ -209,7 +209,7 @@ pub const DEFAULT_TERM: &str = r##"{% extends "base.html" %}
 <div class="tag-items">
     {% for item in items %}
     <article>
-        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
         {% if item.date %}<time>{{ item.date }}</time>{% endif %}
         {% if item.reading_time %}<span class="reading-time">{{ item.reading_time }} {{ t.min_read }}</span>{% endif %}
         {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
@@ -515,7 +515,7 @@ pub const DEFAULT_TRUST_INDEX: &str = r##"{% extends "base.html" %}
                 </div>
                 <h3 class="cert-card__title">{{ cert.name | i18n(lang=lang) }}</h3>
                 {% if cert.description %}<p class="cert-card__desc">{{ cert.description | i18n(lang=lang) }}</p>{% endif %}
-                {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link">{{ t.learn_more }} &rarr;</a>{% endif %}
+                {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link" aria-label="{{ t.learn_more | escape_attr }}: {{ cert.name | i18n(lang=lang) | escape_attr }}">{{ t.learn_more }} &rarr;</a>{% endif %}
             </div>
             {% endfor %}
         </div>
@@ -596,6 +596,69 @@ pub const SEITE_PARTIALS: &[(&str, &str)] = &[
     ),
     ("seite/scripts.html", include_str!("seite/scripts.html")),
 ];
+
+/// Escape a string for an HTML attribute value: `"`, `<`, `>` and any `&`
+/// that does not already start a character reference. Plain text and URLs
+/// without those characters come out unchanged.
+pub fn escape_attr(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for (i, c) in value.char_indices() {
+        match c {
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' if !starts_char_reference(&value[i + 1..]) => out.push_str("&amp;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Whether `rest` (the text after an `&`) is a character reference such as
+/// `amp;`, `#39;` or `#x2F;`.
+fn starts_char_reference(rest: &str) -> bool {
+    let Some(end) = rest.find(';') else {
+        return false;
+    };
+    let name = &rest[..end];
+    if let Some(num) = name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")) {
+        !num.is_empty() && num.chars().all(|c| c.is_ascii_hexdigit())
+    } else if let Some(num) = name.strip_prefix('#') {
+        !num.is_empty() && num.chars().all(|c| c.is_ascii_digit())
+    } else {
+        !name.is_empty() && name.len() <= 32 && name.chars().all(|c| c.is_ascii_alphanumeric())
+    }
+}
+
+/// JSON for a `<script>` element: like `json_encode`, with every `<`
+/// written as `\u003c` so a value can never close the script
+/// (`</script>`) or open a comment (`<!--`).
+pub fn json_script(value: &serde_json::Value) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| "null".to_string())
+        .replace('<', "\\u003c")
+}
+
+/// Register the filters seite's partials use: `escape_attr` (HTML attribute
+/// values) and `json_script` (JSON inside `<script>`).
+pub fn register_filters(tera: &mut tera::Tera) {
+    tera.register_filter(
+        "escape_attr",
+        |value: &tera::Value, _: &std::collections::HashMap<String, tera::Value>| {
+            Ok(tera::Value::String(match value {
+                tera::Value::String(s) => escape_attr(s),
+                tera::Value::Null => String::new(),
+                other => escape_attr(&other.to_string()),
+            }))
+        },
+    );
+    tera.register_filter(
+        "json_script",
+        |value: &tera::Value, _: &std::collections::HashMap<String, tera::Value>| {
+            Ok(tera::Value::String(json_script(value)))
+        },
+    );
+}
 
 /// The embedded seite partial with this name (`seite/head.html`, ...), if any.
 pub fn seite_partial(name: &str) -> Option<&'static str> {
@@ -707,6 +770,7 @@ pub fn load_templates_with_warnings(
     // already uses `| safe`. Auto-escaping causes URLs to be mangled with &#x2F;
     // in href attributes (e.g. `href="&#x2F;posts"` instead of `href="/posts"`).
     tera.autoescape_on(vec![]);
+    register_filters(&mut tera);
 
     // seite-owned partials: the embedded copy unless the site overrides it
     // with templates/seite/<name>.
@@ -843,7 +907,11 @@ pub fn seite_head_diagnostics(template_dir: &Path) -> Diagnostics {
     let Ok(content) = std::fs::read_to_string(&path) else {
         return diagnostics;
     };
-    if content.contains("seite/head.html") {
+    // Follow {% include %} / {% extends %} / {% import %} from base.html
+    // (user templates first, then the embedded ones), so a head included
+    // indirectly (e.g. via templates/partials/head.html) counts.
+    let reached = reachable_templates(template_dir, "base.html", &content);
+    if reached.iter().any(|(name, _)| name == "seite/head.html") {
         return diagnostics;
     }
     // Point at <title> (the include goes right after it), else at <head>.
@@ -851,7 +919,9 @@ pub fn seite_head_diagnostics(template_dir: &Path) -> Diagnostics {
     let line = find("</title>")
         .or_else(|| find("<head"))
         .map_or(1, |i| i + 1);
-    let legacy = content.contains("og:title") || content.contains("application/ld+json");
+    let legacy = reached
+        .iter()
+        .any(|(_, src)| src.contains("og:title") || src.contains("application/ld+json"));
     let diagnostic = if legacy {
         Diagnostic::warning(
             "template-missing-seite-head",
@@ -869,6 +939,57 @@ pub fn seite_head_diagnostics(template_dir: &Path) -> Diagnostics {
     };
     diagnostics.push(diagnostic.with_file(&path).with_line(line));
     diagnostics
+}
+
+/// Every template reachable from `name` (whose source is `source`) through
+/// `include`, `extends` and `import` tags, as `(name, source)`, starting with
+/// `name` itself. Targets resolve to the user's file in `template_dir`, else
+/// the embedded template of that name; unknown targets are skipped.
+fn reachable_templates(template_dir: &Path, name: &str, source: &str) -> Vec<(String, String)> {
+    let mut reached = vec![(name.to_string(), source.to_string())];
+    let mut next = 0;
+    while next < reached.len() {
+        let targets = template_references(&reached[next].1);
+        next += 1;
+        for target in targets {
+            if reached.iter().any(|(n, _)| *n == target) {
+                continue;
+            }
+            let user = template_dir.join(&target);
+            let source = match std::fs::read_to_string(&user) {
+                Ok(text) if user.starts_with(template_dir) => Some(text),
+                _ => embedded_default(&target).map(str::to_string),
+            };
+            if let Some(source) = source {
+                reached.push((target, source));
+            }
+        }
+    }
+    reached
+}
+
+/// Template names in the `include` / `extends` / `import` tags of `source`
+/// (every quoted string in the tag, so `include ["a.html", "b.html"]` works).
+fn template_references(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut rest = source;
+    while let Some(start) = rest.find("{%") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("%}") else { break };
+        let tag = after[..end].trim_start_matches('-').trim_start();
+        if ["include", "extends", "import"]
+            .iter()
+            .any(|kw| tag.starts_with(kw))
+        {
+            for (i, part) in tag.split(['"', '\'']).enumerate() {
+                if i % 2 == 1 && !part.is_empty() && !part.contains("..") {
+                    names.push(part.to_string());
+                }
+            }
+        }
+        rest = &after[end + 2..];
+    }
+    names
 }
 
 /// 1-based column of the first `{{ page.url }}.md` in `line` (whitespace
@@ -1459,5 +1580,140 @@ mod tests {
             found[0].message
         );
         assert_eq!(found[0].line, Some(3));
+    }
+
+    #[test]
+    fn test_seite_head_diagnostics_follows_indirect_includes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        std::fs::create_dir_all(dir.join("partials")).unwrap();
+        // base.html -> partials/head.html -> seite/head.html: fine.
+        std::fs::write(
+            dir.join("base.html"),
+            "<html><head><title>x</title>{%- include 'partials/head.html' -%}</head></html>",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("partials/head.html"),
+            "{% include \"seite/head.html\" %}<meta name=\"x\">",
+        )
+        .unwrap();
+        assert!(seite_head_diagnostics(dir).is_empty());
+
+        // base.html extends a layout that includes the partial: fine.
+        std::fs::write(dir.join("base.html"), "{% extends \"layout.html\" %}").unwrap();
+        std::fs::write(
+            dir.join("layout.html"),
+            "<head>{% include [\"partials/head.html\", \"x.html\"] %}</head>",
+        )
+        .unwrap();
+        assert!(seite_head_diagnostics(dir).is_empty());
+
+        // A partial with a copied head (no seite/head.html): legacy, even
+        // though base.html itself has no SEO tags.
+        std::fs::write(
+            dir.join("partials/head.html"),
+            "<meta property=\"og:title\" content=\"{{ page.title }}\">",
+        )
+        .unwrap();
+        let found: Vec<_> = seite_head_diagnostics(dir).into_iter().collect();
+        assert_eq!(found.len(), 1);
+        assert!(
+            found[0].message.starts_with("legacy theme"),
+            "{}",
+            found[0].message
+        );
+
+        // Cycles and missing targets end the walk.
+        std::fs::write(
+            dir.join("partials/head.html"),
+            "{% include \"partials/head.html\" %}{% include \"missing.html\" %}",
+        )
+        .unwrap();
+        let found: Vec<_> = seite_head_diagnostics(dir).into_iter().collect();
+        assert!(
+            found[0].message.starts_with("missing SEO head"),
+            "{}",
+            found[0].message
+        );
+        assert_eq!(
+            template_references("{% include \"a.html\" %}{%- extends 'b.html' -%}{% import \"../c.html\" as m %}{{ x }}{% if y %}"),
+            ["a.html", "b.html"]
+        );
+    }
+
+    #[test]
+    fn test_escape_attr_and_json_script() {
+        assert_eq!(escape_attr("plain /url?a=1"), "plain /url?a=1");
+        assert_eq!(
+            escape_attr(r#"Say "hi" <b> & go"#),
+            "Say &quot;hi&quot; &lt;b&gt; &amp; go"
+        );
+        // Existing character references are left alone.
+        assert_eq!(
+            escape_attr("Q&amp;A &#39; &#x2F; &copy;"),
+            "Q&amp;A &#39; &#x2F; &copy;"
+        );
+        assert_eq!(escape_attr("a & b;c"), "a &amp; b;c");
+        assert_eq!(
+            json_script(&serde_json::json!("x</script><!-- y")),
+            "\"x\\u003c/script>\\u003c!-- y\""
+        );
+        assert_eq!(
+            json_script(&serde_json::json!("No results")),
+            "\"No results\""
+        );
+        let parsed: String =
+            serde_json::from_str(&json_script(&serde_json::json!("a</b"))).unwrap();
+        assert_eq!(parsed, "a</b");
+    }
+
+    #[test]
+    fn test_head_partial_escapes_attributes_and_json_ld() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (tera, _) = load_templates_with_warnings(&tmp.path().join("missing"), &[]).unwrap();
+        let mut ctx = tera::Context::new();
+        ctx.insert(
+            "site",
+            &serde_json::json!({"title": "Site", "description": "d", "base_url": "https://x.dev", "author": "A"}),
+        );
+        ctx.insert(
+            "page",
+            &serde_json::json!({
+                "title": "A \"quoted\" title",
+                "description": "Ends </script><script>alert(1)</script>",
+                "url": "/posts/a/",
+                "collection": "posts",
+                "date": "2026-01-01",
+            }),
+        );
+        ctx.insert("lang", "en");
+        ctx.insert("lang_prefix", "");
+        ctx.insert("translations", &Vec::<serde_json::Value>::new());
+        ctx.insert("math_enabled", &false);
+        let head = tera.render("seite/head.html", &ctx).unwrap();
+        assert!(
+            head.contains(r#"<meta property="og:title" content="A &quot;quoted&quot; title">"#),
+            "{head}"
+        );
+        assert!(
+            head.contains(r#"content="Ends &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;""#),
+            "{head}"
+        );
+        // Exactly the two JSON-LD scripts open and close: no breakout.
+        assert_eq!(head.matches("<script").count(), 2, "{head}");
+        assert_eq!(head.matches("</script>").count(), 2, "{head}");
+        assert!(
+            head.contains(
+                "\"description\":\"Ends \\u003c/script>\\u003cscript>alert(1)\\u003c/script>\""
+            ),
+            "{head}"
+        );
+        // The JSON-LD stays valid JSON with the original text.
+        let start = head.find("{\"@context\"").unwrap();
+        let end = start + head[start..].find('\n').unwrap();
+        let ld: serde_json::Value = serde_json::from_str(head[start..end].trim()).unwrap();
+        assert_eq!(ld["headline"], "A \"quoted\" title");
+        assert_eq!(ld["description"], "Ends </script><script>alert(1)</script>");
     }
 }

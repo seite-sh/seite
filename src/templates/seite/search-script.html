@@ -3,8 +3,8 @@
         var index = null;
         var input = document.getElementById('search-input');
         var results = document.getElementById('search-results');
-        var basePath = {{ site.base_path | json_encode() }};
-        var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_encode() }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
+        var basePath = {{ site.base_path | json_script }};
+        var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_script }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
         function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
         function doSearch(q) {
             q = q.toLowerCase().trim();
@@ -15,7 +15,7 @@
             if (!hits.length) {
                 var noRes = document.createElement('div');
                 noRes.className = 'no-results';
-                noRes.textContent = '{{ t.no_results }}';
+                noRes.textContent = {{ t.no_results | json_script }};
                 results.textContent = '';
                 results.appendChild(noRes);
                 return;

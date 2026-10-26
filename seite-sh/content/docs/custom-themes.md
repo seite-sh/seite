@@ -155,7 +155,7 @@ Edit its layout and CSS; keep the includes. A bundled theme you never edit is re
 seite theme export my-theme --description "Dark theme with green accents"
 ```
 
-This saves `templates/themes/my-theme.tera` (your `base.html`, includes and all). Others install it with `seite theme install <url>`. A theme that links `static/css/site.css` needs that file too: share it alongside, or inline it in `<style>` before exporting.
+This saves `templates/themes/my-theme.tera` (your `base.html`, includes and all). Stylesheets it links from `static/` (such as `static/css/site.css`) are inlined as a `<style>` element, so the exported file works on its own. Others install it with `seite theme install <url>`.
 
 ## Next steps
 

@@ -272,7 +272,7 @@ url_prefix = "/categories"   # not "/posts"
 
 ## template-missing-seite-head
 
-**What it means:** your `templates/base.html` does not include `seite/head.html`, the partial that writes the canonical URL, description, Open Graph and Twitter tags, JSON-LD, hreflang, feed, `llms.txt` and markdown links. Reported as a warning (it fails only `--strict` builds and checks). The message says which case applies:
+**What it means:** your `templates/base.html` does not include `seite/head.html` (directly, or through a template it includes or extends, such as `templates/partials/head.html`), the partial that writes the canonical URL, description, Open Graph and Twitter tags, JSON-LD, hreflang, feed, `llms.txt` and markdown links. Reported as a warning (it fails only `--strict` builds and checks). The message says which case applies:
 
 - **legacy theme**: the file still has its own copy of those tags (a bundled theme from before seite 0.21, or a copy of one). The site works, but SEO and GEO fixes in new seite versions never reach it.
 - **missing SEO head**: the file has neither the include nor its own tags, so pages ship without them.

@@ -37,6 +37,7 @@ The SEO/GEO head lives in ONE place: `src/templates/seite/head.html`. Themes inc
 - hreflang for each of `translations` plus `x-default`
 
 ## Changing the partial
+- Every `{{ }}` inside an attribute value uses `| escape_attr`; JSON-LD and inline-JS values use `| json_script` (never `json_encode()`: it lets `</script>` through). Filters live in `templates::register_filters`
 - Byte-level output of every theme is covered by `tests/integration/theme_partials.rs`; an intentional change updates that test's expectations, the docs (`seite-sh/content/docs/templates.md` "seite partials") and the changelog
 - Sites get the change on their next build (no `seite theme apply` needed) unless they override `templates/seite/head.html`
 

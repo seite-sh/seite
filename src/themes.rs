@@ -196,7 +196,8 @@ pub struct AppliedTheme {
 /// Identify which theme `templates_dir/base.html` currently corresponds to.
 ///
 /// Returns the bundled or installed theme name whose template matches the file
-/// (ignoring surrounding whitespace), `"default"` when there is no `base.html`
+/// (ignoring surrounding whitespace; any released version of a bundled theme
+/// counts as that theme), `"default"` when there is no `base.html`
 /// (the build falls back to the default theme), or `"custom"` when the file
 /// matches no known theme.
 pub fn active_theme(project_root: &Path, templates_dir: &Path) -> String {
@@ -213,6 +214,11 @@ pub fn active_theme(project_root: &Path, templates_dir: &Path) -> String {
         .find(|t| t.base_html.trim() == current)
     {
         return theme.name;
+    }
+    // An unedited copy of an older version of a bundled theme is still
+    // that theme (`seite upgrade` replaces it with the current version).
+    if let Some(name) = crate::cli::upgrade::legacy_bundled_theme(&base) {
+        return name.to_string();
     }
     "custom".to_string()
 }

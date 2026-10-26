@@ -16,7 +16,7 @@ fn test_theme_create_json_keeps_child_stdout_off_stdout() {
     let fake = bin.join("claude");
     fs::write(
         &fake,
-        "#!/bin/sh\necho \"noise from child stdout\"\necho '<html></html>' > templates/base.html\n",
+        "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\necho \"noise from child stdout\"\necho '<html></html>' > templates/base.html\n",
     )
     .unwrap();
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();

@@ -289,9 +289,11 @@ seite ships five partials under the reserved `seite/` template namespace. Every 
 | `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |
 | `seite/lang-switcher.html` | where the language links go | links to the page's translations; renders nothing on single-language pages |
 
+The partials escape what they print: attribute values go through the `escape_attr` filter (`"`, `<`, `>` and a bare `&` become entities) and JSON-LD values through `json_script` (JSON with every `<` written as `\u003c`). Both filters are available to your own templates.
+
 `<title>{% block title %}…{% endblock %}</title>` stays in the theme: Tera blocks cannot live in an included file, and collection templates override the title through that block.
 
-The partials are embedded in the binary and **updated with seite**: SEO, GEO and search fixes reach every site on the next build, without touching `templates/base.html`. `seite check` warns (`template-missing-seite-head`) when a custom `base.html` does not include `seite/head.html`.
+The partials are embedded in the binary and **updated with seite**: SEO, GEO and search fixes reach every site on the next build, without touching `templates/base.html`. `seite check` warns (`template-missing-seite-head`) when a custom `base.html` does not include `seite/head.html`, directly or through templates it includes or extends.
 
 **Overriding a partial.** A file at `templates/seite/<name>.html` replaces the embedded one, e.g. `templates/seite/search.html` for a different search box. An overridden partial is yours: it no longer receives seite's fixes, so override the smallest one that does what you need, and prefer CSS or the theme's own markup around the include.
 

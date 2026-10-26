@@ -125,7 +125,14 @@ fn trimmed_lines(html: &str) -> String {
 /// - indentation: the partials' inner lines have the default theme's
 ///   indentation, so themes that nest the search box or switcher deeper differ
 ///   in leading whitespace only.
+///
+/// For every theme, the "no results" text is now a JSON string literal
+/// (`json_script`) instead of a single-quoted one.
 fn normalize(theme: &str, html: &str) -> String {
+    let html = &html.replace(
+        "noRes.textContent = 'No results';",
+        "noRes.textContent = \"No results\";",
+    );
     match theme {
         "academic" => html.to_string(),
         "default" | "minimal" | "dark" | "brutalist" => without_blank_lines(html),
@@ -538,5 +545,139 @@ fn test_theme_apply_blank_writes_stylesheet_once() {
     assert_eq!(
         fs::read_to_string(site.join("static/css/site.css")).unwrap(),
         "body{color:red}"
+    );
+}
+
+#[test]
+fn test_theme_create_refuses_nested_session_before_writing() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Nested", "posts");
+    let site = tmp.path().join("site");
+    let before = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    page_cmd()
+        .args(["theme", "create", "coral brutalist"])
+        .env("CLAUDECODE", "1")
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("nested"));
+    assert_eq!(
+        fs::read_to_string(site.join("templates/base.html")).unwrap(),
+        before
+    );
+    assert!(!site.join("static/css/site.css").exists());
+    assert!(!site.join("templates/base.html.bak").exists());
+}
+
+#[test]
+fn test_theme_export_inlines_stylesheet_and_applies_elsewhere() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "one", "One", "posts");
+    init_site(&tmp, "two", "Two", "posts");
+    let one = tmp.path().join("one");
+    let two = tmp.path().join("two");
+    page_cmd()
+        .args(["theme", "new"])
+        .current_dir(&one)
+        .assert()
+        .success();
+    let mut css = fs::read_to_string(one.join("static/css/site.css")).unwrap();
+    css.push_str("\n.coral-marker { color: coral; }\n");
+    fs::write(one.join("static/css/site.css"), css).unwrap();
+    page_cmd()
+        .args(["theme", "export", "coral"])
+        .current_dir(&one)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Inlined /static/css/site.css"));
+    let exported = fs::read_to_string(one.join("templates/themes/coral.tera")).unwrap();
+    assert!(!exported.contains(r#"href="/static/css/site.css""#));
+    assert!(exported.contains(r#"{% include "seite/head.html" %}"#));
+
+    fs::create_dir_all(two.join("templates/themes")).unwrap();
+    fs::write(two.join("templates/themes/coral.tera"), &exported).unwrap();
+    page_cmd()
+        .args(["theme", "apply", "coral"])
+        .current_dir(&two)
+        .assert()
+        .success();
+    let pages = build_html(&two);
+    let index = &pages["index.html"];
+    assert!(index.contains(".coral-marker { color: coral; }"), "{index}");
+    assert!(index.contains("<style>"), "{index}");
+    assert!(!two.join("static/css/site.css").exists());
+    page_cmd()
+        .args(["check", "--strict"])
+        .current_dir(&two)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_special_characters_in_titles_cannot_break_the_head() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Esc", "posts");
+    let site = tmp.path().join("site");
+    fs::write(
+        site.join("content/posts/2026-01-02-esc.md"),
+        "---\ntitle: 'A \"quoted\" title'\ndate: 2026-01-02\ndescription: 'Ends </script><script>alert(1)</script>'\n---\n\nbody\n",
+    )
+    .unwrap();
+    let pages = build_html(&site);
+    let post = &pages["posts/esc.html"];
+    let head = &post[..post.find("</head>").unwrap()];
+    assert!(
+        head.contains(r#"<meta property="og:title" content="A &quot;quoted&quot; title">"#),
+        "{head}"
+    );
+    assert!(!head.contains("<script>alert(1)"), "{head}");
+    assert_eq!(
+        head.matches("<script").count(),
+        head.matches("</script>").count()
+    );
+    assert!(head.contains("\\u003c/script>"), "{head}");
+}
+
+#[test]
+fn test_listing_pages_have_distinct_titles_and_heading_order() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Site", "posts,pages,trust");
+    let site = tmp.path().join("site");
+    add_language(&site, "es", "Sitio");
+    let title = |html: &str| {
+        let start = html.find("<title>").unwrap() + "<title>".len();
+        html[start..start + html[start..].find("</title>").unwrap()].to_string()
+    };
+    let pages = build_html(&site);
+    // Home keeps the site title; collection indexes get their label.
+    assert_eq!(title(&pages["index.html"]), "Site");
+    assert_eq!(title(&pages["es/index.html"]), "Sitio");
+    assert_eq!(title(&pages["posts/index.html"]), "Posts — Site");
+    assert_eq!(title(&pages["es/posts/index.html"]), "Posts — Sitio");
+
+    // A homepage from content/pages/index.md is still the site title.
+    fs::write(
+        site.join("content/pages/index.md"),
+        "---\ntitle: Welcome\n---\n\nHello\n",
+    )
+    .unwrap();
+    let pages = build_html(&site);
+    assert_eq!(title(&pages["index.html"]), "Site");
+
+    // Tag pages: item headings are h2 directly under the h1.
+    let tag = pages
+        .iter()
+        .find(|(k, _)| k.starts_with("tags/") && k.as_str() != "tags/index.html")
+        .unwrap()
+        .1;
+    let main = &tag[tag.find("<main").unwrap()..];
+    assert!(main.contains("<h2><a href="), "{main}");
+    assert!(!main.contains("<h3"), "{main}");
+
+    // Trust certification links name the certification for screen readers.
+    let trust = &pages["trust/index.html"];
+    assert!(
+        trust.contains(r#"aria-label="Learn more: SOC 2 Type II">Learn more &rarr;</a>"#),
+        "{trust}"
     );
 }

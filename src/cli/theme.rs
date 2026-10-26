@@ -283,6 +283,13 @@ fn run_create(description: &str) -> anyhow::Result<()> {
         CreatePlan::Impeccable { scaffold_blank, .. }
         | CreatePlan::RunAgent { scaffold_blank, .. } => *scaffold_blank,
     };
+    // Everything that can refuse runs before any file is written.
+    if matches!(plan, CreatePlan::RunAgent { .. }) {
+        crate::cli::agent::refuse_nested(&format!(
+            "Run `/seite theme {description}` directly in this session (Codex: `$seite theme {description}`)."
+        ))?;
+        crate::cli::agent::ensure_installed(harness)?;
+    }
     if scaffold {
         let applied = scaffold_blank(&root, &paths, false)?;
         human::info(&format!(
@@ -303,10 +310,6 @@ fn run_create(description: &str) -> anyhow::Result<()> {
             }));
         }
         CreatePlan::RunAgent { prompt, .. } => {
-            crate::cli::agent::refuse_nested(&format!(
-                "Run `/seite theme {description}` directly in this session (Codex: `$seite theme {description}`)."
-            ))?;
-            crate::cli::agent::ensure_installed(harness)?;
             human::info(&format!("Designing theme: \"{description}\""));
             crate::cli::agent::run_once(harness, &prompt, false)?;
             human::info(
@@ -531,7 +534,8 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
-    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let static_dir = config.resolve_paths(&std::env::current_dir()?).static_dir;
 
     let base_path = PathBuf::from("templates").join("base.html");
     if !base_path.exists() {
@@ -543,6 +547,8 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
     validate_theme_name(name)?;
 
     let content = std::fs::read_to_string(&base_path)?;
+    // A theme is one file: the site's own stylesheets go in as <style>.
+    let (content, inlined) = inline_local_stylesheets(&content, &static_dir);
     let exported = build_export_content(&content, description);
 
     let themes_dir = PathBuf::from("templates").join("themes");
@@ -559,10 +565,60 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
 
     std::fs::write(&dest, exported)?;
 
+    for css in &inlined {
+        human::info(&format!("Inlined {css} into the exported theme"));
+    }
     human::success(&format!("Exported theme '{}' to {}", name, dest.display()));
     human::info("Share this .tera file — others can install it with: seite theme install <url>");
 
     Ok(())
+}
+
+/// Replace each `<link rel="stylesheet" href="/static/….css">` whose file
+/// exists under `static_dir` with a `<style>` element holding that CSS, so
+/// an exported theme (e.g. one built on the blank starter) works on its own
+/// once applied elsewhere. Returns the new template and the inlined hrefs.
+fn inline_local_stylesheets(content: &str, static_dir: &Path) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(content.len());
+    let mut inlined = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("<link") {
+        let Some(len) = rest[start..].find('>') else {
+            break;
+        };
+        let tag = &rest[start..start + len + 1];
+        out.push_str(&rest[..start]);
+        let href = tag
+            .split_once("href=\"")
+            .and_then(|(_, after)| after.split_once('"'))
+            .map(|(href, _)| href);
+        let css = match href {
+            Some(href)
+                if tag.contains("rel=\"stylesheet\"")
+                    && href.ends_with(".css")
+                    && !href.contains("..") =>
+            {
+                href.strip_prefix("/static/")
+                    .and_then(|rel| std::fs::read_to_string(static_dir.join(rel)).ok())
+            }
+            _ => None,
+        };
+        match (href, css) {
+            (Some(href), Some(css)) => {
+                // `raw` keeps Tera from reading `{#`/`{{` in the CSS; a
+                // stray `</style` must not end the element early.
+                out.push_str(&format!(
+                    "<style>{{% raw %}}\n{}\n{{% endraw %}}</style>",
+                    css.trim_end().replace("</style", "<\\/style")
+                ));
+                inlined.push(href.to_string());
+            }
+            _ => out.push_str(tag),
+        }
+        rest = &rest[start + len + 1..];
+    }
+    out.push_str(rest);
+    (out, inlined)
 }
 
 /// Build exported theme content with metadata header.
@@ -923,5 +979,52 @@ mod tests {
         std::fs::write(&path, "not json").unwrap();
         assert!(!configure_impeccable_live(tmp.path(), &tpl).unwrap());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json");
+    }
+
+    #[test]
+    fn test_scaffold_blank_over_unedited_pre_partial_theme_needs_no_force() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        let legacy = include_str!("../../tests/fixtures/themes-pre-partials/landing.tera");
+        std::fs::write(paths.templates.join("base.html"), legacy).unwrap();
+        // An unedited 0.20.x copy is still "landing", not a custom design.
+        assert_eq!(
+            themes::active_theme(tmp.path(), &paths.templates),
+            "landing"
+        );
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        assert!(!paths.templates.join("base.html.bak").exists());
+    }
+
+    #[test]
+    fn test_inline_local_stylesheets() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let static_dir = tmp.path().join("static");
+        std::fs::create_dir_all(static_dir.join("css")).unwrap();
+        std::fs::write(
+            static_dir.join("css/site.css"),
+            "body { color: #123456; }\n/* {# not tera #} </style> */\n",
+        )
+        .unwrap();
+        let base = "<head>\n<link rel=\"stylesheet\" href=\"/static/css/site.css\">\n<link rel=\"stylesheet\" href=\"/static/css/missing.css\">\n<link rel=\"stylesheet\" href=\"https://cdn.example/x.css\">\n<link rel=\"icon\" href=\"/favicon.ico\">\n</head>";
+        let (out, inlined) = inline_local_stylesheets(base, &static_dir);
+        assert_eq!(inlined, ["/static/css/site.css"]);
+        assert!(!out.contains("href=\"/static/css/site.css\""), "{out}");
+        assert!(
+            out.contains("<style>{% raw %}\nbody { color: #123456; }"),
+            "{out}"
+        );
+        assert!(out.contains("<\\/style> */\n{% endraw %}</style>"), "{out}");
+        // Other links stay as they are.
+        assert!(out.contains("href=\"/static/css/missing.css\""));
+        assert!(out.contains("href=\"https://cdn.example/x.css\""));
+        assert!(out.contains("<link rel=\"icon\" href=\"/favicon.ico\">"));
+        // The result is still a valid template.
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template("t", &out).unwrap();
+        let rendered = tera.render("t", &tera::Context::new()).unwrap();
+        assert!(rendered.contains("{# not tera #}"), "{rendered}");
     }
 }

@@ -1010,6 +1010,7 @@ fn generate_agents_md(
     md.push_str(
         "- Templates extend `base.html`; render content with `{{ page.content | safe }}`.\n",
     );
+    md.push_str("- Themes: keep the `{% include \"seite/…\" %}` partials; seite updates them.\n");
     md.push_str("- Shortcodes: `{{< name(arg=\"v\") >}}`, or `{{% name() %}}…{{% end %}}` with a body. No `{{< /name >}}`.\n\n");
 
     md.push_str("## Verify\n\n");
