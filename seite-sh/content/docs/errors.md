@@ -331,7 +331,7 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 
 ## og-config-invalid
 
-**What it means:** The `[og]` section of `seite.toml` (generated social cards) names something seite cannot use: a color that is not `#rgb`/`#rrggbb`, a `logo` that is missing, outside the site, not `.svg`/`.png` or not a valid image, or a `font` that is missing or not a TrueType/OpenType file. An error: `seite build` stops and `seite check` reports it at the offending line.
+**What it means:** The `[og]` section of `seite.toml` (generated social cards) names something seite cannot use: a color that is not `#rgb`/`#rrggbb`, a `logo` that is missing, outside the site, a symlink, not `.svg`/`.png`, not a valid image, over 1 MB or over 4096 px per side, or a `font` that is missing, a symlink or not a TrueType/OpenType file. An error: `seite build` stops and `seite check` reports it at the offending line.
 
 **How to fix:** Correct the value; paths are relative to the site root. `seite og preview /` renders a card to try a change.
 

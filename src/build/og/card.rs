@@ -313,6 +313,18 @@ pub struct CardText {
     pub meta: String,
 }
 
+/// Largest logo width or height (px) accepted.
+pub const MAX_LOGO_SIDE: u32 = 4096;
+
+/// An `<image href>` resolver that loads only inline `data:` URIs: a logo
+/// SVG must never pull in files from disk (`href="/etc/..."`) or elsewhere.
+fn data_uri_only() -> usvg::ImageHrefResolver<'static> {
+    usvg::ImageHrefResolver {
+        resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+        resolve_string: Box::new(|_, _| None),
+    }
+}
+
 /// A logo to draw on the card.
 pub enum Logo {
     Svg(Box<usvg::Tree>),
@@ -326,12 +338,33 @@ impl Logo {
             let opt = usvg::Options {
                 fontdb: fonts.db.clone(),
                 font_family: fonts.body.family.clone(),
+                image_href_resolver: data_uri_only(),
                 ..Default::default()
             };
-            usvg::Tree::from_data(bytes, &opt)
-                .map(|tree| Logo::Svg(Box::new(tree)))
-                .map_err(|e| format!("not a valid SVG: {e}"))
+            let tree =
+                usvg::Tree::from_data(bytes, &opt).map_err(|e| format!("not a valid SVG: {e}"))?;
+            let size = tree.size();
+            if size.width() > MAX_LOGO_SIDE as f32 || size.height() > MAX_LOGO_SIDE as f32 {
+                return Err(format!(
+                    "the SVG is {}x{}; the limit is {MAX_LOGO_SIDE}x{MAX_LOGO_SIDE} (set a smaller width/height or viewBox)",
+                    size.width(),
+                    size.height()
+                ));
+            }
+            Ok(Logo::Svg(Box::new(tree)))
         } else {
+            // Check the PNG header before decoding: a huge image would need
+            // width x height x 4 bytes.
+            if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+                return Err("not a valid PNG".into());
+            }
+            let w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+            let h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+            if w > MAX_LOGO_SIDE || h > MAX_LOGO_SIDE {
+                return Err(format!(
+                    "the PNG is {w}x{h}; the limit is {MAX_LOGO_SIDE}x{MAX_LOGO_SIDE}"
+                ));
+            }
             tiny_skia::Pixmap::decode_png(bytes)
                 .map(Logo::Png)
                 .map_err(|e| format!("not a valid PNG: {e}"))
@@ -682,6 +715,7 @@ pub fn render(
     let opt = usvg::Options {
         fontdb: fonts.db.clone(),
         font_family: fonts.body.family.clone(),
+        image_href_resolver: data_uri_only(),
         ..Default::default()
     };
     let tree = usvg::Tree::from_str(&svg, &opt).map_err(|e| format!("card SVG: {e}"))?;

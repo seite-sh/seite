@@ -50,6 +50,12 @@ fn run(cli: &Cli) -> Result<()> {
         apply_config_flag(config)?;
     }
 
+    if cli.licenses {
+        use std::io::Write as _;
+        let mut out = std::io::stdout().lock();
+        out.write_all(seite::build::og::third_party_notices().as_bytes())?;
+        return Ok(());
+    }
     let Some(command) = cli.command.as_ref() else {
         if cli.json {
             anyhow::bail!("no command given (run `seite --help` to see commands)");

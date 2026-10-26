@@ -3636,7 +3636,8 @@ fn absolutize_image(image: Option<&str>, base_url: &str) -> Option<String> {
 
 /// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.
 /// `page.collection_url`: the absolute URL of collection `name`'s index in
-/// `lang` (`site.base_url` already carries any base path), or `None` for a
+/// `lang`, with the trailing slash of its canonical URL (`site.base_url`
+/// already carries any base path), or `None` for a
 /// root-mounted collection (empty `url_prefix`) or an unknown name.
 fn breadcrumb_collection_url(config: &SiteConfig, name: &str, lang: &str) -> Option<String> {
     let collection = config.collections.iter().find(|c| c.name == name)?;
@@ -3645,8 +3646,8 @@ fn breadcrumb_collection_url(config: &SiteConfig, name: &str, lang: &str) -> Opt
         return None;
     }
     Some(format!(
-        "{}{}/{prefix}",
-        config.site.base_url,
+        "{}{}/{prefix}/",
+        config.site.base_url.trim_end_matches('/'),
         lang_prefix_for(lang, &config.site.language)
     ))
 }

@@ -51,6 +51,10 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
+    /// Print the licences of bundled third-party assets (the social-card font)
+    #[arg(long, hide = true)]
+    pub licenses: bool,
+
     /// Machine-readable output: print exactly one JSON document on stdout
     /// ({"ok":true,"command":..,"data":..} or {"ok":false,..,"error":{"message":..,"chain":[..]}}),
     /// with all human output on stderr. Not supported by serve, agent, mcp,

@@ -531,16 +531,16 @@ template = "default"          # default | minimal | bold
 | `generate` | bool | `true` | Generate cards (absent `[og]` = off) |
 | `template` | string | `"default"` | Layout: `default` (accent bar, site name on top), `minimal` (title first, quiet footer), `bold` (full accent background) |
 | `background` / `foreground` / `accent` | string | brand, else theme | Card colors. Default: `colors.background` / `colors.text` / `colors.primary` from `data/brand.yaml`, else the active theme's palette |
-| `logo` | string | none | SVG or PNG, relative to the site root |
+| `logo` | string | none | SVG or PNG inside the site (no symlinks), at most 1 MB and 4096 px per side; an SVG logo can embed images only as `data:` URIs |
 | `font` | string | bundled Inter | A `.ttf`/`.otf`, relative to the site root, for titles in scripts Inter lacks |
 
 **Which pages.** Each public, non-draft content page without `image:` in its frontmatter gets `og/<url>.png` (`/posts/hello-world` → `/og/posts/hello-world.png`, translations under `og/<lang>/`). Each language's homepage gets the *site card*, `og/index.png` (site name and description), which every other page uses: collection indexes, tag pages, 404, drafts and private pages. Private collections never get cards of their own: they would publish their titles. A page with `image:` keeps its image.
 
 **What a card shows.** Site name (or host), the page title (wrapped to three lines, shrunk and finally cut with an ellipsis), and the collection, date and reading time; plus the logo.
 
-**Fonts.** Cards use a bundled subset of [Inter](https://rsms.me/inter/) (SIL Open Font License) with Latin, Greek and Cyrillic, and never system fonts, so output does not depend on the machine. A title with characters the font lacks (Chinese, Japanese, Korean, emoji) gets no card of its own rather than empty boxes, and the build warns once (`og-missing-glyphs`); set `font` to a font that has them.
+**Fonts.** Cards use a bundled subset of [Inter](https://rsms.me/inter/) (SIL Open Font License; `seite --licenses` prints it) with Latin, Greek and Cyrillic, and never system fonts, so output does not depend on the machine. The "min read" label comes from the site's UI strings (`min_read` in `data/i18n/<lang>.yaml`); untranslated languages show just "N min". A title with characters the font lacks (Chinese, Japanese, Korean, emoji) gets no card of its own rather than empty boxes, and the build warns once (`og-missing-glyphs`); set `font` to a font that has them.
 
-**Cache.** Cards are cached in `.seite/cache/og/` (gitignored), keyed by everything that affects them (text, colors, layout, font and logo bytes, seite version), so rebuilds only render changed cards. `seite serve` generates them too; a content edit re-renders only that page's card. `seite check` validates `[og]` (bad colors, missing logo or font: `og-config-invalid`) but renders nothing. Delete the cache directory any time.
+**Cache.** Cards are cached in `.seite/cache/og/` (gitignored, one directory per output, so the main site and each subdomain), keyed by everything that affects them (text, colors, layout, font and logo bytes, seite version), so rebuilds only render changed cards. Each full build deletes the entries it no longer uses. `seite serve` generates them too; a content edit re-renders only that page's card. `seite check` validates `[og]` (bad colors, missing logo or font: `og-config-invalid`) but renders nothing. Delete the cache directory any time.
 
 **Try it.** `seite og preview /posts/hello-world` writes `.seite/cache/og-preview.png` (`--out card.png`, `--template bold` to compare layouts without editing the config; `/` is the site card).
 

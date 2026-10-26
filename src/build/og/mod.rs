@@ -53,6 +53,8 @@ pub struct OgStats {
     pub cached: usize,
     /// Pages without a card because their title needs glyphs the font lacks.
     pub missing_glyphs: usize,
+    /// Stale cache entries deleted after a full build.
+    pub pruned: usize,
 }
 
 /// URL path of the card for a page URL: `/` → `/og/index.png`,
@@ -143,9 +145,20 @@ fn config_error(root: &Path, key: &str, message: String, hint: &str) -> Diagnost
     d
 }
 
+/// Largest `[og] logo` file read (SVG or PNG).
+pub const MAX_LOGO_BYTES: u64 = 1024 * 1024;
+/// Largest `[og] font` file read.
+pub const MAX_FONT_BYTES: u64 = 64 * 1024 * 1024;
+
 /// A file named by `[og] logo` / `[og] font`, read and confined to the site
-/// root.
-fn read_site_file(root: &Path, key: &str, rel: &str) -> Result<Vec<u8>, Box<Diagnostic>> {
+/// root: relative, no `..`, no symlinked component, canonically inside the
+/// root (`safe_fs::guard`), at most `max_bytes`.
+fn read_site_file(
+    root: &Path,
+    key: &str,
+    rel: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, Box<Diagnostic>> {
     let path = root.join(rel);
     let inside = Path::new(rel).is_relative()
         && !Path::new(rel)
@@ -159,19 +172,43 @@ fn read_site_file(root: &Path, key: &str, rel: &str) -> Result<Vec<u8>, Box<Diag
             "use a path relative to the site root, e.g. \"static/logo.svg\"",
         )));
     }
-    std::fs::read(&path).map_err(|e| {
+    if let Err(e) = crate::safe_fs::guard(root, &path) {
+        return Err(Box::new(config_error(
+            root,
+            key,
+            format!("[og] {key} = \"{rel}\": {e}"),
+            "point at a real file inside the site, not a symlink",
+        )));
+    }
+    let read_error = |e: std::io::Error| {
         Box::new(config_error(
             root,
             key,
             format!("[og] {key}: cannot read \"{rel}\": {e}"),
             "the path is relative to the site root (the directory holding seite.toml)",
         ))
-    })
+    };
+    let len = std::fs::metadata(&path).map_err(read_error)?.len();
+    if len > max_bytes {
+        return Err(Box::new(config_error(
+            root,
+            key,
+            format!("[og] {key} = \"{rel}\" is {len} bytes; the limit is {max_bytes}"),
+            "use a smaller file (optimize the SVG, or a smaller PNG)",
+        )));
+    }
+    std::fs::read(&path).map_err(read_error)
 }
 
 /// Everything needed to render cards for one build.
 pub struct OgPlan {
     root: PathBuf,
+    /// `.seite/cache/og/<scope>/`: one directory per output (main site and
+    /// each subdomain differ in `base_url`), pruned after each full build.
+    cache_dir: PathBuf,
+    /// Per language: the "min read" UI string (`t.min_read`) when it is
+    /// translated or the language is English; `None` → just "N min".
+    min_read: std::collections::HashMap<String, Option<String>>,
     style: Style,
     fonts: Fonts,
     logo: Option<Logo>,
@@ -236,7 +273,7 @@ impl OgPlan {
 
         let font_bytes = match og.font.as_deref() {
             None => None,
-            Some(rel) => match read_site_file(root, "font", rel) {
+            Some(rel) => match read_site_file(root, "font", rel, MAX_FONT_BYTES) {
                 Ok(bytes) => Some(bytes),
                 Err(d) => {
                     errors.push(*d);
@@ -290,7 +327,7 @@ impl OgPlan {
                     ));
                     None
                 } else {
-                    match read_site_file(root, "logo", rel) {
+                    match read_site_file(root, "logo", rel, MAX_LOGO_BYTES) {
                         Err(d) => {
                             errors.push(*d);
                             None
@@ -318,8 +355,25 @@ impl OgPlan {
         if !errors.is_empty() {
             return Err(errors);
         }
+        let scope: String = Sha256::digest(config.site.base_url.trim_end_matches('/').as_bytes())
+            .iter()
+            .take(6)
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let min_read = config
+            .all_languages()
+            .into_iter()
+            .map(|lang| {
+                let t = super::ui_strings_for_lang(&lang, data);
+                let s = t["min_read"].as_str().unwrap_or("min read").to_string();
+                let usable = lang.starts_with("en") || s != "min read";
+                (lang, usable.then_some(s))
+            })
+            .collect();
         Ok(Some(OgPlan {
             root: root.clone(),
+            cache_dir: root.join(CACHE_DIR).join(scope),
+            min_read,
             style,
             fonts,
             logo,
@@ -396,10 +450,9 @@ impl OgPlan {
             parts.push(date.to_string());
         }
         if collection.has_date && reading_time > 0 {
-            parts.push(if lang.starts_with("en") {
-                format!("{reading_time} min read")
-            } else {
-                format!("{reading_time} min")
+            parts.push(match self.min_read.get(lang).cloned().flatten() {
+                Some(label) if self.fonts.covers(&label) => format!("{reading_time} {label}"),
+                _ => format!("{reading_time} min"),
             });
         }
         CardText {
@@ -451,10 +504,7 @@ impl OgPlan {
     /// Render (or copy from the cache) one card to PNG bytes. Returns the
     /// bytes and whether they came from the cache.
     fn card_png(&self, text: &CardText) -> crate::error::Result<(Vec<u8>, bool)> {
-        let cache = self
-            .root
-            .join(CACHE_DIR)
-            .join(format!("{}.png", self.cache_key(text)));
+        let cache = self.cache_dir.join(format!("{}.png", self.cache_key(text)));
         if let Ok(bytes) = std::fs::read(&cache) {
             if bytes.starts_with(b"\x89PNG") {
                 return Ok((bytes, true));
@@ -561,7 +611,34 @@ impl OgPlan {
                 stats.rendered += 1;
             }
         }
+        if only.is_none() {
+            let used: HashSet<String> = jobs
+                .iter()
+                .map(|(_, text)| format!("{}.png", self.cache_key(text)))
+                .collect();
+            stats.pruned = self.prune_cache(&used);
+        }
         Ok((stats, missing))
+    }
+
+    /// Delete cached cards this (full) build did not use. Returns how many.
+    fn prune_cache(&self, used: &HashSet<String>) -> usize {
+        let Ok(entries) = std::fs::read_dir(&self.cache_dir) else {
+            return 0;
+        };
+        let mut stale: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.ends_with(".png") && !used.contains(&name)
+            })
+            .map(|e| e.path())
+            .collect();
+        stale.sort();
+        stale
+            .iter()
+            .filter(|path| crate::safe_fs::remove(&self.root, path).is_ok())
+            .count()
     }
 }
 
@@ -570,6 +647,17 @@ fn host(config: &SiteConfig) -> String {
     let url = config.site.base_url.trim();
     let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
     rest.trim_end_matches('/').to_string()
+}
+
+/// Third-party notices for what the binary bundles (`seite --licenses`).
+pub fn third_party_notices() -> String {
+    format!(
+        "seite bundles one third-party asset, used for social cards ([og]):\n\n\
+         Inter 4.1 (Inter Display Bold and Inter Medium, subset to Latin, Greek and Cyrillic)\n\
+         Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)\n\
+         Licensed under the SIL Open Font License, Version 1.1:\n\n{}",
+        include_str!("../../../assets/fonts/OFL.txt")
+    )
 }
 
 /// Absolute URL of a card path (`/og/...png`) under `base_url`, which already
@@ -798,5 +886,269 @@ mod tests {
         )
         .unwrap()
         .is_none());
+    }
+
+    fn logo_png(dir: &Path, svg: &str) -> Vec<u8> {
+        std::fs::write(dir.join("logo.svg"), svg).unwrap();
+        let plan = plan_with(
+            dir,
+            OgSection {
+                logo: Some("logo.svg".into()),
+                ..OgSection::default()
+            },
+        )
+        .unwrap()
+        .unwrap();
+        plan.render_text(&CardText {
+            header: "Site".into(),
+            title: "Title".into(),
+            subtitle: None,
+            meta: String::new(),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn logo_svg_cannot_load_external_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let red = outside.path().join("red.svg");
+        std::fs::write(
+            &red,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\" fill=\"red\"/></svg>",
+        )
+        .unwrap();
+        let plain = logo_png(
+            dir.path(),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\"><circle cx=\"32\" cy=\"32\" r=\"20\"/></svg>",
+        );
+        for href in [red.display().to_string(), "red.svg".to_string()] {
+            std::fs::copy(&red, dir.path().join("red.svg")).unwrap();
+            let with_external = logo_png(
+                dir.path(),
+                &format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"64\" height=\"64\"><circle cx=\"32\" cy=\"32\" r=\"20\"/><image href=\"{href}\" xlink:href=\"{href}\" width=\"64\" height=\"64\"/></svg>"
+                ),
+            );
+            assert_eq!(plain, with_external, "{href} must be ignored");
+        }
+        // Inline data: URIs still work (nested SVG).
+        let inline = logo_png(
+            dir.path(),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\"><image width=\"64\" height=\"64\" href=\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='red'/%3E%3C/svg%3E\"/></svg>",
+        );
+        assert_ne!(plain, inline);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_logo_or_font_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("seite.toml"),
+            "[og]\nlogo = \"static/logo.svg\"\n",
+        )
+        .unwrap();
+        let target = outside.path().join("logo.svg");
+        std::fs::write(
+            &target,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("static")).unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join("static/logo.svg")).unwrap();
+        let err = plan_with(
+            dir.path(),
+            OgSection {
+                logo: Some("static/logo.svg".into()),
+                ..OgSection::default()
+            },
+        )
+        .err()
+        .expect("symlinked logo refused");
+        let d = err.iter().next().unwrap();
+        assert_eq!(d.code, "og-config-invalid");
+        assert!(d.message.contains("symlink"), "{}", d.message);
+        assert_eq!(d.line, Some(2));
+        // A symlinked directory component too.
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("fonts")).unwrap();
+        assert!(plan_with(
+            dir.path(),
+            OgSection {
+                font: Some("fonts/logo.svg".into()),
+                ..OgSection::default()
+            },
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn oversize_logos_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let try_logo = |name: &str, bytes: &[u8]| {
+            std::fs::write(dir.path().join(name), bytes).unwrap();
+            plan_with(
+                dir.path(),
+                OgSection {
+                    logo: Some(name.into()),
+                    ..OgSection::default()
+                },
+            )
+            .err()
+            .map(|e| e.iter().next().unwrap().message.clone())
+        };
+        let big = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><!--{}--></svg>",
+            "x".repeat(MAX_LOGO_BYTES as usize)
+        );
+        assert!(try_logo("big.svg", big.as_bytes())
+            .unwrap()
+            .contains("limit"));
+        let huge = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100000\" height=\"10\"/>";
+        assert!(try_logo("huge.svg", huge.as_bytes())
+            .unwrap()
+            .contains("4096"));
+        // A PNG header claiming 50000x50000 is refused before decoding.
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        png.extend_from_slice(&50_000u32.to_be_bytes());
+        png.extend_from_slice(&50_000u32.to_be_bytes());
+        png.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+        assert!(try_logo("huge.png", &png).unwrap().contains("4096"));
+        let ok = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4096\" height=\"64\"/>";
+        assert_eq!(try_logo("ok.svg", ok.as_bytes()), None);
+    }
+
+    fn test_config(extra: &str) -> SiteConfig {
+        let mut config: SiteConfig = toml::from_str(&format!(
+            "[site]\ntitle = \"T\"\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\ndefault_template = \"post.html\"\nhas_date = true\n{extra}"
+        ))
+        .unwrap();
+        config.og = Some(OgSection::default());
+        config
+    }
+
+    fn item(slug: &str, title: &str, lang: &str) -> ContentItem {
+        let prefix = if lang == "en" {
+            String::new()
+        } else {
+            format!("/{lang}")
+        };
+        ContentItem {
+            frontmatter: crate::content::Frontmatter {
+                title: title.into(),
+                date: chrono::NaiveDate::from_ymd_opt(2025, 1, 2),
+                ..Default::default()
+            },
+            raw_body: String::new(),
+            html_body: String::new(),
+            source_path: PathBuf::from(format!("content/posts/{slug}.{lang}.md")),
+            slug: slug.into(),
+            collection: "posts".into(),
+            url: format!("{prefix}/posts/{slug}"),
+            lang: lang.into(),
+            excerpt: String::new(),
+            toc: Vec::new(),
+            word_count: 500,
+            reading_time: 3,
+            excerpt_html: String::new(),
+        }
+    }
+
+    #[test]
+    fn reading_time_label_follows_the_site_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_config("[languages.es]\ntitle = \"T\"\n[languages.de]\ntitle = \"T\"\n");
+        let paths = config.resolve_paths(dir.path());
+        let data = serde_json::json!({"i18n": {"es": {"min_read": "min de lectura"}}});
+        let plan = OgPlan::new(&config, &paths, &data).unwrap().unwrap();
+        let collection = &config.collections[0];
+        let meta = |lang: &str| {
+            plan.page_text(&config, &item("a", "A", lang), collection)
+                .meta
+        };
+        assert_eq!(meta("en"), "Posts  ·  2025-01-02  ·  3 min read");
+        assert_eq!(meta("es"), "Posts  ·  2025-01-02  ·  3 min de lectura");
+        // No translation: no English words.
+        assert_eq!(meta("de"), "Posts  ·  2025-01-02  ·  3 min");
+    }
+
+    #[test]
+    fn incremental_generate_writes_only_changed_cards_and_full_builds_prune() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_config("");
+        let paths = config.resolve_paths(dir.path());
+        let plan = OgPlan::new(&config, &paths, &serde_json::json!({}))
+            .unwrap()
+            .unwrap();
+        let out = dir.path().join("dist");
+        let mut collections = indexmap::IndexMap::new();
+        collections.insert(
+            "posts".to_string(),
+            vec![item("a", "Alpha", "en"), item("b", "Beta", "en")],
+        );
+        let (stats, _) = plan.generate(&config, &collections, &out, None).unwrap();
+        assert_eq!((stats.rendered, stats.cached, stats.pruned), (3, 0, 0));
+        let card_b = std::fs::read(out.join("og/posts/b.png")).unwrap();
+
+        // Incremental: only `a` changed; `b` and the site card are untouched.
+        std::fs::remove_dir_all(&out).unwrap();
+        collections["posts"][0].frontmatter.title = "Alpha Two".into();
+        let only: HashSet<PathBuf> = [collections["posts"][0].source_path.clone()].into();
+        let (stats, _) = plan
+            .generate(&config, &collections, &out, Some(&only))
+            .unwrap();
+        assert_eq!((stats.rendered, stats.cached, stats.pruned), (1, 0, 0));
+        assert!(out.join("og/posts/a.png").exists());
+        assert!(!out.join("og/posts/b.png").exists());
+        assert!(!out.join("og/index.png").exists());
+        let cache_files = || std::fs::read_dir(&plan.cache_dir).unwrap().count();
+        assert_eq!(cache_files(), 4, "incremental builds never prune");
+
+        // The next full build drops the old "Alpha" entry.
+        let (stats, _) = plan.generate(&config, &collections, &out, None).unwrap();
+        assert_eq!((stats.rendered, stats.cached, stats.pruned), (0, 3, 1));
+        assert_eq!(cache_files(), 3);
+        assert_eq!(std::fs::read(out.join("og/posts/b.png")).unwrap(), card_b);
+    }
+
+    #[test]
+    fn cache_is_scoped_per_base_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut a = test_config("");
+        a.site.base_url = "https://example.com".into();
+        let mut b = a.clone();
+        b.site.base_url = "https://docs.example.com/".into();
+        let paths = a.resolve_paths(dir.path());
+        let data = serde_json::json!({});
+        let plan_a = OgPlan::new(&a, &paths, &data).unwrap().unwrap();
+        let plan_b = OgPlan::new(&b, &paths, &data).unwrap().unwrap();
+        assert_ne!(plan_a.cache_dir, plan_b.cache_dir);
+        a.site.base_url = "https://example.com/".into();
+        let plan_a2 = OgPlan::new(&a, &paths, &data).unwrap().unwrap();
+        assert_eq!(plan_a.cache_dir, plan_a2.cache_dir);
+    }
+
+    #[test]
+    fn third_party_notices_carry_the_ofl() {
+        let text = third_party_notices();
+        assert!(text.contains("Inter"));
+        assert!(text.contains("SIL OPEN FONT LICENSE Version 1.1"));
+    }
+
+    #[test]
+    fn bundled_fonts_embed_their_licence() {
+        use skrifa::{string::StringId, FontRef, MetadataProvider};
+        for data in [card::BUNDLED_TITLE, card::BUNDLED_BODY] {
+            let font = FontRef::new(data).unwrap();
+            let get = |id| {
+                font.localized_strings(id)
+                    .english_or_first()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            };
+            assert!(get(StringId::LICENSE_DESCRIPTION).contains("SIL Open Font License"));
+            assert!(get(StringId::LICENSE_URL).contains("OFL"));
+        }
     }
 }

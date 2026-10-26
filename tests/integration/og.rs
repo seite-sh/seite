@@ -95,11 +95,17 @@ fn test_og_cards_generated_with_head_tags() {
     assert!(html.contains(
         "<meta name=\"twitter:image\" content=\"http://localhost:3000/og/posts/first.png\">"
     ));
-    // Pages without a card of their own use the site card.
+    // Pages without a card of their own use the site card, described by
+    // the site title.
     for page in ["index.html", "posts/index.html", "404.html"] {
+        let html = read(&site, page);
         assert_eq!(
-            og_image(&read(&site, page)).as_deref(),
+            og_image(&html).as_deref(),
             Some("http://localhost:3000/og/index.png"),
+            "{page}"
+        );
+        assert!(
+            html.contains("<meta property=\"og:image:alt\" content=\"Card Site\">"),
             "{page}"
         );
     }
@@ -482,7 +488,9 @@ fn test_breadcrumb_urls_resolve_to_built_pages() {
     let site = site(&tmp);
     let toml = fs::read_to_string(site.join("seite.toml"))
         .unwrap()
-        .replacen("url_prefix = \"/posts\"", "url_prefix = \"/blog\"", 1);
+        .replacen("url_prefix = \"/posts\"", "url_prefix = \"/blog\"", 1)
+        // A trailing slash and a base path must not double up in crumbs.
+        .replace("http://localhost:3000", "https://ex.com/sub/");
     fs::write(site.join("seite.toml"), toml).unwrap();
     add_language(&site, "es", "Sitio");
     post(
@@ -519,7 +527,7 @@ fn test_breadcrumb_urls_resolve_to_built_pages() {
     let dist = site.join("dist");
     let resolves = |url: &str| -> bool {
         let path = url
-            .strip_prefix("http://localhost:3000")
+            .strip_prefix("https://ex.com/sub")
             .unwrap_or_else(|| panic!("not absolute: {url}"))
             .trim_matches('/');
         if path.is_empty() {
@@ -558,16 +566,168 @@ fn test_breadcrumb_urls_resolve_to_built_pages() {
     let crumbs = |page: &str| crumbs_by_page[page].clone();
     assert_eq!(
         crumbs("blog/first.html"),
-        ["http://localhost:3000", "http://localhost:3000/blog"]
+        ["https://ex.com/sub", "https://ex.com/sub/blog/"]
     );
     assert_eq!(
         crumbs("es/blog/first.html"),
-        ["http://localhost:3000/es", "http://localhost:3000/es/blog"]
+        ["https://ex.com/sub/es", "https://ex.com/sub/es/blog/"]
     );
     // Root-mounted pages: Home > page, no collection crumb.
-    assert_eq!(crumbs("about.html"), ["http://localhost:3000"]);
-    assert_eq!(crumbs("es/about.html"), ["http://localhost:3000/es"]);
+    assert_eq!(crumbs("about.html"), ["https://ex.com/sub"]);
+    assert_eq!(crumbs("es/about.html"), ["https://ex.com/sub/es"]);
+    // A collection index is the last crumb itself (no "Blog > Blog").
+    assert_eq!(
+        crumbs("blog/index.html"),
+        ["https://ex.com/sub", "https://ex.com/sub/blog/"]
+    );
+    assert_eq!(
+        crumbs("es/blog/index.html"),
+        ["https://ex.com/sub/es", "https://ex.com/sub/es/blog/"]
+    );
+    let html = read(&site, "blog/index.html");
+    let at = html.find("\"@type\":\"BreadcrumbList\"").unwrap();
+    assert_eq!(
+        html[at..]
+            .split("</script>")
+            .next()
+            .unwrap()
+            .matches("ListItem")
+            .count(),
+        2
+    );
     // No breadcrumb on the homepage.
     assert!(!crumbs_by_page.contains_key("index.html"));
     assert!(!crumbs_by_page.contains_key("es/index.html"));
+}
+
+#[test]
+fn test_og_stale_cards_and_cache_entries_removed() {
+    let tmp = TempDir::new().unwrap();
+    let site = site(&tmp);
+    post(&site, "2025-01-01-a.md", "title: Alpha\ndate: 2025-01-01");
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let cache = site.join(".seite/cache/og");
+    let before = files_under(&cache);
+    assert!(site.join("dist/og/posts/a.png").exists());
+    // Renamed page and new title: the old card leaves dist/ (full builds
+    // start from a clean output) and its cache entry is pruned.
+    fs::remove_file(site.join("content/posts/2025-01-01-a.md")).unwrap();
+    post(&site, "2025-01-01-b.md", "title: Beta\ndate: 2025-01-01");
+    let (ok, doc) = run_json(&site, &["build"]);
+    assert!(ok, "{doc}");
+    assert!(!site.join("dist/og/posts/a.png").exists());
+    assert!(site.join("dist/og/posts/b.png").exists());
+    assert_eq!(doc["data"]["og_cards"]["pruned"], 1, "{doc}");
+    let after = files_under(&cache);
+    assert_eq!(after.len(), before.len());
+    assert_ne!(after, before);
+}
+
+#[test]
+fn test_og_scheduled_page_gets_no_card() {
+    let tmp = TempDir::new().unwrap();
+    let site = site(&tmp);
+    post(
+        &site,
+        "2099-01-01-later.md",
+        "title: Later\ndate: 2099-01-01",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    assert!(!site.join("dist/posts/later.html").exists());
+    assert!(!site.join("dist/og/posts/later.png").exists());
+    // With --future it is built, with its own card.
+    page_cmd()
+        .args(["build", "--future"])
+        .current_dir(&site)
+        .assert()
+        .success();
+    assert_eq!(
+        og_image(&read(&site, "posts/later.html")).as_deref(),
+        Some("http://localhost:3000/og/posts/later.png")
+    );
+    assert!(site.join("dist/og/posts/later.png").exists());
+}
+
+#[test]
+fn test_og_multilingual_site_cards() {
+    let tmp = TempDir::new().unwrap();
+    let site = site(&tmp);
+    add_language(&site, "es", "Sitio de Tarjetas");
+    post(
+        &site,
+        "2025-01-01-first.md",
+        "title: First\ndate: 2025-01-01",
+    );
+    post(
+        &site,
+        "2025-01-01-first.es.md",
+        "title: Primero\ndate: 2025-01-01",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    for card in [
+        "og/index.png",
+        "og/es/index.png",
+        "og/posts/first.png",
+        "og/es/posts/first.png",
+    ] {
+        assert_eq!(
+            png_size(&site.join("dist").join(card)),
+            (1200, 630),
+            "{card}"
+        );
+    }
+    assert_ne!(
+        fs::read(site.join("dist/og/index.png")).unwrap(),
+        fs::read(site.join("dist/og/es/index.png")).unwrap()
+    );
+    assert_eq!(
+        og_image(&read(&site, "es/posts/first.html")).as_deref(),
+        Some("http://localhost:3000/og/es/posts/first.png")
+    );
+    let es_home = read(&site, "es/index.html");
+    assert_eq!(
+        og_image(&es_home).as_deref(),
+        Some("http://localhost:3000/og/es/index.png")
+    );
+    assert!(es_home.contains("<meta property=\"og:image:alt\" content=\"Sitio de Tarjetas\">"));
+}
+
+#[test]
+fn test_og_subdomain_cards() {
+    let tmp = TempDir::new().unwrap();
+    let site = init_subdomain_site(&tmp, "site");
+    write_site_file(
+        &site,
+        "content/docs/intro.md",
+        "---\ntitle: Intro\n---\n\nintro\n",
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let sub = site.join("dist-subdomains/docs");
+    assert_eq!(png_size(&sub.join("og/index.png")), (1200, 630));
+    assert_eq!(png_size(&sub.join("og/intro.png")), (1200, 630));
+    let html = fs::read_to_string(sub.join("intro.html")).unwrap();
+    let url = og_image(&html).unwrap();
+    assert!(
+        url.ends_with("/og/intro.png") && !url.starts_with("https://example.com/"),
+        "{url}"
+    );
+    // The main site keeps its own cards, and no docs cards.
+    assert!(site.join("dist/og/index.png").exists());
+    assert!(!site.join("dist/og/docs").exists());
 }
