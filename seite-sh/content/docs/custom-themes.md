@@ -82,6 +82,7 @@ What each partial does, and how to override one, is in [Templates → seite part
 | `{% block head %}` | Extra tags in `<head>` (preloads, page-specific meta) |
 | `{% block extra_css %}` | Extra CSS (`<style>` or `<link>`) |
 | `{% block header %}` | Site header and navigation |
+| `{% block site_title %}` | Optional: the site name inside the header. The default `index.html` overrides it with an `<h1>`, so listing pages without a page title still have one (the `blank` starter uses it) |
 | `{% block content %}` | Main page content |
 | `{% block footer %}` | Extra markup after the footer |
 | `{% block extra_js %}` | Page-specific JavaScript before `</body>` |

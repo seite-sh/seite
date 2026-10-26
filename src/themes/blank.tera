@@ -14,7 +14,7 @@
     <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
     <header class="site-header">
     {% block header %}
-        <a class="site-title" href="{{ lang_prefix }}/">{{ site.title }}</a>
+        {% block site_title %}<a class="site-title" href="{{ lang_prefix }}/">{{ site.title }}</a>{% endblock %}
         {% if data.nav %}
         <nav class="site-nav" aria-label="Main navigation">
             {% for item in data.nav %}{% if item.external %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>{% endif %}{% endfor %}

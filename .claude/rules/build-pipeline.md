@@ -87,7 +87,7 @@ struct ContentItem {
 - `taxonomy::config_diagnostics`: `taxonomy-url-collision` (error, from `SiteConfig::load_with_diagnostics` and `build_site_inner`) and `taxonomy-reserved-name` (warning); `series.rs` emits `series-url-collision`.
 - Frontmatter `other` is `skip_serializing`: published `.md` copies use `generate_published_frontmatter` (known fields + configured taxonomy keys); source edits go through YAML mappings, so unknown keys survive there. `series`/`series_order` deserialize leniently.
 - Incremental builds re-render every collection holding a part of a changed page's series.
-- `seite upgrade` (`check_default_templates`) replaces `templates/post.html` when its hash matches a historical `DEFAULT_POST` (`LEGACY_POST_TEMPLATE_HASHES`); add the old hash there whenever `DEFAULT_POST` changes.
+- `seite upgrade` (`check_default_templates`) replaces `templates/post.html`, `index.html` and `trust-index.html` when their hash matches a historical default (`DEFAULT_TEMPLATES` in `src/cli/upgrade.rs`, last hash = current); edited copies get a one-time notice. Append the new hash whenever `DEFAULT_POST`/`DEFAULT_INDEX`/`DEFAULT_TRUST_INDEX` changes (test `current_default_templates_are_in_hash_table`).
 - `series.rs`: group by (language, slug of `series`) over public collections; order `series_order`, date asc, source path. `/series/<slug>/` only when used.
 - The embedded `post.html` renders them with `{% if %}` blocks attached to existing lines, so pages without them render byte-identically. Sites keep their own `templates/post.html` from `init`.
 

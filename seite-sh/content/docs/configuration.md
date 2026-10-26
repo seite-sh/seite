@@ -251,7 +251,7 @@ seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate de
 
 Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template: seite copies everything in `static/` to the output directory.
 
-See [Building Custom Themes](/docs/custom-themes#css-approach-why-inline-styles) for more detail on this approach.
+See [Building Custom Themes](/docs/custom-themes#css) for more detail on this approach.
 
 ## Data Files
 

@@ -1384,16 +1384,80 @@ fn check_legacy_skills(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
 // Default templates copied by `seite init`
 // ---------------------------------------------------------------------------
 
-/// SHA-256 (CRLF→LF, trimmed) of every `post.html` that `seite init` wrote
-/// before categories, series and related posts were added to it: the
-/// `DEFAULT_POST` constant at 60e1456, 89da9cd, 42dbe4f, and f7a5557..0dc5dbc.
-/// Recompute from the history of `src/templates/mod.rs` (`log -S "pub const
-/// DEFAULT_POST"`, then `show <commit>:src/templates/mod.rs`).
-const LEGACY_POST_TEMPLATE_HASHES: &[&str] = &[
-    "c6600c4e5b34ff95d5733b948b25f083e2a899a5aa61bd85e5c00d1a0cd3aee3",
-    "14b31eb7e680a51665780ceb8b3541bf441d086b414e84c27722c8685eb02485",
-    "ca09ea84916e726a2fbad0d31204b2cca79d3ecf87e20ca6be1875f8e6bd6469",
-    "63ee8cde622a4ae2494533cf5c4df2ea48994297538c8d71a8b65aa34d2029ca",
+/// One template `seite init` copies into `templates/` whose default has
+/// changed since it was first shipped.
+struct DefaultTemplate {
+    /// File name under the template dir.
+    file: &'static str,
+    /// The current default, written over an untouched older copy.
+    current: &'static str,
+    /// SHA-256 (as [`template_hash`]) of every version `seite init` has
+    /// written, oldest first; the **last entry is the current default**.
+    hashes: &'static [&'static str],
+    /// What the refresh brings, for the upgrade plan.
+    what: &'static str,
+    /// Present in an edited copy that already has the change (no notice).
+    has_change: &'static [&'static str],
+    /// Notice for an edited copy without the change.
+    edited: &'static str,
+}
+
+/// Defaults `seite init` copies whose content changed after release. Hashes
+/// are recomputed from the history of `src/templates/mod.rs` (`log -S "pub
+/// const DEFAULT_X"`, then `show <commit>:src/templates/mod.rs`, hash the raw
+/// string body). **Editing one of these defaults? Append its new hash** (the
+/// test `current_default_templates_are_in_hash_table` prints it), so sites
+/// with the previous version keep upgrading.
+const DEFAULT_TEMPLATES: &[DefaultTemplate] = &[
+    DefaultTemplate {
+        file: "post.html",
+        current: crate::templates::DEFAULT_POST,
+        // 60e1456, 89da9cd, 42dbe4f, f7a5557..0dc5dbc (0.20.x), current.
+        hashes: &[
+            "c6600c4e5b34ff95d5733b948b25f083e2a899a5aa61bd85e5c00d1a0cd3aee3",
+            "14b31eb7e680a51665780ceb8b3541bf441d086b414e84c27722c8685eb02485",
+            "ca09ea84916e726a2fbad0d31204b2cca79d3ecf87e20ca6be1875f8e6bd6469",
+            "63ee8cde622a4ae2494533cf5c4df2ea48994297538c8d71a8b65aa34d2029ca",
+            "bc879538cd2597b916d7f1a38117c8febb1ad1a52583ff2b0857cbceeaf83da6",
+        ],
+        what: "categories, series box, related posts",
+        has_change: &["page.related", "page.series"],
+        edited: "To show categories, series and related posts, add the snippet from the Templates docs (`seite docs templates`, section \"Taxonomy, term and series templates\").",
+    },
+    DefaultTemplate {
+        file: "index.html",
+        current: crate::templates::DEFAULT_INDEX,
+        // a92563e, 6928a7d, d308b69, 4ab86e8, a58a8d9, 375fe9d,
+        // df8b337..0.20.x, 0af5137 (unreleased), current.
+        hashes: &[
+            "202ef49b4d78e6427110c35e0e7e73188416f2d21a8743204ff8a3cd69a1ae63",
+            "910b2a35769987f35ca153c1163f992028b26b20a9280b0926c40f501a2107b6",
+            "cd737feb740999e01ff56113e5f196169503b10b5cb69eaa7e10584e235b94c3",
+            "bff860a2901a162b2d85cc40af59075e610316051b131bd758f5491ca60b241d",
+            "8c2604f638f0b32d85070fbfa6b70b4a2fc76611e676e8affe8fd2b4c9db97b2",
+            "641003bf73cefda9ed490a1056ca71d9bf61bb579573a9c146fe674d4e4dfaa9",
+            "c9071fb9307f0daa1e3619889c819d4ad1d008edc9e8877ea8a373018b661c87",
+            "921c4be7b2f134740dbde81fa556555fe84a95878014d8a876b08bbcdabde1de",
+            "45978b6a0bf926a3f5162b77ef54e9b2cf347f8c274f71823341ebbb03753efa",
+        ],
+        what: "distinct titles for collection index pages, an <h1> with the blank starter",
+        has_change: &["_home_url"],
+        edited: "Collection index pages it renders all get the site title; to give each its own, add `{% elif page and page.collection and page.title and page.url != lang_prefix ~ \"/\" %}{{ page.title }} — {{ site.title }}` before the `{% else %}` of its `{% block title %}`.",
+    },
+    DefaultTemplate {
+        file: "trust-index.html",
+        current: crate::templates::DEFAULT_TRUST_INDEX,
+        // 7dc79bd, 097fe4b, be1a2d1..0.20.x, current.
+        hashes: &[
+            "b23eae820d06f2aa30a9a7b4f0ff9f3d073c41789dde5ab8208520f8cf4be7fe",
+            "12cf04e61e8a6100d429864eef6a84f92575b073fb8833f344ce3ed19864e9e4",
+            "c0a2ce48051ba3ad59d1714d9b72434f959f7dbaa5a94ff0e3dc6859d5222952",
+            "e31e5656f1777750dbbb6fd0750875a3a387ef72c4b15f543ee761655fa51724",
+        ],
+        what: "descriptive \"Learn more\" link names",
+        has_change: &["cert-card__link\" aria-label"],
+        edited: "Its \"Learn more\" links all have the same name; add `aria-label=\"{{ t.learn_more | escape_attr }}: {{ cert.name | i18n(lang=lang) | escape_attr }}\"` to the `cert-card__link` anchor.",
+    },
 ];
 
 fn template_hash(content: &str) -> String {
@@ -1404,46 +1468,39 @@ fn template_hash(content: &str) -> String {
         .collect()
 }
 
-/// Replace `templates/post.html` with the current default when it is exactly
-/// a default an older `seite init` wrote, so the site gets categories, the
-/// series box and related posts. An edited copy is kept, with a one-time
-/// notice pointing at the snippet to add.
+/// Replace each template in [`DEFAULT_TEMPLATES`] with the current default
+/// when it is exactly a default an older `seite init` wrote. An edited copy
+/// without the change is kept, with a one-time notice saying what to add.
 fn check_default_templates(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
     let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
         .map(|c| c.build.template_dir)
         .unwrap_or_else(|_| "templates".to_string());
-    let rel = format!("{template_dir}/post.html");
-    let path = root.join(&rel);
-    let Ok(content) = fs::read_to_string(&path) else {
-        return (Vec::new(), Vec::new());
-    };
-    let current = crate::templates::DEFAULT_POST;
-    let hash = template_hash(&content);
-    if hash == template_hash(current) {
-        return (Vec::new(), Vec::new());
-    }
-    if LEGACY_POST_TEMPLATE_HASHES.contains(&hash.as_str()) {
-        return (
-            vec![UpgradeAction::Update {
+    let mut actions = Vec::new();
+    let mut notices = Vec::new();
+    for t in DEFAULT_TEMPLATES {
+        let rel = format!("{template_dir}/{}", t.file);
+        let path = root.join(&rel);
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let hash = template_hash(&content);
+        if hash == template_hash(t.current) {
+            continue;
+        }
+        if t.hashes.contains(&hash.as_str()) {
+            actions.push(UpgradeAction::Update {
                 path,
-                content: current.to_string(),
-                description: format!("{rel} (categories, series box, related posts)"),
-            }],
-            Vec::new(),
-        );
+                content: t.current.to_string(),
+                description: format!("{rel} ({})", t.what),
+            });
+        } else if !t.has_change.iter().any(|m| content.contains(m)) {
+            notices.push(Notice {
+                key: format!("default-template:{rel}"),
+                text: format!("Kept {rel} (edited since seite wrote it). {}", t.edited),
+            });
+        }
     }
-    if content.contains("page.related") || content.contains("page.series") {
-        return (Vec::new(), Vec::new());
-    }
-    (
-        Vec::new(),
-        vec![Notice {
-            key: format!("post-template-content-model:{rel}"),
-            text: format!(
-                "Kept {rel} (edited since seite wrote it). To show categories, series and related posts, add the snippet from the Templates docs (`seite docs templates`, section \"Taxonomy, term and series templates\")."
-            ),
-        }],
-    )
+    (actions, notices)
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,7 +1596,10 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
     ),
     (
         "blank",
-        &["5fba48b8862df4b95f7cfc2474192feae35e145591ef68ef1e6b7b1aee7c0ea3"],
+        &[
+            "5fba48b8862df4b95f7cfc2474192feae35e145591ef68ef1e6b7b1aee7c0ea3",
+            "0e4ee7b20d4d052c0e347895da73ae4e1d3806678c84f828f554c5ea4459cfdf",
+        ],
     ),
     (
         "minimal",
@@ -4017,7 +4077,9 @@ mod tests {
         fs::create_dir_all(root.join("templates")).unwrap();
         // DEFAULT_POST as v0.20.x shipped it (f7a5557..0dc5dbc).
         let legacy = include_str!("../../tests/fixtures/legacy-post-0.20.html");
-        assert!(LEGACY_POST_TEMPLATE_HASHES.contains(&template_hash(legacy).as_str()));
+        assert!(DEFAULT_TEMPLATES[0]
+            .hashes
+            .contains(&template_hash(legacy).as_str()));
         fs::write(
             root.join("templates/post.html"),
             legacy.replace('\n', "\r\n"),
@@ -4051,6 +4113,89 @@ mod tests {
         assert!(actions.is_empty());
         assert_eq!(notices.len(), 1);
         assert!(notices[0].text.contains("templates/post.html"));
+    }
+
+    #[test]
+    fn current_default_templates_are_in_hash_table() {
+        for t in DEFAULT_TEMPLATES {
+            let hash = template_hash(t.current);
+            assert_eq!(
+                t.hashes.last(),
+                Some(&hash.as_str()),
+                "templates/{} changed: append \"{hash}\" to its DEFAULT_TEMPLATES hashes",
+                t.file
+            );
+            assert!(t.hashes.iter().all(|h| h.len() == 64));
+            // An edited copy of the current default needs no notice.
+            assert!(
+                t.has_change.iter().any(|m| t.current.contains(m)),
+                "{}",
+                t.file
+            );
+        }
+        let files: Vec<&str> = DEFAULT_TEMPLATES.iter().map(|t| t.file).collect();
+        assert_eq!(files, ["post.html", "index.html", "trust-index.html"]);
+    }
+
+    #[test]
+    fn test_check_default_templates_refreshes_untouched_index_templates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("templates")).unwrap();
+        // DEFAULT_INDEX / DEFAULT_TRUST_INDEX as v0.20.x shipped them.
+        let index = include_str!("../../tests/fixtures/legacy-index-0.20.html");
+        let trust = include_str!("../../tests/fixtures/legacy-trust-index-0.20.html");
+        fs::write(root.join("templates/index.html"), index).unwrap();
+        fs::write(root.join("templates/trust-index.html"), trust).unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(notices.is_empty());
+        let updated: Vec<(String, &str)> = actions
+            .iter()
+            .map(|a| match a {
+                UpgradeAction::Update { path, content, .. } => (
+                    path.file_name().unwrap().to_string_lossy().into_owned(),
+                    content.as_str(),
+                ),
+                _ => panic!("expected updates"),
+            })
+            .collect();
+        assert_eq!(
+            updated,
+            [
+                ("index.html".to_string(), crate::templates::DEFAULT_INDEX),
+                (
+                    "trust-index.html".to_string(),
+                    crate::templates::DEFAULT_TRUST_INDEX
+                ),
+            ]
+        );
+
+        // Edited copies: kept, one notice each.
+        fs::write(
+            root.join("templates/index.html"),
+            format!("{index}<!-- mine -->"),
+        )
+        .unwrap();
+        fs::write(
+            root.join("templates/trust-index.html"),
+            format!("{trust}<!-- mine -->"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 2);
+        assert!(notices[0].text.contains("templates/index.html"));
+        assert!(notices[1].text.contains("templates/trust-index.html"));
+
+        // Edited copies that already carry the change: silent.
+        fs::write(
+            root.join("templates/index.html"),
+            format!("{}<!-- mine -->", crate::templates::DEFAULT_INDEX),
+        )
+        .unwrap();
+        fs::remove_file(root.join("templates/trust-index.html")).unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty() && notices.is_empty());
     }
 
     #[test]

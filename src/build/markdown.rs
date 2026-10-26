@@ -60,6 +60,18 @@ fn slugify_heading(text: &str) -> String {
         .join("-")
 }
 
+/// `id`, or `id-1`, `id-2`, … when it is already taken; records the result.
+fn unique_heading_id(id: String, used: &mut std::collections::HashSet<String>) -> String {
+    let mut candidate = id.clone();
+    let mut n = 0;
+    while used.contains(&candidate) {
+        n += 1;
+        candidate = format!("{id}-{n}");
+    }
+    used.insert(candidate.clone());
+    candidate
+}
+
 pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
     markdown_to_html_with(markdown, false)
 }
@@ -89,6 +101,10 @@ pub fn markdown_to_html_with(markdown: &str, mermaid: bool) -> (String, Vec<TocE
     let mut in_heading = false;
     let mut heading_level: u8 = 0;
     let mut heading_text = String::new();
+    // Ids already given out in this document: a repeated heading ("Setup"
+    // under each provider) gets `-1`, `-2`, … like GitHub, so ids and ToC
+    // anchors stay unique.
+    let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Collect events, intercepting headings (for ToC + id attributes) and
     // code blocks (for syntax highlighting). Everything else is passed through
@@ -120,7 +136,7 @@ pub fn markdown_to_html_with(markdown: &str, mermaid: bool) -> (String, Vec<TocE
             }
             Event::End(TagEnd::Heading(_)) => {
                 in_heading = false;
-                let id = slugify_heading(&heading_text);
+                let id = unique_heading_id(slugify_heading(&heading_text), &mut used_ids);
                 toc.push(TocEntry {
                     level: heading_level,
                     text: heading_text.clone(),
@@ -525,6 +541,28 @@ mod tests {
         assert!(html.contains("id=\"introduction\""));
         assert!(html.contains("id=\"details\""));
         assert!(html.contains("id=\"conclusion\""));
+    }
+
+    #[test]
+    fn test_repeated_headings_get_unique_ids() {
+        let md =
+            "## Setup\n\n### Dry run\n\n## Setup\n\n### Dry run\n\n### Dry run 1\n\n### Dry run\n";
+        let (html, toc) = markdown_to_html(md);
+        let ids: Vec<&str> = toc.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "setup",
+                "dry-run",
+                "setup-1",
+                "dry-run-1",
+                "dry-run-1-1",
+                "dry-run-2"
+            ]
+        );
+        for id in ids {
+            assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1, "{html}");
+        }
     }
 
     #[test]

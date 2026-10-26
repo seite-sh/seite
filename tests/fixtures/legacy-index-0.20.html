@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{% if pagination %}{{ collections[0].label }} — Page {{ pagination.current_page }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}{% endblock %}
+{% block content %}
+{% if page.content %}
+<div class="homepage-content">{{ page.content | safe }}</div>
+{% endif %}
+{% for collection in collections %}
+<section>
+    <h2>{{ collection.label }}</h2>
+    {% for item in collection.items %}
+    <article>
+        <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+        {% if item.date %}<time>{{ item.date }}</time>{% endif %}
+        {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+    </article>
+    {% endfor %}
+    {% if collection.items | length == 0 %}
+    <p>No {{ collection.name }} yet.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% if pagination %}
+<nav class="pagination">
+    {% if pagination.prev_url %}<a href="{{ pagination.prev_url }}">&larr; {{ t.newer }}</a>{% endif %}
+    <span>{{ t.page_n_of_total | replace(from="{n}", to=pagination.current_page ~ "") | replace(from="{total}", to=pagination.total_pages ~ "") }}</span>
+    {% if pagination.next_url %}<a href="{{ pagination.next_url }}">{{ t.older }} &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% if not page and collections | length == 0 %}
+<p>No content yet. Create some with <code>seite new post "My First Post"</code></p>
+{% endif %}
+{% endblock %}

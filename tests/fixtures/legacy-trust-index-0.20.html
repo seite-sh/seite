@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ t.trust_center }} — {{ site.title }}{% endblock %}
+{% block content %}
+<div class="trust-hub">
+    <div class="trust-hero">
+        <h1>{{ t.trust_center }}</h1>
+        <p>{{ t.trust_hero_subtitle | replace(from="{site}", to=site.title) }}</p>
+    </div>
+
+    {% if data.trust.certifications %}
+    <section class="trust-section">
+        <h2>{{ t.certifications_compliance }}</h2>
+        <div class="cert-grid">
+            {% for cert in data.trust.certifications %}
+            <div class="cert-card">
+                <div class="cert-card__header">
+                    <span class="cert-status cert-status--{{ cert.status }}">
+                        {% if cert.status == "active" %}{{ t.active }}{% elif cert.status == "in_progress" %}{{ t.in_progress }}{% else %}{{ t.planned }}{% endif %}
+                    </span>
+                </div>
+                <h3 class="cert-card__title">{{ cert.name | i18n(lang=lang) }}</h3>
+                {% if cert.description %}<p class="cert-card__desc">{{ cert.description | i18n(lang=lang) }}</p>{% endif %}
+                {% if cert.slug %}<a href="{{ lang_prefix }}/trust/certifications/{{ cert.slug }}" class="cert-card__link">{{ t.learn_more }} &rarr;</a>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% for collection in collections %}
+    {% if collection.items | length > 0 %}
+    <section class="trust-section">
+        <h2>{{ collection.label }}</h2>
+        {% for item in collection.items %}
+        {% if item.slug is not starting_with("certifications/") %}
+        <article class="trust-item">
+            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if data.trust.subprocessors %}
+    <section class="trust-section">
+        <h2>{{ t.subprocessors }}</h2>
+        <div class="subprocessor-table-wrap">
+        <table class="subprocessor-table">
+            <thead><tr><th>{{ t.vendor }}</th><th>{{ t.purpose }}</th><th>{{ t.location }}</th><th>{{ t.dpa }}</th></tr></thead>
+            <tbody>
+            {% for sp in data.trust.subprocessors %}
+            <tr>
+                <td>{{ sp.name | i18n(lang=lang) }}</td>
+                <td>{{ sp.purpose | default(value="") | i18n(lang=lang) }}</td>
+                <td>{{ sp.location | default(value="") | i18n(lang=lang) }}</td>
+                <td>{% if sp.dpa %}{{ t.yes }}{% else %}{{ t.no }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if data.trust.faq %}
+    <section class="trust-section faq-section">
+        <h2>{{ t.faq }}</h2>
+        {% for item in data.trust.faq %}
+        <details class="faq-item">
+            <summary>{{ item.question | i18n(lang=lang) }}</summary>
+            <div class="faq-answer">{{ item.answer | i18n(lang=lang) }}</div>
+        </details>
+        {% endfor %}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

@@ -97,14 +97,12 @@ fn test_audit_fresh_site_scores_high_without_errors() {
     assert!(ok, "{doc}");
     let summary = &doc["data"]["summary"];
     assert_eq!(summary["errors"], 0, "{doc:#}");
-    // The bundled themes still give `/posts/` the site title (two
-    // `seo-title-duplicate` warnings, fixed in the parallel theme work);
-    // starter content itself has no findings above notice level.
-    assert!(summary["score"].as_u64().unwrap() >= 90, "{doc:#}");
+    // Starter content and the default theme have no findings above notice
+    // level (`og:image` suggestions remain notices).
+    assert_eq!(summary["warnings"], 0, "{doc:#}");
+    assert!(summary["score"].as_u64().unwrap() >= 95, "{doc:#}");
     for f in findings(&doc) {
-        if f["severity"] != "notice" {
-            assert_eq!(f["code"], "seo-title-duplicate", "{f}");
-        }
+        assert_eq!(f["severity"], "notice", "{f}");
     }
     assert!(summary["pages"].as_u64().unwrap() >= 3, "{doc:#}");
     for category in ["seo", "geo", "a11y", "content", "perf"] {
@@ -354,31 +352,46 @@ fn test_audit_outside_a_site_fails_clearly() {
         .stderr(predicate::str::contains("seite.toml"));
 }
 
-/// Fresh sites from every preset have no warnings at all. Enabled once the
-/// theme fixes (collection index titles, listing heading levels, trust
-/// "Learn more" link names) are merged.
+/// Fresh sites have no warnings at all: every preset together with each
+/// starter theme, and each preset on its own (default starter).
 #[test]
-#[ignore = "needs the bundled-theme fixes from the parallel theme branch"]
 fn test_audit_fresh_sites_have_no_warnings() {
-    let tmp = TempDir::new().unwrap();
-    page_cmd()
-        .args([
-            "init",
-            "site",
-            "--title",
-            "Fresh Site",
-            "--description",
-            "A fresh site made to test the audit command end to end",
-            "--deploy-target",
-            "github-pages",
-            "--collections",
-            "posts,docs,pages,changelog,roadmap,trust",
-        ])
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-    let (ok, doc) = run_json(&tmp.path().join("site"), &["audit", "--fail-on", "warning"]);
-    assert!(ok, "{doc:#}");
+    let all = "posts,docs,pages,changelog,roadmap,trust";
+    let mut cases: Vec<(&str, &str)> = ["default", "docs", "landing", "blank"]
+        .into_iter()
+        .map(|theme| (theme, all))
+        .collect();
+    for preset in all.split(',') {
+        cases.push(("default", preset));
+    }
+    for (i, (theme, collections)) in cases.into_iter().enumerate() {
+        let tmp = TempDir::new().unwrap();
+        let name = format!("site{i}");
+        page_cmd()
+            .args([
+                "init",
+                &name,
+                "--title",
+                "Fresh Site",
+                "--description",
+                "A fresh site made to test the audit command end to end",
+                "--deploy-target",
+                "github-pages",
+                "--collections",
+                collections,
+                "--theme",
+                theme,
+            ])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+        let (ok, doc) = run_json(&tmp.path().join(&name), &["audit", "--fail-on", "warning"]);
+        assert!(ok, "{theme} / {collections}: {doc:#}");
+        let summary = &doc["data"]["summary"];
+        assert_eq!(summary["warnings"], 0, "{theme} / {collections}: {doc:#}");
+        assert_eq!(summary["errors"], 0, "{theme} / {collections}: {doc:#}");
+        assert_eq!(summary["score"], 100, "{theme} / {collections}: {doc:#}");
+    }
 }
 
 #[test]

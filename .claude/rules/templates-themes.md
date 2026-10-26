@@ -14,7 +14,7 @@ paths:
 - Listing templates: `tags.html`/`taxonomy.html` (`taxonomy`, `terms`), `tag.html`/`term.html` (`taxonomy`, `term`, `terms`, `items`, `pagination`; tag pages keep `tags`, `tag_name`, `tags_url`), `series.html` (`series`, `items`)
 - Post-page markup for categories/series/related lives in `DEFAULT_POST` and reuses the themes' `.tags` and `.article-nav` classes (no theme CSS needed)
 - Global: `{{ collections }}`, `{{ lang }}`, `{{ default_language }}`, `{{ lang_prefix }}`, `{{ t }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
-- Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
+- Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`, optional `{% block site_title %}` (blank's header site name; `DEFAULT_INDEX` overrides it with an `<h1>`)
 - User `templates/` overrides embedded defaults
 
 ## seite partials (`src/templates/seite/*.html`, `SEITE_PARTIALS` in `src/templates/mod.rs`)

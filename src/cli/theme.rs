@@ -548,7 +548,10 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
 
     let content = std::fs::read_to_string(&base_path)?;
     // A theme is one file: the site's own stylesheets go in as <style>.
-    let (content, inlined) = inline_local_stylesheets(&content, &static_dir);
+    let (content, inlined, refused) = inline_local_stylesheets(&content, &static_dir);
+    for warning in &refused {
+        human::warning(warning);
+    }
     let exported = build_export_content(&content, description);
 
     let themes_dir = PathBuf::from("templates").join("themes");
@@ -577,10 +580,15 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
 /// Replace each `<link rel="stylesheet" href="/static/….css">` whose file
 /// exists under `static_dir` with a `<style>` element holding that CSS, so
 /// an exported theme (e.g. one built on the blank starter) works on its own
-/// once applied elsewhere. Returns the new template and the inlined hrefs.
-fn inline_local_stylesheets(content: &str, static_dir: &Path) -> (String, Vec<String>) {
+/// once applied elsewhere. Returns the new template, the inlined hrefs, and
+/// one warning per stylesheet refused because its path leaves `static/`.
+fn inline_local_stylesheets(
+    content: &str,
+    static_dir: &Path,
+) -> (String, Vec<String>, Vec<String>) {
     let mut out = String::with_capacity(content.len());
     let mut inlined = Vec::new();
+    let mut refused = Vec::new();
     let mut rest = content;
     while let Some(start) = rest.find("<link") {
         let Some(len) = rest[start..].find('>') else {
@@ -593,13 +601,17 @@ fn inline_local_stylesheets(content: &str, static_dir: &Path) -> (String, Vec<St
             .and_then(|(_, after)| after.split_once('"'))
             .map(|(href, _)| href);
         let css = match href {
-            Some(href)
-                if tag.contains("rel=\"stylesheet\"")
-                    && href.ends_with(".css")
-                    && !href.contains("..") =>
-            {
-                href.strip_prefix("/static/")
-                    .and_then(|rel| std::fs::read_to_string(static_dir.join(rel)).ok())
+            Some(href) if tag.contains("rel=\"stylesheet\"") && href.ends_with(".css") => {
+                match href.strip_prefix("/static/") {
+                    Some(rel) => match read_static_file(static_dir, rel) {
+                        Ok(css) => css,
+                        Err(reason) => {
+                            refused.push(format!("Not inlining {href}: {reason}"));
+                            None
+                        }
+                    },
+                    None => None,
+                }
             }
             _ => None,
         };
@@ -618,7 +630,38 @@ fn inline_local_stylesheets(content: &str, static_dir: &Path) -> (String, Vec<St
         rest = &rest[start + len + 1..];
     }
     out.push_str(rest);
-    (out, inlined)
+    (out, inlined, refused)
+}
+
+/// Read `static_dir/<rel>` only when it is a real file inside `static_dir`:
+/// `rel` must consist of plain path segments (no `..`, no root, no empty
+/// segment as in `/static//etc/x.css`), no component below `static_dir` may
+/// be a symlink, and the canonical path must stay under the canonical
+/// `static_dir`. `Ok(None)` when the file doesn't exist.
+fn read_static_file(static_dir: &Path, rel: &str) -> Result<Option<String>, String> {
+    let rel_path = Path::new(rel);
+    let plain = !rel.is_empty()
+        && !rel.contains('\\')
+        && !rel.split('/').any(str::is_empty)
+        && rel_path
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain {
+        return Err("the path is not a plain path inside static/".to_string());
+    }
+    let path = static_dir.join(rel_path);
+    if std::fs::symlink_metadata(&path).is_err() {
+        return Ok(None);
+    }
+    crate::safe_fs::guard(static_dir, &path).map_err(|e| e.to_string())?;
+    let canonical_dir = static_dir.canonicalize().map_err(|e| e.to_string())?;
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canonical_dir) || !canonical.is_file() {
+        return Err("it resolves outside static/".to_string());
+    }
+    std::fs::read_to_string(&canonical)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 /// Build exported theme content with metadata header.
@@ -1009,8 +1052,9 @@ mod tests {
         )
         .unwrap();
         let base = "<head>\n<link rel=\"stylesheet\" href=\"/static/css/site.css\">\n<link rel=\"stylesheet\" href=\"/static/css/missing.css\">\n<link rel=\"stylesheet\" href=\"https://cdn.example/x.css\">\n<link rel=\"icon\" href=\"/favicon.ico\">\n</head>";
-        let (out, inlined) = inline_local_stylesheets(base, &static_dir);
+        let (out, inlined, refused) = inline_local_stylesheets(base, &static_dir);
         assert_eq!(inlined, ["/static/css/site.css"]);
+        assert!(refused.is_empty(), "{refused:?}");
         assert!(!out.contains("href=\"/static/css/site.css\""), "{out}");
         assert!(
             out.contains("<style>{% raw %}\nbody { color: #123456; }"),
@@ -1026,5 +1070,43 @@ mod tests {
         tera.add_raw_template("t", &out).unwrap();
         let rendered = tera.render("t", &tera::Context::new()).unwrap();
         assert!(rendered.contains("{# not tera #}"), "{rendered}");
+    }
+
+    #[test]
+    fn test_inline_local_stylesheets_refuses_paths_outside_static() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let static_dir = tmp.path().join("static");
+        std::fs::create_dir_all(static_dir.join("css")).unwrap();
+        std::fs::write(static_dir.join("css/site.css"), "body{}").unwrap();
+        let outside = tmp.path().join("secret.css");
+        std::fs::write(&outside, "SECRET").unwrap();
+        let abs = outside.to_str().unwrap().to_string();
+        let mut links = vec![
+            format!("<link rel=\"stylesheet\" href=\"/static/{abs}\">"),
+            "<link rel=\"stylesheet\" href=\"/static/../secret.css\">".to_string(),
+            "<link rel=\"stylesheet\" href=\"/static/css/../../secret.css\">".to_string(),
+        ];
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, static_dir.join("css/link.css")).unwrap();
+            std::os::unix::fs::symlink(tmp.path(), static_dir.join("up")).unwrap();
+            links.push("<link rel=\"stylesheet\" href=\"/static/css/link.css\">".to_string());
+            links.push("<link rel=\"stylesheet\" href=\"/static/up/secret.css\">".to_string());
+        }
+        let base = links.join("\n");
+        let (out, inlined, refused) = inline_local_stylesheets(&base, &static_dir);
+        assert!(inlined.is_empty(), "{inlined:?}");
+        assert!(!out.contains("SECRET"), "{out}");
+        assert_eq!(out, base);
+        assert_eq!(refused.len(), links.len(), "{refused:?}");
+
+        // A normal file next to them is still inlined.
+        let (out, inlined, refused) = inline_local_stylesheets(
+            "<link rel=\"stylesheet\" href=\"/static/css/site.css\">",
+            &static_dir,
+        );
+        assert_eq!(inlined, ["/static/css/site.css"]);
+        assert!(refused.is_empty());
+        assert!(out.contains("body{}"));
     }
 }
