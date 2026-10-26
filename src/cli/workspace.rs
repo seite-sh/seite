@@ -236,6 +236,10 @@ target = "github-pages"
         name = args.name,
     );
 
+    let page_toml = super::init::with_site_timezone(
+        &page_toml,
+        crate::content::schedule::detect_system_timezone().as_deref(),
+    );
     fs::write(site_dir.join("seite.toml"), page_toml)?;
 
     // Append site entry to workspace config

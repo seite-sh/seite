@@ -147,8 +147,10 @@ Free offline SEO, GEO (AI visibility), accessibility, content and performance au
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `categories` | string[] | No | Only these categories: `seo`, `geo`, `a11y`, `content`, `perf` (default: all) |
+| `top` | integer | No | Return at most this many findings, most severe first (default: 50) |
+| `min_severity` | string | No | Return findings of this severity or worse: `error`, `warning` (default), `notice` |
 
-Returns `summary` (`{score, errors, warnings, notices, pages, by_category}`) and `findings` — each with a stable `code` (e.g. `seo-thin-content`, `a11y-img-alt`), `severity` (`error`, `warning` or `notice`), `category`, `page_url`, the `file` and `line` to edit, `message`, `hint` and `docs_url`.
+Returns `summary` (`{score, errors, warnings, notices, pages, by_category}`, counting every finding), `omitted` (findings left out by `top`/`min_severity`) and `findings` — each with a stable `code` (e.g. `seo-thin-content`, `a11y-img-alt`), `severity` (`error`, `warning` or `notice`), `category`, `page_url`, the `file` and `line` to edit, `message`, `hint` and `docs_url`.
 
 ### seite_create_content
 

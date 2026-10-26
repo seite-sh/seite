@@ -68,7 +68,7 @@ seite init <name> [options]
 | `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
 
-`seite.toml` gets `[site] timezone` set to the system's IANA time zone (from `TZ`, else the OS setting), so "today" for scheduled posts is the same on every machine and in CI; when no zone can be detected, the line is written commented out.
+`seite.toml` gets `[site] timezone` set to the system's IANA time zone (from `TZ` — empty means UTC; a POSIX rule such as `CET-1CEST` is not an IANA name — else the OS setting; `seite workspace add` does the same), so "today" for scheduled posts is the same on every machine and in CI; when no zone can be detected, the line is written commented out.
 
 If flags are omitted, `seite init` prompts interactively. Without a terminal (or with `-y`/`--yes`), it uses defaults for everything except `--deploy-target`, which has none and is required in that case.
 
@@ -181,9 +181,10 @@ seite audit [options]
 | `--category <c>,...` | Only these categories: `seo`, `geo`, `a11y`, `content`, `perf` (repeatable or comma-separated) |
 | `--fail-on <severity>` | Exit 1 when there is a finding of this severity or worse: `error` or `warning` (default: report only, exit 0) |
 | `--dist <dir>` | Audit an existing output directory instead of building (findings point at the generated files; `content` checks are skipped) |
+| `--min-severity <s>` | List only findings of this severity or worse: `error`, `warning`, `notice` (default; also filters `--json`, the summary counts everything) |
 | `--top <n>` | Findings listed per category in the human report (default 10; `--json` has all) |
 
-With `--json`, `data` is `{"summary": {"score", "errors", "warnings", "notices", "pages", "by_category"}, "findings": [{"code", "severity", "category", "page_url", "file", "line", "message", "hint", "docs_url"}]}`, sorted deterministically. The MCP tool `seite_audit` returns the same document.
+With `--json`, `data` is `{"summary": {"score", "errors", "warnings", "notices", "pages", "by_category"}, "omitted", "findings": [{"code", "severity", "category", "page_url", "file", "line", "message", "hint", "docs_url"}]}`, sorted deterministically. The MCP tool `seite_audit` returns the same document.
 
 ## seite serve
 

@@ -12,9 +12,11 @@
 //! Findings a template produces on many pages are collapsed into one
 //! ("… and N more pages"), so a fix in one file reads as one finding.
 //!
-//! **Score**: `100 - Σ penalty(code)`, clamped to 0..=100, where each code
-//! costs its severity weight (error 10, warning 3, notice 1) per finding,
-//! counting at most [`PENALTY_CAP`] findings per code. One kind of problem
+//! **Score**: `100 - Σ penalty(category)`, clamped to 0..=100. Each code
+//! costs its severity weight (error 10, warning 3, notice 0: notices are
+//! reported but never lower the score) per finding, counting at most
+//! [`PENALTY_CAP`] findings per code, and a category costs at most
+//! [`CATEGORY_CAP`]. One kind of problem
 //! can't sink the score on its own, and fixing a kind of problem always
 //! shows.
 
@@ -36,8 +38,8 @@ use crate::config::{ResolvedPaths, SiteConfig};
 use crate::content::schedule::HiddenPage;
 use crate::error::{PageError, Result};
 
-/// How serious a finding is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+/// How serious a finding is (ordered: `Error` < `Warning` < `Notice`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Error,
@@ -51,7 +53,7 @@ impl Severity {
         match self {
             Severity::Error => 10,
             Severity::Warning => 3,
-            Severity::Notice => 1,
+            Severity::Notice => 0,
         }
     }
 
@@ -66,6 +68,9 @@ impl Severity {
 
 /// Findings counted per code in the score.
 pub const PENALTY_CAP: u32 = 3;
+
+/// Most a category's findings can take off the score.
+pub const CATEGORY_CAP: u32 = 30;
 
 /// What a finding is about (`--category`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, clap::ValueEnum)]
@@ -356,6 +361,14 @@ pub struct Site {
     pub private_collections: Vec<String>,
     /// `[site] language` (llms.txt lists this language's pages).
     pub default_lang: String,
+    /// Collections as `(name, url_prefix)`, for pages without an item
+    /// (`--dist`), longest prefix first.
+    pub collections: Vec<(String, String)>,
+    /// Every configured language code.
+    pub languages: Vec<String>,
+    /// `[site] description`: the themes' fallback meta description, so in
+    /// `--dist` mode a content page showing it has no description of its own.
+    pub site_description: String,
     texts: std::cell::RefCell<HashMap<PathBuf, Option<std::rc::Rc<str>>>>,
     fallback_files: Vec<PathBuf>,
 }
@@ -475,9 +488,56 @@ impl Site {
                 .map(|c| c.name.clone())
                 .collect(),
             default_lang: config.site.language.clone(),
+            collections: {
+                let mut c: Vec<(String, String)> = config
+                    .collections
+                    .iter()
+                    .map(|c| {
+                        (
+                            c.name.clone(),
+                            c.url_prefix.trim_end_matches('/').to_string(),
+                        )
+                    })
+                    .collect();
+                c.sort_by_key(|(_, prefix)| std::cmp::Reverse(prefix.len()));
+                c
+            },
+            languages: config.all_languages(),
+            site_description: config.site.description.trim().to_string(),
             texts: Default::default(),
             fallback_files,
         }
+    }
+
+    /// The collection `page` belongs to: its content item's, else (`--dist`)
+    /// the collection whose `url_prefix` its URL starts with (after an
+    /// optional `/<lang>` prefix). Collections with an empty prefix
+    /// (`pages`) match only when nothing else does.
+    pub fn collection_of<'a>(&'a self, page: &'a Page) -> Option<&'a str> {
+        if let Some(item) = &page.item {
+            return Some(&item.collection);
+        }
+        let url = page.url.as_str();
+        let unprefixed = self.languages.iter().find_map(|lang| {
+            url.strip_prefix(&format!("/{lang}"))
+                .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+        });
+        let matches = |u: &str, prefix: &str| {
+            !prefix.is_empty()
+                && u.strip_prefix(prefix)
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        };
+        self.collections
+            .iter()
+            .find(|(_, prefix)| {
+                matches(url, prefix) || unprefixed.is_some_and(|u| matches(u, prefix))
+            })
+            .or_else(|| {
+                self.collections
+                    .iter()
+                    .find(|(_, prefix)| prefix.is_empty())
+            })
+            .map(|(name, _)| name.as_str())
     }
 
     /// Index of the page at site-relative `path`.
@@ -490,6 +550,12 @@ impl Site {
     /// a bare `#fragment`, or an absolute URL under `base_url`. `None` for
     /// external, `mailto:`, `javascript:`, ... links.
     pub fn internal_target(&self, page: &Page, href: &str) -> Option<(String, Option<String>)> {
+        self.resolve_href(&page.url, href)
+    }
+
+    /// [`Site::internal_target`] for an `href` found at site-relative URL
+    /// `from` (`/` for site-wide files such as llms.txt and the sitemap).
+    pub fn resolve_href(&self, from: &str, href: &str) -> Option<(String, Option<String>)> {
         let href = href.trim();
         if href.is_empty() {
             return None;
@@ -500,7 +566,7 @@ impl Site {
         };
         let path = path.split('?').next().unwrap_or("");
         let resolved = if path.is_empty() {
-            page.url.clone()
+            from.to_string()
         } else if let Some(rest) = path
             .strip_prefix(&self.base_url)
             .filter(|_| !self.base_url.is_empty() && self.base_url.contains("://"))
@@ -518,8 +584,8 @@ impl Site {
             path.to_string()
         } else {
             // Relative to the page's directory.
-            let dir = match page.url.rfind('/') {
-                Some(i) => &page.url[..=i],
+            let dir = match from.rfind('/') {
+                Some(i) => &from[..=i],
                 None => "/",
             };
             let mut parts: Vec<&str> = dir.split('/').filter(|s| !s.is_empty()).collect();
@@ -689,21 +755,42 @@ pub struct CategoryCounts {
 /// The result of an audit (the `--json` `data` document).
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
+    /// Counts and score of every finding, including omitted ones.
     pub summary: Summary,
     pub findings: Vec<Finding>,
+    /// Findings left out of `findings` by [`Report::limit`].
+    pub omitted: usize,
+}
+
+impl Report {
+    /// Keep only findings of `min_severity` or worse, most severe first
+    /// (stable within a severity), at most `top` of them. The summary keeps
+    /// counting everything; `omitted` says how many were left out.
+    pub fn limit(&mut self, min_severity: Severity, top: Option<usize>) {
+        let before = self.findings.len();
+        self.findings.retain(|f| f.severity <= min_severity);
+        self.findings.sort_by_key(|f| f.severity);
+        if let Some(top) = top {
+            self.findings.truncate(top);
+        }
+        self.omitted += before - self.findings.len();
+    }
 }
 
 /// Score of a set of findings (see the module docs).
 pub fn score(findings: &[Finding]) -> u32 {
-    let mut per_code: BTreeMap<&str, (u32, u32)> = BTreeMap::new();
+    let mut per_code: BTreeMap<&str, (Category, u32, u32)> = BTreeMap::new();
     for f in findings {
-        let e = per_code.entry(f.code).or_insert((f.severity.weight(), 0));
-        e.1 += 1;
+        let e = per_code
+            .entry(f.code)
+            .or_insert((f.category, f.severity.weight(), 0));
+        e.2 += 1;
     }
-    let penalty: u32 = per_code
-        .values()
-        .map(|(weight, count)| weight * (*count).min(PENALTY_CAP))
-        .sum();
+    let mut per_category: BTreeMap<Category, u32> = BTreeMap::new();
+    for (category, weight, count) in per_code.values() {
+        *per_category.entry(*category).or_default() += weight * (*count).min(PENALTY_CAP);
+    }
+    let penalty: u32 = per_category.values().map(|p| (*p).min(CATEGORY_CAP)).sum();
     100u32.saturating_sub(penalty)
 }
 
@@ -728,6 +815,19 @@ pub fn audit(site: &Site, categories: &[Category]) -> Report {
         perf::check(site, &mut findings);
     }
     findings.retain(|f| wanted(f.category));
+    // One finding per root cause: a page without a description gets
+    // `seo-description-missing`, not also `geo-llms-no-summary`.
+    let no_description: std::collections::HashSet<String> = findings
+        .iter()
+        .filter(|f| f.code == "seo-description-missing")
+        .filter_map(|f| f.page_url.clone())
+        .collect();
+    findings.retain(|f| {
+        f.code != "geo-llms-no-summary"
+            || f.page_url
+                .as_ref()
+                .is_none_or(|u| !no_description.contains(u))
+    });
     let findings = collapse(findings);
     let mut by_category: BTreeMap<&'static str, CategoryCounts> = Category::ALL
         .iter()
@@ -753,6 +853,7 @@ pub fn audit(site: &Site, categories: &[Category]) -> Report {
             by_category,
         },
         findings,
+        omitted: 0,
     }
 }
 
@@ -931,6 +1032,9 @@ pub(crate) mod test_support {
             hidden: Vec::new(),
             private_collections: Vec::new(),
             default_lang: "en".into(),
+            collections: Vec::new(),
+            languages: vec!["en".into()],
+            site_description: String::new(),
             texts: Default::default(),
             fallback_files: Vec::new(),
         }
@@ -993,8 +1097,18 @@ mod tests {
         assert_eq!(score(&[]), 100);
         assert_eq!(score(&[f("seo-title-missing")]), 90);
         // Capped at 3 findings per code.
+        // Notices are reported but cost nothing.
         let many: Vec<Finding> = (0..10).map(|_| f("seo-og-image-missing")).collect();
-        assert_eq!(score(&many), 97);
+        assert_eq!(score(&many), 100);
+        let warnings: Vec<Finding> = (0..10).map(|_| f("seo-title-long")).collect();
+        assert_eq!(score(&warnings), 91);
+        // A category costs at most 30.
+        let seo: Vec<Finding> = CODES
+            .iter()
+            .filter(|c| c.category == Category::Seo)
+            .flat_map(|c| (0..5).map(|_| f(c.code)).collect::<Vec<_>>())
+            .collect();
+        assert_eq!(score(&seo), 70);
         let worst: Vec<Finding> = CODES
             .iter()
             .flat_map(|c| (0..5).map(|_| f(c.code)).collect::<Vec<_>>())
@@ -1081,5 +1195,68 @@ mod tests {
                 info.code
             );
         }
+    }
+
+    #[test]
+    fn test_report_limit_keeps_summary() {
+        let f = |code| Finding::new(code, Some("/"), "m");
+        let site = test_support::site(&[]);
+        let mut report = audit(&site, &[Category::Perf]);
+        report.findings = vec![
+            f("seo-og-image-missing"),
+            f("seo-title-long"),
+            f("seo-title-missing"),
+            f("seo-title-long"),
+        ];
+        let summary = report.summary.clone();
+        report.limit(Severity::Warning, Some(2));
+        let codes: Vec<&str> = report.findings.iter().map(|f| f.code).collect();
+        assert_eq!(codes, ["seo-title-missing", "seo-title-long"]);
+        assert_eq!(report.omitted, 2);
+        assert_eq!(report.summary, summary);
+    }
+
+    #[test]
+    fn test_collection_of_from_url_prefix() {
+        let mut site = test_support::site(&[
+            ("changelog/v1.html", "<html></html>"),
+            ("es/changelog/v1.html", "<html></html>"),
+            ("changelogs.html", "<html></html>"),
+            ("about.html", "<html></html>"),
+        ]);
+        site.collections = vec![
+            ("changelog".into(), "/changelog".into()),
+            ("pages".into(), String::new()),
+        ];
+        site.languages = vec!["en".into(), "es".into()];
+        let of: Vec<Option<&str>> = site.pages.iter().map(|p| site.collection_of(p)).collect();
+        assert_eq!(
+            of,
+            [
+                Some("changelog"),
+                Some("changelog"),
+                Some("pages"),
+                Some("pages")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_llms_no_summary_is_dropped_when_description_is_missing() {
+        let md = "<link rel=\"alternate\" type=\"text/markdown\" href=\"/x.md\">";
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("llms.txt"), "- [A](/a.md)\n").unwrap();
+        let mut site = test_support::site(&[("a.html", &test_support::page(md, ""))]);
+        site.output = tmp.path().to_path_buf();
+        let report = audit(&site, &[Category::Seo, Category::Geo]);
+        let codes: Vec<&str> = report.findings.iter().map(|f| f.code).collect();
+        assert!(codes.contains(&"seo-description-missing"), "{codes:?}");
+        assert!(!codes.contains(&"geo-llms-no-summary"), "{codes:?}");
+        // Without the SEO category, the GEO finding stays.
+        let report = audit(&site, &[Category::Geo]);
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| f.code == "geo-llms-no-summary"));
     }
 }

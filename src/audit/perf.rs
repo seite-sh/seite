@@ -23,15 +23,46 @@ pub fn check(site: &Site, out: &mut Vec<Finding>) {
     }
 }
 
-/// The output file an internal asset URL on `page` refers to.
+/// The output file an internal asset URL on `page` refers to, with its size.
+///
+/// Segments are normalized after percent-decoding (`%2e%2e` is `..`);
+/// anything that would leave the output directory (`..` above it, drive or
+/// scheme prefixes, backslashes, symlinks pointing outside) is ignored.
 fn asset_file(site: &Site, page: &Page, url: &str) -> Option<(PathBuf, u64)> {
     let (path, _) = site.internal_target(page, url)?;
     let decoded = urlencoding::decode(&path)
         .map(|d| d.into_owned())
         .unwrap_or(path);
-    let file = site.output.join(decoded.trim_start_matches('/'));
-    let len = std::fs::metadata(&file).ok().filter(|m| m.is_file())?.len();
-    Some((file, len))
+    let rel = confined_rel(&decoded)?;
+    let file = site.output.join(rel);
+    let canonical = file.canonicalize().ok()?;
+    let root = site.output.canonicalize().ok()?;
+    if !canonical.starts_with(&root) {
+        return None;
+    }
+    let len = std::fs::metadata(&canonical)
+        .ok()
+        .filter(|m| m.is_file())?
+        .len();
+    Some((canonical, len))
+}
+
+/// `path` (site-relative, decoded) as a relative path with `.`/`..`
+/// resolved, or `None` when it climbs above the root or has a segment that
+/// could name another root (`C:`, `\\server`, NUL).
+fn confined_rel(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in path.split(['/', '\\']) {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s if s.contains(':') || s.contains('\0') => return None,
+            s => parts.push(s),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 fn images_and_weight(
@@ -192,5 +223,41 @@ mod tests {
             ],
             "the big image is reported once; the srcset image uses its small candidate"
         );
+    }
+
+    #[test]
+    fn test_confined_rel() {
+        assert_eq!(
+            confined_rel("/static/a.png").as_deref(),
+            Some("static/a.png")
+        );
+        assert_eq!(confined_rel("/static/../a.png").as_deref(), Some("a.png"));
+        assert_eq!(confined_rel("/../../secret.bin"), None);
+        assert_eq!(confined_rel("/static/../../secret.bin"), None);
+        assert_eq!(confined_rel("/C:/Windows/x"), None);
+        assert_eq!(confined_rel("/static\\..\\..\\x"), None);
+        assert_eq!(confined_rel("/"), None);
+    }
+
+    #[test]
+    fn test_assets_outside_the_output_are_never_read() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let out = tmp.path().join("dist");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(tmp.path().join("secret.bin"), vec![0u8; 400 * 1024]).unwrap();
+        let mut s = site(&[(
+            "a.html",
+            &page(
+                "",
+                "<img src=\"/../secret.bin\" alt=\"\"><img src=\"/%2e%2e/secret.bin\" alt=\"\"><img src=\"/static/%2E%2E/%2e%2e/secret.bin\" alt=\"\">",
+            ),
+        )]);
+        s.output = out;
+        let p = &s.pages[0];
+        for img in &p.facts.imgs {
+            let src = img.src.as_deref().unwrap();
+            assert!(asset_file(&s, p, src).is_none(), "{src}");
+        }
+        assert!(!codes(&s, check).contains(&"perf-image-large"));
     }
 }

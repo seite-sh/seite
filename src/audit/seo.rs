@@ -84,12 +84,10 @@ fn titles(site: &Site, out: &mut Vec<Finding>) {
     }
 }
 
+/// Title findings belong to the page (its `title:` line, else the
+/// generated page), never to the shared layout: each page's title is its own.
 fn title_loc(site: &Site, page: &Page) -> super::Loc {
-    if page.source.is_some() {
-        site.locate_page(page, Some("title"))
-    } else {
-        site.locate_layout(page, "<title", Some(page.facts.head_offset))
-    }
+    site.locate_page(page, Some("title"))
 }
 
 fn descriptions(site: &Site, out: &mut Vec<Finding>) {
@@ -103,7 +101,13 @@ fn descriptions(site: &Site, out: &mut Vec<Finding>) {
         // their meta description: report the missing frontmatter key.
         let desc = match &page.item {
             Some(item) => item.description.clone().unwrap_or_default(),
-            None => page.facts.description.clone().unwrap_or_default(),
+            // `--dist`: the site description is the themes' fallback.
+            None => page
+                .facts
+                .description
+                .clone()
+                .filter(|d| site.site_description.is_empty() || d.trim() != site.site_description)
+                .unwrap_or_default(),
         };
         let desc = super::html::normalize_space(&desc);
         let loc = site.locate_page(page, Some("description"));
@@ -241,8 +245,13 @@ fn thin(site: &Site, page: &Page, out: &mut Vec<Finding>) {
     if !page.is_content(site.build_mode) || page.noindex() {
         return;
     }
+    if site
+        .collection_of(page)
+        .is_some_and(|c| THIN_EXEMPT.contains(&c))
+    {
+        return;
+    }
     let words = match &page.item {
-        Some(item) if THIN_EXEMPT.contains(&item.collection.as_str()) => return,
         Some(item) => item.word_count,
         None => page.facts.main_words,
     };
@@ -439,10 +448,9 @@ fn sitemap(site: &Site, out: &mut Vec<Finding>) {
         return;
     };
     let mut listed: HashSet<usize> = HashSet::new();
-    let home = site.pages.iter().find(|p| p.url == "/");
     for loc in sitemap_locs(&xml) {
-        let target = home
-            .and_then(|h| site.internal_target(h, &loc))
+        let target = site
+            .resolve_href("/", &loc)
             .and_then(|(p, _)| site.page_at(&p));
         let Some(i) = target else {
             out.push(

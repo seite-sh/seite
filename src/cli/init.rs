@@ -300,7 +300,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         let fm = content::Frontmatter {
             title: "v0.1.0".into(),
             date: Some(today_date),
-            description: Some("Initial release".into()),
+            description: Some(
+                "Initial release: the first version of the project and its feature set.".into(),
+            ),
             tags: vec!["new".into()],
             draft: false,
             ..Default::default()
@@ -322,7 +324,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Dark Mode",
                 "planned",
                 1,
-                "Add dark mode support to the application.",
+                "Add a dark color scheme that follows the reader's system setting.",
             ),
             (
                 "API v2",
@@ -334,7 +336,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Initial Release",
                 "done",
                 3,
-                "Ship the first public version.",
+                "Ship the first public version with the core features and documentation.",
             ),
         ];
         for (title, status, weight, description) in &items {
@@ -482,7 +484,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 /// `seite.toml` text with a commented `timezone` line appended to the
 /// `[site]` table: the detected zone, or a commented-out example when there
 /// is none.
-fn with_site_timezone(toml_str: &str, timezone: Option<&str>) -> String {
+pub(crate) fn with_site_timezone(toml_str: &str, timezone: Option<&str>) -> String {
     let comment = "# Time zone for \"today\" (scheduled posts, dates of new content). Set, it keeps\n# \"today\" identical on every machine and in CI; unset, each machine uses its own clock.\n";
     let line = match timezone {
         Some(tz) => format!("{comment}timezone = \"{tz}\"\n"),
@@ -767,7 +769,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Security overview
     if opts.sections.iter().any(|s| s == "overview") {
         let overview = format!(
-            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
+            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data: infrastructure, application security, encryption and access control\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
             ## Our Commitment to Security\n\n\
             At {company}, security is foundational to everything we build. We maintain industry-standard certifications and follow security best practices across our entire platform.\n\n\
             ## Infrastructure Security\n\n\
@@ -777,7 +779,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             ## Data Protection\n\n\
             All customer data is encrypted at rest (AES-256) and in transit (TLS 1.2+). Encryption keys are managed through a dedicated key management service.\n\n\
             ## Access Management\n\n\
-            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n",
+            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n\n\
+            ## Incident Response\n\n\
+            We maintain a documented incident response plan with clear roles and escalation paths. Security events are triaged around the clock, and affected customers are notified promptly with what happened, what data was involved, and what we are doing about it.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/security-overview.md"), overview)?;
@@ -801,7 +805,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - We will keep you informed of our progress\n\
             - We will not take legal action against good-faith researchers\n\n\
             ## Scope\n\n\
-            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n",
+            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n\n\
+            ## Safe Harbor\n\n\
+            Research carried out in good faith under this policy is authorized. Avoid privacy violations, data destruction and service disruption, give us reasonable time to fix an issue before you disclose it, and we will work with you to understand and resolve it quickly.\n",
             company = opts.company,
         );
         fs::write(
@@ -813,7 +819,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Data Processing Agreement
     if opts.sections.iter().any(|s| s == "dpa") {
         let dpa = format!(
-            "---\ntitle: \"Data Processing\"\ndescription: \"Data processing practices at {company}\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
+            "---\ntitle: \"Data Processing\"\ndescription: \"How {company} processes, protects and retains customer data, and how to request a DPA\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
             ## Data Processing Overview\n\n\
             {company} processes customer data in accordance with applicable data protection regulations.\n\n\
             ## Data Processing Agreement\n\n\
@@ -824,7 +830,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - Usage data (application logs, analytics)\n\
             - Customer-provided content\n\n\
             ## Data Retention\n\n\
-            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n",
+            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n\n\
+            ## Subprocessors\n\n\
+            We use a small number of subprocessors to deliver the service. Each one is bound by a written agreement with data protection terms at least as strict as ours, and the current list is published on this trust center.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/data-processing.md"), dpa)?;
@@ -845,7 +853,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 _ => format!("{} has {name} certification on its roadmap.", opts.company),
             };
             let cert_page = format!(
-                "---\ntitle: \"{name}\"\ndescription: \"{desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
+                "---\ntitle: \"{name}\"\ndescription: \"{company}'s {name} status: {desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
                 ## {name}\n\n\
                 {status_text}\n\n\
                 {desc}.\n\n\
@@ -853,7 +861,12 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 <!-- Describe the scope of your certification here -->\n\n\
                 ## Resources\n\n\
                 <!-- Link to reports, certificates, or contact information -->\n\
-                For access to our {name} report, contact security@yourcompany.com.\n",
+                For access to our {name} report, contact security@yourcompany.com.\n\n\
+                ## How We Maintain It\n\n\
+                Compliance is an ongoing program, not a one-time project. We review our controls on a regular schedule, track every finding to resolution, train our team on the policies that apply to their work, and monitor the systems in scope continuously. When our practices change, we update this page and the related documents so customers always see the current state.\n\n\
+                ## Questions\n\n\
+                Security and procurement teams can ask us about this framework at any time. We answer questionnaires, share evidence under NDA where appropriate, and walk through how our controls apply to your use of the service.\n",
+                company = opts.company,
             );
             fs::write(
                 root.join(format!("content/trust/certifications/{slug}.md")),

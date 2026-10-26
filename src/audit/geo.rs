@@ -30,7 +30,6 @@ pub fn check(site: &Site, out: &mut Vec<Finding>) {
 /// llms.txt entries: page key → has a summary (`- [t](url): summary`).
 pub fn llms_entries(site: &Site, text: &str) -> HashMap<String, bool> {
     let mut out = HashMap::new();
-    let home = site.pages.iter().find(|p| p.url == "/");
     for line in text.lines() {
         let Some(rest) = line.trim_start().strip_prefix("- [") else {
             continue;
@@ -48,7 +47,7 @@ pub fn llms_entries(site: &Site, text: &str) -> HashMap<String, bool> {
             .trim_start()
             .strip_prefix(':')
             .is_some_and(|s| !s.trim().is_empty());
-        let key = match home.and_then(|h| site.internal_target(h, url)) {
+        let key = match site.resolve_href("/", url) {
             Some((path, _)) => super::page_key(&path),
             None => continue,
         };
@@ -410,5 +409,18 @@ mod tests {
             ]
         );
         assert!(out[2].message.contains("Claude-SearchBot"));
+    }
+
+    #[test]
+    fn test_llms_entries_resolve_without_a_homepage() {
+        let md = "<link rel=\"alternate\" type=\"text/markdown\" href=\"/x.md\">";
+        let s = site(&[("docs/a.html", &page(md, ""))]);
+        let entries = llms_entries(
+            &s,
+            "- [A](https://example.com/docs/a.md): Sum\n- [B](/docs/b.md)\n- [X](https://other.org/x.md)\n",
+        );
+        assert_eq!(entries.get("/docs/a"), Some(&true));
+        assert_eq!(entries.get("/docs/b"), Some(&false));
+        assert_eq!(entries.len(), 2);
     }
 }

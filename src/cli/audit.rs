@@ -28,6 +28,11 @@ pub struct AuditArgs {
     #[arg(long, value_enum, value_name = "SEVERITY")]
     pub fail_on: Option<FailOn>,
 
+    /// Only list findings of this severity or worse (`--json` too; the
+    /// summary still counts everything)
+    #[arg(long, value_enum, value_name = "SEVERITY", default_value = "notice")]
+    pub min_severity: Severity,
+
     /// Findings listed per category in the human report (`--json` has all)
     #[arg(long, default_value_t = 10, value_name = "N")]
     pub top: usize,
@@ -43,11 +48,12 @@ pub fn run(args: &AuditArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let state = load_site(site_filter)?;
     let cwd = std::env::current_dir()?;
     let dist = args.dist.as_ref().map(|d| cwd.join(d));
-    let report = audit::run(&audit::AuditOptions {
+    let mut report = audit::run(&audit::AuditOptions {
         root: &state.cwd,
         dist: dist.as_deref(),
         categories: &args.category,
     })?;
+    report.limit(args.min_severity, None);
     print_report(&report, args.top);
     let failed = match args.fail_on {
         None => false,

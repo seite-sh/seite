@@ -440,6 +440,18 @@ fn audit_input_schema() -> serde_json::Value {
                 "type": "array",
                 "items": { "type": "string", "enum": ["seo", "geo", "a11y", "content", "perf"] },
                 "description": "Only these categories (default: all)"
+            },
+            "top": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Return at most this many findings, most severe first (default 50; summary counts all)",
+                "default": 50
+            },
+            "min_severity": {
+                "type": "string",
+                "enum": ["error", "warning", "notice"],
+                "description": "Return findings of this severity or worse (default warning; notices are suggestions)",
+                "default": "warning"
             }
         }),
         &[],
@@ -485,9 +497,10 @@ fn audit_output_schema() -> serde_json::Value {
                 }),
                 &["score", "errors", "warnings", "notices", "pages", "by_category"],
             ),
-            "findings": { "type": "array", "items": finding }
+            "findings": { "type": "array", "items": finding },
+            "omitted": prop("integer", "Findings left out by top/min_severity (still counted in summary)")
         }),
-        &["summary", "findings"],
+        &["summary", "findings", "omitted"],
     )
 }
 
@@ -998,7 +1011,27 @@ fn call_check(state: &ServerState, arguments: &serde_json::Value) -> ToolResult 
 // ---------------------------------------------------------------------------
 
 fn call_audit(state: &ServerState, arguments: &serde_json::Value) -> ToolResult {
-    let args = Args::new("seite_audit", arguments, &["categories"])?;
+    let args = Args::new(
+        "seite_audit",
+        arguments,
+        &["categories", "top", "min_severity"],
+    )?;
+    let top = match args.int("top")? {
+        None => 50,
+        Some(n) => usize::try_from(n).map_err(|_| {
+            ToolError::new(format!("seite_audit: argument 'top' must be >= 0 ({n})"))
+        })?,
+    };
+    let min_severity = match args.str("min_severity")? {
+        None => crate::audit::Severity::Warning,
+        Some(s) => {
+            <crate::audit::Severity as clap::ValueEnum>::from_str(s, true).map_err(|_| {
+                ToolError::new(format!(
+                    "seite_audit: unknown min_severity '{s}' (error, warning, notice)"
+                ))
+            })?
+        }
+    };
     let mut categories = Vec::new();
     for name in args.str_array("categories")?.unwrap_or_default() {
         let category =
@@ -1010,12 +1043,13 @@ fn call_audit(state: &ServerState, arguments: &serde_json::Value) -> ToolResult 
         categories.push(category);
     }
     let (_config, paths) = state.site()?;
-    let report = crate::audit::run(&crate::audit::AuditOptions {
+    let mut report = crate::audit::run(&crate::audit::AuditOptions {
         root: &paths.root,
         dist: None,
         categories: &categories,
     })
     .map_err(|e| ToolError::new(format!("seite_audit: {e}")))?;
+    report.limit(min_severity, Some(top));
     serde_json::to_value(&report).map_err(|e| ToolError::new(format!("seite_audit: {e}")))
 }
 
@@ -1886,7 +1920,7 @@ mod tests {
         run(
             &mut state,
             "seite_audit",
-            serde_json::json!({ "categories": ["seo", "a11y"] }),
+            serde_json::json!({ "categories": ["seo", "a11y"], "top": 1, "min_severity": "notice" }),
         );
         run(
             &mut state,

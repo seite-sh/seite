@@ -97,7 +97,15 @@ fn test_audit_fresh_site_scores_high_without_errors() {
     assert!(ok, "{doc}");
     let summary = &doc["data"]["summary"];
     assert_eq!(summary["errors"], 0, "{doc:#}");
-    assert!(summary["score"].as_u64().unwrap() >= 95, "{doc:#}");
+    // The bundled themes still give `/posts/` the site title (two
+    // `seo-title-duplicate` warnings, fixed in the parallel theme work);
+    // starter content itself has no findings above notice level.
+    assert!(summary["score"].as_u64().unwrap() >= 90, "{doc:#}");
+    for f in findings(&doc) {
+        if f["severity"] != "notice" {
+            assert_eq!(f["code"], "seo-title-duplicate", "{f}");
+        }
+    }
     assert!(summary["pages"].as_u64().unwrap() >= 3, "{doc:#}");
     for category in ["seo", "geo", "a11y", "content", "perf"] {
         assert!(summary["by_category"][category].is_object(), "{category}");
@@ -136,8 +144,13 @@ fn test_audit_reports_seeded_problems_with_sources() {
     assert_eq!(anchor.len(), 1, "{all:#?}");
     assert_eq!(anchor[0]["file"], bad_md);
     assert_eq!(anchor[0]["line"], 8);
-    // geo: no summary in llms.txt for the page without a description.
-    assert!(find(&all, "geo-llms-no-summary")
+    // geo: no summary in llms.txt for the page without a description —
+    // reported once, as seo-description-missing, unless SEO is filtered out.
+    assert!(!find(&all, "geo-llms-no-summary")
+        .iter()
+        .any(|f| f["file"] == bad_md));
+    let (_, geo) = run_json(&site, &["audit", "--category", "geo"]);
+    assert!(find(&findings(&geo), "geo-llms-no-summary")
         .iter()
         .any(|f| f["file"] == bad_md));
     // a11y: image without alt, ambiguous link text, both at their line.
@@ -202,7 +215,8 @@ fn test_audit_json_shape() {
     assert_eq!(doc["command"], "audit");
     let data = doc["data"].as_object().unwrap();
     let keys: Vec<&str> = data.keys().map(String::as_str).collect();
-    assert_eq!(keys, ["summary", "findings"]);
+    assert_eq!(keys, ["summary", "findings", "omitted"]);
+    assert_eq!(data["omitted"], 0);
     let summary: Vec<&str> = data["summary"]
         .as_object()
         .unwrap()
@@ -338,4 +352,116 @@ fn test_audit_outside_a_site_fails_clearly() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("seite.toml"));
+}
+
+/// Fresh sites from every preset have no warnings at all. Enabled once the
+/// theme fixes (collection index titles, listing heading levels, trust
+/// "Learn more" link names) are merged.
+#[test]
+#[ignore = "needs the bundled-theme fixes from the parallel theme branch"]
+fn test_audit_fresh_sites_have_no_warnings() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "Fresh Site",
+            "--description",
+            "A fresh site made to test the audit command end to end",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,docs,pages,changelog,roadmap,trust",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let (ok, doc) = run_json(&tmp.path().join("site"), &["audit", "--fail-on", "warning"]);
+    assert!(ok, "{doc:#}");
+}
+
+#[test]
+fn test_audit_min_severity_filters_findings_not_summary() {
+    let tmp = TempDir::new().unwrap();
+    let site = bad_site(&tmp);
+    let (_, all) = run_json(&site, &["audit"]);
+    let (ok, errors_only) = run_json(&site, &["audit", "--min-severity", "error"]);
+    assert!(ok);
+    assert_eq!(all["data"]["summary"], errors_only["data"]["summary"]);
+    let kept = findings(&errors_only);
+    assert!(!kept.is_empty());
+    assert!(kept.iter().all(|f| f["severity"] == "error"));
+    assert_eq!(
+        errors_only["data"]["omitted"].as_u64().unwrap() as usize,
+        findings(&all).len() - kept.len()
+    );
+}
+
+/// The same site gives the same findings whether the audit builds it or
+/// reads the built output (`--dist`): only the files differ (sources vs
+/// generated pages), and `content` checks need the sources.
+#[test]
+fn test_audit_build_and_dist_modes_agree() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "Parity",
+            "--description",
+            "A site to compare the build and dist modes of the audit",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,docs,pages,changelog",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site = tmp.path().join("site");
+    fs::write(
+        site.join("content/posts/2025-01-01-short.md"),
+        "---\ntitle: A short post with a title that is clearly much longer than sixty characters\ndate: 2025-01-01\n---\n\nToo short.\n",
+    )
+    .unwrap();
+    fs::write(
+        site.join("content/docs/nodesc.md"),
+        "---\ntitle: No description\n---\n\nA doc without a description.\n",
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let pairs = |args: &[&str]| -> Vec<(String, String)> {
+        let (ok, doc) = run_json(&site, args);
+        assert!(ok, "{doc}");
+        let mut v: Vec<(String, String)> = findings(&doc)
+            .iter()
+            .filter(|f| f["category"] != "content")
+            .map(|f| {
+                (
+                    f["code"].as_str().unwrap().to_string(),
+                    f["page_url"].as_str().unwrap_or("").to_string(),
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let built = pairs(&["audit"]);
+    let dist = pairs(&["audit", "--dist", "dist"]);
+    assert_eq!(built, dist);
+    // The changelog entry is exempt from thin content in both modes.
+    assert!(!built
+        .iter()
+        .any(|(c, u)| c == "seo-thin-content" && u.starts_with("/changelog")));
+    assert!(built.contains(&("seo-title-long".to_string(), "/posts/short".to_string())));
+    assert!(built.contains(&(
+        "seo-description-missing".to_string(),
+        "/docs/nodesc".to_string()
+    )));
 }

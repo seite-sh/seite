@@ -267,7 +267,7 @@ extra:
 
 ## geo-llms-no-summary
 
-**What it means:** A `seite audit` finding (notice): `llms.txt` lists the page without a summary because the page has no `description:`. AI assistants choose pages by these summaries.
+**What it means:** A `seite audit` finding (notice): `llms.txt` lists the page without a summary because the page has no `description:`. AI assistants choose pages by these summaries. When the SEO category is audited too, the page is reported once, as `seo-description-missing`.
 
 **How to fix:** Add `description:` to the page's frontmatter.
 
@@ -465,7 +465,7 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 
 **What it means:** A `seite audit` finding (warning): two or more indexable pages share the same `<title>`. Search engines show one result per title and treat the pages as competing. Pages with `robots: noindex` are ignored.
 
-**How to fix:** Make each title unique. When the duplicates are generated pages (for example a collection index that reuses the site title), fix the template's `{% block title %}` — the finding then points at the template and lists the other pages.
+**How to fix:** Make each title unique. When the duplicates are generated pages (for example a collection index that reuses the site title), fix the template's `{% block title %}`. Each page gets its own finding (at its `title:` line, or the generated page), naming the pages it collides with.
 
 ## seo-title-long
 

@@ -319,7 +319,8 @@ const VOID: &[&str] = &[
 #[derive(Debug)]
 enum CaptureKind {
     Title,
-    Heading(u8),
+    /// Index into `PageFacts::headings`.
+    Heading(usize),
     Link(usize),
     Button(usize),
     Label,
@@ -330,6 +331,76 @@ struct Capture {
     tag: &'static str,
     kind: CaptureKind,
     text: String,
+}
+
+/// Text kept per open capture (titles, headings, link and button names
+/// longer than this are cut; it bounds work on malformed pages).
+const CAPTURE_TEXT_MAX: usize = 4096;
+
+/// Add `text` to every open capture, up to [`CAPTURE_TEXT_MAX`] each.
+fn append(captures: &mut [Capture], text: &str) {
+    for c in captures.iter_mut() {
+        let room = CAPTURE_TEXT_MAX.saturating_sub(c.text.len());
+        if room == 0 {
+            continue;
+        }
+        let mut end = text.len().min(room);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        c.text.push_str(&text[..end]);
+        c.text.push(' ');
+    }
+}
+
+/// Elements that don't nest: opening one ends an open one of the same
+/// group (browsers close an open `<a>` that way); headings are one group.
+fn group(tag: &str) -> &str {
+    if is_heading(tag) {
+        "h"
+    } else {
+        tag
+    }
+}
+
+fn is_heading(tag: &str) -> bool {
+    matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
+}
+
+/// Start `capture`, first ending an open capture of the same group, so at
+/// most one capture per group (five in all) is ever open.
+fn open_capture(
+    captures: &mut Vec<Capture>,
+    f: &mut PageFacts,
+    button_labels: &[Option<String>],
+    capture: Capture,
+) {
+    if let Some(i) = captures
+        .iter()
+        .position(|c| group(c.tag) == group(capture.tag))
+    {
+        let open = captures.remove(i);
+        finish(f, button_labels, open);
+    }
+    captures.push(capture);
+}
+
+/// Store what a capture collected.
+fn finish(f: &mut PageFacts, button_labels: &[Option<String>], capture: Capture) {
+    let text = normalize_space(&capture.text);
+    match capture.kind {
+        CaptureKind::Title => f.titles.push(text),
+        CaptureKind::Heading(i) => {
+            if let Some(h) = f.headings.get_mut(i) {
+                h.text = text;
+            }
+        }
+        CaptureKind::Link(i) => f.links[i].text = text,
+        CaptureKind::Button(i) => {
+            f.buttons[i].name = button_labels.get(i).cloned().flatten().unwrap_or(text);
+        }
+        CaptureKind::Label => {}
+    }
 }
 
 fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -356,10 +427,7 @@ pub fn scan(html: &str) -> PageFacts {
         match token {
             Token::Text(text) => {
                 let decoded = decode_entities(text);
-                for c in captures.iter_mut() {
-                    c.text.push_str(&decoded);
-                    c.text.push(' ');
-                }
+                append(&mut captures, &decoded);
                 if seen_body && chrome_depth == 0 {
                     if main_depth > 0 {
                         main_text.push_str(&decoded);
@@ -401,11 +469,16 @@ pub fn scan(html: &str) -> PageFacts {
                         chrome_depth += 1;
                         seen_body = true;
                     }
-                    "title" if in_head || !seen_body => captures.push(Capture {
-                        tag: "title",
-                        kind: CaptureKind::Title,
-                        text: String::new(),
-                    }),
+                    "title" if in_head || !seen_body => open_capture(
+                        &mut captures,
+                        &mut f,
+                        &button_labels,
+                        Capture {
+                            tag: "title",
+                            kind: CaptureKind::Title,
+                            text: String::new(),
+                        },
+                    ),
                     "meta" => {
                         let key = attr(&attrs, "name")
                             .or_else(|| attr(&attrs, "property"))
@@ -455,11 +528,12 @@ pub fn scan(html: &str) -> PageFacts {
                     }),
                     "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                         let level = name.as_bytes()[1] - b'0';
-                        captures.push(Capture {
+                        let capture = Capture {
                             tag: heading_tag(level),
-                            kind: CaptureKind::Heading(level),
+                            kind: CaptureKind::Heading(f.headings.len()),
                             text: String::new(),
-                        });
+                        };
+                        open_capture(&mut captures, &mut f, &button_labels, capture);
                         f.headings.push(Heading {
                             level,
                             text: String::new(),
@@ -485,11 +559,12 @@ pub fn scan(html: &str) -> PageFacts {
                                 offset,
                             });
                             if name == "a" {
-                                captures.push(Capture {
+                                let capture = Capture {
                                     tag: "a",
                                     kind: CaptureKind::Link(f.links.len() - 1),
                                     text: String::new(),
-                                });
+                                };
+                                open_capture(&mut captures, &mut f, &button_labels, capture);
                             } else {
                                 // <area> is void: its name is its alt.
                                 let last = f.links.len() - 1;
@@ -510,21 +585,23 @@ pub fn scan(html: &str) -> PageFacts {
                                 .filter(|v| !v.trim().is_empty())
                                 .map(str::to_string),
                         );
-                        captures.push(Capture {
+                        let capture = Capture {
                             tag: "button",
                             kind: CaptureKind::Button(f.buttons.len() - 1),
                             text: String::new(),
-                        });
+                        };
+                        open_capture(&mut captures, &mut f, &button_labels, capture);
                     }
                     "label" => {
                         if let Some(target) = attr(&attrs, "for") {
                             f.label_for.push(target.to_string());
                         }
-                        captures.push(Capture {
+                        let capture = Capture {
                             tag: "label",
                             kind: CaptureKind::Label,
                             text: String::new(),
-                        });
+                        };
+                        open_capture(&mut captures, &mut f, &button_labels, capture);
                     }
                     "input" | "select" | "textarea" => {
                         let kind = attr(&attrs, "type").unwrap_or("").to_ascii_lowercase();
@@ -553,10 +630,7 @@ pub fn scan(html: &str) -> PageFacts {
                     "img" => {
                         let alt = attr(&attrs, "alt").map(str::to_string);
                         if let Some(alt) = &alt {
-                            for c in captures.iter_mut() {
-                                c.text.push_str(alt);
-                                c.text.push(' ');
-                            }
+                            append(&mut captures, alt);
                         }
                         f.imgs.push(Img {
                             src: attr(&attrs, "src").map(str::to_string),
@@ -576,10 +650,7 @@ pub fn scan(html: &str) -> PageFacts {
                     "svg" => {
                         // An inline icon with a <title> or aria-label names its link/button.
                         if let Some(label) = attr(&attrs, "aria-label") {
-                            for c in captures.iter_mut() {
-                                c.text.push_str(label);
-                                c.text.push(' ');
-                            }
+                            append(&mut captures, label);
                         }
                     }
                     _ => {}
@@ -595,30 +666,14 @@ pub fn scan(html: &str) -> PageFacts {
                     chrome_depth = chrome_depth.saturating_sub(1)
                 }
                 "title" | "a" | "button" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                    let Some(i) = captures.iter().rposition(|c| c.tag == name) else {
+                    // A mismatched heading close (`<h2>…</h3>`) still ends
+                    // the open heading.
+                    let Some(i) = captures.iter().rposition(|c| group(c.tag) == group(&name))
+                    else {
                         continue;
                     };
                     let capture = captures.remove(i);
-                    let text = normalize_space(&capture.text);
-                    match capture.kind {
-                        CaptureKind::Title => f.titles.push(text),
-                        CaptureKind::Heading(level) => {
-                            if let Some(h) = f
-                                .headings
-                                .iter_mut()
-                                .rev()
-                                .find(|h| h.level == level && h.text.is_empty())
-                            {
-                                h.text = text;
-                            }
-                        }
-                        CaptureKind::Link(i) => f.links[i].text = text,
-                        CaptureKind::Button(i) => {
-                            f.buttons[i].name =
-                                button_labels.get(i).cloned().flatten().unwrap_or(text);
-                        }
-                        CaptureKind::Label => {}
-                    }
+                    finish(&mut f, &button_labels, capture);
                 }
                 _ => {}
             },
@@ -626,15 +681,7 @@ pub fn scan(html: &str) -> PageFacts {
     }
     // Unclosed captures (malformed HTML): keep what was collected.
     for capture in captures {
-        let text = normalize_space(&capture.text);
-        match capture.kind {
-            CaptureKind::Title => f.titles.push(text),
-            CaptureKind::Link(i) => f.links[i].text = text,
-            CaptureKind::Button(i) => {
-                f.buttons[i].name = button_labels.get(i).cloned().flatten().unwrap_or(text)
-            }
-            _ => {}
-        }
+        finish(&mut f, &button_labels, capture);
     }
     let words = if f.has_main { &main_text } else { &body_text };
     f.main_words = count_words(words);
@@ -764,6 +811,41 @@ mod tests {
             scan(r#"<html><head><meta http-equiv="refresh" content="0; url=/a"></head></html>"#);
         assert!(f.refresh);
         assert!(f.lang.is_none());
+    }
+
+    #[test]
+    fn test_unclosed_links_are_linear_and_capped() {
+        let html = format!(
+            "<html><body>{}</body></html>",
+            "<a href=\"/x\">text ".repeat(20_000)
+        );
+        let start = std::time::Instant::now();
+        let f = scan(&html);
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
+        assert_eq!(f.links.len(), 20_000);
+        // Each <a> ends the previous one, as in browsers.
+        assert_eq!(f.links[0].text, "text");
+        let long = format!(
+            "<html><body><a href=\"/x\">{}</a></body></html>",
+            "word ".repeat(5_000)
+        );
+        let f = scan(&long);
+        assert!(f.links[0].text.len() <= CAPTURE_TEXT_MAX + 10);
+    }
+
+    #[test]
+    fn test_mismatched_heading_close() {
+        let f = scan("<main><h2>First</h3><p>between</p><h3>Second</h3></main>");
+        let texts: Vec<&str> = f.headings.iter().map(|h| h.text.as_str()).collect();
+        assert_eq!(texts, ["First", "Second"]);
+        // An unclosed heading ends at the next heading.
+        let f = scan("<main><h2>Open<h3>Next</h3></main>");
+        let texts: Vec<&str> = f.headings.iter().map(|h| h.text.as_str()).collect();
+        assert_eq!(texts, ["Open", "Next"]);
     }
 
     #[test]

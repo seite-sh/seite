@@ -3,6 +3,33 @@ use super::common::*;
 // --- workspace CLI ---
 
 #[test]
+fn test_workspace_add_writes_detected_timezone() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .env("TZ", "Asia/Tokyo")
+        .args(["workspace", "add", "blog", "--collections", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let toml = fs::read_to_string(tmp.path().join("sites/blog/seite.toml")).unwrap();
+    let site_table = toml.split("[[collections]]").next().unwrap();
+    assert!(
+        site_table.contains("\ntimezone = \"Asia/Tokyo\"\n"),
+        "{toml}"
+    );
+    page_cmd()
+        .args(["check", "--site", "blog"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+#[test]
 fn test_workspace_init() {
     let tmp = TempDir::new().unwrap();
 
