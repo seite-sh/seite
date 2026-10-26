@@ -537,3 +537,24 @@ pub(crate) fn dir_snapshot(dir: &std::path::Path) -> Vec<(String, u64)> {
     entries.sort();
     entries
 }
+
+/// Drop the `[og]` section `seite init` writes, for tests that compare output
+/// with sites from before generated social cards.
+pub(crate) fn remove_og_section(site_dir: &std::path::Path) {
+    let path = site_dir.join("seite.toml");
+    let toml = fs::read_to_string(&path).unwrap();
+    let mut out = String::new();
+    let mut in_og = false;
+    for line in toml.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_og = t == "[og]";
+        }
+        if !in_og {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    assert_ne!(out, toml, "no [og] section to remove");
+    fs::write(&path, out).unwrap();
+}

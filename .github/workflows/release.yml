@@ -73,7 +73,9 @@ jobs:
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../seite-${{ matrix.target }}.tar.gz seite
+          # The bundled social-card font (Inter, SIL OFL 1.1) ships its licence.
+          cp ../../../assets/fonts/OFL.txt LICENSE-Inter-OFL.txt
+          tar czf ../../../seite-${{ matrix.target }}.tar.gz seite LICENSE-Inter-OFL.txt
           cd ../../..
 
       - name: Upload artifact
@@ -105,12 +107,14 @@ jobs:
       - name: Package x86_64
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-x86_64-pc-windows-msvc.zip"
+          Copy-Item "assets/fonts/OFL.txt" "target/x86_64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt"
+          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release/seite.exe","target/x86_64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt" -DestinationPath "seite-x86_64-pc-windows-msvc.zip"
 
       - name: Package aarch64
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
+          Copy-Item "assets/fonts/OFL.txt" "target/aarch64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt"
+          Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe","target/aarch64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
 
       - name: Upload x86_64 artifact
         uses: actions/upload-artifact@v7

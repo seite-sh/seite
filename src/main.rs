@@ -50,6 +50,12 @@ fn run(cli: &Cli) -> Result<()> {
         apply_config_flag(config)?;
     }
 
+    if cli.licenses {
+        use std::io::Write as _;
+        let mut out = std::io::stdout().lock();
+        out.write_all(seite::build::og::third_party_notices().as_bytes())?;
+        return Ok(());
+    }
     let Some(command) = cli.command.as_ref() else {
         if cli.json {
             anyhow::bail!("no command given (run `seite --help` to see commands)");
@@ -226,6 +232,7 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Docs(args) => seite::cli::docs::run(args, site),
         Command::Explain(args) => seite::cli::explain::run(args),
         Command::Page(args) => seite::cli::page::run(args, site),
+        Command::Og(args) => seite::cli::og::run(args, site),
         Command::Search(args) => seite::cli::search::run(args, site),
         Command::Stats(args) => seite::cli::stats::run(args, site),
         Command::Templates(args) => seite::cli::templates::run(args, site),
@@ -261,6 +268,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Docs(_) => "docs",
         Command::Explain(_) => "explain",
         Command::Page(_) => "page",
+        Command::Og(_) => "og",
         Command::Search(_) => "search",
         Command::Stats(_) => "stats",
         Command::Templates(_) => "templates",

@@ -16,6 +16,7 @@ include = [
     "seite-sh/content/docs/**/*.md",
     "seite-sh/content/changelog/**/*.md",
     "tests/**/*",
+    "assets/fonts/*",
     "LICENSE",
     "README.md",
 ]
@@ -103,6 +104,10 @@ tempfile = "3"
 # SHA-256 (in-process checksum verification for self-update)
 sha2 = "0.11"
 getrandom = "0.4"
+# Social cards (`[og]`): SVG -> PNG with bundled fonts only (no system fonts).
+resvg = { version = "0.49", default-features = false, features = ["text"] }
+# Glyph coverage and advance widths for card text layout (already compiled in through resvg)
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
 
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]

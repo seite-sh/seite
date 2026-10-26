@@ -165,6 +165,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         }
     }
 

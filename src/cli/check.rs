@@ -434,6 +434,9 @@ fn check_site_full(
         future_paths.subdomain_output_root = scratch_future.path().join("dist-subdomains");
         let mut future_config = config.clone();
         future_config.build.future = true;
+        if let Some(og) = future_config.og.as_mut() {
+            og.skip_render = true;
+        }
         let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
             Ok(result) => result.diagnostics.into_iter().collect(),
             Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
@@ -488,11 +491,17 @@ pub fn scratch_build(
     let mut scratch_paths = paths.clone();
     scratch_paths.output = scratch.path().join("dist");
     scratch_paths.subdomain_output_root = scratch.path().join("dist-subdomains");
+    // Social cards: validate `[og]` and compute card URLs, but render no PNGs
+    // (the scratch output is thrown away; `seite build` renders them).
+    let mut config = config.clone();
+    if let Some(og) = config.og.as_mut() {
+        og.skip_render = true;
+    }
     let opts = BuildOptions {
         include_drafts,
         incremental: false,
     };
-    let built = build::build_site(config, &scratch_paths, &opts);
+    let built = build::build_site(&config, &scratch_paths, &opts);
     Ok((scratch, scratch_paths, built))
 }
 

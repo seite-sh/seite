@@ -18,6 +18,7 @@ pub mod hooks;
 pub mod init;
 pub mod mcp;
 pub mod new;
+pub mod og;
 pub mod page;
 pub mod perf;
 pub mod prompt;
@@ -49,6 +50,10 @@ pub struct Cli {
     /// Verbose output (debug logging, per-step build timings)
     #[arg(short, long, global = true)]
     pub verbose: bool,
+
+    /// Print the licences of bundled third-party assets (the social-card font)
+    #[arg(long, hide = true)]
+    pub licenses: bool,
 
     /// Machine-readable output: print exactly one JSON document on stdout
     /// ({"ok":true,"command":..,"data":..} or {"ok":false,..,"error":{"message":..,"chain":[..]}}),
@@ -156,6 +161,9 @@ pub enum Command {
 
     /// Show one content file as the build sees it (by source path or URL)
     Page(page::PageArgs),
+
+    /// Social preview cards ([og]): render one to a PNG
+    Og(og::OgArgs),
 
     /// Search site content (drafts included) by keyword
     Search(search::SearchArgs),

@@ -34,6 +34,8 @@ fn pre_partial(name: &str) -> String {
 fn full_site(tmp: &TempDir) -> std::path::PathBuf {
     init_site(tmp, "site", "Partials", "posts,docs,pages");
     let site = tmp.path().join("site");
+    // Compared with the pre-partial themes, from before generated social cards.
+    remove_og_section(&site);
     add_language(&site, "es", "Parciales");
     let post = fs::read_dir(site.join("content/posts"))
         .unwrap()
@@ -120,6 +122,16 @@ fn trimmed_lines(html: &str) -> String {
         .join("\n")
 }
 
+/// `html` without its BreadcrumbList `<script>` (and the line it sat on).
+fn without_breadcrumbs(html: &str) -> String {
+    let Some(at) = html.find("\"@type\":\"BreadcrumbList\"") else {
+        return html.to_string();
+    };
+    let start = html[..at].rfind("<script").unwrap();
+    let end = at + html[at..].find("</script>").unwrap() + "</script>".len();
+    format!("{}{}", &html[..start], &html[end..])
+}
+
 /// How closely each theme's output must match its pre-partial version.
 /// - exact: byte-identical.
 /// - blank lines: identical except one whitespace-only line (the empty
@@ -132,8 +144,10 @@ fn trimmed_lines(html: &str) -> String {
 /// For every theme, the search script is the shared full-text one
 /// (`seite/search-script.html`), compared as a marker, and the theme CSS has
 /// one added line styling result snippets, highlights and the active result.
+/// The BreadcrumbList JSON-LD is left out: it now uses the collection's real
+/// URL (checked in `og::test_breadcrumb_urls_resolve_to_built_pages`).
 fn normalize(theme: &str, html: &str) -> String {
-    let html: String = without_search_script(html)
+    let html: String = without_search_script(&without_breadcrumbs(html))
         .split_inclusive('\n')
         .filter(|l| !l.contains("#search-results .result-snippet"))
         .collect();

@@ -353,6 +353,17 @@ fn search_feature_notice(root: &Path) -> Option<Notice> {
     })
 }
 
+/// One-time notice about generated social cards for sites without an `[og]`
+/// section (upgrade never adds it: it changes every page's `og:image`).
+fn og_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    config.og.is_none().then(|| Notice {
+        key: "og-feature".into(),
+        text: "Social preview cards are available: add `[og]` with `generate = true` to seite.toml and every page without an `image:` gets a generated 1200x630 card (`dist/og/*.png`, set as og:image and twitter:image), in your brand colors from data/brand.yaml. Try one first with `seite og preview /`. See https://seite.sh/docs/configuration#social-cards".into(),
+    })
+}
+
 /// Shared by the schedule notices and the `TIMEZONE_UNSET` directive.
 const TIMEZONE_ADVICE: &str = "Also set `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site], so \"today\" is the same on every machine and in CI.";
 
@@ -806,6 +817,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(workflow_schedule_notice(root));
     notices.extend(schedule_feature_notice(root));
     notices.extend(search_feature_notice(root));
+    notices.extend(og_feature_notice(root));
     notices.extend(timezone_notice(root));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)

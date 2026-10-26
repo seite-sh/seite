@@ -329,6 +329,25 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 
 **How to fix:** add the file under `static/` (served from `/static/...`) or `public/` (served from the site root), or fix the path in the content or template.
 
+## og-config-invalid
+
+**What it means:** The `[og]` section of `seite.toml` (generated social cards) names something seite cannot use: a color that is not `#rgb`/`#rrggbb`, a `logo` that is missing, outside the site, a symlink, not `.svg`/`.png`, not a valid image, over 1 MB or over 4096 px per side, or a `font` that is missing, a symlink or not a TrueType/OpenType file. An error: `seite build` stops and `seite check` reports it at the offending line.
+
+**How to fix:** Correct the value; paths are relative to the site root. `seite og preview /` renders a card to try a change.
+
+```toml
+[og]
+accent = "#0057b7"          # not "blue"
+logo = "static/logo.svg"    # SVG or PNG inside the site
+font = "static/fonts/NotoSansJP-Bold.ttf"
+```
+
+## og-missing-glyphs
+
+**What it means:** A build warning: some pages got no social card of their own because their title has characters the card font lacks (CJK, emoji, scripts other than Latin, Greek and Cyrillic). seite skips those cards rather than drawing empty boxes; the pages use the site card (`og/index.png`) instead. The file is the first such page.
+
+**How to fix:** Set `[og] font` to a `.ttf`/`.otf` that has the glyphs (for example a Noto Sans CJK subset under `static/fonts/`), or give the pages their own `image:`.
+
 ## perf-image-large
 
 **What it means:** A `seite audit` finding (warning): an image used by a page is larger than **300 KB**. For an `<img>` with `srcset`, the smallest candidate counts. Reported once per image.
@@ -429,7 +448,7 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 
 **What it means:** A `seite audit` finding (notice): a content page has no `og:image`, so links shared on social networks and chat apps show no preview image.
 
-**How to fix:** Set `image:` in the frontmatter (a path under `static/` or a URL).
+**How to fix:** Turn on generated social cards (`[og]` with `generate = true` in `seite.toml`; new sites have it) so every page gets one, or set `image:` in the frontmatter (a path under `static/` or a URL).
 
 ## seo-orphan-page
 

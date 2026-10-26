@@ -11,6 +11,7 @@ pub mod links;
 pub mod markdown;
 pub mod math;
 pub mod mermaid;
+pub mod og;
 pub mod redirects;
 pub mod search;
 pub mod sitemap;
@@ -93,6 +94,8 @@ pub struct BuildStats {
     /// Full-text search index sizes (all languages), when `[build] search =
     /// "full"`.
     pub search_index: Option<search::IndexStats>,
+    /// Social card counts (`None` when `[og]` cards are off).
+    pub og_cards: Option<og::OgStats>,
 }
 
 impl CommandOutput for BuildStats {
@@ -174,6 +177,10 @@ struct SiteContext {
     base_path: String,
     language: String,
     author: String,
+    /// Absolute URL of this language's generated site card (`[og]`), the
+    /// `og:image` fallback for pages without their own image or card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    og_image: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -209,6 +216,15 @@ struct PageContext {
     toc: Vec<markdown::TocEntry>,
     /// Arbitrary key-value data from frontmatter `extra` field.
     extra: indexmap::IndexMap<String, serde_yaml_ng::Value>,
+    /// Absolute URL of the page's generated social card (`[og]`); unset when
+    /// the page has `image:` or gets no card of its own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    og_image: Option<String>,
+    /// Absolute URL of the page's collection index (`base_url` + language
+    /// prefix + `url_prefix`), for the BreadcrumbList JSON-LD. Unset for
+    /// root-mounted collections (empty `url_prefix`) and non-collection pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collection_url: Option<String>,
 }
 
 /// Lightweight previous/next post link exposed to templates as `prev_post` / `next_post`.
@@ -293,6 +309,7 @@ impl SiteContext {
             base_path: config.base_path(),
             language: config.site.language.clone(),
             author: config.site.author.clone(),
+            og_image: site_card_url(config, &config.site.language),
         }
     }
 
@@ -304,8 +321,16 @@ impl SiteContext {
             base_path: config.base_path(),
             language: lang.to_string(),
             author: config.site.author.clone(),
+            og_image: site_card_url(config, lang),
         }
     }
+}
+
+/// Absolute URL of `lang`'s site card when `[og]` cards are on.
+fn site_card_url(config: &SiteConfig, lang: &str) -> Option<String> {
+    config
+        .og_enabled()
+        .then(|| og::absolute(&config.site.base_url, &og::site_card_path(config, lang)))
 }
 
 pub fn build_site(
@@ -362,6 +387,7 @@ pub fn build_site(
                     incremental: true,
                     items_skipped: cs.total_content,
                     search_index: None,
+                    og_cards: None,
                 },
                 link_check: links::LinkCheckResult::default(),
                 subdomain_builds: Vec::new(),
@@ -1139,6 +1165,15 @@ fn build_site_inner(
         }
         Err(e) => return Err(e),
     };
+    // Social cards: validate `[og]` (errors fail the build like other
+    // config problems) and load fonts/logo once.
+    let og_plan = match og::OgPlan::new(config, paths, &data) {
+        Ok(plan) => plan,
+        Err(errors) => {
+            fatal.extend(errors);
+            None
+        }
+    };
     step_timings.push((
         "Load data files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -1614,6 +1649,15 @@ fn build_site_inner(
                         &data,
                         collection.private,
                         &custom_fields,
+                        og_plan.as_ref().and_then(|plan| {
+                            match plan.page_card(config, item, collection) {
+                                og::PageCard::Card(path) => {
+                                    Some(og::absolute(&site_ctx_for_item.base_url, &path))
+                                }
+                                _ => None,
+                            }
+                        }),
+                        breadcrumb_collection_url(config, &collection.name, &item.lang),
                     );
                     content_model.augment_page(
                         &mut ctx,
@@ -1883,6 +1927,8 @@ fn build_site_inner(
                 excerpt: homepage.excerpt_html.clone(),
                 toc: homepage.toc.clone(),
                 extra: index_page_extra(config, homepage),
+                og_image: None,
+                collection_url: None,
             }
         } else if let Some(col_index) = config
             .collections
@@ -1918,6 +1964,8 @@ fn build_site_inner(
                 excerpt: col_index.excerpt_html.clone(),
                 toc: col_index.toc.clone(),
                 extra: index_page_extra(config, col_index),
+                og_image: None,
+                collection_url: None,
             }
         } else {
             PageContext {
@@ -1938,6 +1986,8 @@ fn build_site_inner(
                 excerpt: String::new(),
                 toc: Vec::new(),
                 extra: indexmap::IndexMap::new(),
+                og_image: None,
+                collection_url: None,
             }
         };
         index_ctx.insert("page", &index_page_ctx);
@@ -2136,6 +2186,8 @@ fn build_site_inner(
                             excerpt: ci.excerpt_html.clone(),
                             toc: ci.toc.clone(),
                             extra: index_page_extra(config, ci),
+                            og_image: None,
+                            collection_url: breadcrumb_collection_url(config, &c.name, lang),
                         }
                     } else {
                         PageContext {
@@ -2156,6 +2208,8 @@ fn build_site_inner(
                             excerpt: String::new(),
                             toc: Vec::new(),
                             extra: indexmap::IndexMap::new(),
+                            og_image: None,
+                            collection_url: None,
                         }
                     },
                 );
@@ -2318,6 +2372,8 @@ fn build_site_inner(
                         excerpt: ci.excerpt_html.clone(),
                         toc: ci.toc.clone(),
                         extra: index_page_extra(config, ci),
+                        og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 } else {
                     PageContext {
@@ -2338,6 +2394,8 @@ fn build_site_inner(
                         excerpt: String::new(),
                         toc: Vec::new(),
                         extra: indexmap::IndexMap::new(),
+                        og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 },
             );
@@ -2421,6 +2479,8 @@ fn build_site_inner(
                     excerpt: String::new(),
                     toc: Vec::new(),
                     extra: indexmap::IndexMap::new(),
+                    og_image: None,
+                    collection_url: None,
                 },
             );
             let html_404 = tera
@@ -2817,6 +2877,42 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
+    // Step 11b: Social cards (`[og]`): one PNG per page without `image:`,
+    // plus each language's site card; cached in `.seite/cache/og/`.
+    let og_stats = match og_plan.as_ref() {
+        None => None,
+        Some(plan) => {
+            progress.step("Generating social cards");
+            let step_start = Instant::now();
+            let (og_stats, missing) = plan.generate(
+                config,
+                &all_collections,
+                &paths.output,
+                changed_content_paths.as_ref(),
+            )?;
+            if !missing.is_empty() {
+                let n = missing.len();
+                let message = format!(
+                    "{n} page{} got no social card: the title has characters the bundled font lacks (e.g. CJK, emoji). Set [og] font to a .ttf/.otf that has them",
+                    if n == 1 { "" } else { "s" }
+                );
+                crate::output::human::warning_stderr(&message);
+                let mut d = Diagnostic::warning("og-missing-glyphs", message.clone())
+                    .with_hint("e.g. font = \"static/fonts/NotoSansJP-Bold.ttf\" under [og]; pages without a card use the site card");
+                if let Some(first) = missing.first() {
+                    d = d.with_file(first.clone());
+                }
+                diagnostics.push(d);
+                warnings.push(message);
+            }
+            step_timings.push((
+                "Social cards".to_string(),
+                step_start.elapsed().as_secs_f64() * 1000.0,
+            ));
+            Some(og_stats)
+        }
+    };
+
     // Step 12: Post-process all HTML files in a single pass
     // (image srcset, code copy buttons, subdomain link rewriting, base path rewriting, analytics)
     progress.step("Post-processing HTML");
@@ -2933,6 +3029,7 @@ fn build_site_inner(
         incremental: is_incremental,
         items_skipped,
         search_index,
+        og_cards: og_stats,
     };
 
     Ok(BuildResult {
@@ -3480,6 +3577,8 @@ fn build_page_context(
     data: &serde_json::Value,
     collection_private: bool,
     custom_fields: &[String],
+    og_image: Option<String>,
+    collection_url: Option<String>,
 ) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
@@ -3504,6 +3603,8 @@ fn build_page_context(
             excerpt: item.excerpt_html.clone(),
             toc: item.toc.clone(),
             extra: content::schema::page_extra(&item.frontmatter, custom_fields),
+            og_image,
+            collection_url,
         },
     );
     ctx
@@ -3537,6 +3638,23 @@ fn absolutize_image(image: Option<&str>, base_url: &str) -> Option<String> {
 }
 
 /// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.
+/// `page.collection_url`: the absolute URL of collection `name`'s index in
+/// `lang`, with the trailing slash of its canonical URL (`site.base_url`
+/// already carries any base path), or `None` for a
+/// root-mounted collection (empty `url_prefix`) or an unknown name.
+fn breadcrumb_collection_url(config: &SiteConfig, name: &str, lang: &str) -> Option<String> {
+    let collection = config.collections.iter().find(|c| c.name == name)?;
+    let prefix = collection.url_prefix.trim_matches('/');
+    if prefix.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}{}/{prefix}/",
+        config.site.base_url.trim_end_matches('/'),
+        lang_prefix_for(lang, &config.site.language)
+    ))
+}
+
 fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
     if lang == default_lang {
         String::new()
@@ -3946,6 +4064,7 @@ mod tests {
             access: None,
             taxonomies: Vec::new(),
             check: None,
+            og: None,
         }
     }
 
@@ -4644,6 +4763,7 @@ mod tests {
             incremental: false,
             items_skipped: 0,
             search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("5 posts"));
@@ -4665,6 +4785,7 @@ mod tests {
             incremental: false,
             items_skipped: 0,
             search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("2 public files copied"));
@@ -4683,6 +4804,7 @@ mod tests {
             incremental: false,
             items_skipped: 0,
             search_index: None,
+            og_cards: None,
         };
         // Timings are verbose-only: not part of the summary line.
         assert!(!stats.human_display().contains("Timings:"));
@@ -4704,6 +4826,7 @@ mod tests {
             incremental: false,
             items_skipped: 0,
             search_index: None,
+            og_cards: None,
         };
         assert!(stats.timings_display().is_none());
     }
@@ -4724,6 +4847,7 @@ mod tests {
             incremental: true,
             items_skipped: 18,
             search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("Incremental build"));
@@ -4966,7 +5090,7 @@ mod tests {
             excerpt_html: "<p>Some body</p>".into(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false, &[]);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert_eq!(page["title"], "My Post");
@@ -5008,7 +5132,7 @@ mod tests {
             excerpt_html: String::new(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false, &[]);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert!(page["image"].is_null());
@@ -5268,6 +5392,8 @@ mod tests {
                 m.insert("author".into(), serde_yaml_ng::Value::String("Jane".into()));
                 m
             },
+            og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert_eq!(json["title"], "My Page");
@@ -5300,6 +5426,8 @@ mod tests {
             excerpt: String::new(),
             toc: Vec::new(),
             extra: indexmap::IndexMap::new(),
+            og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert!(json["date"].is_null());

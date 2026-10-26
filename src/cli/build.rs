@@ -208,6 +208,7 @@ fn build_data(result: &BuildResult, output_dir: Option<&Path>) -> Value {
         "static_files_copied": stats.static_files_copied,
         "public_files_copied": stats.public_files_copied,
         "data_files_loaded": stats.data_files_loaded,
+        "og_cards": stats.og_cards,
         "duration_ms": stats.duration_ms,
         "timings_ms": timings,
         "links_checked": result.link_check.total_links_checked,

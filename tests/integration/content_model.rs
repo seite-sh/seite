@@ -275,6 +275,7 @@ fn test_build_no_new_output_without_new_config() {
         toml.replace("search = \"full\"\n", ""),
     )
     .unwrap();
+    remove_og_section(&site);
     for entry in fs::read_dir(site.join("content/posts")).unwrap() {
         fs::remove_file(entry.unwrap().path()).unwrap();
     }

@@ -199,6 +199,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         access: None,
         taxonomies: Vec::new(),
         check: None,
+        og: Some(crate::build::og::init_section()),
     };
 
     // If trust collection is included, run trust center scaffolding

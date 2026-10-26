@@ -25,7 +25,7 @@ pub struct PageArgs {
 
 /// What the user passed: a source file or a published URL.
 #[derive(Debug, PartialEq, Eq)]
-enum Target {
+pub(crate) enum Target {
     Path(String),
     Url(String),
 }
@@ -33,7 +33,7 @@ enum Target {
 /// Source path when it exists on disk (relative to the current directory)
 /// or ends in `.md`; URL when it starts with `/` or `http(s)://`; otherwise
 /// a path (the tool resolves it against the site and content dirs).
-fn classify(raw: &str, cwd: &Path) -> Target {
+pub(crate) fn classify(raw: &str, cwd: &Path) -> Target {
     let on_disk = cwd.join(raw);
     if on_disk.is_file() {
         // Absolute, so it also works from a subdirectory of the site.
