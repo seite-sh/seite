@@ -519,6 +519,7 @@ mod tests {
             paths: Some(paths),
             cwd: dir.to_path_buf(),
             config_error: None,
+            dev: None,
         }
     }
 
@@ -529,6 +530,7 @@ mod tests {
             paths: None,
             cwd: dir.to_path_buf(),
             config_error: None,
+            dev: None,
         }
     }
 
@@ -948,6 +950,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_content_overview(&state).unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1167,6 +1170,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_collection(&state, "posts").unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1477,6 +1481,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_trust(&state).unwrap_err();
         assert_eq!(err.code, -32602);

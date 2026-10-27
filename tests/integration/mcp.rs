@@ -77,7 +77,7 @@ fn test_mcp_tools_list() {
 
     assert_eq!(responses.len(), 1);
     let tools = responses[0]["result"]["tools"].as_array().unwrap();
-    assert!(tools.len() >= 10 && tools.len() <= 12, "{}", tools.len());
+    assert!(tools.len() >= 10 && tools.len() <= 16, "{}", tools.len());
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"seite_build"));
     assert!(names.contains(&"seite_create_content"));
@@ -671,7 +671,7 @@ fn test_mcp_initialize_negotiates_2025_06_18_and_gates_tool_fields() {
     assert!(init["capabilities"].get("prompts").is_none());
 
     let tools = responses[1]["result"]["tools"].as_array().unwrap();
-    assert!(tools.len() <= 12);
+    assert!(tools.len() <= 16);
     for tool in tools {
         let name = tool["name"].as_str().unwrap();
         assert!(format!("mcp__seite__{name}").len() <= 60, "{name}");
@@ -934,7 +934,7 @@ fn test_mcp_full_session() {
 
     // tools/list
     let tool_count = responses[1]["result"]["tools"].as_array().unwrap().len();
-    assert!((10..=12).contains(&tool_count), "{tool_count}");
+    assert!((10..=16).contains(&tool_count), "{tool_count}");
     assert_eq!(responses[1]["id"], 2);
 
     // resources/list

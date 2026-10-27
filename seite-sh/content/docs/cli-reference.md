@@ -204,7 +204,15 @@ seite serve [options]
 | `--no-repl` | Don't read commands from stdin; just serve (with live reload) until interrupted |
 | `--force-new` | Start a server even when `.seite/dev.json` records one already running here |
 
-The server displays local and network URLs (Vite-style) and injects a live-reload script that polls for changes. Unless `--no-repl` is passed, an interactive REPL accepts commands:
+The server displays local and network URLs (Vite-style) and injects a small script into every HTML page it serves:
+
+- **Live reload** over Server-Sent Events (`/__seite/events`): the page reloads after a build that changed the output. Browsers without `EventSource`, or when the stream keeps failing, poll `/__livereload` instead.
+- **Build-error overlay**: when a rebuild fails (or the page is opened while the last build is broken), the page shows each diagnostic as `file:line:col severity[code] message` with its hint, in a dismissable panel. The next good build clears it.
+- **Browser errors**: uncaught errors, unhandled promise rejections and `console.error` calls are sent to the server, printed in its terminal as `browser: <page> <kind>: <message>`, and kept (the last 50, repeats counted) for `seite preview`.
+
+A failed build doesn't stop the server, including the first one: fix the file, save, and the page reloads.
+
+Unless `--no-repl` is passed, an interactive REPL accepts commands:
 
 - `new <collection> "Title"`: create content
 - `agent [prompt]`: launch AI agent
@@ -215,7 +223,21 @@ The server displays local and network URLs (Vite-style) and injects a live-reloa
 
 While it runs, the server records `{pid, port, url, started_at}` in `.seite/dev.json` (the workspace root in a workspace; gitignored) and removes it on `stop`, Ctrl-C, or SIGTERM. `seite context` reports it, and a second `seite serve` in the same directory prints the running server's URL and exits instead of starting another. A recorded server only counts when its pid is alive and its port accepts connections on 127.0.0.1; the URL is rebuilt from the port, never taken from the file, and a symlinked `dev.json` is ignored.
 
+The server also answers a few endpoints for tools. `GET /__seite/status` returns `{pid, port, url, version, build, root, workspace, sites, mcp, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, browser_errors: [{kind, message, source, line, col, page, count}]}`; `POST /__seite/mcp` is the site's [MCP server over HTTP](/docs/mcp-server#over-http-from-the-dev-server). They only answer requests addressed to the server itself (`Host` is a loopback name or an IP address with the server's port), never send CORS headers, and the endpoints that accept data reject other origins and non-JSON bodies.
+
 The REPL prompt is only printed to a real terminal. If stdin isn't a TTY (piped, redirected from `/dev/null`, or a background job) the server keeps serving instead of exiting when stdin closes.
+
+## seite preview
+
+What the running dev server knows, for agents and scripts: its URL, the last build outcome (diagnostics printed like `seite check`), and errors reported by open preview pages.
+
+```bash
+seite preview                          # URL, last build, browser errors
+seite preview --json                   # the /__seite/status document plus "running": true
+seite preview --clear-browser-errors   # print, then forget the browser errors
+```
+
+It finds the server through `.seite/dev.json` in the site (or the workspace root), like `seite context`. Without a running server it prints "no dev server running; start it with `seite serve`" and exits 1 (`--json`: `data` is `{"running": false}`). It exits 0 whenever a server answered, even if its last build failed: read `last_build.ok`.
 
 ## seite new
 
@@ -447,7 +469,7 @@ Start the MCP (Model Context Protocol) server. Communicates over stdio using JSO
 seite mcp [--dir /path/to/site]
 ```
 
-It is meant for MCP hosts without a shell, such as the Claude Desktop chat: add `seite mcp --dir /path/to/site` to the host's MCP config. Coding agents use the `seite` CLI instead; `seite init --mcp` / `seite upgrade --mcp` also declare the server in each agent's project config. The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, check, create content, search, apply theme, lookup docs). See the [MCP Server](/docs/mcp-server) guide.
+It is meant for MCP hosts without a shell, such as the Claude Desktop chat: add `seite mcp --dir /path/to/site` to the host's MCP config. Coding agents use the `seite` CLI instead; `seite init --mcp` / `seite upgrade --mcp` also declare the server in each agent's project config. The server exposes **resources** (documentation, site config, content, themes) and **tools** (build, check, create content, search, apply theme, lookup docs, plus dev-server runtime tools). While `seite serve` runs, the same server is also served over HTTP at `http://localhost:<port>/__seite/mcp` (loopback only). See the [MCP Server](/docs/mcp-server) guide.
 
 ## seite upgrade
 
@@ -576,6 +598,7 @@ These commands give coding agents (and scripts) everything the [MCP server](/doc
 | `seite frontmatter set <path> key=value...` | `seite_update_frontmatter` | Add or replace top-level frontmatter keys; the body and untouched keys stay byte-identical |
 | `seite frontmatter unset <path> key...` | `seite_update_frontmatter` | Remove top-level frontmatter keys (`title` cannot be removed) |
 | `seite explain <code>` | (none) | Explain a diagnostic code from `seite check` or `seite build` |
+| `seite preview [--clear-browser-errors]` | `seite_get_errors` | The running dev server's URL, last build outcome and browser errors |
 
 ### seite context
 
@@ -592,6 +615,8 @@ The output ends with a `DIRECTIVES` list, one `NAME: message` line each:
 | `NO_STOP_HOOK` | No turn-end `seite check` hook is installed: run `seite check` before finishing |
 | `ADDON_SUGGESTION` | The site uses the default or a custom theme and no `impeccable` skill is installed: optionally suggest `seite skill install impeccable` for design work |
 | `CONFIG_INVALID` | `seite.toml` exists but does not load |
+| `DEV_BUILD_FAILED` | The running dev server's last build failed: run `seite preview` to read the errors |
+| `BROWSER_ERRORS` | Pages open on the dev server reported JavaScript errors: run `seite preview` |
 | `TIMEZONE_UNSET` | `[build] schedule = true` but no `[site] timezone`: what is live depends on each machine's clock; add `timezone = "<IANA name>"` |
 
 Outside a seite project, `seite context` says so and exits successfully, so an agent can run it unconditionally.

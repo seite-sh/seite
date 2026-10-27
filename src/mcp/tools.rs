@@ -21,6 +21,7 @@
 
 mod collection;
 mod page;
+mod runtime;
 mod stats;
 mod templates;
 
@@ -221,6 +222,49 @@ pub static TOOLS: &[ToolDef] = &[
         output_schema: None,
         annotations: READ_ONLY,
         handler: lookup_docs_tool,
+    },
+    // Runtime tools: answered by the running dev server (`seite serve`).
+    ToolDef {
+        name: "seite_get_errors",
+        title: "Get dev server errors",
+        description: "From the running dev server (`seite serve`): the last build outcome ({ok, at, duration_ms, errors, warnings, diagnostics [{severity, code, message, file, line, column, hint}], message}) and recent browser errors forwarded by open preview pages ([{kind, message, source, line, col, page, count}]). `ok` is false when the last build failed or a page reported errors. Call it after a change you can see in the preview. Fails when no dev server is running.",
+        input_schema: runtime::empty_input_schema,
+        output_schema: None,
+        annotations: READ_ONLY,
+        handler: runtime::call_get_errors,
+    },
+    ToolDef {
+        name: "seite_get_preview_url",
+        title: "Get preview URL",
+        description: "The running dev server's URL for this site, or for one page: pass `path` (content file) or `url` (published path like /posts/hello). Returns {base_url, page, preview_url}. Open preview_url in a browser to see the page with live reload. Fails when no dev server is running.",
+        input_schema: runtime::get_preview_url_input_schema,
+        output_schema: None,
+        annotations: READ_ONLY,
+        handler: runtime::call_get_preview_url,
+    },
+    ToolDef {
+        name: "seite_list_routes",
+        title: "List built routes",
+        description: "Page URLs present in the output directory (each .html file: index.html → /dir/, a.html → /a), sorted, optionally filtered by `prefix`. Returns {output_dir, total, returned, routes, preview_base} where preview_base is the running dev server's URL (null when none runs).",
+        input_schema: runtime::list_routes_input_schema,
+        output_schema: None,
+        annotations: READ_ONLY,
+        handler: runtime::call_list_routes,
+    },
+    ToolDef {
+        name: "seite_reload",
+        title: "Rebuild dev server",
+        description: "Make the running dev server rebuild the site now (full build, drafts and scheduled posts included, like `seite serve`) and reload open preview pages. Returns the build outcome ({ok, errors, warnings, diagnostics, message, duration_ms}) and the server url. Fails when no dev server is running.",
+        input_schema: runtime::empty_input_schema,
+        output_schema: None,
+        // Rewrites generated output only; the same sources give the same output.
+        annotations: Annotations {
+            read_only: false,
+            destructive: false,
+            idempotent: true,
+            open_world: false,
+        },
+        handler: runtime::call_reload,
     },
 ];
 
@@ -1647,11 +1691,12 @@ mod tests {
         }
     }
 
-    /// Cursor caps enabled tools (~40 across all servers) and the combined
+    /// Cursor caps enabled tools (~40 across all servers; seite uses 12 site
+    /// tools + 4 dev-server runtime tools) and the combined
     /// server + tool name length (~60); tool names must be plain identifiers.
     #[test]
     fn test_tool_names_fit_client_limits() {
-        assert!(TOOLS.len() <= 12, "keep the tool count <= 12");
+        assert!(TOOLS.len() <= 16, "keep the tool count <= 16");
         let mut seen = std::collections::HashSet::new();
         for tool in TOOLS {
             assert!(seen.insert(tool.name), "duplicate tool {}", tool.name);

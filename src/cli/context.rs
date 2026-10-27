@@ -45,6 +45,10 @@ pub struct DirectiveInputs {
     pub config_error: Option<String>,
     /// `[build] schedule = true` without a `[site] timezone`.
     pub schedule_without_timezone: bool,
+    /// The running dev server's last build failed, with this many errors.
+    pub dev_build_errors: Option<u64>,
+    /// Browser errors the running dev server has recorded.
+    pub browser_errors: u64,
 }
 
 /// The directives for a site, in a stable order.
@@ -86,6 +90,25 @@ pub fn compute_directives(inputs: &DirectiveInputs) -> Vec<Directive> {
         out.push(Directive {
             name: "TIMEZONE_UNSET",
             message: "[build] schedule is on but [site] timezone is unset, so what is live depends on each machine's clock (CI often runs in UTC); ask the user for their zone and add `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site]".into(),
+        });
+    }
+    if let Some(errors) = inputs.dev_build_errors {
+        out.push(Directive {
+            name: "DEV_BUILD_FAILED",
+            message: format!(
+                "the running dev server's last build failed ({errors} error{}); run `seite preview` to read them, fix, and save",
+                if errors == 1 { "" } else { "s" }
+            ),
+        });
+    }
+    if inputs.browser_errors > 0 {
+        out.push(Directive {
+            name: "BROWSER_ERRORS",
+            message: format!(
+                "preview pages reported {} JavaScript error{}; run `seite preview` to read them",
+                inputs.browser_errors,
+                if inputs.browser_errors == 1 { "" } else { "s" }
+            ),
         });
     }
     let plain_theme = inputs.active_theme == "custom" || inputs.active_theme == "default";
@@ -262,6 +285,40 @@ fn gather(state: &ServerState, version: &str) -> Value {
         .and_then(|m| m.hooks_installed.clone())
         .unwrap_or_default();
 
+    // What the running server knows (short timeout: never slow `context` down).
+    let dev_server = running_dev_server(root);
+    let dev_status = dev_server.as_ref().and_then(|s| {
+        crate::server::remote::get_json(
+            s.port,
+            "/__seite/status",
+            std::time::Duration::from_millis(300),
+        )
+        .ok()
+    });
+    let last_build = dev_status
+        .as_ref()
+        .and_then(|s| s.get("last_build"))
+        .filter(|v| !v.is_null());
+    let dev_build_errors = last_build
+        .filter(|b| b.get("ok").and_then(Value::as_bool) == Some(false))
+        .map(|b| b.get("errors").and_then(Value::as_u64).unwrap_or(1));
+    let browser_errors = dev_status
+        .as_ref()
+        .map_or(0, |s| array_of(s, "browser_errors").len() as u64);
+    let dev_server_json = dev_server.as_ref().map(|server| {
+        let mut v = json!(server);
+        v["status"] = match &dev_status {
+            Some(_) => json!({
+                "last_build_ok": last_build.and_then(|b| b.get("ok")).cloned(),
+                "build_errors": last_build.and_then(|b| b.get("errors")).cloned(),
+                "build_warnings": last_build.and_then(|b| b.get("warnings")).cloned(),
+                "browser_errors": browser_errors,
+            }),
+            None => Value::Null,
+        };
+        v
+    });
+
     let directives = compute_directives(&DirectiveInputs {
         project_version: project_meta.as_ref().map(|_| meta::project_version(root)),
         binary_version: meta::binary_version(),
@@ -273,6 +330,8 @@ fn gather(state: &ServerState, version: &str) -> Value {
             .config
             .as_ref()
             .is_some_and(|c| c.build.schedule && c.site.timezone.is_none()),
+        dev_build_errors,
+        browser_errors,
     });
 
     json!({
@@ -293,7 +352,7 @@ fn gather(state: &ServerState, version: &str) -> Value {
         "impeccable_installed": impeccable,
         "agents": project_meta.as_ref().and_then(|m| m.agents.clone()),
         "hooks_installed": hooks,
-        "dev_server": running_dev_server(root),
+        "dev_server": dev_server_json,
         "today": stats.as_ref().and_then(|s| s.get("today")).cloned(),
         "next_scheduled": stats.as_ref().and_then(|s| s.get("next_scheduled")).cloned(),
         "directives": directives,
@@ -414,10 +473,11 @@ fn print_context(data: &Value) {
     );
     match data.get("dev_server").filter(|v| !v.is_null()) {
         Some(server) => human_println!(
-            "{}{} (pid {})",
+            "{}{} (pid {}){}",
             label("Dev server:"),
             str_of(server, "url"),
-            server.get("pid").and_then(Value::as_u64).unwrap_or(0)
+            server.get("pid").and_then(Value::as_u64).unwrap_or(0),
+            dev_status_suffix(server.get("status"))
         ),
         None => human_println!("{}not running (`seite serve`)", label("Dev server:")),
     }
@@ -433,6 +493,29 @@ fn print_context(data: &Value) {
             human_println!("{}: {}", str_of(d, "name"), str_of(d, "message"));
         }
     }
+}
+
+/// `, last build ok, 0 browser errors` (empty when the status is unknown).
+fn dev_status_suffix(status: Option<&Value>) -> String {
+    let Some(status) = status.filter(|s| !s.is_null()) else {
+        return String::new();
+    };
+    let build = match status.get("last_build_ok").and_then(Value::as_bool) {
+        Some(true) => "last build ok".to_string(),
+        Some(false) => format!(
+            "last build FAILED ({} errors)",
+            status
+                .get("build_errors")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        ),
+        None => "no build yet".to_string(),
+    };
+    let browser = status
+        .get("browser_errors")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    format!(", {build}, {browser} browser errors (`seite preview`)")
 }
 
 #[cfg(test)]
@@ -452,7 +535,30 @@ mod tests {
             impeccable_installed: false,
             config_error: None,
             schedule_without_timezone: false,
+            dev_build_errors: None,
+            browser_errors: 0,
         }
+    }
+
+    #[test]
+    fn test_dev_server_directives() {
+        let mut inputs = up_to_date();
+        inputs.dev_build_errors = Some(2);
+        inputs.browser_errors = 1;
+        let d = compute_directives(&inputs);
+        assert_eq!(names(&d), ["DEV_BUILD_FAILED", "BROWSER_ERRORS"]);
+        assert!(d[0].message.contains("2 errors") && d[0].message.contains("seite preview"));
+        assert!(d[1].message.contains("1 JavaScript error;"));
+    }
+
+    #[test]
+    fn test_dev_status_suffix() {
+        assert_eq!(dev_status_suffix(None), "");
+        let s = json!({"last_build_ok": false, "build_errors": 3, "browser_errors": 1});
+        assert_eq!(
+            dev_status_suffix(Some(&s)),
+            ", last build FAILED (3 errors), 1 browser errors (`seite preview`)"
+        );
     }
 
     #[test]
@@ -519,6 +625,8 @@ mod tests {
             impeccable_installed: false,
             config_error: Some("Failed to load seite.toml: bad\nmore".into()),
             schedule_without_timezone: false,
+            dev_build_errors: None,
+            browser_errors: 0,
         };
         let d = compute_directives(&inputs);
         assert_eq!(

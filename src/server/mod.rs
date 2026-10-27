@@ -1,9 +1,12 @@
+pub mod dev;
+pub mod remote;
+
 use std::fs;
 use std::net::{TcpListener, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use notify::{RecursiveMode, Watcher};
@@ -15,27 +18,25 @@ use crate::error::{PageError, Result};
 use crate::output::human;
 use crate::output::CommandOutput;
 
-const LIVERELOAD_SCRIPT: &str = r#"<script>
-(function(){
-  var v = "0";
-  setInterval(function(){
-    fetch("/__livereload").then(function(r){ return r.text(); }).then(function(t){
-      if (v !== "0" && t !== v) location.reload();
-      v = t;
-    }).catch(function(){});
-  }, 1000);
-})();
-</script>"#;
+pub use dev::inject_livereload;
+#[cfg(test)]
+use dev::LIVERELOAD_SCRIPT;
 
 /// Handle to a running dev server. Drop or call `stop()` to shut down.
 pub struct ServerHandle {
     stop: Arc<AtomicBool>,
     port: u16,
+    dev: Option<Arc<dev::DevState>>,
 }
 
 impl ServerHandle {
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// The server's runtime state (build outcomes, browser errors).
+    pub fn dev(&self) -> Option<&Arc<dev::DevState>> {
+        self.dev.as_ref()
     }
 
     pub fn stop(&self) {
@@ -99,11 +100,35 @@ pub fn start(
     }
 
     let stop = Arc::new(AtomicBool::new(false));
-    let build_version = Arc::new(AtomicU64::new(1));
+    let rebuild_config = config.clone();
+    let rebuild_paths = paths.clone();
+    let rebuild: dev::RebuildFn = Box::new(move || {
+        build::build_site(
+            &rebuild_config,
+            &rebuild_paths,
+            &BuildOptions {
+                include_drafts,
+                incremental: false,
+            },
+        )
+    });
+    let dev = dev::DevState::new(dev::DevOptions {
+        port: actual_port,
+        bind_host: host.to_string(),
+        root: paths.root.clone(),
+        sites: Vec::new(),
+        stop: stop.clone(),
+        rebuild: Some(rebuild),
+        mcp: true,
+    });
+    // MCP state for `/__seite/mcp`: config re-read per request, like stdio.
+    let mut mcp_state = crate::mcp::ServerState::load(paths.root.clone());
+    mcp_state.dev = Some(dev.clone());
+    let mcp_state = Arc::new(Mutex::new(mcp_state));
 
     // Spawn file watcher thread
     let watcher_stop = stop.clone();
-    let watcher_version = build_version.clone();
+    let watcher_dev = dev.clone();
     let watcher_config = config.clone();
     let watcher_paths = paths.clone();
     std::thread::spawn(move || {
@@ -112,19 +137,21 @@ pub fn start(
             &watcher_paths,
             include_drafts,
             &watcher_stop,
-            &watcher_version,
+            &watcher_dev,
         );
     });
 
     // Spawn HTTP server thread
     let server_stop = stop.clone();
     let server_paths = paths.clone();
+    let server_dev = dev.clone();
     std::thread::spawn(move || {
         run_serve_loop(
             server,
             &server_paths,
             &subdomain_mounts,
-            &build_version,
+            &server_dev,
+            &mcp_state,
             &server_stop,
         );
     });
@@ -132,6 +159,7 @@ pub fn start(
     Ok(ServerHandle {
         stop,
         port: actual_port,
+        dev: Some(dev),
     })
 }
 
@@ -139,7 +167,8 @@ fn run_serve_loop(
     server: Server,
     paths: &ResolvedPaths,
     subdomain_mounts: &[(String, PathBuf)],
-    build_version: &AtomicU64,
+    dev: &Arc<dev::DevState>,
+    mcp_state: &Arc<Mutex<crate::mcp::ServerState>>,
     stop: &AtomicBool,
 ) {
     loop {
@@ -148,16 +177,11 @@ fn run_serve_loop(
         }
         match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(request)) => {
-                let url_path = request.url().to_string();
-
-                // Live reload polling endpoint
-                if url_path == "/__livereload" {
-                    let version = build_version.load(Ordering::Relaxed).to_string();
-                    let header =
-                        Header::from_bytes("Content-Type", "text/plain").expect("valid header");
-                    let _ = request.respond(Response::from_string(version).with_header(header));
+                // Dev endpoints: /__livereload, /__seite/{events,status,console,mcp}
+                let Some(request) = dev::handle_request(dev, Some(mcp_state), request) else {
                     continue;
-                }
+                };
+                let url_path = request.url().to_string();
 
                 // Check subdomain mount points (e.g., /docs-preview/ → dist-subdomains/docs/)
                 let subdomain_file = {
@@ -237,21 +261,6 @@ fn run_serve_loop(
     }
 }
 
-fn inject_livereload(html_bytes: &[u8]) -> Vec<u8> {
-    let html = String::from_utf8_lossy(html_bytes);
-    if let Some(pos) = html.rfind("</body>") {
-        let mut result = String::with_capacity(html.len() + LIVERELOAD_SCRIPT.len() + 1);
-        result.push_str(&html[..pos]);
-        result.push('\n');
-        result.push_str(LIVERELOAD_SCRIPT);
-        result.push('\n');
-        result.push_str(&html[pos..]);
-        result.into_bytes()
-    } else {
-        html_bytes.to_vec()
-    }
-}
-
 fn resolve_file_path(output_dir: &Path, url_path: &str) -> Option<std::path::PathBuf> {
     let clean = url_path.split('?').next().unwrap_or(url_path);
     let clean = clean.trim_start_matches('/');
@@ -305,7 +314,7 @@ fn watch_and_rebuild(
     paths: &ResolvedPaths,
     include_drafts: bool,
     stop: &AtomicBool,
-    build_version: &AtomicU64,
+    dev: &dev::DevState,
 ) {
     let (tx, rx) = mpsc::channel();
 
@@ -370,12 +379,14 @@ fn watch_and_rebuild(
                     include_drafts,
                     incremental: true,
                 };
-                match build::build_site(config, paths, &opts) {
+                let scope = dev::SiteScope {
+                    name: String::new(),
+                    root: paths.root.clone(),
+                    prefix: None,
+                };
+                // Records the outcome and tells open pages (reload / overlay).
+                match dev.run_build(&scope, || build::build_site(config, paths, &opts)) {
                     Ok(result) => {
-                        // Skip version bump if nothing actually changed (incremental no-op)
-                        if result.stats.duration_ms > 0 || !result.stats.incremental {
-                            build_version.fetch_add(1, Ordering::Relaxed);
-                        }
                         if result.stats.duration_ms > 0 {
                             human::success(&result.stats.human_display());
                         }
@@ -567,6 +578,7 @@ mod tests {
         let handle = ServerHandle {
             stop: Arc::new(AtomicBool::new(false)),
             port: 3000,
+            dev: None,
         };
         assert_eq!(handle.port(), 3000);
     }
@@ -577,6 +589,7 @@ mod tests {
         let handle = ServerHandle {
             stop: stop.clone(),
             port: 3000,
+            dev: None,
         };
         assert!(!stop.load(Ordering::Relaxed), "should start as not stopped");
         handle.stop();
@@ -593,6 +606,7 @@ mod tests {
             let _handle = ServerHandle {
                 stop: stop.clone(),
                 port: 3000,
+                dev: None,
             };
             assert!(!stop.load(Ordering::Relaxed));
         } // handle dropped here
@@ -608,6 +622,7 @@ mod tests {
         let handle = ServerHandle {
             stop: stop.clone(),
             port: 3000,
+            dev: None,
         };
         handle.stop();
         handle.stop();
