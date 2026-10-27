@@ -975,7 +975,21 @@ fn will_launch() -> bool {
 fn write_brief_file(brief: &str) -> Option<String> {
     let root = std::env::current_dir().ok()?;
     crate::safe_fs::write(&root, &root.join(BRIEF_FILE), brief).ok()?;
+    ignore_brief_file(&root);
     Some(BRIEF_FILE.to_string())
+}
+
+/// A site's `.gitignore` lists the brief, but a workspace root has no
+/// seite-written `.gitignore`: there, add `.seite/.gitignore` (only if
+/// missing) so the brief and the dev-server lock never show up in git.
+fn ignore_brief_file(root: &Path) {
+    let listed = std::fs::read_to_string(root.join(".gitignore"))
+        .map(|s| s.lines().any(|l| l.trim() == "/.seite/upgrade-brief.md"))
+        .unwrap_or(false);
+    let nested = root.join(".seite").join(".gitignore");
+    if !listed && !nested.exists() {
+        let _ = crate::safe_fs::write(root, &nested, "upgrade-brief.md\ndev.json\n");
+    }
 }
 
 /// The `--check` failure: the number of pending changes (and outdated sites).
