@@ -105,9 +105,10 @@ pub fn compute_directives(inputs: &DirectiveInputs) -> Vec<Directive> {
         out.push(Directive {
             name: "BROWSER_ERRORS",
             message: format!(
-                "preview pages reported {} JavaScript error{}; run `seite preview` to read them",
+                "preview pages reported {} JavaScript error{}; run `seite preview` to read them. {}",
                 inputs.browser_errors,
-                if inputs.browser_errors == 1 { "" } else { "s" }
+                if inputs.browser_errors == 1 { "" } else { "s" },
+                crate::server::dev::BROWSER_ERRORS_NOTE
             ),
         });
     }
@@ -286,7 +287,7 @@ fn gather(state: &ServerState, version: &str) -> Value {
         .unwrap_or_default();
 
     // What the running server knows (short timeout: never slow `context` down).
-    let dev_server = running_dev_server(root);
+    let mut dev_server = running_dev_server(root);
     let dev_status = dev_server.as_ref().and_then(|s| {
         crate::server::remote::get_json(
             s.port,
@@ -295,6 +296,14 @@ fn gather(state: &ServerState, version: &str) -> Value {
         )
         .ok()
     });
+    // A server that answers for another site (e.g. a recorded
+    // `seite serve --site other`) is not this site's dev server.
+    if let (Some(server), Some(status)) = (&dev_server, &dev_status) {
+        if crate::server::remote::site_url_in(status, &server.url, root).is_err() {
+            dev_server = None;
+        }
+    }
+    let dev_status = dev_status.filter(|_| dev_server.is_some());
     let last_build = dev_status
         .as_ref()
         .and_then(|s| s.get("last_build"))

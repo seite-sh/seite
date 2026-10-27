@@ -223,7 +223,7 @@ Unless `--no-repl` is passed, an interactive REPL accepts commands:
 
 While it runs, the server records `{pid, port, url, started_at}` in `.seite/dev.json` (the workspace root in a workspace; gitignored) and removes it on `stop`, Ctrl-C, or SIGTERM. `seite context` reports it, and a second `seite serve` in the same directory prints the running server's URL and exits instead of starting another. A recorded server only counts when its pid is alive and its port accepts connections on 127.0.0.1; the URL is rebuilt from the port, never taken from the file, and a symlinked `dev.json` is ignored.
 
-The server also answers a few endpoints for tools. `GET /__seite/status` returns `{pid, port, url, version, build, root, workspace, sites, mcp, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, browser_errors: [{kind, message, source, line, col, page, count}]}`; `POST /__seite/mcp` is the site's [MCP server over HTTP](/docs/mcp-server#over-http-from-the-dev-server). They only answer requests addressed to the server itself (`Host` is a loopback name or an IP address with the server's port), never send CORS headers, and the endpoints that accept data reject other origins and non-JSON bodies.
+The server also answers a few endpoints for tools. `GET /__seite/status` returns `{pid, port, url, version, build, root, workspace, sites, mcp, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, browser_errors: [{kind, message, source, line, col, page, count}]}`; `POST /__seite/mcp` is the site's [MCP server over HTTP](/docs/mcp-server#over-http-from-the-dev-server). They only answer requests addressed to the server itself (`Host` is a loopback name or an IP address with the server's port) from its own pages, never send CORS headers, and the endpoints that accept data reject other origins, non-JSON bodies and oversized requests. The MCP endpoint additionally refuses any request from a web page (see the MCP guide). When the server listens on the network, only pages opened on the machine itself can report browser errors.
 
 The REPL prompt is only printed to a real terminal. If stdin isn't a TTY (piped, redirected from `/dev/null`, or a background job) the server keeps serving instead of exiting when stdin closes.
 
@@ -237,7 +237,7 @@ seite preview --json                   # the /__seite/status document plus "runn
 seite preview --clear-browser-errors   # print, then forget the browser errors
 ```
 
-It finds the server through `.seite/dev.json` in the site (or the workspace root), like `seite context`. Without a running server it prints "no dev server running; start it with `seite serve`" and exits 1 (`--json`: `data` is `{"running": false}`). It exits 0 whenever a server answered, even if its last build failed: read `last_build.ok`.
+It finds the server through `.seite/dev.json` in the site (or the workspace root), like `seite context`. Without a running server it prints "no dev server running; start it with `seite serve`" and exits 1 (`--json`: `data` is `{"running": false}`). It also exits 1 when the server's last build failed (the message says which; with `--json`, `data.running` is `true` and `data.last_build.ok` is `false`). `--clear-browser-errors` clears atomically: it prints exactly the errors it removed. Browser errors are untrusted text from page scripts, and the output says so. The server must listen on `127.0.0.1` or `localhost` (the default) to be found.
 
 ## seite new
 

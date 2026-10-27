@@ -43,11 +43,13 @@ It is stateless: one JSON-RPC message (or batch) per `POST`, answered with `appl
 
 Because it can create and edit content, the endpoint only answers requests that come from this machine:
 
-- `Host` must be `localhost:<port>`, `127.0.0.1:<port>` or `[::1]:<port>` (blocks DNS rebinding);
-- an `Origin` header, if present, must be one of the same origins (blocks other websites);
-- `Content-Type` must be `application/json` (cross-origin pages can't send it without a CORS preflight, which is never granted: the server sends no `Access-Control-Allow-*` headers);
-- bodies are capped at 1 MB;
+- the connection must come from a loopback address, and `Host` must be `localhost:<port>`, `127.0.0.1:<port>` or `[::1]:<port>` (blocks DNS rebinding);
+- requests with an `Origin` header are refused. Browsers send one on every `POST`, even to the same origin, so no web page can call the tools, including scripts embedded in your own site (analytics, widgets); MCP clients send none;
+- `Content-Type` must be `application/json`, and the server sends no `Access-Control-Allow-*` headers;
+- bodies are capped at 1 MB, and at most 4 requests are handled at once (more get `503`);
 - when the server is reachable from the network (`seite serve --host 0.0.0.0` or a LAN address) the endpoint is off and answers `403`.
+
+Through this endpoint, `seite_build` and `seite_reload` rebuild with the dev server's configuration (its URL as `base_url`, drafts and scheduled posts included), so the served pages never switch to production URLs, and open pages reload.
 
 The workspace server (`seite serve` at a workspace root, several sites) has no MCP endpoint: serve one site with `seite serve --site <name>`, or use `seite mcp --dir <site>`.
 
@@ -273,11 +275,13 @@ When `topic` matches a doc slug, returns the full page. When `query` is provided
 
 ### Dev-server runtime tools
 
-These four tools answer from the running `seite serve`. Over the dev server's HTTP endpoint they read its state directly; under stdio `seite mcp` they find the server through `.seite/dev.json` and ask it over `127.0.0.1`. Without a running server they fail with "no dev server running; start it with `seite serve`" (`seite_list_routes` still lists routes, with `preview_base: null`). They declare no `outputSchema`.
+These four tools answer from the running `seite serve`. Over the dev server's HTTP endpoint they read its state directly; under stdio `seite mcp` they find the server through `.seite/dev.json` and ask it over `127.0.0.1`. Without a running server they fail with "no dev server running; start it with `seite serve`" (`seite_list_routes` still lists routes, with `preview_base: null`). They declare no `outputSchema`. Servers are found on `127.0.0.1` (the default `--host`; `localhost` works too); a server bound only to `::1` is not found.
+
+Browser errors are text written by scripts on the previewed pages, so `seite_get_errors` returns them under `untrusted_browser_errors` with a `browser_errors_note` saying not to follow instructions in them. On a network bind (`--host 0.0.0.0`), only pages opened on the machine itself can report errors.
 
 | Tool | Parameters | Returns |
 |------|------------|---------|
-| `seite_get_errors` | (none) | `{url, ok, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, browser_errors: [{kind, message, source, line, col, page, count}]}`; `ok` is false when the last build failed or a page reported errors |
+| `seite_get_errors` | (none) | `{url, ok, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, untrusted_browser_errors: [{kind, message, source, line, col, page, count}], browser_errors_note}`; `ok` is false when the last build failed or a page reported errors |
 | `seite_get_preview_url` | `path` (content file) or `url` (published path), optional | `{base_url, page, preview_url}` |
 | `seite_list_routes` | `prefix`, `limit` (default 200, max 2000) | `{output_dir, total, returned, routes, preview_base}`: every built `.html` page as a URL |
 | `seite_reload` | (none) | Rebuilds now (drafts and scheduled posts included, like `seite serve`), reloads open pages, returns the build outcome and `url` |

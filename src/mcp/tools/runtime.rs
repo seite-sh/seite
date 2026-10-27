@@ -45,7 +45,8 @@ pub fn call_get_errors(state: &ServerState, arguments: &Value) -> ToolResult {
         "url": url,
         "ok": !build_failed && browser_count == 0,
         "last_build": last,
-        "browser_errors": browser,
+        "untrusted_browser_errors": browser,
+        "browser_errors_note": crate::server::dev::BROWSER_ERRORS_NOTE,
     }))
 }
 
