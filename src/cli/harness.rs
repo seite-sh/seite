@@ -1629,12 +1629,17 @@ pub fn local_docs() -> Vec<PlannedFile> {
 
 /// A new site's `.gitignore`: build output, plus seite's machine-local state
 /// (`.seite/docs/` is rewritten per seite version; `.seite/dev.json` names
-/// the running dev server; `.seite/cache/` holds the `seite check --external` cache).
-pub const GITIGNORE: &str =
-    "/dist\n/dist-subdomains\n/.seite/docs/\n/.seite/dev.json\n/.seite/cache/\n";
+/// the running dev server; `.seite/cache/` holds the `seite check --external` cache;
+/// `.seite/upgrade-brief.md` is the `seite upgrade --agent` migration brief).
+pub const GITIGNORE: &str = "/dist\n/dist-subdomains\n/.seite/docs/\n/.seite/dev.json\n/.seite/cache/\n/.seite/upgrade-brief.md\n";
 
 /// `.gitignore` lines `seite upgrade` adds when missing (add-only).
-pub const GITIGNORE_LOCAL_STATE: &[&str] = &["/.seite/docs/", "/.seite/dev.json", "/.seite/cache/"];
+pub const GITIGNORE_LOCAL_STATE: &[&str] = &[
+    "/.seite/docs/",
+    "/.seite/dev.json",
+    "/.seite/cache/",
+    "/.seite/upgrade-brief.md",
+];
 
 /// Stamp file recording which seite version wrote `.seite/docs/`.
 pub const LOCAL_DOCS_STAMP: &str = ".seite/docs/.version";

@@ -120,6 +120,7 @@ seite upgrade --check     # list pending changes (exit 1 when there are some)
 seite upgrade             # apply them
 seite upgrade --agents claude,gemini   # change the agent selection
 seite upgrade --mcp       # also wire in the MCP server
+seite upgrade --agent     # upgrade, then print (or launch an agent with) a brief of the release notes to apply
 ```
 
 Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, refreshes `.seite/docs/` after a seite update, and adds `/.seite/docs/` and `/.seite/dev.json` to `.gitignore`. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`. Every file it writes or deletes must be a real file inside the project: a symlink anywhere on the path (for example a committed `.claude/skills/seite/SKILL.md` pointing elsewhere) stops the upgrade with an error naming it.
