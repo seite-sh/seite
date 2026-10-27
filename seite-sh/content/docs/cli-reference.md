@@ -340,7 +340,7 @@ seite theme <subcommand>
 |------------|-------------|
 | `list` | Show the starters, the gallery of example themes, and installed themes |
 | `apply <name>` | Apply a bundled or installed theme (`blank` also writes `static/css/site.css` if missing) |
-| `new [name] [--force]` | Start your own design: scaffold the `blank` starter (`templates/base.html` + `static/css/site.css`) and print how to design it with impeccable or `/seite theme`. Refuses to replace a customized `base.html` without `--force` (which backs it up first) |
+| `new [name] [--force] [--tailwind]` | Start your own design: scaffold the `blank` starter (`templates/base.html` + `static/css/site.css`) and print how to design it with impeccable or `/seite theme`. Refuses to replace a customized `base.html` without `--force` (which backs it up first). `--tailwind` also adds `[build.tailwind]`, writes `static/css/tailwind.css` and links the compiled stylesheet (see [Tailwind CSS](/docs/configuration#tailwind-css)) |
 | `create "<description>"` | Design a custom theme: scaffolds `blank` first when the site is on a bundled example; then, with impeccable installed, prints how to run `/impeccable`, otherwise runs your coding agent once with `/seite theme <description>` |
 | `install <url>` | Download and install a theme from a URL |
 | `export <name>` | Export the current theme as a shareable `.tera` file |
@@ -349,6 +349,7 @@ seite theme <subcommand>
 seite theme list
 seite theme apply dark
 seite theme new
+seite theme new --tailwind
 seite theme create "brutalist with neon green accents"
 seite theme install https://example.com/themes/aurora.tera
 seite theme install https://example.com/themes/aurora.tera --name my-aurora

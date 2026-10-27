@@ -217,6 +217,7 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `related` | int | `3` | Maximum `page.related` entries per page; `0` disables related pages. A collection's own `related` overrides it |
 | `schedule` | bool | `false` | Scheduled publishing for dated collections: hide posts dated in the future until their date, and `expires:` posts after it. `seite init` sets it for new sites; existing sites build as before until you add it |
 | `future` | bool | `false` | With `schedule`: build future-dated content too. `seite build --future` does the same for one build; `seite serve` always previews it |
+| `tailwind` | table | absent | Compile a Tailwind CSS v4 stylesheet with the standalone CLI (see [Tailwind CSS](#tailwind-css)) |
 | `search` | `"full"` \| `"basic"` \| `false` | `"basic"` | Client-side search. `"full"`: full-text index of page text under `search/` (see [Search](#search)); `"basic"`: `search-index.json` only (titles, descriptions, tags); `false`: no index and no search box. `seite init` writes `"full"`; existing sites keep `"basic"` until they add it |
 
 {{% callout(type="tip") %}}
@@ -224,6 +225,46 @@ Enable `minify` for production builds. It strips CSS/JS comments and collapses w
 {{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
+
+With `minify = true`, a stylesheet's local imports are bundled into it: `@import "base.css";` and `@import url(parts/grid.css);` are replaced by the imported file's contents when it lives under `static/`. Imports of URLs (`https://…`, `//…`, `/…`), imports with a media query, `layer()` or `supports()`, missing files and import cycles are left as written. The imported files are still copied on their own.
+
+### Tailwind CSS
+
+`[build.tailwind]` compiles a [Tailwind CSS](https://tailwindcss.com) v4 stylesheet during the build with Tailwind's standalone CLI. No Node, no npm, no service: seite downloads one pinned release of the CLI (v4.3.3) the first time it needs it, checks it against the SHA-256 built into seite before running it, and caches it per user (`~/Library/Caches/seite/tailwind/` on macOS, `$XDG_CACHE_HOME/seite/tailwind/` or `~/.cache/seite/tailwind/` on Linux, `%LOCALAPPDATA%\seite\tailwind\` on Windows). Nothing is downloaded unless the table is present.
+
+```toml
+[build.tailwind]
+input = "static/css/tailwind.css"   # the entry CSS (default)
+output = "css/tailwind.css"          # inside the output's static/ dir → /static/css/tailwind.css (default)
+# version = "4.3.3"                  # default: the pinned version; any other needs `binary`
+# binary = "bin/tailwindcss"         # your own executable (relative to the site root, or absolute)
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `input` | `"static/css/tailwind.css"` | Entry CSS, relative to the site root. It is compiled, never copied as-is |
+| `output` | `"css/tailwind.css"` | Where the compiled CSS goes, relative to the output's `static/` directory. It is minified by Tailwind and fingerprinted like any other static file |
+| `version` | the pinned version | Only the pinned version is downloaded (seite has no checksum for others); set `binary` to use another |
+| `binary` | none | Use this `tailwindcss` executable instead of the download (offline machines, other versions, unsupported platforms) |
+
+`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, and links the compiled stylesheet from `templates/base.html`:
+
+```html
+<link rel="stylesheet" href="/static/css/tailwind.css">
+```
+
+The entry file it writes lists where class names come from explicitly:
+
+```css
+@import "tailwindcss" source(none);
+@source "../../templates";
+@source "../../content";
+@source "../../data";
+```
+
+Paths are relative to the CSS file. Tailwind runs with the site root as its working directory, so a plain `@import "tailwindcss";` uses Tailwind's automatic source detection instead; prefer `source(none)` plus `@source` lines so build output, caches and other generated files never feed into the class scan. Add an `@source` line for anything else that holds class names.
+
+The build runs Tailwind on every build, including `seite serve` rebuilds, so a class added to a template or a markdown file shows up on the next reload. A Tailwind error stops the build with a [`tailwind-failed`](/docs/errors#tailwind-failed) diagnostic; a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed). `seite check` compiles too (it validates the CSS). The check hooks of coding agents never download: until the CLI is cached they skip Tailwind silently.
 
 ### Search
 

@@ -19,7 +19,7 @@ use toml::de::{DeTable, DeValue};
 use super::{
     AccessSection, AnalyticsSection, BuildSection, CheckSection, CollectionConfig, ContactSection,
     DeploySection, ImageSection, LanguageConfig, OgSection, SiteConfig, SiteSection,
-    TaxonomyConfig, TrustSection,
+    TailwindSection, TaxonomyConfig, TrustSection,
 };
 use crate::content::schema::FieldSchema;
 use crate::diagnostics::{did_you_mean, line_col_at, Diagnostic};
@@ -40,7 +40,10 @@ enum Schema {
 fn schema_for_root() -> Schema {
     Schema::Struct(fields_of::<SiteConfig>(), |key| match key {
         "site" => Schema::Struct(fields_of::<SiteSection>(), |_| Schema::Any),
-        "build" => Schema::Struct(fields_of::<BuildSection>(), |_| Schema::Any),
+        "build" => Schema::Struct(fields_of::<BuildSection>(), |key| match key {
+            "tailwind" => Schema::Struct(fields_of::<TailwindSection>(), |_| Schema::Any),
+            _ => Schema::Any,
+        }),
         "deploy" => Schema::Struct(fields_of::<DeploySection>(), |_| Schema::Any),
         "images" => Schema::Struct(fields_of::<ImageSection>(), |_| Schema::Any),
         "analytics" => Schema::Struct(fields_of::<AnalyticsSection>(), |_| Schema::Any),

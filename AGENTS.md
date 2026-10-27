@@ -49,7 +49,7 @@ src/
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            11 bundled themes (starters default/docs/landing/blank + gallery) from src/themes/*.tera; layout + CSS only
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
-  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`), search (full-text index + tokenizer), og/ (social cards: mod.rs plan/cache, card.rs layout + resvg)
+  build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`), search (full-text index + tokenizer), og/ (social cards: mod.rs plan/cache, card.rs layout + resvg), tailwind (`[build.tailwind]`: pinned CLI download/verify/cache, compile)
   docs.rs              Embedded docs (17 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
@@ -104,6 +104,12 @@ related = 3              # page.related size (0 disables; per-collection `relate
 schedule = true          # scheduled publishing for dated collections (init writes it; absent = off)
 search = "full"          # full-text index under dist/search/ (init writes it); absent = "basic" (search-index.json only); false = off
 # future = true          # build future-dated content (= `seite build --future`; serve always does)
+
+[build.tailwind]         # optional; absent = off. Tailwind v4 standalone CLI (no Node), pinned + SHA-256 verified
+input = "static/css/tailwind.css"  # entry CSS (compiled, never copied raw)
+output = "css/tailwind.css"        # under dist/static/ → /static/css/tailwind.css (fingerprinted like other CSS)
+# version = "4.3.3"      # only the pinned version downloads; others need `binary`
+# binary = "bin/tailwindcss"  # own executable (relative to root or absolute)
 
 [[taxonomies]]           # optional; `tags` is implicit (no feeds unless listed here)
 name = "categories"      # frontmatter `categories: [..]` → /categories/, /categories/<slug>/ (+ feed.xml/atom.xml)
@@ -201,6 +207,10 @@ template = "default"     # default | minimal | bold
 
 ### Search
 - `[build] search = "full" | "basic" | false` (`config::SearchMode`; absent = `"basic"` so existing output is unchanged; init writes `"full"`; upgrade shows the one-time `search-feature` notice). `search-index.json` keeps its exact format in every mode but `false`. Full mode adds the sharded full-text index from `src/build/search.rs` (Step 9, `write_search_indexes`), per language, never for drafts/`noindex`/unlisted/private/scheduled pages; sizes in `BuildStats.search_index` (`build --verbose`, `build --json` `data.search_index`). The client is `seite/search-script.html`, whose tokenizer mirrors `search.rs` (keep them in sync; `tests/integration/search_full.rs` runs it under Node, and asserts the 1,000-page budget: shards ≤ 8 KB, a query < 100 KB). `seite search`/MCP keep their own server-side index.
+
+### CSS: Tailwind and @import bundling
+- `[build.tailwind]` (`config::TailwindSection`, `src/build/tailwind.rs`, design note at the top): one pinned release (`PINNED_VERSION`, per-platform asset names + SHA-256 in `ASSETS`, from the release's `sha256sums.txt`); bump both together. Downloaded on first use (ureq, 256 MB cap, streamed into a temp file in the cache dir, hashed, chmod +x and renamed only on a match) into `platform::cache_dir()/tailwind/<ver>/`, else `.seite/cache/tailwind/<ver>/` (safe_fs-checked); the cached file is re-hashed once per process. `version` ≠ pinned without `binary` → located `config-invalid` (`validate_config`, via `validate_content_model`). Build Step 2.6 (after data load) runs `<bin> -i <input> -o <tmp> --minify` with cwd = site root; failures → `tailwind-failed` / `tailwind-download-failed` in `fatal`. Step 10 skips the raw input and writes the CSS to `static/<output>` through `write_static_asset` (same fingerprint/manifest path; not re-minified). Every build reruns it (incremental too). `seite check --hook` (`check_site_offline` → `TailwindSection.offline`) never downloads: uncached → the raw input is copied, no diagnostic. `seite theme new --tailwind` adds the table (toml_edit), writes the entry CSS (`source(none)` + explicit `@source` paths, for determinism) and relinks base.html. Tests use a fake `binary` script / injected `Fetch`, never the network.
+- With `minify`, Step 10 bundles local `@import "x.css";` / `@import url(x.css);` under `static/` (`inline_css_imports`; cycle-safe, canonicalized paths confined to `static/`, URLs/media/`layer()`/`supports()` imports left alone) before `minify_css`.
 
 ## Context Rules
 

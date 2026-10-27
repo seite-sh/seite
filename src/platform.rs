@@ -41,6 +41,33 @@ pub fn home_path(relative: &str) -> Option<PathBuf> {
     home_dir().map(|home| home.join(relative))
 }
 
+/// The per-user cache directory for seite (downloaded tools such as the
+/// Tailwind CLI):
+///
+/// - macOS: `~/Library/Caches/seite`
+/// - Windows: `%LOCALAPPDATA%\seite`
+/// - Linux/other: `$XDG_CACHE_HOME/seite`, else `~/.cache/seite`
+pub fn cache_dir() -> Option<PathBuf> {
+    let non_empty = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+    #[cfg(target_os = "macos")]
+    {
+        let _ = non_empty;
+        home_path("Library/Caches/seite")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        non_empty("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("seite"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        non_empty("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .map(|dir| dir.join("seite"))
+            .or_else(|| home_path(".cache/seite"))
+    }
+}
+
 /// Resolve the wrangler CLI config file path.
 ///
 /// - macOS: `~/Library/Preferences/.wrangler/config/default.toml`

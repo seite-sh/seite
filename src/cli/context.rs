@@ -355,6 +355,12 @@ fn gather(state: &ServerState, version: &str) -> Value {
             "active": active_theme,
             "base_html": base_exists.then_some("templates/base.html"),
             "customized": active_theme == "custom",
+            "tailwind": state.config.as_ref().and_then(|c| c.build.tailwind.as_ref()).map(|tw| json!({
+                "input": tw.input,
+                "stylesheet": format!("/static/{}", tw.output),
+                "version": tw.version.clone().unwrap_or_else(|| crate::build::tailwind::PINNED_VERSION.to_string()),
+                "binary": tw.binary,
+            })),
         },
         "docs": local_docs.is_dir().then_some(".seite/docs/"),
         "skill_packs": skill_packs,
@@ -452,6 +458,15 @@ fn print_context(data: &Value) {
         Some(_) => "templates/base.html matches it",
     };
     human_println!("{}{} ({base})", label("Theme:"), str_of(&theme, "active"));
+    if let Some(tw) = theme.get("tailwind").filter(|v| !v.is_null()) {
+        human_println!(
+            "{}{} → {} (v{}; link the stylesheet URL in base.html)",
+            label("Tailwind:"),
+            str_of(tw, "input"),
+            str_of(tw, "stylesheet"),
+            str_of(tw, "version")
+        );
+    }
     match data.get("docs").and_then(Value::as_str) {
         Some(dir) => human_println!(
             "{}{dir} (local, matches this seite version; `seite docs <query>` searches)",

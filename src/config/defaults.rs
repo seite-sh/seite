@@ -30,6 +30,14 @@ pub fn public_dir() -> String {
     "public".to_string()
 }
 
+pub fn tailwind_input() -> String {
+    "static/css/tailwind.css".to_string()
+}
+
+pub fn tailwind_output() -> String {
+    "css/tailwind.css".to_string()
+}
+
 pub fn image_widths() -> Vec<u32> {
     vec![480, 800, 1200]
 }

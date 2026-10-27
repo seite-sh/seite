@@ -26,6 +26,12 @@ pub enum ThemeCommand {
         /// Replace a customized base.html (it is backed up first)
         #[arg(long)]
         force: bool,
+
+        /// Start a Tailwind CSS theme: add [build.tailwind] to seite.toml, write
+        /// the entry CSS (static/css/tailwind.css) and link the compiled
+        /// stylesheet from base.html
+        #[arg(long)]
+        tailwind: bool,
     },
 
     /// Apply a theme to the current site
@@ -67,8 +73,12 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
         ThemeCommand::List => {
             run_list()?;
         }
-        ThemeCommand::New { name, force } => {
-            run_new(name.as_deref(), *force)?;
+        ThemeCommand::New {
+            name,
+            force,
+            tailwind,
+        } => {
+            run_new(name.as_deref(), *force, *tailwind)?;
         }
         ThemeCommand::Apply { name } => {
             run_apply(name)?;
@@ -370,13 +380,18 @@ fn new_theme_next_steps(root: &Path, name: &str) -> Vec<String> {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_new(name: Option<&str>, force: bool) -> anyhow::Result<()> {
+fn run_new(name: Option<&str>, force: bool, tailwind: bool) -> anyhow::Result<()> {
     let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
     let root = std::env::current_dir()?;
     let paths = config.resolve_paths(&root);
     let name = name.unwrap_or("my-theme");
     themes::validate_theme_name(name)?;
     let applied = scaffold_blank(&root, &paths, force)?;
+    let tailwind = if tailwind {
+        Some(scaffold_tailwind(&root, &config, &paths)?)
+    } else {
+        None
+    };
     if let Some(ref backup) = applied.backup {
         human::info(&format!(
             "Backed up your customized base.html to {}",
@@ -392,6 +407,9 @@ fn run_new(name: Option<&str>, force: bool) -> anyhow::Result<()> {
             .map(|css| format!(" and {}", css.display()))
             .unwrap_or_default()
     ));
+    for line in tailwind.iter().flat_map(|t| &t.notes) {
+        human::info(line);
+    }
     for line in new_theme_next_steps(&root, name) {
         human::info(&line);
     }
@@ -402,8 +420,152 @@ fn run_new(name: Option<&str>, force: bool) -> anyhow::Result<()> {
         "stylesheet": applied.stylesheet.as_ref().map(|p| p.display().to_string()),
         "backup": applied.backup.as_ref().map(|p| p.display().to_string()),
         "impeccable": impeccable_installed(&root),
+        "tailwind": tailwind.as_ref().map(|t| serde_json::json!({
+            "input": t.input,
+            "stylesheet": t.stylesheet,
+            "input_written": t.input_written,
+            "config_added": t.config_added,
+        })),
     }));
     Ok(())
+}
+
+/// What `seite theme new --tailwind` did on top of the blank starter.
+struct TailwindScaffold {
+    /// The entry CSS, relative to the site root.
+    input: String,
+    /// The compiled stylesheet's URL (`/static/<output>`).
+    stylesheet: String,
+    input_written: bool,
+    config_added: bool,
+    /// Human-readable lines about what was done.
+    notes: Vec<String>,
+}
+
+/// Turn the freshly scaffolded blank starter into a Tailwind theme: add
+/// `[build.tailwind]` to `seite.toml` (when missing), write the entry CSS
+/// (when missing; explicit `@source` paths so the build is deterministic),
+/// and point `base.html`'s stylesheet link at the compiled CSS.
+fn scaffold_tailwind(
+    root: &Path,
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+) -> anyhow::Result<TailwindScaffold> {
+    let mut notes = Vec::new();
+    let tw = config.build.tailwind.clone().unwrap_or_default();
+
+    let config_added = config.build.tailwind.is_none();
+    if config_added {
+        let toml_path = root.join("seite.toml");
+        let text = std::fs::read_to_string(&toml_path)?;
+        let updated = add_tailwind_table(&text, &tw)?;
+        crate::safe_fs::write(root, &toml_path, updated)?;
+        notes.push("Added [build.tailwind] to seite.toml.".into());
+    }
+
+    let input = root.join(&tw.input);
+    let input_written = !input.exists();
+    if input_written {
+        let css = tailwind_entry_css(root, paths, &input);
+        if let Some(parent) = input.parent() {
+            crate::safe_fs::create_dir_all(root, parent)?;
+        }
+        crate::safe_fs::write(root, &input, css)?;
+        notes.push(format!(
+            "Wrote {} (Tailwind entry; `@source` lines list where your classes live).",
+            tw.input
+        ));
+    }
+
+    let stylesheet = format!("/static/{}", tw.output.replace('\\', "/"));
+    let base = paths.templates.join("base.html");
+    let html = std::fs::read_to_string(&base)?;
+    let blank_link = format!("href=\"/static/{}\"", themes::BLANK_STYLESHEET);
+    let linked = if html.contains(&format!("href=\"{stylesheet}\"")) {
+        html
+    } else if html.contains(&blank_link) {
+        html.replacen(&blank_link, &format!("href=\"{stylesheet}\""), 1)
+    } else {
+        html.replacen(
+            "{% block extra_css %}",
+            &format!(
+                "<link rel=\"stylesheet\" href=\"{stylesheet}\">\n    {{% block extra_css %}}"
+            ),
+            1,
+        )
+    };
+    if !linked.contains(&format!("href=\"{stylesheet}\"")) {
+        notes.push(format!(
+            "Add <link rel=\"stylesheet\" href=\"{stylesheet}\"> to {} yourself.",
+            base.display()
+        ));
+    }
+    crate::safe_fs::write(root, &base, linked)?;
+    notes.push(format!(
+        "base.html links {stylesheet}; `seite build` compiles it with Tailwind v{} (downloaded once, checksum-verified). Style with utility classes in templates/ and content/.",
+        tw.version
+            .clone()
+            .unwrap_or_else(|| crate::build::tailwind::PINNED_VERSION.to_string())
+    ));
+    Ok(TailwindScaffold {
+        input: tw.input,
+        stylesheet,
+        input_written,
+        config_added,
+        notes,
+    })
+}
+
+/// `seite.toml` with a `[build.tailwind]` table (input/output spelled out),
+/// comments and formatting kept.
+fn add_tailwind_table(text: &str, tw: &crate::config::TailwindSection) -> anyhow::Result<String> {
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    let build = doc
+        .entry("build")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    let Some(build) = build.as_table_mut() else {
+        anyhow::bail!("[build] in seite.toml is not a table; add [build.tailwind] by hand");
+    };
+    let mut table = toml_edit::Table::new();
+    table.insert("input", toml_edit::value(tw.input.clone()));
+    table.insert("output", toml_edit::value(tw.output.clone()));
+    build.insert("tailwind", toml_edit::Item::Table(table));
+    Ok(doc.to_string())
+}
+
+/// The scaffolded Tailwind entry CSS. `source(none)` plus explicit
+/// `@source` lines (relative to the CSS file) keep class detection to the
+/// site's own sources, so `dist/` and caches never feed into the build.
+fn tailwind_entry_css(root: &Path, paths: &crate::config::ResolvedPaths, input: &Path) -> String {
+    let up = input
+        .parent()
+        .and_then(|dir| dir.strip_prefix(root).ok())
+        .map(|rel| "../".repeat(rel.components().count()))
+        .unwrap_or_default();
+    let rel = |dir: &Path| {
+        dir.strip_prefix(root)
+            .unwrap_or(dir)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let mut css = String::from("@import \"tailwindcss\" source(none);\n");
+    // The blank starter's look, under Tailwind's utilities.
+    let blank_css = paths.static_dir.join(themes::BLANK_STYLESHEET);
+    if blank_css.is_file() && blank_css.parent() == input.parent() {
+        let file = blank_css
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        css.push_str(&format!(
+            "/* The blank starter's styles as Tailwind's base layer; delete this line to start from Tailwind's preflight alone. */\n@import \"./{file}\" layer(base);\n"
+        ));
+    }
+    css.push_str("\n/* Where class names are found (paths relative to this file). */\n");
+    for dir in [&paths.templates, &paths.content, &paths.data_dir] {
+        css.push_str(&format!("@source \"{up}{}\";\n", rel(dir)));
+    }
+    css.push_str("\n@theme {\n  /* Design tokens, e.g. --color-brand: #0057b7; → bg-brand, text-brand */\n}\n");
+    css
 }
 
 /// impeccable's live-mode config (see its `reference/live-setup.md`).
@@ -908,6 +1070,40 @@ mod tests {
         let config: SiteConfig =
             toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
         config.resolve_paths(root)
+    }
+
+    #[test]
+    fn test_add_tailwind_table_keeps_comments() {
+        let text = "# my site\n[site]\ntitle = \"x\" # keep\n\n[build]\nminify = true\n\n[deploy]\ntarget = \"netlify\"\n";
+        let out = add_tailwind_table(text, &crate::config::TailwindSection::default()).unwrap();
+        assert!(out.contains("# my site") && out.contains("# keep"), "{out}");
+        assert!(
+            out.contains("[build.tailwind]\ninput = \"static/css/tailwind.css\"\noutput = \"css/tailwind.css\"\n"),
+            "{out}"
+        );
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
+        assert_eq!(parsed["build"]["minify"].as_bool(), Some(true));
+        // No [build] yet: it is created.
+        let out = add_tailwind_table("[site]\ntitle = \"x\"\n", &Default::default()).unwrap();
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
+        assert!(parsed["build"]["tailwind"]["input"].is_str());
+    }
+
+    #[test]
+    fn test_tailwind_entry_css_sources_relative_to_input() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = site_paths(tmp.path());
+        let css = tailwind_entry_css(
+            tmp.path(),
+            &paths,
+            &tmp.path().join("static/css/tailwind.css"),
+        );
+        assert!(css.starts_with("@import \"tailwindcss\" source(none);\n"));
+        for dir in ["templates", "content", "data"] {
+            assert!(css.contains(&format!("@source \"../../{dir}\";")), "{css}");
+        }
+        // No blank stylesheet next to it: no import of it.
+        assert!(!css.contains("site.css"));
     }
 
     #[test]

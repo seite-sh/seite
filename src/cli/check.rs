@@ -114,6 +114,7 @@ pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         None,
         args.external.then_some(args.strict),
         args.future,
+        false,
     )?;
     if !args.future {
         print_schedule_note(&cwd);
@@ -317,13 +318,19 @@ pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Dia
     check_site_with(root, include_drafts, None)
 }
 
+/// [`check_site`] for coding-agent hooks: never downloads anything (a
+/// `[build.tailwind]` binary that is not cached yet is skipped silently).
+pub fn check_site_offline(root: &Path, include_drafts: bool) -> crate::error::Result<Diagnostics> {
+    check_site_full(root, include_drafts, None, None, false, true).map(|(d, _)| d)
+}
+
 /// [`check_site`] with an optional `base_url` override (workspace sites).
 fn check_site_with(
     root: &Path,
     include_drafts: bool,
     base_url: Option<&str>,
 ) -> crate::error::Result<Diagnostics> {
-    check_site_full(root, include_drafts, base_url, None, false).map(|(d, _)| d)
+    check_site_full(root, include_drafts, base_url, None, false, false).map(|(d, _)| d)
 }
 
 /// [`check_site_with`], plus — with `external: Some(strict)` — the external
@@ -335,6 +342,7 @@ fn check_site_full(
     base_url: Option<&str>,
     external: Option<bool>,
     future: bool,
+    offline: bool,
 ) -> crate::error::Result<(Diagnostics, Option<external_links::Summary>)> {
     let mut external_summary = None;
     let mut all = Diagnostics::new();
@@ -356,6 +364,10 @@ fn check_site_full(
     // Links resolve exactly like `seite build` (scheduled pages are hidden
     // unless --future); scheduled pages are still rendered below.
     config.build.future |= future;
+    // Hooks never download the Tailwind CLI (`[build.tailwind]`).
+    if let Some(tw) = config.build.tailwind.as_mut() {
+        tw.offline |= offline;
+    }
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
     let hidden = crate::content::schedule::hidden_pages(&config, &paths);

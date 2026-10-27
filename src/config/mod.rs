@@ -386,6 +386,48 @@ pub struct BuildSection {
     /// `"full"`. See `crate::build::search`.
     #[serde(default, skip_serializing_if = "SearchMode::is_basic")]
     pub search: SearchMode,
+    /// `[build.tailwind]`: compile a Tailwind CSS v4 entry file with the
+    /// standalone CLI. Absent = off. See `crate::build::tailwind`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tailwind: Option<TailwindSection>,
+}
+
+/// `[build.tailwind]`: Tailwind CSS v4 through the standalone CLI (no Node).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TailwindSection {
+    /// The CSS entry file (with `@import "tailwindcss";`), relative to the
+    /// site root. It is compiled instead of being copied raw.
+    #[serde(default = "defaults::tailwind_input")]
+    pub input: String,
+    /// Where the compiled CSS goes, relative to the output's `static/`
+    /// directory (default `css/tailwind.css` → `/static/css/tailwind.css`),
+    /// fingerprinted like every other static file.
+    #[serde(default = "defaults::tailwind_output")]
+    pub output: String,
+    /// Tailwind version. Default: the pinned version seite verifies by
+    /// checksum; any other version needs `binary`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Your own `tailwindcss` executable (relative to the site root or
+    /// absolute) instead of the downloaded one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
+    /// Runtime only: never download the binary (`seite check --hook`); when
+    /// it is not cached, the input is copied as-is instead of compiled.
+    #[serde(skip)]
+    pub offline: bool,
+}
+
+impl Default for TailwindSection {
+    fn default() -> Self {
+        Self {
+            input: defaults::tailwind_input(),
+            output: defaults::tailwind_output(),
+            version: None,
+            binary: None,
+            offline: false,
+        }
+    }
 }
 
 /// `[build] search`: which client-side search index the build writes.
@@ -465,6 +507,7 @@ impl Default for BuildSection {
             future: false,
             schedule: false,
             search: SearchMode::Basic,
+            tailwind: None,
         }
     }
 }
@@ -879,7 +922,8 @@ impl SiteConfig {
         let problem = crate::content::schedule::validate_timezone(self.site.timezone.as_deref())
             .err()
             .map(|message| (message, "timezone".to_string()))
-            .or_else(|| crate::content::schema::validate_config(self).err());
+            .or_else(|| crate::content::schema::validate_config(self).err())
+            .or_else(|| crate::build::tailwind::validate_config(self).err());
         let Some((message, key)) = problem else {
             return Ok(());
         };
