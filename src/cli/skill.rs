@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
+use crate::cli::harness::{Agent, SkillFrontmatter};
 use crate::output::human;
 
 #[derive(Args)]
@@ -23,6 +24,11 @@ pub enum SkillCommand {
         /// Override the skill name (for URL installs)
         #[arg(long)]
         name: Option<String>,
+
+        /// Coding agents to install a pack for (comma-separated, or `all`).
+        /// Default: the agents in `.seite/config.json`, else all
+        #[arg(long)]
+        agents: Option<String>,
     },
 
     /// List installed skills and skill packs
@@ -38,6 +44,11 @@ pub enum SkillCommand {
     Update {
         /// Specific pack or skill to update (updates all if omitted)
         name: Option<String>,
+
+        /// Coding agents to update a pack for (comma-separated, or `all`).
+        /// Default: the agents the pack was installed for
+        #[arg(long)]
+        agents: Option<String>,
     },
 }
 
@@ -45,16 +56,17 @@ pub enum SkillCommand {
 // Known skill packs
 // ---------------------------------------------------------------------------
 
+/// SEOMachine's pinned release: the commit, and a SHA-256 for every file
+/// seite downloads. `scripts/refresh-seomachine-pin.sh` rewrites it; it
+/// changes only when seite itself is released, so `seite skill update` moves
+/// to the pin of the running binary and never to the upstream `main`.
+const SEOMACHINE_PIN: &str = include_str!("seomachine.pin");
+
 struct SkillPack {
     name: &'static str,
     description: &'static str,
-    repo: &'static str,
-    branch: &'static str,
-    agents: &'static [&'static str],
-    commands: &'static [&'static str],
-    skills: &'static [&'static str],
-    context_files: &'static [&'static str],
-    python_scripts: &'static [&'static str],
+    /// The pin file text (see [`Pin::parse`]).
+    pin: &'static str,
 }
 
 fn known_packs() -> &'static [SkillPack] {
@@ -62,130 +74,93 @@ fn known_packs() -> &'static [SkillPack] {
         name: "seomachine",
         description:
             "SEO content research, writing, and optimization — by SEOMachine (seomachine.com)",
-        repo: "TheCraigHewitt/seomachine",
-        branch: "4e04990d4b79745275a013b613c597d9189fc142",
-        agents: &[
-            "cluster-strategist.md",
-            "content-analyzer.md",
-            "cro-analyst.md",
-            "editor.md",
-            "headline-generator.md",
-            "internal-linker.md",
-            "keyword-mapper.md",
-            "landing-page-optimizer.md",
-            "meta-creator.md",
-            "performance.md",
-            "seo-optimizer.md",
-        ],
-        commands: &[
-            "analyze-existing.md",
-            "article.md",
-            "cluster.md",
-            "content-calendar.md",
-            "landing-audit.md",
-            "landing-competitor.md",
-            "landing-publish.md",
-            "landing-research.md",
-            "landing-write.md",
-            "optimize.md",
-            "performance-review.md",
-            "priorities.md",
-            "publish-draft.md",
-            "research-gaps.md",
-            "research-performance.md",
-            "research-serp.md",
-            "research-topics.md",
-            "research-trending.md",
-            "research.md",
-            "rewrite.md",
-            "scrub.md",
-            "write.md",
-        ],
-        skills: &[
-            "ab-test-setup",
-            "analytics-tracking",
-            "competitor-alternatives",
-            "content-strategy",
-            "copy-editing",
-            "copywriting",
-            "email-sequence",
-            "form-cro",
-            "free-tool-strategy",
-            "launch-strategy",
-            "marketing-ideas",
-            "marketing-psychology",
-            "onboarding-cro",
-            "page-cro",
-            "paid-ads",
-            "paywall-upgrade-cro",
-            "popup-cro",
-            "pricing-strategy",
-            "product-marketing-context",
-            "programmatic-seo",
-            "referral-program",
-            "schema-markup",
-            "seo-audit",
-            "signup-flow-cro",
-            "social-content",
-        ],
-        context_files: &[
-            "brand-voice.md",
-            "competitor-analysis.md",
-            "cro-best-practices.md",
-            "features.md",
-            "internal-links-map.md",
-            "seo-guidelines.md",
-            "style-guide.md",
-            "target-keywords.md",
-            "writing-examples.md",
-        ],
-        python_scripts: &[
-            // Top-level scripts
-            "research_competitor_gaps.py",
-            "research_performance_matrix.py",
-            "research_priorities_comprehensive.py",
-            "research_quick_wins.py",
-            "research_serp_analysis.py",
-            "research_topic_clusters.py",
-            "research_trending.py",
-            "seo_baseline_analysis.py",
-            "seo_bofu_rankings.py",
-            "seo_competitor_analysis.py",
-            "test_dataforseo.py",
-            // data_sources modules
-            "data_sources/modules/above_fold_analyzer.py",
-            "data_sources/modules/article_planner.py",
-            "data_sources/modules/competitor_gap_analyzer.py",
-            "data_sources/modules/content_length_comparator.py",
-            "data_sources/modules/content_scorer.py",
-            "data_sources/modules/content_scrubber.py",
-            "data_sources/modules/cro_checker.py",
-            "data_sources/modules/cta_analyzer.py",
-            "data_sources/modules/data_aggregator.py",
-            "data_sources/modules/dataforseo.py",
-            "data_sources/modules/engagement_analyzer.py",
-            "data_sources/modules/google_analytics.py",
-            "data_sources/modules/google_search_console.py",
-            "data_sources/modules/keyword_analyzer.py",
-            "data_sources/modules/landing_page_scorer.py",
-            "data_sources/modules/landing_performance.py",
-            "data_sources/modules/opportunity_scorer.py",
-            "data_sources/modules/readability_scorer.py",
-            "data_sources/modules/search_intent_analyzer.py",
-            "data_sources/modules/section_writer.py",
-            "data_sources/modules/seo_quality_rater.py",
-            "data_sources/modules/social_research_aggregator.py",
-            "data_sources/modules/trust_signal_analyzer.py",
-            "data_sources/modules/wordpress_publisher.py",
-            // data_sources config
-            "data_sources/config/.env.example",
-            "config/competitors.example.json",
-        ],
+        pin: SEOMACHINE_PIN,
     }]
 }
 
 fn find_pack(name: &str) -> Option<&'static SkillPack> {
     known_packs().iter().find(|p| p.name == name)
+}
+
+/// A pinned upstream release: repo, commit, and the SHA-256 of every file.
+#[derive(Debug, Clone)]
+struct Pin {
+    repo: String,
+    commit: String,
+    date: String,
+    licence: String,
+    files: Vec<PinnedFile>,
+}
+
+#[derive(Debug, Clone)]
+struct PinnedFile {
+    sha256: String,
+    path: String,
+}
+
+impl Pin {
+    /// Header comments (`# repo|commit|date|licence <value>`) then
+    /// `<sha256>  <path>` lines.
+    fn parse(text: &str) -> anyhow::Result<Pin> {
+        let (mut repo, mut commit, mut date, mut licence) =
+            (String::new(), String::new(), String::new(), String::new());
+        let mut files = Vec::new();
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if let Some(comment) = line.strip_prefix('#') {
+                let comment = comment.trim();
+                for (key, slot) in [
+                    ("repo ", &mut repo),
+                    ("commit ", &mut commit),
+                    ("date ", &mut date),
+                    ("licence ", &mut licence),
+                ] {
+                    if let Some(value) = comment.strip_prefix(key) {
+                        *slot = value.trim().to_string();
+                    }
+                }
+                continue;
+            }
+            let (hash, path) = line
+                .split_once(char::is_whitespace)
+                .map(|(h, p)| (h.trim(), p.trim()))
+                .ok_or_else(|| anyhow::anyhow!("malformed pin line: {line}"))?;
+            if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+                anyhow::bail!("pin line has no SHA-256: {line}");
+            }
+            validate_pinned_path(path)?;
+            files.push(PinnedFile {
+                sha256: hash.to_ascii_lowercase(),
+                path: path.to_string(),
+            });
+        }
+        if repo.is_empty() || files.is_empty() {
+            anyhow::bail!("pin is missing its repo or files");
+        }
+        if commit.len() != 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+            anyhow::bail!("pin commit must be a full 40-character SHA, got '{commit}'");
+        }
+        Ok(Pin {
+            repo,
+            commit,
+            date,
+            licence,
+            files,
+        })
+    }
+}
+
+/// Pinned paths are repo-relative and never leave the install directories.
+fn validate_pinned_path(path: &str) -> anyhow::Result<()> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path
+            .split('/')
+            .any(|s| s.is_empty() || s == "." || s == "..")
+    {
+        anyhow::bail!("unsafe path in pin: {path}");
+    }
+    Ok(())
 }
 
 /// Every pack `seite skill install <name>` knows, impeccable included.
@@ -390,6 +365,7 @@ fn record_impeccable(root: &Path) -> anyhow::Result<()> {
             branch: "external".to_string(),
             installed_at: chrono::Utc::now().to_rfc3339(),
             files: Vec::new(),
+            ..Default::default()
         },
     );
     save_manifest(root, &manifest)?;
@@ -397,9 +373,14 @@ fn record_impeccable(root: &Path) -> anyhow::Result<()> {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_install_impeccable() -> anyhow::Result<()> {
+fn run_install_impeccable(agents_flag: Option<&str>) -> anyhow::Result<()> {
     let root = impeccable_root()?;
-    let agents = crate::meta::load(&root).and_then(|m| m.agents);
+    let agents = match agents_flag {
+        Some(flag) => Some(crate::cli::harness::to_ids(
+            &crate::cli::harness::parse_agent_list(flag)?,
+        )),
+        None => crate::meta::load(&root).and_then(|m| m.agents),
+    };
     let providers = impeccable_providers(agents.as_deref());
     let args = impeccable_install_args(&providers);
 
@@ -531,12 +512,28 @@ struct SkillPacksManifest {
     packs: HashMap<String, PackEntry>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+/// One installed pack. Entries written before pinning only have the first
+/// four fields; the rest default, so old manifests keep loading.
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct PackEntry {
     source: String,
+    /// The pinned commit for downloaded packs (kept under its old name).
     branch: String,
     installed_at: String,
     files: Vec<String>,
+    /// Pinned commit SHA (same as `branch` for new entries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    commit: Option<String>,
+    /// Commit date of the pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    /// Agent ids the pack was installed for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    agents: Vec<String>,
+    /// SHA-256 of each installed file as written, to tell later edits apart
+    /// from untouched files on update and remove.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    hashes: BTreeMap<String, String>,
 }
 
 fn manifest_path(root: &Path) -> PathBuf {
@@ -612,9 +609,14 @@ pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
                 if let Some(n) = rest.strip_suffix(".md") {
                     commands.push(n.to_string());
                 }
-            } else if let Some(rest) = file.strip_prefix(".claude/skills/") {
+            } else if let Some(rest) = file
+                .strip_prefix(".claude/skills/")
+                .or_else(|| file.strip_prefix(".agents/skills/"))
+            {
                 if let Some(n) = rest.strip_suffix("/SKILL.md") {
-                    skills.push(n.to_string());
+                    if !skills.iter().any(|s| s == n) {
+                        skills.push(n.to_string());
+                    }
                     all_pack_skills.push(n.to_string());
                 }
             }
@@ -682,6 +684,9 @@ pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
 // HTTP download
 // ---------------------------------------------------------------------------
 
+/// Fetches one URL's body. Injected so tests never touch the network.
+type Fetch<'a> = &'a dyn Fn(&str) -> anyhow::Result<Vec<u8>>;
+
 fn download_text(url: &str) -> anyhow::Result<String> {
     let body = ureq::get(url)
         .call()
@@ -690,6 +695,23 @@ fn download_text(url: &str) -> anyhow::Result<String> {
         .read_to_string()
         .map_err(|e| anyhow::anyhow!("failed to read response ({url}): {e}"))?;
     Ok(body)
+}
+
+fn download_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
+    ureq::get(url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("download failed ({url}): {e}"))?
+        .body_mut()
+        .read_to_vec()
+        .map_err(|e| anyhow::anyhow!("failed to read response ({url}): {e}"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn raw_github_url(repo: &str, branch: &str, path: &str) -> String {
@@ -940,7 +962,7 @@ fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()>
 const AGENTS_MD_MARKER_START: &str = "<!-- seite-seomachine-start -->";
 const AGENTS_MD_MARKER_END: &str = "<!-- seite-seomachine-end -->";
 
-fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
+fn append_agent_instructions_section(root: &Path, agents: &[Agent]) -> anyhow::Result<()> {
     crate::cli::agent_instructions::migrate(root)?;
 
     // Pack versions installed before AGENTS.md may have left a managed copy in
@@ -965,6 +987,18 @@ fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
     // Remove any existing SEOMachine section
     let cleaned = remove_agent_instructions_section(&existing);
 
+    let agent_note = if agents.contains(&Agent::Claude) {
+        format!(
+            "**Installed for:** {}. Subagents and slash commands are Claude Code-only; the other agents get the skills.\n\n**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`\n",
+            agent_labels(agents)
+        )
+    } else {
+        format!(
+            "**Installed for:** {}. SEOMachine's subagents and slash commands are Claude Code-only and were not installed; ask your agent to use the installed skills (`seo-audit`, `copywriting`, `content-strategy`, `schema-markup`, ...).\n",
+            agent_labels(agents)
+        )
+    };
+
     let section = format!(
         r#"
 {AGENTS_MD_MARKER_START}
@@ -972,8 +1006,7 @@ fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
 
 This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) installed for SEO content research, writing, and optimization.
 
-**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`
-
+{agent_note}
 **Context files** in `context/` define your brand voice, target keywords, and SEO guidelines. Fill these in for best results.
 
 **Directory layout:**
@@ -990,7 +1023,8 @@ This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) inst
 {seite_preamble}
 {AGENTS_MD_MARKER_END}
 "#,
-        seite_preamble = seite_context_preamble()
+        seite_preamble = seite_context_preamble(),
+        agent_note = agent_note
     );
 
     let mut result = cleaned;
@@ -1069,33 +1103,6 @@ DATAFORSEO_PASSWORD=
 // requirements-seo.txt scaffolding
 // ---------------------------------------------------------------------------
 
-fn scaffold_requirements(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
-    let req_path = root.join("requirements-seo.txt");
-    if req_path.exists() {
-        return Ok(());
-    }
-    let url = raw_github_url(pack.repo, pack.branch, "data_sources/requirements.txt");
-    let content = match download_text(&url) {
-        Ok(body) => body,
-        Err(_) => {
-            // Fallback if download fails
-            "google-analytics-data>=0.18.0\n\
-             google-auth>=2.23.0\n\
-             google-auth-oauthlib>=1.1.0\n\
-             google-auth-httplib2>=0.1.1\n\
-             google-api-python-client>=2.100.0\n\
-             requests>=2.31.0\n\
-             python-dotenv>=1.0.0\n\
-             beautifulsoup4>=4.12.0\n\
-             nltk>=3.8.0\n\
-             scikit-learn>=1.3.0\n"
-                .to_string()
-        }
-    };
-    crate::safe_fs::write(root, &req_path, content)?;
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // Name derivation and validation
 // ---------------------------------------------------------------------------
@@ -1131,10 +1138,14 @@ fn validate_skill_name(name: &str) -> anyhow::Result<()> {
 
 pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
     match &args.command {
-        SkillCommand::Install { source, name } => run_install(source, name.as_deref()),
+        SkillCommand::Install {
+            source,
+            name,
+            agents,
+        } => run_install(source, name.as_deref(), agents.as_deref()),
         SkillCommand::List => run_list(),
         SkillCommand::Remove { name } => run_remove(name),
-        SkillCommand::Update { name } => run_update(name.as_deref()),
+        SkillCommand::Update { name, agents } => run_update(name.as_deref(), agents.as_deref()),
     }
 }
 
@@ -1143,16 +1154,20 @@ pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+fn run_install(
+    source: &str,
+    name_override: Option<&str>,
+    agents_flag: Option<&str>,
+) -> anyhow::Result<()> {
     if source == IMPECCABLE {
-        return run_install_impeccable();
+        return run_install_impeccable(agents_flag);
     }
 
     let root = std::env::current_dir()?;
 
     // Check if it's a known pack
     if let Some(pack) = find_pack(source) {
-        return run_install_pack(&root, pack);
+        return run_install_pack(&root, pack, agents_flag, &[]);
     }
 
     // Check if it looks like a URL
@@ -1167,132 +1182,356 @@ fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> 
     ))
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
+/// Which coding agents a pack install targets: `--agents`, else the agents
+/// the pack was installed for, else `.seite/config.json`, else all.
+fn resolve_agents(
+    root: &Path,
+    flag: Option<&str>,
+    recorded: &[String],
+) -> anyhow::Result<Vec<Agent>> {
+    if let Some(flag) = flag {
+        return crate::cli::harness::parse_agent_list(flag);
+    }
+    let recorded = crate::cli::harness::from_ids(recorded);
+    if !recorded.is_empty() {
+        return Ok(recorded);
+    }
+    if let Some(ids) = crate::meta::load(root).and_then(|m| m.agents) {
+        let configured = crate::cli::harness::from_ids(&ids);
+        if !configured.is_empty() {
+            return Ok(configured);
+        }
+    }
+    Ok(Agent::ALL.to_vec())
+}
+
+/// Reduce a SKILL.md frontmatter to `name` and `description`, the portable
+/// Agent Skills subset every agent accepts (same rule as the seite skill in
+/// `.agents/skills/`). Content without frontmatter is returned unchanged.
+fn portable_skill_md(content: &str) -> String {
+    let Some(rest) = content.strip_prefix("---\n") else {
+        return content.to_string();
+    };
+    let mut out = String::from("---\n");
+    let mut keep = false;
+    let mut consumed = 0;
+    let mut closed = false;
+    for line in rest.split_inclusive('\n') {
+        consumed += line.len();
+        if line.trim_end() == "---" {
+            closed = true;
+            break;
+        }
+        let continuation =
+            line.starts_with([' ', '\t']) || line.trim().is_empty() || line.starts_with("- ");
+        if !continuation {
+            let key = line.split(':').next().unwrap_or("").trim();
+            keep = key == "name" || key == "description";
+        }
+        if keep {
+            out.push_str(line);
+            if !line.ends_with('\n') {
+                out.push('\n');
+            }
+        }
+    }
+    if !closed {
+        return content.to_string();
+    }
+    out.push_str("---\n");
+    out.push_str(&rest[consumed..]);
+    out
+}
+
+/// `<name>` of `.claude/skills/<name>/SKILL.md`.
+fn pinned_skill_name(path: &str) -> Option<&str> {
+    let name = path
+        .strip_prefix(".claude/skills/")?
+        .strip_suffix("/SKILL.md")?;
+    (!name.is_empty() && !name.contains('/')).then_some(name)
+}
+
+/// Distinct skills directories of the selected agents, with the frontmatter
+/// each takes (`.claude/skills` for Claude, shared `.agents/skills` for the
+/// rest), from `harness::PROVIDERS`.
+fn skill_dirs(agents: &[Agent]) -> Vec<(&'static str, SkillFrontmatter)> {
+    let mut dirs: Vec<(&'static str, SkillFrontmatter)> = Vec::new();
+    for agent in agents {
+        let spec = agent.spec();
+        if !dirs.iter().any(|(d, _)| *d == spec.skills_dir) {
+            dirs.push((spec.skills_dir, spec.skill_frontmatter));
+        }
+    }
+    dirs
+}
+
+/// One file to place in the project.
+struct Planned {
+    dest: String,
+    content: Vec<u8>,
+    /// Template the user is meant to edit: never overwrite an existing file.
+    keep_existing: bool,
+    /// Recorded in the manifest (and so deleted by `remove`).
+    track: bool,
+}
+
+/// Where each verified pinned file goes for the selected agents. Agents and
+/// commands are Claude Code-only; skills go to every selected agent's skills
+/// directory.
+fn plan_files(files: &[(PinnedFile, Vec<u8>)], agents: &[Agent]) -> Vec<Planned> {
+    let claude = agents.contains(&Agent::Claude);
+    let dirs = skill_dirs(agents);
+    let mut plan = Vec::new();
+    let mut push = |dest: String, content: Vec<u8>, keep_existing: bool, track: bool| {
+        plan.push(Planned {
+            dest,
+            content,
+            keep_existing,
+            track,
+        });
+    };
+    for (file, bytes) in files {
+        let path = file.path.as_str();
+        if path.starts_with(".claude/agents/") || path.starts_with(".claude/commands/") {
+            if claude {
+                push(path.to_string(), bytes.clone(), false, true);
+            }
+        } else if let Some(name) = pinned_skill_name(path) {
+            for (dir, frontmatter) in &dirs {
+                let content = match frontmatter {
+                    SkillFrontmatter::ClaudeCode => bytes.clone(),
+                    SkillFrontmatter::Portable => std::str::from_utf8(bytes)
+                        .map(|t| portable_skill_md(t).into_bytes())
+                        .unwrap_or_else(|_| bytes.clone()),
+                };
+                push(format!("{dir}/{name}/SKILL.md"), content, false, true);
+            }
+        } else if path.starts_with("context/") {
+            push(path.to_string(), bytes.clone(), true, true);
+        } else if path == "data_sources/requirements.txt" {
+            push(
+                "requirements-seo.txt".to_string(),
+                bytes.clone(),
+                true,
+                false,
+            );
+        } else {
+            push(format!("scripts/seo/{path}"), bytes.clone(), false, true);
+        }
+    }
+    if claude {
+        push(
+            ".claude/commands/publish-draft.md".to_string(),
+            seite_publish_draft_command().as_bytes().to_vec(),
+            false,
+            true,
+        );
+    }
+    plan
+}
+
+#[derive(Debug)]
+struct Applied {
+    files: Vec<String>,
+    hashes: BTreeMap<String, String>,
+    notes: Vec<String>,
+    written: usize,
+}
+
+/// Write the plan. A file is overwritten only if it is new, identical, or
+/// tracked by the previous install and still as installed; anything else the
+/// user owns is kept with a note. On a write error, files created by this
+/// run are removed again.
+fn apply_plan(root: &Path, plan: &[Planned], prev: Option<&PackEntry>) -> anyhow::Result<Applied> {
+    let mut created: Vec<PathBuf> = Vec::new();
+    let result = apply_plan_inner(root, plan, prev, &mut created);
+    if result.is_err() {
+        for path in created {
+            let _ = crate::safe_fs::remove(root, &path);
+        }
+    }
+    result
+}
+
+fn apply_plan_inner(
+    root: &Path,
+    plan: &[Planned],
+    prev: Option<&PackEntry>,
+    created: &mut Vec<PathBuf>,
+) -> anyhow::Result<Applied> {
+    enum Act {
+        Write,
+        Adopt,
+        Keep { modified: bool },
+    }
+    let mut applied = Applied {
+        files: Vec::new(),
+        hashes: BTreeMap::new(),
+        notes: Vec::new(),
+        written: 0,
+    };
+    for item in plan {
+        let path = root.join(&item.dest);
+        crate::safe_fs::guard(root, &path)?;
+        let new_hash = sha256_hex(&item.content);
+        let tracked = prev.is_some_and(|e| e.files.iter().any(|f| f == &item.dest));
+        let prev_hash = prev.and_then(|e| e.hashes.get(&item.dest)).cloned();
+        let disk = match fs::symlink_metadata(&path) {
+            Ok(m) if m.is_file() => Some(fs::read(&path)?),
+            Ok(_) => anyhow::bail!("{} is not a regular file", path.display()),
+            Err(_) => None,
+        };
+        let act = match &disk {
+            None => Act::Write,
+            Some(d) if sha256_hex(d) == new_hash => Act::Adopt,
+            Some(_) if item.keep_existing => Act::Keep { modified: false },
+            Some(d) if tracked => match &prev_hash {
+                Some(h) if *h != sha256_hex(d) => Act::Keep { modified: true },
+                _ => Act::Write,
+            },
+            Some(_) => Act::Keep { modified: false },
+        };
+        match act {
+            Act::Write => {
+                crate::safe_fs::write(root, &path, &item.content)?;
+                if disk.is_none() {
+                    created.push(path);
+                }
+                applied.written += 1;
+                if item.track {
+                    applied.files.push(item.dest.clone());
+                    applied.hashes.insert(item.dest.clone(), new_hash);
+                }
+            }
+            Act::Adopt => {
+                if item.track {
+                    applied.files.push(item.dest.clone());
+                    applied.hashes.insert(item.dest.clone(), new_hash);
+                }
+            }
+            Act::Keep { modified } => {
+                if !item.keep_existing {
+                    applied.notes.push(if modified {
+                        format!("kept {} (edited since install)", item.dest)
+                    } else {
+                        format!("kept {} (existing file not installed by seite)", item.dest)
+                    });
+                }
+                if tracked && item.track {
+                    applied.files.push(item.dest.clone());
+                    if let Some(h) = prev_hash {
+                        applied.hashes.insert(item.dest.clone(), h);
+                    }
+                }
+            }
+        }
+    }
+    Ok(applied)
+}
+
+/// Remove a file the previous install placed if it is still as installed
+/// (recorded hash matches); returns false when it was kept. A missing file
+/// counts as removed.
+fn remove_if_unmodified(
+    root: &Path,
+    entry: &PackEntry,
+    file: &str,
+    legacy_ok: bool,
+) -> anyhow::Result<bool> {
+    let path = root.join(file);
+    if fs::symlink_metadata(&path).is_err() {
+        return Ok(true);
+    }
+    crate::safe_fs::guard(root, &path)?;
+    let unmodified = match (entry.hashes.get(file), fs::read(&path)) {
+        (Some(h), Ok(bytes)) => *h == sha256_hex(&bytes),
+        // Manifests from before hashes were recorded cannot tell: `remove`
+        // deletes (as it always did), an update keeps the file.
+        (None, _) => legacy_ok,
+        (Some(_), Err(_)) => false,
+    };
+    if unmodified {
+        crate::safe_fs::remove(root, &path)?;
+        if let Some(parent) = path.parent() {
+            if crate::safe_fs::guard(root, parent).is_ok() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+    }
+    Ok(unmodified)
+}
+
+/// Install (or update to the binary's pin) a downloaded pack for `agents`.
+///
+/// Every pinned file is fetched and checked against its SHA-256 before
+/// anything is written, so a mismatch or failed download aborts with the
+/// project untouched.
+fn install_pack_with(
+    root: &Path,
+    pack: &SkillPack,
+    agents: &[Agent],
+    fetch: Fetch,
+) -> anyhow::Result<Applied> {
+    let pin = Pin::parse(pack.pin)?;
+    crate::cli::agent_instructions::validate_paths(root)?;
+    let short = &pin.commit[..7.min(pin.commit.len())];
     human::info(&format!(
-        "Installing skill pack '{}': {}",
-        pack.name, pack.description
+        "Installing skill pack '{}': {} (pinned {short}, {}, {} licence)",
+        pack.name,
+        pack.description,
+        pin.date.get(..10).unwrap_or(&pin.date),
+        pin.licence
+    ));
+    human::info(&format!(
+        "Downloading and verifying {} files...",
+        pin.files.len()
     ));
 
-    let mut installed_files: Vec<String> = Vec::new();
-    let mut download_errors: Vec<String> = Vec::new();
+    let mut verified: Vec<(PinnedFile, Vec<u8>)> = Vec::with_capacity(pin.files.len());
+    for file in &pin.files {
+        let url = raw_github_url(&pin.repo, &pin.commit, &file.path);
+        let bytes = fetch(&url)?;
+        let got = sha256_hex(&bytes);
+        if got != file.sha256 {
+            anyhow::bail!(
+                "checksum mismatch for {} at {short} (expected {}, got {got}); nothing was installed",
+                file.path,
+                file.sha256
+            );
+        }
+        verified.push((file.clone(), bytes));
+    }
 
-    // Download agents
-    let agents_dir = root.join(".claude").join("agents");
-    crate::safe_fs::create_dir_all(root, &agents_dir)?;
-    human::info(&format!("Downloading {} agents...", pack.agents.len()));
-    for agent in pack.agents {
-        let url = raw_github_url(pack.repo, pack.branch, &format!(".claude/agents/{agent}"));
-        match download_text(&url) {
-            Ok(body) => {
-                crate::safe_fs::write(root, &agents_dir.join(agent), &body)?;
-                installed_files.push(format!(".claude/agents/{agent}"));
+    let claude = agents.contains(&Agent::Claude);
+    if !claude {
+        human::info(&format!(
+            "SEOMachine's subagents and slash commands are Claude Code-only; installing its skills for {} only.",
+            agent_labels(agents)
+        ));
+    }
+
+    let plan = plan_files(&verified, agents);
+    let manifest = load_manifest(root);
+    let prev = manifest.packs.get(pack.name).cloned();
+    let mut applied = apply_plan(root, &plan, prev.as_ref())?;
+
+    // Files an earlier install placed that this one no longer does (an agent
+    // dropped, or a file removed from the pin).
+    if let Some(prev) = &prev {
+        let planned: BTreeSet<&str> = plan.iter().map(|p| p.dest.as_str()).collect();
+        for file in prev.files.iter().filter(|f| !planned.contains(f.as_str())) {
+            if !remove_if_unmodified(root, prev, file, false)? {
+                applied
+                    .notes
+                    .push(format!("kept {file} (edited since install)"));
             }
-            Err(e) => download_errors.push(format!("  agent {agent}: {e}")),
         }
     }
 
-    // Download commands
-    let commands_dir = root.join(".claude").join("commands");
-    crate::safe_fs::create_dir_all(root, &commands_dir)?;
-    human::info(&format!("Downloading {} commands...", pack.commands.len()));
-    for command in pack.commands {
-        // Skip publish-draft — we'll write our own seite-native version
-        if *command == "publish-draft.md" {
-            continue;
-        }
-        let url = raw_github_url(
-            pack.repo,
-            pack.branch,
-            &format!(".claude/commands/{command}"),
-        );
-        match download_text(&url) {
-            Ok(body) => {
-                crate::safe_fs::write(root, &commands_dir.join(command), &body)?;
-                installed_files.push(format!(".claude/commands/{command}"));
-            }
-            Err(e) => download_errors.push(format!("  command {command}: {e}")),
-        }
-    }
-
-    // Write seite-native publish-draft override
-    crate::safe_fs::write(
-        root,
-        &commands_dir.join("publish-draft.md"),
-        seite_publish_draft_command(),
-    )?;
-    installed_files.push(".claude/commands/publish-draft.md".to_string());
-
-    // Download skills
-    human::info(&format!("Downloading {} skills...", pack.skills.len()));
-    for skill in pack.skills {
-        let skill_dir = root.join(".claude").join("skills").join(skill);
-        crate::safe_fs::create_dir_all(root, &skill_dir)?;
-        let url = raw_github_url(
-            pack.repo,
-            pack.branch,
-            &format!(".claude/skills/{skill}/SKILL.md"),
-        );
-        match download_text(&url) {
-            Ok(body) => {
-                crate::safe_fs::write(root, &skill_dir.join("SKILL.md"), &body)?;
-                installed_files.push(format!(".claude/skills/{skill}/SKILL.md"));
-            }
-            Err(e) => download_errors.push(format!("  skill {skill}: {e}")),
-        }
-    }
-
-    // Download context file templates (only if they don't already exist)
-    let context_dir = root.join("context");
-    crate::safe_fs::create_dir_all(root, &context_dir)?;
-    human::info("Scaffolding context templates...");
-    for context_file in pack.context_files {
-        let dest = context_dir.join(context_file);
-        if dest.exists() {
-            continue; // Don't overwrite user-customized context files
-        }
-        let url = raw_github_url(pack.repo, pack.branch, &format!("context/{context_file}"));
-        match download_text(&url) {
-            Ok(body) => {
-                crate::safe_fs::write(root, &dest, &body)?;
-                installed_files.push(format!("context/{context_file}"));
-            }
-            Err(e) => download_errors.push(format!("  context {context_file}: {e}")),
-        }
-    }
-
-    // Download Python scripts
-    let scripts_dir = root.join("scripts").join("seo");
-    crate::safe_fs::create_dir_all(root, &scripts_dir)?;
-    human::info(&format!(
-        "Downloading {} Python scripts...",
-        pack.python_scripts.len()
-    ));
-    for script in pack.python_scripts {
-        let dest = scripts_dir.join(script);
-        if let Some(parent) = dest.parent() {
-            crate::safe_fs::create_dir_all(root, parent)?;
-        }
-        let url = raw_github_url(pack.repo, pack.branch, script);
-        match download_text(&url) {
-            Ok(body) => {
-                crate::safe_fs::write(root, &dest, &body)?;
-                installed_files.push(format!("scripts/seo/{script}"));
-            }
-            Err(e) => download_errors.push(format!("  script {script}: {e}")),
-        }
-    }
-
-    // Scaffold supporting files
     scaffold_env_example(root)?;
-    scaffold_requirements(root, pack)?;
-
-    // Create directories for SEOMachine workflow
-    for dir in &["research", "output", "topics"] {
+    for dir in ["context", "research", "output", "topics"] {
         crate::safe_fs::create_dir_all(root, &root.join(dir))?;
     }
-
-    // Add to .gitignore
     ensure_gitignore_entries(
         root,
         &[
@@ -1304,50 +1543,72 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
             ".claude/.seite-skill-packs.json",
         ],
     )?;
-
-    // Generate internal links map
     let links_map = generate_internal_links_map(root);
-    crate::safe_fs::write(root, &context_dir.join("internal-links-map.md"), &links_map)?;
+    crate::safe_fs::write(
+        root,
+        &root.join("context").join("internal-links-map.md"),
+        &links_map,
+    )?;
+    append_agent_instructions_section(root, agents)?;
 
-    // Append to the canonical cross-agent instructions.
-    append_agent_instructions_section(root)?;
-
-    // Save manifest
     let mut manifest = load_manifest(root);
     manifest.packs.insert(
         pack.name.to_string(),
         PackEntry {
-            source: format!("github:{}", pack.repo),
-            branch: pack.branch.to_string(),
+            source: format!("github:{}", pin.repo),
+            branch: pin.commit.clone(),
             installed_at: chrono::Utc::now().to_rfc3339(),
-            files: installed_files.clone(),
+            files: applied.files.clone(),
+            commit: Some(pin.commit.clone()),
+            date: Some(pin.date.clone()),
+            agents: crate::cli::harness::to_ids(agents),
+            hashes: applied.hashes.clone(),
         },
     );
     save_manifest(root, &manifest)?;
 
-    // Report
-    if !download_errors.is_empty() {
-        human::info(&format!(
-            "Some files failed to download ({} errors):",
-            download_errors.len()
-        ));
-        for err in &download_errors {
-            human::info(err);
-        }
+    for note in &applied.notes {
+        human::info(&format!("  {note}"));
     }
-
-    let total = installed_files.len();
     human::success(&format!(
-        "Installed '{}' — {} files (agents, commands, skills, context, scripts)",
-        pack.name, total
+        "Installed '{}' at {short} for {} — {} files written, {} tracked",
+        pack.name,
+        agent_labels(agents),
+        applied.written,
+        applied.files.len()
     ));
     human::info("");
     human::info("Next steps:");
     human::info("  1. Fill in context/ files with your brand voice, keywords, and guidelines");
     human::info("  2. (Optional) Set up analytics: copy .env.example to .env, fill in API keys");
     human::info("  3. (Optional) Install Python deps: pip install -r requirements-seo.txt");
-    human::info("  4. Start with: /research \"your topic\" or /write \"your topic\"");
+    if claude {
+        human::info("  4. Start with: /research \"your topic\" or /write \"your topic\"");
+    } else {
+        human::info(
+            "  4. Ask your agent to use the installed skills, e.g. seo-audit or copywriting",
+        );
+    }
+    Ok(applied)
+}
 
+fn agent_labels(agents: &[Agent]) -> String {
+    agents
+        .iter()
+        .map(|a| a.label())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_pack(
+    root: &Path,
+    pack: &SkillPack,
+    agents_flag: Option<&str>,
+    recorded: &[String],
+) -> anyhow::Result<()> {
+    let agents = resolve_agents(root, agents_flag, recorded)?;
+    install_pack_with(root, pack, &agents, &download_bytes)?;
     Ok(())
 }
 
@@ -1551,17 +1812,14 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         crate::cli::agent_instructions::validate_paths(root)?;
         human::info(&format!("Removing skill pack '{}'...", name));
 
+        let mut kept: Vec<&str> = Vec::new();
         for file in &entry.files {
-            let path = root.join(file);
-            if fs::symlink_metadata(&path).is_ok() {
-                crate::safe_fs::remove(root, &path)?;
+            if !remove_if_unmodified(root, &entry, file, true)? {
+                kept.push(file);
             }
-            // Clean up empty parent directories
-            if let Some(parent) = path.parent() {
-                if crate::safe_fs::guard(root, parent).is_ok() {
-                    let _ = fs::remove_dir(parent); // ignore errors (dir not empty)
-                }
-            }
+        }
+        for file in &kept {
+            human::info(&format!("  kept {file} (edited since install)"));
         }
 
         // Remove generated sections from canonical and legacy locations so
@@ -1579,9 +1837,10 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
         save_manifest(root, &manifest)?;
         human::success(&format!(
-            "Removed pack '{}' ({} files). Context files in context/ were kept.",
+            "Removed pack '{}' ({} files removed, {} edited files kept).",
             name,
-            entry.files.len()
+            entry.files.len() - kept.len(),
+            kept.len()
         ));
         return Ok(());
     }
@@ -1605,7 +1864,7 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_update(name: Option<&str>) -> anyhow::Result<()> {
+fn run_update(name: Option<&str>, agents_flag: Option<&str>) -> anyhow::Result<()> {
     if name == Some(IMPECCABLE) {
         let root = impeccable_root()?;
         if !impeccable_installed(&root) {
@@ -1621,10 +1880,10 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
 
     if let Some(name) = name {
         // Update specific pack
-        if manifest.packs.contains_key(name) {
+        if let Some(entry) = manifest.packs.get(name) {
             if let Some(pack) = find_pack(name) {
                 human::info(&format!("Updating pack '{}'...", name));
-                return run_install_pack(&root, pack);
+                return run_install_pack(&root, pack, agents_flag, &entry.agents);
             }
             return Err(anyhow::anyhow!(
                 "pack '{}' was installed but is no longer in the known packs registry",
@@ -1662,7 +1921,12 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
             run_update_impeccable(&root)?;
         } else if let Some(pack) = find_pack(pack_name) {
             human::info(&format!("Updating pack '{}'...", pack_name));
-            run_install_pack(&root, pack)?;
+            let recorded = manifest
+                .packs
+                .get(pack_name)
+                .map(|e| e.agents.clone())
+                .unwrap_or_default();
+            run_install_pack(&root, pack, agents_flag, &recorded)?;
         }
     }
 
@@ -1749,6 +2013,7 @@ mod tests {
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec!["file1.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -1790,7 +2055,7 @@ mod tests {
     fn test_agents_md_section_add_and_remove() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
@@ -1834,15 +2099,6 @@ mod tests {
         scaffold_env_example(tmp.path()).unwrap();
         let content2 = fs::read_to_string(tmp.path().join(".env.example")).unwrap();
         assert_eq!(content2, "custom");
-    }
-
-    #[test]
-    fn test_scaffold_requirements() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let pack = find_pack("seomachine").unwrap();
-        scaffold_requirements(tmp.path(), pack).unwrap();
-        let content = fs::read_to_string(tmp.path().join("requirements-seo.txt")).unwrap();
-        assert!(!content.is_empty());
     }
 
     #[test]
@@ -1928,7 +2184,7 @@ mod tests {
     fn test_append_agent_instructions_no_existing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         // No AGENTS.md exists
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
         assert!(content.contains(AGENTS_MD_MARKER_START));
@@ -1947,7 +2203,7 @@ mod tests {
         )
         .unwrap();
 
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("# Legacy project"));
@@ -1971,7 +2227,7 @@ mod tests {
         )
         .unwrap();
 
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert_eq!(agents.matches(AGENTS_MD_MARKER_START).count(), 1);
@@ -1987,8 +2243,8 @@ mod tests {
         fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
 
         // Call twice
-        append_agent_instructions_section(tmp.path()).unwrap();
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         // Should have exactly one section
@@ -2150,6 +2406,7 @@ mod tests {
                     ".claude/agents/test-agent.md".to_string(),
                     ".claude/commands/test-cmd.md".to_string(),
                 ],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2198,6 +2455,7 @@ mod tests {
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec![".claude/agents/test-agent.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2264,23 +2522,8 @@ mod tests {
     }
 
     #[test]
-    fn test_known_packs_seomachine_completeness() {
-        let pack = find_pack("seomachine").unwrap();
-        assert!(!pack.agents.is_empty());
-        assert!(!pack.commands.is_empty());
-        assert!(!pack.skills.is_empty());
-        assert!(!pack.context_files.is_empty());
-        assert!(!pack.python_scripts.is_empty());
-        assert_eq!(pack.agents.len(), 11);
-        assert_eq!(pack.commands.len(), 22);
-        assert_eq!(pack.skills.len(), 25);
-        assert_eq!(pack.context_files.len(), 9);
-        assert_eq!(pack.python_scripts.len(), 37);
-    }
-
-    #[test]
     fn test_run_install_unknown_source() {
-        let result = run_install("completely-unknown-pack", None);
+        let result = run_install("completely-unknown-pack", None, None);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown skill pack"));
@@ -2314,6 +2557,7 @@ mod tests {
                     ".claude/commands/publish-draft.md".to_string(),
                     ".claude/skills/content-strategy/SKILL.md".to_string(),
                 ],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2373,6 +2617,7 @@ mod tests {
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec![".claude/commands/cool.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2552,5 +2797,339 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let err = remove_from(tmp.path(), IMPECCABLE).unwrap_err();
         assert!(err.to_string().contains("no skill or pack named"));
+    }
+
+    // --- pinned install (fixture fetcher, no network) ---
+
+    const FIXTURE_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+    const FIXTURE_SKILL: &str = "---\nname: seo-audit\nversion: 1.0.0\ndescription: Audit SEO issues,\n  across a whole site.\nmetadata:\n  tags: seo\n---\n\n# SEO Audit\n";
+
+    fn fixture_files() -> Vec<(&'static str, Vec<u8>)> {
+        vec![
+            (".claude/agents/editor.md", b"# Editor".to_vec()),
+            (".claude/commands/write.md", b"# Write".to_vec()),
+            (
+                ".claude/skills/seo-audit/SKILL.md",
+                FIXTURE_SKILL.as_bytes().to_vec(),
+            ),
+            ("context/brand-voice.md", b"# Brand".to_vec()),
+            ("data_sources/requirements.txt", b"requests\n".to_vec()),
+            ("data_sources/modules/scorer.py", b"print('x')\n".to_vec()),
+        ]
+    }
+
+    fn fixture_pack(files: &[(&'static str, Vec<u8>)]) -> SkillPack {
+        let mut pin = format!(
+            "# repo owner/fixture\n# commit {FIXTURE_COMMIT}\n# date 2026-10-23T00:00:00Z\n# licence MIT\n"
+        );
+        for (path, bytes) in files {
+            pin.push_str(&format!("{}  {path}\n", sha256_hex(bytes)));
+        }
+        SkillPack {
+            name: "seomachine",
+            description: "fixture",
+            pin: Box::leak(pin.into_boxed_str()),
+        }
+    }
+
+    fn serve(files: Vec<(&'static str, Vec<u8>)>) -> impl Fn(&str) -> anyhow::Result<Vec<u8>> {
+        move |url: &str| {
+            let prefix =
+                format!("https://raw.githubusercontent.com/owner/fixture/{FIXTURE_COMMIT}/");
+            let path = url
+                .strip_prefix(&prefix)
+                .ok_or_else(|| anyhow::anyhow!("unexpected url {url}"))?;
+            files
+                .iter()
+                .find(|(p, _)| *p == path)
+                .map(|(_, b)| b.clone())
+                .ok_or_else(|| anyhow::anyhow!("404 {url}"))
+        }
+    }
+
+    fn install_fixture(root: &Path, agents: &[Agent]) -> Applied {
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        install_pack_with(root, &pack, agents, &serve(files)).unwrap()
+    }
+
+    #[test]
+    fn test_skill_bundled_seomachine_pin_is_valid() {
+        let pin = Pin::parse(SEOMACHINE_PIN).unwrap();
+        assert_eq!(pin.repo, "TheCraigHewitt/seomachine");
+        assert_eq!(pin.commit.len(), 40);
+        assert_eq!(pin.licence, "MIT");
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| f.path == ".claude/agents/editor.md"));
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| pinned_skill_name(&f.path) == Some("seo-audit")));
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| f.path == "data_sources/requirements.txt"));
+        // publish-draft is seite's own version, never downloaded.
+        assert!(!pin
+            .files
+            .iter()
+            .any(|f| f.path.ends_with("publish-draft.md")));
+    }
+
+    #[test]
+    fn test_skill_pin_rejects_bad_lines() {
+        let good = "# repo a/b\n# commit 0123456789abcdef0123456789abcdef01234567\n";
+        let hash = "a".repeat(64);
+        assert!(Pin::parse(&format!("{good}{hash}  ../etc/passwd\n")).is_err());
+        assert!(Pin::parse(&format!("{good}abc  x.md\n")).is_err());
+        assert!(Pin::parse(&format!("# repo a/b\n# commit main\n{hash}  x.md\n")).is_err());
+        assert!(Pin::parse(&format!("{good}{hash}  x.md\n")).is_ok());
+    }
+
+    #[test]
+    fn test_skill_hash_mismatch_aborts_with_nothing_written() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let mut tampered = files.clone();
+        tampered[4].1 = b"requests\nevil\n".to_vec();
+
+        let err = install_pack_with(tmp.path(), &pack, &[Agent::Claude], &serve(tampered))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("checksum mismatch"), "{err}");
+        assert!(err.contains("requirements.txt"), "{err}");
+        assert_eq!(
+            fs::read_dir(tmp.path()).unwrap().count(),
+            0,
+            "nothing may be written"
+        );
+    }
+
+    #[test]
+    fn test_skill_download_failure_aborts_with_nothing_written() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let missing: Vec<_> = files.iter().take(3).cloned().collect();
+        assert!(install_pack_with(tmp.path(), &pack, &[Agent::Claude], &serve(missing)).is_err());
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn test_skill_install_claude_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Claude]);
+        let root = tmp.path();
+
+        assert!(root.join(".claude/agents/editor.md").is_file());
+        assert!(root.join(".claude/commands/write.md").is_file());
+        assert!(root.join(".claude/commands/publish-draft.md").is_file());
+        assert!(root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .is_file());
+        assert!(root.join("requirements-seo.txt").is_file());
+        assert!(root.join("context/brand-voice.md").is_file());
+        assert!(!root.join(".agents").exists());
+        // Claude keeps the full frontmatter.
+        let skill = fs::read_to_string(root.join(".claude/skills/seo-audit/SKILL.md")).unwrap();
+        assert_eq!(skill, FIXTURE_SKILL);
+
+        let manifest = load_manifest(root);
+        let entry = &manifest.packs["seomachine"];
+        assert_eq!(entry.commit.as_deref(), Some(FIXTURE_COMMIT));
+        assert_eq!(entry.agents, vec!["claude".to_string()]);
+        assert!(entry
+            .files
+            .contains(&".claude/skills/seo-audit/SKILL.md".to_string()));
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(agents_md.contains("Installed for:** Claude Code"));
+        assert!(agents_md.contains("/research"));
+    }
+
+    #[test]
+    fn test_skill_install_codex_and_gemini_use_shared_skills_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Codex, Agent::Gemini]);
+        let root = tmp.path();
+
+        let skill = fs::read_to_string(root.join(".agents/skills/seo-audit/SKILL.md")).unwrap();
+        assert_eq!(
+            skill,
+            "---\nname: seo-audit\ndescription: Audit SEO issues,\n  across a whole site.\n---\n\n# SEO Audit\n"
+        );
+        assert!(!root.join(".claude/agents").exists());
+        assert!(!root.join(".claude/commands").exists());
+        assert!(!root.join(".claude/skills").exists());
+        assert!(root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .is_file());
+
+        let manifest = load_manifest(root);
+        let entry = &manifest.packs["seomachine"];
+        assert_eq!(
+            entry.agents,
+            vec!["codex".to_string(), "gemini".to_string()]
+        );
+        assert!(!entry.files.iter().any(|f| f.starts_with(".claude/")));
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(agents_md.contains("Codex, Gemini CLI") || agents_md.contains("Codex"));
+        assert!(agents_md.contains("Claude Code-only"));
+        assert!(!agents_md.contains("/research"));
+
+        let summary = gather_skill_summary(root);
+        assert_eq!(summary.packs[0].skills, vec!["seo-audit".to_string()]);
+    }
+
+    #[test]
+    fn test_skill_install_claude_and_codex_write_both_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Claude, Agent::Codex]);
+        let claude =
+            fs::read_to_string(tmp.path().join(".claude/skills/seo-audit/SKILL.md")).unwrap();
+        let shared =
+            fs::read_to_string(tmp.path().join(".agents/skills/seo-audit/SKILL.md")).unwrap();
+        assert!(claude.contains("version: 1.0.0"));
+        assert!(!shared.contains("version:"));
+    }
+
+    #[test]
+    fn test_skill_portable_frontmatter_without_frontmatter_is_unchanged() {
+        assert_eq!(portable_skill_md("# Just text\n"), "# Just text\n");
+        assert_eq!(
+            portable_skill_md("---\nname: x\nno close\n"),
+            "---\nname: x\nno close\n"
+        );
+    }
+
+    #[test]
+    fn test_skill_update_from_old_manifest_without_hashes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // A pre-pinning install: branch only, no hashes, Claude paths.
+        fs::create_dir_all(root.join(".claude/agents")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md"), "# Old editor").unwrap();
+        fs::write(root.join(".claude/agents/retired.md"), "# Retired").unwrap();
+        let old = r#"{"packs":{"seomachine":{"source":"github:owner/fixture","branch":"4e04990d","installed_at":"2026-03-05T00:00:00Z","files":[".claude/agents/editor.md",".claude/agents/retired.md"]}}}"#;
+        fs::create_dir_all(root.join(".claude")).unwrap();
+        fs::write(root.join(".claude/.seite-skill-packs.json"), old).unwrap();
+
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        install_pack_with(root, &pack, &[Agent::Claude, Agent::Codex], &serve(files)).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# Editor"
+        );
+        assert!(root.join(".agents/skills/seo-audit/SKILL.md").is_file());
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(entry.commit.as_deref(), Some(FIXTURE_COMMIT));
+        assert!(!entry.hashes.is_empty());
+        // No recorded hash: a stale legacy file is kept, not guessed at.
+        assert!(root.join(".claude/agents/retired.md").is_file());
+        assert!(!entry
+            .files
+            .contains(&".claude/agents/retired.md".to_string()));
+    }
+
+    #[test]
+    fn test_skill_update_keeps_edited_files_and_drops_deselected_agents() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".claude/agents/editor.md"), "# My editor").unwrap();
+
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let applied = install_pack_with(root, &pack, &[Agent::Claude], &serve(files)).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# My editor"
+        );
+        assert!(applied.notes.iter().any(|n| n.contains("editor.md")));
+        // The unedited codex copy is deleted, empty dirs included.
+        assert!(!root.join(".agents/skills/seo-audit").exists());
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
+    }
+
+    #[test]
+    fn test_skill_install_does_not_clobber_untracked_user_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/commands")).unwrap();
+        fs::write(root.join(".claude/commands/write.md"), "mine").unwrap();
+        let applied = install_fixture(root, &[Agent::Claude]);
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/commands/write.md")).unwrap(),
+            "mine"
+        );
+        assert!(applied.notes.iter().any(|n| n.contains("write.md")));
+        assert!(!load_manifest(root).packs["seomachine"]
+            .files
+            .contains(&".claude/commands/write.md".to_string()));
+    }
+
+    #[test]
+    fn test_skill_remove_keeps_modified_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".claude/agents/editor.md"), "# My editor").unwrap();
+
+        remove_from(root, "seomachine").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# My editor"
+        );
+        assert!(!root.join(".claude/commands/write.md").exists());
+        assert!(!root.join(".agents/skills/seo-audit").exists());
+        assert!(!load_manifest(root).packs.contains_key("seomachine"));
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(!agents_md.contains(AGENTS_MD_MARKER_START));
+    }
+
+    #[test]
+    fn test_skill_manifest_backward_compat() {
+        let old = r#"{"packs":{"seomachine":{"source":"github:a/b","branch":"abc","installed_at":"t","files":["x.md"]}}}"#;
+        let manifest: SkillPacksManifest = serde_json::from_str(old).unwrap();
+        let entry = &manifest.packs["seomachine"];
+        assert!(entry.commit.is_none() && entry.agents.is_empty() && entry.hashes.is_empty());
+        // Old fields only on the way out when the new ones are empty.
+        let json = serde_json::to_string(entry).unwrap();
+        assert!(!json.contains("hashes") && !json.contains("agents"));
+    }
+
+    #[test]
+    fn test_skill_resolve_agents_precedence() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No config: all agents.
+        assert_eq!(
+            resolve_agents(tmp.path(), None, &[]).unwrap(),
+            Agent::ALL.to_vec()
+        );
+        // Recorded beats default; the flag beats recorded.
+        let recorded = vec!["codex".to_string()];
+        assert_eq!(
+            resolve_agents(tmp.path(), None, &recorded).unwrap(),
+            vec![Agent::Codex]
+        );
+        assert_eq!(
+            resolve_agents(tmp.path(), Some("claude"), &recorded).unwrap(),
+            vec![Agent::Claude]
+        );
+        assert!(resolve_agents(tmp.path(), Some("nope"), &[]).is_err());
     }
 }
