@@ -404,18 +404,24 @@ pub struct TailwindSection {
     /// fingerprinted like every other static file.
     #[serde(default = "defaults::tailwind_output")]
     pub output: String,
-    /// Tailwind version. Default: the pinned version seite verifies by
-    /// checksum; any other version needs `binary`.
+    /// Only accepted when it names the pinned version: seite.toml never
+    /// chooses which program seite runs (a cloned repo could otherwise make
+    /// `seite check` in an agent hook run anything). Read only to report a
+    /// located `config-invalid` pointing at `SEITE_TAILWIND_BIN`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// Your own `tailwindcss` executable (relative to the site root or
-    /// absolute) instead of the downloaded one.
+    /// Always rejected (`config-invalid`): use the `SEITE_TAILWIND_BIN`
+    /// environment variable instead. Read only to report it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub binary: Option<String>,
-    /// Runtime only: never download the binary (`seite check --hook`); when
-    /// it is not cached, the input is copied as-is instead of compiled.
+    /// Runtime only: never download the binary (`seite check`/`audit`
+    /// scratch builds); when it is not cached, the input is copied as-is.
     #[serde(skip)]
     pub offline: bool,
+    /// Runtime only: never run Tailwind at all and report nothing about it;
+    /// the input is copied as-is (agent hooks, MCP `seite_check`).
+    #[serde(skip)]
+    pub never_run: bool,
 }
 
 impl Default for TailwindSection {
@@ -426,6 +432,7 @@ impl Default for TailwindSection {
             version: None,
             binary: None,
             offline: false,
+            never_run: false,
         }
     }
 }

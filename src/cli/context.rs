@@ -358,8 +358,8 @@ fn gather(state: &ServerState, version: &str) -> Value {
             "tailwind": state.config.as_ref().and_then(|c| c.build.tailwind.as_ref()).map(|tw| json!({
                 "input": tw.input,
                 "stylesheet": format!("/static/{}", tw.output),
-                "version": tw.version.clone().unwrap_or_else(|| crate::build::tailwind::PINNED_VERSION.to_string()),
-                "binary": tw.binary,
+                "version": crate::build::tailwind::PINNED_VERSION,
+                "binary_env": std::env::var_os(crate::build::tailwind::BIN_ENV).map(|v| v.to_string_lossy().to_string()),
             })),
         },
         "docs": local_docs.is_dir().then_some(".seite/docs/"),

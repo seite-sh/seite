@@ -11,7 +11,7 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 2. Load Tera templates (user + embedded defaults, collection-aware)
 2b. Load shortcode registry (built-in + user `templates/shortcodes/`)
 2.5. Load data files (`data/` → `{{ data.filename }}` in templates)
-2.6. Tailwind (`[build.tailwind]`, `src/build/tailwind.rs`): resolve the pinned, SHA-256-verified standalone CLI (or `binary`), run `<bin> -i <input> -o <tmp> --minify` with cwd = site root; errors (`tailwind-failed`, `tailwind-download-failed`) join `fatal`. The bytes are written in Step 10. Runs on every build (incremental too); `TailwindSection.offline` (check hooks) never downloads
+2.6. Tailwind (`[build.tailwind]`, `src/build/tailwind.rs`): resolve the pinned, SHA-256-verified standalone CLI (or env `SEITE_TAILWIND_BIN`; never seite.toml), guard `input` (no symlinks, inside root), run `<bin> -i <input> -o <tmp> --minify` with cwd = site root; errors (`tailwind-failed`, `tailwind-download-failed`) join `fatal`. The bytes are written in Step 10. Runs on every build (incremental too); `TailwindSection.offline` (check/audit scratch builds) never downloads; `never_run` (hooks, MCP check) never runs it
 3. Process each collection: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort; then build the `ContentModel` once (taxonomy terms, `page.related` via a term → pages index, series) and render item pages with `page.taxonomies` / `page.related` / `page.series` added
 4. Render index page(s) per language
 4b. Paginated collection index pages

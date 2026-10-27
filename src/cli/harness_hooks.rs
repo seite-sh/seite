@@ -620,7 +620,7 @@ fn evaluate(agent: Agent, input: &Value, include_drafts: bool) -> anyhow::Result
     if should_skip(agent, input, &root) {
         return Ok(None);
     }
-    let diagnostics = crate::cli::check::check_site_offline(&root, include_drafts)?;
+    let diagnostics = crate::cli::check::check_site(&root, include_drafts)?;
     Ok(block_reason(&diagnostics).map(|reason| encode(agent, input, &reason)))
 }
 

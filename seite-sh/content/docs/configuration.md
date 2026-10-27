@@ -236,16 +236,20 @@ With `minify = true`, a stylesheet's local imports are bundled into it: `@import
 [build.tailwind]
 input = "static/css/tailwind.css"   # the entry CSS (default)
 output = "css/tailwind.css"          # inside the output's static/ dir → /static/css/tailwind.css (default)
-# version = "4.3.3"                  # default: the pinned version; any other needs `binary`
-# binary = "bin/tailwindcss"         # your own executable (relative to the site root, or absolute)
 ```
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `input` | `"static/css/tailwind.css"` | Entry CSS, relative to the site root. It is compiled, never copied as-is |
 | `output` | `"css/tailwind.css"` | Where the compiled CSS goes, relative to the output's `static/` directory. It is minified by Tailwind and fingerprinted like any other static file |
-| `version` | the pinned version | Only the pinned version is downloaded (seite has no checksum for others); set `binary` to use another |
-| `binary` | none | Use this `tailwindcss` executable instead of the download (offline machines, other versions, unsupported platforms) |
+
+**Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment, never through `seite.toml`:
+
+```bash
+export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
+```
+
+`seite.toml` cannot name a program for seite to run: a cloned repository could otherwise make `seite check`, which coding-agent hooks run automatically, execute anything. A `binary` key, or a `version` other than the pinned one, in `[build.tailwind]` is a `config-invalid` error. The `input` must be a real file inside the site (no symlinks), and the CLI runs with a minimal environment (`PATH`, `HOME`, temp directories) and a two-minute timeout.
 
 `seite theme new --tailwind` sets it up: it adds the table, writes the entry file, and links the compiled stylesheet from `templates/base.html`:
 
@@ -264,7 +268,7 @@ The entry file it writes lists where class names come from explicitly:
 
 Paths are relative to the CSS file. Tailwind runs with the site root as its working directory, so a plain `@import "tailwindcss";` uses Tailwind's automatic source detection instead; prefer `source(none)` plus `@source` lines so build output, caches and other generated files never feed into the class scan. Add an `@source` line for anything else that holds class names.
 
-The build runs Tailwind on every build, including `seite serve` rebuilds, so a class added to a template or a markdown file shows up on the next reload. A Tailwind error stops the build with a [`tailwind-failed`](/docs/errors#tailwind-failed) diagnostic; a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed). `seite check` compiles too (it validates the CSS). The check hooks of coding agents never download: until the CLI is cached they skip Tailwind silently.
+The build runs Tailwind on every build, including `seite serve` rebuilds, so a class added to a template or a markdown file shows up on the next reload. A Tailwind error stops the build with a [`tailwind-failed`](/docs/errors#tailwind-failed) diagnostic; a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed). Only `seite build` and `seite serve` download the CLI. `seite check` and `seite audit` compile with an already cached CLI (it validates the CSS) and otherwise skip Tailwind with a note. Coding-agent check hooks and the MCP `seite_check` tool never run Tailwind: they treat the entry CSS as a plain stylesheet.
 
 ### Search
 

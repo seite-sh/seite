@@ -7,17 +7,27 @@
 //!   on first use from the GitHub release, size-capped, hashed while it
 //!   streams to a temp file in the cache directory, and only made
 //!   executable and renamed into place (atomically) once the hash matches.
-//!   Any other `version` needs `binary` (there is no checksum to check).
+//! - **seite.toml never picks the program.** The only executable seite runs
+//!   is that verified download, or the one named by the user-level
+//!   [`BIN_ENV`] environment variable. `binary`, or a `version` other than
+//!   the pinned one, in seite.toml is a `config-invalid` error: a cloned
+//!   repository must not be able to make `seite check` (which agent hooks
+//!   run automatically) execute something of its choosing.
 //! - **Cache.** Per user ([`crate::platform::cache_dir`]`/tailwind/<ver>/`),
 //!   falling back to `.seite/cache/tailwind/<ver>/` (gitignored, written
 //!   only through [`crate::safe_fs`] checks) when there is no usable user
 //!   cache dir. The cached file is re-hashed before its first use in each
 //!   process (and again if its size or mtime changes); a mismatch means it
 //!   is downloaded again.
-//! - **Network only on opt-in.** Nothing is downloaded unless the site has
-//!   `[build.tailwind]`. `seite check --hook` sets
-//!   [`TailwindSection::offline`]: with no cached binary the input is then
-//!   copied as-is (no download, no diagnostic).
+//! - **Who downloads.** Only `seite build`/`seite serve` (and other real
+//!   builds). `seite check`/`audit` scratch builds set
+//!   [`TailwindSection::offline`]: they run a cached binary, and without one
+//!   copy the input as-is after one info note. Agent hooks and the MCP
+//!   `seite_check` tool drop `[build.tailwind]` entirely (never run it).
+//! - **Confinement.** `input` must resolve inside the site root with no
+//!   symlinked component ([`crate::safe_fs::guard`]) before it is compiled
+//!   or copied; `input`/`output` are plain relative paths. The CLI runs with
+//!   a minimal environment (PATH, HOME, temp dirs) and a timeout.
 //! - **Build.** `build_site_inner` calls [`run`] right after the data files
 //!   load (before any page renders, so the staging output holds only
 //!   `public/` copies while Tailwind scans the site), as
@@ -171,12 +181,20 @@ pub fn validate_config(config: &SiteConfig) -> Result<(), (String, String)> {
         return Ok(());
     };
     let key = |name: &str| format!("[build.tailwind]{name}");
+    if tw.binary.is_some() {
+        return Err((
+            format!(
+                "[build.tailwind] binary is not supported: seite.toml cannot choose a program for seite to run (a cloned repository could run anything through `seite check`). Remove it; to use your own tailwindcss, set the {BIN_ENV} environment variable (e.g. {BIN_ENV}=/usr/local/bin/tailwindcss)"
+            ),
+            key("binary"),
+        ));
+    }
     if let Some(version) = &tw.version {
         let wanted = version.trim().trim_start_matches('v');
-        if wanted != PINNED_VERSION && tw.binary.is_none() {
+        if wanted != PINNED_VERSION {
             return Err((
                 format!(
-                    "[build.tailwind] version = \"{version}\": seite only downloads Tailwind {PINNED_VERSION}, the release whose checksums it ships (it never runs an unverified download). Remove `version`, or set `binary` to your own tailwindcss {wanted} executable"
+                    "[build.tailwind] version = \"{version}\": seite only runs Tailwind {PINNED_VERSION}, the release whose SHA-256 checksums it ships. Remove `version`; to use tailwindcss {wanted}, set the {BIN_ENV} environment variable to your own executable"
                 ),
                 key("version"),
             ));
@@ -192,14 +210,12 @@ pub fn validate_config(config: &SiteConfig) -> Result<(), (String, String)> {
             ));
         }
     }
-    if tw.binary.as_deref().is_some_and(|b| b.trim().is_empty()) {
-        return Err((
-            "[build.tailwind] binary is empty: remove it to use the downloaded Tailwind, or give the path to a tailwindcss executable".into(),
-            key("binary"),
-        ));
-    }
     Ok(())
 }
+
+/// User-level override for the Tailwind executable (never read from
+/// seite.toml).
+pub const BIN_ENV: &str = "SEITE_TAILWIND_BIN";
 
 /// A non-empty relative path with only normal components.
 fn is_plain_relative(path: &str) -> bool {
@@ -361,25 +377,36 @@ fn cache_dirs(root: &Path) -> Vec<(PathBuf, bool)> {
     dirs
 }
 
-/// Where the Tailwind executable is: `binary`, or the verified pinned
-/// download (fetched with `fetch` when not cached). `Ok(None)`: offline and
-/// not cached (the caller copies the input as-is).
+/// The [`BIN_ENV`] override, when set and non-empty.
+fn env_binary() -> Option<PathBuf> {
+    std::env::var_os(BIN_ENV)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Where the Tailwind executable is: `env_bin` ([`BIN_ENV`]), or the
+/// verified pinned download (fetched with `fetch` when not cached).
+/// `Ok(None)`: offline and not cached (the caller copies the input as-is).
 pub fn resolve_binary(
     tw: &TailwindSection,
     root: &Path,
+    env_bin: Option<&Path>,
     fetch: Fetch,
 ) -> Result<Option<PathBuf>, Box<Diagnostic>> {
-    if let Some(binary) = &tw.binary {
-        let path = root.join(binary);
+    if let Some(path) = env_bin {
         if !path.is_file() {
-            return Err(Box::new(Diagnostic::error(
-                "tailwind-failed",
-                format!("[build.tailwind] binary `{binary}` does not exist"),
-            )
-            .with_file("seite.toml")
-            .with_hint("give the path (relative to the site root, or absolute) of a tailwindcss v4 executable, or remove `binary` to use the pinned download")));
+            return Err(Box::new(
+                Diagnostic::error(
+                    "tailwind-failed",
+                    format!("{BIN_ENV}={} does not exist", path.display()),
+                )
+                .with_file("seite.toml")
+                .with_hint(format!(
+                    "point {BIN_ENV} at a tailwindcss v4 executable, or unset it to use the pinned download"
+                )),
+            ));
         }
-        return Ok(Some(path));
+        return Ok(Some(path.to_path_buf()));
     }
     let Some(asset) = host_asset() else {
         return Err(Box::new(
@@ -392,9 +419,9 @@ pub fn resolve_binary(
                 ),
             )
             .with_file("seite.toml")
-            .with_hint(
-                "build or install tailwindcss for this machine and set [build.tailwind] binary to it",
-            ),
+            .with_hint(format!(
+                "build or install tailwindcss for this machine and set the {BIN_ENV} environment variable to it"
+            )),
         ));
     };
     let dirs = cache_dirs(root);
@@ -406,6 +433,9 @@ pub fn resolve_binary(
         return Ok(Some(found));
     }
     if tw.offline {
+        info_stderr(&format!(
+            "Tailwind CSS v{PINNED_VERSION} is not downloaded yet, so this check skips it (`seite build` downloads it once)"
+        ));
         return Ok(None);
     }
     let mut errors = Vec::new();
@@ -444,7 +474,7 @@ pub fn resolve_binary(
     )
     .with_file("seite.toml")
     .with_hint(format!(
-        "check the network and retry, or download {} yourself, verify it, and set [build.tailwind] binary to it",
+        "check the network and retry, or download {} yourself, verify it, and set the {BIN_ENV} environment variable to it",
         asset_url(asset)
     ))))
 }
@@ -465,7 +495,8 @@ pub fn compile(bin: &Path, tw: &TailwindSection, root: &Path) -> Result<Vec<u8>,
                 .with_hint(hint.to_string()),
         )
     };
-    if !root.join(&tw.input).is_file() {
+    let input = confined_input(tw, root)?;
+    if !input.is_file() {
         return Err(fail(
             format!("Tailwind input `{}` does not exist", tw.input),
             "create it with `@import \"tailwindcss\";` (or `seite theme new --tailwind`), or point [build.tailwind] input at your entry CSS",
@@ -476,23 +507,32 @@ pub fn compile(bin: &Path, tw: &TailwindSection, root: &Path) -> Result<Vec<u8>,
         .tempdir()
         .map_err(|e| fail(format!("cannot create a temp dir: {e}"), ""))?;
     let out = scratch.path().join("tailwind.css");
-    let output = Command::new(bin)
+    let mut command = Command::new(bin);
+    command
         .current_dir(root)
         .arg("-i")
         .arg(&tw.input)
         .arg("-o")
         .arg(&out)
         .arg("--minify")
+        .env_clear()
         .stdin(Stdio::null())
-        .output()
-        .map_err(|e| {
-            fail(
-                format!("could not run {}: {e}", bin.display()),
-                "check that [build.tailwind] binary is a tailwindcss executable",
-            )
-        })?;
-    if !output.status.success() {
-        let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    // A minimal environment: no tokens or other secrets from the caller's.
+    for var in KEPT_ENV {
+        if let Some(value) = std::env::var_os(var) {
+            command.env(var, value);
+        }
+    }
+    let (status, stderr) = run_with_timeout(command, COMPILE_TIMEOUT).map_err(|e| {
+        fail(
+            format!("could not run {}: {e}", bin.display()),
+            &format!("check that the Tailwind CLI ({BIN_ENV} or the cached download) is a tailwindcss executable"),
+        )
+    })?;
+    if !status.success() {
+        let stderr = strip_ansi(&String::from_utf8_lossy(&stderr));
         let tail: Vec<&str> = stderr
             .lines()
             // Drop the CLI's banner and box drawing around its messages.
@@ -500,8 +540,7 @@ pub fn compile(bin: &Path, tw: &TailwindSection, root: &Path) -> Result<Vec<u8>,
             .filter(|l| !l.is_empty() && !l.starts_with('≈') && *l != "Error:")
             .collect();
         let tail = tail[tail.len().saturating_sub(15)..].join("\n");
-        let status = output
-            .status
+        let status = status
             .code()
             .map_or("a signal".to_string(), |c| format!("status {c}"));
         return Err(fail(
@@ -515,9 +554,78 @@ pub fn compile(bin: &Path, tw: &TailwindSection, root: &Path) -> Result<Vec<u8>,
     std::fs::read(&out).map_err(|e| {
         fail(
             format!("tailwindcss wrote no output ({e})"),
-            "check that [build.tailwind] binary is the Tailwind v4 CLI",
+            &format!(
+                "check that the Tailwind CLI ({BIN_ENV} or the cached download) is Tailwind v4"
+            ),
         )
     })
+}
+
+/// Environment variables the Tailwind CLI keeps (everything else is
+/// cleared).
+const KEPT_ENV: &[&str] = &[
+    "PATH",
+    "HOME",
+    "USERPROFILE",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "SYSTEMROOT",
+    "LANG",
+];
+
+/// Longest a Tailwind compile may take before it is killed.
+const COMPILE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Run `command` (stderr piped) and wait at most `timeout`; returns the
+/// exit status and stderr. A process still running at the deadline is
+/// killed.
+fn run_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+) -> std::io::Result<(std::process::ExitStatus, Vec<u8>)> {
+    let mut child = command.spawn()?;
+    let mut stderr_pipe = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(pipe) = stderr_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("timed out after {} s", timeout.as_secs()),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let stderr = reader.join().unwrap_or_default();
+    Ok((status, stderr))
+}
+
+/// `root/<input>`, refused (as `tailwind-failed`) when a component is a
+/// symlink or it resolves outside the site root.
+pub fn confined_input(tw: &TailwindSection, root: &Path) -> Result<PathBuf, Box<Diagnostic>> {
+    let input = root.join(&tw.input);
+    crate::safe_fs::guard(root, &input).map_err(|e| {
+        Box::new(
+            Diagnostic::error("tailwind-failed", format!("Tailwind input: {e}"))
+                .with_file("seite.toml")
+                .with_hint(
+                    "[build.tailwind] input must be a real file inside the site (no symlinks)",
+                ),
+        )
+    })?;
+    Ok(input)
 }
 
 /// Drop ANSI escape sequences (`ESC [ ... letter`).
@@ -544,23 +652,31 @@ fn strip_ansi(s: &str) -> String {
 /// The compiled stylesheet for the site, or `None` without
 /// `[build.tailwind]`. Offline with no cached binary: the raw input.
 pub fn run(config: &SiteConfig, root: &Path) -> Result<Option<Vec<u8>>, Box<Diagnostic>> {
-    run_with(config, root, &http_fetch)
+    run_with(config, root, env_binary().as_deref(), &http_fetch)
 }
 
-/// [`run`] with an injected download function.
+/// [`run`] with an injected [`BIN_ENV`] value and download function.
 pub fn run_with(
     config: &SiteConfig,
     root: &Path,
+    env_bin: Option<&Path>,
     fetch: Fetch,
 ) -> Result<Option<Vec<u8>>, Box<Diagnostic>> {
     let Some(tw) = &config.build.tailwind else {
         return Ok(None);
     };
-    match resolve_binary(tw, root, fetch)? {
+    if tw.never_run {
+        // As if Tailwind were absent: the input as-is, nothing reported.
+        return Ok(confined_input(tw, root)
+            .ok()
+            .and_then(|input| std::fs::read(input).ok()));
+    }
+    match resolve_binary(tw, root, env_bin, fetch)? {
         Some(bin) => compile(&bin, tw, root).map(Some),
-        None => Ok(Some(
-            std::fs::read(root.join(&tw.input)).unwrap_or_default(),
-        )),
+        None => {
+            let input = confined_input(tw, root)?;
+            Ok(Some(std::fs::read(input).unwrap_or_default()))
+        }
     }
 }
 
@@ -714,14 +830,17 @@ mod tests {
             version: Some("4.0.0".into()),
             ..Default::default()
         };
-        let (msg, key) = validate_config(&config_with(other.clone())).unwrap_err();
-        assert!(msg.contains("binary"), "{msg}");
+        let (msg, key) = validate_config(&config_with(other)).unwrap_err();
+        assert!(msg.contains(BIN_ENV), "{msg}");
         assert_eq!(key, "[build.tailwind]version");
+        // seite.toml never names the program to run.
         let with_binary = TailwindSection {
             binary: Some("bin/tailwindcss".into()),
-            ..other
+            ..Default::default()
         };
-        assert!(validate_config(&config_with(with_binary)).is_ok());
+        let (msg, key) = validate_config(&config_with(with_binary)).unwrap_err();
+        assert!(msg.contains(BIN_ENV), "{msg}");
+        assert_eq!(key, "[build.tailwind]binary");
         for bad in ["../x.css", "/abs/x.css", ""] {
             let tw = TailwindSection {
                 input: bad.into(),
@@ -782,9 +901,9 @@ mod tests {
         let never = |_: &str| -> Result<Box<dyn Read>, String> { panic!("no download offline") };
         // The pinned binary is not in this fresh project's cache; the user
         // cache may hold it on a developer machine, so accept either.
-        match resolve_binary(&tw, tmp.path(), &never).unwrap() {
+        match resolve_binary(&tw, tmp.path(), None, &never).unwrap() {
             None => {
-                let css = run_with(&config_with(tw), tmp.path(), &never).unwrap();
+                let css = run_with(&config_with(tw), tmp.path(), None, &never).unwrap();
                 assert_eq!(css.unwrap(), b"@import \"tailwindcss\";");
             }
             Some(path) => assert!(path.is_file()),
@@ -794,13 +913,17 @@ mod tests {
     #[test]
     fn test_missing_binary_and_input() {
         let tmp = tempfile::tempdir().unwrap();
-        let tw = TailwindSection {
-            binary: Some("nope/tailwindcss".into()),
-            ..Default::default()
-        };
         let never = |_: &str| -> Result<Box<dyn Read>, String> { panic!("no download") };
-        let d = resolve_binary(&tw, tmp.path(), &never).unwrap_err();
+        let missing = tmp.path().join("nope/tailwindcss");
+        let d = resolve_binary(
+            &TailwindSection::default(),
+            tmp.path(),
+            Some(&missing),
+            &never,
+        )
+        .unwrap_err();
         assert_eq!(d.code, "tailwind-failed");
+        assert!(d.message.contains(BIN_ENV));
         let d = compile(
             Path::new("/bin/true"),
             &TailwindSection::default(),
@@ -809,6 +932,59 @@ mod tests {
         .unwrap_err();
         assert_eq!(d.code, "tailwind-failed");
         assert!(d.message.contains("does not exist"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_input_symlink_or_outside_root_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("site");
+        std::fs::create_dir_all(root.join("static/css")).unwrap();
+        std::fs::write(tmp.path().join("secret.css"), "secret").unwrap();
+        std::os::unix::fs::symlink(
+            tmp.path().join("secret.css"),
+            root.join("static/css/tailwind.css"),
+        )
+        .unwrap();
+        let tw = TailwindSection {
+            offline: true,
+            ..Default::default()
+        };
+        // Neither compiled nor copied raw.
+        let d = confined_input(&tw, &root).unwrap_err();
+        assert_eq!(d.code, "tailwind-failed");
+        let d = compile(Path::new("/bin/true"), &tw, &root).unwrap_err();
+        assert!(d.message.contains("symlink"), "{}", d.message);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_compile_runs_with_minimal_env_and_timeout() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("static/css")).unwrap();
+        std::fs::write(tmp.path().join("static/css/tailwind.css"), "x").unwrap();
+        // Writes the environment it sees to the -o path.
+        let script = tmp.path().join("tw.sh");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = -o ] && out=\"$2\"; shift; done\nenv > \"$out\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let css = compile(&script, &TailwindSection::default(), tmp.path()).unwrap();
+        let env = String::from_utf8(css).unwrap();
+        for line in env.lines() {
+            let name = line.split('=').next().unwrap_or("");
+            assert!(
+                KEPT_ENV.contains(&name) || ["PWD", "SHLVL", "_", "OLDPWD"].contains(&name),
+                "leaked env var {name}"
+            );
+        }
+        let mut sleeper = Command::new("/bin/sh");
+        sleeper.args(["-c", "sleep 5"]).stderr(Stdio::piped());
+        let err = run_with_timeout(sleeper, Duration::from_millis(100)).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
     }
 
     #[test]

@@ -314,13 +314,12 @@ pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::R
 /// Collect every problem in the site at `root` as diagnostics (paths relative
 /// to `root`, sorted). Only returns `Err` when checking cannot start at all
 /// (e.g. there is no `seite.toml`).
+///
+/// Used by coding-agent hooks and the MCP `seite_check` tool, which run on
+/// whatever repository is checked out: `[build.tailwind]` never runs a
+/// program or downloads here (the entry CSS is copied as-is, with no
+/// diagnostics about Tailwind).
 pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Diagnostics> {
-    check_site_with(root, include_drafts, None)
-}
-
-/// [`check_site`] for coding-agent hooks: never downloads anything (a
-/// `[build.tailwind]` binary that is not cached yet is skipped silently).
-pub fn check_site_offline(root: &Path, include_drafts: bool) -> crate::error::Result<Diagnostics> {
     check_site_full(root, include_drafts, None, None, false, true).map(|(d, _)| d)
 }
 
@@ -342,7 +341,7 @@ fn check_site_full(
     base_url: Option<&str>,
     external: Option<bool>,
     future: bool,
-    offline: bool,
+    skip_tailwind: bool,
 ) -> crate::error::Result<(Diagnostics, Option<external_links::Summary>)> {
     let mut external_summary = None;
     let mut all = Diagnostics::new();
@@ -364,9 +363,10 @@ fn check_site_full(
     // Links resolve exactly like `seite build` (scheduled pages are hidden
     // unless --future); scheduled pages are still rendered below.
     config.build.future |= future;
-    // Hooks never download the Tailwind CLI (`[build.tailwind]`).
+    // Hooks and MCP never run the Tailwind CLI (`[build.tailwind]`); plain
+    // `seite check` runs a cached one (scratch builds never download).
     if let Some(tw) = config.build.tailwind.as_mut() {
-        tw.offline |= offline;
+        tw.never_run |= skip_tailwind;
     }
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
@@ -449,6 +449,10 @@ fn check_site_full(
         if let Some(og) = future_config.og.as_mut() {
             og.skip_render = true;
         }
+        // Only scheduled pages' own diagnostics are kept: no Tailwind run.
+        if let Some(tw) = future_config.build.tailwind.as_mut() {
+            tw.never_run = true;
+        }
         let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
             Ok(result) => result.diagnostics.into_iter().collect(),
             Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
@@ -508,6 +512,11 @@ pub fn scratch_build(
     let mut config = config.clone();
     if let Some(og) = config.og.as_mut() {
         og.skip_render = true;
+    }
+    // `[build.tailwind]`: run a cached CLI, never download (only real
+    // builds do).
+    if let Some(tw) = config.build.tailwind.as_mut() {
+        tw.offline = true;
     }
     let opts = BuildOptions {
         include_drafts,
