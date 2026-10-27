@@ -439,13 +439,16 @@ pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Re
             "--agent can't be combined with --check: --check changes nothing, so there is nothing to migrate. Run `seite upgrade --agent` to upgrade and get the migration brief."
         );
     }
-    // Fail on a bad harness name before anything is changed.
-    let harness = match &args.with {
-        Some(name) => Some(crate::cli::agent::resolve_harness(Some(name))?),
-        None => None,
+    // Fail on a bad harness name (--with or SEITE_AGENT) before anything is
+    // changed, whenever an agent could be launched.
+    let harness = if args.with.is_some() || will_launch() {
+        Some(crate::cli::agent::resolve_harness(args.with.as_deref())?)
+    } else {
+        None
     };
     let outcome = upgrade_sites(args, site_filter)?;
     if !outcome.applied {
+        attach_brief_to_json(None, "cancelled");
         return Ok(());
     }
     deliver_brief(&outcome, harness)
@@ -699,8 +702,8 @@ fn run_workspace(
 
 /// Release notes that apply to an upgrade from `from` to `to`, oldest first.
 /// A `from` of `(0, 0, 0)` means the project's version is unknown (missing or
-/// unparseable): only the newest entry up to `to` is returned, and the flag
-/// says so.
+/// unparseable): like the upgrade itself, it is treated as the oldest
+/// possible, so every entry up to `to` is returned and the flag says so.
 fn select_notes(
     entries: &[ReleaseNote],
     from: (u64, u64, u64),
@@ -709,11 +712,22 @@ fn select_notes(
     let mut in_range: Vec<&ReleaseNote> = entries.iter().filter(|n| n.version <= to).collect();
     in_range.sort_by_key(|n| n.version);
     if from == (0, 0, 0) {
-        return (in_range.pop().into_iter().collect(), true);
+        return (in_range, true);
     }
     in_range.retain(|n| n.version > from);
     (in_range, false)
 }
+
+/// Most release-note text (bytes) included for a project of unknown version.
+const UNKNOWN_NOTES_CAP: usize = 48 * 1024;
+
+/// What the launched agent is told; the brief itself lives in a file, since
+/// argv is a poor place for tens of KB of markdown (length limits, `cmd /C`
+/// quoting on Windows).
+const LAUNCH_PROMPT: &str = "Read .seite/upgrade-brief.md and follow it (seite upgrade migration).";
+
+/// Where the brief is written, relative to the directory `seite` ran in.
+const BRIEF_FILE: &str = ".seite/upgrade-brief.md";
 
 /// Push markdown headings in `body` down by `by` levels (outside code
 /// fences) so an entry's own `##` sections nest under the brief's headings.
@@ -726,7 +740,12 @@ fn demote_headings(body: &str, by: usize) -> String {
         }
         let hashes = line.chars().take_while(|c| *c == '#').count();
         if !in_fence && (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') {
-            out.push(format!("{}{}", "#".repeat(by), line));
+            // Markdown has six heading levels.
+            out.push(format!(
+                "{}{}",
+                "#".repeat((hashes + by).min(6)),
+                &line[hashes..]
+            ));
         } else {
             out.push(line.to_string());
         }
@@ -773,12 +792,30 @@ fn render_site_brief(
     if notes.is_empty() {
         out.push_str("No release notes apply: this binary has none newer than the project.\n");
     } else {
+        let mut notes = notes;
         if unknown {
+            // Keep the newest entries that fit the size cap.
+            let mut size = 0;
+            let mut keep_from = notes.len();
+            for (i, note) in notes.iter().enumerate().rev() {
+                size += note.body.len();
+                if size > UNKNOWN_NOTES_CAP && keep_from < notes.len() {
+                    break;
+                }
+                keep_from = i;
+            }
+            let omitted = keep_from > 0;
+            notes.drain(..keep_from);
             out.push_str(
-                "The project's recorded seite version is missing or unreadable, so only the latest entry is included. Older entries: `seite docs --topic releases`.\n\n",
+                "The project's recorded seite version is missing or unreadable, so every release note is included",
             );
+            out.push_str(if omitted {
+                ", except older ones omitted for size (see `seite docs --topic releases`).\n\n"
+            } else {
+                ".\n\n"
+            });
         }
-        // Newest last, so the agent reads them in the order they happened.
+        // Oldest first, so the agent reads them in the order they happened.
         for note in notes {
             out.push_str(&format!("{h}# {}\n\n", note.title));
             out.push_str(&demote_headings(&note.body, h.len()));
@@ -868,8 +905,6 @@ fn deliver_brief(
     outcome: &Outcome,
     harness: Option<crate::cli::agent::Harness>,
 ) -> anyhow::Result<()> {
-    use std::io::IsTerminal;
-
     let entries = crate::docs::release_notes();
     let Some(brief) = build_brief(&outcome.sites, &entries, meta::binary_version()) else {
         human::success(
@@ -879,31 +914,68 @@ fn deliver_brief(
         return Ok(());
     };
 
-    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let delivery = choose_delivery(
-        crate::cli::agent::in_agent_session(),
-        crate::output::is_json(),
-        interactive,
-    );
-    if delivery == Delivery::Print {
+    let brief_path = write_brief_file(&brief);
+    if !will_launch() {
         attach_brief_to_json(Some(&brief), "printed");
+        if let Some(path) = &brief_path {
+            if let Some(obj) = crate::output::json::take_data().map(|mut d| {
+                d["brief_file"] = serde_json::json!(path);
+                d
+            }) {
+                crate::output::json::set_data(obj);
+            }
+        }
         print_brief(&brief);
+        if let Some(path) = &brief_path {
+            human::info(&format!("The same brief is saved in {path}."));
+        }
         return Ok(());
     }
 
-    // Launch with the same resolution and argv as `seite agent` (never an
-    // auto-approve flag, not even with --yes).
+    // Launch with the same resolution and argv shape as `seite agent` (never
+    // an auto-approve flag, not even with --yes).
     let harness = match harness {
         Some(h) => h,
         None => crate::cli::agent::resolve_harness(None)?,
     };
-    if let Some(problem) = crate::cli::agent::install_hint_if_missing(harness) {
-        human::warning(&problem);
-        human::info("Give this brief to your coding agent instead:");
+    let Some(path) = brief_path else {
+        human::warning("Could not save the brief to .seite/upgrade-brief.md; printing it instead.");
         print_brief(&brief);
         return Ok(());
+    };
+    let problem = match crate::cli::agent::install_hint_if_missing(harness) {
+        Some(problem) => Some(problem),
+        None => crate::cli::agent::launch_interactive(harness, LAUNCH_PROMPT)
+            .err()
+            .map(|e| format!("{e:#}")),
+    };
+    if let Some(problem) = problem {
+        human::warning(&problem);
+        human::info(&format!(
+            "The migration brief is saved in {path}. Give it to your coding agent: \"{LAUNCH_PROMPT}\""
+        ));
     }
-    crate::cli::agent::launch_interactive(harness, &brief)
+    Ok(())
+}
+
+/// Whether an interactive agent would be started: only from a terminal,
+/// outside an agent session, and not in `--json` mode.
+fn will_launch() -> bool {
+    use std::io::IsTerminal;
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    choose_delivery(
+        crate::cli::agent::in_agent_session(),
+        crate::output::is_json(),
+        interactive,
+    ) == Delivery::Launch
+}
+
+/// Save the brief to `.seite/upgrade-brief.md` in the current directory
+/// (gitignored). Returns the relative path, or `None` if it can't be written.
+fn write_brief_file(brief: &str) -> Option<String> {
+    let root = std::env::current_dir().ok()?;
+    crate::safe_fs::write(&root, &root.join(BRIEF_FILE), brief).ok()?;
+    Some(BRIEF_FILE.to_string())
 }
 
 /// The `--check` failure: the number of pending changes (and outdated sites).
@@ -3461,12 +3533,59 @@ mod tests {
     }
 
     #[test]
-    fn test_select_notes_unknown_version_gives_latest_only() {
+    fn test_select_notes_unknown_version_gives_everything_up_to_binary() {
         let all = entries();
         let (notes, unknown) = select_notes(&all, (0, 0, 0), (0, 21, 1));
         assert!(unknown);
-        assert_eq!(notes.len(), 1);
-        assert_eq!(notes[0].version, (0, 21, 1));
+        let versions: Vec<_> = notes.iter().map(|n| n.version).collect();
+        assert_eq!(versions, vec![(0, 20, 0), (0, 21, 0), (0, 21, 1)]);
+    }
+
+    #[test]
+    fn test_unknown_version_notes_are_capped_keeping_newest() {
+        let big = "x".repeat(20 * 1024);
+        let all = vec![
+            note((0, 22, 0), &big),
+            note((0, 21, 0), &big),
+            note((0, 20, 0), &big),
+        ];
+        let brief = build_brief(&[site((0, 0, 0), &[])], &all, (0, 22, 0)).unwrap();
+        assert!(brief.contains("### v0.22.0"));
+        assert!(brief.contains("### v0.21.0"));
+        assert!(
+            !brief.contains("### v0.20.0"),
+            "oldest dropped over the cap"
+        );
+        assert!(brief.contains("omitted for size"));
+    }
+
+    #[test]
+    fn test_launch_argv_is_short_and_never_auto_approves() {
+        use crate::cli::agent::Harness;
+        let brief = "SECRET BRIEF TEXT | & > \"quoted\"\nline two";
+        assert!(!LAUNCH_PROMPT.contains('\n'));
+        assert!(LAUNCH_PROMPT.len() < 120);
+        for h in [
+            Harness::Claude,
+            Harness::Codex,
+            Harness::Opencode,
+            Harness::Cursor,
+            Harness::Gemini,
+        ] {
+            let args = h.interactive_args(Some(LAUNCH_PROMPT));
+            assert!(args.iter().any(|a| a == LAUNCH_PROMPT), "{}", h.name());
+            for a in &args {
+                assert!(!a.contains(brief) && !a.contains("SECRET"));
+                for bad in ["--auto", "--force", "yolo", "dangerously", "--approve-mcps"] {
+                    assert!(!a.contains(bad), "{}: {a}", h.name());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_demote_headings_caps_at_six_levels() {
+        assert_eq!(demote_headings("##### deep", 3), "###### deep");
     }
 
     #[test]
@@ -3501,9 +3620,10 @@ mod tests {
     fn test_build_brief_unknown_version_says_so() {
         let brief = build_brief(&[site((0, 0, 0), &[])], &entries(), (0, 22, 0)).unwrap();
         assert!(brief.contains("an unknown version"));
-        assert!(brief.contains("only the latest entry"));
+        assert!(brief.contains("every release note is included"));
         assert!(brief.contains("### v0.22.0"));
-        assert!(!brief.contains("### v0.21.1"));
+        assert!(brief.contains("### v0.21.1"));
+        assert!(brief.contains("### v0.20.0"));
     }
 
     #[test]

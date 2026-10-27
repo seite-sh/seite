@@ -1918,8 +1918,15 @@ fn test_upgrade_agent_unknown_version_includes_latest_only() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("an unknown version"), "{stdout}");
-    assert!(stdout.contains("only the latest entry"), "{stdout}");
-    assert!(!stdout.contains("### v0.19.0"), "{stdout}");
+    assert!(
+        stdout.contains("every release note is included"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("### v{}", env!("CARGO_PKG_VERSION"))),
+        "{stdout}"
+    );
+    assert!(stdout.contains("### v0.20.0"), "{stdout}");
 }
 
 #[test]
@@ -1944,7 +1951,29 @@ fn test_upgrade_agent_json_puts_brief_in_data() {
     let brief = doc["data"]["brief"].as_str().unwrap();
     assert!(brief.contains("### v0.20.0"), "{brief}");
     // The upgrade's own payload is kept next to the brief.
-    assert!(doc["data"]["version"].is_string() || doc["data"]["to"].is_string());
+    let mut keys: Vec<&str> = doc["data"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        vec![
+            "agent_delivery",
+            "agents",
+            "applied",
+            "brief",
+            "brief_file",
+            "changes",
+            "unmaintained_agents",
+            "up_to_date",
+            "version"
+        ]
+    );
+    assert_eq!(doc["data"]["brief_file"], ".seite/upgrade-brief.md");
+    assert!(site_dir.join(".seite/upgrade-brief.md").is_file());
 }
 
 #[test]

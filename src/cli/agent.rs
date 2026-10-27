@@ -219,7 +219,7 @@ impl Harness {
 
     /// Args to start an interactive session, optionally seeded with an
     /// initial prompt.
-    fn interactive_args(self, prompt: Option<&str>) -> Vec<String> {
+    pub(crate) fn interactive_args(self, prompt: Option<&str>) -> Vec<String> {
         let Some(p) = prompt else {
             return Vec::new();
         };
