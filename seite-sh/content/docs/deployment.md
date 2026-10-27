@@ -228,7 +228,51 @@ seite deploy
 
 `set-password` stages the password and separate signing secrets for both production and preview. Deploy from the Pages project's configured production branch to activate production; projects created by seite use `main`. Use `seite deploy --preview` to activate preview. That deployment invalidates sessions signed with the environment's previous secret.
 
-The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
+The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. The Worker also answers `Accept: text/markdown` requests (see [Markdown for agents](#markdown-for-agents)). Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
+
+## Markdown for agents
+
+Every build writes a markdown copy of each page next to its HTML (`/posts/hello-world` → `/posts/hello-world.md`, a collection index → `/posts/index.md`, the homepage → `/index.md` when `content/pages/index.md` exists), linked from the page head with `<link rel="alternate" type="text/markdown">`. Each copy starts (right after its frontmatter) with one line pointing agents at the rest of the site:
+
+```markdown
+> Index of this site for agents: [llms.txt](https://example.com/llms.txt). Full text: [llms-full.txt](https://example.com/llms-full.txt). All pages: [sitemap.md](https://example.com/sitemap.md).
+```
+
+Pages in another language of a multilingual site point at that language's `/<lang>/llms.txt`. `/sitemap.md` lists every page with its markdown URL and description, per collection (and per language): the pages of `sitemap.xml`, without `noindex` pages and drafts. `llms.txt` links it.
+
+### `Accept: text/markdown`
+
+Agents that send `Accept: text/markdown` can also get the markdown at the page's normal URL. A request gets markdown when `text/markdown` has a higher quality than `text/html`, or the same quality and is named while HTML only matches a wildcard (`text/markdown, */*`). Browsers never ask for markdown, and `*/*` alone gets HTML. Negotiated HTML responses carry `Vary: Accept`, and a page without a markdown copy falls through to the normal response.
+
+| Where | Negotiation |
+|-------|-------------|
+| `seite serve` | Always on (`.md` URLs are served as `text/markdown; charset=utf-8`). |
+| Cloudflare Pages with `[access]` | Always on: the generated password Worker already runs on every request. A protected page's markdown is served only after the same password check. |
+| Cloudflare Pages without `[access]` | Opt-in: `[deploy] markdown_negotiation = true` generates `_worker.js` (Pages advanced mode) and a `_routes.json` that skips `/static/*`, `/og/*` and `/search/*`. |
+| Netlify | Not generated (see below). |
+| GitHub Pages | Not possible (no request-time code). Agents use the `.md` URLs, `sitemap.md` and `llms.txt`. |
+
+Cost on Cloudflare: static asset requests are free and unlimited, but with a Worker every page request is a Functions request, billed as a Workers request. The Workers Free plan allows 100,000 requests a day (shared with your other Workers, reset at midnight UTC). Past that, the project's *Settings → Runtime → Fail open / closed* setting decides whether Pages serves the static files (fail open) or an error page. That is why it is off by default; a site with `[access]` already pays this cost.
+
+Netlify: `_redirects` and `netlify.toml` redirect conditions only match `Country`, `Language`, `Role` and `Cookie`, not `Accept`, so negotiation needs an Edge Function. Edge Functions count against your plan's usage on every matching request, and they are deployed only when Netlify builds the site (the `netlify.toml` seite generates) or by `netlify deploy` run from the site root; the generated GitHub Actions workflow uploads `dist/` only. seite does not generate one. If you want it anyway, a minimal version (untested example; HTML responses keep no `Vary` header):
+
+```js
+// netlify/edge-functions/markdown.js
+export default async (request) => {
+  const url = new URL(request.url);
+  const accept = request.headers.get("accept") || "";
+  const last = url.pathname.split("/").pop();
+  if (!/text\/markdown/i.test(accept) || /text\/html/i.test(accept) || last.includes(".")) return;
+  const md = url.pathname.endsWith("/") ? url.pathname + "index.md" : url.pathname + ".md";
+  const response = await fetch(new URL(md, url));
+  if (!response.ok) return;
+  return new Response(response.body, {
+    headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept" },
+  });
+};
+
+export const config = { path: "/*", excludedPath: ["/static/*", "/og/*", "/search/*"] };
+```
 
 ## Scheduled publishing
 
@@ -285,6 +329,7 @@ dist/
 ├── index.md             # Homepage markdown
 ├── feed.xml             # RSS feed
 ├── sitemap.xml          # XML sitemap
+├── sitemap.md           # Every page's markdown URL, for agents
 ├── robots.txt           # Robots + AI crawler directives, Content Signals
 ├── llms.txt             # LLM summary
 ├── llms-full.txt        # Full LLM content

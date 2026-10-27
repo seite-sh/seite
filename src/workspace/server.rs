@@ -1,4 +1,3 @@
-use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -189,18 +188,7 @@ fn run_serve_loop(
                 // Route by path prefix: /blog/... -> sites/blog/dist/...
                 if let Some((file_path, _site_name)) = route_request(&url_path, sites) {
                     if file_path.exists() && file_path.is_file() {
-                        let content = fs::read(&file_path).unwrap_or_default();
-                        let mime = guess_mime(&file_path);
-
-                        let content = if mime == "text/html; charset=utf-8" {
-                            inject_livereload(&content)
-                        } else {
-                            content
-                        };
-
-                        let header =
-                            Header::from_bytes("Content-Type", mime).expect("valid header");
-                        let _ = request.respond(Response::from_data(content).with_header(header));
+                        dev::respond_file(request, &file_path, guess_mime(&file_path));
                         continue;
                     }
                 }
@@ -308,7 +296,7 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("ico") => "image/x-icon",
         Some("woff") => "font/woff",
         Some("woff2") => "font/woff2",
-        Some("md") => "text/plain; charset=utf-8",
+        Some("md") => dev::MARKDOWN_CONTENT_TYPE,
         Some("txt") => "text/plain; charset=utf-8",
         Some("webp") => "image/webp",
         _ => "application/octet-stream",

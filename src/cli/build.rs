@@ -76,6 +76,13 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     for d in &config_diagnostics {
         human::warning(&d.to_string());
     }
+    if config.deploy.markdown_negotiation
+        && config.deploy.target != crate::config::DeployTarget::Cloudflare
+    {
+        human::warning(
+            "[deploy] markdown_negotiation only applies to Cloudflare Pages; it is ignored for this deploy target (see /docs/deployment#markdown-for-agents)",
+        );
+    }
     let paths = config.resolve_paths(&cwd);
 
     let opts = BuildOptions {

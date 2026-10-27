@@ -810,12 +810,16 @@ fn refresh_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Resul
         access::validate_generated_file_conflicts(&paths.public_dir)?;
         images::clear_private_static_output(paths)?;
         access::write_worker(config, &paths.output)?;
+    } else if access::worker_enabled(config) {
+        // `[deploy] markdown_negotiation` without `[access]`.
+        access::validate_markdown_worker_conflicts(&paths.public_dir)?;
+        access::write_worker(config, &paths.output)?;
     }
     Ok(())
 }
 
 fn refresh_subdomain_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
-    if config.access.is_none() {
+    if !access::worker_enabled(config) {
         return Ok(());
     }
 
@@ -2249,7 +2253,10 @@ fn build_site_inner(
             }
 
             // Write markdown index (all items, not just one page) alongside page 1
-            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            let md_content = discovery::insert_markdown_pointer(
+                &generate_collection_index_md(&c.label, &lang_items),
+                &discovery::markdown_pointer(config, lang),
+            );
             let md_dir = if *lang == *default_lang {
                 paths.output.join(url_prefix_trimmed)
             } else {
@@ -2419,17 +2426,23 @@ fn build_site_inner(
             fs::write(out_dir.join("index.html"), html)?;
 
             // Write markdown index alongside HTML
-            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            let md_content = discovery::insert_markdown_pointer(
+                &generate_collection_index_md(&c.label, &lang_items),
+                &discovery::markdown_pointer(config, lang),
+            );
             fs::write(out_dir.join("index.md"), md_content)?;
         }
     }
 
     // Write homepage markdown alongside HTML
     for homepage in &homepage_pages {
-        let md_content = format!(
-            "{}\n\n{}",
-            content::generate_frontmatter(&homepage.frontmatter),
-            homepage.raw_body
+        let md_content = discovery::insert_markdown_pointer(
+            &format!(
+                "{}\n\n{}",
+                content::generate_frontmatter(&homepage.frontmatter),
+                homepage.raw_body
+            ),
+            &discovery::markdown_pointer(config, &homepage.lang),
         );
         if homepage.lang == *default_lang {
             fs::write(paths.output.join("index.md"), md_content)?;
@@ -2595,6 +2608,38 @@ fn build_site_inner(
     let sitemap_xml =
         sitemap::generate_sitemap(config, &all_items, &translation_map, &tag_page_urls)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
+    // sitemap.md: the same pages (minus `noindex`), one section per
+    // collection and language, default language first, collections in
+    // seite.toml order, items in their collection's sort order.
+    let sitemap_md_sections: Vec<(String, Vec<&ContentItem>)> = config
+        .all_languages()
+        .iter()
+        .flat_map(|lang| {
+            config
+                .collections
+                .iter()
+                .filter(|c| !private_collections.contains(c.name.as_str()))
+                .map(|c| {
+                    let heading = if is_multilingual {
+                        format!("{} ({lang})", c.label)
+                    } else {
+                        c.label.clone()
+                    };
+                    let items: Vec<&ContentItem> = all_collections
+                        .get(&c.name)
+                        .into_iter()
+                        .flatten()
+                        .filter(|item| item.lang == *lang)
+                        .collect();
+                    (heading, items)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    fs::write(
+        paths.output.join("sitemap.md"),
+        discovery::generate_sitemap_md(config, &sitemap_md_sections),
+    )?;
     step_timings.push((
         "Generate sitemap".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -2671,10 +2716,16 @@ fn build_site_inner(
                 .par_iter()
                 .map(|item| {
                     let md_path = url_to_md_path(&paths.output, &item.url);
-                    let md_content = format!(
-                        "{}\n\n{}",
-                        content::generate_published_frontmatter(&item.frontmatter, &published_keys),
-                        item.raw_body
+                    let md_content = discovery::insert_markdown_pointer(
+                        &format!(
+                            "{}\n\n{}",
+                            content::generate_published_frontmatter(
+                                &item.frontmatter,
+                                &published_keys
+                            ),
+                            item.raw_body
+                        ),
+                        &discovery::markdown_pointer(config, &item.lang),
                     );
                     (md_path, md_content)
                 })
@@ -2973,7 +3024,8 @@ fn build_site_inner(
     ));
 
     // Step 13: Generate the Cloudflare Pages advanced-mode Worker for any
-    // password-protected routes in this output.
+    // password-protected routes in this output, or for markdown content
+    // negotiation (`[deploy] markdown_negotiation`).
     access::write_worker(config, &paths.output)?;
 
     progress.done();
@@ -2982,6 +3034,7 @@ fn build_site_inner(
     let known_generated = [
         "robots.txt",
         "sitemap.xml",
+        "sitemap.md",
         "feed.xml",
         "atom.xml",
         "_redirects",

@@ -2876,6 +2876,7 @@ mod tests {
             project: None,
             auto_commit: false,
             domain: None,
+            markdown_negotiation: false,
         }
     }
 
@@ -5812,6 +5813,7 @@ target = "github-pages"
                 project: Some("my-site".into()),
                 repo: None,
                 domain: None,
+                markdown_negotiation: false,
             },
             languages: Default::default(),
             images: Default::default(),

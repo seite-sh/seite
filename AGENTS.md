@@ -112,6 +112,7 @@ name = "categories"      # frontmatter `categories: [..]` → /categories/, /cat
 [deploy]
 target = "github-pages"  # or "cloudflare" or "netlify"
 auto_commit = true
+# markdown_negotiation = true  # Cloudflare: _worker.js serves .md for `Accept: text/markdown` (every request = Functions request); [access] Workers always negotiate
 
 [languages.es]
 title = "Mi Sitio"

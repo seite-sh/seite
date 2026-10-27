@@ -198,15 +198,7 @@ fn run_serve_loop(
                     })
                 };
                 if let Some(ref path) = subdomain_file {
-                    let content = fs::read(path).unwrap_or_default();
-                    let mime = guess_mime(path);
-                    let content = if mime == "text/html; charset=utf-8" {
-                        inject_livereload(&content)
-                    } else {
-                        content
-                    };
-                    let header = Header::from_bytes("Content-Type", mime).expect("valid header");
-                    let _ = request.respond(Response::from_data(content).with_header(header));
+                    dev::respond_file(request, path, guess_mime(path));
                     continue;
                 }
 
@@ -214,19 +206,9 @@ fn run_serve_loop(
 
                 if let Some(ref path) = file_path {
                     if path.exists() && path.is_file() {
-                        let content = fs::read(path).unwrap_or_default();
-                        let mime = guess_mime(path);
-
-                        // Inject livereload script into HTML responses
-                        let content = if mime == "text/html; charset=utf-8" {
-                            inject_livereload(&content)
-                        } else {
-                            content
-                        };
-
-                        let header =
-                            Header::from_bytes("Content-Type", mime).expect("valid header");
-                        let _ = request.respond(Response::from_data(content).with_header(header));
+                        // Live reload for HTML; `Accept: text/markdown` gets
+                        // the page's markdown copy.
+                        dev::respond_file(request, path, guess_mime(path));
                         continue;
                     }
                 }
@@ -303,7 +285,7 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("ico") => "image/x-icon",
         Some("woff") => "font/woff",
         Some("woff2") => "font/woff2",
-        Some("md") => "text/plain; charset=utf-8",
+        Some("md") => dev::MARKDOWN_CONTENT_TYPE,
         Some("txt") => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
@@ -1158,7 +1140,7 @@ mod tests {
     fn test_guess_mime_md() {
         assert_eq!(
             guess_mime(Path::new("readme.md")),
-            "text/plain; charset=utf-8"
+            "text/markdown; charset=utf-8"
         );
     }
 
@@ -1346,7 +1328,7 @@ mod tests {
         assert_eq!(resolved, Some(file.clone()));
 
         let mime = guess_mime(&file);
-        assert_eq!(mime, "text/plain; charset=utf-8");
+        assert_eq!(mime, "text/markdown; charset=utf-8");
     }
 
     // =========================================================================

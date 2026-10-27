@@ -482,6 +482,12 @@ pub struct DeploySection {
     /// Auto-commit and push before deploying. Default: true.
     #[serde(default = "crate::config::defaults::bool_true")]
     pub auto_commit: bool,
+    /// Serve a page's markdown copy to requests whose `Accept` header prefers
+    /// `text/markdown` (Cloudflare Pages: a generated `_worker.js`, so every
+    /// request becomes a Functions invocation). Default: false. Sites with
+    /// `[access]` get negotiation without it (their Worker already runs).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub markdown_negotiation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -537,6 +543,7 @@ impl Default for DeploySection {
             project: None,
             domain: None,
             auto_commit: true,
+            markdown_negotiation: false,
         }
     }
 }

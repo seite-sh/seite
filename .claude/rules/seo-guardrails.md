@@ -34,7 +34,7 @@ The SEO/GEO head lives in ONE place: `src/templates/seite/head.html`. Themes inc
 ## Discovery Links
 - `<link rel="alternate" type="application/rss+xml">` and Atom — RSS/Atom
 - `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
-- `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">` (only when `page.markdown_url` is set — never `page.url ~ ".md"`; include `title` attr)
+- `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.markdown_url }}">` (only when `page.markdown_url` is set — never `page.url ~ ".md"`; include `title` attr). Agents also get markdown via `Accept: text/markdown` (dev server, Cloudflare Workers) and `/sitemap.md`; no `<link>` for `sitemap.md` (theme byte tests)
 - hreflang for each of `translations` plus `x-default`
 
 ## Changing the partial
