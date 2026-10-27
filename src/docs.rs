@@ -252,6 +252,62 @@ pub fn error_sections() -> Vec<(&'static str, &'static str)> {
     sections
 }
 
+/// One release's notes, from the changelog entries compiled into the binary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseNote {
+    pub version: (u64, u64, u64),
+    /// The entry's heading, e.g. `v0.20.2`.
+    pub title: String,
+    /// The entry's body (its own `##` headings included), trimmed.
+    pub body: String,
+}
+
+/// Every release note embedded in this binary, newest first (the changelog
+/// order).
+pub fn release_notes() -> Vec<ReleaseNote> {
+    parse_release_notes(strip_frontmatter(releases().raw_content))
+}
+
+/// Split the generated `releases.md` body into entries. An entry starts at a
+/// `## v<major>.<minor>.<patch>` line; other `##` lines belong to the body.
+pub fn parse_release_notes(text: &str) -> Vec<ReleaseNote> {
+    fn heading_version(line: &str) -> Option<(u64, u64, u64)> {
+        let word = line.strip_prefix("## ")?.split_whitespace().next()?;
+        let mut parts = word.trim_start_matches('v').split('.');
+        let v = (
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+        );
+        parts.next().is_none().then_some(v)
+    }
+
+    let mut notes: Vec<ReleaseNote> = Vec::new();
+    let mut in_fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+        }
+        match heading_version(line).filter(|_| !in_fence) {
+            Some(version) => notes.push(ReleaseNote {
+                version,
+                title: line.trim_start_matches("## ").trim().to_string(),
+                body: String::new(),
+            }),
+            None => {
+                if let Some(last) = notes.last_mut() {
+                    last.body.push_str(line);
+                    last.body.push('\n');
+                }
+            }
+        }
+    }
+    for note in &mut notes {
+        note.body = note.body.trim().to_string();
+    }
+    notes
+}
+
 fn releases() -> DocPage {
     DocPage {
         slug: "releases",
@@ -357,5 +413,24 @@ mod tests {
         slugs.sort();
         slugs.dedup();
         assert_eq!(slugs.len(), docs.len(), "Duplicate slugs found");
+    }
+
+    #[test]
+    fn test_parse_release_notes_splits_on_version_headings_only() {
+        let text = "\n\n## v0.2.0\nbody two\n\n## A sub heading\nmore\n```\n## v9.9.9\n```\n\n## v0.1.0\nbody one\n";
+        let notes = parse_release_notes(text);
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].version, (0, 2, 0));
+        assert_eq!(notes[0].title, "v0.2.0");
+        assert!(notes[0].body.contains("## A sub heading"));
+        assert!(notes[0].body.contains("## v9.9.9"));
+        assert_eq!(notes[1].body, "body one");
+    }
+
+    #[test]
+    fn test_release_notes_embedded() {
+        let notes = release_notes();
+        assert!(!notes.is_empty());
+        assert!(notes.iter().any(|n| n.version == (0, 20, 2)));
     }
 }

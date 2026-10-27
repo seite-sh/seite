@@ -463,6 +463,8 @@ seite upgrade [options]
 | `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
 | `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor,gemini` or `all`) |
 | `--mcp` | Also add the seite MCP server to the selected agents' configs. Without it, existing MCP config is left untouched |
+| `--agent` | After upgrading, build a migration brief and hand it to a coding agent (see below). Cannot be combined with `--check` |
+| `--with` | With `--agent`: the agent to start (`claude`, `codex`, `opencode`, `cursor`, `gemini`). Defaults to `SEITE_AGENT`, else `claude` |
 
 ```bash
 seite upgrade                # Interactive: shows changes, asks for confirmation
@@ -470,6 +472,16 @@ seite upgrade --force        # Apply all changes without prompting
 seite upgrade --check        # CI mode: exit 1 if upgrades needed, 0 if current
 seite upgrade --agents claude,cursor   # Add Cursor files; stop maintaining Codex/OpenCode files
 ```
+
+### Migration brief (`--agent`)
+
+`seite upgrade --agent` runs the normal upgrade, then builds a markdown brief for a coding agent: what the upgrade changed automatically, the release notes for every version after the one the project recorded (up to the installed `seite`), and instructions to apply any manual migration steps the notes describe, keep the site's customizations, run `seite check` and `seite build` until clean, and report what changed. If the project has no readable recorded version, only the latest release notes are included, and the brief says so. If the project was already current and no release notes apply, nothing is printed or launched.
+
+- **Inside an agent session** (Claude Code, Codex, and the other supported agents): the brief is printed to stdout and nothing is launched; the running agent follows it. With `--json` it is in `data.brief` (`data.agent_delivery` is `printed`, or `none` when there was nothing to migrate).
+- **From a terminal**: the agent from `--with` (else `SEITE_AGENT`, else Claude Code) starts interactively with the brief as its prompt, the same way `seite agent` does. No auto-approve flag is ever added, not even with `--yes`. If that agent isn't installed, the brief is printed with an install hint instead.
+- **Without a terminal** (a script or CI), or with `--json`: the brief is printed.
+
+In a workspace, the brief has one section per upgraded site and a single agent is started at the directory you ran the command from.
 
 In a [workspace](/docs/workspace), run `seite upgrade` from the workspace root to upgrade every site at once (one confirmation for all of them), or pass `--site <name>` to upgrade a single site. `--check` fails if any site needs upgrading; `--json` lists each site's changes under `data.sites`.
 

@@ -1837,3 +1837,148 @@ fn test_upgrade_kept_legacy_skill_notice_prints_once() {
     assert!(!run(&["upgrade", "--force"]).contains("Kept .claude/skills/theme-builder"));
     assert!(dir.join("SKILL.md").exists());
 }
+
+/// A fresh site whose recorded version is rolled back to `version`.
+fn site_recorded_at(tmp: &TempDir, version: &str) -> std::path::PathBuf {
+    init_site(tmp, "site", "Brief Site", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    let meta_path = site_dir.join(".seite/config.json");
+    let content = fs::read_to_string(&meta_path).unwrap();
+    fs::write(
+        &meta_path,
+        content.replace(env!("CARGO_PKG_VERSION"), version),
+    )
+    .unwrap();
+    site_dir
+}
+
+#[test]
+fn test_upgrade_agent_in_session_prints_brief_with_notes() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.19.0");
+    // Inside an agent session (and without a PATH agent) nothing is launched.
+    let out = page_cmd()
+        .env("CLAUDECODE", "1")
+        .env("PATH", "")
+        .args(["upgrade", "--agent", "--force"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("# seite upgrade: migration brief"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("from v0.19.0 to v"), "{stdout}");
+    assert!(stdout.contains("### v0.20.0"), "{stdout}");
+    assert!(stdout.contains("### v0.20.2"), "{stdout}");
+    assert!(!stdout.contains("### v0.19.0"), "{stdout}");
+    assert!(stdout.contains("## What to do"), "{stdout}");
+    assert!(stdout.contains("`seite check`"), "{stdout}");
+    // The normal upgrade ran first.
+    let meta = fs::read_to_string(site_dir.join(".seite/config.json")).unwrap();
+    assert!(meta.contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn test_upgrade_agent_without_terminal_prints_brief() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.20.0");
+    // No agent env and no TTY: print instead of launching.
+    page_cmd()
+        .env("PATH", "")
+        .args(["upgrade", "--agent", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("migration brief"));
+}
+
+#[test]
+fn test_upgrade_agent_unknown_version_includes_latest_only() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Unknown", "posts");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join(".seite/config.json")).unwrap();
+    let out = page_cmd()
+        .env("CLAUDECODE", "1")
+        .args(["upgrade", "--agent", "--force"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("an unknown version"), "{stdout}");
+    assert!(stdout.contains("only the latest entry"), "{stdout}");
+    assert!(!stdout.contains("### v0.19.0"), "{stdout}");
+}
+
+#[test]
+fn test_upgrade_agent_with_check_is_an_error() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.19.0");
+    page_cmd()
+        .args(["upgrade", "--agent", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("can't be combined with --check"));
+}
+
+#[test]
+fn test_upgrade_agent_json_puts_brief_in_data() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.19.0");
+    let (ok, doc) = run_json(&site_dir, &["upgrade", "--agent", "--force"]);
+    assert!(ok, "{doc}");
+    assert_eq!(doc["data"]["agent_delivery"], "printed");
+    let brief = doc["data"]["brief"].as_str().unwrap();
+    assert!(brief.contains("### v0.20.0"), "{brief}");
+    // The upgrade's own payload is kept next to the brief.
+    assert!(doc["data"]["version"].is_string() || doc["data"]["to"].is_string());
+}
+
+#[test]
+fn test_upgrade_agent_up_to_date_says_so() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Current", "posts");
+    let site_dir = tmp.path().join("site");
+    let (ok, doc) = run_json(&site_dir, &["upgrade", "--agent", "--force"]);
+    assert!(ok, "{doc}");
+    assert_eq!(doc["data"]["agent_delivery"], "none");
+    assert!(doc["data"]["brief"].is_null());
+}
+
+#[test]
+fn test_upgrade_agent_rejects_unknown_harness_before_upgrading() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.19.0");
+    page_cmd()
+        .args(["upgrade", "--agent", "--with", "nope", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown agent harness"));
+    let meta = fs::read_to_string(site_dir.join(".seite/config.json")).unwrap();
+    assert!(meta.contains("0.19.0"), "must not have upgraded: {meta}");
+}
+
+#[test]
+fn test_upgrade_with_requires_agent() {
+    let tmp = TempDir::new().unwrap();
+    let site_dir = site_recorded_at(&tmp, "0.19.0");
+    page_cmd()
+        .args(["upgrade", "--with", "claude"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure();
+}

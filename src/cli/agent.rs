@@ -72,6 +72,11 @@ pub fn agent_session() -> Option<&'static str> {
     agent_session_with(|var| std::env::var_os(var).filter(|v| !v.is_empty()).is_some())
 }
 
+/// Whether this process runs inside a coding agent's session.
+pub fn in_agent_session() -> bool {
+    agent_session().is_some()
+}
+
 fn agent_session_with(is_set: impl Fn(&str) -> bool) -> Option<&'static str> {
     AGENT_SESSION_MARKERS
         .iter()
@@ -302,6 +307,21 @@ pub fn run_once(harness: Harness, prompt: &str, auto: bool) -> anyhow::Result<()
     }
     human::success("Agent finished. Preview with `seite serve` or check with `seite check`.");
     Ok(())
+}
+
+/// Start `harness` interactively, seeded with `prompt`. Never adds
+/// auto-approve flags.
+pub fn launch_interactive(harness: Harness, prompt: &str) -> anyhow::Result<()> {
+    human::info(&format!(
+        "Starting interactive {} agent session...",
+        harness.name()
+    ));
+    run_interactive(harness, &harness.interactive_args(Some(prompt)))
+}
+
+/// Whether `harness`'s binary is on `PATH`, and how to install it if not.
+pub fn install_hint_if_missing(harness: Harness) -> Option<String> {
+    ensure_installed(harness).err().map(|e| e.to_string())
 }
 
 /// Hand the terminal to a harness's own interactive session.
