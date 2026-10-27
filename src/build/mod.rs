@@ -3027,6 +3027,22 @@ fn build_site_inner(
     // password-protected routes in this output, or for markdown content
     // negotiation (`[deploy] markdown_negotiation`).
     access::write_worker(config, &paths.output)?;
+    // Cloudflare applies neither `_headers` nor `_redirects` to requests a
+    // Pages Worker serves; say so instead of dropping them silently.
+    if access::markdown_only_worker(config) {
+        let ignored: Vec<&str> = ["_headers", "_redirects"]
+            .into_iter()
+            .filter(|f| {
+                fs::read_to_string(paths.output.join(f)).is_ok_and(|t| !t.trim().is_empty())
+            })
+            .collect();
+        if !ignored.is_empty() {
+            crate::output::human::warning(&format!(
+                "[deploy] markdown_negotiation: Cloudflare Pages does not apply {} to requests its Worker serves (every page request, outside /static/, /og/, /search/); alias pages still redirect through their HTML pages. Set the headers elsewhere or turn negotiation off — see /docs/deployment#markdown-for-agents",
+                ignored.join(" or ")
+            ));
+        }
+    }
 
     progress.done();
 

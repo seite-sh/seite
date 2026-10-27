@@ -128,13 +128,29 @@ pub fn generate_sitemap_md(
         }
         out.push_str(&format!("## {heading}\n\n"));
         for (item, md_path) in entries {
-            out.push_str(&format!("- [{}]({base}{md_path})", item.frontmatter.title));
-            match item.frontmatter.description.as_deref().map(str::trim) {
+            let title = markdown_inline(&item.frontmatter.title);
+            out.push_str(&format!("- [{title}]({base}{md_path})"));
+            match item.frontmatter.description.as_deref().map(markdown_inline) {
                 Some(desc) if !desc.is_empty() => out.push_str(&format!(" — {desc}\n")),
                 _ => out.push('\n'),
             }
         }
         out.push('\n');
+    }
+    out
+}
+
+/// Frontmatter text as one safe inline run inside a list item: whitespace
+/// (including newlines) collapsed to single spaces, and `\`, `[`, `]`
+/// escaped so a title can't close the link text or start a new block.
+fn markdown_inline(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = String::with_capacity(collapsed.len());
+    for c in collapsed.chars() {
+        if matches!(c, '\\' | '[' | ']') {
+            out.push('\\');
+        }
+        out.push(c);
     }
     out
 }
@@ -493,6 +509,29 @@ mod tests {
         assert!(!md.contains("## Empty"));
         assert!(!md.contains("## Only noindex"));
         assert!(!md.contains("Index of this site for agents"));
+    }
+
+    #[test]
+    fn test_sitemap_md_escapes_titles_and_descriptions() {
+        let config = test_config("https://example.com", "");
+        let item = test_item(
+            "Arrays [and] \\ slices\n# not a heading",
+            "/posts/a",
+            Some("Line one\n\n- not a list\n[x](y)"),
+            "",
+        );
+        let md = generate_sitemap_md(&config, &[("Posts".to_string(), vec![&item])]);
+        assert!(
+            md.contains(
+                "- [Arrays \\[and\\] \\\\ slices # not a heading](https://example.com/posts/a.md) — Line one - not a list \\[x\\](y)\n"
+            ),
+            "{md}"
+        );
+        assert_eq!(
+            md.lines().filter(|l| l.starts_with("- ")).count(),
+            1,
+            "{md}"
+        );
     }
 
     #[test]

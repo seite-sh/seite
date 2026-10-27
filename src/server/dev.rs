@@ -681,10 +681,10 @@ pub fn markdown_sibling(html_path: &Path) -> Option<PathBuf> {
     md.is_file().then_some(md)
 }
 
-/// Respond with a built file. HTML pages that have a markdown copy are
-/// negotiable: they carry `Vary: Accept`, and a GET/HEAD whose `Accept`
-/// prefers `text/markdown` gets the copy instead (no live-reload script).
-/// Other HTML gets the live-reload script.
+/// Respond with a built file. HTML responses carry `Vary: Accept`; for a page
+/// with a markdown copy, a GET/HEAD whose `Accept` prefers `text/markdown`
+/// gets the copy instead (no live-reload script). Other HTML gets the
+/// live-reload script.
 pub fn respond_file(request: Request, path: &Path, mime: &str) {
     let is_html = mime.starts_with("text/html");
     let sibling = if is_html {
@@ -708,7 +708,9 @@ pub fn respond_file(request: Request, path: &Path, mime: &str) {
         }
     };
     let mut response = with_header(Response::from_data(content), "Content-Type", mime);
-    if sibling.is_some() {
+    // Every HTML page is a negotiable URL (like the Cloudflare Worker, which
+    // marks any extensionless page), with or without a copy today.
+    if is_html {
         response = with_header(response, "Vary", "Accept");
     }
     let _ = request.respond(response);

@@ -254,6 +254,10 @@ Agents that send `Accept: text/markdown` can also get the markdown at the page's
 
 Cost on Cloudflare: static asset requests are free and unlimited, but with a Worker every page request is a Functions request, billed as a Workers request. The Workers Free plan allows 100,000 requests a day (shared with your other Workers, reset at midnight UTC). Past that, the project's *Settings → Runtime → Fail open / closed* setting decides whether Pages serves the static files (fail open) or an error page. That is why it is off by default; a site with `[access]` already pays this cost.
 
+Cloudflare also does not apply [`_headers`](https://developers.cloudflare.com/pages/configuration/headers/) or [`_redirects`](https://developers.cloudflare.com/pages/configuration/redirects/) rules to requests a Pages Function (including `_worker.js`) serves. With negotiation on, that is every page request outside `/static/`, `/og/` and `/search/`: custom headers from `public/_headers` and custom redirects are dropped there, and `seite build` warns when either file is present. `aliases:` keep working through the HTML redirect page seite writes at each old URL (a meta refresh instead of a 301).
+
+Only plain paths negotiate: a request path with `%` escapes, `//`, a backslash or a `.`/`..` segment always gets the normal response, and the Worker re-checks the exact `.md` path it fetches (for `[access]`, against the same password route). An extensionless path tries `<path>.md`, then `<path>/index.md`.
+
 Netlify: `_redirects` and `netlify.toml` redirect conditions only match `Country`, `Language`, `Role` and `Cookie`, not `Accept`, so negotiation needs an Edge Function. Edge Functions count against your plan's usage on every matching request, and they are deployed only when Netlify builds the site (the `netlify.toml` seite generates) or by `netlify deploy` run from the site root; the generated GitHub Actions workflow uploads `dist/` only. seite does not generate one. If you want it anyway, a minimal version (untested example; HTML responses keep no `Vary` header):
 
 ```js

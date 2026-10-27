@@ -28,7 +28,7 @@ pub fn worker_enabled(config: &SiteConfig) -> bool {
 }
 
 /// `[deploy] markdown_negotiation = true` on Cloudflare without `[access]`.
-fn markdown_only_worker(config: &SiteConfig) -> bool {
+pub(crate) fn markdown_only_worker(config: &SiteConfig) -> bool {
     config.access.is_none()
         && config.deploy.markdown_negotiation
         && config.deploy.target == DeployTarget::Cloudflare
@@ -87,6 +87,7 @@ pub fn access_routes(config: &SiteConfig) -> Vec<AccessRoute> {
 pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
     let decoded_path = urlencoding::decode(path).ok()?;
     if decoded_path.contains('\\')
+        || decoded_path.contains("//")
         || decoded_path
             .split('/')
             .any(|segment| segment == "." || segment == "..")
@@ -218,7 +219,7 @@ pub fn generate_worker(routes: &[AccessRoute], session_hours: u32) -> String {
 /// everything else straight from the static assets.
 pub fn generate_markdown_worker() -> String {
     format!(
-        "{MARKDOWN_MARKER}\n{NEGOTIATION_JS}\nexport default {{\n  async fetch(request, env) {{\n    const url = new URL(request.url);\n    const requestPath = decodePathOrNull(url.pathname);\n    if (requestPath === null) return env.ASSETS.fetch(request);\n    return serveAsset(request, env, requestPath, () => true);\n  }},\n}};\n"
+        "{MARKDOWN_MARKER}\n{NEGOTIATION_JS}\nexport default {{\n  async fetch(request, env) {{\n    return serveAsset(request, env, () => true);\n  }},\n}};\n"
     )
 }
 
@@ -230,14 +231,6 @@ pub fn generate_markdown_worker() -> String {
 /// asset. HTML responses carry `Vary: Accept`. `allowed(mdPath)` lets the
 /// access Worker refuse a copy that falls under another password group.
 const NEGOTIATION_JS: &str = r#"const MARKDOWN_TYPE = "text/markdown; charset=utf-8";
-
-function decodePathOrNull(path) {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return null;
-  }
-}
 
 function acceptQuality(accept, type, subtype) {
   let best = null;
@@ -273,12 +266,19 @@ function prefersMarkdown(accept) {
   return md.q > 0 && (md.q > html.q || (md.q === html.q && md.specificity > html.specificity));
 }
 
-function markdownPath(path) {
-  if (path.endsWith("/")) return path + "index.md";
-  const last = path.slice(path.lastIndexOf("/") + 1);
-  if (last.endsWith(".html")) return path.slice(0, -5) + ".md";
+// Markdown candidates for a request path, or null when the path is not
+// negotiable. Only plain paths qualify: a path with `%` escapes, a
+// backslash, an empty segment or a dot segment is served as HTML, so the
+// candidate (built by appending to the raw path, never by decoding) is
+// byte-for-byte the path that gets authorized and fetched.
+function markdownCandidates(rawPath) {
+  if (rawPath.includes("%") || rawPath.includes("\\") || rawPath.includes("//")) return null;
+  if (rawPath.split("/").some((segment) => segment === "." || segment === "..")) return null;
+  if (rawPath.endsWith("/")) return [rawPath + "index.md"];
+  const last = rawPath.slice(rawPath.lastIndexOf("/") + 1);
+  if (last.endsWith(".html")) return [rawPath.slice(0, -5) + ".md"];
   if (last.includes(".")) return null;
-  return path + ".md";
+  return [rawPath + ".md", rawPath + "/index.md"];
 }
 
 function withVaryAccept(response) {
@@ -289,22 +289,28 @@ function withVaryAccept(response) {
   return out;
 }
 
-async function serveAsset(request, env, path, allowed) {
-  const mdPath = request.method === "GET" || request.method === "HEAD" ? markdownPath(path) : null;
-  if (mdPath && allowed(mdPath) && prefersMarkdown(request.headers.get("Accept"))) {
-    const mdUrl = new URL(request.url);
-    mdUrl.pathname = mdPath;
-    mdUrl.search = "";
-    const markdown = await env.ASSETS.fetch(new Request(mdUrl, request));
-    if (markdown.status === 200 || markdown.status === 304) {
-      const out = withVaryAccept(markdown);
-      out.headers.set("Content-Type", MARKDOWN_TYPE);
-      return out;
+// `allowed(path)` re-authorizes each candidate (the access Worker: same
+// password route as the page). A candidate is fetched only when the URL
+// parser leaves it unchanged, and relabeled only when the asset is not HTML
+// (Pages answers unknown paths with the homepage when there is no 404.html).
+async function serveAsset(request, env, allowed) {
+  const url = new URL(request.url);
+  const candidates = request.method === "GET" || request.method === "HEAD" ? markdownCandidates(url.pathname) : null;
+  if (candidates && prefersMarkdown(request.headers.get("Accept"))) {
+    for (const mdPath of candidates) {
+      const mdUrl = new URL(url.origin + mdPath);
+      if (mdUrl.pathname !== mdPath || !allowed(mdPath)) continue;
+      const markdown = await env.ASSETS.fetch(new Request(mdUrl, request));
+      const type = (markdown.headers.get("Content-Type") || "").toLowerCase();
+      if ((markdown.status === 200 || markdown.status === 304) && !type.startsWith("text/html")) {
+        const out = withVaryAccept(markdown);
+        out.headers.set("Content-Type", MARKDOWN_TYPE);
+        return out;
+      }
     }
   }
   const response = await env.ASSETS.fetch(request);
-  if (mdPath && (response.headers.get("Content-Type") || "").startsWith("text/html")) return withVaryAccept(response);
-  return response;
+  return candidates ? withVaryAccept(response) : response;
 }
 "#;
 
@@ -330,7 +336,7 @@ function routeFor(path) {
 function decodePath(path) {
   try {
     const decoded = decodeURIComponent(path);
-    if (decoded.includes("\\") || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
+    if (decoded.includes("\\") || decoded.includes("//") || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
     return decoded;
   } catch {
     return null;
@@ -445,15 +451,19 @@ export default {
     }
 
     const route = routeFor(requestPath);
-    const sameRoute = (mdPath) => routeFor(mdPath) === route;
-    if (!route) return serveAsset(request, env, requestPath, sameRoute);
+    // A markdown candidate must decode cleanly and fall under this same route.
+    const sameRoute = (mdPath) => {
+      const decoded = decodePath(mdPath);
+      return decoded === mdPath && routeFor(decoded) === route;
+    };
+    if (!route) return serveAsset(request, env, sameRoute);
 
     const passwordBinding = PASSWORD_BINDINGS[route.group];
     const sessionBinding = SESSION_BINDINGS[route.group];
     const sessionSecret = sessionBinding ? env[sessionBinding] : null;
     if (!passwordBinding || !sessionBinding || typeof env[passwordBinding] !== "string" || typeof sessionSecret !== "string") return unavailable();
     const token = readCookie(request, cookieName(route.group));
-    if (await validSession(token, route.group, sessionSecret)) return serveAsset(request, env, requestPath, sameRoute);
+    if (await validSession(token, route.group, sessionSecret)) return serveAsset(request, env, sameRoute);
     if (request.method !== "GET" && request.method !== "HEAD") return new Response("Unauthorized", { status: 401, headers: { "Cache-Control": "no-store" } });
     return htmlResponse(loginPage(route.group, url.pathname + url.search));
   },
@@ -537,6 +547,10 @@ session_hours = 24
         assert_eq!(matching_group(&routes, "/docs%ZZsecret.md"), None);
         assert_eq!(matching_group(&routes, "/public/..%2Fdocs/secret.md"), None);
         assert_eq!(matching_group(&routes, "/public%5Cdocs/secret.md"), None);
+        // Empty segments are refused (a host that collapses `//` would
+        // otherwise serve `/docs/...` past an unmatched `//docs/...`).
+        assert_eq!(matching_group(&routes, "//docs/secret.md"), None);
+        assert_eq!(matching_group(&routes, "/x%2F%2Fdocs/secret"), None);
     }
 
     #[test]
@@ -684,7 +698,7 @@ session_hours = 24
         assert!(write_worker(&config, tmp.path()).unwrap());
         let worker = fs::read_to_string(tmp.path().join("_worker.js")).unwrap();
         assert!(worker.starts_with(MARKDOWN_MARKER));
-        assert!(worker.contains("serveAsset(request, env, requestPath, () => true)"));
+        assert!(worker.contains("serveAsset(request, env, () => true)"));
         assert!(!worker.contains("LOGIN_PATH"));
         let routes = fs::read_to_string(tmp.path().join("_routes.json")).unwrap();
         assert_eq!(routes, MARKDOWN_ROUTES);
@@ -702,11 +716,9 @@ session_hours = 24
     fn access_worker_negotiates_only_after_authorization() {
         let worker = generate_worker(&[], 24);
         assert!(worker.contains("function prefersMarkdown"));
-        assert!(
-            worker.contains("if (!route) return serveAsset(request, env, requestPath, sameRoute);")
-        );
+        assert!(worker.contains("if (!route) return serveAsset(request, env, sameRoute);"));
         assert!(worker.contains(
-            "if (await validSession(token, route.group, sessionSecret)) return serveAsset(request, env, requestPath, sameRoute);"
+            "if (await validSession(token, route.group, sessionSecret)) return serveAsset(request, env, sameRoute);"
         ));
         assert!(!worker.contains("__NEGOTIATION__"));
         // The only direct asset fetches are inside the negotiation helper.
