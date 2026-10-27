@@ -103,6 +103,10 @@ pub struct ServerState {
     pub cwd: PathBuf,
     /// Why `seite.toml` exists but could not be loaded (verbatim load error).
     pub config_error: Option<String>,
+    /// The running dev server, when this state serves its `/__seite/mcp`
+    /// endpoint (the runtime tools read it directly); `None` for stdio
+    /// `seite mcp` and the CLI, where they ask a running server over HTTP.
+    pub dev: Option<std::sync::Arc<crate::server::dev::DevState>>,
 }
 
 impl ServerState {
@@ -113,6 +117,7 @@ impl ServerState {
             paths: None,
             cwd: root,
             config_error: None,
+            dev: None,
         };
         state.reload_config();
         state
@@ -214,6 +219,27 @@ pub fn serve() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Handle one HTTP-transported message (or batch) for the dev server's
+/// `/__seite/mcp` endpoint. Stateless: there is no session, so a legacy
+/// revision comes from the `MCP-Protocol-Version` header (sent by clients
+/// after `initialize`), else the default. `None` means "no response body"
+/// (notifications only).
+pub fn handle_http_message(
+    state: &mut ServerState,
+    protocol_version: Option<&str>,
+    body: &str,
+) -> Option<serde_json::Value> {
+    let mut session = Session {
+        negotiated: protocol_version.and_then(|v| {
+            protocol::LEGACY_VERSIONS
+                .iter()
+                .find(|known| **known == v.trim())
+                .copied()
+        }),
+    };
+    handle_line(state, &mut session, body)
 }
 
 /// Process one line of input: a single message or (2025-03-26) a batch.
@@ -516,6 +542,7 @@ pub fn instructions() -> String {
         "- Before editing templates or shortcodes, call seite_list_templates (overrides, blocks, context variables, shortcode params, data keys).",
         &format!("- {verify}"),
         "- Read seite://config for the real configuration (it may differ from documented defaults); use seite_lookup_docs for seite features and syntax.",
+        "- While `seite serve` runs: seite_get_preview_url (page URL to open), seite_get_errors (last build + browser errors from open pages, after visible changes), seite_reload (rebuild now), seite_list_routes (built URLs).",
         "Tool failures come back as results with isError: true and an actionable message; fix the arguments and retry.",
     ]
     .join("\n")
@@ -548,6 +575,7 @@ mod tests {
             paths: None,
             cwd: std::path::PathBuf::from("."),
             config_error: None,
+            dev: None,
         }
     }
 

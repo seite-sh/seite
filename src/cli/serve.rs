@@ -146,6 +146,49 @@ mod devfile {
     fn install_signal_cleanup(_root: PathBuf) {}
 }
 
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn serving_anyway() {
+    human::info(
+        "Serving anyway: fix the problem and save, the dev server rebuilds (`seite preview` lists the errors)",
+    );
+}
+
+/// The build `seite serve` runs before serving. A failure doesn't stop the
+/// server: it is printed, recorded, and shown in the browser overlay.
+fn initial_build(
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+) -> server::dev::BuildOutcome {
+    let opts = BuildOptions {
+        include_drafts: true,
+        incremental: false,
+    };
+    let started = std::time::Instant::now();
+    let result = build::build_site(config, paths, &opts);
+    match &result {
+        Ok(r) => human::success(&r.stats.human_display()),
+        Err(e) => {
+            human::error(&format!("Build failed: {e}"));
+            serving_anyway();
+        }
+    }
+    let scope = server::dev::SiteScope {
+        name: String::new(),
+        root: paths.root.clone(),
+        prefix: None,
+    };
+    server::dev::BuildOutcome::from_result(&result, &scope, elapsed_ms(started)).0
+}
+
+fn record_initial(handle: &server::ServerHandle, initial: Option<server::dev::BuildOutcome>) {
+    if let (Some(outcome), Some(dev)) = (initial, handle.dev()) {
+        dev.record_build(outcome, false);
+    }
+}
+
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3000;
 
@@ -193,17 +236,13 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             };
             config.site.base_url = server::dev_base_url(host, port);
 
-            if args.build {
+            let initial = args.build.then(|| {
                 human::info(&format!("Building site '{site_name}'..."));
-                let opts = BuildOptions {
-                    include_drafts: true,
-                    incremental: false,
-                };
-                let result = build::build_site(&config, &paths, &opts)?;
-                human::success(&result.stats.human_display());
-            }
+                initial_build(&config, &paths)
+            });
 
             let handle = server::start(&config, &paths, host, port, true, false)?;
+            record_initial(&handle, initial);
             let _dev = devfile::publish(
                 &dev_root,
                 handle.port(),
@@ -226,7 +265,9 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
 
         // Multi-site dev server: build every site (each keeps its base_url) and serve.
-        if args.build {
+        // A failed build is reported (and shown in the browser) instead of
+        // stopping the server.
+        let initial = if args.build {
             human::info("Building workspace...");
             let build_opts = workspace::build::WorkspaceBuildOptions {
                 include_drafts: true,
@@ -234,12 +275,46 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 site_filter: None,
                 future: true,
             };
-            workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
-        }
+            let started = std::time::Instant::now();
+            let result = workspace::build::build_workspace(&ws_config, &ws_root, &build_opts);
+            let ms = elapsed_ms(started);
+            let outcomes = match result {
+                Ok(built) => built
+                    .site_results
+                    .iter()
+                    .map(|(name, r)| {
+                        let scope = server::dev::SiteScope {
+                            name: name.clone(),
+                            root: ws_config
+                                .find_site(name)
+                                .map_or_else(|| ws_root.clone(), |s| ws_root.join(&s.path)),
+                            prefix: ws_config.find_site(name).map(|s| PathBuf::from(&s.path)),
+                        };
+                        let outcome =
+                            server::dev::BuildOutcome::success(r.diagnostics.clone(), &scope, ms);
+                        (name.clone(), outcome)
+                    })
+                    .collect(),
+                Err(e) => {
+                    human::error(&format!("Build failed: {e:#}"));
+                    serving_anyway();
+                    vec![(
+                        String::new(),
+                        server::dev::BuildOutcome::failure_message(format!("{e:#}"), ms),
+                    )]
+                }
+            };
+            Some(outcomes)
+        } else {
+            None
+        };
 
         let port = args.port.unwrap_or(DEFAULT_PORT);
         let auto_increment = args.port.is_none();
         let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
+        if let Some(outcomes) = initial {
+            handle.dev().record_site_builds(outcomes, false);
+        }
         let _dev = devfile::publish(
             &dev_root,
             handle.port(),
@@ -342,17 +417,13 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
     config.site.base_url = server::dev_base_url(host, port);
 
-    if args.build {
+    let initial = args.build.then(|| {
         human::info("Building site...");
-        let opts = BuildOptions {
-            include_drafts: true,
-            incremental: false,
-        };
-        let result = build::build_site(&config, &paths, &opts)?;
-        human::success(&result.stats.human_display());
-    }
+        initial_build(&config, &paths)
+    });
 
     let handle = server::start(&config, &paths, host, port, true, false)?;
+    record_initial(&handle, initial);
     let _dev = devfile::publish(
         &dev_root,
         handle.port(),

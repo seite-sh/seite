@@ -27,6 +27,30 @@ Add the server to Claude Desktop's config (`claude_desktop_config.json`, opened 
 
 Restart Claude Desktop. The chat can then read your content, check the site, create posts, and build it. Use the full path to `seite` (`which seite`) if Claude Desktop doesn't find it on `PATH`. Other chat apps that speak MCP over stdio take the same command.
 
+## Over HTTP, from the dev server
+
+While `seite serve` runs, the same server is also available over HTTP at `http://localhost:3000/__seite/mcp` (use the port `seite serve` printed). Clients that support HTTP (streamable HTTP) MCP servers can connect to it without starting a process:
+
+```json
+{
+  "mcpServers": {
+    "my-site": { "type": "http", "url": "http://localhost:3000/__seite/mcp" }
+  }
+}
+```
+
+It is stateless: one JSON-RPC message (or batch) per `POST`, answered with `application/json` (notifications get `202`; `GET` gets `405`, there is no event stream). Clients that only speak stdio keep using `seite mcp --dir /path/to/site`, which also reaches the running dev server for the runtime tools below.
+
+Because it can create and edit content, the endpoint only answers requests that come from this machine:
+
+- `Host` must be `localhost:<port>`, `127.0.0.1:<port>` or `[::1]:<port>` (blocks DNS rebinding);
+- an `Origin` header, if present, must be one of the same origins (blocks other websites);
+- `Content-Type` must be `application/json` (cross-origin pages can't send it without a CORS preflight, which is never granted: the server sends no `Access-Control-Allow-*` headers);
+- bodies are capped at 1 MB;
+- when the server is reachable from the network (`seite serve --host 0.0.0.0` or a LAN address) the endpoint is off and answers `403`.
+
+The workspace server (`seite serve` at a workspace root, several sites) has no MCP endpoint: serve one site with `seite serve --site <name>`, or use `seite mcp --dir <site>`.
+
 ## Why MCP?
 
 Without MCP, an AI tool working on your site has to:
@@ -107,7 +131,7 @@ Documentation resources are always available (they're embedded in the binary). S
 
 Tools are actions that AI tools can execute. A tool-execution failure (bad arguments, no site found, a failed build, an unknown theme, an existing file without `overwrite`, ...) comes back as a normal result with `isError: true` and an actionable message — only a missing/unknown tool name is a protocol-level error.
 
-A successful result is compact JSON text; clients on `2025-06-18` or newer also get the same object as `structuredContent`, and every tool except `seite_lookup_docs` declares an `outputSchema` for it.
+A successful result is compact JSON text; clients on `2025-06-18` or newer also get the same object as `structuredContent`, and every tool except `seite_lookup_docs` and the dev-server runtime tools declares an `outputSchema` for it.
 
 | Tool | Changes files? |
 |------|----------------|
@@ -117,6 +141,8 @@ A successful result is compact JSON text; clients on `2025-06-18` or newer also 
 | `seite_update_frontmatter` | Rewrites one file's frontmatter |
 | `seite_apply_theme` | Writes `templates/base.html` (backs up a customized one) |
 | `seite_create_collection` | Rewrites `seite.toml`, creates a content directory |
+| `seite_get_errors`, `seite_get_preview_url`, `seite_list_routes` | No (read the running dev server and the output directory) |
+| `seite_reload` | The dev server rebuilds the output directory |
 
 ### seite_build
 
@@ -244,6 +270,19 @@ Look up page documentation by topic or keyword.
 | `topic` | string | No | Specific doc topic slug (e.g., `configuration`, `templates`, `deployment`) |
 
 When `topic` matches a doc slug, returns the full page. When `query` is provided, searches across all documentation and returns matching sections with context.
+
+### Dev-server runtime tools
+
+These four tools answer from the running `seite serve`. Over the dev server's HTTP endpoint they read its state directly; under stdio `seite mcp` they find the server through `.seite/dev.json` and ask it over `127.0.0.1`. Without a running server they fail with "no dev server running; start it with `seite serve`" (`seite_list_routes` still lists routes, with `preview_base: null`). They declare no `outputSchema`.
+
+| Tool | Parameters | Returns |
+|------|------------|---------|
+| `seite_get_errors` | (none) | `{url, ok, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, browser_errors: [{kind, message, source, line, col, page, count}]}`; `ok` is false when the last build failed or a page reported errors |
+| `seite_get_preview_url` | `path` (content file) or `url` (published path), optional | `{base_url, page, preview_url}` |
+| `seite_list_routes` | `prefix`, `limit` (default 200, max 2000) | `{output_dir, total, returned, routes, preview_base}`: every built `.html` page as a URL |
+| `seite_reload` | (none) | Rebuilds now (drafts and scheduled posts included, like `seite serve`), reloads open pages, returns the build outcome and `url` |
+
+From a shell, `seite preview` prints the same as `seite_get_errors`.
 
 ## Practical Example
 

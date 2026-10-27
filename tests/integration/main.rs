@@ -13,6 +13,7 @@ mod context;
 mod context_rules;
 mod deploy;
 mod determinism;
+mod dev_server;
 mod docs;
 mod explain;
 mod feeds;

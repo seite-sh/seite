@@ -21,6 +21,7 @@ pub mod new;
 pub mod og;
 pub mod page;
 pub mod perf;
+pub mod preview;
 pub mod prompt;
 pub mod search;
 pub mod self_update;
@@ -161,6 +162,10 @@ pub enum Command {
 
     /// Show one content file as the build sees it (by source path or URL)
     Page(page::PageArgs),
+
+    /// The running dev server: URL, last build outcome, and browser errors
+    /// from open preview pages
+    Preview(preview::PreviewArgs),
 
     /// Social preview cards ([og]): render one to a PNG
     Og(og::OgArgs),
