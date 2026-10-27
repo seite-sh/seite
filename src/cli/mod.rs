@@ -32,6 +32,7 @@ pub mod stats;
 pub mod telemetry;
 pub mod templates;
 pub mod theme;
+pub mod trust;
 pub mod upgrade;
 pub mod workspace;
 
@@ -128,6 +129,10 @@ pub enum Command {
 
     /// Turn the coding-agent `seite check` hooks on or off, or show their status
     Hooks(hooks::HooksArgs),
+
+    /// Trust this project to run its own code at build time (Tailwind CSS
+    /// plugins run project JavaScript); --revoke, --list
+    Trust(trust::TrustArgs),
 
     /// Manage multi-site workspaces
     Workspace(workspace::WorkspaceArgs),

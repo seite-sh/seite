@@ -36,6 +36,7 @@ mod self_update;
 mod shortcodes;
 mod skill;
 mod stats;
+mod tailwind;
 mod templates;
 mod theme;
 mod theme_partials;

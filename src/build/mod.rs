@@ -15,6 +15,7 @@ pub mod og;
 pub mod redirects;
 pub mod search;
 pub mod sitemap;
+pub mod tailwind;
 
 pub(crate) mod content_model;
 pub(crate) mod related;
@@ -370,7 +371,21 @@ pub fn build_site(
                 .subdomain_collections()
                 .iter()
                 .all(|collection| paths.subdomain_output(&collection.name).exists());
-        if cs.is_empty() && all_outputs_exist {
+        // A Tailwind input outside the tracked dirs (e.g. `assets/`) is not
+        // in the change set: never skip the build for it (the dev server
+        // watches that file).
+        let untracked_tailwind_input = config.build.tailwind.as_ref().is_some_and(|tw| {
+            let input = paths.root.join(&tw.input);
+            ![
+                &paths.static_dir,
+                &paths.templates,
+                &paths.content,
+                &paths.data_dir,
+            ]
+            .iter()
+            .any(|dir| input.starts_with(dir))
+        });
+        if cs.is_empty() && all_outputs_exist && !untracked_tailwind_input {
             // Even a content no-op must refresh generated access artifacts so
             // upgrading seite applies security migrations to retained output.
             refresh_access_artifacts(effective_config, paths)?;
@@ -1182,6 +1197,30 @@ fn build_site_inner(
         "Load data files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 2.6: Tailwind (`[build.tailwind]`): compile the entry CSS now,
+    // before any page renders (the staging output holds only `public/`
+    // copies while Tailwind scans the site). Step 10 writes it out like any
+    // other static file. Runs on every build, incremental ones included:
+    // class names come from templates, content and data.
+    let tailwind_css = if config.build.tailwind.is_some() {
+        progress.step("Compiling Tailwind CSS");
+        let step_start = Instant::now();
+        let css = match tailwind::run(config, &paths.root) {
+            Ok(css) => css,
+            Err(d) => {
+                fatal.push(*d);
+                None
+            }
+        };
+        step_timings.push((
+            "Tailwind CSS".to_string(),
+            step_start.elapsed().as_secs_f64() * 1000.0,
+        ));
+        css
+    } else {
+        None
+    };
 
     let is_multilingual = config.is_multilingual();
     let default_lang = &config.site.language;
@@ -2780,11 +2819,18 @@ fn build_site_inner(
     let mut asset_manifest: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
     let protected_asset_groups = config.password_access_groups();
+    // The Tailwind entry file is compiled (Step 2.6), never copied raw.
+    let tailwind_input = config
+        .build
+        .tailwind
+        .as_ref()
+        .map(|tw| paths.root.join(&tw.input));
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
+            .filter(|e| tailwind_input.as_deref() != Some(e.path()))
         {
             let rel = entry
                 .path()
@@ -2841,54 +2887,45 @@ fn build_site_inner(
             if (config.build.minify && (is_css || is_js)) || config.build.fingerprint {
                 let content = fs::read(entry.path())?;
                 let processed: Vec<u8> = if config.build.minify && is_css {
-                    minify_css(&content).into_bytes()
+                    // Bundle local `@import`s first (see `inline_css_imports`).
+                    let bundled = inline_css_imports(&content, entry.path(), &paths.static_dir);
+                    minify_css(&bundled).into_bytes()
                 } else if config.build.minify && is_js {
                     minify_js(&content).into_bytes()
                 } else {
-                    content.clone()
+                    content
                 };
-
-                fs::write(&dest, &processed)?;
-
-                if config.build.fingerprint {
-                    let hash = fnv_hash8(&processed);
-                    // Build fingerprinted name: foo.css → foo.<hash>.css
-                    let stem = entry
-                        .path()
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
-                    let fp_name = format!("{stem}.{hash}.{ext}");
-                    let fp_dest = dest
-                        .parent()
-                        .map(|p| p.join(&fp_name))
-                        .unwrap_or_else(|| PathBuf::from(&fp_name));
-                    fs::write(&fp_dest, &processed)?;
-
-                    // Record in manifest using Unix-style paths
-                    let orig_url = format!(
-                        "{url_root}/{}",
-                        output_rel.to_string_lossy().replace('\\', "/")
-                    );
-                    let fp_rel = output_rel
-                        .parent()
-                        .map(|p| {
-                            let p = p.to_string_lossy();
-                            if p.is_empty() {
-                                fp_name.clone()
-                            } else {
-                                format!("{}/{fp_name}", p.replace('\\', "/"))
-                            }
-                        })
-                        .unwrap_or_else(|| fp_name.clone());
-                    let fp_url = format!("{url_root}/{fp_rel}");
-                    asset_manifest.insert(orig_url, fp_url);
-                }
+                write_static_asset(
+                    &dest,
+                    url_root,
+                    &output_rel,
+                    &processed,
+                    config.build.fingerprint,
+                    &mut asset_manifest,
+                )?;
             } else {
                 fs::copy(entry.path(), &dest)?;
             }
             static_count += 1;
         }
+    }
+    // The compiled Tailwind stylesheet (Step 2.6), already minified by the
+    // Tailwind CLI: `static/<output>`, fingerprinted like the files above.
+    if let (Some(css), Some(tw)) = (&tailwind_css, &config.build.tailwind) {
+        let output_rel = PathBuf::from(&tw.output);
+        let dest = paths.output.join("static").join(&output_rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_static_asset(
+            &dest,
+            "/static",
+            &output_rel,
+            css,
+            config.build.fingerprint,
+            &mut asset_manifest,
+        )?;
+        static_count += 1;
     }
 
     // Write asset manifest if fingerprinting is on
@@ -3387,6 +3424,237 @@ fn build_url(url_prefix: &str, slug: &str) -> String {
     } else {
         format!("{prefix}/{slug}")
     }
+}
+
+/// Write a processed static file to `dest` and, with `fingerprint`, also
+/// as `<stem>.<hash8>.<ext>` next to it, recording
+/// `{url_root}/{output_rel}` → the fingerprinted URL in `manifest`.
+fn write_static_asset(
+    dest: &Path,
+    url_root: &str,
+    output_rel: &Path,
+    bytes: &[u8],
+    fingerprint: bool,
+    manifest: &mut std::collections::BTreeMap<String, String>,
+) -> Result<()> {
+    fs::write(dest, bytes)?;
+    if !fingerprint {
+        return Ok(());
+    }
+    let hash = fnv_hash8(bytes);
+    let stem = output_rel
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let ext = output_rel
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    // foo.css → foo.<hash>.css
+    let fp_name = format!("{stem}.{hash}.{ext}");
+    let fp_dest = dest
+        .parent()
+        .map(|p| p.join(&fp_name))
+        .unwrap_or_else(|| PathBuf::from(&fp_name));
+    fs::write(&fp_dest, bytes)?;
+
+    // Record in manifest using Unix-style paths
+    let orig_url = format!(
+        "{url_root}/{}",
+        output_rel.to_string_lossy().replace('\\', "/")
+    );
+    let fp_rel = output_rel
+        .parent()
+        .map(|p| {
+            let p = p.to_string_lossy();
+            if p.is_empty() {
+                fp_name.clone()
+            } else {
+                format!("{}/{fp_name}", p.replace('\\', "/"))
+            }
+        })
+        .unwrap_or_else(|| fp_name.clone());
+    manifest.insert(orig_url, format!("{url_root}/{fp_rel}"));
+    Ok(())
+}
+
+/// Bundle local CSS imports (with `minify`). The `@import` statements at
+/// the top of a stylesheet (before any other rule, as CSS requires; comments
+/// and `@charset` may precede them) are replaced by the imported files'
+/// own (bundled) contents when every one of them is a plain
+/// `@import "x.css";` / `@import url(x.css);` of a file under `static_dir`
+/// that holds no relative `url(...)` (those would resolve against the wrong
+/// directory once moved). Otherwise the file is left exactly as written:
+/// remote or absolute URLs, media queries, `layer()`/`supports()`, missing
+/// files, files outside `static_dir`, cycles. A file already bundled is
+/// not repeated, and bundling stops (file left as is) past
+/// [`MAX_BUNDLED_CSS`] bytes. Imported files are still copied on their own.
+/// Never fetches anything.
+fn inline_css_imports(raw: &[u8], file: &Path, static_dir: &Path) -> Vec<u8> {
+    let Ok(static_root) = static_dir.canonicalize() else {
+        return raw.to_vec();
+    };
+    let css = String::from_utf8_lossy(raw);
+    let mut ctx = InlineCtx {
+        static_root,
+        stack: file.canonicalize().into_iter().collect(),
+        seen: file.canonicalize().into_iter().collect(),
+        total: css.len(),
+    };
+    match bundle_css(&css, file, &mut ctx) {
+        Some(bundled) => bundled.into_bytes(),
+        None => raw.to_vec(),
+    }
+}
+
+/// Bundled CSS stops growing past this many bytes (the file is then left
+/// with its `@import`s).
+const MAX_BUNDLED_CSS: usize = 2 * 1024 * 1024;
+
+struct InlineCtx {
+    static_root: PathBuf,
+    /// Files being bundled (cycle detection).
+    stack: Vec<PathBuf>,
+    /// Files already bundled anywhere (each is included once).
+    seen: Vec<PathBuf>,
+    /// Bytes bundled so far.
+    total: usize,
+}
+
+/// `css` with its leading `@import`s replaced by the files' contents, or
+/// `None` when any of them cannot be bundled (the caller keeps it as is).
+/// `Some(css)` unchanged when it has no leading imports.
+fn bundle_css(css: &str, file: &Path, ctx: &mut InlineCtx) -> Option<String> {
+    let imports = leading_imports(css);
+    if imports.is_empty() {
+        return Some(css.to_string());
+    }
+    let snapshot = (ctx.seen.clone(), ctx.total);
+    let result = (|| {
+        let mut out = String::with_capacity(css.len());
+        let mut last = 0;
+        for (start, end, url) in &imports {
+            out.push_str(&css[last..*start]);
+            last = *end;
+            let url = url.as_deref().filter(|u| is_local_relative_url(u))?;
+            let path = file.parent()?.join(url).canonicalize().ok()?;
+            if !path.starts_with(&ctx.static_root) || !path.is_file() || ctx.stack.contains(&path) {
+                return None;
+            }
+            if ctx.seen.contains(&path) {
+                // Already bundled earlier: not repeated.
+                continue;
+            }
+            let text = fs::read_to_string(&path).ok()?;
+            if has_relative_url(&text) {
+                return None;
+            }
+            ctx.total += text.len();
+            if ctx.total > MAX_BUNDLED_CSS {
+                return None;
+            }
+            ctx.seen.push(path.clone());
+            ctx.stack.push(path.clone());
+            let inner = bundle_css(&text, &path, ctx);
+            ctx.stack.pop();
+            out.push_str(&inner?);
+            out.push('\n');
+        }
+        out.push_str(&css[last..]);
+        Some(out)
+    })();
+    if result.is_none() {
+        (ctx.seen, ctx.total) = snapshot;
+    }
+    result
+}
+
+/// The `@import` statements before the first other rule: (start, end
+/// after `;`, URL of a plain import or `None` when it has a media query,
+/// `layer()`, `supports()` or cannot be parsed).
+fn leading_imports(css: &str) -> Vec<(usize, usize, Option<String>)> {
+    let mut found = Vec::new();
+    let mut i = 0;
+    let bytes = css.as_bytes();
+    while i < bytes.len() {
+        let rest = &css[i..];
+        let trimmed = rest.trim_start();
+        i += rest.len() - trimmed.len();
+        if let Some(comment) = trimmed.strip_prefix("/*") {
+            match comment.find("*/") {
+                Some(close) => i += close + 4,
+                None => break,
+            }
+        } else if trimmed.starts_with("@charset") {
+            match trimmed.find(';') {
+                Some(semi) => i += semi + 1,
+                None => break,
+            }
+        } else if trimmed.starts_with("@import") {
+            let Some(semi) = trimmed.find(';') else {
+                break;
+            };
+            let args = &trimmed["@import".len()..semi];
+            found.push((
+                i,
+                i + semi + 1,
+                parse_simple_import(args).map(str::to_string),
+            ));
+            i += semi + 1;
+        } else {
+            break;
+        }
+    }
+    found
+}
+
+/// Whether `css` has a `url(...)` relative to its own location (not
+/// `data:`, a scheme, root- or protocol-relative, or a `#fragment`).
+fn has_relative_url(css: &str) -> bool {
+    css.match_indices("url(").any(|(at, _)| {
+        let target = css[at + 4..].trim_start().trim_start_matches(['"', '\'']);
+        !(target.starts_with('/')
+            || target.starts_with('#')
+            || target.starts_with("data:")
+            || target
+                .split(['/', ')', '"', '\''])
+                .next()
+                .is_some_and(|first| first.contains(':')))
+    })
+}
+
+/// The URL of `@import <url>;` when the statement has nothing else (no
+/// media query, `layer()` or `supports()`).
+fn parse_simple_import(args: &str) -> Option<&str> {
+    let args = args.trim();
+    let (url, tail) = if let Some(inner) = args.strip_prefix("url(") {
+        let close = inner.find(')')?;
+        let url = inner[..close].trim();
+        let url = url
+            .strip_prefix('"')
+            .and_then(|u| u.strip_suffix('"'))
+            .or_else(|| url.strip_prefix('\'').and_then(|u| u.strip_suffix('\'')))
+            .unwrap_or(url);
+        (url, &inner[close + 1..])
+    } else {
+        let quote = args.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+        let inner = &args[1..];
+        let close = inner.find(quote)?;
+        (&inner[..close], &inner[close + 1..])
+    };
+    tail.trim().is_empty().then_some(url)
+}
+
+/// A relative URL to a local `.css` file (no scheme, not root- or
+/// protocol-relative).
+fn is_local_relative_url(url: &str) -> bool {
+    !url.is_empty()
+        && !url.starts_with('/')
+        && !url.contains(':')
+        && !url.contains('?')
+        && !url.contains('#')
+        && url.to_ascii_lowercase().ends_with(".css")
 }
 
 /// FNV-1a hash → first 8 hex chars, used for cache-busting fingerprints.
@@ -4363,6 +4631,162 @@ mod tests {
         assert_eq!(h.len(), 8);
         // FNV-1a with no bytes should return first 8 hex chars of the offset basis
         assert_eq!(h, "cbf29ce4");
+    }
+
+    // ── inline_css_imports ──────────────────────────────────────────────
+
+    fn css_tree(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        for (path, body) in files {
+            let p = tmp.path().join(path);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        tmp
+    }
+
+    fn inline(tmp: &tempfile::TempDir, file: &str) -> String {
+        let path = tmp.path().join("static").join(file);
+        let raw = fs::read(&path).unwrap();
+        String::from_utf8(inline_css_imports(&raw, &path, &tmp.path().join("static"))).unwrap()
+    }
+
+    #[test]
+    fn test_inline_css_imports_local_files() {
+        let tmp = css_tree(&[
+            (
+                "static/css/main.css",
+                "@import \"base.css\";\n@import url(parts/grid.css);\n@import url('parts/x.css');\nbody{}",
+            ),
+            ("static/css/base.css", "html{color:red}"),
+            ("static/css/parts/grid.css", "@import \"../tokens.css\";.grid{}"),
+            ("static/css/tokens.css", ":root{--a:1}"),
+            ("static/css/parts/x.css", ".x{}"),
+        ]);
+        let out = inline(&tmp, "css/main.css");
+        assert!(!out.contains("@import"), "{out}");
+        assert!(out.contains("html{color:red}"));
+        assert!(out.contains(":root{--a:1}"));
+        assert!(out.contains(".grid{}"));
+        assert!(out.contains(".x{}"));
+        assert!(out.ends_with("body{}"));
+    }
+
+    #[test]
+    fn test_inline_css_imports_leaves_others_alone() {
+        let tmp = css_tree(&[
+            (
+                "static/css/main.css",
+                "@import url(https://fonts.example/x.css);\n@import \"//cdn.example/y.css\";\n@import \"/static/css/abs.css\";\n@import \"print.css\" print;\n@import \"layered.css\" layer(base);\n@import \"missing.css\";\n@import \"../../outside.css\";\n/* @import \"a.css\"; */\n@import \"tailwindcss\";",
+            ),
+            ("static/css/print.css", ".p{}"),
+            ("static/css/layered.css", ".l{}"),
+            ("static/css/a.css", ".a{}"),
+            ("outside.css", ".secret{}"),
+        ]);
+        let raw = fs::read_to_string(tmp.path().join("static/css/main.css")).unwrap();
+        assert_eq!(inline(&tmp, "css/main.css"), raw);
+    }
+
+    #[test]
+    fn test_inline_css_imports_cycle_is_safe() {
+        let tmp = css_tree(&[
+            ("static/a.css", "@import \"b.css\";.a{}"),
+            ("static/b.css", "@import \"a.css\";.b{}"),
+            ("static/self.css", "@import \"self.css\";.s{}"),
+        ]);
+        // b's import of a stays, so a keeps its own import of b.
+        assert_eq!(inline(&tmp, "a.css"), "@import \"b.css\";.a{}");
+        assert_eq!(inline(&tmp, "self.css"), "@import \"self.css\";.s{}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_only_leading_once_and_without_relative_urls() {
+        let tmp = css_tree(&[
+            // An @import after a rule is ignored by browsers: left alone.
+            ("static/late.css", ".x{}\n@import \"a.css\";"),
+            ("static/a.css", ".a{}"),
+            // Relative url() would point elsewhere once moved: not bundled.
+            ("static/uses-url.css", "@import \"img/bg.css\";"),
+            ("static/img/bg.css", ".bg{background:url(bg.png)}"),
+            // Absolute/data URLs are fine.
+            (
+                "static/ok-url.css",
+                "/* c */ @charset \"utf-8\";\n@import \"abs.css\";",
+            ),
+            (
+                "static/abs.css",
+                ".i{background:url(/static/i.png)}.d{background:url(\"data:image/png;base64,x\")}.r{background:url(https://x.example/i.png)}",
+            ),
+            // Each file once.
+            ("static/dup.css", "@import \"b.css\";\n@import \"c.css\";"),
+            ("static/b.css", "@import \"t.css\";.b{}"),
+            ("static/c.css", "@import \"t.css\";.c{}"),
+            ("static/t.css", ".t{}"),
+        ]);
+        assert_eq!(inline(&tmp, "late.css"), ".x{}\n@import \"a.css\";");
+        assert_eq!(inline(&tmp, "uses-url.css"), "@import \"img/bg.css\";");
+        let ok = inline(&tmp, "ok-url.css");
+        assert!(
+            !ok.contains("@import") && ok.contains("url(/static/i.png)"),
+            "{ok}"
+        );
+        let dup = inline(&tmp, "dup.css");
+        assert_eq!(dup.matches(".t{}").count(), 1, "{dup}");
+        assert!(dup.contains(".b{}") && dup.contains(".c{}"), "{dup}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_size_cap() {
+        let big = ".x{}".repeat(MAX_BUNDLED_CSS / 4 + 1);
+        let tmp = css_tree(&[
+            ("static/main.css", "@import \"big.css\";"),
+            ("static/big.css", &big),
+        ]);
+        assert_eq!(inline(&tmp, "main.css"), "@import \"big.css\";");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_inline_css_imports_symlink_outside_static_is_ignored() {
+        let tmp = css_tree(&[
+            ("static/main.css", "@import \"link.css\";"),
+            ("secret.css", ".secret{}"),
+        ]);
+        std::os::unix::fs::symlink(
+            tmp.path().join("secret.css"),
+            tmp.path().join("static/link.css"),
+        )
+        .unwrap();
+        assert_eq!(inline(&tmp, "main.css"), "@import \"link.css\";");
+    }
+
+    #[test]
+    fn test_build_bundles_css_imports_when_minifying() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# config\n").unwrap();
+        config.build.minify = true;
+        fs::create_dir_all(paths.static_dir.join("css")).unwrap();
+        fs::write(
+            paths.static_dir.join("css/main.css"),
+            "@import \"base.css\";\nbody { margin: 0; }\n",
+        )
+        .unwrap();
+        fs::write(
+            paths.static_dir.join("css/base.css"),
+            "html { color: red; }",
+        )
+        .unwrap();
+        let opts = BuildOptions {
+            include_drafts: false,
+            incremental: false,
+        };
+        build_site(&config, &paths, &opts).unwrap();
+        let main = fs::read_to_string(paths.output.join("static/css/main.css")).unwrap();
+        assert_eq!(main, "html{color:red;}body{margin:0;}");
+        assert!(paths.output.join("static/css/base.css").exists());
     }
 
     // ── minify_css ──────────────────────────────────────────────────────

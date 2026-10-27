@@ -505,6 +505,21 @@ pub fn validate_config(config: &SiteConfig) -> Result<(), (String, String)> {
 pub fn config_line(contents: &str, key: &str) -> Option<usize> {
     let find =
         |pred: &dyn Fn(&str) -> bool| contents.lines().position(|l| pred(l.trim())).map(|i| i + 1);
+    // `[section]key`: the first `key =` after the `[section]` header, else
+    // the header itself.
+    if let Some((section, name)) = key.strip_prefix('[').and_then(|rest| rest.split_once(']')) {
+        let header = find(&|l: &str| l == format!("[{section}]"))?;
+        let after = contents
+            .lines()
+            .skip(header)
+            .take_while(|l| !l.trim_start().starts_with('['))
+            .position(|l| {
+                l.trim()
+                    .strip_prefix(name)
+                    .is_some_and(|rest| rest.trim_start().starts_with('='))
+            });
+        return Some(after.map_or(header, |i| header + i + 1));
+    }
     match key.strip_prefix("fields.") {
         Some(name) => find(&|l: &str| {
             l.starts_with('[') && l.trim_end_matches(']').ends_with(&format!("fields.{name}"))

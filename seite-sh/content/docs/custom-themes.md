@@ -71,6 +71,7 @@ Rules for designers and agents:
 - **Keep the blocks** `title`, `head`, `extra_css`, `header`, `content`, `footer`, `extra_js`. `post.html`, `doc.html` and the other templates extend `base.html` and fill them.
 - **Build in `templates/` and `static/`**, preview with `seite serve`. No standalone HTML mockups to port later.
 - Put the look in `static/css/site.css`. Links are root-relative (`/static/…`); seite rewrites them for a `base_path` and keeps the plain file next to fingerprinted copies, so they work with `minify` and `fingerprint`.
+- Prefer utility classes? `seite theme new --tailwind` starts the blank starter on [Tailwind CSS](/docs/configuration#tailwind-css): `base.html` links `/static/css/tailwind.css`, compiled at build time from `static/css/tailwind.css` by the standalone Tailwind CLI (no Node).
 
 What each partial does, and how to override one, is in [Templates → seite partials](/docs/templates#seite-partials).
 

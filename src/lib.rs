@@ -22,5 +22,6 @@ pub mod shortcodes;
 pub mod telemetry;
 pub mod templates;
 pub mod themes;
+pub mod trust;
 pub mod update_check;
 pub mod workspace;

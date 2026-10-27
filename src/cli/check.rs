@@ -114,6 +114,7 @@ pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         None,
         args.external.then_some(args.strict),
         args.future,
+        false,
     )?;
     if !args.future {
         print_schedule_note(&cwd);
@@ -313,8 +314,13 @@ pub fn check_files(root: &Path, files: &[std::path::PathBuf]) -> crate::error::R
 /// Collect every problem in the site at `root` as diagnostics (paths relative
 /// to `root`, sorted). Only returns `Err` when checking cannot start at all
 /// (e.g. there is no `seite.toml`).
+///
+/// Used by coding-agent hooks and the MCP `seite_check` tool, which run on
+/// whatever repository is checked out: `[build.tailwind]` never runs a
+/// program or downloads here (the entry CSS is copied as-is, with no
+/// diagnostics about Tailwind).
 pub fn check_site(root: &Path, include_drafts: bool) -> crate::error::Result<Diagnostics> {
-    check_site_with(root, include_drafts, None)
+    check_site_full(root, include_drafts, None, None, false, true).map(|(d, _)| d)
 }
 
 /// [`check_site`] with an optional `base_url` override (workspace sites).
@@ -323,7 +329,7 @@ fn check_site_with(
     include_drafts: bool,
     base_url: Option<&str>,
 ) -> crate::error::Result<Diagnostics> {
-    check_site_full(root, include_drafts, base_url, None, false).map(|(d, _)| d)
+    check_site_full(root, include_drafts, base_url, None, false, false).map(|(d, _)| d)
 }
 
 /// [`check_site_with`], plus — with `external: Some(strict)` — the external
@@ -335,6 +341,7 @@ fn check_site_full(
     base_url: Option<&str>,
     external: Option<bool>,
     future: bool,
+    skip_tailwind: bool,
 ) -> crate::error::Result<(Diagnostics, Option<external_links::Summary>)> {
     let mut external_summary = None;
     let mut all = Diagnostics::new();
@@ -356,6 +363,11 @@ fn check_site_full(
     // Links resolve exactly like `seite build` (scheduled pages are hidden
     // unless --future); scheduled pages are still rendered below.
     config.build.future |= future;
+    // Hooks and MCP never run the Tailwind CLI (`[build.tailwind]`); plain
+    // `seite check` runs a cached one (scratch builds never download).
+    if let Some(tw) = config.build.tailwind.as_mut() {
+        tw.never_run |= skip_tailwind;
+    }
     all.extend(config_warnings);
     let paths = config.resolve_paths(root);
     let hidden = crate::content::schedule::hidden_pages(&config, &paths);
@@ -437,6 +449,10 @@ fn check_site_full(
         if let Some(og) = future_config.og.as_mut() {
             og.skip_render = true;
         }
+        // Only scheduled pages' own diagnostics are kept: no Tailwind run.
+        if let Some(tw) = future_config.build.tailwind.as_mut() {
+            tw.never_run = true;
+        }
         let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
             Ok(result) => result.diagnostics.into_iter().collect(),
             Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
@@ -496,6 +512,11 @@ pub fn scratch_build(
     let mut config = config.clone();
     if let Some(og) = config.og.as_mut() {
         og.skip_render = true;
+    }
+    // `[build.tailwind]` never runs here (it runs project JavaScript); only
+    // real builds (`seite build`/`serve`, MCP `seite_build`) run it.
+    if let Some(tw) = config.build.tailwind.as_mut() {
+        tw.never_run = true;
     }
     let opts = BuildOptions {
         include_drafts,

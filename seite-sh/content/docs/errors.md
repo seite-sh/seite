@@ -552,6 +552,34 @@ name = "categories"
 url_prefix = "/categories"   # not "/posts"
 ```
 
+## tailwind-download-failed
+
+**What it means:** the site has `[build.tailwind]` (and no `SEITE_TAILWIND_BIN` in the environment), and `seite build`, `seite serve` or the MCP `seite_build` tool could not get the pinned Tailwind CSS standalone CLI: the download from the GitHub release failed (no network, a proxy, a timeout), its SHA-256 did not match the checksum built into seite (the file is discarded, never run), or Tailwind publishes no binary for this OS/CPU. An error: `seite build` stops. The file is `seite.toml`. `seite check`, `seite audit`, coding-agent hooks and the other MCP tools never run Tailwind, so they never report it.
+
+**How to fix:** retry with a working connection; the binary is downloaded once and cached (`~/Library/Caches/seite/tailwind/` on macOS, `$XDG_CACHE_HOME/seite/tailwind/` or `~/.cache/seite/tailwind/` on Linux, `%LOCALAPPDATA%\seite\tailwind\` on Windows). Without a per-user cache directory (no `HOME`/`LOCALAPPDATA`) it fails too: seite never runs the CLI from inside a project. Offline, or on an unsupported platform, install `tailwindcss` yourself and point seite at it through the environment with an absolute path (`seite.toml` cannot choose a program to run):
+
+```bash
+export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
+```
+
+## tailwind-failed
+
+**What it means:** `[build.tailwind]` is set and the Tailwind CLI did not produce the stylesheet: the `input` file is missing, a symlink or outside the site, `SEITE_TAILWIND_BIN` does not exist or cannot run, the CLI ran longer than two minutes, or `tailwindcss` exited with an error (the message quotes its output, for example `Cannot apply unknown utility class`). An error: `seite build` stops. The file is the Tailwind input (or `seite.toml` for a bad `SEITE_TAILWIND_BIN` or input path). `seite check`, `seite audit`, agent hooks and MCP check tools never run Tailwind, so they never report it.
+
+**How to fix:** fix what Tailwind reports in the input CSS (an unknown class in `@apply`, a bad `@import` or `@source` path), or create the input with `seite theme new --tailwind`. To see the full output, run the same command from the site root: `tailwindcss -i static/css/tailwind.css -o /tmp/out.css`.
+
+## tailwind-untrusted
+
+**What it means:** the site has `[build.tailwind]`, and you have not trusted this project. Tailwind CSS runs the project's own code: its stylesheet can load plugins (`@plugin "./x.js"`, `@config`) that are JavaScript files from the repository, and can import any CSS file it reaches. seite only runs it for projects you trusted. An error: `seite build`, `seite serve` and the MCP `seite_build` tool stop. The file is `seite.toml`, at the `[build.tailwind]` line. `seite check` and `seite audit` never run Tailwind and never report it.
+
+**How to fix:** if you trust the repository's code (as you would before running its npm scripts), run this once in the site root:
+
+```bash
+seite trust            # --revoke undoes it, --list shows trusted projects
+```
+
+The decision is stored per user (in seite's config directory, keyed by the site's path), never in the repository. Coding agents are not allowed to run `seite trust`. In CI, set `SEITE_TRUST_PROJECT=1` in the build step's environment (the workflows seite generates do this for Tailwind sites); see [Tailwind CSS](/docs/configuration#tailwind-css).
+
 ## template-markdown-link
 
 **What it means:** a template in `templates/` builds the page's markdown URL as `{{ page.url }}.md`. That produces broken links such as `/.md`, `/posts/.md` or `/tags/.md` on pages that have no markdown copy (the homepage, collection indexes, tag pages, paginated pages, 404). Reported as a warning.

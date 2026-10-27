@@ -340,7 +340,7 @@ seite theme <subcommand>
 |------------|-------------|
 | `list` | Show the starters, the gallery of example themes, and installed themes |
 | `apply <name>` | Apply a bundled or installed theme (`blank` also writes `static/css/site.css` if missing) |
-| `new [name] [--force]` | Start your own design: scaffold the `blank` starter (`templates/base.html` + `static/css/site.css`) and print how to design it with impeccable or `/seite theme`. Refuses to replace a customized `base.html` without `--force` (which backs it up first) |
+| `new [name] [--force] [--tailwind]` | Start your own design: scaffold the `blank` starter (`templates/base.html` + `static/css/site.css`) and print how to design it with impeccable or `/seite theme`. Refuses to replace a customized `base.html` without `--force` (which backs it up first). `--tailwind` also adds `[build.tailwind]`, writes `static/css/tailwind.css` and links the compiled stylesheet (see [Tailwind CSS](/docs/configuration#tailwind-css)) |
 | `create "<description>"` | Design a custom theme: scaffolds `blank` first when the site is on a bundled example; then, with impeccable installed, prints how to run `/impeccable`, otherwise runs your coding agent once with `/seite theme <description>` |
 | `install <url>` | Download and install a theme from a URL |
 | `export <name>` | Export the current theme as a shareable `.tera` file |
@@ -349,6 +349,7 @@ seite theme <subcommand>
 seite theme list
 seite theme apply dark
 seite theme new
+seite theme new --tailwind
 seite theme create "brutalist with neon green accents"
 seite theme install https://example.com/themes/aurora.tera
 seite theme install https://example.com/themes/aurora.tera --name my-aurora
@@ -356,6 +357,16 @@ seite theme export my-theme --description "My custom dark theme"
 ```
 
 Bundled themes: the starters `default`, `docs`, `landing`, `blank`, and the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`. They are examples and starting points; every theme includes seite's [partials](/docs/templates#seite-partials) for the SEO head, search and language switcher. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
+
+## seite trust
+
+```bash
+seite trust             # trust the site in the current directory
+seite trust --revoke    # stop trusting it
+seite trust --list      # trusted projects
+```
+
+Some features run the project's own code at build time. Today that is [Tailwind CSS](/docs/configuration#tailwind-css): its plugins (`@plugin`, `@config`) are JavaScript files from the repository. `seite build` and `seite serve` only run Tailwind for trusted projects (otherwise [`tailwind-untrusted`](/docs/errors#tailwind-untrusted)). The list is per user, stored outside the repository (`~/Library/Application Support/seite/trusted-projects.json` on macOS, `$XDG_CONFIG_HOME/seite/` or `~/.config/seite/` on Linux, `%APPDATA%\seite\` on Windows). It never prompts; running it is the decision, and agent permissions never allow it. CI runners trust a project for one run with the environment variable `SEITE_TRUST_PROJECT=1` instead.
 
 ## seite deploy
 
