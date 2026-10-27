@@ -414,12 +414,9 @@ pub struct TailwindSection {
     /// environment variable instead. Read only to report it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub binary: Option<String>,
-    /// Runtime only: never download the binary (`seite check`/`audit`
-    /// scratch builds); when it is not cached, the input is copied as-is.
-    #[serde(skip)]
-    pub offline: bool,
     /// Runtime only: never run Tailwind at all and report nothing about it;
-    /// the input is copied as-is (agent hooks, MCP `seite_check`).
+    /// the input is copied as-is (`seite check`/`audit`, agent hooks, MCP
+    /// check/audit tools: everything but real builds).
     #[serde(skip)]
     pub never_run: bool,
 }
@@ -431,7 +428,6 @@ impl Default for TailwindSection {
             output: defaults::tailwind_output(),
             version: None,
             binary: None,
-            offline: false,
             never_run: false,
         }
     }

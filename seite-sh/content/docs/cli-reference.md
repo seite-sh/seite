@@ -358,6 +358,16 @@ seite theme export my-theme --description "My custom dark theme"
 
 Bundled themes: the starters `default`, `docs`, `landing`, `blank`, and the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`. They are examples and starting points; every theme includes seite's [partials](/docs/templates#seite-partials) for the SEO head, search and language switcher. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
+## seite trust
+
+```bash
+seite trust             # trust the site in the current directory
+seite trust --revoke    # stop trusting it
+seite trust --list      # trusted projects
+```
+
+Some features run the project's own code at build time. Today that is [Tailwind CSS](/docs/configuration#tailwind-css): its plugins (`@plugin`, `@config`) are JavaScript files from the repository. `seite build` and `seite serve` only run Tailwind for trusted projects (otherwise [`tailwind-untrusted`](/docs/errors#tailwind-untrusted)). The list is per user, stored outside the repository (`~/Library/Application Support/seite/trusted-projects.json` on macOS, `$XDG_CONFIG_HOME/seite/` or `~/.config/seite/` on Linux, `%APPDATA%\seite\` on Windows). It never prompts; running it is the decision, and agent permissions never allow it.
+
 ## seite deploy
 
 Deploy the built site.

@@ -477,6 +477,18 @@ fn scaffold_tailwind(
         ));
     }
 
+    // The user just set this project up: trust it to run Tailwind (whose
+    // plugins run project JavaScript). Recorded per user, outside the repo.
+    match crate::trust::set_trusted(root, true) {
+        Ok(true) => notes.push(
+            "Trusted this project for Tailwind builds (`seite trust --revoke` undoes it).".into(),
+        ),
+        Ok(false) => {}
+        Err(e) => notes.push(format!(
+            "Could not record trust ({e}); run `seite trust` before `seite build`."
+        )),
+    }
+
     let stylesheet = format!("/static/{}", tw.output.replace('\\', "/"));
     let base = paths.templates.join("base.html");
     let html = std::fs::read_to_string(&base)?;

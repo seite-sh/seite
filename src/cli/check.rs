@@ -513,10 +513,10 @@ pub fn scratch_build(
     if let Some(og) = config.og.as_mut() {
         og.skip_render = true;
     }
-    // `[build.tailwind]`: run a cached CLI, never download (only real
-    // builds do).
+    // `[build.tailwind]` never runs here (it runs project JavaScript); only
+    // real builds (`seite build`/`serve`, MCP `seite_build`) run it.
     if let Some(tw) = config.build.tailwind.as_mut() {
-        tw.offline = true;
+        tw.never_run = true;
     }
     let opts = BuildOptions {
         include_drafts,

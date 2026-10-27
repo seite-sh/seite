@@ -226,7 +226,7 @@ Enable `minify` for production builds. It strips CSS/JS comments and collapses w
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
 
-With `minify = true`, a stylesheet's local imports are bundled into it: `@import "base.css";` and `@import url(parts/grid.css);` are replaced by the imported file's contents when it lives under `static/`. Imports of URLs (`https://…`, `//…`, `/…`), imports with a media query, `layer()` or `supports()`, missing files and import cycles are left as written. The imported files are still copied on their own.
+With `minify = true`, a stylesheet's local imports are bundled into it: the `@import "base.css";` / `@import url(parts/grid.css);` statements at the top of the file (before any other rule) are replaced by the imported files' contents when every one of them lives under `static/` and has no relative `url(...)` (it would point at the wrong directory once moved). Otherwise the stylesheet is left as written: imports of URLs (`https://…`, `//…`, `/…`), imports with a media query, `layer()` or `supports()`, missing files and import cycles. A file is included once, bundling stops at 2 MB, and the imported files are still copied on their own.
 
 ### Tailwind CSS
 
@@ -243,15 +243,21 @@ output = "css/tailwind.css"          # inside the output's static/ dir → /stat
 | `input` | `"static/css/tailwind.css"` | Entry CSS, relative to the site root. It is compiled, never copied as-is |
 | `output` | `"css/tailwind.css"` | Where the compiled CSS goes, relative to the output's `static/` directory. It is minified by Tailwind and fingerprinted like any other static file |
 
-**Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment, never through `seite.toml`:
+{{% callout(type="warning") %}}
+**Tailwind runs the project's code.** A stylesheet can load Tailwind plugins (`@plugin "./x.js"`, `@config`), which are JavaScript files from the project, and can import any CSS file it can reach. Compiling a project's Tailwind CSS is like running its npm build scripts. So seite only runs Tailwind for projects you trust: run `seite trust` once in the site root (`seite trust --revoke` undoes it, `seite trust --list` shows them). The list is stored per user, outside the repository. `seite theme new --tailwind` trusts the project it sets up. Building an untrusted project with `[build.tailwind]` fails with [`tailwind-untrusted`](/docs/errors#tailwind-untrusted).
+{{% end %}}
+
+Only real builds run Tailwind: `seite build`, `seite serve` (on every rebuild, so a class added to a template or a markdown file shows up on the next reload) and the MCP `seite_build` tool. `seite check`, `seite audit`, coding-agent check hooks and the other MCP tools never run it; they treat the entry CSS as a plain stylesheet. A Tailwind error stops the build with [`tailwind-failed`](/docs/errors#tailwind-failed); a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed).
+
+**Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment (an absolute path), never through `seite.toml`:
 
 ```bash
 export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
 ```
 
-`seite.toml` cannot name a program for seite to run: a cloned repository could otherwise make `seite check`, which coding-agent hooks run automatically, execute anything. A `binary` key, or a `version` other than the pinned one, in `[build.tailwind]` is a `config-invalid` error. The `input` must be a real file inside the site (no symlinks), and the CLI runs with a minimal environment (`PATH`, `HOME`, temp directories) and a two-minute timeout.
+`seite.toml` cannot name a program for seite to run: a `binary` key, or a `version` other than the pinned one, in `[build.tailwind]` is a `config-invalid` error. The CLI is only ever run from the per-user cache (or `SEITE_TAILWIND_BIN`), never from inside a project; it runs from an empty temporary directory with `--cwd <site root>`, a minimal environment (`PATH`, `HOME`, temp directories) and a two-minute timeout. The `input` must be a real file inside the site (no symlinks).
 
-`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, and links the compiled stylesheet from `templates/base.html`:
+`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, trusts the project, and links the compiled stylesheet from `templates/base.html`:
 
 ```html
 <link rel="stylesheet" href="/static/css/tailwind.css">
@@ -266,9 +272,13 @@ The entry file it writes lists where class names come from explicitly:
 @source "../../data";
 ```
 
-Paths are relative to the CSS file. Tailwind runs with the site root as its working directory, so a plain `@import "tailwindcss";` uses Tailwind's automatic source detection instead; prefer `source(none)` plus `@source` lines so build output, caches and other generated files never feed into the class scan. Add an `@source` line for anything else that holds class names.
+Paths are relative to the CSS file. A plain `@import "tailwindcss";` uses Tailwind's automatic source detection from the site root instead, which can pick up class names from build output and caches. For an entry file you write by hand, prefer `source(none)` plus `@source` lines; if you keep automatic detection, exclude generated directories:
 
-The build runs Tailwind on every build, including `seite serve` rebuilds, so a class added to a template or a markdown file shows up on the next reload. A Tailwind error stops the build with a [`tailwind-failed`](/docs/errors#tailwind-failed) diagnostic; a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed). Only `seite build` and `seite serve` download the CLI. `seite check` and `seite audit` compile with an already cached CLI (it validates the CSS) and otherwise skip Tailwind with a note. Coding-agent check hooks and the MCP `seite_check` tool never run Tailwind: they treat the entry CSS as a plain stylesheet.
+```css
+@import "tailwindcss";
+@source not "../../dist";
+@source not "../../.seite";
+```
 
 ### Search
 

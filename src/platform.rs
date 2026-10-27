@@ -68,6 +68,33 @@ pub fn cache_dir() -> Option<PathBuf> {
     }
 }
 
+/// The per-user configuration directory for seite (user decisions such as
+/// trusted projects, never stored in a repository):
+///
+/// - macOS: `~/Library/Application Support/seite`
+/// - Windows: `%APPDATA%\seite`
+/// - Linux/other: `$XDG_CONFIG_HOME/seite`, else `~/.config/seite`
+pub fn config_dir() -> Option<PathBuf> {
+    let non_empty = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+    #[cfg(target_os = "macos")]
+    {
+        let _ = non_empty;
+        home_path("Library/Application Support/seite")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        non_empty("APPDATA").map(|dir| PathBuf::from(dir).join("seite"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        non_empty("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .map(|dir| dir.join("seite"))
+            .or_else(|| home_path(".config/seite"))
+    }
+}
+
 /// Resolve the wrangler CLI config file path.
 ///
 /// - macOS: `~/Library/Preferences/.wrangler/config/default.toml`

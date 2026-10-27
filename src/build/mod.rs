@@ -371,7 +371,21 @@ pub fn build_site(
                 .subdomain_collections()
                 .iter()
                 .all(|collection| paths.subdomain_output(&collection.name).exists());
-        if cs.is_empty() && all_outputs_exist {
+        // A Tailwind input outside the tracked dirs (e.g. `assets/`) is not
+        // in the change set: never skip the build for it (the dev server
+        // watches that file).
+        let untracked_tailwind_input = config.build.tailwind.as_ref().is_some_and(|tw| {
+            let input = paths.root.join(&tw.input);
+            ![
+                &paths.static_dir,
+                &paths.templates,
+                &paths.content,
+                &paths.data_dir,
+            ]
+            .iter()
+            .any(|dir| input.starts_with(dir))
+        });
+        if cs.is_empty() && all_outputs_exist && !untracked_tailwind_input {
             // Even a content no-op must refresh generated access artifacts so
             // upgrading seite applies security migrations to retained output.
             refresh_access_artifacts(effective_config, paths)?;
@@ -3396,82 +3410,149 @@ fn write_static_asset(
     Ok(())
 }
 
-/// Bundle local CSS imports (with `minify`): every top-level
-/// `@import "x.css";` / `@import 'x.css';` / `@import url(x.css);` whose
-/// target is a file under `static_dir` is replaced by that file's (itself
-/// bundled) contents. Left as written: remote or absolute URLs (`http:`,
-/// `//`, `/…`, `data:`), imports with media queries, `layer()` or
-/// `supports()`, files that are missing or outside `static_dir`, and
-/// imports that would form a cycle. Imported files are still copied on their
-/// own. Never fetches anything.
+/// Bundle local CSS imports (with `minify`). The `@import` statements at
+/// the top of a stylesheet (before any other rule, as CSS requires; comments
+/// and `@charset` may precede them) are replaced by the imported files'
+/// own (bundled) contents when every one of them is a plain
+/// `@import "x.css";` / `@import url(x.css);` of a file under `static_dir`
+/// that holds no relative `url(...)` (those would resolve against the wrong
+/// directory once moved). Otherwise the file is left exactly as written:
+/// remote or absolute URLs, media queries, `layer()`/`supports()`, missing
+/// files, files outside `static_dir`, cycles. A file already bundled is
+/// not repeated, and bundling stops (file left as is) past
+/// [`MAX_BUNDLED_CSS`] bytes. Imported files are still copied on their own.
+/// Never fetches anything.
 fn inline_css_imports(raw: &[u8], file: &Path, static_dir: &Path) -> Vec<u8> {
     let Ok(static_root) = static_dir.canonicalize() else {
         return raw.to_vec();
     };
-    let mut stack: Vec<PathBuf> = file.canonicalize().into_iter().collect();
-    inline_imports_inner(
-        &String::from_utf8_lossy(raw),
-        file,
-        &static_root,
-        &mut stack,
-    )
-    .into_bytes()
+    let css = String::from_utf8_lossy(raw);
+    let mut ctx = InlineCtx {
+        static_root,
+        stack: file.canonicalize().into_iter().collect(),
+        seen: file.canonicalize().into_iter().collect(),
+        total: css.len(),
+    };
+    match bundle_css(&css, file, &mut ctx) {
+        Some(bundled) => bundled.into_bytes(),
+        None => raw.to_vec(),
+    }
 }
 
-fn inline_imports_inner(
-    css: &str,
-    file: &Path,
-    static_root: &Path,
-    stack: &mut Vec<PathBuf>,
-) -> String {
-    let mut out = String::with_capacity(css.len());
-    let mut rest = css;
-    while let Some(pos) = rest.find("@import") {
-        let (before, from) = rest.split_at(pos);
-        out.push_str(before);
-        let Some(end) = from.find(';') else {
-            out.push_str(from);
-            return out;
-        };
-        let statement = &from[..=end];
-        rest = &from[end + 1..];
-        // Inside a comment: leave it alone.
-        if out.rfind("/*").map(|i| i + 2) > out.rfind("*/").map(|i| i + 2) {
-            out.push_str(statement);
-            continue;
-        }
-        let target = parse_simple_import(&statement["@import".len()..statement.len() - 1]);
-        let resolved = target
-            .filter(|t| is_local_relative_url(t))
-            .and_then(|t| file.parent().map(|dir| dir.join(t)))
-            .and_then(|p| p.canonicalize().ok())
-            .filter(|p| p.starts_with(static_root) && p.is_file())
-            .filter(|p| !stack.contains(p));
-        match resolved.and_then(|p| fs::read(&p).ok().map(|bytes| (p, bytes))) {
-            Some((path, bytes)) => {
-                stack.push(path.clone());
-                let inner = inline_imports_inner(
-                    &String::from_utf8_lossy(&bytes),
-                    &path,
-                    static_root,
-                    stack,
-                );
-                stack.pop();
-                // An import it had to keep (remote, media-qualified, ...)
-                // would land mid-file, where browsers ignore it: keep the
-                // original statement instead.
-                if inner.contains("@import") {
-                    out.push_str(statement);
-                } else {
-                    out.push_str(&inner);
-                    out.push('\n');
-                }
+/// Bundled CSS stops growing past this many bytes (the file is then left
+/// with its `@import`s).
+const MAX_BUNDLED_CSS: usize = 2 * 1024 * 1024;
+
+struct InlineCtx {
+    static_root: PathBuf,
+    /// Files being bundled (cycle detection).
+    stack: Vec<PathBuf>,
+    /// Files already bundled anywhere (each is included once).
+    seen: Vec<PathBuf>,
+    /// Bytes bundled so far.
+    total: usize,
+}
+
+/// `css` with its leading `@import`s replaced by the files' contents, or
+/// `None` when any of them cannot be bundled (the caller keeps it as is).
+/// `Some(css)` unchanged when it has no leading imports.
+fn bundle_css(css: &str, file: &Path, ctx: &mut InlineCtx) -> Option<String> {
+    let imports = leading_imports(css);
+    if imports.is_empty() {
+        return Some(css.to_string());
+    }
+    let snapshot = (ctx.seen.clone(), ctx.total);
+    let result = (|| {
+        let mut out = String::with_capacity(css.len());
+        let mut last = 0;
+        for (start, end, url) in &imports {
+            out.push_str(&css[last..*start]);
+            last = *end;
+            let url = url.as_deref().filter(|u| is_local_relative_url(u))?;
+            let path = file.parent()?.join(url).canonicalize().ok()?;
+            if !path.starts_with(&ctx.static_root) || !path.is_file() || ctx.stack.contains(&path) {
+                return None;
             }
-            None => out.push_str(statement),
+            if ctx.seen.contains(&path) {
+                // Already bundled earlier: not repeated.
+                continue;
+            }
+            let text = fs::read_to_string(&path).ok()?;
+            if has_relative_url(&text) {
+                return None;
+            }
+            ctx.total += text.len();
+            if ctx.total > MAX_BUNDLED_CSS {
+                return None;
+            }
+            ctx.seen.push(path.clone());
+            ctx.stack.push(path.clone());
+            let inner = bundle_css(&text, &path, ctx);
+            ctx.stack.pop();
+            out.push_str(&inner?);
+            out.push('\n');
+        }
+        out.push_str(&css[last..]);
+        Some(out)
+    })();
+    if result.is_none() {
+        (ctx.seen, ctx.total) = snapshot;
+    }
+    result
+}
+
+/// The `@import` statements before the first other rule: (start, end
+/// after `;`, URL of a plain import or `None` when it has a media query,
+/// `layer()`, `supports()` or cannot be parsed).
+fn leading_imports(css: &str) -> Vec<(usize, usize, Option<String>)> {
+    let mut found = Vec::new();
+    let mut i = 0;
+    let bytes = css.as_bytes();
+    while i < bytes.len() {
+        let rest = &css[i..];
+        let trimmed = rest.trim_start();
+        i += rest.len() - trimmed.len();
+        if let Some(comment) = trimmed.strip_prefix("/*") {
+            match comment.find("*/") {
+                Some(close) => i += close + 4,
+                None => break,
+            }
+        } else if trimmed.starts_with("@charset") {
+            match trimmed.find(';') {
+                Some(semi) => i += semi + 1,
+                None => break,
+            }
+        } else if trimmed.starts_with("@import") {
+            let Some(semi) = trimmed.find(';') else {
+                break;
+            };
+            let args = &trimmed["@import".len()..semi];
+            found.push((
+                i,
+                i + semi + 1,
+                parse_simple_import(args).map(str::to_string),
+            ));
+            i += semi + 1;
+        } else {
+            break;
         }
     }
-    out.push_str(rest);
-    out
+    found
+}
+
+/// Whether `css` has a `url(...)` relative to its own location (not
+/// `data:`, a scheme, root- or protocol-relative, or a `#fragment`).
+fn has_relative_url(css: &str) -> bool {
+    css.match_indices("url(").any(|(at, _)| {
+        let target = css[at + 4..].trim_start().trim_start_matches(['"', '\'']);
+        !(target.starts_with('/')
+            || target.starts_with('#')
+            || target.starts_with("data:")
+            || target
+                .split(['/', ')', '"', '\''])
+                .next()
+                .is_some_and(|first| first.contains(':')))
+    })
 }
 
 /// The URL of `@import <url>;` when the statement has nothing else (no
@@ -4548,6 +4629,52 @@ mod tests {
         // b's import of a stays, so a keeps its own import of b.
         assert_eq!(inline(&tmp, "a.css"), "@import \"b.css\";.a{}");
         assert_eq!(inline(&tmp, "self.css"), "@import \"self.css\";.s{}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_only_leading_once_and_without_relative_urls() {
+        let tmp = css_tree(&[
+            // An @import after a rule is ignored by browsers: left alone.
+            ("static/late.css", ".x{}\n@import \"a.css\";"),
+            ("static/a.css", ".a{}"),
+            // Relative url() would point elsewhere once moved: not bundled.
+            ("static/uses-url.css", "@import \"img/bg.css\";"),
+            ("static/img/bg.css", ".bg{background:url(bg.png)}"),
+            // Absolute/data URLs are fine.
+            (
+                "static/ok-url.css",
+                "/* c */ @charset \"utf-8\";\n@import \"abs.css\";",
+            ),
+            (
+                "static/abs.css",
+                ".i{background:url(/static/i.png)}.d{background:url(\"data:image/png;base64,x\")}.r{background:url(https://x.example/i.png)}",
+            ),
+            // Each file once.
+            ("static/dup.css", "@import \"b.css\";\n@import \"c.css\";"),
+            ("static/b.css", "@import \"t.css\";.b{}"),
+            ("static/c.css", "@import \"t.css\";.c{}"),
+            ("static/t.css", ".t{}"),
+        ]);
+        assert_eq!(inline(&tmp, "late.css"), ".x{}\n@import \"a.css\";");
+        assert_eq!(inline(&tmp, "uses-url.css"), "@import \"img/bg.css\";");
+        let ok = inline(&tmp, "ok-url.css");
+        assert!(
+            !ok.contains("@import") && ok.contains("url(/static/i.png)"),
+            "{ok}"
+        );
+        let dup = inline(&tmp, "dup.css");
+        assert_eq!(dup.matches(".t{}").count(), 1, "{dup}");
+        assert!(dup.contains(".b{}") && dup.contains(".c{}"), "{dup}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_size_cap() {
+        let big = ".x{}".repeat(MAX_BUNDLED_CSS / 4 + 1);
+        let tmp = css_tree(&[
+            ("static/main.css", "@import \"big.css\";"),
+            ("static/big.css", &big),
+        ]);
+        assert_eq!(inline(&tmp, "main.css"), "@import \"big.css\";");
     }
 
     #[cfg(unix)]

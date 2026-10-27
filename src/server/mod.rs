@@ -342,6 +342,15 @@ fn watch_and_rebuild(
             }
         }
     }
+    // A `[build.tailwind]` input outside those directories (e.g. `assets/`).
+    if let Some(tw) = &config.build.tailwind {
+        let input = paths.root.join(&tw.input);
+        if input.is_file() && !dirs.iter().any(|dir| input.starts_with(dir)) {
+            if let Err(e) = watcher.watch(&input, RecursiveMode::NonRecursive) {
+                human::error(&format!("Failed to watch {}: {e}", input.display()));
+            }
+        }
+    }
 
     // Debounce: wait for events, then pause briefly to batch rapid changes
     let debounce = Duration::from_millis(200);
