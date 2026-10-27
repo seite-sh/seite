@@ -49,7 +49,8 @@ fn cmd(tmp: &TempDir) -> Command {
     let mut cmd = page_cmd();
     cmd.env("HOME", tmp.path().join("home"))
         .env_remove("XDG_CONFIG_HOME")
-        .env_remove("XDG_CACHE_HOME");
+        .env_remove("XDG_CACHE_HOME")
+        .env_remove("SEITE_TRUST_PROJECT");
     cmd
 }
 
@@ -66,7 +67,73 @@ fn tailwind_site(tmp: &TempDir, fake: &str) -> (std::path::PathBuf, std::path::P
         .success();
     let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
     assert!(toml.contains("[build.tailwind]"), "{toml}");
+    // Not a terminal: `theme new` never trusts on its own.
+    assert!(!trust_file(tmp).exists(), "theme new trusted without a TTY");
+    cmd(tmp)
+        .arg("trust")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
     (site_dir, write_fake(tmp, fake))
+}
+
+/// The private HOME's trust list (macOS or XDG layout).
+fn trust_file(tmp: &TempDir) -> std::path::PathBuf {
+    let home = tmp.path().join("home");
+    if cfg!(target_os = "macos") {
+        home.join("Library/Application Support/seite/trusted-projects.json")
+    } else {
+        home.join(".config/seite/trusted-projects.json")
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn test_theme_new_tailwind_never_trusts_in_agent_session_or_without_tty() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Tailwind", "posts");
+    let site_dir = tmp.path().join("site");
+    cmd(&tmp)
+        .args(["theme", "new", "--tailwind"])
+        .env("CLAUDECODE", "1")
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("run `seite trust` yourself"));
+    assert!(!trust_file(&tmp).exists());
+    // The generated GitHub Pages workflow gets the CI opt-in.
+    let workflow = fs::read_to_string(site_dir.join(".github/workflows/deploy.yml")).unwrap();
+    assert!(
+        workflow.contains(
+            "        run: seite build\n        env:\n          SEITE_TRUST_PROJECT: \"1\"\n"
+        ),
+        "{workflow}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_trust_project_env_is_the_ci_escape_hatch() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Tailwind", "posts");
+    let site_dir = tmp.path().join("site");
+    cmd(&tmp)
+        .args(["theme", "new", "--tailwind"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let fake = write_fake(&tmp, FAKE_OK);
+    let (ok, json) = run_json_with_bin(&tmp, &site_dir, &fake, &["build"]);
+    assert!(!ok, "{json}");
+    let output = cmd(&tmp)
+        .args(["build"])
+        .env(BIN_ENV, &fake)
+        .env("SEITE_TRUST_PROJECT", "1")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(site_dir.join("tailwind-ran").exists());
 }
 
 /// `seite --json <args>` with `SEITE_TAILWIND_BIN=bin` and the private HOME.

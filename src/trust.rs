@@ -42,6 +42,17 @@ fn load(file: &Path) -> TrustList {
         .unwrap_or_default()
 }
 
+/// Environment variable that trusts the project for this run only: the CI
+/// escape hatch (runners have no trust list). Read from the process
+/// environment only, never from seite.toml or `.env` files, so a repository
+/// cannot set it for a local `seite build`.
+pub const TRUST_PROJECT_ENV: &str = "SEITE_TRUST_PROJECT";
+
+/// Whether [`TRUST_PROJECT_ENV`] is `1` (or `true`).
+pub fn env_trusts_project() -> bool {
+    std::env::var(TRUST_PROJECT_ENV).is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+}
+
 /// Whether the user trusts the project at `root`.
 pub fn is_trusted(root: &Path) -> bool {
     trust_file().is_some_and(|file| is_trusted_in(&file, root))

@@ -366,7 +366,7 @@ seite trust --revoke    # stop trusting it
 seite trust --list      # trusted projects
 ```
 
-Some features run the project's own code at build time. Today that is [Tailwind CSS](/docs/configuration#tailwind-css): its plugins (`@plugin`, `@config`) are JavaScript files from the repository. `seite build` and `seite serve` only run Tailwind for trusted projects (otherwise [`tailwind-untrusted`](/docs/errors#tailwind-untrusted)). The list is per user, stored outside the repository (`~/Library/Application Support/seite/trusted-projects.json` on macOS, `$XDG_CONFIG_HOME/seite/` or `~/.config/seite/` on Linux, `%APPDATA%\seite\` on Windows). It never prompts; running it is the decision, and agent permissions never allow it.
+Some features run the project's own code at build time. Today that is [Tailwind CSS](/docs/configuration#tailwind-css): its plugins (`@plugin`, `@config`) are JavaScript files from the repository. `seite build` and `seite serve` only run Tailwind for trusted projects (otherwise [`tailwind-untrusted`](/docs/errors#tailwind-untrusted)). The list is per user, stored outside the repository (`~/Library/Application Support/seite/trusted-projects.json` on macOS, `$XDG_CONFIG_HOME/seite/` or `~/.config/seite/` on Linux, `%APPDATA%\seite\` on Windows). It never prompts; running it is the decision, and agent permissions never allow it. CI runners trust a project for one run with the environment variable `SEITE_TRUST_PROJECT=1` instead.
 
 ## seite deploy
 

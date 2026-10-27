@@ -655,7 +655,8 @@ fn strip_ansi(s: &str) -> String {
 /// The compiled stylesheet for the site, or `None` without
 /// `[build.tailwind]`. With [`TailwindSection::never_run`]: the raw input.
 pub fn run(config: &SiteConfig, root: &Path) -> Result<Option<Vec<u8>>, Box<Diagnostic>> {
-    let trusted = config.build.tailwind.is_some() && crate::trust::is_trusted(root);
+    let trusted = config.build.tailwind.is_some()
+        && (crate::trust::env_trusts_project() || crate::trust::is_trusted(root));
     run_with(
         config,
         root,

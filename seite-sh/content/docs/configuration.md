@@ -244,10 +244,12 @@ output = "css/tailwind.css"          # inside the output's static/ dir → /stat
 | `output` | `"css/tailwind.css"` | Where the compiled CSS goes, relative to the output's `static/` directory. It is minified by Tailwind and fingerprinted like any other static file |
 
 {{% callout(type="warning") %}}
-**Tailwind runs the project's code.** A stylesheet can load Tailwind plugins (`@plugin "./x.js"`, `@config`), which are JavaScript files from the project, and can import any CSS file it can reach. Compiling a project's Tailwind CSS is like running its npm build scripts. So seite only runs Tailwind for projects you trust: run `seite trust` once in the site root (`seite trust --revoke` undoes it, `seite trust --list` shows them). The list is stored per user, outside the repository. `seite theme new --tailwind` trusts the project it sets up. Building an untrusted project with `[build.tailwind]` fails with [`tailwind-untrusted`](/docs/errors#tailwind-untrusted).
+**Tailwind runs the project's code.** A stylesheet can load Tailwind plugins (`@plugin "./x.js"`, `@config`), which are JavaScript files from the project, and can import any CSS file it can reach. Compiling a project's Tailwind CSS is like running its npm build scripts. So seite only runs Tailwind for projects you trust: run `seite trust` once in the site root (`seite trust --revoke` undoes it, `seite trust --list` shows them). The list is stored per user, outside the repository. `seite theme new --tailwind` trusts the project only when you run it yourself at a terminal (not inside a coding agent) and it created both the table and the entry file; otherwise it tells you to run `seite trust`. Building an untrusted project with `[build.tailwind]` fails with [`tailwind-untrusted`](/docs/errors#tailwind-untrusted).
 {{% end %}}
 
 Only real builds run Tailwind: `seite build`, `seite serve` (on every rebuild, so a class added to a template or a markdown file shows up on the next reload) and the MCP `seite_build` tool. `seite check`, `seite audit`, coding-agent check hooks and the other MCP tools never run it; they treat the entry CSS as a plain stylesheet. A Tailwind error stops the build with [`tailwind-failed`](/docs/errors#tailwind-failed); a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed).
+
+**CI and hosted builds.** A CI runner has no trust list, so off-machine builds trust the project for one run through the environment: `SEITE_TRUST_PROJECT=1`. It is read from the process environment only, never from `seite.toml` or `.env` files, so a repository cannot set it for a local `seite build`. The deploy workflows seite generates (GitHub Pages, Cloudflare Pages and Netlify via GitHub Actions) set it on the build step when the site has `[build.tailwind]`, and the generated `netlify.toml` prefixes its build command with it. `seite theme new --tailwind` and `seite upgrade` add it to a workflow or `netlify.toml` that is still exactly as seite generated it, and otherwise print what to add. If Cloudflare Pages or Netlify build the site from git with settings seite did not generate, add `SEITE_TRUST_PROJECT=1` as a build environment variable there.
 
 **Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment (an absolute path), never through `seite.toml`:
 
@@ -257,7 +259,7 @@ export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
 
 `seite.toml` cannot name a program for seite to run: a `binary` key, or a `version` other than the pinned one, in `[build.tailwind]` is a `config-invalid` error. The CLI is only ever run from the per-user cache (or `SEITE_TAILWIND_BIN`), never from inside a project; it runs from an empty temporary directory with `--cwd <site root>`, a minimal environment (`PATH`, `HOME`, temp directories) and a two-minute timeout. The `input` must be a real file inside the site (no symlinks).
 
-`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, trusts the project, and links the compiled stylesheet from `templates/base.html`:
+`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, and links the compiled stylesheet from `templates/base.html`:
 
 ```html
 <link rel="stylesheet" href="/static/css/tailwind.css">

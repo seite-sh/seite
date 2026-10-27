@@ -1662,8 +1662,59 @@ pub fn update_collection_deploy_project(
 /// workflows generated before it existed.
 pub const SCHEDULE_TRIGGER: &str = "  schedule:\n    # Daily rebuild: publishes scheduled posts (future `date:`) and removes expired ones\n    - cron: '17 5 * * *'\n";
 
+/// The build step's command line in every generated workflow.
+pub const WORKFLOW_BUILD_RUN: &str = "        run: seite build\n";
+
+/// Added under the build step when `[build.tailwind]` is configured: CI
+/// runners have no per-user trust list (`seite trust`), and Tailwind only
+/// runs for trusted projects. The environment variable is the CI opt-in (a
+/// repository cannot set it for a local `seite build`).
+pub const TAILWIND_TRUST_ENV: &str = "        env:\n          SEITE_TRUST_PROJECT: \"1\"\n";
+
+/// The environment variable that trusts the project for one run (CI).
+pub const TRUST_PROJECT_ENV: &str = "SEITE_TRUST_PROJECT";
+
+/// `workflow` with [`TAILWIND_TRUST_ENV`] on its build step when the site
+/// uses Tailwind.
+fn with_tailwind_trust(workflow: String, config: &SiteConfig) -> String {
+    if config.build.tailwind.is_some() {
+        workflow.replacen(
+            WORKFLOW_BUILD_RUN,
+            &format!("{WORKFLOW_BUILD_RUN}{TAILWIND_TRUST_ENV}"),
+            1,
+        )
+    } else {
+        workflow
+    }
+}
+
+/// A workflow without the parts seite adds depending on the config
+/// ([`SCHEDULE_TRIGGER`], [`TAILWIND_TRUST_ENV`]), line endings normalized:
+/// two workflows that compare equal this way differ only in those parts.
+pub fn workflow_core(workflow: &str) -> String {
+    workflow
+        .replace("\r\n", "\n")
+        .replace(SCHEDULE_TRIGGER, "")
+        .replace(TAILWIND_TRUST_ENV, "")
+        .trim_end()
+        .to_string()
+}
+
+/// The generated deploy workflow for the site's deploy target.
+pub fn generate_workflow(config: &SiteConfig) -> String {
+    match config.deploy.target {
+        DeployTarget::GithubPages => generate_github_actions_workflow(config),
+        DeployTarget::Cloudflare => generate_cloudflare_workflow(config),
+        DeployTarget::Netlify => generate_netlify_workflow(config),
+    }
+}
+
 /// Generate a GitHub Actions workflow YAML for building and deploying with GitHub Pages.
 pub fn generate_github_actions_workflow(config: &SiteConfig) -> String {
+    with_tailwind_trust(generate_github_actions_workflow_base(config), config)
+}
+
+fn generate_github_actions_workflow_base(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
     format!(
         r#"name: Deploy to GitHub Pages
@@ -1718,6 +1769,10 @@ jobs:
 /// When the config has collections with `subdomain` + `deploy_project`, additional
 /// deploy steps are generated for each subdomain collection.
 pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
+    with_tailwind_trust(generate_cloudflare_workflow_base(config), config)
+}
+
+fn generate_cloudflare_workflow_base(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
     let project = config
         .deploy
@@ -1772,12 +1827,19 @@ jobs:
     )
 }
 
-/// Generate a Netlify configuration file (netlify.toml).
+/// Generate a Netlify configuration file (netlify.toml). Netlify's own git
+/// builds run it off-machine (no trust list), so a Tailwind site's command
+/// sets [`TRUST_PROJECT_ENV`].
 pub fn generate_netlify_config(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
+    let trust = if config.build.tailwind.is_some() {
+        format!("{TRUST_PROJECT_ENV}=1 ")
+    } else {
+        String::new()
+    };
     format!(
         r#"[build]
-  command = "curl -fsSL https://seite.sh/install.sh | sh && seite build"
+  command = "curl -fsSL https://seite.sh/install.sh | sh && {trust}seite build"
   publish = "{output_dir}"
 
 [[redirects]]
@@ -1793,6 +1855,10 @@ pub fn generate_netlify_config(config: &SiteConfig) -> String {
 /// When the config has collections with `subdomain` + `deploy_project`, additional
 /// deploy steps are generated for each subdomain collection using separate site IDs.
 pub fn generate_netlify_workflow(config: &SiteConfig) -> String {
+    with_tailwind_trust(generate_netlify_workflow_base(config), config)
+}
+
+fn generate_netlify_workflow_base(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
 
     let mut subdomain_steps = String::new();

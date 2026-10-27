@@ -302,18 +302,10 @@ fn workflow_schedule(root: &Path) -> WorkflowSchedule {
     if !config.build.schedule {
         return WorkflowSchedule::Done;
     }
-    let current = match config.deploy.target {
-        crate::config::DeployTarget::GithubPages => {
-            crate::deploy::generate_github_actions_workflow(&config)
-        }
-        crate::config::DeployTarget::Cloudflare => {
-            crate::deploy::generate_cloudflare_workflow(&config)
-        }
-        crate::config::DeployTarget::Netlify => crate::deploy::generate_netlify_workflow(&config),
-    };
-    let previous = current.replace(crate::deploy::SCHEDULE_TRIGGER, "");
-    let normalize = |s: &str| s.replace("\r\n", "\n").trim_end().to_string();
-    if normalize(&existing) == normalize(&previous) {
+    let current = crate::deploy::generate_workflow(&config);
+    // Generated, give or take the config-dependent parts (cron, Tailwind
+    // CI trust).
+    if crate::deploy::workflow_core(&existing) == crate::deploy::workflow_core(&current) {
         WorkflowSchedule::Generated(current)
     } else {
         WorkflowSchedule::Modified
@@ -390,6 +382,151 @@ fn timezone_notice(root: &Path) -> Option<Notice> {
     (config.build.schedule && config.site.timezone.is_none()).then(|| Notice {
         key: "timezone-unset".into(),
         text: format!("Scheduled publishing decides what is live by \"today\", which without [site] timezone is each machine's own clock (CI often runs in UTC). {TIMEZONE_ADVICE}"),
+    })
+}
+
+/// What a Tailwind site's CI config needs so off-machine builds (GitHub
+/// Actions, Netlify's git builds) may run Tailwind: they have no per-user
+/// trust list, so the build sets `SEITE_TRUST_PROJECT=1`.
+pub enum CiTrust {
+    /// Still as seite generated it: the new content.
+    Update {
+        path: PathBuf,
+        content: String,
+        description: String,
+    },
+    /// Edited by hand: what to add.
+    Edited { path: PathBuf, advice: String },
+}
+
+/// [`CiTrust`] for the deploy workflow and `netlify.toml` (nothing when the
+/// site has no `[build.tailwind]` or they already set the variable).
+pub fn ci_tailwind_trust_plan(root: &Path, config: &crate::config::SiteConfig) -> Vec<CiTrust> {
+    let mut plan = Vec::new();
+    if config.build.tailwind.is_none() {
+        return plan;
+    }
+    let env = crate::deploy::TRUST_PROJECT_ENV;
+    let workflow = root.join(".github/workflows/deploy.yml");
+    if let Ok(existing) = fs::read_to_string(&workflow) {
+        if !existing.contains(env) {
+            let generated = crate::deploy::workflow_core(&existing)
+                == crate::deploy::workflow_core(&crate::deploy::generate_workflow(config));
+            let run = crate::deploy::WORKFLOW_BUILD_RUN;
+            if generated && existing.contains(run) {
+                plan.push(CiTrust::Update {
+                    path: workflow,
+                    content: existing.replacen(
+                        run,
+                        &format!("{run}{}", crate::deploy::TAILWIND_TRUST_ENV),
+                        1,
+                    ),
+                    description: format!(
+                        ".github/workflows/deploy.yml ({env} for Tailwind builds in CI)"
+                    ),
+                });
+            } else {
+                plan.push(CiTrust::Edited {
+                    path: workflow,
+                    advice: format!(
+                        "add to the step that runs `seite build`:\n        env:\n          {env}: \"1\""
+                    ),
+                });
+            }
+        }
+    }
+    let netlify = root.join("netlify.toml");
+    if let Ok(existing) = fs::read_to_string(&netlify) {
+        if !existing.contains(env) {
+            let mut plain = config.clone();
+            plain.build.tailwind = None;
+            let normalize = |s: &str| s.replace("\r\n", "\n").trim_end().to_string();
+            if normalize(&existing) == normalize(&crate::deploy::generate_netlify_config(&plain)) {
+                plan.push(CiTrust::Update {
+                    path: netlify,
+                    content: crate::deploy::generate_netlify_config(config),
+                    description: format!("netlify.toml ({env}=1 for Tailwind builds on Netlify)"),
+                });
+            } else {
+                plan.push(CiTrust::Edited {
+                    path: netlify,
+                    advice: format!("prefix the build command's `seite build` with `{env}=1 `"),
+                });
+            }
+        }
+    }
+    plan
+}
+
+/// `seite theme new --tailwind`: apply [`ci_tailwind_trust_plan`] now and
+/// return what to tell the user.
+pub fn apply_ci_tailwind_trust(
+    root: &Path,
+    config: &crate::config::SiteConfig,
+) -> anyhow::Result<Vec<String>> {
+    let mut notes = Vec::new();
+    for step in ci_tailwind_trust_plan(root, config) {
+        match step {
+            CiTrust::Update {
+                path,
+                content,
+                description,
+            } => {
+                crate::safe_fs::write(root, &path, content)?;
+                notes.push(format!(
+                    "Updated {description}: CI has no `seite trust` list."
+                ));
+            }
+            CiTrust::Edited { path, advice } => notes.push(format!(
+                "{} was edited, so seite left it alone. For Tailwind builds in CI, {advice}",
+                path.strip_prefix(root).unwrap_or(&path).display()
+            )),
+        }
+    }
+    Ok(notes)
+}
+
+/// Upgrade actions for unedited CI configs of a Tailwind site.
+fn check_ci_tailwind_trust(root: &Path) -> Vec<UpgradeAction> {
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return vec![];
+    };
+    ci_tailwind_trust_plan(root, &config)
+        .into_iter()
+        .filter_map(|step| match step {
+            CiTrust::Update {
+                path,
+                content,
+                description,
+            } => Some(UpgradeAction::Update {
+                path,
+                content,
+                description,
+            }),
+            CiTrust::Edited { .. } => None,
+        })
+        .collect()
+}
+
+/// One-time notice for edited CI configs of a Tailwind site.
+fn ci_tailwind_trust_notice(root: &Path) -> Option<Notice> {
+    let config = crate::config::SiteConfig::load(&root.join("seite.toml")).ok()?;
+    let advice: Vec<String> = ci_tailwind_trust_plan(root, &config)
+        .into_iter()
+        .filter_map(|step| match step {
+            CiTrust::Edited { path, advice } => Some(format!(
+                "{}: {advice}",
+                path.strip_prefix(root).unwrap_or(&path).display()
+            )),
+            CiTrust::Update { .. } => None,
+        })
+        .collect();
+    (!advice.is_empty()).then(|| Notice {
+        key: "tailwind-ci-trust".into(),
+        text: format!(
+            "Tailwind runs only for trusted projects, and CI has no `seite trust` list. These files were edited, so seite left them alone:\n{}",
+            advice.join("\n")
+        ),
     })
 }
 
@@ -1162,6 +1299,9 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
 
     // Daily cron for scheduled publishing (only with `[build] schedule`).
     extend_dedup(&mut actions, check_workflow_schedule(root));
+    // CI opt-in for Tailwind builds (only with `[build.tailwind]`). After
+    // the cron step: its regenerated workflow already carries it.
+    extend_dedup(&mut actions, check_ci_tailwind_trust(root));
 
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
@@ -1194,6 +1334,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     extend_dedup(&mut actions, theme_actions);
     notices.extend(theme_notices);
     notices.extend(workflow_schedule_notice(root));
+    notices.extend(ci_tailwind_trust_notice(root));
     notices.extend(schedule_feature_notice(root));
     notices.extend(search_feature_notice(root));
     notices.extend(og_feature_notice(root));
@@ -3501,6 +3642,96 @@ fn add_hook_tiers(
         Err(_) => unmergeable(),
     }
 }
+#[cfg(test)]
+mod ci_trust_tests {
+    use super::*;
+
+    fn tailwind_site(target: &str) -> (tempfile::TempDir, crate::config::SiteConfig) {
+        let tmp = tempfile::tempdir().unwrap();
+        let toml = format!(
+            "collections = []\n[site]\ntitle = \"T\"\n[deploy]\ntarget = \"{target}\"\n[build.tailwind]\n"
+        );
+        fs::write(tmp.path().join("seite.toml"), &toml).unwrap();
+        let config: crate::config::SiteConfig = toml::from_str(&toml).unwrap();
+        (tmp, config)
+    }
+
+    #[test]
+    fn test_generated_workflows_carry_trust_env_only_with_tailwind() {
+        let (_tmp, config) = tailwind_site("github-pages");
+        for target in ["github-pages", "cloudflare", "netlify"] {
+            let mut config = config.clone();
+            config.deploy.target = toml::from_str::<toml::Value>(&format!("t = \"{target}\""))
+                .unwrap()["t"]
+                .clone()
+                .try_into()
+                .unwrap();
+            let with = crate::deploy::generate_workflow(&config);
+            assert!(with.contains(crate::deploy::TAILWIND_TRUST_ENV), "{with}");
+            config.build.tailwind = None;
+            let without = crate::deploy::generate_workflow(&config);
+            assert!(!without.contains("SEITE_TRUST_PROJECT"));
+            assert_eq!(
+                crate::deploy::workflow_core(&with),
+                crate::deploy::workflow_core(&without)
+            );
+        }
+        assert!(crate::deploy::generate_netlify_config(&config)
+            .contains("&& SEITE_TRUST_PROJECT=1 seite build"));
+    }
+
+    #[test]
+    fn test_ci_trust_updates_generated_and_advises_edited() {
+        let (tmp, config) = tailwind_site("netlify");
+        let root = tmp.path();
+        let mut plain = config.clone();
+        plain.build.tailwind = None;
+        fs::create_dir_all(root.join(".github/workflows")).unwrap();
+        // Generated before Tailwind, without the cron: still "generated".
+        let old =
+            crate::deploy::generate_workflow(&plain).replace(crate::deploy::SCHEDULE_TRIGGER, "");
+        fs::write(root.join(".github/workflows/deploy.yml"), &old).unwrap();
+        fs::write(
+            root.join("netlify.toml"),
+            crate::deploy::generate_netlify_config(&plain),
+        )
+        .unwrap();
+        let plan = ci_tailwind_trust_plan(root, &config);
+        assert_eq!(plan.len(), 2);
+        for step in &plan {
+            let CiTrust::Update { content, .. } = step else {
+                panic!("expected updates");
+            };
+            assert!(content.contains("SEITE_TRUST_PROJECT"), "{content}");
+        }
+        // The cron stays as the user had it (absent).
+        let notes = apply_ci_tailwind_trust(root, &config).unwrap();
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        let wf = fs::read_to_string(root.join(".github/workflows/deploy.yml")).unwrap();
+        assert!(!wf.contains("schedule:") && wf.contains("SEITE_TRUST_PROJECT"));
+        assert!(ci_tailwind_trust_plan(root, &config).is_empty());
+
+        // Edited files: advice, no changes.
+        fs::write(
+            root.join(".github/workflows/deploy.yml"),
+            format!("# mine\n{old}"),
+        )
+        .unwrap();
+        fs::write(root.join("netlify.toml"), "[build]\ncommand = \"make\"\n").unwrap();
+        let plan = ci_tailwind_trust_plan(root, &config);
+        assert!(plan.iter().all(|s| matches!(s, CiTrust::Edited { .. })));
+        assert!(check_ci_tailwind_trust(root).is_empty());
+        let notice = ci_tailwind_trust_notice(root).unwrap();
+        assert!(
+            notice.text.contains("SEITE_TRUST_PROJECT"),
+            "{}",
+            notice.text
+        );
+        // No Tailwind: nothing.
+        assert!(ci_tailwind_trust_plan(root, &plain).is_empty());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     fn note(v: (u64, u64, u64), body: &str) -> ReleaseNote {

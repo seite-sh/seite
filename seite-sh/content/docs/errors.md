@@ -578,7 +578,7 @@ export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
 seite trust            # --revoke undoes it, --list shows trusted projects
 ```
 
-The decision is stored per user (in seite's config directory, keyed by the site's path), never in the repository. Coding agents are not allowed to run `seite trust`. `seite theme new --tailwind` trusts the project it sets up.
+The decision is stored per user (in seite's config directory, keyed by the site's path), never in the repository. Coding agents are not allowed to run `seite trust`. In CI, set `SEITE_TRUST_PROJECT=1` in the build step's environment (the workflows seite generates do this for Tailwind sites); see [Tailwind CSS](/docs/configuration#tailwind-css).
 
 ## template-markdown-link
 

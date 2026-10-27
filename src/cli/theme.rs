@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
@@ -477,17 +478,44 @@ fn scaffold_tailwind(
         ));
     }
 
-    // The user just set this project up: trust it to run Tailwind (whose
-    // plugins run project JavaScript). Recorded per user, outside the repo.
-    match crate::trust::set_trusted(root, true) {
-        Ok(true) => notes.push(
+    // Trust (Tailwind plugins run project JavaScript) is granted implicitly
+    // only when a person at a terminal, outside any agent session, just
+    // created both the table and the entry file here. Anything else (an
+    // agent, a script, a cloned repo that already had Tailwind set up)
+    // must run `seite trust` explicitly.
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let auto_trust = auto_trust_allowed(
+        interactive,
+        crate::cli::agent::in_agent_session(),
+        config_added,
+        input_written,
+    );
+    let trusted_now = auto_trust
+        && match crate::trust::set_trusted(root, true) {
+            Ok(_) => true,
+            Err(e) => {
+                notes.push(format!("Could not record trust ({e})."));
+                false
+            }
+        };
+    if trusted_now {
+        notes.push(
             "Trusted this project for Tailwind builds (`seite trust --revoke` undoes it).".into(),
-        ),
-        Ok(false) => {}
-        Err(e) => notes.push(format!(
-            "Could not record trust ({e}); run `seite trust` before `seite build`."
-        )),
+        );
+    } else if !crate::trust::is_trusted(root) {
+        notes.push(
+            "Before `seite build`, run `seite trust` yourself in the site root: Tailwind plugins run this project's JavaScript, so seite only runs Tailwind for projects you trust.".into(),
+        );
     }
+
+    // CI has no trust list: add the opt-in to an unedited generated deploy
+    // workflow / netlify.toml, or say what to add.
+    let mut with_tailwind = config.clone();
+    with_tailwind.build.tailwind = Some(tw.clone());
+    notes.extend(crate::cli::upgrade::apply_ci_tailwind_trust(
+        root,
+        &with_tailwind,
+    )?);
 
     let stylesheet = format!("/static/{}", tw.output.replace('\\', "/"));
     let base = paths.templates.join("base.html");
@@ -526,6 +554,18 @@ fn scaffold_tailwind(
         config_added,
         notes,
     })
+}
+
+/// Whether `seite theme new --tailwind` may record trust for the project
+/// itself: only at an interactive terminal, outside an agent session, when
+/// this run created both the `[build.tailwind]` table and the input file.
+fn auto_trust_allowed(
+    interactive: bool,
+    in_agent_session: bool,
+    config_added: bool,
+    input_written: bool,
+) -> bool {
+    interactive && !in_agent_session && config_added && input_written
 }
 
 /// `seite.toml` with a `[build.tailwind]` table (input/output spelled out),
@@ -1082,6 +1122,17 @@ mod tests {
         let config: SiteConfig =
             toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
         config.resolve_paths(root)
+    }
+
+    #[test]
+    fn test_auto_trust_only_for_a_person_who_just_set_it_up() {
+        assert!(auto_trust_allowed(true, false, true, true));
+        // Inside an agent session, without a terminal, or over an existing
+        // Tailwind setup (a cloned repo): never.
+        assert!(!auto_trust_allowed(true, true, true, true));
+        assert!(!auto_trust_allowed(false, false, true, true));
+        assert!(!auto_trust_allowed(true, false, false, true));
+        assert!(!auto_trust_allowed(true, false, true, false));
     }
 
     #[test]
