@@ -889,6 +889,8 @@
         .roadmap-milestone--left { border-left: 2px solid var(--phosphor); padding-left: 1rem; }
         .roadmap-milestone--right { border-left: 2px solid var(--border); padding-left: 1rem; }
         /* Reduced motion: disable scanlines, vignette, blink, and all glow transitions */
+        /* Cross-fade between pages (same-origin navigations; off for reduced motion). */
+        @media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;

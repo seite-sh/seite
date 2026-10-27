@@ -852,6 +852,8 @@
         .excerpt { color: #666; font-size: 0.9rem; line-height: 1.65; margin: 0.3rem 0 0; font-style: italic; }
         .roadmap-milestone--left { border-left: 2px solid #a00000; padding-left: 1rem; }
         .roadmap-milestone--right { border-left: 2px solid #e0ddd5; padding-left: 1rem; }
+        /* Cross-fade between pages (same-origin navigations; off for reduced motion). */
+        @media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;

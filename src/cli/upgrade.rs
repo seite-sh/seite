@@ -1956,6 +1956,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "50d702148735f7b8946e79b9631dc4a8b72e152274d12c220dd509c1ca42a7c5",
             "dd2ec66f4f544217097508197ef07840d4e080726b9ae094b34e7d4c2de5ad24",
             "8f53eea39d36f27d80588b2d13be68aa659b5c0e44d160369a241d7413fdf83d",
+            "acd43b28a899405f5c4dcf2aa4a48ea6de241e014519cd683c96f2accb0172e3",
         ],
     ),
     (
@@ -1990,6 +1991,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "23e5570a2dc970bc9fa7f9e96b132b20d3867156e66051a90074cc9e157d5ad9",
             "e9ec1aeb94ffb008f68ded0eb02a12f55ab495e78aed05cb768f27d01dacfb0d",
             "bac947d8408c456c35c5244c9c23d352ac9e195a074a3797de85acec0de22b9a",
+            "e91dcbcff4b136c55dad30739ed65fa87514043ebc45ce760638b2b3a8520171",
         ],
     ),
     (
@@ -2002,6 +2004,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "e78187030059098ced2093081419f1340cb2b5aa2738f99545e9b2148159b43d",
             "fdf3edd9113b2c9df03e456191241876f89669011890ca8ecee1d6d07f8772be",
             "f34d4793be84e9aa96e6256c012bd83161029980cb9365ac7e46d0ca1151aab9",
+            "3db0dd68e0a361ea2c8a93c2bf70d61de0ab91a4ed36b1361ad295a24d18dd3f",
         ],
     ),
     (
@@ -2042,6 +2045,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "b0e2eb4b08dccd20b979be4bc729163e22efd995253cb37d9523af14b0b04aed",
             "d64bb60b1c7e2cdc544ca5833072f6891e39625e2631352bd5eea8c1d76fc427",
             "3ab28d59da8c926b74d62ae5a27947df00d0346cb51cd3d2bb31784c03bfdff6",
+            "f311e00564e5da14d74d262df84faa2609ab5795b4ed24614171263c539b5729",
         ],
     ),
     (
@@ -2075,6 +2079,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "520251acfb14348f471ec93d7cd1aa78cd64c841e341fd151cc1cd29a450e85d",
             "724794a6a2e401271dc7787fec722239be103c0bbc2acc82d11900b7fcd79471",
             "7b4e157e98a3d7b19721f88ac26792fdd2fa6e94490e18b73e1ea200ba3a8ea7",
+            "429842578289b1b6792c4a69b093b544815df6dd4eb90da49c23b1d251c02984",
         ],
     ),
     (
@@ -2106,6 +2111,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "8467f522983a8eed778887a737688cb258bfbdbfc173d5a54995d51b4903abb7",
             "63fa19e04d563818fe23726d67498e19147b1f28d39531f19723cfc6bf0bd44a",
             "32ac5aa459691e572d4ba20bee595aff2580f6b6e47091a640d790a82ab2c79a",
+            "962e9c2a9ad09e1059626af8daa9b2578ec1d5a76365f8b3b6da23bae2433cc0",
         ],
     ),
     (
@@ -2137,6 +2143,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "18da3adfc0983acaa1de7e7951f990926aae2bce424c63e8384263d955468312",
             "22f6e094348547ef0e71c718d49fcc87a8ea96c8222aeb59ad1f6fd4924e55ec",
             "3aba02ba86b0e79f7d8de9f1af74763e2fa15e871471ed241ed62692d76fafe3",
+            "4227e18cd7ffde7ea1974dd96044dfc137c5bcc71dc16070cd29fcbba5bdc806",
         ],
     ),
     (
@@ -2149,6 +2156,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "297cde2ed99d71a88a17486541cd6f6bb9e2f44ca7fc7c138fede60ddc61ebf2",
             "b1d9cbc5ffcfc5d219b8fd863ef18c9fe1b8204568be69a5feca4929ebd970b7",
             "20f690a9805b2a6e990fc666217ec32bb14d0e9d6595de8d2e4721681684f243",
+            "d12d23dc3f0a2da4f85b679552915a6457144b7d9b1f9d1e1c1e7895dd78c5d7",
         ],
     ),
     (
@@ -2162,6 +2170,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "95eec46b34053a662e6a06d16d29f17b1abbb2cd7b0fa9ffc2480468abf718bb",
             "c10197ce9620c1a3004799517287ec618422c6c431d4fde972e33f472b3be1ba",
             "3b20c6ff0e0620b18f72c0f4f5c19ffd45da4606df4b9c75c1316355f927fcf0",
+            "69fa0bd43fea1c045d30dfc906e79802a203f47ef31b806bb8f4a991a0ff3989",
         ],
     ),
     (
@@ -2174,6 +2183,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "99e4bf5611d3f8209642bcdf4eae519e5a7929f881d22560b7eb8e08d588cb65",
             "9a692e0451c2e271b0578d210f5876673b73c68d9efd775410275cb3d2b7ef57",
             "04aed39b34e7f8c24a251bd3de9fa7312b969182a91770da0ce2c7f6885d5d31",
+            "1138b0e7b7053dc1dc763647224755138f2fc73787269c5908eb2df8eb84d515",
         ],
     ),
 ];

@@ -134,6 +134,8 @@ time, .reading-time { color: var(--muted); font-size: 0.9rem; margin-right: 0.75
 .contact-form-honeypot { display: none; }
 .katex-display { overflow-x: auto; overflow-y: hidden; }
 
+/* Cross-fade between pages (same-origin navigations; off for reduced motion). */
+@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

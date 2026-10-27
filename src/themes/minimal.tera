@@ -217,6 +217,8 @@
         .excerpt { color: #666; font-size: 0.95rem; line-height: 1.65; margin: 0.3rem 0 0; }
         .roadmap-milestone--left { border-left: 2px solid #ddd; padding-left: 1rem; }
         .roadmap-milestone--right { border-left: 2px solid #eee; padding-left: 1rem; }
+        /* Cross-fade between pages (same-origin navigations; off for reduced motion). */
+        @media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
     {% block extra_css %}{% endblock %}

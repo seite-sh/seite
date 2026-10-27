@@ -143,13 +143,15 @@ fn without_breadcrumbs(html: &str) -> String {
 ///
 /// For every theme, the search script is the shared full-text one
 /// (`seite/search-script.html`), compared as a marker, and the theme CSS has
-/// one added line styling result snippets, highlights and the active result.
+/// one added line styling result snippets, highlights and the active result,
+/// plus the view-transition rule (and its comment line) every theme gained.
 /// The BreadcrumbList JSON-LD is left out: it now uses the collection's real
 /// URL (checked in `og::test_breadcrumb_urls_resolve_to_built_pages`).
 fn normalize(theme: &str, html: &str) -> String {
     let html: String = without_search_script(&without_breadcrumbs(html))
         .split_inclusive('\n')
         .filter(|l| !l.contains("#search-results .result-snippet"))
+        .filter(|l| !l.contains("view-transition") && !l.contains("Cross-fade between pages"))
         .collect();
     let html = &html;
     match theme {
