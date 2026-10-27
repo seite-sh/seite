@@ -152,7 +152,7 @@ Builds are fast: typically under a second, even with dozens of pages. Every buil
 - **RSS feed** at `/feed.xml` for subscribers.
 - **XML sitemap** at `/sitemap.xml` with hreflang alternates if you add [translations](/docs/i18n).
 - **Search index** at `/search-index.json`: client-side search works out of the box in all bundled themes.
-- **LLM discovery files** at `/llms.txt` and `/llms-full.txt`, making your site discoverable by AI search engines and coding agents.
+- **LLM discovery files** at `/llms.txt` and `/llms-full.txt`, plus `/sitemap.md` (every page's markdown URL), making your site discoverable by AI search engines and coding agents. Each page's `.md` copy points to them.
 
 This triple output (HTML + Markdown + LLM files) is what makes seite an AI-native static site generator. Your content is readable by browsers, search engines, and AI models from a single build command.
 

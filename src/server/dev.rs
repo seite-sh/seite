@@ -603,6 +603,119 @@ pub fn is_json_content_type(content_type: Option<&str>) -> bool {
         .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"))
 }
 
+// ---------------------------------------------------------------------------
+// Markdown content negotiation (`Accept: text/markdown`)
+// ---------------------------------------------------------------------------
+
+/// Content type of every markdown response (negotiated or a `.md` URL).
+pub const MARKDOWN_CONTENT_TYPE: &str = "text/markdown; charset=utf-8";
+
+/// The quality the `Accept` header gives `ty/sub`, with how specifically it
+/// was named: 3 = exact, 2 = `ty/*`, 1 = `*/*`, 0 = not acceptable (q = 0).
+/// Per RFC 9110 the most specific matching range sets the quality; ranges
+/// that don't parse (no `/`, bad or out-of-range `q`) are skipped.
+fn accept_quality(accept: &str, ty: &str, sub: &str) -> (f32, u8) {
+    let mut best: Option<(u8, f32)> = None;
+    for range in accept.split(',') {
+        let mut parts = range.split(';');
+        let media = parts.next().unwrap_or("").trim();
+        let Some((r_ty, r_sub)) = media.split_once('/') else {
+            continue;
+        };
+        let (r_ty, r_sub) = (r_ty.trim(), r_sub.trim());
+        if r_ty.is_empty() || r_sub.is_empty() {
+            continue;
+        }
+        let mut q = Some(1.0_f32);
+        for param in parts {
+            let Some((name, value)) = param.split_once('=') else {
+                continue;
+            };
+            if name.trim().eq_ignore_ascii_case("q") {
+                q = value
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|q| (0.0..=1.0).contains(q));
+            }
+        }
+        let Some(q) = q else { continue };
+        let specificity = if r_ty == "*" && r_sub == "*" {
+            1
+        } else if r_ty.eq_ignore_ascii_case(ty) && r_sub == "*" {
+            2
+        } else if r_ty.eq_ignore_ascii_case(ty) && r_sub.eq_ignore_ascii_case(sub) {
+            3
+        } else {
+            continue;
+        };
+        if best.is_none_or(|(s, _)| specificity > s) {
+            best = Some((specificity, q));
+        }
+    }
+    match best {
+        Some((s, q)) if q > 0.0 => (q, s),
+        _ => (0.0, 0),
+    }
+}
+
+/// Whether an `Accept` header asks for markdown over HTML: `text/markdown`
+/// must have a higher quality than `text/html`, or the same quality while
+/// being named more specifically (`text/markdown, */*` asks for markdown;
+/// `text/markdown, text/html` and `*/*` alone get HTML). Browsers never name
+/// `text/markdown`, so they always get HTML.
+pub fn accept_prefers_markdown(accept: Option<&str>) -> bool {
+    let Some(accept) = accept else { return false };
+    let (md_q, md_s) = accept_quality(accept, "text", "markdown");
+    let (html_q, html_s) = accept_quality(accept, "text", "html");
+    md_q > 0.0 && (md_q > html_q || (md_q == html_q && md_s > html_s))
+}
+
+/// The markdown copy the build wrote beside an HTML page (`x.html` → `x.md`,
+/// `index.html` → `index.md`), when it exists.
+pub fn markdown_sibling(html_path: &Path) -> Option<PathBuf> {
+    if html_path.extension().and_then(|e| e.to_str()) != Some("html") {
+        return None;
+    }
+    let md = html_path.with_extension("md");
+    md.is_file().then_some(md)
+}
+
+/// Respond with a built file. HTML responses carry `Vary: Accept`; for a page
+/// with a markdown copy, a GET/HEAD whose `Accept` prefers `text/markdown`
+/// gets the copy instead (no live-reload script). Other HTML gets the
+/// live-reload script.
+pub fn respond_file(request: Request, path: &Path, mime: &str) {
+    let is_html = mime.starts_with("text/html");
+    let sibling = if is_html {
+        markdown_sibling(path)
+    } else {
+        None
+    };
+    let get_or_head = matches!(request.method(), Method::Get | Method::Head);
+    let wants_md = sibling.is_some()
+        && get_or_head
+        && accept_prefers_markdown(header_value(&request, "Accept"));
+    let (content, mime) = match (&sibling, wants_md) {
+        (Some(md), true) => (std::fs::read(md).unwrap_or_default(), MARKDOWN_CONTENT_TYPE),
+        _ => {
+            let content = std::fs::read(path).unwrap_or_default();
+            if is_html {
+                (inject_livereload(&content), mime)
+            } else {
+                (content, mime)
+            }
+        }
+    };
+    let mut response = with_header(Response::from_data(content), "Content-Type", mime);
+    // Every HTML page is a negotiable URL (like the Cloudflare Worker, which
+    // marks any extensionless page), with or without a copy today.
+    if is_html {
+        response = with_header(response, "Vary", "Accept");
+    }
+    let _ = request.respond(response);
+}
+
 /// Whether the server's bind address only accepts local connections.
 pub fn is_loopback_bind(host: &str) -> bool {
     host.eq_ignore_ascii_case("localhost")
@@ -1339,6 +1452,75 @@ mod tests {
     }
 
     const JSON: Option<&str> = Some("application/json");
+
+    // --- Markdown negotiation ------------------------------------------------
+
+    #[test]
+    fn test_accept_prefers_markdown_q_values() {
+        let md = |a: &str| accept_prefers_markdown(Some(a));
+        assert!(md("text/markdown"));
+        assert!(md("text/markdown, text/html;q=0.9"));
+        assert!(md("text/html;q=0.5, text/markdown"));
+        assert!(md("text/markdown;charset=utf-8;q=0.8, text/html;q=0.7"));
+        assert!(md("Text/Markdown"));
+        assert!(md("text/markdown; q=1.0"));
+        assert!(!md("text/html, text/markdown;q=0.9"));
+        assert!(!md("text/markdown;q=0, text/html"));
+        assert!(!md("text/markdown;q=0"));
+    }
+
+    #[test]
+    fn test_accept_prefers_markdown_wildcards_and_ties() {
+        let md = |a: &str| accept_prefers_markdown(Some(a));
+        // `*/*` alone, `text/*` alone: same quality, same specificity → HTML.
+        assert!(!md("*/*"));
+        assert!(!md("text/*"));
+        // Explicit tie → HTML.
+        assert!(!md("text/markdown, text/html"));
+        assert!(!md("text/html, text/markdown"));
+        // Named markdown beats a wildcard of the same quality.
+        assert!(md("text/markdown, */*"));
+        assert!(md("text/markdown, text/*"));
+        assert!(md("text/markdown, text/html;q=0.9, */*;q=0.8"));
+        // Typical browser header.
+        assert!(!md(
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8"
+        ));
+        // Most specific range sets the quality: `text/*;q=0.1` lowers html,
+        // the exact markdown entry keeps 1.
+        assert!(md("text/*;q=0.1, text/markdown"));
+    }
+
+    #[test]
+    fn test_accept_prefers_markdown_malformed() {
+        let md = |a: &str| accept_prefers_markdown(Some(a));
+        assert!(!accept_prefers_markdown(None));
+        assert!(!md(""));
+        assert!(!md(";;q=abc"));
+        assert!(!md("application/json"));
+        assert!(!md("markdown"));
+        assert!(!md("text/markdown;q=abc"));
+        assert!(!md("text/markdown;q=2"));
+        assert!(!md("text/markdown;q=-1"));
+        assert!(!md("/, text/"));
+        // A malformed range is skipped, the rest still counts.
+        assert!(md("garbage, text/markdown"));
+    }
+
+    #[test]
+    fn test_markdown_sibling() {
+        let tmp = tempfile::tempdir().unwrap();
+        let html = tmp.path().join("post.html");
+        std::fs::write(&html, "<p>x</p>").unwrap();
+        assert_eq!(markdown_sibling(&html), None);
+        std::fs::write(tmp.path().join("post.md"), "x").unwrap();
+        assert_eq!(markdown_sibling(&html), Some(tmp.path().join("post.md")));
+        assert_eq!(markdown_sibling(&tmp.path().join("post.md")), None);
+        let index = tmp.path().join("index.html");
+        std::fs::write(&index, "x").unwrap();
+        std::fs::write(tmp.path().join("index.md"), "x").unwrap();
+        assert_eq!(markdown_sibling(&index), Some(tmp.path().join("index.md")));
+    }
 
     // --- MCP guard -----------------------------------------------------------
 

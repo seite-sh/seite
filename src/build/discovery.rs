@@ -63,6 +63,105 @@ pub fn generate_robots_txt(config: &SiteConfig) -> String {
     out
 }
 
+/// The one-line blockquote at the top of every published `.md` copy that
+/// points agents at the site's discovery files: the page's language's
+/// `llms.txt` / `llms-full.txt` (`/<lang>/…` for non-default languages of a
+/// multilingual site) and the site-wide `sitemap.md`. Absolute URLs from
+/// `base_url`, which already carries any base path.
+pub fn markdown_pointer(config: &SiteConfig, lang: &str) -> String {
+    let base = config.site.base_url.trim_end_matches('/');
+    let lang_base = if config.is_multilingual() && lang != config.site.language {
+        format!("{base}/{lang}")
+    } else {
+        base.to_string()
+    };
+    format!(
+        "> Index of this site for agents: [llms.txt]({lang_base}/llms.txt). \
+         Full text: [llms-full.txt]({lang_base}/llms-full.txt). \
+         All pages: [sitemap.md]({base}/sitemap.md)."
+    )
+}
+
+/// Insert `pointer` right after a leading YAML frontmatter block (`---` …
+/// `---`), or at the top when there is none, separated by blank lines.
+pub fn insert_markdown_pointer(md: &str, pointer: &str) -> String {
+    if let Some(after_open) = md.strip_prefix("---\n") {
+        let mut offset = 4;
+        for line in after_open.split_inclusive('\n') {
+            offset += line.len();
+            if line.trim_end_matches(['\n', '\r']) == "---" {
+                let (head, tail) = md.split_at(offset);
+                let head = head.trim_end_matches(['\n', '\r']);
+                let tail = tail.trim_start_matches(['\n', '\r']);
+                return format!("{head}\n\n{pointer}\n\n{tail}");
+            }
+        }
+    }
+    format!("{pointer}\n\n{md}")
+}
+
+/// Generate `sitemap.md`: every page that has a markdown copy, as a markdown
+/// list an agent can read in one request. `sections` are `(heading, items)`
+/// pairs in output order (built by the caller from the same items as
+/// `sitemap.xml`); drafts (`--drafts`) and `noindex` pages are left out here,
+/// and empty sections are skipped. Each entry links the page's `.md` copy.
+pub fn generate_sitemap_md(
+    config: &SiteConfig,
+    sections: &[(String, Vec<&ContentItem>)],
+) -> String {
+    let base = config.site.base_url.trim_end_matches('/');
+    let mut out = format!("# {}: sitemap\n\n", config.site.title);
+    if !config.site.description.is_empty() {
+        out.push_str(&format!("> {}\n\n", config.site.description));
+    }
+    out.push_str(&format!(
+        "Every page as markdown. Summary: [llms.txt]({base}/llms.txt). Full text: [llms-full.txt]({base}/llms-full.txt).\n\n"
+    ));
+    for (heading, items) in sections {
+        let entries: Vec<(&ContentItem, String)> = items
+            .iter()
+            .filter(|i| !i.frontmatter.draft && !is_noindex(i))
+            .filter_map(|i| super::item_markdown_url(&i.url).map(|u| (*i, u)))
+            .collect();
+        if entries.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("## {heading}\n\n"));
+        for (item, md_path) in entries {
+            let title = markdown_inline(&item.frontmatter.title);
+            out.push_str(&format!("- [{title}]({base}{md_path})"));
+            match item.frontmatter.description.as_deref().map(markdown_inline) {
+                Some(desc) if !desc.is_empty() => out.push_str(&format!(" — {desc}\n")),
+                _ => out.push('\n'),
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Frontmatter text as one safe inline run inside a list item: whitespace
+/// (including newlines) collapsed to single spaces, and `\`, `[`, `]`
+/// escaped so a title can't close the link text or start a new block.
+fn markdown_inline(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = String::with_capacity(collapsed.len());
+    for c in collapsed.chars() {
+        if matches!(c, '\\' | '[' | ']') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn is_noindex(item: &ContentItem) -> bool {
+    item.frontmatter
+        .robots
+        .as_deref()
+        .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
+}
+
 /// Generate llms.txt — a short summary page per the llmstxt.org spec.
 /// Format:
 ///   # Site Title
@@ -81,6 +180,9 @@ pub fn generate_llms_txt(
     if !config.site.description.is_empty() {
         out.push_str(&format!("> {}\n\n", config.site.description));
     }
+    out.push_str(&format!(
+        "Every page as markdown: [sitemap.md]({base}/sitemap.md)\n\n"
+    ));
 
     for (label, items) in collections {
         if items.is_empty() {
@@ -328,5 +430,114 @@ mod tests {
         let collections: Vec<(String, Vec<&ContentItem>)> = vec![("Empty".to_string(), vec![])];
         let result = generate_llms_full_txt(&config, &collections);
         assert!(!result.contains("## Empty"));
+    }
+
+    #[test]
+    fn test_markdown_pointer_uses_base_url_and_language() {
+        let mut config = test_config("https://example.com/docs/", "");
+        let pointer = markdown_pointer(&config, "en");
+        assert_eq!(
+            pointer,
+            "> Index of this site for agents: [llms.txt](https://example.com/docs/llms.txt). \
+             Full text: [llms-full.txt](https://example.com/docs/llms-full.txt). \
+             All pages: [sitemap.md](https://example.com/docs/sitemap.md)."
+        );
+        config.languages.insert("es".into(), Default::default());
+        let es = markdown_pointer(&config, "es");
+        assert!(es.contains("(https://example.com/docs/es/llms.txt)"));
+        assert!(es.contains("(https://example.com/docs/es/llms-full.txt)"));
+        assert!(es.contains("(https://example.com/docs/sitemap.md)"));
+        assert!(markdown_pointer(&config, "en").contains("(https://example.com/docs/llms.txt)"));
+    }
+
+    #[test]
+    fn test_insert_markdown_pointer_after_frontmatter() {
+        let md = "---\ntitle: Hi\ntags:\n- a\n---\n\n# Body\n\ntext";
+        assert_eq!(
+            insert_markdown_pointer(md, "> P"),
+            "---\ntitle: Hi\ntags:\n- a\n---\n\n> P\n\n# Body\n\ntext"
+        );
+        // Frontmatter as generated (closing `---` then the body).
+        assert_eq!(
+            insert_markdown_pointer("---\ntitle: Hi\n---\nBody", "> P"),
+            "---\ntitle: Hi\n---\n\n> P\n\nBody"
+        );
+        // A `---` thematic break in the body is not the frontmatter end.
+        assert_eq!(
+            insert_markdown_pointer("---\na: 1\n---\n\nx\n\n---\n\ny", "> P"),
+            "---\na: 1\n---\n\n> P\n\nx\n\n---\n\ny"
+        );
+    }
+
+    #[test]
+    fn test_insert_markdown_pointer_without_frontmatter() {
+        assert_eq!(
+            insert_markdown_pointer("# Posts\n\n- [a](/a)\n", "> P"),
+            "> P\n\n# Posts\n\n- [a](/a)\n"
+        );
+        // An unterminated block is not frontmatter.
+        assert_eq!(
+            insert_markdown_pointer("---\nnot closed", "> P"),
+            "> P\n\n---\nnot closed"
+        );
+        assert_eq!(insert_markdown_pointer("", "> P"), "> P\n\n");
+    }
+
+    #[test]
+    fn test_sitemap_md_selection_and_order() {
+        let config = test_config("https://example.com", "Desc");
+        let b = test_item("B post", "/posts/b", Some("About B"), "");
+        let a = test_item("A post", "/posts/a", None, "");
+        let mut hidden = test_item("Hidden", "/posts/hidden", None, "");
+        hidden.frontmatter.robots = Some("NoIndex, follow".into());
+        let mut draft = test_item("Draft", "/posts/draft", None, "");
+        draft.frontmatter.draft = true;
+        let about = test_item("About", "/about", Some("Who"), "");
+        let sections = vec![
+            ("Posts".to_string(), vec![&b, &hidden, &a, &draft]),
+            ("Empty".to_string(), vec![]),
+            ("Only noindex".to_string(), vec![&hidden]),
+            ("Pages".to_string(), vec![&about]),
+        ];
+        let md = generate_sitemap_md(&config, &sections);
+        assert!(md.starts_with("# Test Site: sitemap\n\n> Desc\n\n"));
+        assert!(md.contains(
+            "## Posts\n\n- [B post](https://example.com/posts/b.md) — About B\n- [A post](https://example.com/posts/a.md)\n\n## Pages\n\n- [About](https://example.com/about.md) — Who\n"
+        ));
+        assert!(!md.contains("Hidden"));
+        assert!(!md.contains("Draft"));
+        assert!(!md.contains("## Empty"));
+        assert!(!md.contains("## Only noindex"));
+        assert!(!md.contains("Index of this site for agents"));
+    }
+
+    #[test]
+    fn test_sitemap_md_escapes_titles_and_descriptions() {
+        let config = test_config("https://example.com", "");
+        let item = test_item(
+            "Arrays [and] \\ slices\n# not a heading",
+            "/posts/a",
+            Some("Line one\n\n- not a list\n[x](y)"),
+            "",
+        );
+        let md = generate_sitemap_md(&config, &[("Posts".to_string(), vec![&item])]);
+        assert!(
+            md.contains(
+                "- [Arrays \\[and\\] \\\\ slices # not a heading](https://example.com/posts/a.md) — Line one - not a list \\[x\\](y)\n"
+            ),
+            "{md}"
+        );
+        assert_eq!(
+            md.lines().filter(|l| l.starts_with("- ")).count(),
+            1,
+            "{md}"
+        );
+    }
+
+    #[test]
+    fn test_llms_txt_links_sitemap_md() {
+        let config = test_config("https://example.com", "");
+        let result = generate_llms_txt(&config, &[]);
+        assert!(result.contains("[sitemap.md](https://example.com/sitemap.md)"));
     }
 }

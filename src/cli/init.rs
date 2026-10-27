@@ -190,6 +190,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             project: None,
             domain: None,
             auto_commit: true,
+            markdown_negotiation: false,
         },
         languages: Default::default(),
         images: Some(crate::config::ImageSection::default()),

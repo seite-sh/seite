@@ -140,6 +140,18 @@ fn http(
     headers: &[(&str, &str)],
     body: &str,
 ) -> (u16, String) {
+    let (code, _head, body) = http_full(port, method, path, headers, body);
+    (code, body)
+}
+
+/// [`http`], also returning the response head (status line and headers).
+fn http_full(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
@@ -163,7 +175,7 @@ fn http(
         !head.to_ascii_lowercase().contains("access-control-allow"),
         "no CORS headers ever: {head}"
     );
-    (code, body.to_string())
+    (code, head.to_string(), body.to_string())
 }
 
 /// An open `/__seite/events` stream.
@@ -234,6 +246,72 @@ fn append(path: &Path, text: &str) {
     let mut s = fs::read_to_string(path).unwrap();
     s.push_str(text);
     fs::write(path, s).unwrap();
+}
+
+#[test]
+fn test_serve_markdown_content_negotiation() {
+    let s = Served::start();
+    let host = s.host();
+    // The starter post's published URL, from its markdown copy in dist/.
+    let md_copy = fs::read_dir(s.dir.join("dist/posts"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "md") && !p.ends_with("index.md"))
+        .expect("starter post markdown copy");
+    let page = format!("/posts/{}", md_copy.file_stem().unwrap().to_string_lossy());
+    let get = |path: &str, accept: Option<&str>| {
+        let mut headers = vec![("Host", host.as_str())];
+        if let Some(a) = accept {
+            headers.push(("Accept", a));
+        }
+        let (code, head, body) = http_full(s.port, "GET", path, &headers, "");
+        (code, head.to_ascii_lowercase(), body)
+    };
+
+    // An agent asking for markdown gets the page's .md copy.
+    let (code, head, body) = get(&page, Some("text/markdown, text/html;q=0.9"));
+    assert_eq!(code, 200, "{head}");
+    assert!(
+        head.contains("content-type: text/markdown; charset=utf-8"),
+        "{head}"
+    );
+    assert!(head.contains("vary: accept"), "{head}");
+    assert!(body.starts_with("---\n"), "{body}");
+    assert!(body.contains("Index of this site for agents"), "{body}");
+    assert!(!body.contains("<html"), "{body}");
+
+    // A browser gets HTML (with live reload), still marked `Vary: Accept`.
+    let (code, head, body) = get(&page, Some("text/html,application/xhtml+xml,*/*;q=0.8"));
+    assert_eq!(code, 200, "{head}");
+    assert!(head.contains("content-type: text/html"), "{head}");
+    assert!(head.contains("vary: accept"), "{head}");
+    assert!(body.contains("<html"), "{body}");
+    assert!(body.contains("/__seite/events"), "live reload injected");
+
+    // `*/*` alone, or no Accept header → HTML.
+    let (_, head, _) = get(&page, Some("*/*"));
+    assert!(head.contains("content-type: text/html"), "{head}");
+    let (_, head, _) = get(&page, None);
+    assert!(head.contains("content-type: text/html"), "{head}");
+
+    // A collection index negotiates to its index.md.
+    let (_, head, body) = get("/posts/", Some("text/markdown"));
+    assert!(head.contains("content-type: text/markdown"), "{head}");
+    assert!(body.contains("# Posts"), "{body}");
+
+    // Explicit .md URLs are served as text/markdown.
+    let (code, head, _) = get(&format!("{page}.md"), None);
+    assert_eq!(code, 200);
+    assert!(
+        head.contains("content-type: text/markdown; charset=utf-8"),
+        "{head}"
+    );
+
+    // Non-HTML files are never negotiated and carry no Vary.
+    let (_, head, _) = get("/robots.txt", Some("text/markdown"));
+    assert!(head.contains("content-type: text/plain"), "{head}");
+    assert!(!head.contains("vary"), "{head}");
 }
 
 #[test]
