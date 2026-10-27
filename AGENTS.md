@@ -20,6 +20,7 @@ cargo run -- audit   # SEO/GEO/a11y/content/perf findings + score (scratch build
 cargo run -- context # Agent orientation: site summary + DIRECTIVES (also: docs, page, search, stats, templates, frontmatter, explain)
 cargo run -- serve   # Dev server with REPL (live reload)
 cargo run -- serve --open  # Dev server + open browser
+cargo run -- preview # Running dev server: URL, last build, browser errors (exit 1 if none/failed)
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
 cargo run -- new post "My Post" --tags rust,web
 cargo run -- agent "create a blog post about Rust"
@@ -32,6 +33,7 @@ cargo run -- deploy  # Commit, push, build, and deploy
 cargo run -- skill install seomachine
 cargo run -- skill install impeccable   # pinned npm installer, asks first
 cargo run -- upgrade # Upgrade project config to current binary
+cargo run -- upgrade --agent  # + migration brief from release notes (.seite/upgrade-brief.md; printed in an agent session)
 cargo run -- self-update
 cargo run -- completions bash  # Generate shell completions
 ```
@@ -61,7 +63,7 @@ src/
   deploy/              GitHub Pages + Cloudflare + Netlify
   workspace/           Multi-site workspaces (config, build, server, deploy)
   output/              CommandOutput trait, human (colored), json
-  server/              tiny_http dev server, file watcher, live reload
+  server/              tiny_http dev server, file watcher; dev.rs (shared by the workspace server: SSE live reload `/__seite/events`, build-error overlay, console forwarding, `/__seite/status`, loopback-only HTTP MCP `/__seite/mcp`), remote.rs (client for `seite preview`/`context`/stdio runtime tools)
   templates/           Tera template loading with embedded defaults; seite/*.html partials (SEO head, search, lang switcher, scripts) every theme includes
 tests/integration/     Integration tests, one module per command (assert_cmd + tempfile)
 build.rs               Generates releases.md from changelog at compile time
