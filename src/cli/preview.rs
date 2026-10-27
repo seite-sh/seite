@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use super::site_tools::{array_of, site_root, str_of};
 use crate::human_println;
 use crate::output::json as json_out;
+use crate::server::dev::{sanitize, BROWSER_ERRORS_NOTE};
 use crate::server::remote;
 
 const TIMEOUT: Duration = Duration::from_secs(3);
@@ -27,43 +28,68 @@ pub struct PreviewArgs {
 
 pub fn run(args: &PreviewArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let root = site_root(site_filter)?;
-    let (server, mut status) = match remote::find_server(&root, TIMEOUT) {
+    let remote = match remote::find_for_site(&root, TIMEOUT) {
         Ok(found) => found,
         Err(message) => {
             json_out::set_data(json!({ "running": false }));
             anyhow::bail!("{message}");
         }
     };
-    print_status(&status);
+    let mut status = remote.status;
     if args.clear_browser_errors {
+        // Clear atomically: the server returns exactly what it removed, and
+        // that is what gets printed (nothing reported in between is lost).
         let (code, reply) = remote::post_json(
-            server.port,
+            remote.server.port,
             "/__seite/clear-browser-errors",
             &json!({}),
             TIMEOUT,
         )
         .map_err(anyhow::Error::msg)?;
-        if code != 200 {
-            anyhow::bail!("could not clear browser errors (HTTP {code})");
-        }
-        let cleared = reply
-            .as_ref()
-            .and_then(|r| r.get("cleared"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        human_println!("Cleared {cleared} browser error(s).");
-        status["cleared_browser_errors"] = cleared.into();
+        let reply = reply
+            .filter(|_| code == 200)
+            .ok_or_else(|| anyhow::anyhow!("could not clear browser errors (HTTP {code})"))?;
+        status["browser_errors"] = reply.get("browser_errors").cloned().unwrap_or(json!([]));
+        status["cleared_browser_errors"] = reply.get("cleared").cloned().unwrap_or(json!(0));
+    }
+    status["browser_errors_note"] = BROWSER_ERRORS_NOTE.into();
+    print_status(&status);
+    if args.clear_browser_errors {
+        human_println!(
+            "Cleared {} browser error(s).",
+            status["cleared_browser_errors"].as_u64().unwrap_or(0)
+        );
     }
     status["running"] = true.into();
+    let failed = status
+        .get("last_build")
+        .and_then(|b| b.get("ok"))
+        .and_then(Value::as_bool)
+        == Some(false);
+    let errors = status
+        .pointer("/last_build/errors")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
     json_out::set_data(status);
+    if failed {
+        anyhow::bail!(
+            "the dev server's last build failed ({errors} error{}); fix the problems above and save",
+            if errors == 1 { "" } else { "s" }
+        );
+    }
     Ok(())
+}
+
+/// A string field from the server, made safe to print.
+fn clean(v: &Value, key: &str) -> String {
+    sanitize(str_of(v, key), 4096)
 }
 
 /// `file:line:col: severity[code]: message` + `  hint:` (as `seite check`).
 pub fn format_diagnostic(d: &Value) -> String {
     let mut out = String::new();
-    if let Some(file) = d.get("file").and_then(Value::as_str) {
-        out.push_str(file);
+    if d.get("file").and_then(Value::as_str).is_some() {
+        out.push_str(&clean(d, "file"));
         if let Some(line) = d.get("line").and_then(Value::as_u64) {
             out.push_str(&format!(":{line}"));
             if let Some(col) = d.get("column").and_then(Value::as_u64) {
@@ -74,12 +100,12 @@ pub fn format_diagnostic(d: &Value) -> String {
     }
     out.push_str(&format!(
         "{}[{}]: {}",
-        str_of(d, "severity"),
-        str_of(d, "code"),
-        str_of(d, "message")
+        clean(d, "severity"),
+        clean(d, "code"),
+        clean(d, "message")
     ));
-    if let Some(hint) = d.get("hint").and_then(Value::as_str) {
-        out.push_str(&format!("\n  hint: {hint}"));
+    if d.get("hint").and_then(Value::as_str).is_some() {
+        out.push_str(&format!("\n  hint: {}", clean(d, "hint")));
     }
     out
 }
@@ -107,7 +133,7 @@ pub fn build_summary(last: Option<&Value>) -> String {
 fn print_status(status: &Value) {
     human_println!(
         "Dev server:     {} (pid {})",
-        str_of(status, "url"),
+        clean(status, "url"),
         status.get("pid").and_then(Value::as_u64).unwrap_or(0)
     );
     let last = status.get("last_build");
@@ -116,26 +142,26 @@ fn print_status(status: &Value) {
         for d in array_of(last, "diagnostics") {
             human_println!("{}", format_diagnostic(d));
         }
-        if let Some(message) = last.get("message").and_then(Value::as_str) {
-            human_println!("error: {message}");
+        if last.get("message").and_then(Value::as_str).is_some() {
+            human_println!("error: {}", clean(last, "message"));
         }
     }
     let browser = array_of(status, "browser_errors");
     if browser.is_empty() {
         human_println!("Browser errors: none");
     } else {
-        human_println!("Browser errors: {}", browser.len());
+        human_println!("Browser errors: {} ({BROWSER_ERRORS_NOTE})", browser.len());
         for e in browser {
             let mut line = format!(
                 "  {} {}: {}",
-                str_of(e, "page"),
-                str_of(e, "kind"),
-                str_of(e, "message")
+                clean(e, "page"),
+                clean(e, "kind"),
+                clean(e, "message")
             );
             if !str_of(e, "source").is_empty() {
                 line.push_str(&format!(
                     " ({}:{}:{})",
-                    str_of(e, "source"),
+                    clean(e, "source"),
                     e.get("line").and_then(Value::as_u64).unwrap_or(0),
                     e.get("col").and_then(Value::as_u64).unwrap_or(0)
                 ));

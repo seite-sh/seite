@@ -298,8 +298,13 @@ fn test_serve_events_reload_and_build_error() {
     assert!(s["last_build"]["errors"].as_u64().unwrap() >= 1);
 
     // `seite preview --json` reports it.
+    // ... and exits 1, saying why.
     let (ok, doc) = run_json(&served.dir, &["preview"]);
-    assert!(ok, "{doc:#}");
+    assert!(!ok, "{doc:#}");
+    assert!(doc["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("last build failed"));
     assert_eq!(doc["data"]["running"], true);
     assert_eq!(doc["data"]["last_build"]["ok"], false);
     let human = page_cmd()
@@ -394,7 +399,17 @@ fn test_serve_mcp_endpoint_guards() {
         assert!(names.contains(&tool), "{tool}");
     }
 
+    let same_origin = format!("http://{host}");
     let rejected = [
+        // Page scripts send Origin even when same-origin: never allowed.
+        (
+            vec![
+                ("Host", host.as_str()),
+                ("Origin", same_origin.as_str()),
+                ("Content-Type", "application/json"),
+            ],
+            403,
+        ),
         (
             vec![
                 ("Host", host.as_str()),
@@ -457,6 +472,14 @@ fn test_serve_mcp_endpoint_guards() {
     );
     let reload = call("seite_reload", "{}");
     assert_eq!(reload["ok"], true, "{reload:#}");
+    // seite_build through the dev server keeps the dev base URL in dist/.
+    let built = call("seite_build", "{}");
+    assert_eq!(built["success"], true, "{built:#}");
+    let index = fs::read_to_string(served.dir.join("dist/index.html")).unwrap();
+    assert!(
+        index.contains(&format!("http://127.0.0.1:{}", served.port)),
+        "dist/ was rebuilt with the production base_url"
+    );
 
     // stdio `seite mcp` proxies the runtime tools to the running server.
     let input = concat!(

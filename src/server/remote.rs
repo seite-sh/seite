@@ -23,6 +23,7 @@ fn agent(timeout: Duration) -> ureq::Agent {
         ureq::config::Config::builder()
             .proxy(None)
             .http_status_as_error(false)
+            .max_redirects(0)
             .timeout_global(Some(timeout))
             .build(),
     )
@@ -95,8 +96,8 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 }
 
 /// Any running dev server recorded for `site_root` (or its workspace), with
-/// its `/__seite/status` (short `timeout`).
-pub fn find_server(site_root: &Path, timeout: Duration) -> Result<(DevServer, Value), String> {
+/// its `/__seite/status` (short `timeout`), whatever site it serves.
+fn find_server(site_root: &Path, timeout: Duration) -> Result<(DevServer, Value), String> {
     let server = dev_roots(site_root)
         .iter()
         .find_map(|root| running_dev_server(root))
@@ -105,12 +106,14 @@ pub fn find_server(site_root: &Path, timeout: Duration) -> Result<(DevServer, Va
     Ok((server, status))
 }
 
-/// The running dev server that serves the site at `site_root`. Refuses a
-/// server that serves another site (e.g. `seite serve --site other`).
-pub fn find_for_site(site_root: &Path, timeout: Duration) -> Result<RemoteDev, String> {
-    let (server, status) = find_server(site_root, timeout)?;
+/// This site's base URL on the server described by `status`: the server
+/// root itself (a site, or the workspace root), or a workspace server's
+/// `/<name>` mount. `Err` when the server serves something else.
+pub fn site_url_in(status: &Value, base: &str, site_root: &Path) -> Result<String, String> {
     let root = PathBuf::from(status.get("root").and_then(Value::as_str).unwrap_or(""));
-    let base = server.url.clone();
+    if !root.as_os_str().is_empty() && same_dir(&root, site_root) {
+        return Ok(base.to_string());
+    }
     if status.get("workspace").and_then(Value::as_bool) == Some(true) {
         let site = status
             .get("sites")
@@ -124,26 +127,25 @@ pub fn find_for_site(site_root: &Path, timeout: Duration) -> Result<RemoteDev, S
                 )
             })
             .and_then(|s| s.get("name").and_then(Value::as_str));
-        return match site {
-            Some(name) => Ok(RemoteDev {
-                site_url: format!("{base}/{name}"),
-                server,
-                status,
-            }),
-            None => Err(format!(
-                "the dev server at {base} serves a workspace without this site; start it with `seite serve`"
-            )),
-        };
+        return site.map(|name| format!("{base}/{name}")).ok_or_else(|| {
+            format!("the dev server at {base} serves a workspace without this site; start it with `seite serve`")
+        });
     }
-    if !same_dir(&root, site_root) {
-        return Err(format!(
-            "the dev server at {base} serves {}, not this site ({}); start one here with `seite serve --force-new`",
-            root.display(),
-            site_root.display()
-        ));
-    }
+    Err(format!(
+        "the dev server at {base} serves {}, not this site ({}); start one here with `seite serve --force-new`",
+        root.display(),
+        site_root.display()
+    ))
+}
+
+/// The running dev server that serves the site (or workspace) at
+/// `site_root`. Refuses a server that serves another site (e.g. `seite serve
+/// --site other` recorded in the workspace root).
+pub fn find_for_site(site_root: &Path, timeout: Duration) -> Result<RemoteDev, String> {
+    let (server, status) = find_server(site_root, timeout)?;
+    let site_url = site_url_in(&status, &server.url, site_root)?;
     Ok(RemoteDev {
-        site_url: base,
+        site_url,
         server,
         status,
     })
