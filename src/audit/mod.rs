@@ -409,6 +409,39 @@ fn url_of(rel: &str) -> String {
 /// Largest page read (bigger files are skipped).
 const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 
+/// Whether the output file `rel` (`static/admin/index.html`) is a copy of a
+/// real file under `static_dir` — verbatim, or its fingerprinted
+/// `<stem>.<8 hex>.<ext>` twin; `private-assets/<group>/x` maps to
+/// `static/private/<group>/x`. Such files (e.g. a CMS admin app from
+/// `seite cms setup decap`) are not pages seite generated.
+fn is_static_passthrough(rel: &str, static_dir: &Path) -> bool {
+    let rel = rel.replace('\\', "/");
+    let source = if let Some(rest) = rel.strip_prefix("static/") {
+        static_dir.join(rest)
+    } else if let Some(rest) = rel.strip_prefix("private-assets/") {
+        static_dir.join("private").join(rest)
+    } else {
+        return false;
+    };
+    if rel.split('/').any(|p| p == "..") {
+        return false;
+    }
+    if source.is_file() {
+        return true;
+    }
+    // foo.<hash>.html → foo.html
+    let Some(name) = source.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let parts: Vec<&str> = name.rsplitn(3, '.').collect();
+    if let [ext, hash, stem] = parts.as_slice() {
+        if hash.len() == 8 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return source.with_file_name(format!("{stem}.{ext}")).is_file();
+        }
+    }
+    false
+}
+
 impl Site {
     /// Read every HTML page under `output`.
     pub fn load(
@@ -417,6 +450,7 @@ impl Site {
         output_display: &str,
         config: &SiteConfig,
         paths: &ResolvedPaths,
+        generated: &std::collections::HashSet<String>,
     ) -> Self {
         let mut pages = Vec::new();
         let mut files: Vec<PathBuf> = walkdir::WalkDir::new(output)
@@ -438,6 +472,14 @@ impl Site {
                 continue;
             };
             let rel = links::relative_display(output, &path);
+            // Files copied verbatim from the site's static dir (e.g. a CMS
+            // admin app) are not pages seite generated — unless a content
+            // page renders at the same URL (`generated`: build mode).
+            if is_static_passthrough(&rel, &paths.static_dir)
+                && !generated.contains(&page_key(&url_of(&rel)))
+            {
+                continue;
+            }
             let facts = html::scan(&html);
             pages.push(Page {
                 url: url_of(&rel),
@@ -912,7 +954,14 @@ pub fn run(opts: &AuditOptions) -> Result<Report> {
             )));
         }
         let display = links::relative_display(opts.root, &dist);
-        let site = Site::load(opts.root, &dist, &display, &config, &paths);
+        let site = Site::load(
+            opts.root,
+            &dist,
+            &display,
+            &config,
+            &paths,
+            &std::collections::HashSet::new(),
+        );
         return Ok(audit(&site, opts.categories));
     }
     let (scratch, scratch_paths, built) = crate::cli::check::scratch_build(&config, &paths, false)?;
@@ -922,12 +971,19 @@ pub fn run(opts: &AuditOptions) -> Result<Report> {
         ))
     })?;
     let output_display = links::relative_display(opts.root, &paths.output);
+    let generated: std::collections::HashSet<String> = result
+        .collections
+        .values()
+        .flatten()
+        .map(|item| page_key(&item.url))
+        .collect();
     let mut site = Site::load(
         opts.root,
         &scratch_paths.output,
         &output_display,
         &config,
         &paths,
+        &generated,
     );
     let _keep = &scratch;
     site.build_mode = true;
@@ -1060,6 +1116,31 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_static_passthrough_is_not_a_page() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let st = tmp.path();
+        std::fs::create_dir_all(st.join("admin")).unwrap();
+        std::fs::write(st.join("admin/index.html"), "x").unwrap();
+        std::fs::create_dir_all(st.join("private/team")).unwrap();
+        std::fs::write(st.join("private/team/x.html"), "x").unwrap();
+        assert!(is_static_passthrough("static/admin/index.html", st));
+        assert!(is_static_passthrough(
+            "static/admin/index.0123abcd.html",
+            st
+        ));
+        assert!(is_static_passthrough("private-assets/team/x.html", st));
+        // Only files that exist under the static dir.
+        assert!(!is_static_passthrough("static/other.html", st));
+        assert!(!is_static_passthrough(
+            "static/admin/index.zz23abcd.html",
+            st
+        ));
+        assert!(!is_static_passthrough("static/../admin/index.html", st));
+        assert!(!is_static_passthrough("index.html", st));
+        assert!(!is_static_passthrough("posts/static.html", st));
+    }
 
     #[test]
     fn test_page_key_and_url_of() {

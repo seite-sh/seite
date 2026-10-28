@@ -222,6 +222,8 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
             taxonomies: Vec::new(),
             check: None,

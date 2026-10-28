@@ -580,6 +580,50 @@ Analytics injection happens as a post-processing step after the main build. Ever
 
 To remove analytics, delete the `[analytics]` section from `seite.toml`.
 
+## [comments]
+
+Comment threads for the `comments()` shortcode and the `seite/comments.html` partial: giscus (GitHub Discussions) or utterances (GitHub Issues), both free.
+
+```toml
+[comments]
+provider = "giscus"
+repo = "owner/repo"
+repo_id = "R_kgDO…"
+category = "Announcements"
+category_id = "DIC_kwDO…"
+```
+
+| Field | Provider | Default | Description |
+|-------|----------|---------|-------------|
+| `provider` | both | — | `giscus` or `utterances` |
+| `repo` | both | — | GitHub repository, `owner/name` |
+| `repo_id`, `category`, `category_id` | giscus | — | From [giscus.app](https://giscus.app) (required) |
+| `mapping` | giscus | `pathname` | `pathname`, `url`, `title` or `og:title` |
+| `reactions` | giscus | `true` | Reactions on the page's discussion |
+| `theme` | both | `preferred_color_scheme` (giscus), `preferred-color-scheme` (utterances) | Widget theme |
+| `lang` | giscus | page language | UI language |
+| `loading` | giscus | `lazy` | `lazy` or `eager` |
+| `issue_term` | utterances | `pathname` | `pathname`, `url`, `title` or `og:title` |
+| `label` | utterances | — | Label for created issues |
+
+See [Shortcodes](/docs/shortcodes#comments).
+
+## [newsletter]
+
+A subscribe form for the `newsletter()` shortcode and the `seite/newsletter.html` partial.
+
+```toml
+[newsletter]
+provider = "buttondown"    # or "kit"
+username = "my-newsletter" # buttondown
+# form_id = "1234567"      # kit
+# action = "https://app.kit.com/forms/1234567/subscriptions"  # kit: optional override
+```
+
+For Kit, seite posts to `https://app.kit.com/forms/<form_id>/subscriptions` (field `email_address`). That URL is unverified — Kit documents no spec — so if the action URL in your form's HTML embed code differs, set `action` to it (an `https://` URL on `kit.com` or `convertkit.com`; `form_id` is then optional).
+
+See [Shortcodes](/docs/shortcodes#newsletter). Values are validated at load (`config-invalid` at the line) and escaped in the HTML.
+
 ## [check]
 
 Options for `seite check --external`, which checks external links over the network (never run by default):

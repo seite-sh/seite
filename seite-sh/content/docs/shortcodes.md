@@ -1,6 +1,6 @@
 ---
 title: "Shortcodes for Rich Content"
-description: "Embed YouTube videos, callout boxes, figures, GitHub Gists, and contact forms in your seite static site using built-in and custom shortcodes."
+description: "Embed YouTube videos, callout boxes, figures, GitHub Gists, contact forms, comments and newsletter forms in your seite static site using built-in and custom shortcodes."
 weight: 6
 ---
 
@@ -115,6 +115,72 @@ Be careful with this operation. It **cannot be undone**.
 | `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
 
 All bundled themes include styled callout boxes with appropriate colors for each type.
+
+### contact_form
+
+A contact form for the `[contact]` provider. See [Contact Forms](/docs/contact-forms).
+
+### comments
+
+Embeds a free, GitHub-backed comment thread for the page: [giscus](https://giscus.app) (GitHub Discussions) or [utterances](https://utteranc.es) (GitHub Issues). Configure it once in `seite.toml`:
+
+```toml
+[comments]
+provider = "giscus"              # or "utterances"
+repo = "owner/repo"              # public repo with the giscus/utterances app installed
+repo_id = "R_kgDO…"              # giscus: copy the ids from https://giscus.app
+category = "Announcements"       # giscus: discussion category
+category_id = "DIC_kwDO…"        # giscus
+# mapping = "pathname"           # giscus: pathname (default) | url | title | og:title
+# reactions = true               # giscus: reactions on the page's discussion
+# theme = "preferred_color_scheme"  # giscus theme name or https:// stylesheet; utterances: github-light, github-dark, preferred-color-scheme (default), …
+# lang = "en"                    # giscus UI language (default: the page's language)
+# loading = "lazy"               # giscus: lazy (default) | eager
+# issue_term = "pathname"        # utterances: pathname (default) | url | title | og:title
+# label = "comments"             # utterances: label for created issues
+```
+
+```
+{{< comments() >}}
+```
+
+It renders the provider's official `<script>` embed (`https://giscus.app/client.js` or `https://utteranc.es/client.js`). Every value is validated when `seite.toml` loads (a bad value is a [`config-invalid`](/docs/errors#config-invalid) error at its line) and attribute-escaped in the HTML. Without `[comments]` the shortcode renders nothing and the build warns ([`comments-not-configured`](/docs/errors#comments-not-configured)).
+
+To show comments on every post without the shortcode, include the partial in your theme's `post.html` (it also renders nothing without `[comments]`):
+
+```html
+{% include "seite/comments.html" %}
+```
+
+Templates can read the settings as `site.comments` (`provider`, `repo`, …, with defaults filled in).
+
+### newsletter
+
+A subscribe form for a newsletter with a free tier: [Buttondown](https://buttondown.com) or [Kit](https://kit.com) (formerly ConvertKit).
+
+```toml
+[newsletter]
+provider = "buttondown"   # or "kit"
+username = "my-newsletter" # buttondown: your newsletter username
+# form_id = "1234567"     # kit: the number in the form's embed code
+# action = "https://app.kit.com/forms/1234567/subscriptions"  # kit: optional, the form's action URL from Kit's embed code
+```
+
+```
+{{< newsletter() >}}
+{{< newsletter(title="Get new posts by email", description="One email a month.", button="Subscribe") >}}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | no | Heading above the form |
+| `description` | no | Text above the field |
+| `button` | no | Button text (default: `t.newsletter_submit`, "Subscribe") |
+| `id` | no | `id` of the email input (default `newsletter-email`; set it when a page has two forms) |
+
+The form is plain HTML that posts to the provider (`https://buttondown.com/api/emails/embed-subscribe/<username>` with field `email`, or `https://app.kit.com/forms/<form_id>/subscriptions` with field `email_address` — the Kit URL is unverified (Kit publishes no spec): copy your form's action URL from Kit's HTML embed code into `action` if it differs); the provider shows its own confirmation page (and, for Buttondown, a CAPTCHA when it suspects a bot). No third-party JavaScript. The email field is labelled, `type="email"`, `required` and `autocomplete="email"`. The form uses the `contact-form` classes, so every bundled theme styles it like the contact form, plus `newsletter-form`, `newsletter-form-field` and `newsletter-form-submit` for your own CSS. Labels come from the `newsletter_email` and `newsletter_submit` [UI strings](/docs/i18n#ui-string-translations).
+
+Without `[newsletter]` the shortcode renders nothing and the build warns ([`newsletter-not-configured`](/docs/errors#newsletter-not-configured)). Themes can place the form anywhere with `{% include "seite/newsletter.html" %}` (settings in `site.newsletter`).
 
 ## Custom shortcodes
 

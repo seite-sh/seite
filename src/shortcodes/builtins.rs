@@ -39,5 +39,17 @@ pub fn all() -> Vec<BuiltinShortcode> {
             template: include_str!("builtins/contact_form.html"),
             is_body: false,
         },
+        // Shared with the `seite/comments.html` / `seite/newsletter.html`
+        // partials, so the shortcode and a theme include render the same.
+        BuiltinShortcode {
+            name: "comments",
+            template: include_str!("../templates/seite/comments.html"),
+            is_body: false,
+        },
+        BuiltinShortcode {
+            name: "newsletter",
+            template: include_str!("../templates/seite/newsletter.html"),
+            is_body: false,
+        },
     ]
 }

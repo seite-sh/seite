@@ -30,6 +30,7 @@ cargo run -- og preview /posts/hello-world  # render one social card → .seite/
 cargo run -- theme new           # blank starter for a custom design
 cargo run -- theme create "coral brutalist with lime accents"
 cargo run -- deploy  # Commit, push, build, and deploy
+cargo run -- cms setup pages-cms   # or decap: Git-based CMS config from collections + schema (--force backs up to .seite/cache/backups/)
 cargo run -- skill install seomachine
 cargo run -- skill install impeccable   # pinned npm installer, asks first
 cargo run -- upgrade # Upgrade project config to current binary
@@ -44,21 +45,21 @@ cargo run -- completions bash  # Generate shell completions
 src/
   main.rs              CLI entrypoint (clap dispatch)
   lib.rs, error.rs     Module declarations, PageError enum (thiserror)
-  audit/               `seite audit`: html.rs (one-pass scanner → PageFacts), seo/geo/a11y/content/perf checks, CODES table (category, severity, hint), score, source attribution, collapse of template findings
+  audit/               `seite audit` (skips pass-through HTML under static/): html.rs (one-pass scanner → PageFacts), seo/geo/a11y/content/perf checks, CODES table (category, severity, hint), score, source attribution, collapse of template findings
   safe_fs.rs           Project-confined writes/deletes (refuse symlinked components) for init/upgrade/hooks/skill/serve
   diagnostics.rs       Diagnostic/Diagnostics (stable codes, file:line:col, JSON `docs_url`) for build, check, MCP; every code needs a `## <code>` section in seite-sh/content/docs/errors.md
   themes.rs            11 bundled themes (starters default/docs/landing/blank + gallery) from src/themes/*.tera; layout + CSS only
-  shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form)
+  shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form, comments, newsletter)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`), search (full-text index + tokenizer), og/ (social cards: mod.rs plan/cache, card.rs layout + resvg), tailwind (`[build.tailwind]`: pinned CLI download/verify/cache, compile)
-  docs.rs              Embedded docs (17 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
+  docs.rs              Embedded docs (18 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, hooks, mcp, workspace, upgrade, contact, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
+  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, hooks, mcp, workspace, upgrade, contact, cms, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
   trust.rs             Per-user project trust list (`seite trust`; gates `[build.tailwind]`)
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)
-  config/              SiteConfig, CollectionConfig, defaults; unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
+  config/              SiteConfig, CollectionConfig, defaults; embeds.rs ([comments]/[newsletter] types, validation, template context); unknown_keys.rs walks the raw TOML against the schema for `config-unknown-key` diagnostics
   data/                Data file loading (YAML/JSON/TOML)
   content/             Frontmatter parsing, ContentItem, slug generation, schema (typed frontmatter), schedule (future `date`/`expires`, site timezone)
   deploy/              GitHub Pages + Cloudflare + Netlify
@@ -139,6 +140,14 @@ id = "G-XXXXXXXXXX"
 [contact]
 provider = "formspree"
 endpoint = "xpznqkdl"
+
+[comments]               # {{< comments() >}} / seite/comments.html (src/config/embeds.rs)
+provider = "giscus"      # giscus (repo, repo_id, category, category_id, mapping, reactions, theme, lang, loading) | utterances (repo, issue_term, label, theme)
+repo = "owner/repo"
+
+[newsletter]             # {{< newsletter() >}} / seite/newsletter.html
+provider = "buttondown"  # buttondown (username) | kit (form_id)
+username = "my-news"
 
 [og]                     # generated social cards (init writes it; absent = off)
 generate = true

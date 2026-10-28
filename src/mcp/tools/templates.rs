@@ -47,9 +47,13 @@ const VARIABLES: &[(&str, &str)] = &[
 const SHORTCODE_VARIABLES: &[(&str, &str)] = &[
     (
         "page",
-        "{title, slug, collection, tags} of the page using the shortcode",
+        "{title, slug, collection, tags, lang} of the page using the shortcode",
     ),
-    ("site", "{title, base_url, language, contact}"),
+    (
+        "site",
+        "{title, base_url, language, contact, comments, newsletter}",
+    ),
+    ("lang", "The page's language (same as page.lang)"),
     ("t", "UI strings for the page's language"),
     (
         "body",

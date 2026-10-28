@@ -369,6 +369,7 @@ fn check_site_full(
         tw.never_run |= skip_tailwind;
     }
     all.extend(config_warnings);
+    all.extend(crate::cli::cms::stale_config_diagnostics(root, &config));
     let paths = config.resolve_paths(root);
     let hidden = crate::content::schedule::hidden_pages(&config, &paths);
 

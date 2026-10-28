@@ -4,6 +4,7 @@ mod agent_instructions;
 pub mod audit;
 pub mod build;
 pub mod check;
+pub mod cms;
 pub mod collection;
 pub mod completions;
 pub mod contact;
@@ -117,6 +118,9 @@ pub enum Command {
 
     /// Manage contact form configuration
     Contact(contact::ContactArgs),
+
+    /// Set up a free Git-based CMS (Pages CMS or Decap CMS)
+    Cms(cms::CmsArgs),
 
     /// Manage private password access on Cloudflare Pages
     Access(access::AccessArgs),

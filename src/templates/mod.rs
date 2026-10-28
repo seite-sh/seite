@@ -596,6 +596,11 @@ pub const SEITE_PARTIALS: &[(&str, &str)] = &[
         include_str!("seite/lang-switcher.html"),
     ),
     ("seite/scripts.html", include_str!("seite/scripts.html")),
+    ("seite/comments.html", include_str!("seite/comments.html")),
+    (
+        "seite/newsletter.html",
+        include_str!("seite/newsletter.html"),
+    ),
 ];
 
 /// Escape a string for an HTML attribute value: `"`, `<`, `>` and any `&`
@@ -676,6 +681,8 @@ pub const EMBEDDED_TEMPLATE_NAMES: &[&str] = &[
     "seite/search-script.html",
     "seite/lang-switcher.html",
     "seite/scripts.html",
+    "seite/comments.html",
+    "seite/newsletter.html",
     "base.html",
     "index.html",
     "post.html",

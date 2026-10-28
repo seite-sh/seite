@@ -1,0 +1,13 @@
+{# seite partial: comments — managed by seite, updated on upgrade. The [comments] embed (giscus: https://giscus.app/, utterances: https://utteranc.es/), also the comments() shortcode; include it where comments go (e.g. end of post.html). Renders nothing without [comments]; values are validated at load and escaped here. #}{%- if site.comments -%}
+{%- set c = site.comments -%}
+{%- if c.provider == "giscus" -%}
+{%- if c.lang -%}{%- set c_lang = c.lang -%}{%- elif lang -%}{%- set c_lang = lang -%}{%- else -%}{%- set c_lang = site.language -%}{%- endif -%}
+<section class="comments" aria-label="Comments">
+<script src="https://giscus.app/client.js" data-repo="{{ c.repo | escape }}" data-repo-id="{{ c.repo_id | escape }}" data-category="{{ c.category | escape }}" data-category-id="{{ c.category_id | escape }}" data-mapping="{{ c.mapping | escape }}" data-strict="0" data-reactions-enabled="{{ c.reactions | escape }}" data-emit-metadata="0" data-input-position="bottom" data-theme="{{ c.theme | escape }}" data-lang="{{ c_lang | escape }}"{% if c.loading == "lazy" %} data-loading="lazy"{% endif %} crossorigin="anonymous" async></script>
+</section>
+{%- elif c.provider == "utterances" -%}
+<section class="comments" aria-label="Comments">
+<script src="https://utteranc.es/client.js" repo="{{ c.repo | escape }}" issue-term="{{ c.issue_term | escape }}"{% if c.label %} label="{{ c.label | escape }}"{% endif %} theme="{{ c.theme | escape }}" crossorigin="anonymous" async></script>
+</section>
+{%- endif -%}
+{%- endif -%}

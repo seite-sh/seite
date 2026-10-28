@@ -87,11 +87,34 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 
 **How to fix:** correct the path. `--file` checks `seite.toml`, content `.md` files, templates `.html` and data `.yaml`/`.yml`/`.json`/`.toml` files; run `seite check` without `--file` to validate the whole site.
 
+## cms-config-stale
+
+**What it means:** A `seite check` warning: the Git-based CMS configuration written by `seite cms setup` points at a content folder that no longer exists — a `type: collection` entry's `path` in `.pages.yml` (Pages CMS) or a collection's `folder` in `static/admin/config.yml` (Decap CMS). Editors would see an empty or broken collection.
+
+**Common causes:** a collection was renamed or removed in `seite.toml`, or its `directory` changed, after the CMS was set up.
+
+**How to fix:** regenerate the file from the current collections: `seite cms setup pages-cms --force` or `seite cms setup decap --force` (the old file is kept under `.seite/cache/backups/`). Or edit the path by hand.
+
+## comments-not-configured
+
+**What it means:** A build warning: a page uses `{{< comments() >}}` but `seite.toml` has no `[comments]` section, so the shortcode renders nothing. The location is the shortcode call.
+
+**How to fix:** add a `[comments]` section (giscus or utterances, both free and GitHub-backed; see [Shortcodes](/docs/shortcodes#comments)), or remove the shortcode.
+
+```toml
+[comments]
+provider = "giscus"
+repo = "owner/repo"
+repo_id = "R_kgDO…"          # from https://giscus.app
+category = "Announcements"
+category_id = "DIC_kwDO…"
+```
+
 ## config-invalid
 
 **What it means:** `seite.toml` could not be loaded: a TOML syntax error, or a value of the wrong type. Nothing else can be checked until it loads.
 
-**Common causes:** an unclosed quote or bracket, a string where a number or boolean is expected (`minify = "yes"`), a duplicated table or key.
+**Common causes:** an unclosed quote or bracket, a string where a number or boolean is expected (`minify = "yes"`), a duplicated table or key. `[comments]` and `[newsletter]` values are also checked against the provider's format (they end up in HTML): `repo` must be `owner/name`, giscus `repo_id`/`category_id` and the Buttondown `username` may contain only letters, digits, `_` and `-`, the Kit `form_id` is a number, and `mapping`, `issue_term`, `theme` and `loading` take only the values listed in [Shortcodes](/docs/shortcodes#comments).
 
 **How to fix:** fix the line and column named in the diagnostic.
 
@@ -328,6 +351,18 @@ Read the [launch post](/posts/launch)   <!-- scheduled for 2026-11-01 -->
 **Common causes:** the file was never added to `static/` or `public/`, a typo in the path, a path relative to the wrong directory, or a wrong case (`Logo.png` vs `logo.png`) that works on macOS but breaks on Linux hosts.
 
 **How to fix:** add the file under `static/` (served from `/static/...`) or `public/` (served from the site root), or fix the path in the content or template.
+
+## newsletter-not-configured
+
+**What it means:** A build warning: a page uses `{{< newsletter() >}}` but `seite.toml` has no `[newsletter]` section, so the shortcode renders nothing. The location is the shortcode call.
+
+**How to fix:** add a `[newsletter]` section (Buttondown or Kit, both with free tiers; see [Shortcodes](/docs/shortcodes#newsletter)), or remove the shortcode.
+
+```toml
+[newsletter]
+provider = "buttondown"
+username = "my-newsletter"
+```
 
 ## og-config-invalid
 
