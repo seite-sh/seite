@@ -238,15 +238,43 @@ fn old_slug_alias(link: &str, old_slug: &str, site: Option<&url::Url>) -> Option
     Some(format!("{parent}/{old}{}", if trailing { "/" } else { "" }))
 }
 
+/// 1-based line of a byte offset, counted incrementally from the last
+/// query (the reader only moves forward), so no per-line index is stored.
+struct LineCounter<'a> {
+    bytes: &'a [u8],
+    /// (byte offset, line at that offset)
+    cursor: std::cell::Cell<(usize, usize)>,
+}
+
+impl<'a> LineCounter<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            bytes: text.as_bytes(),
+            cursor: std::cell::Cell::new((0, 1)),
+        }
+    }
+
+    fn line_at(&self, pos: u64) -> usize {
+        let pos = usize::try_from(pos)
+            .unwrap_or(usize::MAX)
+            .min(self.bytes.len());
+        let (mut from, mut line) = self.cursor.get();
+        if pos < from {
+            (from, line) = (0, 1);
+        }
+        line += self.bytes[from..pos]
+            .iter()
+            .filter(|b| **b == b'\n')
+            .count();
+        self.cursor.set((pos, line));
+        line
+    }
+}
+
 /// Read the channel and its items.
 fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
-    let newlines: Vec<usize> = text
-        .bytes()
-        .enumerate()
-        .filter(|(_, b)| *b == b'\n')
-        .map(|(i, _)| i)
-        .collect();
-    let line_at = |pos: u64| newlines.partition_point(|&n| (n as u64) < pos) + 1;
+    let lines = LineCounter::new(text);
+    let line_at = |pos: u64| lines.line_at(pos);
 
     let mut reader = quick_xml::Reader::from_str(text);
     reader.config_mut().trim_text(false);
@@ -355,6 +383,9 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
                 match (parent.as_deref(), name.as_str()) {
                     (Some("channel"), "item") => {
                         if let Some(item) = current.take() {
+                            if channel.items.len() >= super::MAX_ITEMS {
+                                return Err(super::too_many_items(display));
+                            }
                             channel.items.push(item);
                         }
                     }
@@ -428,7 +459,11 @@ fn convert_body(html: &str, first_line: usize, item: &Item, warnings: &mut Vec<W
     let html = shortcodes(&html, first_line, item, &mut tokens, warnings);
     let html = embed_lines(&html, &mut tokens);
     let html = if is_blocks { html } else { autop(&html) };
-    let html = convert::prepare_html(&html, &mut tokens);
+    let mut notes = Vec::new();
+    let html = convert::prepare_html(&html, &mut tokens, &mut notes);
+    for note in notes {
+        warnings.push(Warning::for_item(item, None, "untrusted-html", note));
+    }
     let md = convert::html_to_markdown(&html);
     let md = convert::neutralize_shortcode_delimiters(&md);
     tokens.restore(&md)

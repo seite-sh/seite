@@ -87,6 +87,9 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         .map(|e| e.into_path())
         .collect();
     files.sort();
+    if files.len() > super::MAX_ITEMS {
+        return Err(super::too_many_items(&ctx.display));
+    }
 
     for path in files {
         let rel = path.strip_prefix(dir).unwrap_or(&path);
@@ -122,7 +125,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             Kind::Page
         };
         let display = format!("{}/{rel_str}", ctx.display.trim_end_matches('/'));
-        let text = match std::fs::read_to_string(&path) {
+        let text = match super::read_source_file(&path) {
             Ok(t) => t,
             Err(e) => {
                 parsed.skipped.push(skip(
@@ -281,11 +284,25 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         let body = if is_html {
             let mut tokens = Tokens::default();
             let liquid = liquid(body, body_line, &mut item, &mut warnings);
-            let prepared = convert::prepare_html(&liquid, &mut tokens);
+            let mut notes = Vec::new();
+            let prepared = convert::prepare_html(&liquid, &mut tokens, &mut notes);
+            for note in notes {
+                warnings.push(Warning::for_item(&item, None, "untrusted-html", note));
+            }
             tokens.restore(&convert::neutralize_shortcode_delimiters(
                 &convert::html_to_markdown(&prepared),
             ))
         } else {
+            // Markdown is kept as written; HTML in it that can run script
+            // is reported, not rewritten.
+            for (line, what) in convert::untrusted_html_lines(body) {
+                warnings.push(Warning::for_item(
+                    &item,
+                    Some(body_line + line - 1),
+                    "untrusted-html",
+                    format!("{what} in the body: review it before publishing"),
+                ));
+            }
             convert::neutralize_shortcode_delimiters(&liquid(
                 body,
                 body_line,

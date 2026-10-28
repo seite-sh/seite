@@ -90,6 +90,9 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         })
         .collect();
     files.sort();
+    if files.len() > super::MAX_ITEMS {
+        return Err(super::too_many_items(&ctx.display));
+    }
     let display_root = ctx.display.trim_end_matches('/').to_string();
 
     for path in files {
@@ -111,7 +114,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect();
         let dirs = components[..components.len() - 1].to_vec();
-        let text = match std::fs::read_to_string(&path) {
+        let text = match super::read_source_file(&path) {
             Ok(t) => t,
             Err(e) => {
                 parsed.skipped.push(skipped(
@@ -312,6 +315,16 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         }
 
         let mut warnings = Vec::new();
+        // Markdown is kept as written; HTML in it that can run script is
+        // reported, not rewritten.
+        for (line, what) in convert::untrusted_html_lines(body) {
+            warnings.push(Warning::for_item(
+                &item,
+                Some(body_line + line - 1),
+                "untrusted-html",
+                format!("{what} in the body: review it before publishing"),
+            ));
+        }
         item.body = shortcodes(body, body_line, &mut item, &mut warnings);
         parsed.warnings.extend(warnings);
         parsed.items.push(item);

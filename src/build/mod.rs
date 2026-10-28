@@ -2803,7 +2803,13 @@ fn build_site_inner(
     // Step 9b: Generate redirect pages from aliases
     let step_start = Instant::now();
     let all_redirect_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let redirect_count = redirects::generate_redirects(config, &all_redirect_items, &paths.output)?;
+    let (redirect_count, alias_collisions) =
+        redirects::generate_redirects_with_diagnostics(config, &all_redirect_items, &paths.output)?;
+    for d in alias_collisions {
+        crate::output::human::warning_stderr(&d.message);
+        warnings.push(d.message.clone());
+        diagnostics.push(d);
+    }
     if redirect_count > 0 {
         step_timings.push((
             format!("Generate {redirect_count} redirects"),

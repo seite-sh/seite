@@ -43,6 +43,11 @@ fn image_server() -> String {
                 "/uploads/huge.png" => {
                     tiny_http::Response::from_data(vec![0u8; 21 * 1024 * 1024]).with_header(png)
                 }
+                // Claims PNG by name and type, but is SVG with script.
+                "/uploads/logo.png" | "/uploads/logo.svg" => tiny_http::Response::from_data(
+                    b"<svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"alert(1)\"/>".to_vec(),
+                )
+                .with_header(png),
                 "/uploads/redirect.png" => tiny_http::Response::from_data(Vec::new())
                     .with_status_code(302)
                     .with_header(
@@ -290,6 +295,159 @@ fn test_import_hugo_refuses_content_dir_outside_the_source() {
             .contains("outside the site directory"),
         "{doc:#}"
     );
+}
+
+/// A hostile export: aliases aimed at real output, script in HTML, SVG
+/// served as PNG, reserved slugs, control characters in titles.
+#[test]
+fn test_import_wordpress_hostile_export() {
+    let host = image_server();
+    let tmp = TempDir::new().unwrap();
+    let site = new_site(&tmp);
+    let item = |id: u32, slug: &str, link: &str, title: &str, body: &str, ptype: &str| {
+        format!(
+            "<item><title><![CDATA[{title}]]></title><link>{link}</link>\
+             <content:encoded><![CDATA[{body}]]></content:encoded>\
+             <wp:post_id>{id}</wp:post_id><wp:post_date>2020-01-0{id} 10:00:00</wp:post_date>\
+             <wp:post_name>{slug}</wp:post_name><wp:status>publish</wp:status>\
+             <wp:post_type>{ptype}</wp:post_type></item>"
+        )
+    };
+    let hostile_body = format!(
+        "<p><a href=\"java&#x09;script:alert(1)\" onclick=\"steal()\">click</a></p>\
+         <iframe src=\"https://evil.example/x\"></iframe>\
+         <p><img src=\"http://{host}/uploads/logo.png\" onerror=\"alert(1)\"></p>"
+    );
+    let items = [
+        // Its old URL is the starter post's URL; an alias there would replace it.
+        item(
+            1,
+            "attack",
+            "https://blog.example.com/posts/hello-world/",
+            "Attack\u{1b}[31m",
+            &hostile_body,
+            "post",
+        ),
+        item(
+            2,
+            "static",
+            "https://blog.example.com/static/style.css",
+            "Static",
+            "<p>x</p>",
+            "post",
+        ),
+        item(
+            3,
+            "index",
+            "https://blog.example.com/tags/rust/",
+            "Index",
+            "<p>x</p>",
+            "page",
+        ),
+        item(
+            4,
+            "404",
+            "https://blog.example.com/feed.xml",
+            "Not found",
+            "<p>x</p>",
+            "page",
+        ),
+    ];
+    let wxr = format!(
+        "<?xml version=\"1.0\"?><rss xmlns:content=\"http://purl.org/rss/1.0/modules/content/\" \
+         xmlns:wp=\"http://wordpress.org/export/1.2/\"><channel><link>https://blog.example.com</link>{}</channel></rss>",
+        items.join("")
+    );
+    let export = tmp.path().join("hostile.xml");
+    fs::write(&export, wxr).unwrap();
+    let (ok, doc) = run_json(
+        &site,
+        &[
+            "import",
+            "wordpress",
+            export.to_str().unwrap(),
+            "--allow-host",
+            &host,
+        ],
+    );
+    assert!(ok, "{doc:#}");
+    let warnings = warning_codes(&doc);
+    let count = |code: &str| warnings.iter().filter(|w| w.starts_with(code)).count();
+    assert_eq!(count("alias-rejected"), 4, "{warnings:#?}");
+    assert!(count("untrusted-html") >= 1, "{warnings:#?}");
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("not a PNG, JPEG, GIF, WebP or AVIF")),
+        "{warnings:#?}"
+    );
+    assert!(
+        !site.join("static/images/imported").exists(),
+        "SVG must not be stored"
+    );
+
+    let attack = read(&site, "content/posts/2020-01-01-attack.md");
+    let lower = attack.to_ascii_lowercase();
+    assert!(
+        !lower.contains("javascript") && !lower.contains("onclick") && !lower.contains("onerror"),
+        "{attack}"
+    );
+    assert!(!attack.contains("aliases"), "{attack}");
+    assert!(
+        !attack.contains('\u{1b}') || attack.contains("title:"),
+        "{attack}"
+    );
+    // Reserved slugs.
+    assert!(site.join("content/pages/index-2.md").exists());
+    assert!(site.join("content/pages/404-2.md").exists());
+    let report = read(&site, ".seite/cache/import-report.md");
+    assert!(
+        report.starts_with(
+            "<!-- Titles, paths, URLs and messages quoted below come from the imported export"
+        ),
+        "{report}"
+    );
+    assert!(
+        !report.contains('\u{1b}'),
+        "control characters stripped from the report"
+    );
+
+    build_ok(&site);
+    assert!(
+        read(&site, "dist/posts/hello-world.html").contains("<html"),
+        "the starter post is intact"
+    );
+}
+
+/// Defence in depth: a hand-written alias that names another page's output
+/// is skipped with an `alias-collision` warning, never written over it.
+#[test]
+fn test_build_alias_collision_keeps_the_page() {
+    let tmp = TempDir::new().unwrap();
+    let site = new_site(&tmp);
+    write_site_file(
+        &site,
+        "content/pages/about.md",
+        "---\ntitle: About\n---\nThe real about page.\n",
+    );
+    write_site_file(
+        &site,
+        "content/pages/contact.md",
+        "---\ntitle: Contact\naliases:\n- /about\n- /old-contact\n---\nContact.\n",
+    );
+    let (ok, doc) = run_json(&site, &["build"]);
+    assert!(ok, "{doc:#}");
+    assert!(read(&site, "dist/about.html").contains("The real about page."));
+    assert!(read(&site, "dist/old-contact.html").contains("/contact"));
+    let (ok, doc) = run_json(&site, &["check"]);
+    assert!(ok, "{doc:#}");
+    let diags = doc["data"]["diagnostics"].as_array().unwrap();
+    let d = diags
+        .iter()
+        .find(|d| d["code"] == "alias-collision")
+        .unwrap_or_else(|| panic!("{doc:#}"));
+    assert_eq!(d["file"], "content/pages/contact.md", "{d}");
+    assert_eq!(d["line"], 4, "{d}");
 }
 
 #[test]

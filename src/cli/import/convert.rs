@@ -94,6 +94,7 @@ pub(crate) fn shortcode(name: &str, args: &[(&str, String)]) -> String {
 
 /// `{{< figure(src=…, alt=…, caption=…) >}}`.
 pub(crate) fn figure(src: &str, alt: &str, caption: &str, width: &str) -> String {
+    let src = if is_dangerous_url(src) { "" } else { src };
     shortcode(
         "figure",
         &[
@@ -155,7 +156,7 @@ pub(crate) fn html_to_markdown(html: &str) -> String {
     // htmd only fails on I/O errors of its in-memory writer; fall back to
     // the text with tags stripped rather than losing the body.
     let md = converter.convert(html).unwrap_or_else(|_| strip_tags(html));
-    tidy_markdown(&md)
+    sanitize_markdown_links(&tidy_markdown(&md))
 }
 
 /// Collapse runs of blank lines and trim the ends.
@@ -183,10 +184,11 @@ pub(crate) fn strip_tags(html: &str) -> String {
 /// Decode the handful of entities that appear in titles and excerpts.
 pub(crate) fn decode_entities(text: &str) -> String {
     static ENT: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);").expect("valid regex")
+        // Numeric references may omit the `;` in HTML (`java&#x09script:`).
+        Regex::new(r"&(?:(#[0-9]+|#[xX][0-9a-fA-F]+);?|([a-zA-Z]+);)").expect("valid regex")
     });
     ENT.replace_all(text, |c: &regex::Captures| {
-        let name = &c[1];
+        let name = c.get(1).or(c.get(2)).map_or("", |m| m.as_str());
         let decoded = if let Some(hex) = name.strip_prefix("#x").or(name.strip_prefix("#X")) {
             u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
         } else if let Some(dec) = name.strip_prefix('#') {
@@ -207,6 +209,9 @@ pub(crate) fn decode_entities(text: &str) -> String {
                 "ldquo" => Some('“'),
                 "rdquo" => Some('”'),
                 "copy" => Some('©'),
+                "colon" => Some(':'),
+                "Tab" => Some('\t'),
+                "NewLine" => Some('\n'),
                 _ => None,
             }
         };
@@ -227,26 +232,176 @@ pub(crate) fn attr(tag: &str, name: &str) -> Option<String> {
     Some(decode_entities(v))
 }
 
-/// Generic HTML preparation before [`html_to_markdown`] (WordPress and
-/// Ghost): video iframes → `youtube`/`vimeo` shortcodes, `<figure>` with an
-/// image → `figure` shortcode, other iframes/video/audio kept as raw HTML.
-pub(crate) fn prepare_html(html: &str, tokens: &mut Tokens) -> String {
+/// A URL that can run script when followed or loaded: `javascript:`,
+/// `vbscript:`, or `data:` other than PNG/JPEG/GIF/WebP images. Checked
+/// after decoding entities and dropping whitespace/control characters, case
+/// insensitively (`java&#x09;script:`, ` JaVaScRiPt:`).
+pub(crate) fn is_dangerous_url(raw: &str) -> bool {
+    let decoded = decode_entities(raw);
+    let compact: String = decoded
+        .chars()
+        .filter(|c| !c.is_whitespace() && !c.is_control())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if compact.starts_with("javascript:") || compact.starts_with("vbscript:") {
+        return true;
+    }
+    match compact.strip_prefix("data:") {
+        Some(rest) => !["image/png", "image/jpeg", "image/gif", "image/webp"]
+            .iter()
+            .any(|ok| rest.starts_with(ok)),
+        None => false,
+    }
+}
+
+/// Remove `on*` event attributes, `srcdoc`, and script-capable URLs from
+/// every start tag in an HTML fragment kept verbatim, and drop `<script>`,
+/// `<object>` and `<embed>` elements inside it.
+pub(crate) fn sanitize_html_fragment(html: &str) -> String {
+    static DROP: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?is)<(script|object|embed|style)\b.*?(?:</(?:script|object|embed|style)\s*>|$)",
+        )
+        .expect("valid regex")
+    });
+    static TAG: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?s)<[a-zA-Z](?:[^>"']|"[^"]*"|'[^']*')*>"#).expect("valid regex")
+    });
+    static ATTR: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)\s+([a-z_:][-a-z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)"#)
+            .expect("valid regex")
+    });
+    static BARE_ON: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\s+on[a-z]+\b(?:\s*=)?").expect("valid regex"));
+    let html = TAG.replace_all(html, |c: &regex::Captures| {
+        let tag = ATTR.replace_all(&c[0], |a: &regex::Captures| {
+            let name = a[1].to_ascii_lowercase();
+            let value = a[2].trim_matches(['"', '\'']);
+            let url_attr = matches!(
+                name.as_str(),
+                "src"
+                    | "href"
+                    | "poster"
+                    | "action"
+                    | "formaction"
+                    | "data"
+                    | "xlink:href"
+                    | "background"
+            );
+            if name.starts_with("on") || name == "srcdoc" || (url_attr && is_dangerous_url(value)) {
+                String::new()
+            } else {
+                a[0].to_string()
+            }
+        });
+        BARE_ON.replace_all(&tag, "").into_owned()
+    });
+    DROP.replace_all(&html, "").into_owned()
+}
+
+/// Iframe hosts kept as HTML: YouTube, Vimeo and `player.*` hosts, https only.
+fn iframe_allowed(src: &str) -> bool {
+    let Ok(u) = url::Url::parse(src.trim()) else {
+        return false;
+    };
+    let Some(host) = u.host_str().map(str::to_ascii_lowercase) else {
+        return false;
+    };
+    let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+    u.scheme() == "https"
+        && (on("youtube.com")
+            || on("youtube-nocookie.com")
+            || on("vimeo.com")
+            || host.starts_with("player."))
+}
+
+/// Script-capable link/image destinations in converted Markdown → `#`.
+pub(crate) fn sanitize_markdown_links(md: &str) -> String {
+    static DEST: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(\]\(\s*)(<[^>\n]*>|(?:\\.|[^)\n\\])*)").expect("valid regex")
+    });
+    DEST.replace_all(md, |c: &regex::Captures| {
+        let dest = c[2].trim_start_matches('<').trim_end_matches('>');
+        if is_dangerous_url(dest) {
+            format!("{}#", &c[1])
+        } else {
+            c[0].to_string()
+        }
+    })
+    .into_owned()
+}
+
+/// Lines of a Markdown body (Jekyll, Hugo; kept as written) with HTML that
+/// can run script: `<script`, `on*=` attributes, `javascript:` URLs.
+pub(crate) fn untrusted_html_lines(body: &str) -> Vec<(usize, &'static str)> {
+    static RISKY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)(<script\b)|(<[a-z][^>]*\son[a-z]+\s*=)|(javascript\s*:)"#)
+            .expect("valid regex")
+    });
+    let mut out: Vec<(usize, &'static str)> = Vec::new();
+    for c in RISKY.captures_iter(body) {
+        let what = if c.get(1).is_some() {
+            "<script>"
+        } else if c.get(2).is_some() {
+            "an on* event attribute"
+        } else {
+            "a javascript: URL"
+        };
+        let line = line_of(body, c.get(0).expect("match").start());
+        if out.last().is_none_or(|(l, _)| *l != line) {
+            out.push((line, what));
+        }
+    }
+    out
+}
+
+/// Generic HTML preparation before [`html_to_markdown`] (WordPress, Ghost,
+/// Jekyll HTML): video iframes → `youtube`/`vimeo` shortcodes, `<figure>`
+/// with an image → `figure` shortcode; other iframes on an allow-listed
+/// player host and video/audio are kept as sanitized HTML, other iframes
+/// become links. `notes` collects what was changed for the report.
+pub(crate) fn prepare_html(html: &str, tokens: &mut Tokens, notes: &mut Vec<String>) -> String {
     static IFRAME: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?is)<iframe\b[^>]*>.*?</iframe>|<iframe\b[^>]*/>").expect("valid regex")
+        Regex::new(r#"(?is)<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*>.*?</iframe>|<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*/>"#).expect("valid regex")
     });
     static MEDIA: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?is)<(video|audio)\b[^>]*>.*?</(?:video|audio)>").expect("valid regex")
+        Regex::new(r#"(?is)<(video|audio)\b(?:[^>"']|"[^"]*"|'[^']*')*>.*?</(?:video|audio)>"#)
+            .expect("valid regex")
     });
+    static SCRIPTY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)<script\b|\son[a-z]+\s*=|(?:href|src)\s*=\s*["']?\s*(?:javascript|vbscript|data)\s*:"#)
+            .expect("valid regex")
+    });
+    if SCRIPTY.is_match(html) {
+        notes.push(
+            "the HTML had scripts, on* event handlers or script URLs; they were removed"
+                .to_string(),
+        );
+    }
     let html = IFRAME.replace_all(html, |c: &regex::Captures| {
         let tag = &c[0];
-        let token = match attr(tag, "src").and_then(|src| embed_for_url(&src)) {
-            Some(embed) => tokens.push(embed),
-            None => tokens.push_untrusted(tag),
+        let src = attr(tag, "src").unwrap_or_default();
+        let token = if let Some(embed) = embed_for_url(&src) {
+            tokens.push(embed)
+        } else if iframe_allowed(&src) {
+            tokens.push_untrusted(&sanitize_html_fragment(tag))
+        } else if src.is_empty() || is_dangerous_url(&src) {
+            notes.push("an iframe without a usable src was removed".to_string());
+            tokens.push(String::new())
+        } else {
+            notes.push(format!(
+                "iframe from {src} replaced by a link (only YouTube, Vimeo and player.* embeds are kept)"
+            ));
+            let escaped = escape_delimiters_html(&src.replace('"', "%22").replace('<', "%3C"));
+            tokens.push(format!("<a href=\"{escaped}\">{escaped}</a>"))
         };
         format!("<p>{token}</p>")
     });
     let html = MEDIA.replace_all(&html, |c: &regex::Captures| {
-        format!("<p>{}</p>", tokens.push_untrusted(&c[0]))
+        format!(
+            "<p>{}</p>",
+            tokens.push_untrusted(&sanitize_html_fragment(&c[0]))
+        )
     });
     // `<pre>` without `<code>` (classic editor) would lose its formatting.
     static PRE: LazyLock<Regex> =
@@ -415,7 +570,7 @@ mod tests {
     fn test_prepare_html_figure_and_iframe() {
         let mut tokens = Tokens::default();
         let html = r#"<figure class="wp-block-image"><img src="https://ex.com/a.jpg" alt="A"/><figcaption>The <em>cap</em></figcaption></figure><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>"#;
-        let prepared = prepare_html(html, &mut tokens);
+        let prepared = prepare_html(html, &mut tokens, &mut Vec::new());
         let md = tokens.restore(&html_to_markdown(&prepared));
         assert!(
             md.contains(
@@ -450,6 +605,87 @@ mod tests {
             chrono::NaiveDate::from_ymd_opt(2020, 1, 2)
         );
         assert_eq!(leading_date("not a date"), None);
+    }
+
+    #[test]
+    fn test_is_dangerous_url() {
+        for bad in [
+            "javascript:alert(1)",
+            " JaVaScRiPt:alert(1)",
+            "java&#x09;script:alert(1)",
+            "java&#9script:x",
+            "javascript&colon;x",
+            "vbscript:msgbox",
+            "data:text/html;base64,PHNjcmlwdD4=",
+            "data:image/svg+xml,<svg onload=alert(1)>",
+        ] {
+            assert!(is_dangerous_url(bad), "{bad}");
+        }
+        for ok in [
+            "https://ex.com/a",
+            "/posts/x",
+            "#top",
+            "data:image/png;base64,AAAA",
+            "mailto:a@b.c",
+        ] {
+            assert!(!is_dangerous_url(ok), "{ok}");
+        }
+    }
+
+    #[test]
+    fn test_untrusted_html_is_sanitized() {
+        let mut tokens = Tokens::default();
+        let mut notes = Vec::new();
+        let html = r#"<p><a href="java&#x09;script:alert(1)" onclick="x()">click</a> <img src="x.png" onerror="alert(1)"></p>
+<iframe src="https://evil.example/frame" onload="x()"></iframe>
+<iframe src="https://player.example.com/embed/1" onload="x()" srcdoc="<script>"></iframe>
+<video src="javascript:alert(1)" poster="https://ex.com/p.jpg" onplay="x()"><script>alert(1)</script><source src="v.mp4"></video>"#;
+        let prepared = prepare_html(html, &mut tokens, &mut notes);
+        let md = tokens.restore(&html_to_markdown(&prepared));
+        let lower = md.to_ascii_lowercase();
+        assert!(
+            !lower.contains("javascript")
+                && !lower.contains("onload")
+                && !lower.contains("onerror"),
+            "{md}"
+        );
+        assert!(
+            !lower.contains("onclick")
+                && !lower.contains("onplay")
+                && !lower.contains("<script")
+                && !lower.contains("srcdoc"),
+            "{md}"
+        );
+        assert!(md.contains("[click](#)"), "{md}");
+        assert!(
+            md.contains(r#"<a href="https://evil.example/frame">"#),
+            "{md}"
+        );
+        assert!(
+            md.contains(r#"<iframe src="https://player.example.com/embed/1">"#),
+            "{md}"
+        );
+        assert!(
+            md.contains(r#"poster="https://ex.com/p.jpg""#)
+                && md.contains(r#"<source src="v.mp4">"#),
+            "{md}"
+        );
+        assert!(
+            notes.iter().any(|n| n.contains("evil.example")),
+            "{notes:?}"
+        );
+        assert!(notes.iter().any(|n| n.contains("removed")), "{notes:?}");
+    }
+
+    #[test]
+    fn test_untrusted_html_lines() {
+        let body =
+            "ok\n<div onclick=\"x()\">a</div>\n[x](javascript:alert(1))\n<script>1</script>\n";
+        let lines: Vec<usize> = untrusted_html_lines(body)
+            .into_iter()
+            .map(|(l, _)| l)
+            .collect();
+        assert_eq!(lines, vec![2, 3, 4]);
     }
 
     #[test]

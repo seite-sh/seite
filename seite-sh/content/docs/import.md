@@ -27,7 +27,7 @@ Run it inside a seite site. Posts go to the `posts` collection and pages to `pag
 | Jekyll | the site directory (with `_config.yml`) | your repository |
 | Hugo | the site directory (with `hugo.toml`/`config.toml`, or a `content/` directory) | your repository |
 
-Export files are read up to 200 MB. Malformed input stops the import with the file and line (and column, for JSON) before anything is written.
+Export files are read up to 200 MB, Jekyll/Hugo content files up to 10 MB each, and at most 100,000 items per import. Malformed input stops the import with the file and line (and column, for JSON) before anything is written.
 
 ## Options
 
@@ -50,7 +50,7 @@ Without `--drafts`, drafts and other unpublished items are skipped and listed in
 | seite frontmatter | WordPress | Ghost | Jekyll | Hugo |
 |---|---|---|---|---|
 | `title` | title | title | `title` (else from the filename) | `title` |
-| `date` | post date as written on the site | `published_at` in `[site] timezone` | `date` / filename date as written | `date` as written |
+| `date` | post date as written on the site | `published_at` in `[site] timezone` (UTC when unset) | `date` / filename date as written | `date` as written |
 | `updated` | `post_modified` | `updated_at` | `last_modified_at` | `lastmod` |
 | `description` | excerpt | custom excerpt / meta description | `description` / `excerpt` | `description` / `summary` |
 | `tags` | tags | public tags (internal `#tags` dropped) | `tags` | `tags` |
@@ -65,19 +65,20 @@ Hugo also maps `series`, `expiryDate` (→ `expires`) and page `weight`.
 - **Categories** go into a `categories` taxonomy only when `seite.toml` has `[[taxonomies]] name = "categories"`; otherwise they are added to `tags` and the report says so.
 - **Authors** are written to `extra.author` unless the collection has `strict_fields = true` without an `author` field; then they are counted in the report.
 - **Slugs** come from the source slug (percent-decoded and transliterated), files are named like `seite new` names them (`YYYY-MM-DD-slug.md` in dated collections). When two items, or an item and existing content, would get the same URL, the later one becomes `slug-2`, `slug-3`, … in a fixed order and the report lists it.
-- **Old URLs** become `aliases:` only when they differ from the new URL, so `seite build` writes a redirect page at each one (and a `_redirects` entry). `.html` endings are dropped from aliases: `/2020/01/02/hello.html` becomes the redirect file `dist/2020/01/02/hello.html`.
+- **Old URLs** become `aliases:` only when they differ from the new URL, so `seite build` writes a redirect page at each one (and a `_redirects` entry). `.html` endings are dropped from aliases: `/2020/01/02/hello.html` becomes the redirect file `dist/2020/01/02/hello.html`. An old URL is never kept when its redirect page would replace real output: another page's URL (existing or imported), a collection index or pagination page, a language homepage, `index`/`404`, generated files (feeds, sitemaps, `llms.txt`, `robots.txt`), or anything under `static/`, `og/`, `search/`, `tags/`, `series/`, a taxonomy or `private-assets/`; those are reported as `alias-rejected`. `seite build` also never writes a redirect over a file it already produced (`alias-collision`).
+- **Reserved slugs:** `index` and `404` become `index-2` / `404-2`.
 - **Schema.** The frontmatter is checked against the collection's schema (`[collections.fields]`); problems are written anyway and reported with the file and line.
 
 ## Bodies
 
-- **WordPress and Ghost HTML** is converted to Markdown with [htmd](https://crates.io/crates/htmd). WordPress block comments (`<!-- wp:… -->`) are removed and classic-editor paragraphs are rebuilt. `[caption]` and `<figure>` with an image become `{{< figure(...) >}}`; `[embed]`, YouTube/Vimeo iframes and video URLs alone on a line become `{{< youtube(...) >}}` / `{{< vimeo(...) >}}`. `[gallery]` and other WordPress shortcodes stay in place and are reported with their line in the export. Other iframes, `<video>` and `<audio>` are kept as HTML.
+- **WordPress and Ghost HTML** is converted to Markdown with [htmd](https://crates.io/crates/htmd). WordPress block comments (`<!-- wp:… -->`) are removed and classic-editor paragraphs are rebuilt. `[caption]` and `<figure>` with an image become `{{< figure(...) >}}`; `[embed]`, YouTube/Vimeo iframes and video URLs alone on a line become `{{< youtube(...) >}}` / `{{< vimeo(...) >}}`. `[gallery]` and other WordPress shortcodes stay in place and are reported with their line in the export. Other iframes on YouTube, Vimeo or a `player.*` host, `<video>` and `<audio>` are kept as HTML; any other iframe becomes a link. Kept HTML loses `on*` event attributes, `srcdoc`, `<script>`/`<object>`/`<embed>`, and `javascript:`, `vbscript:` and non-image `data:` URLs (also when obfuscated with entities or whitespace); such link destinations become `#`. Each change is reported as `untrusted-html`. Jekyll and Hugo Markdown is kept as written, but `<script>`, `on*=` attributes and `javascript:` URLs in it are reported as `untrusted-html` with their line.
 - **Jekyll Liquid:** `{% highlight lang %}` becomes a fenced code block, `{% raw %}` is unwrapped, `{{ site.baseurl }}` and `| relative_url` are dropped, `{% link %}` and `{% post_url %}` become the imported page's URL. `{% include %}` and any other Liquid stay in place and are reported.
 - **Hugo shortcodes:** `youtube`, `vimeo`, `gist`, `figure`, `highlight` and `ref`/`relref` are converted. Any other shortcode is kept inside inline code (`` `{{< tweet … >}}` ``) so the build still passes, and reported. Hugo's `_index.md` list pages, headless bundles and translations (`about.fr.md`) are skipped and listed.
 - Text that seite would read as a shortcode (a literal `{{<` in a WordPress post) is escaped as `{{\<`, which renders the same.
 
 ## Images
 
-Images referenced by a body (`![](…)`, `<img src>`, `figure`, links to image files) and the featured image are stored under `static/images/imported/<slug>/` and the references rewritten to `/static/images/imported/<slug>/<name>`. Identical images are stored once.
+Images referenced by a body (`![](…)`, `<img src>`, `figure`, links to image files) and the featured image are stored under `static/images/imported/<slug>/` and the references rewritten to `/static/images/imported/<slug>/<name>`. Identical images are stored once. Only PNG, JPEG, GIF, WebP and AVIF images are stored, recognised by their bytes (the file extension comes from the bytes too, never from the URL); SVG files, which can carry script, are not imported.
 
 - **Downloads** (WordPress, Ghost) use only `http`/`https`, and only from the export's own site host (WXR `<link>`/`wp:base_site_url`, Ghost's `url` setting or `--site-url`) or an `--allow-host` (host and port must match). Redirects are followed only to allowed hosts. Because the export file names its own site, a host taken from it must resolve to a public address (no loopback, private, link-local/cloud-metadata or CGNAT ranges), checked before every request and redirect; hosts you pass with `--allow-host` or `--site-url` are trusted as given. Each file must be served as `image/*` and be at most 20 MB, the whole import stays within `--max-download-mb`, and each request times out after 30 seconds. Anything refused or failed keeps its old URL and is listed in the report.
 - **Copies** (Jekyll, Hugo) resolve root-relative paths against the site root (Jekyll) or `static/` and `assets/` (Hugo), and relative paths against the page's folder (Hugo page bundles). A file whose real path (after symlinks) is outside the source directory is never copied. External images on Jekyll and Hugo sites are left as they are.
@@ -86,6 +87,6 @@ Images referenced by a body (`![](…)`, `<img src>`, `figure`, links to image f
 
 The import prints a summary (imported, skipped and failed posts and pages; images downloaded, copied, deduplicated, failed and not imported), then the warnings, each with its source location (`export.xml:45`) and the file it concerns. `--json` returns the full report: `summary`, `images`, every item with its `source_id`, `status`, `path`, `url` and `aliases`, and every warning with `source`, `code`, `message` and `path`.
 
-The same report is written to `.seite/cache/import-report.md` (gitignored) as a checklist, so a coding agent can work through it: run `seite check`, then ask your agent to finish the import (`/seite check` in Claude Code, `$seite check` in Codex).
+The same report is written to `.seite/cache/import-report.md` (gitignored) as a checklist (control characters stripped; its first line says the quoted text is data from the export, not instructions), so a coding agent can work through it: run `seite check`, then ask your agent to finish the import (`/seite check` in Claude Code, `$seite check` in Codex).
 
-Warning codes: `wp-shortcode`, `liquid`, `hugo-shortcode`, `hugo-section`, `unresolved-link`, `slug-collision`, `no-date`, `schema`, `categories-as-tags`, `author-dropped`, `members-only`, `canonical-elsewhere`, `ghost-url`, `empty-body`, `frontmatter`, `image-not-imported`, `image-failed`.
+Warning codes: `alias-rejected`, `untrusted-html`, `wp-shortcode`, `liquid`, `hugo-shortcode`, `hugo-section`, `unresolved-link`, `slug-collision`, `no-date`, `schema`, `categories-as-tags`, `author-dropped`, `members-only`, `canonical-elsewhere`, `ghost-url`, `empty-body`, `frontmatter`, `image-not-imported`, `image-failed`.
