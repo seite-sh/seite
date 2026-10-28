@@ -116,6 +116,80 @@ fn test_skill_update_nothing_installed() {
         .stdout(predicate::str::contains("Nothing to update"));
 }
 
+// --- seomachine (pinned, hash-verified, per-agent) ---
+
+#[test]
+fn test_skill_install_help_lists_agents_flag() {
+    page_cmd()
+        .args(["skill", "install", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--agents"));
+    page_cmd()
+        .args(["skill", "update", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--agents"));
+}
+
+#[test]
+fn test_skill_install_seomachine_rejects_unknown_agent_before_downloading() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "skillag", "Agents Test", "posts");
+    let site_dir = tmp.path().join("skillag");
+
+    page_cmd()
+        .args(["skill", "install", "seomachine", "--agents", "emacs"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown agent"));
+    assert!(!site_dir.join("context").exists());
+    assert!(!site_dir.join(".claude/agents").exists());
+}
+
+#[test]
+fn test_skill_remove_pack_keeps_edited_files_and_reads_old_manifest() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "skillrm", "Remove Test", "posts");
+    let site_dir = tmp.path().join("skillrm");
+
+    let agents = site_dir.join(".claude/agents");
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(agents.join("editor.md"), "my edit").unwrap();
+    std::fs::write(agents.join("cluster-strategist.md"), "as installed").unwrap();
+    std::fs::write(agents.join("seo-optimizer.md"), "no hash recorded").unwrap();
+
+    // `cluster-strategist.md` matches its recorded SHA-256; `editor.md` does not; `seo-optimizer.md`
+    // comes from a manifest that predates hashes.
+    let gone_hash = {
+        // sha256("as installed")
+        use sha2::{Digest, Sha256};
+        Sha256::digest(b"as installed")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
+    let manifest = format!(
+        r#"{{"packs":{{"seomachine":{{"source":"github:a/b","branch":"abc","installed_at":"t","files":[".claude/agents/editor.md",".claude/agents/cluster-strategist.md",".claude/agents/seo-optimizer.md"],"hashes":{{".claude/agents/editor.md":"{}",".claude/agents/cluster-strategist.md":"{gone_hash}"}}}}}}}}"#,
+        "0".repeat(64)
+    );
+    std::fs::write(site_dir.join(".claude/.seite-skill-packs.json"), manifest).unwrap();
+
+    page_cmd()
+        .args(["skill", "remove", "seomachine"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(agents.join("editor.md")).unwrap(),
+        "my edit"
+    );
+    assert!(!agents.join("cluster-strategist.md").exists());
+    assert!(!agents.join("seo-optimizer.md").exists());
+}
+
 // --- impeccable (pinned npm installer; fake npm on PATH) ---
 
 #[test]

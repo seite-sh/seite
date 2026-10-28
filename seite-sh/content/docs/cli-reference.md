@@ -456,8 +456,8 @@ Install, list, update, or remove skill packs and individual skills.
 
 ```bash
 seite skill list
-seite skill install <pack|url> [--name <skill>]
-seite skill update [<name>]
+seite skill install <pack|url> [--name <skill>] [--agents claude,codex,...]
+seite skill update [<name>] [--agents ...]
 seite skill remove <name>
 ```
 
@@ -465,12 +465,22 @@ Known packs:
 
 | Pack | What it adds |
 |------|--------------|
-| `seomachine` | SEO research, writing, and optimization agents, commands, and skills, downloaded into `.claude/` |
+| `seomachine` | [SEOMachine](https://github.com/TheCraigHewitt/seomachine): SEO research, writing, and optimization skills for every coding agent, plus subagents and slash commands for Claude Code |
 | `impeccable` | The [impeccable](https://github.com/pbakaus/impeccable) design skill (`/impeccable`, `$impeccable` in Codex) |
 
 `impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (all five when none are recorded). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
 
-Installed packs are recorded in `.claude/.seite-skill-packs.json`. With `--json`, `skill list` returns `data.bundled`, `data.packs` (`{name, description, installed, source}`), and `data.custom_skills`.
+`seomachine` is pinned: seite downloads each file from one exact upstream commit (the pin is compiled into the binary together with a SHA-256 for every file) and verifies every hash before writing anything. A mismatch or failed download aborts the install with nothing written. `seite skill update seomachine` moves to the pin of the seite you are running, never to upstream `main`; the pin changes only when seite is released. SEOMachine is MIT-licensed (copyright Castos and SEO Machine Contributors), which permits this redistribution; its licence file stays upstream.
+
+Per agent, `--agents` (default: the agents in `.seite/config.json`, else all; `update` reuses the agents the pack was installed for) decides where files go:
+
+- Skills (`SKILL.md`) go to each selected agent's skills directory: `.claude/skills/` for Claude Code with the full frontmatter, `.agents/skills/` for Codex, OpenCode, Cursor, Gemini CLI, and Copilot with `name` and `description` only.
+- Subagents (`.claude/agents/`) and slash commands (`.claude/commands/`) are Claude Code-only and installed only when `claude` is selected; for other agents seite says so and the generated AGENTS.md section lists which agents got the pack.
+- Context templates (`context/`), analytics scripts (`scripts/seo/`), and `requirements-seo.txt` are agent-independent. Existing files that seite did not install are never overwritten.
+
+`seite skill remove seomachine` and `seite skill update` delete only regular files that the manifest lists *and* that the pinned pack can install (the manifest lives in your repository, so it is not trusted: other paths, directories and symlinks are ignored with a warning). They keep any file you edited since the install (its SHA-256 no longer matches the recorded one) and report it. Manifests from before 0.20.2 have no hashes: `remove` deletes those files as before except `context/` templates, and `update` keeps any file that differs from the new pinned version instead of overwriting it (delete it and update again to refresh).
+
+Installed packs are recorded in `.claude/.seite-skill-packs.json` (pinned commit, agents, and a hash per installed file). With `--json`, `skill list` returns `data.bundled`, `data.packs` (`{name, description, installed, source}`), and `data.custom_skills`.
 
 ## seite mcp
 
