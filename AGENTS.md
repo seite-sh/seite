@@ -30,7 +30,7 @@ cargo run -- og preview /posts/hello-world  # render one social card → .seite/
 cargo run -- theme new           # blank starter for a custom design
 cargo run -- theme create "coral brutalist with lime accents"
 cargo run -- deploy  # Commit, push, build, and deploy
-cargo run -- cms setup pages-cms   # or decap: Git-based CMS config from collections + schema (--force backs up)
+cargo run -- cms setup pages-cms   # or decap: Git-based CMS config from collections + schema (--force backs up to .seite/cache/backups/)
 cargo run -- skill install seomachine
 cargo run -- skill install impeccable   # pinned npm installer, asks first
 cargo run -- upgrade # Upgrade project config to current binary

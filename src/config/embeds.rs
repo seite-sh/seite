@@ -17,9 +17,12 @@
 //!   <https://github.com/buttondown/docs/blob/main/public/code/building-your-subscriber-base/1.html>
 //!   (`POST https://buttondown.com/api/emails/embed-subscribe/<username>`, field
 //!   `email`, hidden `embed=1`; Buttondown asks for a plain form POST, not `fetch`).
-//! - Kit (ConvertKit): the form builder's "HTML" embed output
-//!   (<https://help.kit.com/en/articles/4009572-form-embedding-basics>):
-//!   `POST https://app.kit.com/forms/<form_id>/subscriptions`, field `email_address`.
+//! - Kit (ConvertKit): `POST https://app.kit.com/forms/<form_id>/subscriptions`,
+//!   field `email_address`. UNVERIFIED: Kit publishes no spec page; this is the
+//!   shape of the form builder's "HTML" embed output as reported by third
+//!   parties (<https://help.kit.com/en/articles/4009572-form-embedding-basics>
+//!   only says to copy that code). If your form's embed code has a different
+//!   action URL, set `[newsletter] action` to it.
 
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +93,11 @@ pub struct NewsletterSection {
     /// Kit: numeric form ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub form_id: Option<String>,
+    /// Kit: the form's `action` URL copied from Kit's embed code, when it
+    /// differs from `https://app.kit.com/forms/<form_id>/subscriptions`
+    /// (https, on kit.com or convertkit.com).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
 }
 
 const GISCUS_MAPPINGS: &[&str] = &["pathname", "url", "title", "og:title"];
@@ -162,6 +170,34 @@ fn is_giscus_theme(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+/// A Kit form action: `https://<host>/<path>` with host `kit.com`,
+/// `convertkit.com` or a subdomain of either, and a plain path (letters,
+/// digits, `/ _ . -`; no query, fragment or credentials).
+pub fn is_kit_action(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("https://") else {
+        return false;
+    };
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host_ok = ["kit.com", "convertkit.com"].iter().any(|d| {
+        host == *d
+            || host
+                .strip_suffix(d)
+                .and_then(|h| h.strip_suffix('.'))
+                .is_some_and(|sub| {
+                    !sub.is_empty()
+                        && sub
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+                })
+    });
+    host_ok
+        && value.len() <= 300
+        && path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'_' | b'.' | b'-'))
+        && !path.contains("..")
 }
 
 /// Validate `[comments]` and `[newsletter]`. The error carries the message
@@ -342,6 +378,9 @@ fn validate_newsletter(n: &NewsletterSection) -> Result<(), (String, String)> {
             if n.form_id.is_some() {
                 return err("form_id", "`form_id` only applies to kit".into());
             }
+            if n.action.is_some() {
+                return err("action", "`action` only applies to kit".into());
+            }
             match &n.username {
                 None => err(
                     "username",
@@ -361,10 +400,22 @@ fn validate_newsletter(n: &NewsletterSection) -> Result<(), (String, String)> {
             if n.username.is_some() {
                 return err("username", "`username` only applies to buttondown".into());
             }
+            if let Some(action) = &n.action {
+                if !is_kit_action(action) {
+                    return err(
+                        "action",
+                        format!(
+                            "action = \"{}\" must be an https:// URL on kit.com or convertkit.com (copy the form's action from Kit's embed code)",
+                            action.escape_debug()
+                        ),
+                    );
+                }
+            }
             match &n.form_id {
+                None if n.action.is_some() => Ok(()),
                 None => err(
                     "form_id",
-                    "kit needs `form_id` (the number in the form's embed code)".into(),
+                    "kit needs `form_id` (the number in the form's embed code) or `action`".into(),
                 ),
                 Some(id)
                     if id.is_empty()
@@ -427,10 +478,10 @@ pub fn newsletter_context(config: &SiteConfig) -> Option<serde_json::Value> {
         }),
         NewsletterProvider::Kit => serde_json::json!({
             "provider": "kit",
-            "action": format!(
+            "action": n.action.clone().unwrap_or_else(|| format!(
                 "https://app.kit.com/forms/{}/subscriptions",
                 n.form_id.as_deref().unwrap_or("")
-            ),
+            )),
             "email_field": "email_address",
         }),
     })
@@ -548,6 +599,7 @@ mod tests {
             provider: NewsletterProvider::Buttondown,
             username: Some("my-news".into()),
             form_id: None,
+            action: None,
         };
         assert!(validate_newsletter(&n).is_ok());
         n.username = Some("a\"><script>".into());
@@ -564,6 +616,7 @@ mod tests {
             provider: NewsletterProvider::Kit,
             username: None,
             form_id: Some("1234567".into()),
+            action: None,
         };
         assert!(validate_newsletter(&k).is_ok());
         k.form_id = Some("12a".into());
@@ -571,6 +624,44 @@ mod tests {
             validate_newsletter(&k).unwrap_err().1,
             "[newsletter]form_id"
         );
+    }
+
+    #[test]
+    fn test_kit_action_override() {
+        for ok in [
+            "https://app.kit.com/forms/123/subscriptions",
+            "https://app.convertkit.com/forms/123/subscriptions",
+            "https://kit.com/x",
+        ] {
+            assert!(is_kit_action(ok), "{ok}");
+        }
+        for bad in [
+            "http://app.kit.com/forms/1/subscriptions",
+            "https://evilkit.com/forms/1",
+            "https://kit.com.evil.com/x",
+            "https://app.kit.com/forms/1?x=\"><script>",
+            "https://user@app.kit.com/x",
+            "https://app.kit.com/../x",
+            "javascript:alert(1)",
+        ] {
+            assert!(!is_kit_action(bad), "{bad}");
+        }
+        let mut k = NewsletterSection {
+            provider: NewsletterProvider::Kit,
+            username: None,
+            form_id: None,
+            action: Some("https://app.kit.com/forms/9/subscriptions".into()),
+        };
+        assert!(validate_newsletter(&k).is_ok());
+        k.action = Some("https://evil.example/x".into());
+        assert_eq!(validate_newsletter(&k).unwrap_err().1, "[newsletter]action");
+        let b = NewsletterSection {
+            provider: NewsletterProvider::Buttondown,
+            username: Some("n".into()),
+            form_id: None,
+            action: Some("https://app.kit.com/x".into()),
+        };
+        assert_eq!(validate_newsletter(&b).unwrap_err().1, "[newsletter]action");
     }
 
     #[test]

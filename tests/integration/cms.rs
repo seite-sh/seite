@@ -156,14 +156,123 @@ fn test_cms_setup_refuses_overwrite_and_force_backs_up() {
 
     let (ok, doc) = run_json(&site, &["cms", "setup", "pages-cms", "--force"]);
     assert!(ok, "{doc:#}");
-    assert_eq!(doc["data"]["backups"][0], ".pages.yml.bak");
     assert_eq!(
-        fs::read_to_string(site.join(".pages.yml.bak")).unwrap(),
+        doc["data"]["backups"][0],
+        ".seite/cache/backups/.pages.yml.bak"
+    );
+    assert_eq!(
+        fs::read_to_string(site.join(".seite/cache/backups/.pages.yml.bak")).unwrap(),
         "# mine\n"
     );
+    assert!(!site.join(".pages.yml.bak").exists());
     assert!(fs::read_to_string(site.join(".pages.yml"))
         .unwrap()
         .contains("content:"));
+    // A second --force keeps the first backup.
+    let (ok, doc) = run_json(&site, &["cms", "setup", "pages-cms", "--force"]);
+    assert!(ok, "{doc:#}");
+    assert_eq!(
+        doc["data"]["backups"][0],
+        ".seite/cache/backups/.pages.yml.1.bak"
+    );
+}
+
+#[test]
+fn test_cms_setup_decap_force_backups_are_not_deployed() {
+    let tmp = TempDir::new().unwrap();
+    let site = cms_site(&tmp);
+    let (ok, doc) = run_json(&site, &["cms", "setup", "decap", "--branch", "main"]);
+    assert!(ok, "{doc:#}");
+    let (ok, doc) = run_json(
+        &site,
+        &["cms", "setup", "decap", "--force", "--branch", "main"],
+    );
+    assert!(ok, "{doc:#}");
+    assert_eq!(
+        doc["data"]["backups"][1],
+        ".seite/cache/backups/static/admin/config.yml.bak"
+    );
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    for entry in walkdir::WalkDir::new(site.join("dist")) {
+        let entry = entry.unwrap();
+        assert!(
+            !entry.path().to_string_lossy().ends_with(".bak"),
+            "{} deployed",
+            entry.path().display()
+        );
+    }
+    assert!(!site.join("static/admin/config.yml.bak").exists());
+}
+
+#[test]
+fn test_cms_setup_site_in_repo_subdirectory() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(repo.join("sites")).unwrap();
+    let inited = std::process::Command::new("git")
+        .args(["init", "-q", "-b", "main"])
+        .current_dir(&repo)
+        .output();
+    if !inited.is_ok_and(|o| o.status.success()) {
+        return; // no git available
+    }
+    page_cmd()
+        .args([
+            "init",
+            "blog",
+            "--title",
+            "Blog",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,pages",
+        ])
+        .current_dir(repo.join("sites"))
+        .assert()
+        .success();
+    let site = repo.join("sites/blog");
+
+    let (ok, doc) = run_json(&site, &["cms", "setup", "pages-cms"]);
+    assert!(ok, "{doc:#}");
+    assert_eq!(doc["data"]["repo_prefix"], "sites/blog");
+    assert!(!site.join(".pages.yml").exists());
+    let config = yaml(&repo.join(".pages.yml"));
+    assert_eq!(
+        config["media"]["input"].as_str(),
+        Some("sites/blog/static/images")
+    );
+    assert_eq!(
+        config["content"][0]["path"].as_str(),
+        Some("sites/blog/content/posts")
+    );
+
+    let (ok, doc) = run_json(&site, &["cms", "setup", "decap"]);
+    assert!(ok, "{doc:#}");
+    let config = yaml(&site.join("static/admin/config.yml"));
+    assert_eq!(
+        config["media_folder"].as_str(),
+        Some("sites/blog/static/images")
+    );
+    assert_eq!(
+        config["collections"][0]["folder"].as_str(),
+        Some("sites/blog/content/posts")
+    );
+
+    // `seite check` resolves the prefixed paths: nothing stale ...
+    let (ok, doc) = run_json(&site, &["check"]);
+    assert!(ok, "{doc:#}");
+    assert!(!doc.to_string().contains("cms-config-stale"), "{doc:#}");
+    // ... until a folder goes away (reported for both files).
+    fs::remove_dir_all(site.join("content/pages")).unwrap();
+    let (_, doc) = run_json(&site, &["check"]);
+    let stale = doc.to_string().matches("sites/blog/content/pages").count();
+    assert!(stale >= 2, "{doc:#}");
 }
 
 #[cfg(unix)]

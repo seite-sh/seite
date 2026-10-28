@@ -136,20 +136,16 @@ pub fn parse_shortcodes_recovering(
                         fence_char = fc;
                         fence_len = fl;
                         // Skip to end of line
-                        pos = skip_to_eol(bytes, line_start);
-                        // The fence line's newline was consumed: count it.
-                        if bytes[pos - 1] == b'\n' {
-                            line += 1;
-                        }
+                        // Stop at the newline: the newline branch counts the line and
+                        // checks the next line for the closing fence.
+                        pos = line_end(bytes, line_start);
                         continue;
                     }
                 } else if detect_fence_end(bytes, check_pos, fence_char, fence_len) {
                     in_fenced_code = false;
-                    pos = skip_to_eol(bytes, line_start);
-                    // The fence line's newline was consumed: count it.
-                    if bytes[pos - 1] == b'\n' {
-                        line += 1;
-                    }
+                    // Stop at the newline: the newline branch counts the line and
+                    // checks the next line for the closing fence.
+                    pos = line_end(bytes, line_start);
                     continue;
                 }
             }
@@ -184,11 +180,9 @@ pub fn parse_shortcodes_recovering(
                     in_fenced_code = true;
                     fence_char = fc;
                     fence_len = fl;
-                    pos = skip_to_eol(bytes, pos);
-                    // The fence line's newline was consumed: count it.
-                    if bytes[pos - 1] == b'\n' {
-                        line += 1;
-                    }
+                    // Stop at the newline: the newline branch counts the line and
+                    // checks the next line for the closing fence.
+                    pos = line_end(bytes, pos);
                     continue;
                 }
             }
@@ -202,11 +196,9 @@ pub fn parse_shortcodes_recovering(
                 in_fenced_code = true;
                 fence_char = fc;
                 fence_len = fl;
-                pos = skip_to_eol(bytes, pos);
-                // The fence line's newline was consumed: count it.
-                if bytes[pos - 1] == b'\n' {
-                    line += 1;
-                }
+                // Stop at the newline: the newline branch counts the line and
+                // checks the next line for the closing fence.
+                pos = line_end(bytes, pos);
                 continue;
             }
         }
@@ -391,14 +383,12 @@ fn is_line_start(bytes: &[u8], pos: usize) -> bool {
     pos == 0 || (pos > 0 && bytes[pos - 1] == b'\n')
 }
 
-/// Skip to end of current line, returning the position of the `\n` + 1 (or input end).
-fn skip_to_eol(bytes: &[u8], pos: usize) -> usize {
-    for (i, &b) in bytes.iter().enumerate().skip(pos) {
-        if b == b'\n' {
-            return i + 1;
-        }
-    }
-    bytes.len()
+/// Index of the `\n` ending the line at `pos` (or the input length).
+fn line_end(bytes: &[u8], pos: usize) -> usize {
+    bytes[pos..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map_or(bytes.len(), |i| pos + i)
 }
 
 /// Find closing backtick sequence of `count` backticks starting search at `start`.
@@ -1024,9 +1014,29 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_to_eol() {
-        assert_eq!(skip_to_eol(b"abc\ndef", 0), 4);
-        assert_eq!(skip_to_eol(b"abc", 0), 3); // no newline, return len
+    fn test_line_end() {
+        assert_eq!(line_end(b"abc\ndef", 0), 3);
+        assert_eq!(line_end(b"abc\ndef", 4), 7);
+        assert_eq!(line_end(b"abc", 0), 3); // no newline, return len
+    }
+
+    #[test]
+    fn test_empty_fenced_block_closes() {
+        for input in [
+            "```\n```\n{{< youtube(id=\"a\") >}}\n",
+            "intro\n```\n```\n{{< youtube(id=\"a\") >}}\n",
+            "~~~\n~~~\n{{< youtube(id=\"a\") >}}\n",
+        ] {
+            let (calls, errors) = parse_shortcodes_recovering(input, std::path::Path::new("t.md"));
+            assert!(errors.is_empty(), "{input:?}");
+            assert_eq!(calls.len(), 1, "{input:?}");
+            assert_eq!(calls[0].line, input.lines().count(), "{input:?}");
+        }
+        // Lines after fenced blocks are counted.
+        let input = "a\n```\ncode {{< x() >}}\n```\n\n{{< youtube(id=\"a\") >}}\n";
+        let (calls, _) = parse_shortcodes_recovering(input, std::path::Path::new("t.md"));
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].line, 6);
     }
 
     #[test]

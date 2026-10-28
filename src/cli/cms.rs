@@ -77,7 +77,7 @@ pub struct SetupArgs {
     /// Which CMS to configure
     #[arg(value_enum)]
     pub cms: CmsKind,
-    /// Overwrite existing files (each is first backed up to `<file>.bak`)
+    /// Overwrite existing files (each is first backed up under .seite/cache/backups/)
     #[arg(long)]
     pub force: bool,
     /// Branch the CMS commits to (Decap; default: the current git branch, else main)
@@ -100,17 +100,25 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
         }
     }
 
+    // A site in a subdirectory of its repository (monorepo, workspace):
+    // CMS paths are repository-relative, and `.pages.yml` lives at the
+    // repository's top level.
+    let prefix = repo_prefix(&root)?;
+    let repo_top = repo_top(&root, &prefix)?;
+
     let mut skipped = Vec::new();
     let mut notes = Vec::new();
-    let mut files: Vec<(PathBuf, String)> = Vec::new();
+    // (confinement root, path relative to it, content)
+    let mut files: Vec<(PathBuf, PathBuf, String)> = Vec::new();
     let mut repo_json = serde_json::Value::Null;
     let mut branch_json = serde_json::Value::Null;
     let static_dir = rel_dir(&config.build.static_dir);
     match args.cms {
         CmsKind::PagesCms => {
             files.push((
+                repo_top.clone(),
                 PathBuf::from(PAGES_CMS_FILE),
-                pages_cms_config(&config, &mut skipped),
+                pages_cms_config(&config, &prefix, &mut skipped),
             ));
         }
         CmsKind::Decap => {
@@ -127,29 +135,31 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
                 .unwrap_or_else(|| "main".to_string());
             let repo = repo.unwrap_or_else(|| REPO_PLACEHOLDER.to_string());
             files.push((
+                root.clone(),
                 PathBuf::from(&static_dir).join(DECAP_INDEX_FILE),
                 decap_index_html(&config),
             ));
             files.push((
+                root.clone(),
                 PathBuf::from(&static_dir).join(DECAP_CONFIG_FILE),
-                decap_config(&config, &repo, &branch, &mut skipped),
+                decap_config(&config, &prefix, &repo, &branch, &mut skipped),
             ));
             repo_json = serde_json::json!(repo);
             branch_json = serde_json::json!(branch);
         }
     }
 
-    let existing: Vec<&PathBuf> = files
+    let existing: Vec<(&PathBuf, &PathBuf)> = files
         .iter()
-        .map(|(p, _)| p)
-        .filter(|p| std::fs::symlink_metadata(root.join(p)).is_ok())
+        .map(|(base, p, _)| (base, p))
+        .filter(|(base, p)| std::fs::symlink_metadata(base.join(p)).is_ok())
         .collect();
     if !existing.is_empty() && !args.force {
         bail!(
-            "{} already exist{}; rerun with --force to regenerate (the old file{} will be kept as .bak)",
+            "{} already exist{}; rerun with --force to regenerate (the old file{} will be kept under {BACKUP_DIR}/)",
             existing
                 .iter()
-                .map(|p| p.display().to_string())
+                .map(|(_, p)| p.display().to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
             if existing.len() == 1 { "s" } else { "" },
@@ -160,12 +170,12 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
     // Every check before anything is written: a cloned repository may ship
     // a symlinked `.pages.yml` (or a symlinked `static/`), and backing it
     // up must never copy a file from outside the project into it.
-    for (path, _) in &files {
-        crate::safe_fs::guard(&root, &root.join(path))?;
+    for (base, path, _) in &files {
+        crate::safe_fs::guard(base, &base.join(path))?;
     }
     let mut pending = Vec::new();
-    for path in &existing {
-        let abs = root.join(path);
+    for (base, path) in &existing {
+        let abs = base.join(path);
         let meta = std::fs::symlink_metadata(&abs)
             .with_context(|| format!("failed to inspect {}", abs.display()))?;
         if !meta.file_type().is_file() {
@@ -174,7 +184,9 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
                 path.display()
             );
         }
-        let bak = PathBuf::from(format!("{}.bak", path.display()));
+        // Backups go to the gitignored cache, never next to the file
+        // (`static/admin/*.bak` would be deployed).
+        let bak = backup_path(&root, path);
         crate::safe_fs::guard(&root, &root.join(&bak))?;
         let bytes =
             std::fs::read(&abs).with_context(|| format!("failed to read {}", abs.display()))?;
@@ -185,13 +197,22 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
         crate::safe_fs::write(&root, &root.join(&bak), bytes)?;
         backups.push(bak.display().to_string().replace('\\', "/"));
     }
-    for (path, content) in &files {
-        crate::safe_fs::write(&root, &root.join(path), content)?;
+    for (base, path, content) in &files {
+        crate::safe_fs::write(base, &base.join(path), content)?;
     }
 
+    // Paths as the user sees them: relative to the site, or, for a file at
+    // the repository top level, relative to the repository.
     let written: Vec<String> = files
         .iter()
-        .map(|(p, _)| p.display().to_string().replace('\\', "/"))
+        .map(|(base, p, _)| {
+            let shown = if *base == root {
+                p.display().to_string()
+            } else {
+                format!("{} (repository root)", p.display())
+            };
+            shown.replace('\\', "/")
+        })
         .collect();
     let next_steps = next_steps(args.cms, &config);
 
@@ -220,6 +241,7 @@ fn run_setup(args: &SetupArgs) -> anyhow::Result<()> {
         "backups": backups,
         "skipped_fields": skipped,
         "repo": repo_json,
+        "repo_prefix": prefix,
         "branch": branch_json,
         "notes": notes,
         "next_steps": next_steps,
@@ -432,6 +454,9 @@ fn rel_dir(dir: &str) -> String {
 
 fn join(a: &str, b: &str) -> String {
     let b = b.trim_matches('/');
+    if b == "." {
+        return a.to_string();
+    }
     if a == "." || a.is_empty() {
         b.to_string()
     } else if b.is_empty() {
@@ -441,13 +466,17 @@ fn join(a: &str, b: &str) -> String {
     }
 }
 
-/// Repository path of a collection's folder.
-fn collection_path(config: &SiteConfig, collection: &CollectionConfig) -> String {
-    join(&rel_dir(&config.build.content_dir), &collection.directory)
+/// Repository path of a collection's folder (`prefix`: the site's path in
+/// its repository, empty at the top level).
+fn collection_path(config: &SiteConfig, prefix: &str, collection: &CollectionConfig) -> String {
+    join(
+        &join(prefix, &rel_dir(&config.build.content_dir)),
+        &collection.directory,
+    )
 }
 
-fn media_input(config: &SiteConfig) -> String {
-    join(&rel_dir(&config.build.static_dir), "images")
+fn media_input(config: &SiteConfig, prefix: &str) -> String {
+    join(&join(prefix, &rel_dir(&config.build.static_dir)), "images")
 }
 
 fn media_output(config: &SiteConfig) -> String {
@@ -506,7 +535,7 @@ fn pages_field(field: &CmsField) -> Yaml {
     Yaml::Mapping(m)
 }
 
-fn pages_cms_config(config: &SiteConfig, skipped: &mut Vec<String>) -> String {
+fn pages_cms_config(config: &SiteConfig, prefix: &str, skipped: &mut Vec<String>) -> String {
     let mut content = Vec::new();
     for collection in &config.collections {
         let mut fields: Vec<Yaml> = collection_fields(collection, skipped)
@@ -528,7 +557,7 @@ fn pages_cms_config(config: &SiteConfig, skipped: &mut Vec<String>) -> String {
             ("name", s(&collection.name)),
             ("label", s(&collection.label)),
             ("type", s("collection")),
-            ("path", s(&collection_path(config, collection))),
+            ("path", s(&collection_path(config, prefix, collection))),
             ("format", s("yaml-frontmatter")),
             ("filename", s(filename)),
         ];
@@ -542,7 +571,7 @@ fn pages_cms_config(config: &SiteConfig, skipped: &mut Vec<String>) -> String {
         (
             "media",
             map(vec![
-                ("input", s(&media_input(config))),
+                ("input", s(&media_input(config, prefix))),
                 ("output", s(&media_output(config))),
             ]),
         ),
@@ -630,6 +659,7 @@ fn decap_field(field: &CmsField) -> Yaml {
 
 fn decap_config(
     config: &SiteConfig,
+    prefix: &str,
     repo: &str,
     branch: &str,
     skipped: &mut Vec<String>,
@@ -654,7 +684,7 @@ fn decap_config(
         collections.push(map(vec![
             ("name", s(&collection.name)),
             ("label", s(&collection.label)),
-            ("folder", s(&collection_path(config, collection))),
+            ("folder", s(&collection_path(config, prefix, collection))),
             ("create", Yaml::Bool(true)),
             ("extension", s("md")),
             ("format", s("frontmatter")),
@@ -671,7 +701,7 @@ fn decap_config(
                 ("branch", s(branch)),
             ]),
         ),
-        ("media_folder", s(&media_input(config))),
+        ("media_folder", s(&media_input(config, prefix))),
         ("public_folder", s(&media_output(config))),
         ("collections", Yaml::Sequence(collections)),
     ]);
@@ -703,6 +733,68 @@ fn decap_index_html(config: &SiteConfig) -> String {
 </body>\n\
 </html>\n"
     )
+}
+
+/// Where `--force` keeps replaced files: inside `.seite/cache/` (gitignored,
+/// never copied to `dist/`).
+pub const BACKUP_DIR: &str = ".seite/cache/backups";
+
+/// `.seite/cache/backups/<path>.bak`, or `<path>.<n>.bak` for the first `n`
+/// not taken yet, so earlier backups are kept.
+fn backup_path(root: &Path, path: &Path) -> PathBuf {
+    let rel = path.display().to_string().replace('\\', "/");
+    let base = PathBuf::from(BACKUP_DIR);
+    let first = base.join(format!("{rel}.bak"));
+    if std::fs::symlink_metadata(root.join(&first)).is_err() {
+        return first;
+    }
+    (1..)
+        .map(|n| base.join(format!("{rel}.{n}.bak")))
+        .find(|p| std::fs::symlink_metadata(root.join(p)).is_err())
+        .unwrap_or(first)
+}
+
+/// The site's path inside its git repository (`sites/blog/`, empty at the
+/// top level or outside git), from `git rev-parse --show-prefix`.
+fn repo_prefix(root: &Path) -> anyhow::Result<String> {
+    let Some(prefix) = git_output(root, &["rev-parse", "--show-prefix"]) else {
+        return Ok(String::new());
+    };
+    let prefix = prefix.trim_end_matches('/').to_string();
+    if prefix.is_empty() {
+        return Ok(prefix);
+    }
+    if !prefix
+        .split('/')
+        .all(|p| !p.is_empty() && p != "." && p != ".." && is_safe_component(p))
+    {
+        bail!(
+            "the site's path in its git repository ('{}') has characters seite will not write into CMS config; run `seite cms setup` from a plainly named directory",
+            prefix.escape_debug()
+        );
+    }
+    Ok(prefix)
+}
+
+fn is_safe_component(part: &str) -> bool {
+    part.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b' '))
+}
+
+/// The repository's top level: `root` with the prefix's components
+/// removed, which must be an ancestor of `root` spelled the same way.
+fn repo_top(root: &Path, prefix: &str) -> anyhow::Result<PathBuf> {
+    let mut top = root.to_path_buf();
+    for part in prefix.split('/').filter(|p| !p.is_empty()).rev() {
+        if top.file_name().and_then(|n| n.to_str()) != Some(part) {
+            bail!(
+                "cannot locate the repository root: {} does not end with '{prefix}' (is the site behind a symlink?)",
+                root.display()
+            );
+        }
+        top.pop();
+    }
+    Ok(top)
 }
 
 // ---------------------------------------------------------------------------
@@ -781,25 +873,44 @@ fn is_branch_name(b: &str) -> bool {
 /// collection folder that no longer exists (a collection was renamed or
 /// removed). Paths are relative to `root`.
 pub fn stale_config_diagnostics(root: &Path, config: &SiteConfig) -> Vec<Diagnostic> {
+    // The repository top: the nearest ancestor with `.git` (no git
+    // subprocess here: this runs in hooks). Without one, the site root.
+    let top = root
+        .ancestors()
+        .take(32)
+        .find(|dir| dir.join(".git").exists())
+        .unwrap_or(root)
+        .to_path_buf();
+    let prefix = root
+        .strip_prefix(&top)
+        .map(|p| p.display().to_string().replace('\\', "/"))
+        .unwrap_or_default();
     let mut out = Vec::new();
+    let decap_file = PathBuf::from(rel_dir(&config.build.static_dir)).join(DECAP_CONFIG_FILE);
     let sources = [
         (
+            top.clone(),
             PathBuf::from(PAGES_CMS_FILE),
             "content",
             "path",
             "pages-cms",
         ),
         (
-            PathBuf::from(rel_dir(&config.build.static_dir)).join(DECAP_CONFIG_FILE),
+            root.to_path_buf(),
+            decap_file,
             "collections",
             "folder",
             "decap",
         ),
     ];
-    for (file, list_key, path_key, cms) in sources {
-        let abs = root.join(&file);
-        if crate::safe_fs::guard(root, &abs).is_err() {
+    for (base, file, list_key, path_key, cms) in sources {
+        let abs = base.join(&file);
+        if crate::safe_fs::guard(&base, &abs).is_err() {
             continue;
+        }
+        match std::fs::symlink_metadata(&abs) {
+            Ok(meta) if meta.is_file() && meta.len() <= MAX_CMS_CONFIG_BYTES => {}
+            _ => continue,
         }
         let Ok(text) = std::fs::read_to_string(&abs) else {
             continue;
@@ -819,10 +930,31 @@ pub fn stale_config_diagnostics(root: &Path, config: &SiteConfig) -> Vec<Diagnos
                 continue;
             };
             let rel = path.trim_matches('/');
-            if rel.is_empty() || rel.split('/').any(|p| p == "..") || root.join(rel).is_dir() {
+            // A shared top-level `.pages.yml` may describe other sites.
+            if cms == "pages-cms"
+                && !prefix.is_empty()
+                && !(rel == prefix || rel.starts_with(&format!("{prefix}/")))
+            {
                 continue;
             }
-            let file_display = file.display().to_string().replace('\\', "/");
+            // Repository-relative (from `seite cms setup`), or site-relative
+            // when the `.git` found above is not the site's repository.
+            if rel.is_empty()
+                || rel.split('/').any(|p| p == "..")
+                || top.join(rel).is_dir()
+                || root.join(rel).is_dir()
+            {
+                continue;
+            }
+            let shown = if base == root {
+                file.display().to_string()
+            } else {
+                base.join(&file)
+                    .strip_prefix(root)
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| format!("{} (repository root)", file.display()))
+            };
+            let file_display = shown.replace('\\', "/");
             let mut d = Diagnostic::warning(
                 "cms-config-stale",
                 format!("{file_display} points the CMS at `{path}`, which does not exist"),
@@ -841,6 +973,9 @@ pub fn stale_config_diagnostics(root: &Path, config: &SiteConfig) -> Vec<Diagnos
     }
     out
 }
+
+/// Largest CMS config file `seite check` reads.
+const MAX_CMS_CONFIG_BYTES: u64 = 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
@@ -920,7 +1055,7 @@ default_template = "doc.html"
     #[test]
     fn test_pages_cms_field_mapping() {
         let mut skipped = Vec::new();
-        let text = pages_cms_config(&config_with_schema(), &mut skipped);
+        let text = pages_cms_config(&config_with_schema(), "", &mut skipped);
         assert_eq!(skipped, vec!["posts.meta"]);
         let doc: Yaml = serde_yaml_ng::from_str(&text).unwrap();
         assert_eq!(doc["media"]["input"].as_str(), Some("static/images"));
@@ -978,7 +1113,7 @@ default_template = "doc.html"
     #[test]
     fn test_decap_field_mapping() {
         let mut skipped = Vec::new();
-        let text = decap_config(&config_with_schema(), "o/r", "main", &mut skipped);
+        let text = decap_config(&config_with_schema(), "", "o/r", "main", &mut skipped);
         let doc: Yaml = serde_yaml_ng::from_str(&text).unwrap();
         assert_eq!(doc["backend"]["name"].as_str(), Some("github"));
         assert_eq!(doc["backend"]["repo"].as_str(), Some("o/r"));
@@ -1022,13 +1157,15 @@ default_template = "doc.html"
             .enum_values = vec![serde_json::json!("a: b"), serde_json::json!("- c")];
         let mut skipped = Vec::new();
         let doc: Yaml =
-            serde_yaml_ng::from_str(&decap_config(&config, "o/r", "main", &mut skipped)).unwrap();
+            serde_yaml_ng::from_str(&decap_config(&config, "", "o/r", "main", &mut skipped))
+                .unwrap();
         assert_eq!(
             doc["collections"][0]["label"].as_str(),
             Some("x\n  evil: true\n\"]")
         );
         assert!(doc["collections"][0].get("evil").is_none());
-        let doc: Yaml = serde_yaml_ng::from_str(&pages_cms_config(&config, &mut skipped)).unwrap();
+        let doc: Yaml =
+            serde_yaml_ng::from_str(&pages_cms_config(&config, "", &mut skipped)).unwrap();
         let status = field(doc["content"][0]["fields"].as_sequence().unwrap(), "status");
         assert_eq!(status["options"]["values"][0].as_str(), Some("a: b"));
     }
@@ -1074,6 +1211,63 @@ default_template = "doc.html"
     }
 
     #[test]
+    fn test_repo_prefix_paths() {
+        let mut skipped = Vec::new();
+        let config = config_with_schema();
+        let doc: Yaml =
+            serde_yaml_ng::from_str(&pages_cms_config(&config, "sites/blog", &mut skipped))
+                .unwrap();
+        assert_eq!(
+            doc["media"]["input"].as_str(),
+            Some("sites/blog/static/images")
+        );
+        assert_eq!(doc["media"]["output"].as_str(), Some("/blog/static/images"));
+        assert_eq!(
+            doc["content"][0]["path"].as_str(),
+            Some("sites/blog/content/posts")
+        );
+        let doc: Yaml = serde_yaml_ng::from_str(&decap_config(
+            &config,
+            "sites/blog",
+            "o/r",
+            "main",
+            &mut skipped,
+        ))
+        .unwrap();
+        assert_eq!(
+            doc["media_folder"].as_str(),
+            Some("sites/blog/static/images")
+        );
+        assert_eq!(
+            doc["collections"][0]["folder"].as_str(),
+            Some("sites/blog/content/posts")
+        );
+
+        let root = Path::new("/r/sites/blog");
+        assert_eq!(repo_top(root, "sites/blog").unwrap(), Path::new("/r"));
+        assert_eq!(repo_top(root, "").unwrap(), root);
+        assert!(repo_top(root, "other/blog").is_err());
+    }
+
+    #[test]
+    fn test_backup_path_keeps_earlier_backups() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        let p = Path::new("static/admin/config.yml");
+        let first = backup_path(root, p);
+        assert_eq!(
+            first,
+            Path::new(".seite/cache/backups/static/admin/config.yml.bak")
+        );
+        std::fs::create_dir_all(root.join(first.parent().unwrap())).unwrap();
+        std::fs::write(root.join(&first), "1").unwrap();
+        assert_eq!(
+            backup_path(root, p),
+            Path::new(".seite/cache/backups/static/admin/config.yml.1.bak")
+        );
+    }
+
+    #[test]
     fn test_branch_names() {
         assert!(is_branch_name("main"));
         assert!(is_branch_name("feature/cms-1.2"));
@@ -1092,13 +1286,13 @@ default_template = "doc.html"
         let mut skipped = Vec::new();
         std::fs::write(
             root.join(".pages.yml"),
-            pages_cms_config(&config, &mut skipped),
+            pages_cms_config(&config, "", &mut skipped),
         )
         .unwrap();
         std::fs::create_dir_all(root.join("static/admin")).unwrap();
         std::fs::write(
             root.join("static/admin/config.yml"),
-            decap_config(&config, "o/r", "main", &mut skipped),
+            decap_config(&config, "", "o/r", "main", &mut skipped),
         )
         .unwrap();
         let found = stale_config_diagnostics(root, &config);

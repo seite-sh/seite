@@ -617,7 +617,10 @@ A subscribe form for the `newsletter()` shortcode and the `seite/newsletter.html
 provider = "buttondown"    # or "kit"
 username = "my-newsletter" # buttondown
 # form_id = "1234567"      # kit
+# action = "https://app.kit.com/forms/1234567/subscriptions"  # kit: optional override
 ```
+
+For Kit, seite posts to `https://app.kit.com/forms/<form_id>/subscriptions` (field `email_address`). That URL is unverified — Kit documents no spec — so if the action URL in your form's HTML embed code differs, set `action` to it (an `https://` URL on `kit.com` or `convertkit.com`; `form_id` is then optional).
 
 See [Shortcodes](/docs/shortcodes#newsletter). Values are validated at load (`config-invalid` at the line) and escaped in the HTML.
 

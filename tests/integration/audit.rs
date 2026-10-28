@@ -478,3 +478,43 @@ fn test_audit_build_and_dist_modes_agree() {
         "/docs/nodesc".to_string()
     )));
 }
+
+#[test]
+fn test_audit_skips_static_copies_but_not_pages_under_static() {
+    let tmp = TempDir::new().unwrap();
+    let site = fresh_site(&tmp);
+    // A pass-through HTML file (e.g. a CMS admin app): not audited.
+    fs::create_dir_all(site.join("static/admin")).unwrap();
+    fs::write(
+        site.join("static/admin/index.html"),
+        "<!doctype html><html><head></head><body><img src=x></body></html>",
+    )
+    .unwrap();
+    // A collection rendered under /static/: audited like any page.
+    let config = fs::read_to_string(site.join("seite.toml")).unwrap();
+    fs::write(
+        site.join("seite.toml"),
+        format!(
+            "{config}\n[[collections]]\nname = \"notes\"\nlabel = \"Notes\"\ndirectory = \"notes\"\nhas_date = false\nhas_rss = false\nlisted = false\nurl_prefix = \"/static/notes\"\nnested = false\ndefault_template = \"page.html\"\n"
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(site.join("content/notes")).unwrap();
+    fs::write(
+        site.join("content/notes/thin.md"),
+        "---\ntitle: Thin\n---\n\nShort.\n",
+    )
+    .unwrap();
+    let (_, doc) = run_json(&site, &["audit"]);
+    let all = findings(&doc);
+    assert!(
+        all.iter().all(|f| !f.to_string().contains("static/admin")),
+        "{doc:#}"
+    );
+    assert!(
+        all.iter().any(|f| f["page_url"]
+            .as_str()
+            .is_some_and(|u| u.starts_with("/static/notes/thin"))),
+        "pages under /static/ are still audited: {doc:#}"
+    );
+}

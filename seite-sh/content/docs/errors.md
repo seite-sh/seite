@@ -93,7 +93,7 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 
 **Common causes:** a collection was renamed or removed in `seite.toml`, or its `directory` changed, after the CMS was set up.
 
-**How to fix:** regenerate the file from the current collections: `seite cms setup pages-cms --force` or `seite cms setup decap --force` (the old file is kept as `.bak`). Or edit the path by hand.
+**How to fix:** regenerate the file from the current collections: `seite cms setup pages-cms --force` or `seite cms setup decap --force` (the old file is kept under `.seite/cache/backups/`). Or edit the path by hand.
 
 ## comments-not-configured
 

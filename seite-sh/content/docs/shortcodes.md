@@ -163,6 +163,7 @@ A subscribe form for a newsletter with a free tier: [Buttondown](https://buttond
 provider = "buttondown"   # or "kit"
 username = "my-newsletter" # buttondown: your newsletter username
 # form_id = "1234567"     # kit: the number in the form's embed code
+# action = "https://app.kit.com/forms/1234567/subscriptions"  # kit: optional, the form's action URL from Kit's embed code
 ```
 
 ```
@@ -177,7 +178,7 @@ username = "my-newsletter" # buttondown: your newsletter username
 | `button` | no | Button text (default: `t.newsletter_submit`, "Subscribe") |
 | `id` | no | `id` of the email input (default `newsletter-email`; set it when a page has two forms) |
 
-The form is plain HTML that posts to the provider (`https://buttondown.com/api/emails/embed-subscribe/<username>` with field `email`, or `https://app.kit.com/forms/<form_id>/subscriptions` with field `email_address`); the provider shows its own confirmation page (and, for Buttondown, a CAPTCHA when it suspects a bot). No third-party JavaScript. The email field is labelled, `type="email"`, `required` and `autocomplete="email"`. The form uses the `contact-form` classes, so every bundled theme styles it like the contact form, plus `newsletter-form`, `newsletter-form-field` and `newsletter-form-submit` for your own CSS. Labels come from the `newsletter_email` and `newsletter_submit` [UI strings](/docs/i18n#ui-string-translations).
+The form is plain HTML that posts to the provider (`https://buttondown.com/api/emails/embed-subscribe/<username>` with field `email`, or `https://app.kit.com/forms/<form_id>/subscriptions` with field `email_address` — the Kit URL is unverified (Kit publishes no spec): copy your form's action URL from Kit's HTML embed code into `action` if it differs); the provider shows its own confirmation page (and, for Buttondown, a CAPTCHA when it suspects a bot). No third-party JavaScript. The email field is labelled, `type="email"`, `required` and `autocomplete="email"`. The form uses the `contact-form` classes, so every bundled theme styles it like the contact form, plus `newsletter-form`, `newsletter-form-field` and `newsletter-form-submit` for your own CSS. Labels come from the `newsletter_email` and `newsletter_submit` [UI strings](/docs/i18n#ui-string-translations).
 
 Without `[newsletter]` the shortcode renders nothing and the build warns ([`newsletter-not-configured`](/docs/errors#newsletter-not-configured)). Themes can place the form anywhere with `{% include "seite/newsletter.html" %}` (settings in `site.newsletter`).
 

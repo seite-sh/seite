@@ -15,7 +15,11 @@ seite cms setup decap --branch main
 seite cms setup pages-cms --force  # regenerate after changing collections or fields
 ```
 
-`seite cms setup` never overwrites an existing file unless you pass `--force`; with `--force` the previous file is kept next to it as `<file>.bak`. `--json` reports the files written, backups, skipped fields and next steps.
+`seite cms setup` never overwrites an existing file unless you pass `--force`; with `--force` the previous file is first copied to `.seite/cache/backups/<path>.bak` (then `<path>.1.bak`, … so earlier backups are kept). That directory is gitignored and never deployed. `--force` refuses to replace a symlink. `--json` reports the files written, backups, skipped fields and next steps.
+
+### Sites in a subdirectory of the repository
+
+In a monorepo or a [workspace](/docs/workspace), the CMS works with repository paths. `seite cms setup` asks git for the site's path inside the repository (`git rev-parse --show-prefix`, hooks disabled) and prefixes every folder with it (`sites/blog/content/posts`, `sites/blog/static/images`). `.pages.yml` is written at the repository root, because that is where Pages CMS reads it; it then describes this site only, so for several sites in one repository merge their `content` entries by hand. Decap's files stay in the site's `static/admin/`. A site reached through a symlink, whose path does not end with the repository prefix, is refused with an explanation.
 
 ## Pages CMS
 
@@ -53,7 +57,7 @@ Decap's GitHub backend logs editors in with GitHub OAuth, which needs a small se
 
 Netlify Identity with Git Gateway (which lets editors log in without a GitHub account) was deprecated by Netlify in 2025 and gets no maintenance; check its current status before relying on it, and prefer one of the options above.
 
-Rerunning `seite cms setup decap --force` regenerates `config.yml`, so add `base_url` again afterwards (the backup in `config.yml.bak` has it).
+Rerunning `seite cms setup decap --force` regenerates `config.yml`, so add `base_url` again afterwards (the backup in `.seite/cache/backups/static/admin/config.yml.bak` has it).
 
 ## Field mapping
 
