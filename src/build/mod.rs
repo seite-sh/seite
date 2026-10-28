@@ -182,6 +182,12 @@ struct SiteContext {
     /// `og:image` fallback for pages without their own image or card.
     #[serde(skip_serializing_if = "Option::is_none")]
     og_image: Option<String>,
+    /// `[comments]` embed settings (`seite/comments.html`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comments: Option<serde_json::Value>,
+    /// `[newsletter]` form settings (`seite/newsletter.html`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    newsletter: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -311,6 +317,8 @@ impl SiteContext {
             language: config.site.language.clone(),
             author: config.site.author.clone(),
             og_image: site_card_url(config, &config.site.language),
+            comments: crate::config::embeds::comments_context(config),
+            newsletter: crate::config::embeds::newsletter_context(config),
         }
     }
 
@@ -323,6 +331,8 @@ impl SiteContext {
             language: lang.to_string(),
             author: config.site.author.clone(),
             og_image: site_card_url(config, lang),
+            comments: crate::config::embeds::comments_context(config),
+            newsletter: crate::config::embeds::newsletter_context(config),
         }
     }
 }
@@ -1338,6 +1348,7 @@ fn build_site_inner(
                         expanded: expanded_body,
                         html: html_body,
                         toc,
+                        warnings: body_warnings,
                     } = render_item_body(
                         config,
                         &shortcode_registry,
@@ -1345,11 +1356,17 @@ fn build_site_inner(
                             path,
                             body: &raw_body,
                             body_line,
-                            page: &shortcode_page_context(&fm, &slug, &collection.name),
+                            page: &shortcode_page_context(&fm, &slug, &collection.name, &lang),
                         },
                         &sc_site,
                         sc_i18n,
                     )?;
+                    if !body_warnings.is_empty() {
+                        schema_warnings
+                            .lock()
+                            .map(|mut w| w.extend(body_warnings))
+                            .ok();
+                    }
                     let excerpt = content::extract_excerpt(&expanded_body);
 
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
@@ -4013,6 +4030,8 @@ pub(crate) fn shortcode_site_context(config: &SiteConfig) -> serde_json::Value {
             "redirect": &c.redirect,
             "subject": &c.subject,
         })),
+        "comments": crate::config::embeds::comments_context(config),
+        "newsletter": crate::config::embeds::newsletter_context(config),
     })
 }
 
@@ -4021,12 +4040,14 @@ pub(crate) fn shortcode_page_context(
     fm: &Frontmatter,
     slug: &str,
     collection: &str,
+    lang: &str,
 ) -> serde_json::Value {
     serde_json::json!({
         "title": fm.title,
         "slug": slug,
         "collection": collection,
         "tags": &fm.tags,
+        "lang": lang,
     })
 }
 
@@ -4049,6 +4070,9 @@ pub(crate) struct RenderedBody {
     /// Body HTML (no page template, no HTML post-processing).
     pub html: String,
     pub toc: Vec<markdown::TocEntry>,
+    /// Non-fatal shortcode problems (`comments-not-configured`,
+    /// `newsletter-not-configured`), with file lines.
+    pub warnings: Vec<Diagnostic>,
 }
 
 /// Render one content item's body exactly as the build's content step does:
@@ -4074,6 +4098,14 @@ pub(crate) fn render_item_body(
                 })
                 .collect::<Vec<_>>()
         })?;
+    let warnings = registry
+        .config_warnings(source.body, source.path, config)
+        .into_iter()
+        .map(|mut d| {
+            d.line = d.line.map(|l| source.body_line + l.saturating_sub(1));
+            d
+        })
+        .collect();
     let (html, toc) = if config.build.math {
         markdown::markdown_to_html_with(&math::render_math(&expanded), config.build.mermaid)
     } else {
@@ -4083,6 +4115,7 @@ pub(crate) fn render_item_body(
         expanded,
         html,
         toc,
+        warnings,
     })
 }
 
@@ -4155,6 +4188,8 @@ pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde
         "contact_email": "Email",
         "contact_message": "Message",
         "contact_submit": "Send Message",
+        "newsletter_email": "Email address",
+        "newsletter_submit": "Subscribe",
         "documentation": "Documentation",
         "callout_info": "Info",
         "callout_tip": "Tip",
@@ -4398,6 +4433,8 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
             taxonomies: Vec::new(),
             check: None,
@@ -6165,6 +6202,8 @@ mod tests {
             "contact_email",
             "contact_message",
             "contact_submit",
+            "newsletter_email",
+            "newsletter_submit",
             "documentation",
             "callout_info",
             "callout_tip",

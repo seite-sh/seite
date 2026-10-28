@@ -101,6 +101,8 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 | "template-missing-seite-head"
                 | "series-url-collision"
                 | "frontmatter-schema-unknown"
+                | "comments-not-configured"
+                | "newsletter-not-configured"
         )
     }) {
         human::warning(&d.to_string());

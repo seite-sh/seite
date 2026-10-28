@@ -65,3 +65,19 @@ session_hours = 168     # 1-8760; how long a visitor's password session lasts
 
 Adding `[access]` turns on password protection, enforced by a generated Cloudflare Pages Worker, for every collection with `private = true`. See `.claude/rules/private-collections.md` for `access_group`, protected static assets, and private subdomains. Manage passwords with `seite access groups` and `seite access set-password <group>`.
 
+### Comments & Newsletter
+
+```toml
+[comments]
+provider = "giscus"        # or "utterances" (repo, issue_term, label, theme)
+repo = "owner/repo"
+repo_id = "R_kgDO..."      # giscus ids from https://giscus.app
+category = "Announcements"
+category_id = "DIC_kwDO..."
+
+[newsletter]
+provider = "buttondown"    # or "kit" with form_id = "1234567"
+username = "my-news"
+```
+
+Use `{{< comments() >}}` and `{{< newsletter() >}}`. Git-based CMS: `seite cms setup pages-cms|decap` (see `.seite/docs/cms.md`).

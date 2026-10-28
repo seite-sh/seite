@@ -25,6 +25,7 @@ pub fn all() -> Vec<DocPage> {
         i18n(),
         trust_center(),
         contact_forms(),
+        cms(),
         deployment(),
         agent(),
         workspace(),
@@ -147,6 +148,16 @@ fn contact_forms() -> DocPage {
         description: "Add contact forms to your static site with built-in provider support.",
         weight: 15,
         raw_content: include_str!("../seite-sh/content/docs/contact-forms.md"),
+    }
+}
+
+fn cms() -> DocPage {
+    DocPage {
+        slug: "cms",
+        title: "Git-based CMS",
+        description: "Set up Pages CMS or Decap CMS for your collections with `seite cms setup`.",
+        weight: 16,
+        raw_content: include_str!("../seite-sh/content/docs/cms.md"),
     }
 }
 

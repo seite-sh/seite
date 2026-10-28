@@ -1,0 +1,14 @@
+{# seite partial: newsletter — managed by seite, updated on upgrade. The [newsletter] subscribe form (Buttondown: https://docs.buttondown.com/building-your-subscriber-base, Kit: https://help.kit.com/en/articles/4009572-form-embedding-basics), also the newsletter() shortcode (args: title, description, button, id). A plain POST to the provider, no third-party JS. Renders nothing without [newsletter]. #}{%- if site.newsletter -%}
+{%- set n = site.newsletter -%}
+{%- if id -%}{%- set nl_id = id -%}{%- else -%}{%- set nl_id = "newsletter-email" -%}{%- endif -%}
+<form class="contact-form newsletter-form newsletter-form-{{ n.provider | escape }}" action="{{ n.action | escape }}" method="post">
+{% if title %}<p class="newsletter-form-title"><strong>{{ title | escape }}</strong></p>
+{% endif %}{% if description %}<p class="newsletter-form-description">{{ description | escape }}</p>
+{% endif %}<div class="contact-form-field newsletter-form-field">
+<label for="{{ nl_id | escape }}">{% if t.newsletter_email %}{{ t.newsletter_email }}{% else %}Email address{% endif %}</label>
+<input type="email" id="{{ nl_id | escape }}" name="{{ n.email_field | escape }}" required autocomplete="email" placeholder="you@example.com">
+</div>
+{% if n.provider == "buttondown" %}<input type="hidden" name="embed" value="1">
+{% endif %}<button type="submit" class="contact-form-submit newsletter-form-submit">{% if button %}{{ button | escape }}{% elif t.newsletter_submit %}{{ t.newsletter_submit }}{% else %}Subscribe{% endif %}</button>
+</form>
+{%- endif -%}

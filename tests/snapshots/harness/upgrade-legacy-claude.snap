@@ -30,7 +30,7 @@ Added the seite check hooks to .claude/settings.json
 .claude/launch.json (dev server for the Claude desktop app's preview)
 .claude/skills/seite/SKILL.md (/seite skill)
 .claude/skills/seite/reference/ (12 files)
-.seite/docs/ (17 doc pages for seite 0.20.2)
+.seite/docs/ (18 doc pages for seite 0.20.2)
 .gitignore (/.seite/docs/, /.seite/dev.json, /.seite/cache/, /.seite/upgrade-brief.md)
 Project instructions (per-agent setup table)
 Project instructions (context rules index)

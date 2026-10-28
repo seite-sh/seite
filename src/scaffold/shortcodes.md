@@ -30,6 +30,9 @@ Callout types: `info`, `warning`, `danger`, `tip`
 | `gist` | inline | `user` (required), `id` (required) |
 | `figure` | inline | `src` (required), `alt`, `caption`, `width`, `height`, `class` |
 | `callout` | body | `type` (default: `info`) |
+| `contact_form` | inline | see contact form rules; needs `[contact]` |
+| `comments` | inline | none; needs `[comments]` (giscus/utterances), else renders nothing + warning |
+| `newsletter` | inline | `title`, `description`, `button`, `id`; needs `[newsletter]` (buttondown/kit) |
 
 ### Custom shortcodes
 
@@ -42,6 +45,8 @@ Create Tera templates in `templates/shortcodes/`. Example `templates/shortcodes/
 Use in markdown: `{{% alert(level="error") %}}Something went wrong{{% end %}}`
 
 Shortcode templates have access to `{{ page }}` and `{{ site }}` context variables.
+
+Themes can place comments/newsletter without shortcodes: `{% include "seite/comments.html" %}` / `{% include "seite/newsletter.html" %}`.
 
 ### Syntax gotcha
 

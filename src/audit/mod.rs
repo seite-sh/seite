@@ -409,6 +409,13 @@ fn url_of(rel: &str) -> String {
 /// Largest page read (bigger files are skipped).
 const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 
+/// An output path (`static/admin/index.html`) copied from the static dir
+/// rather than rendered by seite.
+fn is_static_passthrough(rel: &str) -> bool {
+    let rel = rel.replace('\\', "/");
+    rel.starts_with("static/") || rel.starts_with("private-assets/")
+}
+
 impl Site {
     /// Read every HTML page under `output`.
     pub fn load(
@@ -438,6 +445,12 @@ impl Site {
                 continue;
             };
             let rel = links::relative_display(output, &path);
+            // Files under `static/` (and protected `private-assets/`) are
+            // copied verbatim from the site's static dir — e.g. a CMS admin
+            // app (`seite cms setup decap`) — not pages seite generated.
+            if is_static_passthrough(&rel) {
+                continue;
+            }
             let facts = html::scan(&html);
             pages.push(Page {
                 url: url_of(&rel),
@@ -1060,6 +1073,14 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_static_passthrough_is_not_a_page() {
+        assert!(is_static_passthrough("static/admin/index.html"));
+        assert!(is_static_passthrough("private-assets/team/x.html"));
+        assert!(!is_static_passthrough("index.html"));
+        assert!(!is_static_passthrough("posts/static.html"));
+    }
 
     #[test]
     fn test_page_key_and_url_of() {

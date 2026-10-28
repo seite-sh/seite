@@ -16,6 +16,8 @@ use crate::error::{PageError, Result};
 pub struct ShortcodeRegistry {
     tera: tera::Tera,
     known: HashSet<String>,
+    /// Names defined in `templates/shortcodes/` (they replace built-ins).
+    user_defined: HashSet<String>,
 }
 
 impl ShortcodeRegistry {
@@ -25,6 +27,7 @@ impl ShortcodeRegistry {
         let mut tera = tera::Tera::default();
         tera.autoescape_on(vec![]); // disable auto-escaping for shortcode HTML output
         let mut known = HashSet::new();
+        let mut user_defined = HashSet::new();
 
         // Load built-in shortcodes
         for builtin in builtins::all() {
@@ -61,12 +64,17 @@ impl ShortcodeRegistry {
                                 path.display()
                             ))
                         })?;
-                    known.insert(name);
+                    known.insert(name.clone());
+                    user_defined.insert(name);
                 }
             }
         }
 
-        Ok(Self { tera, known })
+        Ok(Self {
+            tera,
+            known,
+            user_defined,
+        })
     }
 
     /// Returns true if there are any registered shortcodes.
@@ -151,6 +159,57 @@ impl ShortcodeRegistry {
         Ok(output)
     }
 
+    /// Warnings for built-in shortcodes whose `seite.toml` section is
+    /// missing: `comments()` without `[comments]` (code
+    /// `comments-not-configured`) and `newsletter()` without `[newsletter]`
+    /// (`newsletter-not-configured`). Those render nothing. Lines are
+    /// relative to `input`; a user template of the same name is never
+    /// reported.
+    pub fn config_warnings(
+        &self,
+        input: &str,
+        source_path: &Path,
+        config: &crate::config::SiteConfig,
+    ) -> Vec<Diagnostic> {
+        let missing_comments = config.comments.is_none();
+        let missing_newsletter = config.newsletter.is_none();
+        if !(missing_comments || missing_newsletter)
+            || !(input.contains("comments") || input.contains("newsletter"))
+        {
+            return Vec::new();
+        }
+        let (calls, _) = parser::parse_shortcodes_recovering(input, source_path);
+        calls
+            .iter()
+            .filter(|call| !self.user_defined.contains(&call.name))
+            .filter_map(|call| {
+                let diagnostic = match call.name.as_str() {
+                    "comments" if missing_comments => Diagnostic::warning(
+                        "comments-not-configured",
+                        "`comments()` renders nothing: seite.toml has no [comments] section",
+                    )
+                    .with_hint(
+                        "add [comments] with provider = \"giscus\" or \"utterances\" (see `seite docs shortcodes`), or remove the shortcode",
+                    ),
+                    "newsletter" if missing_newsletter => Diagnostic::warning(
+                        "newsletter-not-configured",
+                        "`newsletter()` renders nothing: seite.toml has no [newsletter] section",
+                    )
+                    .with_hint(
+                        "add [newsletter] with provider = \"buttondown\" or \"kit\" (see `seite docs shortcodes`), or remove the shortcode",
+                    ),
+                    _ => return None,
+                };
+                Some(
+                    diagnostic
+                        .with_file(source_path)
+                        .with_line(call.line)
+                        .with_column(crate::diagnostics::line_col_at(input, call.span.0).1),
+                )
+            })
+            .collect()
+    }
+
     /// Sorted names of every registered shortcode.
     pub fn names(&self) -> Vec<&str> {
         let mut names: Vec<&str> = self.known.iter().map(String::as_str).collect();
@@ -192,6 +251,12 @@ impl ShortcodeRegistry {
     ) -> Result<String> {
         let template_name = format!("shortcodes/{}.html", call.name);
         let mut ctx = tera::Context::new();
+
+        // The page's language as `lang` (like page templates), before the
+        // arguments so an explicit `lang=` argument wins.
+        if let Some(lang) = page_context.get("lang") {
+            ctx.insert("lang", lang);
+        }
 
         // Insert all named arguments
         for (key, val) in &call.args {
@@ -461,6 +526,239 @@ mod tests {
         let result = registry.expand(input, &PathBuf::from("test.md"), &page, &site, &i18n);
         // Contact form renders even without provider — it just won't have an action URL
         assert!(result.is_ok());
+    }
+
+    const HOSTILE: &str = "\"><script>alert(1)</script>";
+
+    #[test]
+    fn test_comments_giscus_escapes_every_value() {
+        let registry = test_registry();
+        let site = serde_json::json!({
+            "language": "en",
+            "comments": {
+                "provider": "giscus", "repo": HOSTILE, "repo_id": HOSTILE,
+                "category": HOSTILE, "category_id": HOSTILE, "mapping": HOSTILE,
+                "reactions": "1", "theme": HOSTILE, "lang": "", "loading": "lazy"
+            }
+        });
+        let page = serde_json::json!({"lang": HOSTILE});
+        let html = registry
+            .expand(
+                "{{< comments() >}}",
+                &PathBuf::from("t.md"),
+                &page,
+                &site,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+        assert!(
+            html.contains("<script src=\"https://giscus.app/client.js\""),
+            "{html}"
+        );
+        assert!(html.contains("data-loading=\"lazy\""));
+        assert!(html.contains("crossorigin=\"anonymous\" async></script>"));
+        assert_eq!(html.matches("<script").count(), 1, "{html}");
+        assert!(!html.contains("\"><"), "{html}");
+        assert!(
+            html.contains("data-repo=\"&quot;&gt;&lt;script&gt;"),
+            "{html}"
+        );
+        // The page language is the giscus fallback.
+        assert!(html.contains("data-lang=\"&quot;&gt;"), "{html}");
+    }
+
+    #[test]
+    fn test_comments_giscus_lang_fallbacks() {
+        let registry = test_registry();
+        let site = |lang: &str| {
+            serde_json::json!({
+                "language": "en",
+                "comments": {
+                    "provider": "giscus", "repo": "o/r", "repo_id": "R_1",
+                    "category": "General", "category_id": "DIC_1", "mapping": "pathname",
+                    "reactions": "0", "theme": "dark", "lang": lang, "loading": "eager"
+                }
+            })
+        };
+        let render = |site: &serde_json::Value, page: &serde_json::Value| {
+            registry
+                .expand(
+                    "{{< comments() >}}",
+                    &PathBuf::from("t.md"),
+                    page,
+                    site,
+                    &serde_json::json!({}),
+                )
+                .unwrap()
+        };
+        let html = render(&site(""), &serde_json::json!({"lang": "de"}));
+        assert!(html.contains("data-lang=\"de\""), "{html}");
+        assert!(html.contains("data-reactions-enabled=\"0\""));
+        assert!(!html.contains("data-loading"));
+        let html = render(&site("fr"), &serde_json::json!({"lang": "de"}));
+        assert!(html.contains("data-lang=\"fr\""), "{html}");
+        let html = render(&site(""), &serde_json::json!({}));
+        assert!(html.contains("data-lang=\"en\""), "{html}");
+    }
+
+    #[test]
+    fn test_comments_utterances_escapes_every_value() {
+        let registry = test_registry();
+        let site = serde_json::json!({
+            "comments": {
+                "provider": "utterances", "repo": HOSTILE, "issue_term": HOSTILE,
+                "label": HOSTILE, "theme": HOSTILE
+            }
+        });
+        let html = registry
+            .expand(
+                "{{< comments() >}}",
+                &PathBuf::from("t.md"),
+                &serde_json::json!({}),
+                &site,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+        assert!(
+            html.contains("<script src=\"https://utteranc.es/client.js\""),
+            "{html}"
+        );
+        assert_eq!(html.matches("<script").count(), 1, "{html}");
+        assert!(!html.contains("\"><"), "{html}");
+        assert!(html.contains("label=\"&quot;"));
+    }
+
+    #[test]
+    fn test_comments_without_config_renders_nothing() {
+        let registry = test_registry();
+        let empty = serde_json::json!({});
+        let html = registry
+            .expand(
+                "a\n\n{{< comments() >}}\n\n{{< newsletter() >}}\nb",
+                &PathBuf::from("t.md"),
+                &empty,
+                &empty,
+                &empty,
+            )
+            .unwrap();
+        assert_eq!(html, "a\n\n\n\n\nb");
+    }
+
+    #[test]
+    fn test_newsletter_buttondown_form() {
+        let registry = test_registry();
+        let site = serde_json::json!({"newsletter": {
+            "provider": "buttondown",
+            "action": "https://buttondown.com/api/emails/embed-subscribe/news",
+            "email_field": "email"
+        }});
+        let t =
+            serde_json::json!({"newsletter_email": "E-Mail", "newsletter_submit": "Abonnieren"});
+        let html = registry
+            .expand(
+                "{{< newsletter() >}}",
+                &PathBuf::from("t.md"),
+                &serde_json::json!({}),
+                &site,
+                &t,
+            )
+            .unwrap();
+        assert!(html.contains("action=\"https:&#x2F;&#x2F;buttondown.com&#x2F;api&#x2F;emails&#x2F;embed-subscribe&#x2F;news\" method=\"post\""), "{html}");
+        assert!(html.contains("<input type=\"email\" id=\"newsletter-email\" name=\"email\" required autocomplete=\"email\""), "{html}");
+        assert!(html.contains("<label for=\"newsletter-email\">E-Mail</label>"));
+        assert!(html.contains("name=\"embed\" value=\"1\""));
+        assert!(html.contains(">Abonnieren</button>"));
+        assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn test_newsletter_kit_args_are_escaped() {
+        let registry = test_registry();
+        let site = serde_json::json!({"newsletter": {
+            "provider": "kit",
+            "action": "https://app.kit.com/forms/123/subscriptions",
+            "email_field": "email_address"
+        }});
+        let input = format!(
+            "{{{{< newsletter(title={HOSTILE:?}, description=\"Weekly <b>\", button=\"Join\", id=\"nl-2\") >}}}}"
+        );
+        let html = registry
+            .expand(
+                &input,
+                &PathBuf::from("t.md"),
+                &serde_json::json!({}),
+                &site,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+        assert!(html.contains("name=\"email_address\""), "{html}");
+        assert!(html.contains("id=\"nl-2\""));
+        assert!(!html.contains("<script"), "{html}");
+        assert!(html.contains("Weekly &lt;b&gt;"));
+        assert!(html.contains(">Join</button>"));
+        assert!(!html.contains("name=\"embed\""));
+        assert!(
+            html.contains(">Email address</label>"),
+            "English fallback: {html}"
+        );
+    }
+
+    #[test]
+    fn test_config_warnings_for_missing_sections() {
+        let registry = test_registry();
+        let config: crate::config::SiteConfig = toml::from_str(
+            "[site]\ntitle = \"t\"\ndescription = \"\"\nbase_url = \"http://x\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nurl_prefix = \"/posts\"\nnested = false\ndefault_template = \"post.html\"\n",
+        )
+        .unwrap();
+        let input = "intro\n\n{{< comments() >}}\n\n```\n{{< newsletter() >}}\n```\n  {{< newsletter() >}}\n";
+        let warnings = registry.config_warnings(input, &PathBuf::from("t.md"), &config);
+        let found: Vec<_> = warnings
+            .iter()
+            .map(|d| (d.code, d.line, d.column))
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("comments-not-configured", Some(3), Some(1)),
+                ("newsletter-not-configured", Some(8), Some(3)),
+            ]
+        );
+        let mut configured = config.clone();
+        configured.comments = Some(crate::config::CommentsSection {
+            provider: crate::config::CommentsProvider::Utterances,
+            repo: "o/r".into(),
+            repo_id: None,
+            category: None,
+            category_id: None,
+            mapping: None,
+            reactions: None,
+            theme: None,
+            lang: None,
+            loading: None,
+            issue_term: None,
+            label: None,
+        });
+        let warnings = registry.config_warnings(input, &PathBuf::from("t.md"), &configured);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].code, "newsletter-not-configured");
+    }
+
+    #[test]
+    fn test_config_warnings_skip_user_override() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("comments.html"), "<div>mine</div>").unwrap();
+        let registry = ShortcodeRegistry::new(tmp.path()).unwrap();
+        let config: crate::config::SiteConfig = toml::from_str(
+            "[site]\ntitle = \"t\"\ndescription = \"\"\nbase_url = \"http://x\"\nlanguage = \"en\"\nauthor = \"\"\ncollections = []\n",
+        )
+        .unwrap_or_else(|_| {
+            let mut c: crate::config::SiteConfig = toml::from_str("[site]\ntitle = \"t\"\ndescription = \"\"\nbase_url = \"http://x\"\nlanguage = \"en\"\nauthor = \"\"\n[[collections]]\nname = \"p\"\nlabel = \"P\"\ndirectory = \"p\"\nhas_date = false\nhas_rss = false\nlisted = true\nurl_prefix = \"\"\nnested = false\ndefault_template = \"page.html\"\n").unwrap();
+            c.collections.clear();
+            c
+        });
+        assert!(registry
+            .config_warnings("{{< comments() >}}", &PathBuf::from("t.md"), &config)
+            .is_empty());
     }
 
     #[test]

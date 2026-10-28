@@ -137,11 +137,19 @@ pub fn parse_shortcodes_recovering(
                         fence_len = fl;
                         // Skip to end of line
                         pos = skip_to_eol(bytes, line_start);
+                        // The fence line's newline was consumed: count it.
+                        if bytes[pos - 1] == b'\n' {
+                            line += 1;
+                        }
                         continue;
                     }
                 } else if detect_fence_end(bytes, check_pos, fence_char, fence_len) {
                     in_fenced_code = false;
                     pos = skip_to_eol(bytes, line_start);
+                    // The fence line's newline was consumed: count it.
+                    if bytes[pos - 1] == b'\n' {
+                        line += 1;
+                    }
                     continue;
                 }
             }
@@ -177,6 +185,10 @@ pub fn parse_shortcodes_recovering(
                     fence_char = fc;
                     fence_len = fl;
                     pos = skip_to_eol(bytes, pos);
+                    // The fence line's newline was consumed: count it.
+                    if bytes[pos - 1] == b'\n' {
+                        line += 1;
+                    }
                     continue;
                 }
             }
@@ -191,6 +203,10 @@ pub fn parse_shortcodes_recovering(
                 fence_char = fc;
                 fence_len = fl;
                 pos = skip_to_eol(bytes, pos);
+                // The fence line's newline was consumed: count it.
+                if bytes[pos - 1] == b'\n' {
+                    line += 1;
+                }
                 continue;
             }
         }

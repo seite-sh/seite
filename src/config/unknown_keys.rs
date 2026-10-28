@@ -17,9 +17,9 @@ use serde::de::{self, DeserializeOwned, Visitor};
 use toml::de::{DeTable, DeValue};
 
 use super::{
-    AccessSection, AnalyticsSection, BuildSection, CheckSection, CollectionConfig, ContactSection,
-    DeploySection, ImageSection, LanguageConfig, OgSection, SiteConfig, SiteSection,
-    TailwindSection, TaxonomyConfig, TrustSection,
+    AccessSection, AnalyticsSection, BuildSection, CheckSection, CollectionConfig, CommentsSection,
+    ContactSection, DeploySection, ImageSection, LanguageConfig, NewsletterSection, OgSection,
+    SiteConfig, SiteSection, TailwindSection, TaxonomyConfig, TrustSection,
 };
 use crate::content::schema::FieldSchema;
 use crate::diagnostics::{did_you_mean, line_col_at, Diagnostic};
@@ -49,6 +49,8 @@ fn schema_for_root() -> Schema {
         "analytics" => Schema::Struct(fields_of::<AnalyticsSection>(), |_| Schema::Any),
         "trust" => Schema::Struct(fields_of::<TrustSection>(), |_| Schema::Any),
         "contact" => Schema::Struct(fields_of::<ContactSection>(), |_| Schema::Any),
+        "comments" => Schema::Struct(fields_of::<CommentsSection>(), |_| Schema::Any),
+        "newsletter" => Schema::Struct(fields_of::<NewsletterSection>(), |_| Schema::Any),
         "access" => Schema::Struct(fields_of::<AccessSection>(), |_| Schema::Any),
         "check" => Schema::Struct(fields_of::<CheckSection>(), |_| Schema::Any),
         "og" => Schema::Struct(fields_of::<OgSection>(), |_| Schema::Any),

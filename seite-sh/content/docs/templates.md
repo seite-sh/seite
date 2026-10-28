@@ -285,7 +285,7 @@ All bundled themes render `data.nav` and `data.footer` automatically when presen
 
 ## seite partials
 
-seite ships five partials under the reserved `seite/` template namespace. Every bundled theme includes them, and so should yours:
+seite ships seven partials under the reserved `seite/` template namespace. Every bundled theme includes the first five, and so should yours; the last two are opt-in:
 
 | Partial | Include it | What it renders |
 |---------|------------|-----------------|
@@ -294,6 +294,8 @@ seite ships five partials under the reserved `seite/` template namespace. Every 
 | `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, the full-text search client; see [Search](#search)) |
 | `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |
 | `seite/lang-switcher.html` | where the language links go | links to the page's translations; renders nothing on single-language pages |
+| `seite/comments.html` | optional, e.g. at the end of `post.html` | the `[comments]` embed (giscus/utterances, settings in `site.comments`); renders nothing without `[comments]`. Same output as `{{< comments() >}}` |
+| `seite/newsletter.html` | optional, anywhere | the `[newsletter]` subscribe form (settings in `site.newsletter`); renders nothing without `[newsletter]`. Same output as `{{< newsletter() >}}` |
 
 The partials escape what they print: attribute values go through the `escape_attr` filter (`"`, `<`, `>` and a bare `&` become entities) and JSON-LD values through `json_script` (JSON with every `<` written as `\u003c`). Both filters are available to your own templates.
 

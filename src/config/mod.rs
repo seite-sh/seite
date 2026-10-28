@@ -1,5 +1,8 @@
 pub mod defaults;
+pub mod embeds;
 pub mod unknown_keys;
+
+pub use embeds::{CommentsProvider, CommentsSection, NewsletterProvider, NewsletterSection};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,14 @@ pub struct SiteConfig {
     pub trust: Option<TrustSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contact: Option<ContactSection>,
+    /// `[comments]`: giscus/utterances embed (`comments()` shortcode,
+    /// `seite/comments.html` partial). See `embeds`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments: Option<CommentsSection>,
+    /// `[newsletter]`: Buttondown/Kit subscribe form (`newsletter()`
+    /// shortcode, `seite/newsletter.html` partial). See `embeds`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newsletter: Option<NewsletterSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessSection>,
     /// `[[taxonomies]]`: term groupings beyond the implicit `tags` (e.g.
@@ -933,7 +944,8 @@ impl SiteConfig {
             .err()
             .map(|message| (message, "timezone".to_string()))
             .or_else(|| crate::content::schema::validate_config(self).err())
-            .or_else(|| crate::build::tailwind::validate_config(self).err());
+            .or_else(|| crate::build::tailwind::validate_config(self).err())
+            .or_else(|| embeds::validate_config(self).err());
         let Some((message, key)) = problem else {
             return Ok(());
         };
@@ -1243,6 +1255,8 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
             taxonomies: Vec::new(),
             check: None,

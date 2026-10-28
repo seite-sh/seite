@@ -28,6 +28,7 @@ Run `seite <command> --help` for quick inline help on any command.
 | `deploy`| Deploy to hosting platforms |
 | `collection` | Add or list collections |
 | `contact` | Set up contact forms |
+| `cms` | Set up a free Git-based CMS (`seite cms setup pages-cms\|decap`) |
 | `access` | Manage Cloudflare Pages password groups |
 | `skill` | Manage skill packs |
 | `workspace` | Manage multi-site workspaces |

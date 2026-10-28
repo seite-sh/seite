@@ -295,7 +295,7 @@ fn render_body(
         path: &file.abs,
         body,
         body_line,
-        page: &build::shortcode_page_context(fm, slug, &file.collection.name),
+        page: &build::shortcode_page_context(fm, slug, &file.collection.name, lang),
     };
     build::render_item_body(
         config,
