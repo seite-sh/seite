@@ -1,6 +1,6 @@
 {
   "name": "seite",
-  "version": "0.20.2",
+  "version": "0.21.0",
   "description": "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI (https://seite.sh).",
   "author": {
     "name": "seite",

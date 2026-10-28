@@ -320,7 +320,7 @@ fn test_build_no_new_output_without_new_config() {
         "posts/index.md",
         "robots.txt",
         "search-index.json",
-        // Every site gets `sitemap.md` (0.20.2), with or without new config.
+        // Every site gets `sitemap.md` (0.21.0), with or without new config.
         "sitemap.md",
         "sitemap.xml",
         "tags/alpha/index.html",

@@ -1440,7 +1440,7 @@ fn apply_plan_inner(
             None => Act::Write,
             Some(d) if sha256_hex(d) == new_hash => Act::Adopt,
             Some(_) if item.keep_existing => Act::Keep { modified: false },
-            // No recorded hash (pre-0.20.2 install): cannot tell an edit from
+            // No recorded hash (pre-0.21 install): cannot tell an edit from
             // an old release, so a differing file is kept.
             Some(d) if tracked => match &prev_hash {
                 Some(h) if *h == sha256_hex(d) => Act::Write,
@@ -1519,7 +1519,7 @@ fn owned_paths(pack: &SkillPack) -> BTreeSet<String> {
 ///
 /// Deletes regular files only (never a directory or symlink, so a crafted
 /// manifest cannot wipe `.git` or `content/`), and only paths in `owned`.
-/// Entries without a recorded hash (installed before 0.20.2) are removed
+/// Entries without a recorded hash (installed before 0.21) are removed
 /// when `legacy_ok`, except `context/` templates, which are the user's.
 fn remove_if_unmodified(
     root: &Path,
@@ -1984,7 +1984,11 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Check if it's a custom skill
+    // Check if it's a custom skill (a plain directory name under
+    // .claude/skills/, never a path or a symlink)
+    if !is_plain_name(name) {
+        anyhow::bail!("'{}' is not a skill name", name);
+    }
     let skill_dir = root.join(".claude").join("skills").join(name);
     if fs::symlink_metadata(&skill_dir).is_ok() {
         crate::safe_fs::remove(root, &skill_dir)?;
@@ -1996,6 +2000,15 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         "no skill or pack named '{}' is installed",
         name
     ))
+}
+
+/// A single path component: no separators, no `.`/`..`, not empty.
+fn is_plain_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains(['/', '\\'])
+        && !name.contains('\0')
 }
 
 // ---------------------------------------------------------------------------
@@ -2515,6 +2528,17 @@ mod tests {
     #[test]
     fn test_remove_pack_cleans_files_and_manifest() {
         let tmp = tempfile::TempDir::new().unwrap();
+        let pack = find_pack("seomachine").unwrap();
+        let owned = owned_paths(pack);
+        let pick = |prefix: &str| {
+            owned
+                .iter()
+                .find(|p| p.starts_with(prefix))
+                .unwrap()
+                .clone()
+        };
+        let agent = pick(".claude/agents/");
+        let command = pick(".claude/commands/");
 
         fs::write(
             tmp.path().join("AGENTS.md"),
@@ -2523,28 +2547,20 @@ mod tests {
             ),
         )
         .unwrap();
+        for file in [&agent, &command] {
+            let path = tmp.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, "# pack file").unwrap();
+        }
 
-        // Create a fake installed pack with a few files
-        let agent_dir = tmp.path().join(".claude").join("agents");
-        fs::create_dir_all(&agent_dir).unwrap();
-        fs::write(agent_dir.join("editor.md"), "# Agent").unwrap();
-
-        let cmd_dir = tmp.path().join(".claude").join("commands");
-        fs::create_dir_all(&cmd_dir).unwrap();
-        fs::write(cmd_dir.join("write.md"), "# Command").unwrap();
-
-        // Write manifest
         let mut manifest = SkillPacksManifest::default();
         manifest.packs.insert(
             "seomachine".to_string(),
             PackEntry {
-                source: "github:user/repo".to_string(),
+                source: "github:TheCraigHewitt/seomachine".to_string(),
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
-                files: vec![
-                    ".claude/agents/editor.md".to_string(),
-                    ".claude/commands/write.md".to_string(),
-                ],
+                files: vec![agent.clone(), command.clone()],
                 ..Default::default()
             },
         );
@@ -2553,8 +2569,8 @@ mod tests {
         let result = remove_from(tmp.path(), "seomachine");
 
         assert!(result.is_ok());
-        assert!(!agent_dir.join("editor.md").exists());
-        assert!(!cmd_dir.join("write.md").exists());
+        assert!(!tmp.path().join(&agent).exists());
+        assert!(!tmp.path().join(&command).exists());
 
         // Manifest should no longer have the pack
         let updated = load_manifest(tmp.path());
@@ -2563,6 +2579,131 @@ mod tests {
         let instructions = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(instructions.contains("# Project"));
         assert!(!instructions.contains("SEOMachine Integration"));
+    }
+
+    /// The manifest is part of the project, so a cloned repository can list
+    /// any path in it: remove must delete only files the pack installs.
+    #[test]
+    fn test_remove_pack_ignores_paths_the_pack_does_not_install() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        fs::create_dir_all(site.join("content/posts")).unwrap();
+        fs::create_dir_all(site.join("context")).unwrap();
+        fs::write(site.join("seite.toml"), "[site]\n").unwrap();
+        fs::write(site.join(".env"), "SECRET=1\n").unwrap();
+        fs::write(site.join("content/posts/a.md"), "# a").unwrap();
+        let context = "context/brand-voice.md".to_string();
+        fs::write(site.join(&context), "filled in by the user").unwrap();
+        fs::write(tmp.path().join("outside.txt"), "outside").unwrap();
+        let absolute = tmp.path().join("outside.txt").display().to_string();
+
+        let mut manifest = SkillPacksManifest::default();
+        let files = [
+            "seite.toml",
+            ".env",
+            "content/posts/a.md",
+            "content",
+            "../outside.txt",
+            absolute.as_str(),
+            context.as_str(),
+            ".claude/agents/../../seite.toml",
+        ];
+        for name in ["seomachine", "unknown-pack"] {
+            manifest.packs.insert(
+                name.to_string(),
+                PackEntry {
+                    source: "github:x/y".to_string(),
+                    branch: "main".to_string(),
+                    installed_at: "2026-01-01T00:00:00Z".to_string(),
+                    files: files.iter().map(|f| f.to_string()).collect(),
+                    ..Default::default()
+                },
+            );
+        }
+        save_manifest(&site, &manifest).unwrap();
+
+        remove_from(&site, "seomachine").unwrap();
+        remove_from(&site, "unknown-pack").unwrap();
+
+        assert!(site.join("seite.toml").exists());
+        assert!(site.join(".env").exists());
+        assert!(site.join("content/posts/a.md").exists());
+        assert!(site.join(&context).exists());
+        assert!(tmp.path().join("outside.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_remove_pack_refuses_pack_paths_behind_a_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(site.join(".claude")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let pack = find_pack("seomachine").unwrap();
+        let agent = owned_paths(pack)
+            .into_iter()
+            .find(|p| p.starts_with(".claude/agents/"))
+            .unwrap();
+        let name = agent.trim_start_matches(".claude/agents/").to_string();
+        fs::write(outside.join(&name), "not the pack's").unwrap();
+        symlink(&outside, site.join(".claude/agents")).unwrap();
+
+        let mut manifest = SkillPacksManifest::default();
+        manifest.packs.insert(
+            "seomachine".to_string(),
+            PackEntry {
+                source: "github:x/y".to_string(),
+                branch: "main".to_string(),
+                installed_at: "2026-01-01T00:00:00Z".to_string(),
+                files: vec![agent.clone()],
+                ..Default::default()
+            },
+        );
+        save_manifest(&site, &manifest).unwrap();
+
+        let err = remove_from(&site, "seomachine").unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"), "{err:#}");
+        assert!(outside.join(&name).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_install_writes_refuse_symlinked_targets() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(site.join(".claude")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let victim = outside.join("rc");
+        fs::write(&victim, "keep me").unwrap();
+
+        // A manifest symlinked to a file outside the project is never written.
+        symlink(&victim, site.join(".claude/.seite-skill-packs.json")).unwrap();
+        assert!(save_manifest(&site, &SkillPacksManifest::default()).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+
+        // Neither is anything under a symlinked install directory.
+        symlink(&outside, site.join("context")).unwrap();
+        let links_map = site.join("context").join("internal-links-map.md");
+        assert!(crate::safe_fs::write(&site, &links_map, "x").is_err());
+        assert!(!outside.join("internal-links-map.md").exists());
+    }
+
+    #[test]
+    fn test_remove_custom_skill_rejects_paths() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        fs::create_dir_all(site.join(".claude/skills")).unwrap();
+        fs::create_dir_all(site.join("content")).unwrap();
+        for name in ["../../content", "..", "a/b", ""] {
+            assert!(remove_from(&site, name).is_err(), "{name:?}");
+        }
+        assert!(site.join("content").exists());
     }
 
     #[cfg(unix)]

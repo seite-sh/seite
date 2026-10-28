@@ -278,7 +278,7 @@ pub fn error_sections() -> Vec<(&'static str, &'static str)> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseNote {
     pub version: (u64, u64, u64),
-    /// The entry's heading, e.g. `v0.20.2`.
+    /// The entry's heading, e.g. `v0.21.0`.
     pub title: String,
     /// The entry's body (its own `##` headings included), trimmed.
     pub body: String,
