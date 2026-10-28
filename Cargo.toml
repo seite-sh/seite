@@ -113,6 +113,10 @@ skrifa = { version = "0.44", default-features = false, features = ["std"] }
 htmd = "0.5"
 # `seite import`: resolve/compare export URLs (already compiled in through ureq)
 url = "2"
+# `seite import`: the parsed DOM (html5ever, via htmd) that kept HTML is
+# rebuilt from through an allow-list (MIT/Apache-2.0; already compiled in
+# through htmd. ammonia would need MPL-2.0 cssparser, not in deny.toml)
+markup5ever_rcdom = "0.38"
 
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]

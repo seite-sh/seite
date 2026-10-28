@@ -461,10 +461,10 @@ fn convert_body(html: &str, first_line: usize, item: &Item, warnings: &mut Vec<W
     let html = if is_blocks { html } else { autop(&html) };
     let mut notes = Vec::new();
     let html = convert::prepare_html(&html, &mut tokens, &mut notes);
+    let md = convert::markdown_from_html(&html, &mut notes);
     for note in notes {
         warnings.push(Warning::for_item(item, None, "untrusted-html", note));
     }
-    let md = convert::html_to_markdown(&html);
     let md = convert::neutralize_shortcode_delimiters(&md);
     tokens.restore(&md)
 }

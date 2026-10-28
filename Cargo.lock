@@ -2722,6 +2722,7 @@ dependencies = [
  "indicatif",
  "jsonschema",
  "katex-rs",
+ "markup5ever_rcdom",
  "notify",
  "open",
  "predicates",
