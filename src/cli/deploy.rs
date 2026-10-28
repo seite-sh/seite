@@ -603,8 +603,15 @@ fn run_setup(
             for line in deploy::fail_closed_manual_instructions(&projects) {
                 human::info(&format!("  {line}"));
             }
-        } else {
-            deploy::ensure_fail_closed(&projects);
+        }
+        // Setup files written above (such as a GitHub Actions workflow) upload
+        // with wrangler directly and never run the pre-flight check, so a
+        // project that may fail open must fail setup, not just warn.
+        if projects.is_empty() || !deploy::ensure_fail_closed(&projects) {
+            return Err(PageError::Deploy(
+                "password-protected Cloudflare Pages projects are not confirmed to fail closed. Files created above (such as .github/workflows/deploy.yml) would upload protected content to a project that may fail open. Set Fail closed as shown above, then re-run `seite deploy --setup`".into(),
+            )
+            .into());
         }
     }
 

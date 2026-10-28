@@ -503,9 +503,11 @@ fn generate_internal_links_map(root: &Path) -> anyhow::Result<String> {
     Ok(map)
 }
 
-/// Collection index files (`index.md`) are listing pages, not linkable articles.
+/// The build renders an item whose slug is exactly `index` as the homepage or
+/// its collection's index page instead of a standalone page, so it has no URL
+/// of its own. Nested `section/index` items are ordinary pages.
 fn is_index_slug(slug: &str) -> bool {
-    slug == "index" || slug.ends_with("/index")
+    slug == "index"
 }
 
 /// Write `context/internal-links-map.md`. Refuses to write through a symlink.
@@ -1568,8 +1570,27 @@ private = true
             "---\ntitle: Setup Guide\n---\n",
         );
         write_content(tmp.path(), "pages/index.md", "---\ntitle: Home\n---\n");
+        // Like the build: only a slug of exactly `index` is an index page.
+        write_content(
+            tmp.path(),
+            "docs/guides/index.md",
+            "---\ntitle: Guides Overview\n---\n",
+        );
+        write_content(
+            tmp.path(),
+            "docs/index.md",
+            "---\ntitle: Welcome\nslug: welcome\n---\n",
+        );
+        write_content(
+            tmp.path(),
+            "docs/start.md",
+            "---\ntitle: Docs Landing\nslug: index\n---\n",
+        );
         let map = generate_internal_links_map(tmp.path()).unwrap();
         assert!(map.contains("- [Setup Guide](/docs/guides/setup)"));
+        assert!(map.contains("- [Guides Overview](/docs/guides/index)"));
+        assert!(map.contains("- [Welcome](/docs/welcome)"));
+        assert!(!map.contains("Docs Landing"));
         assert!(!map.contains("Home"));
         // Collections with no linkable content get no section.
         assert!(!map.contains("## pages"));

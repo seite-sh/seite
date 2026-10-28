@@ -208,7 +208,12 @@ fn set_password(
     }
     // A fail-open project serves the protected static files without the
     // Worker once the free Workers request quota is exhausted.
-    crate::deploy::ensure_fail_closed(&group.projects);
+    if !crate::deploy::ensure_fail_closed(&group.projects) {
+        anyhow::bail!(
+            "the password for '{}' was stored, but not every Pages project is confirmed to fail closed. Set Fail closed as shown above, then re-run `seite access set-password` or `seite deploy`",
+            group.name
+        );
+    }
     human::info(
         "Deploy this commit from the Cloudflare Pages project's production branch to activate production (seite-created projects use `main`). Run `seite deploy --preview` to activate preview. Existing deployments keep their current password and sessions until redeployed.",
     );
