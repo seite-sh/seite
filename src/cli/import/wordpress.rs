@@ -544,7 +544,7 @@ fn shortcodes(
             continue;
         }
         out.push_str(&html[last..whole.start()]);
-        out.push_str(&tokens.push(whole.as_str().to_string()));
+        out.push_str(&tokens.push_untrusted(whole.as_str()));
         last = whole.end();
         if !closing {
             let what = if name == "gallery" {
@@ -654,6 +654,30 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].code, "wp-shortcode");
         assert_eq!(warnings[0].source, "export.xml:29");
+    }
+
+    #[test]
+    fn test_convert_body_hostile_content_cannot_inject_shortcodes() {
+        let html = r#"[caption]<img src="https://ex.com/a.jpg" alt="{{< contact_form() >}}" /> {{% contact_form() %}} x >}}[/caption]
+
+<iframe src="https://evil.example/?q={{< contact_form() >}}"></iframe>
+
+<video src="v.mp4">{{< contact_form() >}}</video>
+
+[foo x="{{< contact_form() >}}"]
+
+<p>Plain {{< contact_form() >}} text</p>
+
+<pre><code>{{< contact_form() >}}</code></pre>"#;
+        let mut warnings = Vec::new();
+        let md = convert_body(html, 1, &item(), &mut warnings);
+        let (calls, errors) = crate::shortcodes::parser::parse_shortcodes_recovering(
+            &md,
+            std::path::Path::new("x.md"),
+        );
+        assert!(errors.is_empty(), "{errors:?}\n{md}");
+        let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["figure"], "{md}");
     }
 
     #[test]

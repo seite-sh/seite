@@ -233,6 +233,65 @@ fn test_import_wordpress_end_to_end() {
     assert!(site.join("dist/company/team.html").exists());
 }
 
+/// An export that claims a private address as its own site gets no
+/// automatic download permission; naming the host on the command line does.
+#[test]
+fn test_import_refuses_private_site_host_unless_allowed() {
+    let host = image_server();
+    let tmp = TempDir::new().unwrap();
+    let text = fs::read_to_string(fixture("wordpress.xml"))
+        .unwrap()
+        .replace("https://blog.example.com", &format!("http://{host}"))
+        .replace("__IMG__", &format!("http://{host}"));
+    let export = tmp.path().join("private.xml");
+    fs::write(&export, text).unwrap();
+
+    let site = new_site(&tmp);
+    let (ok, doc) = run_json(&site, &["import", "wordpress", export.to_str().unwrap()]);
+    assert!(ok, "{doc:#}");
+    assert_eq!(doc["data"]["images"]["downloaded"], 0, "{doc:#}");
+    assert!(
+        warning_codes(&doc)
+            .iter()
+            .any(|w| w.contains("private/internal address")),
+        "{doc:#}"
+    );
+    assert!(!site.join("static/images/imported").exists());
+
+    let tmp2 = TempDir::new().unwrap();
+    let site2 = new_site(&tmp2);
+    let (ok, doc) = run_json(
+        &site2,
+        &[
+            "import",
+            "wordpress",
+            export.to_str().unwrap(),
+            "--allow-host",
+            &host,
+        ],
+    );
+    assert!(ok, "{doc:#}");
+    assert_eq!(doc["data"]["images"]["downloaded"], 2, "{doc:#}");
+}
+
+#[test]
+fn test_import_hugo_refuses_content_dir_outside_the_source() {
+    let tmp = TempDir::new().unwrap();
+    let site = new_site(&tmp);
+    let src = tmp.path().join("hugo");
+    copy_dir(&fixture("hugo"), &src);
+    fs::write(src.join("hugo.toml"), "contentDir = \"../site/content\"\n").unwrap();
+    let (ok, doc) = run_json(&site, &["import", "hugo", src.to_str().unwrap()]);
+    assert!(!ok);
+    assert!(
+        doc["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("outside the site directory"),
+        "{doc:#}"
+    );
+}
+
 #[test]
 fn test_import_avoids_urls_of_existing_content() {
     let tmp = TempDir::new().unwrap();

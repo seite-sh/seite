@@ -6,7 +6,12 @@
 //! Downloads: http/https only; the host (with port) must be the export's own
 //! site or an `--allow-host`; redirects are followed by hand (max 5) and
 //! each hop must pass the same host check; `Content-Type: image/*`; 20 MB per
-//! file and a total budget; 30 s per request. Local copies must resolve
+//! file and a total budget; 30 s per request. The export names its own site
+//! (untrusted), so a host that was not given on the command line
+//! (`--allow-host`, `--site-url`) must resolve only to public addresses —
+//! never loopback, private, link-local (cloud metadata), CGNAT, ULA or
+//! multicast — checked before every request, redirect hops included.
+//! Local copies must resolve
 //! (symlinks included) inside the source directory. Identical bytes are
 //! stored once (SHA-256); names come from the source file name, `-2`, `-3`
 //! on clashes, in processing order, so repeated imports name files alike.
@@ -34,6 +39,8 @@ pub(crate) struct Options {
     pub site_root: PathBuf,
     pub static_dir: PathBuf,
     pub site_url: Option<url::Url>,
+    /// `--site-url`: the user named this host, so it may be private.
+    pub explicit_site_url: Option<url::Url>,
     pub allow_hosts: Vec<String>,
     pub local_roots: Vec<PathBuf>,
     pub confine_root: Option<PathBuf>,
@@ -76,6 +83,8 @@ enum Target {
 struct HostSpec {
     host: String,
     port: Option<u16>,
+    /// Given on the command line (may be a private address).
+    explicit: bool,
 }
 
 impl HostSpec {
@@ -89,13 +98,15 @@ impl HostSpec {
         Some(Self {
             host: parsed.host_str()?.to_ascii_lowercase(),
             port: parsed.port(),
+            explicit: true,
         })
     }
 
-    fn from_url(u: &url::Url) -> Option<Self> {
+    fn from_url(u: &url::Url, explicit: bool) -> Option<Self> {
         Some(Self {
             host: u.host_str()?.to_ascii_lowercase(),
             port: u.port(),
+            explicit,
         })
     }
 
@@ -124,7 +135,18 @@ pub(crate) struct Images {
 impl Images {
     pub(crate) fn new(opts: Options) -> anyhow::Result<Self> {
         let mut allowed = Vec::new();
-        if let Some(spec) = opts.site_url.as_ref().and_then(HostSpec::from_url) {
+        if let Some(spec) = opts
+            .explicit_site_url
+            .as_ref()
+            .and_then(|u| HostSpec::from_url(u, true))
+        {
+            allowed.push(spec);
+        }
+        if let Some(spec) = opts
+            .site_url
+            .as_ref()
+            .and_then(|u| HostSpec::from_url(u, false))
+        {
             allowed.push(spec);
         }
         for h in &opts.allow_hosts {
@@ -378,7 +400,7 @@ impl Images {
                 .opts
                 .site_url
                 .as_ref()
-                .and_then(HostSpec::from_url)
+                .and_then(|u| HostSpec::from_url(u, false))
                 .is_some_and(|s| s.matches(&u));
             if local && on_site {
                 // The old site's own URL for a file that is in the source.
@@ -483,6 +505,13 @@ impl Images {
                     "redirected to {}, which is not an allowed host",
                     host_port(&current)
                 ));
+            }
+            let explicit = self
+                .allowed
+                .iter()
+                .any(|h| h.explicit && h.matches(&current));
+            if !explicit {
+                ensure_public(&current)?;
             }
             let response = self
                 .agent
@@ -617,6 +646,67 @@ impl Images {
     }
 }
 
+/// Refuse a URL whose host is, or resolves to, a non-public address.
+fn ensure_public(u: &url::Url) -> Result<(), String> {
+    use std::net::ToSocketAddrs;
+    let refuse = |ip: std::net::IpAddr| {
+        format!(
+            "{} is a private/internal address ({ip}); pass --allow-host {} to download from it",
+            host_port(u),
+            host_port(u)
+        )
+    };
+    let port = u.port_or_known_default().unwrap_or(80);
+    let addrs: Vec<std::net::IpAddr> = match u.host() {
+        Some(url::Host::Ipv4(ip)) => vec![ip.into()],
+        Some(url::Host::Ipv6(ip)) => vec![ip.into()],
+        Some(url::Host::Domain(d)) => (d, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("cannot resolve {d}: {e}"))?
+            .map(|a| a.ip())
+            .collect(),
+        None => return Err("URL has no host".into()),
+    };
+    match addrs.into_iter().find(|ip| !is_public_ip(*ip)) {
+        Some(ip) => Err(refuse(ip)),
+        None => Ok(()),
+    }
+}
+
+/// Globally routable unicast (not loopback, private, link-local, CGNAT,
+/// ULA, multicast, unspecified, documentation or benchmarking ranges).
+fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let o = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_documentation()
+                || o[0] == 0
+                || (o[0] == 100 && (64..128).contains(&o[1]))
+                || (o[0] == 198 && (o[1] == 18 || o[1] == 19))
+                || o[0] >= 240)
+        }
+        std::net::IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(v4.into());
+            }
+            let seg = v6.segments();
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (seg[0] & 0xfe00) == 0xfc00
+                || (seg[0] & 0xffc0) == 0xfe80
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)
+                || (seg[0] == 0x64 && seg[1] == 0xff9b))
+        }
+    }
+}
+
 fn host_port(u: &url::Url) -> String {
     match (u.host_str(), u.port()) {
         (Some(h), Some(p)) => format!("{h}:{p}"),
@@ -705,6 +795,31 @@ mod tests {
         assert_eq!(safe_name("My%20Photo.JPG", None), "my-photo.jpg");
         assert_eq!(safe_name("download", Some("png")), "download.png");
         assert_eq!(safe_name("..", None), "image");
+    }
+
+    #[test]
+    fn test_is_public_ip() {
+        let public = |s: &str| is_public_ip(s.parse().unwrap());
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "::1",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+            "224.0.0.1",
+        ] {
+            assert!(!public(private), "{private}");
+        }
+        assert!(public("93.184.216.34"));
+        assert!(public("2606:4700::1111"));
+        let u = url::Url::parse("http://169.254.169.254/latest/meta-data").unwrap();
+        assert!(ensure_public(&u).unwrap_err().contains("private/internal"));
     }
 
     #[test]

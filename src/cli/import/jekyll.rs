@@ -404,7 +404,7 @@ fn liquid(body: &str, first_line: usize, item: &mut Item, warnings: &mut Vec<War
     let converted = RAW.replace_all(body, |c: &regex::Captures| tokens.push(c[1].to_string()));
     let converted = HIGHLIGHT.replace_all(&converted, |c: &regex::Captures| {
         let code = c[2].trim_end_matches(['\n', '\r']);
-        tokens.push(format!("```{}\n{code}\n```", &c[1]))
+        tokens.push(convert::code_fence(&c[1], code))
     });
     let converted = resolve_baseurl(&converted);
     let mut out = String::with_capacity(converted.len());

@@ -49,8 +49,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         );
     }
     let (config, _config_name) = read_config(dir, &ctx.display)?;
-    let content_dir =
-        dir.join(json_str(config.get("contentDir")).unwrap_or_else(|| "content".into()));
+    let content_dir = confined_subdir(dir, &config, "contentDir", "content", &ctx.display)?;
     if !content_dir.is_dir() {
         bail!(
             "{} has no content directory ({}): is it a Hugo site?",
@@ -58,7 +57,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             content_dir.display()
         );
     }
-    let static_dir = dir.join(json_str(config.get("staticDir")).unwrap_or_else(|| "static".into()));
+    let static_dir = confined_subdir(dir, &config, "staticDir", "static", &ctx.display)?;
     let permalinks = permalink_patterns(&config);
     let site_url = ctx.site_url.clone().or_else(|| {
         json_str(config.get("baseURL").or_else(|| config.get("baseurl")))
@@ -330,6 +329,39 @@ fn skipped(id: &str, source: &str, kind: Option<Kind>, title: &str, reason: Stri
     }
 }
 
+/// A directory named by the (untrusted) Hugo config, kept inside the source:
+/// relative, no `..`, and (when it exists) its real path under the source's.
+fn confined_subdir(
+    dir: &Path,
+    config: &Value,
+    key: &str,
+    default: &str,
+    display: &str,
+) -> anyhow::Result<PathBuf> {
+    let value = json_str(config.get(key)).unwrap_or_else(|| default.to_string());
+    let rel = Path::new(&value);
+    let escapes = rel.is_absolute()
+        || rel.components().any(|c| {
+            !matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        });
+    if escapes {
+        bail!("{display}: `{key} = \"{value}\"` points outside the site directory; refusing to read it");
+    }
+    let path = dir.join(rel);
+    if path.exists() {
+        let root = std::fs::canonicalize(dir)?;
+        let real = std::fs::canonicalize(&path)?;
+        if !real.starts_with(&root) {
+            bail!("{display}: `{key}` ({value}) resolves outside the site directory (symlink?); refusing to read it");
+        }
+        return Ok(path);
+    }
+    Ok(path)
+}
+
 /// The site config as JSON (empty when there is none).
 fn read_config(dir: &Path, display: &str) -> anyhow::Result<(Value, Option<String>)> {
     for name in CONFIG_NAMES {
@@ -475,6 +507,7 @@ fn shortcodes(
         .captures_iter(body)
         .filter(|c| !in_fence(c.get(0).expect("m").start()))
         .collect();
+    let mut tokens = convert::Tokens::default();
     let mut out = String::with_capacity(body.len());
     let mut last = 0;
     let mut i = 0;
@@ -503,7 +536,7 @@ fn shortcodes(
             // `{{</* x */>}}` shows a shortcode literally.
             let shown = whole.as_str().replace("/*", "").replace("*/", "");
             let shown = shown.split_whitespace().collect::<Vec<_>>().join(" ");
-            out.push_str(&inline_code(&shown));
+            out.push_str(&tokens.push(inline_code(&shown)));
             continue;
         }
         let converted = match (closing, name.as_str()) {
@@ -548,7 +581,14 @@ fn shortcodes(
                     original: whole.as_str().to_string(),
                     line: line_at(whole.start()),
                 });
-                Some(format!("{token}{anchor}"))
+                Some(format!(
+                    "{token}{}",
+                    anchor.replace(
+                        |c: char| !(c.is_ascii_alphanumeric()
+                            || matches!(c, '#' | '-' | '_' | '.')),
+                        ""
+                    )
+                ))
             }
             (false, "highlight") => {
                 // Body runs to the matching `{{< /highlight >}}`.
@@ -563,7 +603,7 @@ fn shortcodes(
                         let lang = positional.first().cloned().unwrap_or_default();
                         last = close_match.end();
                         i += offset + 1;
-                        Some(format!("```{lang}\n{code}\n```"))
+                        Some(convert::code_fence(&lang, code))
                     }
                     None => None,
                 }
@@ -571,9 +611,9 @@ fn shortcodes(
             _ => None,
         };
         match converted {
-            Some(text) => out.push_str(&text),
+            Some(text) => out.push_str(&tokens.push(text)),
             None => {
-                out.push_str(&inline_code(whole.as_str()));
+                out.push_str(&tokens.push(inline_code(whole.as_str())));
                 if !closing {
                     warnings.push(Warning::for_item(
                         item,
@@ -588,9 +628,9 @@ fn shortcodes(
         }
     }
     out.push_str(&body[last..]);
-    // `{{<` anywhere else (inside inline code we just wrote it is skipped by
-    // seite's parser) stays visible but inert.
-    out
+    // Any other `{{<` / `{{%` (malformed tags, text) is escaped; only the
+    // generated shortcodes and code spans/fences (tokens) keep delimiters.
+    tokens.restore(&convert::neutralize_shortcode_delimiters(&out))
 }
 
 /// `text` as an inline code span (backtick fence longer than any run inside).
@@ -646,6 +686,41 @@ mod tests {
             crate::shortcodes::parser::parse_shortcodes_recovering(&out, Path::new("x.md"));
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(calls.len(), 4);
+    }
+
+    #[test]
+    fn test_hugo_hostile_content_stays_inert() {
+        let mut item = Item::default();
+        let mut warnings = Vec::new();
+        let body = "{{< highlight md >}}\n```\n{{< contact_form() >}}\n```\n{{< /highlight >}}\n\nText {{< contact_form() and an unclosed {{% tag\n\n{{< figure src=\"a.png\" caption=\"{{< contact_form() >}}\" >}}\n";
+        let out = shortcodes(body, 1, &mut item, &mut warnings);
+        assert!(out.starts_with("````md\n```\n"), "{out}");
+        let (calls, errors) =
+            crate::shortcodes::parser::parse_shortcodes_recovering(&out, Path::new("x.md"));
+        assert!(errors.is_empty(), "{errors:?}\n{out}");
+        let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
+        assert!(!names.contains(&"contact_form"), "{out}");
+    }
+
+    #[test]
+    fn test_confined_subdir_rejects_escapes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        for bad in ["../outside", "/etc", "content/../../x"] {
+            let config = serde_json::json!({ "contentDir": bad });
+            assert!(
+                confined_subdir(tmp.path(), &config, "contentDir", "content", "site").is_err(),
+                "{bad}"
+            );
+        }
+        let config = serde_json::json!({});
+        assert!(confined_subdir(tmp.path(), &config, "contentDir", "content", "site").is_ok());
+        #[cfg(unix)]
+        {
+            let outside = tempfile::TempDir::new().unwrap();
+            std::os::unix::fs::symlink(outside.path(), tmp.path().join("linked")).unwrap();
+            let config = serde_json::json!({ "contentDir": "linked" });
+            assert!(confined_subdir(tmp.path(), &config, "contentDir", "content", "site").is_err());
+        }
     }
 
     #[test]

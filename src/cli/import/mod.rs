@@ -6,7 +6,7 @@
 //!
 //! - **Parse → plan → localize images → write.** Each source module
 //!   (`wordpress`, `ghost`, `jekyll`, `hugo`) only turns its input into
-//!   [`Item`]s (Markdown body, mapped frontmatter, old URLs) plus skipped
+//!   `Item`s (Markdown body, mapped frontmatter, old URLs) plus skipped
 //!   entries and warnings. Everything else is shared here: target collection,
 //!   slugs and filenames, aliases, cross-references, images, frontmatter,
 //!   schema validation, writing, and the report.
@@ -623,6 +623,10 @@ fn import(
         site_root: root.to_path_buf(),
         static_dir: paths.static_dir.clone(),
         site_url: site_url.clone(),
+        explicit_site_url: args
+            .site_url
+            .as_deref()
+            .and_then(|u| url::Url::parse(u).ok()),
         allow_hosts: args.allow_host.clone(),
         local_roots,
         confine_root,

@@ -6,6 +6,11 @@
 //! `{{< figure(...) >}}`, a WordPress `[gallery]` left for the user, a raw
 //! `<video>`) is swapped for an alphanumeric token first (`htmd` escapes
 //! Markdown punctuation but never letters/digits) and restored afterwards.
+//!
+//! Only shortcodes this module builds may contain `{{<` / `{{%` after
+//! conversion: their arguments go through [`sc_string`], which breaks any
+//! delimiter inside a value, and source text kept verbatim goes through
+//! [`Tokens::push_untrusted`], which escapes delimiters as HTML entities.
 
 use std::sync::LazyLock;
 
@@ -23,6 +28,14 @@ impl Tokens {
         let token = format!("SEITEIMPORTTOKEN{}X", self.values.len());
         self.values.push(value);
         token
+    }
+
+    /// Store source-derived text (raw HTML, a shortcode left for the user)
+    /// with seite's shortcode delimiters escaped as entities, so restoring it
+    /// can never introduce a shortcode call. `&lt;` / `&#37;` render as `<` /
+    /// `%` in Markdown text and in HTML.
+    pub(crate) fn push_untrusted(&mut self, value: &str) -> String {
+        self.push(escape_delimiters_html(value))
     }
 
     /// Replace every token in `text` with its value (values may contain
@@ -46,8 +59,27 @@ pub(crate) fn sc_string(value: &str) -> String {
     flat.trim()
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
-        // `>}}` would end the tag early.
+        // `>}}` / `%}}` would end the tag early; `{{<` / `{{%` would start one.
         .replace(">}}", "> }}")
+        .replace("%}}", "% }}")
+        .replace("{{<", "{{ <")
+        .replace("{{%", "{{ %")
+}
+
+/// `{{<` → `{{&lt;`, `{{%` → `{{&#37;`.
+pub(crate) fn escape_delimiters_html(text: &str) -> String {
+    text.replace("{{<", "{{&lt;").replace("{{%", "{{&#37;")
+}
+
+/// A fenced code block whose fence is longer than any backtick run in `code`.
+pub(crate) fn code_fence(lang: &str, code: &str) -> String {
+    let longest = code.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(longest.max(2) + 1);
+    let lang: String = lang
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '#' | '-' | '_' | '.'))
+        .collect();
+    format!("{fence}{lang}\n{code}\n{fence}")
 }
 
 /// A seite inline shortcode: `{{< name(k="v", …) >}}` (empty values dropped).
@@ -207,13 +239,14 @@ pub(crate) fn prepare_html(html: &str, tokens: &mut Tokens) -> String {
     });
     let html = IFRAME.replace_all(html, |c: &regex::Captures| {
         let tag = &c[0];
-        let replacement = attr(tag, "src")
-            .and_then(|src| embed_for_url(&src))
-            .unwrap_or_else(|| tag.to_string());
-        format!("<p>{}</p>", tokens.push(replacement))
+        let token = match attr(tag, "src").and_then(|src| embed_for_url(&src)) {
+            Some(embed) => tokens.push(embed),
+            None => tokens.push_untrusted(tag),
+        };
+        format!("<p>{token}</p>")
     });
     let html = MEDIA.replace_all(&html, |c: &regex::Captures| {
-        format!("<p>{}</p>", tokens.push(c[0].to_string()))
+        format!("<p>{}</p>", tokens.push_untrusted(&c[0]))
     });
     // `<pre>` without `<code>` (classic editor) would lose its formatting.
     static PRE: LazyLock<Regex> =
