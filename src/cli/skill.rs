@@ -220,6 +220,7 @@ fn load_manifest(root: &Path) -> SkillPacksManifest {
 }
 
 fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<()> {
+    ensure_no_symlinks(root, &[".claude/.seite-skill-packs.json"])?;
     let path = manifest_path(root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -834,6 +835,8 @@ fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
         pack.name, pack.description
     ));
 
+    ensure_no_symlinks(root, &install_targets(pack))?;
+
     let mut installed_files: Vec<String> = Vec::new();
     let mut download_errors: Vec<String> = Vec::new();
 
@@ -1024,6 +1027,13 @@ fn run_install_url(root: &Path, url: &str, name_override: Option<&str>) -> anyho
         return Err(anyhow::anyhow!("downloaded file is empty"));
     }
 
+    ensure_no_symlinks(
+        root,
+        &[
+            format!(".claude/skills/{skill_name}/SKILL.md"),
+            format!(".claude/skills/{skill_name}/.source"),
+        ],
+    )?;
     let skill_dir = root.join(".claude").join("skills").join(&skill_name);
     fs::create_dir_all(&skill_dir)?;
     fs::write(skill_dir.join("SKILL.md"), &body)?;
@@ -1243,6 +1253,40 @@ fn owned_paths(pack: &SkillPack) -> Vec<String> {
     paths
 }
 
+/// Refuse to write anywhere a symlink could redirect: `rels` (project-relative
+/// files or directories install writes) must be reached without a symlink and
+/// must not be symlinks themselves. Checked before anything is written.
+fn ensure_no_symlinks<S: AsRef<str>>(root: &Path, rels: &[S]) -> anyhow::Result<()> {
+    for rel in rels {
+        let rel = rel.as_ref();
+        let path = root.join(rel);
+        if !no_symlink_below(root, &path) {
+            anyhow::bail!("refusing to write {rel}: it is a symlink or goes through one");
+        }
+    }
+    Ok(())
+}
+
+/// Every path `run_install_pack` writes, for [`ensure_no_symlinks`].
+fn install_targets(pack: &SkillPack) -> Vec<String> {
+    let mut targets = owned_paths(pack);
+    targets.extend(pack.context_files.iter().map(|c| format!("context/{c}")));
+    targets.extend(
+        [
+            ".claude/.seite-skill-packs.json",
+            "context/internal-links-map.md",
+            ".gitignore",
+            ".env.example",
+            "requirements-seo.txt",
+            "research",
+            "output",
+            "topics",
+        ]
+        .map(String::from),
+    );
+    targets
+}
+
 /// A single path component: no separators, no `.`/`..`, not empty.
 fn is_plain_name(name: &str) -> bool {
     !name.is_empty()
@@ -1350,6 +1394,7 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
     // Also regenerate internal links map
     let context_dir = root.join("context");
     if context_dir.exists() {
+        ensure_no_symlinks(&root, &["context/internal-links-map.md"])?;
         let links_map = generate_internal_links_map(&root);
         fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
         human::info("Regenerated internal links map");
@@ -1921,6 +1966,35 @@ mod tests {
         remove_from(&site, "seomachine").unwrap();
 
         assert!(outside.join(pack.agents[0]).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_install_writes_refuse_symlinked_targets() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let site = tmp.path().join("site");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(site.join(".claude")).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let victim = outside.join("rc");
+        fs::write(&victim, "keep me").unwrap();
+
+        // A manifest symlinked to a file outside the project is never written.
+        symlink(&victim, site.join(".claude/.seite-skill-packs.json")).unwrap();
+        assert!(save_manifest(&site, &SkillPacksManifest::default()).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+
+        // Neither is anything under a symlinked install directory.
+        symlink(&outside, site.join("context")).unwrap();
+        let pack = find_pack("seomachine").unwrap();
+        assert!(ensure_no_symlinks(&site, &install_targets(pack)).is_err());
+
+        // A clean project passes.
+        let clean = tmp.path().join("clean");
+        fs::create_dir_all(&clean).unwrap();
+        assert!(ensure_no_symlinks(&clean, &install_targets(pack)).is_ok());
     }
 
     #[test]

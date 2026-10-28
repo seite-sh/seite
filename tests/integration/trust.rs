@@ -780,6 +780,9 @@ console.log(JSON.stringify(out));
         "/x/%252e%252e/posts/hello-world.md",
         "/x/%252E%252E/posts/hello-world.md",
         "/posts%255Chello-world.md",
+        "/x/%25252e%25252e/posts/hello-world.md",
+        "/%25252Fposts/hello-world.md",
+        "/%2570osts/hello-world.md",
         "/",
     ]);
     let output = std::process::Command::new("node")
@@ -804,6 +807,12 @@ console.log(JSON.stringify(out));
         );
         if path != "/posts/hello-world.md" && path != "/" {
             assert_eq!(result["status"], 400, "{path}");
+        }
+        if path == "/posts/hello-world.md" {
+            assert_ne!(
+                result["status"], 400,
+                "the protected page asks for a password"
+            );
         }
     }
     assert_eq!(

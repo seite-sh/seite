@@ -63,24 +63,42 @@ pub fn access_routes(config: &SiteConfig) -> Vec<AccessRoute> {
 /// Rust mirror of the generated Worker's route matching, used both to keep the
 /// intended boundary explicit and to test the route contract independently.
 pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
-    let decoded_path = urlencoding::decode(path).ok()?;
-    if decoded_path.contains('\\')
-        || decoded_path.contains("//")
-        || has_encoded_separator(&decoded_path)
-        || decoded_path
+    let decoded_path = urlencoding::decode(path).ok()?.into_owned();
+    let route = route_for(routes, &decoded_path);
+    // Like the Worker: every further decode must stay safe and on the same route.
+    let mut form = decoded_path.clone();
+    for _ in 0..5 {
+        if unsafe_path(&form) || route_for(routes, &form) != route {
+            return None;
+        }
+        match urlencoding::decode(&form) {
+            Ok(next) if next != form => form = next.into_owned(),
+            _ => break,
+        }
+    }
+    route
+}
+
+fn unsafe_path(decoded: &str) -> bool {
+    decoded.contains('\\')
+        || decoded.contains("//")
+        || has_encoded_separator(decoded)
+        || decoded
             .split('/')
             .any(|segment| segment == "." || segment == "..")
-    {
-        return None;
-    }
+}
+
+fn route_for<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
+    let path = path.to_lowercase();
     routes
         .iter()
         .find(|route| {
-            route.prefix == "/"
-                || decoded_path == route.prefix
-                || decoded_path.starts_with(&format!("{}/", route.prefix))
-                || decoded_path == format!("{}.md", route.prefix)
-                || decoded_path == format!("{}.html", route.prefix)
+            let prefix = route.prefix.to_lowercase();
+            prefix == "/"
+                || path == prefix
+                || path.starts_with(&format!("{prefix}/"))
+                || path == format!("{prefix}.md")
+                || path == format!("{prefix}.html")
         })
         .map(|route| route.group.as_str())
 }
@@ -191,6 +209,10 @@ const LEGACY_PRIVATE_PREFIX = "/static/private";
 const encoder = new TextEncoder();
 
 function pathMatches(prefix, path) {
+  // Case-insensitive, so a case-insensitive asset store can't serve
+  // `/Members/x` past a `/members` route.
+  prefix = prefix.toLowerCase();
+  path = path.toLowerCase();
   return prefix === "/" || path === prefix || path.startsWith(prefix + "/") || path === prefix + ".md" || path === prefix + ".html";
 }
 
@@ -198,17 +220,36 @@ function routeFor(path) {
   return ROUTES.find((route) => pathMatches(route.prefix, path));
 }
 
+function unsafePath(decoded) {
+  return decoded.includes("\\") || decoded.includes("//") || /%(2f|5c|2e)/i.test(decoded) || decoded.split("/").some((segment) => segment === "." || segment === "..");
+}
+
 function decodePath(path) {
+  // Refuse paths the route check and the asset server could read
+  // differently: backslashes, empty (`//`) or dot segments, and escapes left
+  // after a decode (`%2F`, `%5C`, `%2E` from double or deeper encoding).
+  // Each further decode must also land on the same route.
+  let decoded;
   try {
-    const decoded = decodeURIComponent(path);
-    // Refuse paths the route check and the asset server could read
-    // differently: backslashes, empty (`//`) or dot segments, and escapes left
-    // after one decode (`%2F`, `%5C`, `%2E` from double encoding).
-    if (decoded.includes("\\") || decoded.includes("//") || /%(2f|5c|2e)/i.test(decoded) || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
-    return decoded;
+    decoded = decodeURIComponent(path);
   } catch {
     return null;
   }
+  const route = routeFor(decoded);
+  let form = decoded;
+  for (let i = 0; i < 4; i++) {
+    if (unsafePath(form) || routeFor(form) !== route) return null;
+    let next;
+    try {
+      next = decodeURIComponent(form);
+    } catch {
+      break;
+    }
+    if (next === form) break;
+    form = next;
+  }
+  if (unsafePath(form) || routeFor(form) !== route) return null;
+  return decoded;
 }
 
 function cookieName(group) {
@@ -403,9 +444,19 @@ session_hours = 24
             "/x/%252e%252e/members/secret",
             "/x/%252E%252E/members/secret",
             "/members%255Csecret",
+            "/x/%25252e%25252e/members/secret",
+            "/%25252Fmembers/secret",
+            "/%256dembers/secret",
         ] {
             assert_eq!(matching_group(&routes, path), None, "{path}");
         }
+        assert_eq!(matching_group(&routes, "/Members/secret"), Some("members"));
+        assert_eq!(matching_group(&routes, "/MEMBERS.html"), Some("members"));
+        assert_eq!(
+            matching_group(&routes, "/a%25b"),
+            None,
+            "literal % stays public"
+        );
         let worker = generate_worker(&routes, 24);
         assert!(worker.contains(r#"decoded.includes("//")"#));
         assert!(worker.contains("/%(2f|5c|2e)/i.test(decoded)"));
