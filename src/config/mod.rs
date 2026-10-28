@@ -1020,6 +1020,49 @@ impl SiteConfig {
                     "directory".into(),
                 ));
             }
+            // Names, URL prefixes and language codes become output paths
+            // (`dist-subdomains/<name>/`, `dist/<url_prefix>/`, `dist/<lang>/`).
+            if !is_plain_identifier(&c.name) {
+                return Err((
+                    format!("collection name \"{}\" {IDENTIFIER_RULE}", c.name),
+                    "name".into(),
+                ));
+            }
+            if let Some(why) = url_path_problem(&c.url_prefix) {
+                return Err((
+                    format!(
+                        "collection '{}': url_prefix = \"{}\" {why}",
+                        c.name, c.url_prefix
+                    ),
+                    "url_prefix".into(),
+                ));
+            }
+        }
+        for t in &self.taxonomies {
+            if !is_plain_identifier(&t.name) {
+                return Err((
+                    format!("taxonomy name \"{}\" {IDENTIFIER_RULE}", t.name),
+                    "name".into(),
+                ));
+            }
+            if let Some(why) = t.url_prefix.as_deref().and_then(url_path_problem) {
+                return Err((
+                    format!(
+                        "taxonomy '{}': url_prefix = \"{}\" {why}",
+                        t.name,
+                        t.url_prefix.as_deref().unwrap_or_default()
+                    ),
+                    "url_prefix".into(),
+                ));
+            }
+        }
+        for code in self.languages.keys() {
+            if !is_plain_identifier(code) {
+                return Err((
+                    format!("language code \"{code}\" {IDENTIFIER_RULE}"),
+                    format!("[languages.{code}]"),
+                ));
+            }
         }
         Ok(())
     }
@@ -1313,6 +1356,34 @@ pub fn dir_outside_project(value: &str, allow_empty: bool) -> Option<&'static st
         }
     }
     (!named && !allow_empty).then_some("must name a directory inside the project")
+}
+
+const IDENTIFIER_RULE: &str =
+    "must be letters, digits, `-` or `_` (it becomes part of output paths)";
+
+/// A collection/taxonomy name or language code: starts with a letter or
+/// digit, then letters, digits, `-`, `_`.
+fn is_plain_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Why a URL prefix (`/blog`, `/docs/v2`, or empty) could address files
+/// outside the output directory, or `None`: no `.`/`..`/empty segment, no
+/// backslash or NUL.
+fn url_path_problem(value: &str) -> Option<&'static str> {
+    if value.contains(['\\', '\0']) {
+        return Some("must not contain backslashes");
+    }
+    let trimmed = value.trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed
+        .split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+        .then_some("must be a URL path like `/blog` (no `.`, `..` or empty segments)")
 }
 
 /// The named components of a relative directory, lowercased (macOS and

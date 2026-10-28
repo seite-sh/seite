@@ -1665,3 +1665,69 @@ fn test_build_refuses_symlinked_output_dir() {
         .stderr(predicate::str::contains("symlink"));
     assert!(victim.join("keep.txt").exists());
 }
+
+/// Collection names, URL prefixes, taxonomy settings and language codes
+/// become output paths: none may address anything outside the output.
+#[test]
+fn test_build_refuses_path_like_names_and_prefixes() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Names", "posts");
+    let site_dir = tmp.path().join("site");
+    let victim = tmp.path().join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("index.html"), "x").unwrap();
+    fs::write(victim.join("sitemap.xml"), "x").unwrap();
+    fs::write(victim.join("keep.txt"), "keep").unwrap();
+    let original = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    let absolute = victim.display().to_string().replace('\\', "/");
+
+    let extra = [
+        "[[collections]]\nname = \"../../victim\"\nlabel = \"X\"\ndirectory = \"x\"\ndefault_template = \"page.html\"\nsubdomain = \"x\"\n".to_string(),
+        format!("[[collections]]\nname = \"{absolute}\"\nlabel = \"X\"\ndirectory = \"x\"\ndefault_template = \"page.html\"\nsubdomain = \"x\"\n"),
+        "[[collections]]\nname = \"x\"\nlabel = \"X\"\ndirectory = \"x\"\ndefault_template = \"page.html\"\nurl_prefix = \"/../../victim\"\n".to_string(),
+        "[[taxonomies]]\nname = \"categories\"\nurl_prefix = \"/../../victim\"\n".to_string(),
+        "[[taxonomies]]\nname = \"../victim\"\n".to_string(),
+        "[languages.\"../../victim\"]\ntitle = \"X\"\n".to_string(),
+    ];
+    for block in extra {
+        fs::write(site_dir.join("seite.toml"), format!("{original}\n{block}")).unwrap();
+        page_cmd()
+            .arg("build")
+            .current_dir(&site_dir)
+            .assert()
+            .failure();
+        page_cmd()
+            .arg("check")
+            .current_dir(&site_dir)
+            .assert()
+            .failure();
+        assert_eq!(
+            fs::read_to_string(victim.join("keep.txt")).unwrap(),
+            "keep",
+            "{block}"
+        );
+        assert_eq!(fs::read_dir(&victim).unwrap().count(), 3, "{block}");
+    }
+}
+
+/// A symlinked source directory would copy outside files into dist/.
+#[cfg(unix)]
+#[test]
+fn test_build_refuses_symlinked_source_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Static link", "posts");
+    let site_dir = tmp.path().join("site");
+    let secret = tmp.path().join("secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("id_rsa"), "PRIVATE").unwrap();
+    let _ = fs::remove_dir_all(site_dir.join("static"));
+    std::os::unix::fs::symlink(&secret, site_dir.join("static")).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+    assert!(!site_dir.join("dist/static/id_rsa").exists());
+}

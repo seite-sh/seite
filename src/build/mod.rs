@@ -439,6 +439,7 @@ pub fn build_site(
     // update the existing output in place. They never clean it, so a failure
     // there can leave a mix of old and freshly rendered pages but never wipes
     // the site; the next successful build brings it back in sync.
+    guard_sources(paths)?;
     guard_output(&paths.root, &paths.output)?;
     clean_stale_build_dirs(&paths.output);
     let in_place = changeset
@@ -713,6 +714,28 @@ impl Drop for StagedOutputs {
             }
         }
     }
+}
+
+/// The build copies and publishes what the source directories hold: refuse
+/// one inside the project that goes through a symlink (a committed
+/// `static -> ~/.ssh` would put private files into `dist/` and the deploy).
+fn guard_sources(paths: &crate::config::ResolvedPaths) -> Result<()> {
+    for dir in [
+        &paths.content,
+        &paths.templates,
+        &paths.static_dir,
+        &paths.data_dir,
+        &paths.public_dir,
+    ] {
+        if dir.starts_with(&paths.root) && fs::symlink_metadata(dir).is_ok() {
+            crate::safe_fs::guard(&paths.root, dir).map_err(|e| {
+                PageError::Build(format!(
+                    "source directory: {e:#}; copy the files into the project instead"
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// A full build empties its output directory (and replaces a symlinked one's
