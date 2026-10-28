@@ -38,7 +38,7 @@ pub struct CheckArgs {
     #[arg(
         long,
         value_name = "AGENT",
-        value_parser = ["claude", "codex", "cursor", "opencode", "gemini"],
+        value_parser = ["claude", "codex", "cursor", "opencode", "gemini", "copilot"],
         conflicts_with = "strict"
     )]
     pub hook: Option<String>,
@@ -47,6 +47,12 @@ pub struct CheckArgs {
     /// file(s) named in the hook input
     #[arg(long, requires = "hook")]
     pub post_edit: bool,
+
+    /// With --hook claude: run as the seite Claude Code plugin's copy of the
+    /// hook (stands down when the project runs its own; the turn-end check
+    /// runs only after an edit inside the site)
+    #[arg(long, requires = "hook", hide = true)]
+    pub plugin: bool,
 
     /// Check only these files (frontmatter, shortcodes, template syntax,
     /// data-file syntax; no render, no link check). Repeatable.
@@ -80,7 +86,7 @@ pub fn run(args: &CheckArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         } else {
             harness_hooks::HookKind::Stop
         };
-        return harness_hooks::run(agent, args.drafts, kind);
+        return harness_hooks::run(agent, args.drafts, kind, args.plugin);
     }
     if !args.files.is_empty() {
         let cwd = std::env::current_dir()?;

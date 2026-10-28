@@ -490,7 +490,10 @@ fn test_check_hook_blocks_on_errors_per_protocol() {
         .unwrap();
     assert_eq!(claude["hookSpecificOutput"]["hookEventName"], "Stop");
     assert!(
-        context.starts_with("seite check found 1 error:\n"),
+        context.starts_with(&format!(
+            "{}\nseite check found 1 error:\n",
+            seite::cli::harness_hooks::OUTPUT_PREAMBLE
+        )),
         "{context}"
     );
     assert!(context.contains(expected), "{context}");

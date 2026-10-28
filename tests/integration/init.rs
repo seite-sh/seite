@@ -472,7 +472,7 @@ fn test_init_agents_default_writes_all_harness_files() {
 
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
     );
 }
 

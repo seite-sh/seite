@@ -19,14 +19,15 @@ pub struct AgentArgs {
     #[arg(long)]
     pub once: bool,
 
-    /// Coding-agent harness to drive: claude, codex, opencode, cursor, or
-    /// gemini. Defaults to `SEITE_AGENT` when set, otherwise claude.
+    /// Coding-agent harness to drive: claude, codex, opencode, cursor,
+    /// gemini, or copilot. Defaults to `SEITE_AGENT` when set, otherwise
+    /// claude.
     #[arg(long, value_name = "HARNESS")]
     pub with: Option<String>,
 
     /// With --once: pass the harness's own auto-approve flag (opencode
     /// `--auto`, cursor `--force --approve-mcps`, gemini
-    /// `--approval-mode=yolo`). Honored only from an interactive terminal,
+    /// `--approval-mode=yolo`, copilot `--allow-all-tools`). Honored only from an interactive terminal,
     /// never inside another agent's session; the global `--yes` never
     /// implies it.
     #[arg(long)]
@@ -65,6 +66,10 @@ const AGENT_SESSION_MARKERS: &[(&str, &str)] = &[
     ("CURSOR_PROJECT_DIR", "Cursor"),
     // Last: Gemini CLI also exports this alias to its hooks.
     ("CLAUDE_PROJECT_DIR", "Claude Code"),
+    // GitHub Copilot CLI: no documented variable marks its shell commands
+    // (https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
+    // lists only user-set ones such as COPILOT_ALLOW_ALL), so a nested
+    // session inside Copilot isn't detected.
 ];
 
 /// The coding agent whose session this process runs in, if any.
@@ -115,10 +120,11 @@ pub enum Harness {
     Opencode,
     Cursor,
     Gemini,
+    Copilot,
 }
 
 /// Every harness name `--with`/`SEITE_AGENT` accepts.
-const VALID_HARNESSES: [&str; 5] = ["claude", "codex", "opencode", "cursor", "gemini"];
+const VALID_HARNESSES: [&str; 6] = ["claude", "codex", "opencode", "cursor", "gemini", "copilot"];
 
 impl Harness {
     fn parse(name: &str) -> Option<Harness> {
@@ -128,6 +134,7 @@ impl Harness {
             "opencode" => Some(Harness::Opencode),
             "cursor" => Some(Harness::Cursor),
             "gemini" => Some(Harness::Gemini),
+            "copilot" => Some(Harness::Copilot),
             _ => None,
         }
     }
@@ -139,6 +146,7 @@ impl Harness {
             Harness::Opencode => "opencode",
             Harness::Cursor => "cursor",
             Harness::Gemini => "gemini",
+            Harness::Copilot => "copilot",
         }
     }
 
@@ -150,6 +158,7 @@ impl Harness {
             Harness::Opencode => "opencode",
             Harness::Cursor => "cursor-agent",
             Harness::Gemini => "gemini",
+            Harness::Copilot => "copilot",
         }
     }
 
@@ -169,6 +178,9 @@ impl Harness {
             Harness::Gemini => {
                 "npm install -g @google/gemini-cli (https://github.com/google-gemini/gemini-cli)"
             }
+            Harness::Copilot => {
+                "npm install -g @github/copilot (https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)"
+            }
         }
     }
 
@@ -177,6 +189,10 @@ impl Harness {
     pub fn skill_prompt(self, args: &str) -> String {
         match self {
             Harness::Codex => format!("$seite {args}"),
+            // Copilot runs a skill the prompt names ("Use the /frontend-design
+            // skill to ..."); passing arguments is undocumented.
+            // https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
+            Harness::Copilot => format!("Use the /seite skill: {args}"),
             _ => format!("/seite {args}"),
         }
     }
@@ -202,6 +218,9 @@ impl Harness {
             ],
             // https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md
             Harness::Gemini => vec!["-p".into(), prompt.into()],
+            // `-p PROMPT`: run programmatically, exit when done.
+            // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
+            Harness::Copilot => vec!["-p".into(), prompt.into()],
         };
         if auto {
             match self {
@@ -211,6 +230,7 @@ impl Harness {
                     args.push("--approve-mcps".into());
                 }
                 Harness::Gemini => args.push("--approval-mode=yolo".into()),
+                Harness::Copilot => args.push("--allow-all-tools".into()),
                 Harness::Claude | Harness::Codex => {}
             }
         }
@@ -227,8 +247,9 @@ impl Harness {
             // `claude "<prompt>"` starts an interactive session with it.
             Harness::Claude | Harness::Codex | Harness::Cursor => vec![p.into()],
             Harness::Opencode => vec!["--prompt".into(), p.into()],
-            // `-i` runs the prompt, then stays interactive.
-            Harness::Gemini => vec!["-i".into(), p.into()],
+            // `-i` runs the prompt, then stays interactive (Gemini CLI and
+            // Copilot CLI alike).
+            Harness::Gemini | Harness::Copilot => vec!["-i".into(), p.into()],
         }
     }
 }
@@ -418,6 +439,22 @@ mod tests {
         assert!(Harness::Gemini
             .install_hint()
             .contains("@google/gemini-cli"));
+        assert_eq!(Harness::Copilot.binary(), "copilot");
+        assert!(Harness::Copilot.install_hint().contains("@github/copilot"));
+    }
+
+    #[test]
+    fn test_copilot_harness_args() {
+        assert_eq!(Harness::Copilot.one_shot_args("hi", false), ["-p", "hi"]);
+        assert_eq!(
+            Harness::Copilot.one_shot_args("hi", true),
+            ["-p", "hi", "--allow-all-tools"]
+        );
+        assert_eq!(Harness::Copilot.interactive_args(Some("hi")), ["-i", "hi"]);
+        assert_eq!(
+            Harness::Copilot.skill_prompt("check"),
+            "Use the /seite skill: check"
+        );
     }
 
     #[test]

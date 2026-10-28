@@ -433,7 +433,7 @@ mod fake_npm {
             .success();
         let argv = fake.only_call();
         assert!(
-            argv.contains(&"--providers=claude,codex,opencode,cursor,gemini".to_string()),
+            argv.contains(&"--providers=claude,codex,opencode,cursor,gemini,github".to_string()),
             "{argv:?}"
         );
     }

@@ -67,7 +67,7 @@ seite init <name> [options]
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
 | `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
 | `--theme` | Starter theme: `default`, `docs`, `landing`, or `blank` (for designing your own). Default: `docs` for a docs-only site, `default` otherwise. Gallery themes are applied later with `seite theme apply <name>` |
-| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
+| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini,copilot` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
 
 `seite.toml` gets `[site] timezone` set to the system's IANA time zone (from `TZ` — empty means UTC; a POSIX rule such as `CET-1CEST` is not an IANA name — else the OS setting; `seite workspace add` does the same), so "today" for scheduled posts is the same on every machine and in CI; when no zone can be detected, the line is written commented out.
@@ -94,8 +94,9 @@ Every site gets an `AGENTS.md` (read by every agent) and the docs for the instal
 | `codex` (Codex CLI) | `.codex/hooks.json` |
 | `opencode` (OpenCode) | `opencode.json` (permission defaults), `.opencode/commands/seite.md`, `.opencode/plugins/seite-check.js` |
 | `gemini` (Gemini CLI) | `GEMINI.md` (`@AGENTS.md` import), `.gemini/settings.json` (hooks), `.gemini/commands/seite.toml` |
+| `copilot` (GitHub Copilot) | `.github/hooks/seite.json` (hooks), `.github/instructions/*.instructions.md` (rules); reads `AGENTS.md` directly |
 
-Codex, Cursor, OpenCode, and Gemini CLI read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
+Codex, Cursor, OpenCode, Gemini CLI, and GitHub Copilot read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, shared by Claude Code and Copilot, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 
@@ -134,7 +135,7 @@ seite check [options]
 | `--strict` | Fail on warnings too (unknown config keys, broken links, ...) |
 | `--drafts` | Include draft content |
 | `--file <path>...` | Check only these files: frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
-| `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
+| `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`, `copilot`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
 | `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine) |
 | `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks |
@@ -275,9 +276,9 @@ seite agent [prompt] [--once] [--with <harness>] [--auto-approve]
 
 | Flag | Description |
 |------|-------------|
-| `--once` | Run the prompt once and exit (`claude -p`, `codex exec`, `opencode run`, `cursor-agent -p`, `gemini -p`) |
-| `--with` | `claude` (default), `codex`, `opencode`, `cursor`, or `gemini`; `SEITE_AGENT` sets the default |
-| `--auto-approve` | With `--once`, pass the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`). Only honored from an interactive terminal outside an agent session; `--yes` never implies it |
+| `--once` | Run the prompt once and exit (`claude -p`, `codex exec`, `opencode run`, `cursor-agent -p`, `gemini -p`, `copilot -p`) |
+| `--with` | `claude` (default), `codex`, `opencode`, `cursor`, `gemini`, or `copilot`; `SEITE_AGENT` sets the default |
+| `--auto-approve` | With `--once`, pass the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`, `copilot --allow-all-tools`). Only honored from an interactive terminal outside an agent session; `--yes` never implies it |
 
 Without `--once`, the agent starts an interactive session, seeded with the prompt when one is given. Run inside a coding agent's session, `seite agent` (and `seite theme create`) refuses to start a nested agent. If the harness isn't installed, the error names the install command. See [Coding Agents](/docs/agent).
 
@@ -505,10 +506,10 @@ seite upgrade [options]
 |------|-------------|
 | `--force` | Apply all upgrades without confirmation |
 | `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
-| `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor,gemini` or `all`) |
+| `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor,gemini,copilot` or `all`) |
 | `--mcp` | Also add the seite MCP server to the selected agents' configs. Without it, existing MCP config is left untouched |
 | `--agent` | After upgrading, build a migration brief and hand it to a coding agent (see below). Cannot be combined with `--check` |
-| `--with` | With `--agent`: the agent to start (`claude`, `codex`, `opencode`, `cursor`, `gemini`). Defaults to `SEITE_AGENT`, else `claude` |
+| `--with` | With `--agent`: the agent to start (`claude`, `codex`, `opencode`, `cursor`, `gemini`, `copilot`). Defaults to `SEITE_AGENT`, else `claude` |
 
 ```bash
 seite upgrade                # Interactive: shows changes, asks for confirmation

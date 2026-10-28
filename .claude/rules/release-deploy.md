@@ -16,7 +16,7 @@ Source of truth: `Cargo.toml` version (semver). Every code change must bump vers
 
 ## Release Flow
 1. `scripts/prepare-release.sh` → scaffold changelog entry
-2. Fill changelog → bump `Cargo.toml` version → commit → push
+2. Fill changelog → bump `Cargo.toml` version → `cargo run -- skill export . --format repo` (the checked-in Claude plugin's `plugin.json` carries the version; `tests/integration/skill_export.rs` fails until it is regenerated) → commit → push
 3. CI: auto-tag → matrix builds (macOS/Linux/Windows) → GitHub Release → crates.io → deploy seite.sh
 4. `build.rs` generates `releases.md` from changelog at compile time
 

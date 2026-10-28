@@ -1,7 +1,7 @@
 ---
 name: seite
 description: Work on this seite static site — write or edit content, check and fix errors, audit SEO and accessibility, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml.
-# seite-skill-version: 6
+# seite-skill-version: 7
 ---
 
 # seite
@@ -30,6 +30,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.

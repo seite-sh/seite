@@ -370,6 +370,22 @@ fn og_feature_notice(root: &Path) -> Option<Notice> {
     })
 }
 
+/// One-time notice that GitHub Copilot can be set up, for projects not
+/// maintained for it (upgrade never adds an agent on its own).
+fn copilot_notice(agents: &[Agent]) -> Option<Notice> {
+    (!agents.contains(&Agent::Copilot)).then(|| {
+        let mut ids: Vec<&str> = agents.iter().map(|a| a.id()).collect();
+        ids.push(Agent::Copilot.id());
+        Notice {
+            key: "copilot-agent".into(),
+            text: format!(
+                "GitHub Copilot is supported: `seite upgrade --agents {}` adds its hooks (.github/hooks/seite.json) and path rules (.github/instructions/); Copilot reads AGENTS.md and the .agents/skills/seite skill. See https://seite.sh/docs/agent#github-copilot",
+                ids.join(",")
+            ),
+        }
+    })
+}
+
 /// Shared by the schedule notices and the `TIMEZONE_UNSET` directive.
 const TIMEZONE_ADVICE: &str = "Also set `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site], so \"today\" is the same on every machine and in CI.";
 
@@ -1249,16 +1265,18 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let project_ver = meta::project_version(root);
 
     // Which coding agents to maintain: --agents, else the stored selection,
-    // else (projects from before the selection existed) every agent.
+    // else (projects from before the selection existed) the 0.20 set.
     let stored_agents = meta::load(root)
         .and_then(|m| m.agents)
         .map(|ids| harness::from_ids(&ids));
     let agents = match &args.agents {
         Some(list) => harness::parse_agent_list(list)?,
-        None => stored_agents.clone().unwrap_or_else(|| Agent::ALL.to_vec()),
+        None => stored_agents
+            .clone()
+            .unwrap_or_else(|| Agent::LEGACY_DEFAULT.to_vec()),
     };
     let record_agents = stored_agents.as_ref() != Some(&agents);
-    let previously = stored_agents.unwrap_or_else(|| Agent::ALL.to_vec());
+    let previously = stored_agents.unwrap_or_else(|| Agent::LEGACY_DEFAULT.to_vec());
     let deselected: Vec<Agent> = previously
         .iter()
         .copied()
@@ -1339,6 +1357,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(search_feature_notice(root));
     notices.extend(og_feature_notice(root));
     notices.extend(timezone_notice(root));
+    notices.extend(copilot_notice(&agents));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();
@@ -3433,6 +3452,19 @@ fn check_agent_harness(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeA
             root,
             ".gemini/settings.json",
             "Gemini CLI",
+        ));
+    }
+    if agents.contains(&Agent::Copilot) {
+        // Copilot reads Claude Code's `.mcp.json`; with Claude selected it is
+        // already handled (with the legacy settings.json migration) above.
+        if mcp && !agents.contains(&Agent::Claude) {
+            actions.extend(check_mcp_servers_json(root, ".mcp.json", "GitHub Copilot"));
+        }
+        actions.extend(missing_rules(
+            root,
+            ".github/instructions",
+            "instructions.md",
+            harness::copilot_rule,
         ));
     }
     actions.extend(check_command_files(root, agents));

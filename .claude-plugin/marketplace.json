@@ -1,0 +1,17 @@
+{
+  "name": "seite",
+  "owner": {
+    "name": "seite",
+    "url": "https://seite.sh"
+  },
+  "description": "Claude Code plugin for seite, the AI-native static site generator.",
+  "plugins": [
+    {
+      "name": "seite",
+      "source": "./plugins/seite",
+      "description": "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI (https://seite.sh).",
+      "category": "development",
+      "homepage": "https://seite.sh"
+    }
+  ]
+}

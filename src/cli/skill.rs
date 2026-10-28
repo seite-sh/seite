@@ -40,6 +40,12 @@ pub enum SkillCommand {
         name: String,
     },
 
+    /// Render the bundled `seite` skill (and check hooks) for distribution:
+    /// `skills` writes `<dir>/seite/` for the `skills` CLI; `claude-plugin`
+    /// writes a Claude Code plugin into `<dir>`
+    #[command(hide = true)]
+    Export(crate::cli::skill_export::ExportArgs),
+
     /// Update installed skills from their original sources
     Update {
         /// Specific pack or skill to update (updates all if omitted)
@@ -215,21 +221,21 @@ pub fn impeccable_installed(root: &Path) -> bool {
 }
 
 /// impeccable `--providers` for the agents recorded in `.seite/config.json`.
-/// seite's agent ids are also impeccable provider names; unknown ids are
-/// dropped, and no (known) agents means every agent seite supports.
+/// seite's agent ids map to impeccable provider names (`Agent::impeccable_provider`);
+/// unknown ids are dropped, and no (known) agents means every agent seite supports.
 fn impeccable_providers(agents: Option<&[String]>) -> Vec<&'static str> {
     let mut providers: Vec<&'static str> = Vec::new();
     for id in agents.unwrap_or_default() {
         if let Some(agent) = crate::cli::harness::Agent::from_id(id.trim()) {
-            if !providers.contains(&agent.id()) {
-                providers.push(agent.id());
+            if !providers.contains(&agent.impeccable_provider()) {
+                providers.push(agent.impeccable_provider());
             }
         }
     }
     if providers.is_empty() {
         providers = crate::cli::harness::Agent::ALL
             .iter()
-            .map(|a| a.id())
+            .map(|a| a.impeccable_provider())
             .collect();
     }
     providers
@@ -1150,6 +1156,7 @@ pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
         SkillCommand::List => run_list(),
         SkillCommand::Remove { name } => run_remove(name),
         SkillCommand::Update { name, agents } => run_update(name.as_deref(), agents.as_deref()),
+        SkillCommand::Export(export) => crate::cli::skill_export::run(export),
     }
 }
 
@@ -2777,7 +2784,7 @@ mod tests {
 
     #[test]
     fn test_impeccable_providers_default_to_all_agents() {
-        let all = ["claude", "codex", "opencode", "cursor", "gemini"];
+        let all = ["claude", "codex", "opencode", "cursor", "gemini", "github"];
         assert_eq!(impeccable_providers(None), all);
         assert_eq!(impeccable_providers(Some(&[])), all);
         // Unknown ids are dropped; nothing known left means all.
