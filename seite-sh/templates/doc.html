@@ -4,15 +4,8 @@
 {% block extra_css %}
 <style>
     /* ── Fonts (shared with homepage for cohesion) ── */
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
-        --geist: 'Geist Mono', var(--mono);
-        --amber: #ffb224;
-        --amber-dim: rgba(255, 178, 36, 0.08);
-        --amber-border: rgba(255, 178, 36, 0.2);
-        --code-bg: #1a1e26;
         --sidebar-w: 250px;
         --toc-w: 200px;
     }
@@ -37,8 +30,8 @@
     }
 
     .docs-sidebar nav h3 {
-        font-family: var(--geist);
-        font-size: 0.62rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.14em;
         color: var(--text-dim);
@@ -52,10 +45,10 @@
     }
 
     .docs-sidebar nav a {
-        font-family: var(--geist);
-        font-size: 0.78rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         padding: 0.35rem 0.6rem;
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         color: var(--text-muted);
         display: block;
         text-decoration: none;
@@ -83,7 +76,7 @@
         bottom: 6px;
         width: 2px;
         background: var(--green);
-        border-radius: 1px;
+        border-radius: 0;
     }
 
     /* Sidebar search */
@@ -107,10 +100,10 @@
         width: 100%;
         background: var(--bg-raised);
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: var(--radius);
         padding: 0.45rem 0.6rem 0.45rem 2rem;
         color: var(--text);
-        font-family: var(--geist);
+        font-family: inherit;
         font-size: 0.75rem;
         outline: none;
         transition: border-color 0.15s;
@@ -138,9 +131,8 @@
         overflow-y: auto;
         background: var(--bg-card);
         border: 1px solid var(--border-light);
-        border-radius: 8px;
+        border-radius: var(--radius);
         z-index: 50;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     }
 
     .sidebar-search #search-results:empty {
@@ -196,7 +188,7 @@
         padding: 0.5rem 0.6rem;
         color: var(--text-dim);
         font-size: 0.75rem;
-        font-family: var(--geist);
+        font-family: inherit;
     }
 
     /* ── Docs main area ── */
@@ -208,11 +200,10 @@
 
     /* ── Page title ── */
     .docs-main article>h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin-bottom: 0.6rem;
         line-height: 1.1;
@@ -238,8 +229,8 @@
     }
 
     .toc h4 {
-        font-family: var(--geist);
-        font-size: 0.62rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.14em;
         color: var(--text-dim);
@@ -256,9 +247,9 @@
     }
 
     .toc a {
-        font-family: var(--geist);
+        font-family: inherit;
         color: var(--text-dim);
-        font-size: 0.76rem;
+        font-size: 0.75rem;
         text-decoration: none;
         display: block;
         padding: 0.2rem 0;
@@ -281,7 +272,8 @@
 
     /* ── Content typography ── */
     .docs-main .content h2 {
-        font-size: 1.25rem;
+        font-family: var(--display);
+        font-size: 1.35rem;
         font-weight: 700;
         color: var(--heading);
         margin: 3rem 0 1rem;
@@ -323,20 +315,20 @@
 
     /* Inline code */
     .docs-main .content code {
-        font-family: var(--geist);
+        font-family: var(--mono);
         font-size: 0.82em;
         background: var(--green-dim);
         border: 1px solid var(--green-border);
         padding: 0.12em 0.38em;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         color: var(--green);
     }
 
     /* Code blocks — harmonize with syntect ocean-dark */
     .docs-main .content pre {
-        background: var(--code-bg) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
+        background: var(--term-bg) !important;
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius-lg);
         padding: 1.25rem 1.5rem;
         overflow-x: auto;
         margin-bottom: 1.5rem;
@@ -347,9 +339,9 @@
         background: none !important;
         border: none;
         padding: 0;
-        font-family: var(--geist);
-        font-size: 0.82rem;
-        color: #c0c5ce;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--term-text);
         line-height: 1.85;
     }
 
@@ -371,10 +363,10 @@
 
     /* Blockquote */
     .docs-main .content blockquote {
-        border-left: 2px solid var(--amber);
-        background: var(--amber-dim);
+        border: 1px solid var(--border);
+        background: var(--bg-raised);
         padding: 0.9rem 1.25rem;
-        border-radius: 0 8px 8px 0;
+        border-radius: var(--radius);
         color: var(--text);
         margin: 1.5rem 0;
         font-style: normal;
@@ -389,14 +381,14 @@
         width: 100%;
         border-collapse: collapse;
         margin-bottom: 1.5rem;
-        font-size: 0.85rem;
+        font-size: 0.9rem;
     }
 
     .docs-main .content th {
         background: var(--bg-raised);
-        font-family: var(--geist);
+        font-family: inherit;
         font-weight: 600;
-        font-size: 0.72rem;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: var(--text-muted);
@@ -424,7 +416,7 @@
 
     /* Images */
     .docs-main .content img {
-        border-radius: 10px;
+        border-radius: var(--radius-lg);
         margin: 1.5rem 0;
         border: 1px solid var(--border);
     }
@@ -446,7 +438,7 @@
         padding: 1rem 1.25rem;
         background: var(--bg-raised);
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: var(--radius-lg);
         text-decoration: none;
         transition: border-color 0.15s, background 0.15s;
     }
@@ -458,15 +450,15 @@
     }
 
     .doc-nav-label {
-        font-family: var(--geist);
-        font-size: 0.62rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.12em;
         color: var(--text-dim);
     }
 
     .doc-nav-title {
-        font-size: 0.88rem;
+        font-size: 0.9rem;
         font-weight: 600;
         color: var(--green);
     }
@@ -504,12 +496,12 @@
 
     .docs-toc::-webkit-scrollbar-thumb {
         background: var(--scrollbar-thumb);
-        border-radius: 2px;
+        border-radius: var(--radius-sm);
     }
 
     .docs-toc h4 {
-        font-family: var(--geist);
-        font-size: 0.62rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.14em;
         color: var(--text-dim);
@@ -526,9 +518,9 @@
     }
 
     .docs-toc a {
-        font-family: var(--geist);
+        font-family: inherit;
         color: var(--text-dim);
-        font-size: 0.76rem;
+        font-size: 0.75rem;
         text-decoration: none;
         display: block;
         padding: 0.2rem 0;

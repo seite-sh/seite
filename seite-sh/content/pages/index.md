@@ -4,7 +4,7 @@ description: "seite is an AI-native static site generator for startup teams tire
 extra:
   hero_badge: "Built in Rust · AI-native · Open source"
   hero_headline: "Your coding agent can build and manage your website. <em>No new subscription required.</em>"
-  hero_sub: "seite gives Claude Code the structure it needs to write posts, redesign pages, and deploy — using the subscription you already have."
+  hero_sub: "seite gives your coding agent, whether Claude Code, Codex, OpenCode or Cursor, the structure it needs to write posts, redesign pages, and deploy, using the subscription you already have."
 
   ribbon_1: '<span class="ribbon-highlight">curl -fsSL</span> seite.sh/install.sh | sh &nbsp;·&nbsp; macOS, Linux, Windows'
   ribbon_2: 'ships <span class="ribbon-highlight">html</span> + <span class="ribbon-highlight">markdown</span> + <span class="ribbon-highlight">llms.txt</span>'
@@ -21,7 +21,7 @@ extra:
   feature_1_title: "Sub-second builds. Always."
   feature_1_body: "Single static binary for macOS, Linux, and Windows. No Node.js, no node_modules, no version managers. Install once, runs identically on every machine on your team."
 
-  feature_2_title: "Claude Code is the UI."
+  feature_2_title: "Your coding agent is the UI."
   feature_2_body: "Every <code>seite init</code> generates an <code>AGENTS.md</code> context file so coding agents orient themselves immediately, plus a <code>CLAUDE.md</code> compatibility import. Run <code>seite agent \"write a post about X\"</code> and it reads your schema, templates, and content before touching anything. No new commands to learn — it already knows how."
 
   feature_3_title: "Ship in every language your customers speak."
@@ -40,7 +40,7 @@ extra:
   comparison_sub: "Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool, then glue it with scripts. seite handles all of it."
 
   quickstart_eyebrow: "// quickstart"
-  quickstart_title_1: "Up and running in thirty seconds."
+  quickstart_title_1: "Five commands from nothing to a deployed site."
 
   step_1_title: "Install seite"
   step_1_body: "<code>curl -fsSL seite.sh/install.sh | sh</code> on macOS/Linux, <code>irm seite.sh/install.ps1 | iex</code> on Windows. Single static binary, no runtime dependencies. Works on every machine on your team without setup."
@@ -53,7 +53,7 @@ extra:
 
   dogfood_line: "This site is built with seite: the docs, the changelog, the llms.txt. All of it."
 
-  cta_headline: "You already pay for Claude Code. Make it manage your website too."
+  cta_headline: "You already pay for a coding agent. Make it manage your website too."
   cta_sub: "One binary. One CLI. Your landing page, docs, blog, changelog, and roadmap — all managed by the agent you already use."
 
   github_url: "https://github.com/seite-sh/seite"

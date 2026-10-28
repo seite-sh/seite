@@ -3,11 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600;700&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
-        --geist: 'Geist Mono', var(--mono);
     }
 
     @keyframes cl-fade-in {
@@ -22,12 +19,11 @@
         animation: cl-fade-in 0.5s ease both;
     }
 
-    .cl-page > h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+    .cl-page h1 {
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin-bottom: 0.5rem;
         line-height: 1.1;
@@ -78,7 +74,6 @@
         border-radius: 50%;
         background: var(--green);
         transform: translateX(-4px);
-        box-shadow: 0 0 8px rgba(0,255,135,0.3);
     }
 
     .cl-entry-header {
@@ -90,8 +85,8 @@
     }
 
     .cl-entry h2 {
-        font-family: var(--geist);
-        font-size: 1.1rem;
+        font-family: var(--mono);
+        font-size: 1.05rem;
         font-weight: 700;
         color: var(--heading);
         margin: 0;
@@ -105,7 +100,7 @@
     .cl-entry h2 a:hover { color: var(--green); text-decoration: none; }
 
     .cl-date {
-        font-family: var(--geist);
+        font-family: var(--mono);
         font-size: 0.75rem;
         color: var(--text-dim);
     }
@@ -118,43 +113,46 @@
         margin-bottom: 0.75rem;
     }
     .cl-tag {
-        font-family: var(--geist);
-        font-size: 0.68rem;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        font-family: inherit;
+        font-size: 0.75rem;
         font-weight: 600;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         padding: 0.15rem 0.6rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         display: inline-block;
     }
     .cl-tag--new {
-        background: rgba(0,255,135,0.08);
-        border: 1px solid rgba(0,255,135,0.2);
+        background: var(--green-dim);
+        border: 1px solid var(--green-border);
         color: var(--green);
     }
     .cl-tag--fix {
-        background: rgba(59,130,246,0.08);
-        border: 1px solid rgba(59,130,246,0.2);
-        color: var(--blue);
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
     }
     .cl-tag--breaking {
-        background: rgba(239,68,68,0.08);
-        border: 1px solid rgba(239,68,68,0.2);
-        color: #ef4444;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--danger);
     }
     .cl-tag--improvement {
-        background: rgba(139,92,246,0.08);
-        border: 1px solid rgba(139,92,246,0.2);
-        color: #8b5cf6;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
     }
     .cl-tag--deprecated {
-        background: rgba(107,114,128,0.08);
-        border: 1px solid rgba(107,114,128,0.2);
-        color: #6b7280;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
     }
 
     .cl-entry p, .cl-entry .excerpt {
-        font-size: 0.88rem;
+        font-size: 0.9rem;
         color: var(--text-muted);
         line-height: 1.65;
         margin: 0;
@@ -165,13 +163,13 @@
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
-        font-family: var(--geist);
-        font-size: 0.72rem;
+        font-family: inherit;
+        font-size: 0.75rem;
         color: var(--text-dim);
         text-decoration: none;
         padding: 0.3rem 0.7rem;
         border: 1px solid var(--border);
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         transition: color 0.12s, border-color 0.12s;
         margin-left: auto;
     }

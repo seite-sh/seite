@@ -1,1305 +1,629 @@
 {% extends "base.html" %}
 {% block title %}{{ site.title }} — AI-native static site generator{% endblock %}
 
+{% block announce %}
+{% set_global latest = false %}
+{% for c in collections %}{% if c.name == "changelog" and c.items | length > 0 %}{% set_global latest = c.items | first %}{% endif %}{% endfor %}
+{% if latest %}
+<div class="announce">
+    <a href="{{ lang_prefix }}{{ latest.url }}" class="plausible-event-name=AnnounceRelease">seite {{ latest.title }} is out. Read the release notes <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+</div>
+{% endif %}
+{% endblock %}
+
 {% block extra_css %}
 <style>
-    /* ── Fonts ─────────────────────────────────────── */
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
+    .mono { font-family: var(--mono); font-size: 0.9em; }
 
-    :root {
-        --display: 'Instrument Sans', system-ui, -apple-system, sans-serif;
-        --sans: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
-        --cyan: #06b6d4;
-        --cyan-dim: rgba(6, 182, 212, 0.08);
+    /* ── Buttons ─────────────────────────────────── */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 44px;
+        padding: 0 1.15rem;
+        border-radius: var(--radius-sm);
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: opacity 0.15s, border-color 0.15s;
     }
+    .btn:hover { text-decoration: none; }
+    .btn-ink { background: var(--ink); color: var(--on-ink); }
+    .btn-ink:hover { opacity: 0.85; }
+    .btn-line { border: 1px solid var(--border-light); color: var(--heading); }
+    .btn-line:hover { border-color: var(--text-dim); }
+    .btn svg { flex-shrink: 0; }
+    .arr { display: inline-block; vertical-align: -0.15em; }
 
-    body { font-family: var(--sans); }
-
-    /* ── Keyframes ─────────────────────────────────── */
-    @keyframes rise {
-        from { opacity: 0; transform: translateY(32px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes glow-pulse {
-        0%, 100% { opacity: 0.5; }
-        50% { opacity: 1; }
-    }
-    @keyframes type-line {
-        from { opacity: 0; transform: translateX(-8px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes orb-drift {
-        0% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-48%, -52%) scale(1.08); }
-        100% { transform: translate(-50%, -50%) scale(1); }
-    }
-    @keyframes orb-drift-2 {
-        0% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-52%, -46%) scale(1.05); }
-        100% { transform: translate(-50%, -50%) scale(1); }
-    }
-
-    .anim-rise {
-        opacity: 0;
-        animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .reveal {
-        opacity: 0;
-        transform: translateY(32px);
-        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .reveal.visible { opacity: 1; transform: translateY(0); }
-
-    @media (prefers-reduced-motion: reduce) {
-        .anim-rise { animation: none; opacity: 1; }
-        .reveal { transition: none; opacity: 1; transform: none; }
-    }
-
-    /* ── Hero ──────────────────────────────────────── */
-    .hero {
-        padding: 5.5rem 0 3.5rem;
-        position: relative;
+    /* ── Terminal panel ──────────────────────────── */
+    .term {
+        background: var(--term-bg);
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius);
         overflow: hidden;
+        color: var(--term-text);
     }
+    .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.55rem 0.8rem;
+        background: var(--term-bar);
+        border-bottom: 1px solid var(--term-rule);
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--term-dim);
+    }
+    .term-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--term-rule); }
+    .term-title { margin-left: 0.5rem; }
+    .term-body {
+        padding: 1rem 1.1rem 1.2rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        line-height: 1.85;
+        letter-spacing: -0.01em;
+    }
+    .term-body .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .t-prompt { color: var(--term-ok); user-select: none; }
+    .t-flag { color: var(--term-flag); }
+    .t-ok { color: var(--term-ok); }
+    .t-dim { color: var(--term-dim); }
+    .caret {
+        display: inline-block;
+        width: 0.55em;
+        height: 1.1em;
+        vertical-align: -0.2em;
+        background: var(--term-ok);
+        animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
 
-    /* Glow orbs */
-    .hero::before {
-        content: '';
-        position: absolute;
-        top: 5%;
-        left: 35%;
-        transform: translate(-50%, -50%);
-        width: 900px;
-        height: 700px;
-        background: radial-gradient(ellipse, rgba(20, 184, 166, 0.1) 0%, transparent 55%);
-        pointer-events: none;
-        animation: orb-drift 16s ease-in-out infinite;
-    }
-    .hero::after {
-        content: '';
-        position: absolute;
-        top: 40%;
-        left: 70%;
-        transform: translate(-50%, -50%);
-        width: 500px;
-        height: 400px;
-        background: radial-gradient(ellipse, rgba(6, 182, 212, 0.06) 0%, transparent 55%);
-        pointer-events: none;
-        animation: orb-drift-2 20s ease-in-out infinite;
-    }
-    [data-theme="light"] .hero::before {
-        background: radial-gradient(ellipse, rgba(15, 118, 110, 0.12) 0%, transparent 55%);
-    }
-    [data-theme="light"] .hero::after {
-        background: radial-gradient(ellipse, rgba(6, 140, 170, 0.08) 0%, transparent 55%);
-    }
-
-    .hero > .container { position: relative; z-index: 1; }
-
-    /* ── Hero grid (text left, terminal right) ────── */
+    /* ── Hero ────────────────────────────────────── */
+    .hero { padding: 4.5rem 0 3.5rem; }
     .hero-grid {
         display: grid;
-        grid-template-columns: 1.1fr 1fr;
-        gap: 3.5rem;
-        align-items: center;
-    }
-
-    .hero-content { text-align: left; }
-
-    .hero-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        border: 1px solid var(--green-border);
-        border-radius: 100px;
-        padding: 0.35rem 1.2rem;
-        font-size: 0.7rem;
-        font-family: var(--mono);
-        color: var(--green);
-        margin-bottom: 2rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        background: transparent;
-    }
-    .hero-badge-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--green);
-        flex-shrink: 0;
-        box-shadow: 0 0 10px var(--green);
-        animation: glow-pulse 2s ease-in-out infinite;
-    }
-
-    .hero h1 {
-        font-family: var(--display);
-        font-size: clamp(2.4rem, 3.6vw, 3.4rem);
-        font-weight: 700;
-        letter-spacing: -0.04em;
-        line-height: 1.08;
-        color: var(--heading);
-        margin: 0 0 1.5rem;
-    }
-    .hero h1 em {
-        font-style: normal;
-        background: linear-gradient(135deg, var(--green) 0%, var(--cyan) 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    .hero-sub {
-        font-size: 1.05rem;
-        color: var(--text-muted);
-        max-width: 440px;
-        margin: 0 0 2.5rem;
-        line-height: 1.7;
-        font-weight: 400;
-    }
-
-    .hero-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        margin-bottom: 1.5rem;
-    }
-
-    /* ── Tech ribbon ─────────────────────────────── */
-    .hero-tech {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 2rem;
-        padding-top: 2rem;
-        margin-top: 2rem;
-        border-top: 1px solid var(--border);
-    }
-    .hero-tech-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        white-space: nowrap;
-    }
-    .hero-tech-items {
-        display: flex;
-        align-items: center;
-        gap: 1.75rem;
-    }
-    .hero-tech-item {
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        white-space: nowrap;
-        border: 1px solid var(--border);
-        border-radius: 100px;
-        padding: 0.35rem 0.9rem;
-        transition: border-color 0.2s, color 0.2s;
-    }
-    .hero-tech-item:hover {
-        border-color: var(--green-border);
-        color: var(--text);
-    }
-    .hero-tech-item svg { opacity: 0.65; flex-shrink: 0; }
-
-    /* ── Install bar ─────────────────────────────────── */
-    .install-bar {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-    .install-cmd {
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        color: var(--text-dim);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        letter-spacing: 0.02em;
-        user-select: all;
-        transition: border-color 0.2s;
-        background: transparent;
-    }
-    .install-cmd:hover { border-color: var(--green-border); }
-    .install-cmd span { color: var(--green); }
-
-    .install-copy {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-dim);
-        background: none;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 0.5rem 0.7rem;
-        cursor: pointer;
-        transition: all 0.15s;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        line-height: 1;
-    }
-    .install-copy:hover {
-        color: var(--green);
-        border-color: var(--green-border);
-    }
-
-    /* ── Buttons ──────────────────────────────────── */
-    .btn-primary {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: var(--green);
-        color: #000;
-        font-weight: 700;
-        font-family: var(--sans);
-        font-size: 0.95rem;
-        padding: 0.8rem 2rem;
-        border-radius: 10px;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        text-decoration: none;
-        letter-spacing: -0.01em;
-    }
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(20, 184, 166, 0.2);
-        text-decoration: none;
-    }
-    [data-theme="light"] .btn-primary {
-        background: #0F766E;
-        color: #ffffff;
-    }
-    [data-theme="light"] .btn-primary:hover {
-        box-shadow: 0 8px 28px rgba(15, 118, 110, 0.25);
-    }
-
-    .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: transparent;
-        color: var(--text-muted);
-        font-family: var(--sans);
-        font-size: 0.95rem;
-        font-weight: 500;
-        padding: 0.8rem 1.6rem;
-        border-radius: 10px;
-        border: 1px solid var(--border-light);
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        text-decoration: none;
-    }
-    .btn-secondary:hover {
-        color: var(--text);
-        border-color: var(--text-dim);
-        transform: translateY(-2px);
-        text-decoration: none;
-    }
-    .btn-secondary svg { flex-shrink: 0; }
-
-    /* ── Terminal ───────────────────────────────────── */
-    .hero-terminal { min-width: 0; }
-    .terminal-wrap {
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid var(--border);
-        box-shadow:
-            0 0 0 1px rgba(20, 184, 166, 0.04),
-            0 0 80px rgba(20, 184, 166, 0.06),
-            0 32px 80px -24px rgba(0, 0, 0, 0.5);
-        text-align: left;
-        transition: box-shadow 0.4s ease;
-    }
-    .terminal-wrap:hover {
-        box-shadow:
-            0 0 0 1px rgba(20, 184, 166, 0.06),
-            0 0 120px rgba(20, 184, 166, 0.08),
-            0 40px 100px -24px rgba(0, 0, 0, 0.6);
-    }
-    [data-theme="light"] .terminal-wrap {
-        box-shadow:
-            0 0 0 1px rgba(15, 118, 110, 0.08),
-            0 0 50px rgba(15, 118, 110, 0.05),
-            0 24px 60px -20px rgba(60, 50, 40, 0.14);
-    }
-    [data-theme="light"] .terminal-wrap:hover {
-        box-shadow:
-            0 0 0 1px rgba(15, 118, 110, 0.10),
-            0 0 70px rgba(15, 118, 110, 0.07),
-            0 32px 80px -20px rgba(60, 50, 40, 0.18);
-    }
-
-    .terminal-bar {
-        background: #141414;
-        padding: 0.75rem 1.1rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .t-dot { width: 10px; height: 10px; border-radius: 50%; opacity: 0.65; }
-    .t-dot-red { background: #ff5f57; }
-    .t-dot-amber { background: #febc2e; }
-    .t-dot-green { background: #28c840; }
-    .terminal-title {
-        font-family: var(--mono);
-        font-size: 0.62rem;
-        color: #555;
-        margin-left: auto;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-    .terminal-body {
-        background: #0a0a0a;
-        padding: 1.5rem 1.6rem;
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        line-height: 2;
-    }
-    [data-theme="light"] .terminal-bar { background: #1a1a2e; }
-    [data-theme="light"] .terminal-body { background: #141428; }
-    .t-line {
-        display: flex;
-        gap: 0.5rem;
-        min-height: 1.8em;
-        opacity: 0;
-        animation: type-line 0.35s ease forwards;
-    }
-    .t-line:nth-child(1) { animation-delay: 0.6s; }
-    .t-line:nth-child(2) { animation-delay: 0.85s; }
-    .t-line:nth-child(3) { animation-delay: 1.0s; }
-    .t-line:nth-child(5) { animation-delay: 1.3s; }
-    .t-line:nth-child(6) { animation-delay: 1.5s; }
-    .t-line:nth-child(7) { animation-delay: 1.65s; }
-    .t-line:nth-child(9) { animation-delay: 2.0s; }
-    .t-line:nth-child(10) { animation-delay: 2.2s; }
-    .t-line:nth-child(11) { animation-delay: 2.35s; }
-
-    .t-prompt { color: var(--green); user-select: none; flex-shrink: 0; }
-    .t-cmd { color: #e2e2e2; }
-    .t-flag { color: var(--cyan); }
-    .t-ok { color: #34d399; padding-left: 0.2rem; }
-    .t-dim { color: #444; padding-left: 0.2rem; font-style: italic; }
-    .t-gap { height: 0.5rem; }
-
-    /* ── Shared section styles ─────────────────────── */
-    .section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-    }
-
-    .section-eyebrow {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        margin-bottom: 1rem;
-    }
-    .section-title {
-        font-family: var(--display);
-        font-size: clamp(2rem, 4vw, 3rem);
-        font-weight: 700;
-        letter-spacing: -0.035em;
-        color: var(--heading);
-        line-height: 1.1;
-    }
-    .section-sub {
-        font-size: 1rem;
-        color: var(--text-muted);
-        max-width: 560px;
-        line-height: 1.7;
-        margin-top: 1rem;
-    }
-
-    .section-header {
-        margin-bottom: 2.5rem;
-    }
-
-    /* ── Feature grid ─────────────────────────────── */
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1px;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        overflow: hidden;
-        background: var(--border);
-    }
-    .feature-card {
-        background: var(--bg);
-        padding: 2.25rem 2rem;
-        transition: all 0.3s ease;
-        position: relative;
-    }
-    .feature-card:hover {
-        background: rgba(20, 184, 166, 0.04);
-    }
-    [data-theme="light"] .feature-card:hover {
-        background: rgba(15, 118, 110, 0.06);
-    }
-
-    .feature-icon {
-        width: 36px;
-        height: 36px;
-        margin-bottom: 1.25rem;
-        color: var(--green);
-        opacity: 0.75;
-        transition: opacity 0.25s;
-    }
-    .feature-card:hover .feature-icon { opacity: 1; }
-
-    .feature-card h3 {
-        font-family: var(--display);
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--heading);
-        margin-bottom: 0.6rem;
-        letter-spacing: -0.01em;
-        line-height: 1.3;
-    }
-    .feature-card p {
-        font-size: 0.85rem;
-        color: var(--text-muted);
-        line-height: 1.65;
-    }
-    .feature-card p code {
-        font-family: var(--mono);
-        font-size: 0.85em;
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        color: var(--green);
-        border: 1px solid var(--green-border);
-        background: transparent;
-    }
-
-    /* ── Agent showcase ──────────────────────────── */
-    .agent-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-        position: relative;
-        overflow: hidden;
-    }
-    .agent-section::before {
-        content: '';
-        position: absolute;
-        top: -100px;
-        right: -200px;
-        width: 600px;
-        height: 600px;
-        background: radial-gradient(circle, rgba(20, 184, 166, 0.03) 0%, transparent 55%);
-        pointer-events: none;
-    }
-
-    .agent-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3.5rem;
-        align-items: center;
-        margin-top: 2rem;
-    }
-
-    .agent-flow { display: flex; flex-direction: column; gap: 0; }
-    .flow-step {
-        display: flex;
-        align-items: flex-start;
-        gap: 1.25rem;
-        padding: 1.5rem 0;
-    }
-    .flow-step:not(:last-child) { border-bottom: 1px solid var(--border); }
-
-    .flow-num {
-        flex-shrink: 0;
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        border: 1px solid var(--green-border);
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: var(--green);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-    }
-    .flow-body h4 {
-        font-family: var(--display);
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: var(--heading);
-        margin-bottom: 0.35rem;
-        letter-spacing: -0.01em;
-    }
-    .flow-body p {
-        font-size: 0.85rem;
-        color: var(--text-muted);
-        line-height: 1.65;
-    }
-
-    .agent-visual {
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 2rem;
-        position: relative;
-        background: transparent;
-    }
-    .agent-visual-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 1.5rem;
-    }
-    .agent-files { display: flex; flex-direction: column; gap: 0.5rem; }
-    .agent-file {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.7rem 1rem;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        font-family: var(--mono);
-        font-size: 0.75rem;
-        color: var(--text);
-        transition: border-color 0.2s, background 0.2s;
-        background: rgba(255, 255, 255, 0.02);
-    }
-    .agent-file:hover { border-color: var(--green-border); background: rgba(255, 255, 255, 0.04); }
-    .agent-file-icon { color: var(--green); opacity: 0.75; flex-shrink: 0; }
-    [data-theme="light"] .agent-file { background: rgba(0, 0, 0, 0.02); }
-    [data-theme="light"] .agent-file:hover { background: rgba(0, 0, 0, 0.04); }
-    .agent-file-new {
-        margin-left: auto;
-        font-size: 0.6rem;
-        color: var(--green);
-        border: 1px solid var(--green-border);
-        padding: 0.1rem 0.45rem;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-family: var(--mono);
-        background: transparent;
-    }
-    .agent-file-auto {
-        margin-left: auto;
-        font-family: var(--mono);
-        font-size: 0.6rem;
-        color: var(--text-muted);
-        letter-spacing: 0.03em;
-    }
-
-    /* File appear animation */
-    @keyframes file-appear {
-        from { opacity: 0; transform: translateX(16px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
-    .agent-visual.visible .agent-file {
-        opacity: 0;
-        animation: file-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    .agent-visual.visible .agent-file:nth-child(1) { animation-delay: 0.15s; }
-    .agent-visual.visible .agent-file:nth-child(2) { animation-delay: 0.35s; }
-    .agent-visual.visible .agent-file:nth-child(3) { animation-delay: 0.55s; }
-    .agent-visual.visible .agent-file:nth-child(4) { animation-delay: 0.75s; }
-    @media (prefers-reduced-motion: reduce) {
-        .agent-visual.visible .agent-file { animation: none; opacity: 1; }
-    }
-
-    .agent-file-preview {
-        font-family: var(--mono);
-        font-size: 0.68rem;
-        color: var(--text-muted);
-        margin-top: 0.35rem;
-        padding: 0.5rem 0.75rem;
-        border-left: 2px solid var(--green-border);
-        line-height: 1.6;
-    }
-    .agent-file-preview .fp-key { color: var(--green); font-weight: 600; }
-    .agent-file-preview .fp-val { color: var(--text); }
-
-    /* ── Comparison ───────────────────────────────── */
-    .compare-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .compare-section .section-title { margin-bottom: 0.75rem; }
-    .compare-sub {
-        font-size: 1rem;
-        color: var(--text-muted);
-        max-width: 540px;
-        line-height: 1.65;
-        margin-bottom: 2.5rem;
-    }
-    .compare-columns {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1.5rem;
-    }
-    .compare-col {
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 2rem;
-    }
-    .compare-col--after {
-        border-color: var(--green-border);
-        background: rgba(20, 184, 166, 0.03);
-    }
-    [data-theme="light"] .compare-col--after {
-        background: rgba(15, 118, 110, 0.04);
-    }
-    .compare-col-label {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--text-dim);
-        margin-bottom: 1.25rem;
-    }
-    .compare-col--after .compare-col-label {
-        color: var(--green);
-    }
-    .compare-list {
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: 0.65rem;
-    }
-    .compare-list li {
-        font-size: 0.88rem;
-        color: var(--text-muted);
-        display: flex;
-        align-items: flex-start;
-        gap: 0.6rem;
-        line-height: 1.5;
-    }
-    .compare-list li .compare-icon {
-        flex-shrink: 0;
-        margin-top: 0.15rem;
-        opacity: 0.4;
-    }
-    .compare-col--after .compare-list li .compare-icon {
-        color: var(--green);
-        opacity: 0.8;
-    }
-    .compare-list li .compare-tool {
-        font-family: var(--mono);
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        margin-left: auto;
-        white-space: nowrap;
-        padding-left: 0.5rem;
-    }
-    .compare-col--after .compare-list li .compare-tool {
-        color: var(--green);
-    }
-
-    /* ── Quickstart ────────────────────────────────── */
-    .quickstart-section {
-        padding: 4.5rem 0;
-        border-top: 1px solid var(--border);
-    }
-    .quickstart-grid {
-        display: grid;
-        grid-template-columns: 1.1fr 0.9fr;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
         gap: 3rem;
         align-items: start;
-        margin-top: 2rem;
     }
-    .code-block {
-        background: #0a0a0a;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow:
-            0 0 60px rgba(20, 184, 166, 0.03),
-            0 20px 60px -20px rgba(0, 0, 0, 0.4);
+    .hero h1 {
+        font-family: var(--display);
+        font-weight: 800;
+        font-size: clamp(2.5rem, 4.4vw, 3.4rem);
+        line-height: 1.02;
+        letter-spacing: -0.025em;
+        color: var(--heading);
+        text-wrap: balance;
     }
-    [data-theme="light"] .code-block {
-        background: #141428;
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow:
-            0 0 40px rgba(15, 118, 110, 0.04),
-            0 16px 48px -16px rgba(60, 50, 40, 0.14);
+    .hero h1 em { font-style: normal; color: var(--green); }
+    .hero-sub {
+        margin-top: 1.25rem;
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: var(--text-muted);
+        max-width: 31rem;
+        text-wrap: pretty;
     }
-    .code-block-header {
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.75rem; }
+
+    .install { margin-top: 2rem; max-width: 31rem; }
+    .install-label {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.8rem 1.3rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        background: rgba(255, 255, 255, 0.02);
-    }
-    .code-block-title {
-        font-family: var(--mono);
-        font-size: 0.65rem;
-        color: rgba(255, 255, 255, 0.3);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-    .copy-btn {
-        font-family: var(--mono);
-        font-size: 0.6rem;
-        color: rgba(255, 255, 255, 0.3);
-        background: none;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 5px;
-        padding: 0.2rem 0.55rem;
-        cursor: pointer;
-        transition: all 0.15s;
-        line-height: 1.4;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-    .copy-btn:hover { color: #14B8A6; border-color: rgba(20, 184, 166, 0.3); }
-
-    .code-block-body {
-        padding: 1.5rem 1.4rem;
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        line-height: 2;
-    }
-    .c-comment { color: #383838; }
-    .c-cmd { color: #14B8A6; }
-    .c-arg { color: #e2e2e2; }
-    .c-flag { color: var(--cyan); }
-    .c-blank { height: 0.6rem; }
-    [data-theme="light"] .c-comment { color: rgba(255,255,255,0.22); }
-    [data-theme="light"] .c-cmd { color: #34d399; }
-    [data-theme="light"] .c-arg { color: rgba(255,255,255,0.85); }
-    [data-theme="light"] .c-flag { color: #67d8ef; }
-
-    /* Steps */
-    .steps-list {
-        list-style: none;
-        counter-reset: step-counter;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-    .step-item {
-        counter-increment: step-counter;
-        display: flex;
-        gap: 1.1rem;
-        align-items: flex-start;
-    }
-    .step-num {
-        flex-shrink: 0;
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: transparent;
-        border: 1px solid var(--border-light);
-        font-family: var(--mono);
-        font-size: 0.72rem;
+        font-size: 0.9rem;
         font-weight: 600;
-        color: var(--text-dim);
+        color: var(--heading);
+        margin-bottom: 0.5rem;
+    }
+    .install-tabs { display: flex; gap: 0.25rem; }
+    .install-tabs button,
+    .agent-tabs button {
+        font: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--text-muted);
+        background: none;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        min-height: 28px;
+        padding: 0 0.55rem;
+        cursor: pointer;
+    }
+    .install-tabs button[aria-selected="true"] { color: var(--heading); border-color: var(--border-light); }
+    .install-tabs button:hover { color: var(--heading); }
+    .install-cmd {
         display: flex;
         align-items: center;
-        justify-content: center;
-        margin-top: 0.1rem;
-        transition: all 0.25s;
-    }
-    .step-item:hover .step-num {
-        border-color: var(--green-border);
-        color: var(--green);
-    }
-    .step-num::before { content: counter(step-counter); }
-    .step-body { padding-top: 0.1rem; }
-    .step-body strong {
-        color: var(--heading);
-        font-size: 0.95rem;
-        font-weight: 700;
-        display: block;
-        margin-bottom: 0.3rem;
-        letter-spacing: -0.01em;
-    }
-    .step-body span {
-        color: var(--text-muted);
-        font-size: 0.85rem;
-        line-height: 1.65;
-    }
-    .step-body code {
+        gap: 0.75rem;
+        background: var(--term-bg);
+        border: 1px solid var(--term-border);
+        border-radius: var(--radius-sm);
+        padding: 0.3rem 0.3rem 0.3rem 0.9rem;
         font-family: var(--mono);
-        font-size: 0.85em;
-        border: 1px solid var(--green-border);
-        padding: 0.1em 0.35em;
-        border-radius: 4px;
-        color: var(--green);
-        background: transparent;
+        font-size: 0.75rem;
+        color: var(--term-text);
     }
+    .install-cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; user-select: all; scrollbar-width: none; }
+    .install-cmd code::-webkit-scrollbar { display: none; }
+    .copy {
+        flex-shrink: 0;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--term-text);
+        background: var(--term-bar);
+        border: 1px solid var(--term-rule);
+        border-radius: var(--radius-sm);
+        min-height: 32px;
+        padding: 0 0.7rem;
+        cursor: pointer;
+    }
+    .copy:hover { background: var(--term-rule); }
 
-    /* ── Dogfood line ─────────────────────────────── */
-    .dogfood-line {
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        color: var(--text-dim);
-        letter-spacing: 0.03em;
-        margin-bottom: 1.5rem !important;
-        opacity: 0.6;
-    }
+    /* Agent panel */
+    .agent-panel { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; background: var(--bg-card); }
+    .agent-panel-head { margin-bottom: 0.75rem; padding: 0 0.15rem; }
+    .agent-panel-head strong, .agent-panel-head span { display: block; }
+    .agent-panel-head strong { font-size: 0.9rem; color: var(--heading); }
+    .agent-panel-head span { font-size: 0.75rem; color: var(--text-dim); }
+    .agent-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 0.75rem; }
+    .agent-tabs button { border-radius: 0; border: 0; border-left: 1px solid var(--border); min-height: 34px; padding: 0 0.25rem; white-space: nowrap; }
+    .agent-tabs button:first-child { border-left: 0; }
+    .agent-tabs button[aria-selected="true"] { background: var(--ink); color: var(--on-ink); }
+    .agent-tabs button:hover:not([aria-selected="true"]) { color: var(--heading); background: var(--bg-raised); }
+    .agent-panel .term-body { min-height: 16rem; }
+    .panel-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.6rem; padding: 0 0.15rem; font-size: 0.75rem; color: var(--text-dim); }
+    .replay { font: inherit; font-size: 0.75rem; color: var(--text-muted); background: none; border: 1px solid var(--border-light); border-radius: var(--radius-sm); min-height: 28px; padding: 0 0.65rem; cursor: pointer; }
+    .replay:hover { color: var(--heading); }
 
-    /* ── CTA section ──────────────────────────────── */
-    .cta-section {
-        text-align: center;
-        padding: 6rem 0 5rem;
-        border-top: 1px solid var(--border);
-        position: relative;
-        overflow: hidden;
-    }
-    .cta-section::before {
-        content: '';
-        position: absolute;
-        bottom: -250px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 1000px;
-        height: 600px;
-        background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(20, 184, 166, 0.07) 0%, transparent 60%),
-            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
-        pointer-events: none;
-        animation: orb-drift 18s ease-in-out infinite;
-    }
-    [data-theme="light"] .cta-section::before {
-        background:
-            radial-gradient(ellipse 500px 300px at 40% 50%, rgba(15, 118, 110, 0.08) 0%, transparent 60%),
-            radial-gradient(ellipse 400px 250px at 60% 40%, rgba(6, 140, 170, 0.05) 0%, transparent 60%);
-    }
-    .cta-section > .container { position: relative; z-index: 1; }
+    /* Works with */
+    .works { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 1.25rem 0; }
+    .works-inner { display: flex; align-items: center; gap: 0.75rem 2rem; flex-wrap: wrap; }
+    .works-label { font-size: 0.75rem; color: var(--text-dim); }
+    .works ul { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; list-style: none; margin: 0; padding: 0; }
+    .works li { font-family: var(--display); font-weight: 700; font-size: 1rem; color: var(--heading); letter-spacing: -0.01em; }
+    .works .sep { width: 1px; height: 1.1rem; background: var(--border-light); }
 
-    .cta-section h2 {
+    /* ── Sections ────────────────────────────────── */
+    .sec { padding: 5.5rem 0; }
+    .sec + .sec { border-top: 1px solid var(--border); }
+    .sec-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem 3.5rem; align-items: end; margin-bottom: 2.5rem; }
+    .sec h2 {
         font-family: var(--display);
-        font-size: clamp(2.4rem, 5vw, 4.2rem);
-        font-weight: 700;
-        letter-spacing: -0.04em;
+        font-weight: 800;
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        line-height: 1.04;
+        letter-spacing: -0.025em;
         color: var(--heading);
-        margin-bottom: 1rem;
-        line-height: 1.08;
+        text-wrap: balance;
     }
-    .cta-section > .container > p {
-        color: var(--text-muted);
-        margin-bottom: 2.5rem;
-        font-size: 1.1rem;
-        max-width: 480px;
-        margin-left: auto;
-        margin-right: auto;
-        line-height: 1.7;
-    }
-    .cta-section .hero-actions { justify-content: center; }
-
-    /* ── Responsive ───────────────────────────────── */
-    @media (max-width: 1024px) {
-        .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .sec h2 span { color: var(--text-dim); }
+    .sec-lede { font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 30rem; text-wrap: pretty; }
+    .tool p code, .feat p code {
+        font-family: var(--mono);
+        font-size: 0.8em;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.05em 0.3em;
+        color: var(--heading);
+        white-space: nowrap;
     }
 
-    @media (max-width: 900px) {
-        .hero { padding: 4rem 0 2.5rem; }
-        .hero-grid {
-            grid-template-columns: 1fr;
-            gap: 2.5rem;
-        }
-        .hero-content { text-align: center; }
-        .hero h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); }
-        .hero-sub { margin-left: auto; margin-right: auto; }
-        .hero-actions { justify-content: center; }
-        .install-bar { justify-content: center; }
-        .agent-grid { grid-template-columns: 1fr; gap: 2.5rem; }
-        .hero-tech { flex-direction: column; gap: 1rem; }
+    /* Four tools */
+    .tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .tool { padding: 1.4rem 1.25rem 1.25rem; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+    .tool:first-child { border-left: 0; }
+    .tool h3 { font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--heading); }
+    .tool .replaces { margin-top: 0.25rem; font-size: 0.9rem; line-height: 1.45; color: var(--text-dim); }
+    .tool p { margin-top: 0.85rem; font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); flex: 1; }
+    .tool .cmd {
+        margin-top: 1.1rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.45rem 0.6rem;
+        color: var(--heading);
+        white-space: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
     }
+    .tool .cmd span { color: var(--green); user-select: none; }
 
-    @media (max-width: 768px) {
-        .quickstart-grid { grid-template-columns: 1fr; }
-        .section { padding: 3.5rem 0; }
-        .compare-section { padding: 3.5rem 0; }
-        .quickstart-section { padding: 3.5rem 0; }
-        .cta-section { padding: 4.5rem 0 3.5rem; }
-        .agent-section { padding: 3.5rem 0; }
-        .compare-columns { grid-template-columns: 1fr; }
-        .hero-tech-items { flex-wrap: wrap; justify-content: center; gap: 1rem; }
+    /* A minute with seite */
+    .walk { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 2.5rem; align-items: start; }
+    .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+    .step button {
+        font: inherit;
+        color: inherit;
+        text-align: left;
+        background: none;
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr);
+        gap: 0.15rem 0.5rem;
+        width: 100%;
+        padding: 0.8rem 0.9rem;
+        border-radius: var(--radius);
+        cursor: pointer;
+        border: 1px solid transparent;
     }
+    .step button:hover { background: var(--bg-raised); }
+    .step button[aria-pressed="true"] { background: var(--bg-raised); border-color: var(--border); }
+    .step-n { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); line-height: 1.6rem; }
+    .step button[aria-pressed="true"] .step-n { color: var(--green); }
+    .step-t { font-weight: 600; font-size: 1rem; color: var(--heading); line-height: 1.6rem; }
+    .step-c { grid-column: 2; font-family: var(--mono); font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+    .step-d { grid-column: 2; display: none; font-size: 0.9rem; line-height: 1.55; color: var(--text-muted); margin-top: 0.4rem; }
+    .step button[aria-pressed="true"] .step-d { display: block; }
+    .walk .term-body { min-height: 10.5rem; }
 
-    @media (max-width: 600px) {
-        .feature-grid { grid-template-columns: 1fr; }
-        .install-bar { flex-direction: column; gap: 0.4rem; }
+    /* Release + stats */
+    .release { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3.5rem; align-items: start; }
+    .release p { margin-top: 1rem; font-size: 1rem; line-height: 1.6; color: var(--text-muted); max-width: 30rem; }
+    .release p.release-meta { margin-top: 0.6rem; font-size: 0.9rem; color: var(--text-dim); }
+    .release p.release-desc { color: var(--heading); font-size: 1.05rem; }
+    .release .hero-actions { margin-top: 1.5rem; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin: 0; }
+    .stat { padding: 1.25rem 1.3rem; border-top: 1px solid var(--border); }
+    .stat:nth-child(-n+2) { border-top: 0; }
+    .stat:nth-child(even) { border-left: 1px solid var(--border); }
+    .stat dt { font-size: 0.9rem; font-weight: 500; color: var(--text-muted); }
+    .stat dd { margin: 0.35rem 0 0; }
+    .stat .num { display: block; font-family: var(--display); font-weight: 800; font-size: 2.1rem; letter-spacing: -0.03em; color: var(--heading); line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stat .note { display: block; margin-top: 0.3rem; font-size: 0.9rem; line-height: 1.45; color: var(--text-muted); }
+
+    /* Everything else */
+    .feats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 3.5rem; list-style: none; margin: 0; padding: 0; }
+    .feat { padding: 1.5rem 0; border-top: 1px solid var(--border); }
+    .feat h3 { font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--heading); line-height: 1.3; }
+    .feat p { margin-top: 0.5rem; font-size: 0.9rem; line-height: 1.65; color: var(--text-muted); }
+
+    /* Close */
+    .close { text-align: center; padding: 6rem 0 5rem; }
+    .close h2 { margin: 0 auto; max-width: 20ch; }
+    .close .sec-lede { margin: 1rem auto 0; }
+    .close .hero-actions { justify-content: center; }
+    .dogfood { margin-top: 2rem; font-size: 0.9rem; color: var(--text-dim); }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 960px) {
+        .hero-grid, .walk, .release, .sec-head { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+        .sec-head { gap: 1rem; }
+        .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tool:nth-child(3) { border-left: 0; }
+        .tool:nth-child(n+3) { border-top: 1px solid var(--border); }
+        .walk-out { order: -1; position: sticky; top: 64px; z-index: 2; background: var(--bg); padding-bottom: 0.5rem; }
+    }
+    @media (max-width: 640px) {
+        .tool p code, .feat p code { white-space: normal; overflow-wrap: anywhere; }
+        .hero { padding: 3rem 0 2.5rem; }
+        .sec { padding: 4rem 0; }
+        .tools, .feats { grid-template-columns: minmax(0, 1fr); }
+        .tool { border-left: 0; border-top: 1px solid var(--border); }
+        .tool:first-child { border-top: 0; }
+        .agent-tabs button { font-size: 0.75rem; padding: 0 0.2rem; }
+        .works .sep { display: none; }
+        .hero-actions .btn { flex: 1 1 auto; justify-content: center; }
+        .install-cmd { align-items: flex-start; }
+        .install-cmd code { white-space: normal; overflow-wrap: anywhere; padding: 0.45rem 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .caret { animation: none; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
+{% set_global latest = false %}
+{% for c in collections %}{% if c.name == "changelog" and c.items | length > 0 %}{% set_global latest = c.items | first %}{% endif %}{% endfor %}
+<div class="home">
 
 <!-- ─── Hero ──────────────────────────────────────── -->
 <section class="hero">
-    <div class="container">
-        <div class="hero-grid">
-            <div class="hero-content">
-                <div class="hero-badge anim-rise" style="animation-delay:0.1s">
-                    <span class="hero-badge-dot" aria-hidden="true"></span>
-                    {{ page.extra.hero_badge | default(value="Built in Rust · AI-native · Open source") }}
-                </div>
-
-                <h1 class="anim-rise" style="animation-delay:0.18s">
-                    {{ page.extra.hero_headline | default(value="Ship a landing page, docs site, or blog <em>in an afternoon.</em> Not a sprint.") | safe }}
-                </h1>
-
-                <p class="hero-sub anim-rise" style="animation-delay:0.3s">{{ page.extra.hero_sub | default(value=page.description) }}</p>
-
-                <div class="hero-actions anim-rise" style="animation-delay:0.4s">
-                    <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStarted">{{ t.get_started | default(value="Get started") }} →</a>
-                    <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHub" rel="noopener noreferrer">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                        {{ t.view_on_github | default(value="GitHub") }}
-                    </a>
-                </div>
-
-                <div class="install-bar anim-rise" style="animation-delay:0.48s">
-                    <div class="install-cmd"><span>$</span> curl -fsSL seite.sh/install.sh | sh</div>
-                    <button class="install-copy plausible-event-name=CopyInstall" aria-label="Copy install command" onclick="navigator.clipboard.writeText('curl -fsSL https://seite.sh/install.sh | sh').then(function(){this.textContent='copied';setTimeout(function(){this.textContent='copy';}.bind(this),2000);}.bind(this)).catch(function(){});">copy</button>
-                </div>
+    <div class="container hero-grid">
+        <div>
+            <h1>{{ page.extra.hero_headline | default(value="Your coding agent can build and manage your website. <em>No new subscription required.</em>") | safe }}</h1>
+            <p class="hero-sub">{{ page.extra.hero_sub | default(value=page.description) }}</p>
+            <div class="hero-actions">
+                <a href="{{ lang_prefix }}/docs/getting-started" class="btn btn-ink plausible-event-name=GetStarted">Read Getting Started <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+                <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn btn-line plausible-event-name=ViewGitHub" rel="noopener noreferrer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    {{ t.view_on_github | default(value="GitHub") }}
+                </a>
             </div>
 
-            <div class="hero-terminal anim-rise" style="animation-delay:0.4s">
-                <div class="terminal-wrap" role="img" aria-label="seite CLI demonstration">
-                    <div class="terminal-bar" aria-hidden="true">
-                        <span class="t-dot t-dot-red"></span>
-                        <span class="t-dot t-dot-amber"></span>
-                        <span class="t-dot t-dot-green"></span>
-                        <span class="terminal-title">terminal</span>
+            <div class="install">
+                <div class="install-label">
+                    <span>Install seite</span>
+                    <div class="install-tabs" role="tablist" aria-label="Operating system">
+                        <button type="button" role="tab" aria-selected="true" data-cmd="curl -fsSL https://seite.sh/install.sh | sh">macOS &amp; Linux</button>
+                        <button type="button" role="tab" aria-selected="false" data-cmd="irm https://seite.sh/install.ps1 | iex">Windows</button>
                     </div>
-                    <div class="terminal-body">
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite init myblog <span class="t-flag">--title "My Blog"</span></span></div>
-                        <div class="t-line"><span class="t-ok">✓ Created myblog/</span></div>
-                        <div class="t-line"><span class="t-ok">✓ Scaffolded AGENTS.md</span></div>
-                        <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite agent <span class="t-flag">"write a v1.2 release post"</span></span></div>
-                        <div class="t-line"><span class="t-dim">spawning Claude Code…</span></div>
-                        <div class="t-line"><span class="t-ok">✓ content/posts/v1-2-release.md</span></div>
-                        <div class="t-gap"></div>
-                        <div class="t-line"><span class="t-prompt">$</span><span class="t-cmd">seite deploy</span></div>
-                        <div class="t-line"><span class="t-dim">building… pre-flight OK</span></div>
-                        <div class="t-line"><span class="t-ok">✓ Deployed → myblog.github.io</span></div>
-                    </div>
+                </div>
+                <div class="install-cmd">
+                    <code id="install-cmd">curl -fsSL https://seite.sh/install.sh | sh</code>
+                    <button type="button" class="copy plausible-event-name=CopyInstall" data-copy-from="install-cmd" aria-label="Copy install command">Copy</button>
                 </div>
             </div>
         </div>
 
-        <div class="hero-tech anim-rise" style="animation-delay:0.56s">
-            <span class="hero-tech-label">Works with</span>
-            <div class="hero-tech-items">
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9.5 2l3 3.5L9.5 9"/><path d="M14.5 2l-3 3.5 3 3.5"/><rect x="2" y="12" width="20" height="10" rx="3"/><path d="M6 16h.01M10 16h.01"/></svg>
-                    Claude Code
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    GitHub Pages
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                    Cloudflare
-                </span>
-                <span class="hero-tech-item">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    Netlify
-                </span>
+        <div class="agent-panel">
+            <div class="agent-panel-head">
+                <strong>Hand the site to your agent</strong>
+                <span>same command, four agents</span>
+            </div>
+            <div class="agent-tabs" role="tablist" aria-label="Coding agent">
+                <button type="button" role="tab" aria-selected="true" data-agent="claude">Claude Code</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="codex">Codex</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="opencode">OpenCode</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="cursor">Cursor</button>
+            </div>
+            <div class="term">
+                <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-title">~/mysite</span></div>
+                <div class="term-body" id="agent-term"></div>
+            </div>
+            <div class="panel-foot">
+                <span>Illustrative session, output abridged.</span>
+                <button type="button" class="replay" id="agent-replay">Replay</button>
             </div>
         </div>
     </div>
 </section>
 
-<!-- ─── Agent showcase ────────────────────────────── -->
-<section class="agent-section" id="agent">
-    <div class="container">
-        <div class="section-header reveal">
-            <p class="section-eyebrow">// built for ai</p>
-            <h2 class="section-title">Your agent reads the schema.<br>Then writes the content.</h2>
-            <p class="section-sub">Every <code style="font-family:var(--mono);font-size:0.85em;border:1px solid var(--green-border);padding:0.1em 0.35em;border-radius:4px;color:var(--green);">seite init</code> scaffolds an AGENTS.md so your coding agent knows the project inside out.</p>
-        </div>
-
-        <div class="agent-grid">
-            <div class="agent-flow reveal">
-                <div class="flow-step">
-                    <span class="flow-num">1</span>
-                    <div class="flow-body">
-                        <h4>Agent reads context</h4>
-                        <p>AGENTS.md contains your site config, collection schemas, frontmatter format, and template variables. The MCP server exposes content inventory and docs.</p>
-                    </div>
-                </div>
-                <div class="flow-step">
-                    <span class="flow-num">2</span>
-                    <div class="flow-body">
-                        <h4>Agent writes content</h4>
-                        <p>It generates markdown with correct frontmatter, in the right directory, following your naming conventions. You review a diff — nothing hidden.</p>
-                    </div>
-                </div>
-                <div class="flow-step">
-                    <span class="flow-num">3</span>
-                    <div class="flow-body">
-                        <h4>Build + deploy</h4>
-                        <p>One command builds HTML, markdown, RSS, sitemap, search index, and llms.txt. Another deploys to GitHub Pages, Cloudflare, or Netlify.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="agent-visual reveal">
-                <div class="agent-visual-label">files generated by agent</div>
-                <div class="agent-files">
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        <span>content/posts/2026-02-18-v1-2-release.md
-                        <div class="agent-file-preview"><span class="fp-key">title:</span> <span class="fp-val">"v1.2 Release Notes"</span><br><span class="fp-key">tags:</span> <span class="fp-val">[release, new]</span></div></span>
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        content/docs/error-handling.md
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        content/changelog/v1-2-0.md
-                        <span class="agent-file-new">new</span>
-                    </div>
-                    <div class="agent-file" style="opacity:0.6">
-                        <svg class="agent-file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        AGENTS.md
-                        <span class="agent-file-auto">auto-scaffolded</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ─── Features ──────────────────────────────────── -->
-<section class="section" id="features">
-    <div class="container">
-        <div class="section-header reveal">
-            <p class="section-eyebrow">{{ page.extra.features_eyebrow | default(value="// features") }}</p>
-            <h2 class="section-title">{{ page.extra.features_headline_1 | default(value="Everything you need.") }}<br>{{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}</h2>
-            <p class="section-sub">{{ page.extra.features_sub | default(value="") }}</p>
-        </div>
-
-        <div class="feature-grid reveal">
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4L6 10v16l12 6 12-6V10L18 4z"/><path d="M6 10l12 6m0 0l12-6m-12 6v16"/></svg>
-                <h3>{{ page.extra.feature_1_title | default(value="Sub-second builds. Always.") }}</h3>
-                <p>{{ page.extra.feature_1_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="24" height="24" rx="4"/><path d="M12 16h3l2 4 4-8 2 4h3"/></svg>
-                <h3>{{ page.extra.feature_2_title | default(value="Your agent already knows how to use this.") }}</h3>
-                <p>{{ page.extra.feature_2_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="12"/><path d="M6 18h24M18 6c-4.4 4-6.6 8-6.6 12s2.2 8 6.6 12c4.4-4 6.6-8 6.6-12s-2.2-8-6.6-12z"/></svg>
-                <h3>{{ page.extra.feature_3_title | default(value="Ship in every language your customers speak.") }}</h3>
-                <p>{{ page.extra.feature_3_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="15" r="10"/><path d="M23 23l8 8"/></svg>
-                <h3>{{ page.extra.feature_4_title | default(value="Found by people. Found by models.") }}</h3>
-                <p>{{ page.extra.feature_4_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4v20m0 0l-7-7m7 7l7-7"/><path d="M6 28h24"/></svg>
-                <h3>{{ page.extra.feature_5_title | default(value="One command. Three targets. Auto-generated CI.") }}</h3>
-                <p>{{ page.extra.feature_5_body | default(value="") | safe }}</p>
-            </div>
-            <div class="feature-card">
-                <svg class="feature-icon" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="2"/><rect x="20" y="4" width="12" height="12" rx="2"/><rect x="4" y="20" width="12" height="12" rx="2"/><rect x="20" y="20" width="12" height="12" rx="2"/></svg>
-                <h3>{{ page.extra.feature_6_title | default(value="10 themes. Generate your own with a sentence.") }}</h3>
-                <p>{{ page.extra.feature_6_body | default(value="") | safe }}</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ─── Comparison ────────────────────────────────── -->
-<section class="compare-section" id="compare">
-    <div class="container">
-        <div class="reveal">
-            <h2 class="section-title">{{ page.extra.comparison_headline | default(value="Stop juggling six tools for one website.") }}</h2>
-            <p class="compare-sub">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool — then glue it with scripts. seite handles all of it.") }}</p>
-        </div>
-
-        <div class="compare-columns reveal">
-            <div class="compare-col">
-                <div class="compare-col-label">The typical setup</div>
-                <ul class="compare-list">
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        SSG + Node.js toolchain
-                        <span class="compare-tool">Hugo / Astro / Next.js</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Separate changelog &amp; roadmap
-                        <span class="compare-tool">Headway / Notion / Canny</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Contact form service
-                        <span class="compare-tool">Formspree / Typeform</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        Deploy pipeline
-                        <span class="compare-tool">Vercel / custom CI</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        SEO meta, sitemap, RSS
-                        <span class="compare-tool">plugins / manual</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        LLM discoverability
-                        <span class="compare-tool">DIY or nothing</span>
-                    </li>
-                </ul>
-            </div>
-            <div class="compare-col compare-col--after">
-                <div class="compare-col-label">With seite</div>
-                <ul class="compare-list">
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        Single Rust binary, zero dependencies
-                        <span class="compare-tool">no Node.js</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        Blog, docs, changelog, roadmap
-                        <span class="compare-tool">collection presets</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        Contact form shortcode
-                        <span class="compare-tool">5 providers</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        Deploy to 3 targets
-                        <span class="compare-tool">seite deploy</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        SEO + JSON-LD + sitemap + RSS
-                        <span class="compare-tool">automatic</span>
-                    </li>
-                    <li>
-                        <svg class="compare-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                        llms.txt + markdown for every page
-                        <span class="compare-tool">automatic</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ─── Quickstart ─────────────────────────────────── -->
-<section class="quickstart-section" id="quickstart">
-    <div class="container">
-        <div class="reveal">
-            <p class="section-eyebrow">{{ page.extra.quickstart_eyebrow | default(value="// quickstart") }}</p>
-            <h2 class="section-title">{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
-        </div>
-
-        <div class="quickstart-grid">
-            <div class="code-block reveal">
-                <div class="code-block-header">
-                    <span class="code-block-title">install + init</span>
-                    <button class="copy-btn plausible-event-name=CopyQuickstart" aria-label="Copy install commands" onclick="var t='curl -fsSL https://seite.sh/install.sh | sh\nseite init mysite --title &quot;My Site&quot;\ncd mysite\nseite serve';navigator.clipboard.writeText(t).then(function(){this.textContent='copied';}.bind(this)).catch(function(){});">copy</button>
-                </div>
-                <div class="code-block-body">
-                    <div><span class="c-comment"># install (macOS / Linux)</span></div>
-                    <div><span class="c-cmd">curl</span> <span class="c-flag">-fsSL</span> <span class="c-arg">https://seite.sh/install.sh</span> | <span class="c-cmd">sh</span></div>
-                    <div class="c-blank"></div>
-                    <div><span class="c-comment"># scaffold a new site</span></div>
-                    <div><span class="c-cmd">seite</span> <span class="c-arg">init mysite</span> <span class="c-flag">--title "My Site"</span></div>
-                    <div><span class="c-cmd">cd</span> <span class="c-arg">mysite</span></div>
-                    <div class="c-blank"></div>
-                    <div><span class="c-comment"># start dev server with live reload</span></div>
-                    <div><span class="c-cmd">seite</span> <span class="c-arg">serve</span></div>
-                </div>
-            </div>
-
-            <ol class="steps-list reveal" aria-label="Getting started steps">
-                <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_1_title | default(value="Install seite") }}</strong>
-                        <span>{{ page.extra.step_1_body | default(value="<code>curl -fsSL seite.sh/install.sh | sh</code>. Single static binary, no runtime dependencies. Works on every machine on your team without setup.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_2_title | default(value="Scaffold your site") }}</strong>
-                        <span>{{ page.extra.step_2_body | default(value="<code>seite init mysite</code>. Generates config, templates, collection presets, and <code>AGENTS.md</code> — so your coding agent is immediately oriented.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_3_title | default(value="Create content with your agent") }}</strong>
-                        <span>{{ page.extra.step_3_body | default(value="<code>seite agent</code> with your prompt. Claude Code reads your site context and generates content into the right directory, with the right frontmatter, in the right format. Review a diff. Ship it.") | safe }}</span>
-                    </div>
-                </li>
-                <li class="step-item">
-                    <span class="step-num" aria-hidden="true"></span>
-                    <div class="step-body">
-                        <strong>{{ page.extra.step_4_title | default(value="Deploy anywhere") }}</strong>
-                        <span>{{ page.extra.step_4_body | default(value="<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify — all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow.") | safe }}</span>
-                    </div>
-                </li>
-            </ol>
-        </div>
-    </div>
-</section>
-
-<!-- ─── CTA ────────────────────────────────────────── -->
-<div class="cta-section">
-    <div class="container">
-        <p class="dogfood-line reveal">{{ page.extra.dogfood_line | default(value="This site is built with seite — the docs, the changelog, the llms.txt. All of it.") }}</p>
-        <h2 class="reveal">{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
-        <p class="reveal">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
-        <div class="hero-actions reveal">
-            <a href="{{ lang_prefix }}/docs/getting-started" class="btn-primary plausible-event-name=GetStartedCTA">{{ t.get_started | default(value="Get started") }} →</a>
-            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn-secondary plausible-event-name=ViewGitHubCTA" rel="noopener noreferrer">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                {{ t.view_on_github | default(value="View on GitHub") }}
-            </a>
-        </div>
+<div class="works">
+    <div class="container works-inner">
+        <span class="works-label">Works with</span>
+        <ul aria-label="Coding agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li><li>Cursor</li></ul>
+        <span class="sep" aria-hidden="true"></span>
+        <ul aria-label="Deploy targets"><li>GitHub Pages</li><li>Cloudflare Pages</li><li>Netlify</li></ul>
     </div>
 </div>
 
+<!-- ─── One binary ────────────────────────────────── -->
+<section class="sec" id="features">
+    <div class="container">
+        <div class="sec-head">
+            <h2>One binary for the whole site. <span>Your agent drives all of it.</span></h2>
+            <p class="sec-lede">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool, then glue it with scripts. seite handles all of it.") }}</p>
+        </div>
+        <div class="tools">
+            <div class="tool">
+                <h3>Agent context</h3>
+                <div class="replaces">replaces onboarding docs · prompt files</div>
+                <p>AGENTS.md, path-scoped rules, a <code>/seite</code> skill, an MCP server with 11 tools, and a stop hook that runs <code>seite check</code>.</p>
+                <div class="cmd"><span>$ </span>seite init mysite</div>
+            </div>
+            <div class="tool">
+                <h3>Content</h3>
+                <div class="replaces">replaces CMS · Notion · Headway</div>
+                <p>Blog, docs, changelog, roadmap and pages as markdown collections, in every language you ship.</p>
+                <div class="cmd"><span>$ </span>seite new post "Hello"</div>
+            </div>
+            <div class="tool">
+                <h3>Build</h3>
+                <div class="replaces">replaces Node toolchain · SEO plugins</div>
+                <p>HTML for people, Markdown and <code>llms.txt</code> for models, plus RSS, sitemap, JSON-LD and search. Sub-second.</p>
+                <div class="cmd"><span>$ </span>seite build</div>
+            </div>
+            <div class="tool">
+                <h3>Deploy</h3>
+                <div class="replaces">replaces Vercel · custom CI</div>
+                <p>GitHub Pages, Cloudflare Pages or Netlify, with pre-flight checks, preview deploys and password protection.</p>
+                <div class="cmd"><span>$ </span>seite deploy</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ─── A minute with seite ───────────────────────── -->
+<section class="sec" id="quickstart">
+    <div class="container">
+        <div class="sec-head">
+            <h2>{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
+            <p class="sec-lede">Install, scaffold, hand it to your agent, check, deploy. Pick a step to see what it does.</p>
+        </div>
+        <div class="walk">
+            <ol class="steps">
+                <li class="step"><button type="button" aria-pressed="true" data-step="0"><span class="step-n">01</span><span class="step-t">Install</span><span class="step-c">curl -fsSL seite.sh/install.sh | sh</span><span class="step-d">One static binary for macOS, Linux and Windows. No Node.js, no runtime dependencies.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="1"><span class="step-n">02</span><span class="step-t">Scaffold</span><span class="step-c">seite init mysite</span><span class="step-d">Config, templates, collections and the agent files: AGENTS.md, rules, skill and MCP config.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="2"><span class="step-n">03</span><span class="step-t">Hand it to your agent</span><span class="step-c">seite agent "write the launch post"</span><span class="step-d">Your agent reads the site's context and writes content in the right place, with the right frontmatter. You review a diff.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="3"><span class="step-n">04</span><span class="step-t">Check</span><span class="step-c">seite check</span><span class="step-d">Validates config, content, templates and links without writing anything. The agent's stop hook runs it too.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="4"><span class="step-n">05</span><span class="step-t">Deploy</span><span class="step-c">seite deploy</span><span class="step-d">Pre-flight checks, build and push to GitHub Pages, Cloudflare Pages or Netlify.</span></button></li>
+            </ol>
+            <div class="walk-out">
+                <div class="term">
+                    <div class="term-bar" aria-hidden="true"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span><span class="term-title">~/mysite</span></div>
+                    <div class="term-body" id="walk-term"></div>
+                </div>
+                <div class="panel-foot">
+                    <span>Output abridged.</span>
+                    <button type="button" class="replay" id="walk-replay">Replay</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if latest %}
+<!-- ─── Latest release ────────────────────────────── -->
+<section class="sec" id="release">
+    <div class="container release">
+        <div>
+            <h2>What's new in {{ latest.title }}</h2>
+            {% if latest.date %}<p class="release-meta">Released {{ latest.date | date(format="%B %-d, %Y") }}</p>{% endif %}
+            <p class="release-desc">{{ latest.description | default(value="") | replace(from="`", to="") }}</p>
+            <p>Every release ships with a changelog entry, written in this repo and built by seite like the rest of this site.</p>
+            <div class="hero-actions">
+                <a href="{{ lang_prefix }}{{ latest.url }}" class="btn btn-ink plausible-event-name=ReadRelease">Read the release notes <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+                <a href="{{ lang_prefix }}/changelog" class="btn btn-line">Full changelog</a>
+            </div>
+        </div>
+        <dl class="stats">
+            <div class="stat"><dt>Build time</dt><dd><span class="num">0.1 s</span><span class="note">All 111 pages of this site, docs to roadmap.</span></dd></div>
+            <div class="stat"><dt>Coding agents</dt><dd><span class="num">4</span><span class="note">Claude Code, Codex, OpenCode and Cursor.</span></dd></div>
+            <div class="stat"><dt>MCP tools</dt><dd><span class="num">11</span><span class="note">Check, build, create, search and more, typed.</span></dd></div>
+            <div class="stat"><dt>Bundled themes</dt><dd><span class="num">10</span><span class="note">Or describe one: <span class="mono">seite theme create</span>.</span></dd></div>
+        </dl>
+    </div>
+</section>
+{% endif %}
+
+<!-- ─── Everything else ───────────────────────────── -->
+<section class="sec" id="compare">
+    <div class="container">
+        <div class="sec-head">
+            <h2>{{ page.extra.features_headline_1 | default(value="Everything you need.") }} <span>{{ page.extra.features_headline_2 | default(value="Nothing you don't.") }}</span></h2>
+            {% if page.extra.features_sub %}<p class="sec-lede">{{ page.extra.features_sub }}</p>{% endif %}
+        </div>
+        <ul class="feats">
+            <li class="feat"><h3>{{ page.extra.feature_1_title | default(value="Sub-second builds. Always.") }}</h3><p>{{ page.extra.feature_1_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_2_title | default(value="Your agent already knows how to use this.") }}</h3><p>{{ page.extra.feature_2_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_3_title | default(value="Ship in every language your customers speak.") }}</h3><p>{{ page.extra.feature_3_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_4_title | default(value="Found by people. Found by models.") }}</h3><p>{{ page.extra.feature_4_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_5_title | default(value="One command. Three targets. Auto-generated CI.") }}</h3><p>{{ page.extra.feature_5_body | default(value="") | safe }}</p></li>
+            <li class="feat"><h3>{{ page.extra.feature_6_title | default(value="10 themes. Generate your own with a sentence.") }}</h3><p>{{ page.extra.feature_6_body | default(value="") | safe }}</p></li>
+        </ul>
+    </div>
+</section>
+
+<!-- ─── Close ─────────────────────────────────────── -->
+<section class="close sec">
+    <div class="container">
+        <h2>{{ page.extra.cta_headline | default(value="Your coding agent can handle your website.") }}</h2>
+        <p class="sec-lede">{{ page.extra.cta_sub | default(value="Give it the right structure and it will. One repo. One CLI. Your whole web presence.") }}</p>
+        <div class="hero-actions">
+            <a href="{{ lang_prefix }}/docs/getting-started" class="btn btn-ink plausible-event-name=GetStartedCTA">Read Getting Started <svg class="arr" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+            <a href="{{ page.extra.github_url | default(value='https://github.com/seite-sh/seite') }}" class="btn btn-line plausible-event-name=ViewGitHubCTA" rel="noopener noreferrer">{{ t.view_on_github | default(value="View on GitHub") }}</a>
+        </div>
+        <p class="dogfood">{{ page.extra.dogfood_line | default(value="This site is built with seite: the docs, the changelog, the llms.txt. All of it.") }}</p>
+    </div>
+</section>
+
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    (function () {
-        var els = document.querySelectorAll('.reveal');
-        if (!els.length) return;
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            els.forEach(function (el) { el.classList.add('visible'); });
-            return;
-        }
-        var observer = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                    observer.unobserve(entry.target);
-                }
+(function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    // Line kinds: c = command, o = success, d = dim note
+    function inner(line) {
+        var t = esc(line[1]);
+        var hl = t.replace(/(--[a-z-]+|"[^"]*"?)/g, '<span class="t-flag">$1</span>');
+        if (line[0] === 'c') return '<span class="t-prompt">$ </span>' + hl;
+        if (line[0] === 'k') return '    ' + hl;
+        return t;
+    }
+    function render(line) {
+        var cls = line[0] === 'o' ? 'ln t-ok' : line[0] === 'd' ? 'ln t-dim' : 'ln';
+        return '<span class="' + cls + '">' + inner(line) + '</span>';
+    }
+
+    // Plays lines into a terminal: commands type out, output lands line by line.
+    function player(el) {
+        var timer = null;
+        return function play(lines) {
+            clearTimeout(timer);
+            el.setAttribute('aria-label', lines.map(function (l) { return (l[0] === 'c' ? '$ ' : '') + l[1]; }).join('. '));
+            if (reduce) { el.innerHTML = lines.map(render).join(''); return; }
+            el.innerHTML = '';
+            var i = 0;
+            function next() {
+                if (i >= lines.length) { el.insertAdjacentHTML('beforeend', '<span class="ln"><span class="t-prompt">$ </span><span class="caret"></span></span>'); return; }
+                var line = lines[i++];
+                if (line[0] !== 'c' && line[0] !== 'k') { el.insertAdjacentHTML('beforeend', render(line)); timer = setTimeout(next, 240); return; }
+                var kind = line[0];
+                var full = line[1], n = 0, span = document.createElement('span');
+                span.className = 'ln';
+                el.appendChild(span);
+                (function type() {
+                    n = Math.min(full.length, n + 2);
+                    span.innerHTML = inner([kind, full.slice(0, n)]) + (n < full.length ? '<span class="caret"></span>' : '');
+                    timer = setTimeout(n < full.length ? type : next, n < full.length ? 20 : 360);
+                })();
+            }
+            next();
+        };
+    }
+
+    // One selected button per group
+    function group(root, attr, onSelect) {
+        var buttons = Array.prototype.slice.call(root.querySelectorAll('button'));
+        buttons.forEach(function (b) {
+            b.addEventListener('click', function () {
+                buttons.forEach(function (o) { o.setAttribute(attr, o === b ? 'true' : 'false'); });
+                onSelect(b);
             });
-        }, { threshold: 0.12, rootMargin: '0px 0px -30px 0px' });
-        els.forEach(function (el) { observer.observe(el); });
-    })();
+        });
+    }
+
+    // Install command
+    var installCode = document.getElementById('install-cmd');
+    group(document.querySelector('.install-tabs'), 'aria-selected', function (b) { installCode.textContent = b.getAttribute('data-cmd'); });
+
+    document.querySelectorAll('[data-copy-from]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var text = document.getElementById(b.getAttribute('data-copy-from')).textContent;
+            navigator.clipboard.writeText(text).then(function () {
+                b.textContent = 'Copied';
+                setTimeout(function () { b.textContent = 'Copy'; }, 2000);
+            }).catch(function () {});
+        });
+    });
+
+    // Hero: the same request, handed to each agent
+    var agents = {
+        claude: { flag: '', files: '.mcp.json, .claude/' },
+        codex: { flag: ' --with codex', files: '.codex/, .agents/' },
+        opencode: { flag: ' --with opencode', files: 'opencode.json' },
+        cursor: { flag: ' --with cursor', files: '.cursor/' }
+    };
+    var agentPlay = player(document.getElementById('agent-term'));
+    var currentAgent = 'claude';
+    function playAgent() {
+        var a = agents[currentAgent];
+        agentPlay([
+            ['c', 'seite agent' + a.flag + ' \\'],
+            ['k', '"write the v1.2 release post"'],
+            ['d', 'reads AGENTS.md, ' + a.files],
+            ['d', 'MCP server seite: 11 tools'],
+            ['o', '✓ content/posts/v1-2-release.md'],
+            ['d', 'stop hook: seite check'],
+            ['o', '✓ No problems found'],
+            ['c', 'seite deploy'],
+            ['o', '✓ Deployed to Cloudflare Pages']
+        ]);
+    }
+    group(document.querySelector('.agent-tabs'), 'aria-selected', function (b) { currentAgent = b.getAttribute('data-agent'); playAgent(); });
+    document.getElementById('agent-replay').addEventListener('click', playAgent);
+    playAgent();
+
+    // A minute with seite
+    var steps = [
+        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed to ~/.local/bin']],
+        [['c', 'seite init mysite --title "My Site"'], ['o', '✓ Created mysite/ with posts, docs and pages'], ['d', 'AGENTS.md, .mcp.json, .claude/ …'], ['c', 'cd mysite']],
+        [['c', 'seite agent "write the launch post"'], ['d', 'launching Claude Code with site context'], ['o', '✓ content/posts/launch.md'], ['d', 'review the diff, then keep it']],
+        [['c', 'seite check'], ['o', '✓ No problems found']],
+        [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 14 pages'], ['o', '✓ Deployed to Cloudflare Pages']]
+    ];
+    var walkPlay = player(document.getElementById('walk-term'));
+    var currentStep = 0, started = false;
+    function playStep() { started = true; walkPlay(steps[currentStep]); }
+    group(document.querySelector('.steps'), 'aria-pressed', function (b) { currentStep = +b.getAttribute('data-step'); playStep(); });
+    document.getElementById('walk-replay').addEventListener('click', playStep);
+    if ('IntersectionObserver' in window && !reduce) {
+        document.getElementById('walk-term').innerHTML = steps[0].map(render).join('');
+        var io = new IntersectionObserver(function (entries) {
+            if (entries[0].isIntersecting && !started) { playStep(); io.disconnect(); }
+        }, { threshold: 0.4 });
+        io.observe(document.querySelector('.walk'));
+    } else { playStep(); }
+})();
 </script>
 {% endblock %}
