@@ -130,6 +130,16 @@ The search partial already has `role="search"`, labels from `t.search_label`, an
 
 The `blank` starter keeps its CSS in `static/css/site.css`: agents and design tools edit CSS files well, and impeccable's detector scans them. The bundled example themes keep theirs inline in `<style>`, so a single `.tera` file can be shared and installed from a URL.
 
+### Page transitions
+
+Every bundled theme, `blank`'s `static/css/site.css` included, cross-fades between pages with the browser's cross-document view transitions, only for visitors who haven't asked for reduced motion:
+
+```css
+@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
+```
+
+It needs no JavaScript and applies to same-origin navigations; browsers without support simply load the next page. Keep the rule (or remove it for instant page changes); keep it inside the `prefers-reduced-motion: no-preference` query.
+
 Modern CSS covers what preprocessors were used for: custom properties, native nesting, `color-mix()`, `clamp()`. If you need Sass, compile it into `static/` and link the output.
 
 ### Classes the default templates and shortcodes use

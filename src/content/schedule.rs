@@ -254,7 +254,7 @@ pub fn hidden_pages(config: &SiteConfig, paths: &ResolvedPaths) -> Vec<HiddenPag
 }
 
 /// One line for `seite build`/`serve`/`check`: "N scheduled post(s) hidden;
-/// next goes live <date> (<title>)", plus expired pages. `None` when
+/// next goes live `<date>` (`<title>`)", plus expired pages. `None` when
 /// nothing is hidden.
 pub fn hidden_summary(hidden: &[HiddenPage]) -> Option<String> {
     let future: Vec<&HiddenPage> = hidden

@@ -93,7 +93,7 @@ impl Agent {
 
     /// The agent's provider name in impeccable's installer (`--providers`),
     /// which matches seite's id except for Copilot (`github`).
-    /// https://github.com/pbakaus/impeccable/blob/main/scripts/lib/transformers/providers.js
+    /// <https://github.com/pbakaus/impeccable/blob/main/scripts/lib/transformers/providers.js>
     pub fn impeccable_provider(self) -> &'static str {
         match self {
             Agent::Copilot => "github",
@@ -1318,7 +1318,7 @@ pub const CURSOR_LEGACY_SHELL_ALLOW: &str = "Shell(seite)";
 
 /// Cursor `Shell(...)` rules for the allowed `seite` subcommands. Cursor
 /// matches `Shell(commandBase)` on the first token; the `command:args` form
-/// globs the arguments too (https://cursor.com/docs/cli/reference/permissions),
+/// globs the arguments too (<https://cursor.com/docs/cli/reference/permissions>),
 /// so `Shell(seite:theme apply*)` allows `seite theme apply …` only.
 pub fn cursor_shell_allow() -> Vec<String> {
     ALLOWED_COMMANDS
@@ -1394,7 +1394,7 @@ fn opencode_json_template(mcp: bool) -> serde_json::Value {
 
 /// `.claude/launch.json` entry that lets Claude's desktop app start the dev
 /// server and show the site in its preview pane (live reload keeps it
-/// current). https://code.claude.com/docs/en/desktop (preview servers)
+/// current). <https://code.claude.com/docs/en/desktop> (preview servers)
 pub const LAUNCH_JSON_PATH: &str = ".claude/launch.json";
 
 /// The `seite` configuration in `.claude/launch.json`.

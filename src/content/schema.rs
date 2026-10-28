@@ -279,7 +279,7 @@ const BUILTIN_KEYS: &[&str] = &[
     "series_order",
 ];
 
-/// Frontmatter keys seite itself understands (top-level): [`BUILTIN_KEYS`]
+/// Frontmatter keys seite itself understands (top-level): `BUILTIN_KEYS`
 /// plus whatever `Frontmatter`'s `Deserialize` impl names, so new built-ins
 /// are picked up.
 pub fn builtin_keys() -> Vec<&'static str> {

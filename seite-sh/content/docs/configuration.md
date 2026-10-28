@@ -17,6 +17,7 @@ description = "A personal blog and documentation"
 base_url = "https://example.com"
 language = "en"
 author = "Jane Doe"
+timezone = "Europe/Berlin"
 
 [[collections]]
 name = "posts"
@@ -32,6 +33,8 @@ name = "pages"
 output_dir = "dist"
 minify = true
 fingerprint = true
+schedule = true
+search = "full"
 
 [deploy]
 target = "github-pages"
@@ -51,6 +54,9 @@ lazy_loading = true
 provider = "google"
 id = "G-XXXXXXXXXX"
 cookie_consent = true
+
+[og]
+generate = true
 ```
 
 ## [site]
@@ -89,6 +95,8 @@ paginate = 10
 subdomain = "blog"          # optional: deploy to blog.example.com
 subdomain_base_url = "https://blog.example.com"  # optional: explicit URL override
 deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
+related = 5                 # optional: page.related size for this collection (overrides [build] related)
+strict_fields = false       # optional: warn about frontmatter keys the schema does not declare
 ```
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), its own base URL (`https://{subdomain}.{base_domain}`), and its own sitemap, RSS, robots.txt, llms.txt, and search index. The collection is excluded from the main site build. The subdomain **root page** renders with the collection's own index template (e.g. `trust-index.html`) and context — exactly like that collection's index page on the main domain. Use `subdomain_base_url` to override the auto-derived URL (useful when `base_url` contains `www`). See [Collections](/docs/collections) for details.
@@ -208,6 +216,9 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `output_dir` | string | `"dist"` | Build output directory |
+| `content_dir` | string | `"content"` | Directory of the content collections |
+| `template_dir` | string | `"templates"` | Directory of the Tera templates |
+| `static_dir` | string | `"static"` | Directory of static assets (copied to `static/` in the output) |
 | `data_dir` | string | `"data"` | Directory for data files (YAML/JSON/TOML) |
 | `public_dir` | string | `"public"` | Directory for root-level files copied to output without prefix (favicon.ico, .well-known/, _redirects, etc.) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
@@ -443,6 +454,7 @@ Taxonomies and related pages also weigh into `page.related` (see [Related pages]
 | `target` | string | `"github-pages"` | Deploy target: `github-pages`, `cloudflare`, `netlify` |
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
+| `domain` | string | none | Custom domain, written by `seite deploy --domain <domain>` |
 | `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
 | `markdown_negotiation` | bool | `false` | Cloudflare Pages only: generate a `_worker.js` that serves a page's markdown copy to requests with `Accept: text/markdown`. Every page request then counts as a Functions request (Workers Free: 100,000 a day). Sites with `[access]` get it without this switch. See [Markdown for agents](/docs/deployment#markdown-for-agents) |
 
@@ -624,6 +636,39 @@ For Kit, seite posts to `https://app.kit.com/forms/<form_id>/subscriptions` (fie
 
 See [Shortcodes](/docs/shortcodes#newsletter). Values are validated at load (`config-invalid` at the line) and escaped in the HTML.
 
+## [trust]
+
+Written by `seite init` when the site has the `trust` collection; it configures the [trust center](/docs/trust-center).
+
+```toml
+[trust]
+company = "Acme Corp"
+frameworks = ["soc2", "iso27001"]
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `company` | string | `site.title` | Company name shown on the trust center |
+| `frameworks` | list | `[]` | Active compliance frameworks (`soc2`, `iso27001`, `gdpr`, `hipaa`, `pci-dss`, `ccpa`, `soc3`) |
+
+## [contact]
+
+The provider behind the `contact_form()` shortcode; `seite contact setup` writes it. See [Contact Forms](/docs/contact-forms).
+
+```toml
+[contact]
+provider = "formspree"   # formspree | web3forms | netlify | hubspot | typeform
+endpoint = "xpznqkdl"
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | string | required | `formspree`, `web3forms`, `netlify`, `hubspot`, or `typeform` |
+| `endpoint` | string | required | Form ID, access key, form name or portal/form ID, depending on the provider |
+| `region` | string | none | HubSpot only: `na1` or `eu1` |
+| `redirect` | string | none | URL to send visitors to after they submit |
+| `subject` | string | none | Email subject prefix |
+
 ## [check]
 
 Options for `seite check --external`, which checks external links over the network (never run by default):
@@ -713,6 +758,8 @@ extra:
 | `draft` | bool | No | Exclude from build unless `--drafts` |
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |
+| `weight` | int | No | Ordering in non-dated collections (lower first) |
+| `aliases` | list | No | Old URL paths; each gets an HTML redirect page and a `_redirects` entry |
 | `expires` | date | No | Last day the page is published; later builds leave it out (dated collections, with `[build] schedule = true`) |
 | `extra` | map | No | Arbitrary data for templates |
 

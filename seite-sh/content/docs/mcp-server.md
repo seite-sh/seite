@@ -4,7 +4,7 @@ description: "Give chat apps such as Claude Desktop structured access to your st
 weight: 10
 ---
 
-AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
+AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
 
 ## Overview
 
@@ -124,9 +124,10 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Site configuration | `seite://config` | Current `seite.toml` serialized as JSON |
 | Content overview | `seite://content` | All collections with item counts |
 | Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
-| Themes | `seite://themes` | Available bundled and installed themes |
+| Themes | `seite://themes` | Available bundled and installed themes, with the active one flagged |
+| Trust center | `seite://trust` | Certifications, subprocessors, FAQs and content of the [trust center](/docs/trust-center); listed only when the site has `[trust]` or a `trust` collection |
 
-Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`) are only available when running inside a page project directory.
+Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://trust`) are only available when running inside a site directory. There is no `seite://mcp-config` resource (removed in 0.21).
 
 `resources/templates/list` advertises the parameterized URIs `seite://content/{collection}` and `seite://docs/{slug}`.
 
@@ -259,7 +260,7 @@ Apply a bundled or installed theme to the site.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`, or an installed theme) |
+| `name` | string | Yes | Theme name (the starters `default`, `docs`, `landing`, `blank`; the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`; or an installed theme) |
 
 If the current `base.html` has been customized (it matches no known theme), it's backed up to `base.html.bak` (or `base.html.bak.N`) before being replaced, and the backup path is returned.
 
@@ -291,11 +292,11 @@ From a shell, `seite preview` prints the same as `seite_get_errors`.
 
 ## Practical Example
 
-Say you're using Claude Code and ask: "Add a new blog post summarizing our three most recent posts."
+Say you're in the Claude Desktop chat, connected to your site, and ask: "Add a new blog post summarizing our three most recent posts."
 
-**Without MCP**, the AI has to `glob` for markdown files, `read` each one, parse YAML frontmatter manually, sort by date, extract titles and descriptions, then write the summary post. Multiple tool calls, fragile parsing, easy to miss edge cases.
+**Without MCP**, the chat has no access to your files at all; you would paste the posts in and copy the result back out.
 
-**With MCP**, the AI calls `seite://content/posts`, gets a sorted JSON array of all posts with metadata, picks the top three, and writes the summary. One resource call instead of a dozen file operations. The [AI agent](/docs/agent) uses this automatically. You don't need to think about it.
+**With MCP**, the chat reads `seite://content/posts`, gets a JSON array of all posts with metadata, picks the top three, writes the post with `seite_create_content`, and runs `seite_check`. A coding agent does the same from a shell with `seite search`, `seite page` and `seite new` (see [Coding Agents](/docs/agent)).
 
 ## Manual Testing
 
@@ -313,7 +314,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 ## Next Steps
 
-- [AI Agent](/docs/agent): interactive AI sessions with `seite agent`
+- [Coding Agents](/docs/agent): how Claude Code, Codex and the other agents work on a seite site
 - [CLI Reference](/docs/cli-reference): the `seite mcp` command reference
 - [Configuration](/docs/configuration): the full `seite.toml` reference
 - [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native

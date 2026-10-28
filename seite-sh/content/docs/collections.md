@@ -55,7 +55,8 @@ paginate = 10
 | `has_date` | bool | preset-based | Items have dates |
 | `has_rss` | bool | preset-based | Include in RSS feed |
 | `listed` | bool | preset-based | Show on index page |
-| `private` | bool | `false` | Build the hub + pages but hide them from all discovery (sitemap, llms.txt, search, feeds) — for content behind Cloudflare Access / HTTP auth. See [Configuration](/docs/configuration#private-collections) |
+| `private` | bool | `false` | Build the hub + pages but hide them from all discovery (sitemap, llms.txt, search, feeds, social cards). With [`[access]`](/docs/configuration#access) the pages are also password-protected on Cloudflare Pages. See [Private collections](/docs/configuration#private-collections) |
+| `access_group` | string | collection name | Password group of a private collection when `[access]` is set; collections with the same group share a password |
 | `nested` | bool | preset-based | Support subdirectories as groups |
 | `paginate` | int | none | Items per page (enables pagination) |
 | `subdomain` | string | none | Deploy to `{subdomain}.{base_domain}` |

@@ -12,7 +12,7 @@ Run `seite <command> --help` for quick inline help on any command.
 
 ## Overview
 
-`seite` has twenty subcommands. Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
+Running `seite` with no subcommand shows a context-aware welcome screen with the most useful commands for your situation.
 
 | Command | Description |
 |---------|-------------|
@@ -21,11 +21,14 @@ Run `seite <command> --help` for quick inline help on any command.
 | `check` | Validate the site without building it |
 | `audit` | Free SEO, AI-visibility, accessibility and performance audit |
 | `serve` | Development server with live reload |
+| `preview` | The running dev server: URL, last build, browser errors |
 | `new` | Create content files |
 | `import` | Import a WordPress, Ghost, Jekyll or Hugo site |
 | `agent` | Open a coding agent in the site |
 | `theme` | Manage themes |
+| `og` | Render a social preview card to a PNG (`seite og preview`) |
 | `hooks` | Turn the coding-agent check hooks on or off |
+| `trust` | Trust the project to run its own build-time code (Tailwind plugins) |
 | `deploy`| Deploy to hosting platforms |
 | `collection` | Add or list collections |
 | `contact` | Set up contact forms |
@@ -33,12 +36,13 @@ Run `seite <command> --help` for quick inline help on any command.
 | `access` | Manage Cloudflare Pages password groups |
 | `skill` | Manage skill packs |
 | `workspace` | Manage multi-site workspaces |
-| `mcp` | MCP server for AI tool integration |
+| `mcp` | MCP server for chat apps without a shell (stdio) |
 | `upgrade` | Update project config to match current binary |
 | `self-update` | Update the seite binary to the latest release |
 | `completions` | Generate shell completion scripts |
 | `perf` | Audit site performance via PageSpeed Insights |
 | `telemetry` | Manage anonymous usage telemetry |
+| `context`, `docs`, `page`, `search`, `stats`, `templates`, `frontmatter`, `explain` | [Agent-facing commands](#agent-facing-commands): orientation, embedded docs, content lookup and frontmatter edits from a shell |
 
 ### Global Flags
 
@@ -46,10 +50,10 @@ These flags work with any command:
 
 | Flag | Description |
 |------|-------------|
-| `--site <name>` | Target a specific site in a workspace |
-| `--config <path>` | Path to the project's `seite.toml` (must be that exact filename) |
-| `--dir <path>` | Project directory |
-| `--verbose` | Enable verbose logging (also shows per-step build timings) |
+| `-s`, `--site <name>` | Target a specific site in a workspace |
+| `-c`, `--config <path>` | Path to the project's `seite.toml` (must be that exact filename; applied after `--dir`) |
+| `-d`, `--dir <path>` | Project directory |
+| `-v`, `--verbose` | Enable verbose logging (also shows per-step build timings) |
 | `--json` | Print exactly one JSON document on stdout — `{"ok":true,"command":...,"data":...,"warnings":[...]}` or `{"ok":false,"command":...,"error":{"message":...,"chain":[...]}}` (plus `data` when the command has results to report, such as `upgrade --check`'s pending changes) — with all human-readable output on stderr. Not supported by `serve`, `agent`, `mcp`, `completions`, or `self-update`, which stream output or take over the terminal |
 | `-y`, `--yes` | Never prompt: accept defaults and answer "yes" to confirmations (also `SEITE_YES=1`). Without a terminal, prompts fall back to their defaults, and any value with no default must be passed as a flag or the command errors naming it |
 
@@ -66,7 +70,12 @@ seite init <name> [options]
 | `--title` | Site title |
 | `--description` | Site description |
 | `--deploy-target` | `github-pages`, `cloudflare`, or `netlify` |
-| `--collections` | Comma-separated list: `posts,docs,pages,changelog,roadmap` |
+| `--collections` | Comma-separated presets: `posts,docs,pages,changelog,roadmap,trust` |
+| `--trust-company` | With the `trust` collection: company name (defaults to `--title`) |
+| `--trust-frameworks` | With `trust`: comma-separated `soc2,iso27001,gdpr,hipaa,pci-dss,ccpa,soc3` |
+| `--trust-sections` | With `trust`: comma-separated `overview,certifications,subprocessors,faq,disclosure,dpa,changelog` |
+| `--contact-provider` | Contact form provider: `formspree`, `web3forms`, `netlify`, `hubspot`, `typeform` (see [Contact forms](/docs/contact-forms)) |
+| `--contact-endpoint` | Contact form endpoint or form ID for that provider |
 | `--theme` | Starter theme: `default`, `docs`, `landing`, or `blank` (for designing your own). Default: `docs` for a docs-only site, `default` otherwise. Gallery themes are applied later with `seite theme apply <name>` |
 | `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini,copilot` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
@@ -135,13 +144,13 @@ seite check [options]
 |------|-------------|
 | `--strict` | Fail on warnings too (unknown config keys, broken links, ...) |
 | `--drafts` | Include draft content |
-| `--file <path>...` | Check only these files: frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
+| `--file <path>...` | Check only these files (repeatable; a path that is missing, outside the site or of an unhandled type is a `check-file-skipped` warning): frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
 | `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`, `copilot`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
-| `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine) |
-| `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks |
+| `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine). Not with `--file` or `--hook` |
+| `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks; not with `--file` or `--hook` |
 
-Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on:
+Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on. The most common are below; the [error reference](/docs/errors) lists every code (`seite explain <code>` prints one):
 
 | Code | Severity | Meaning |
 |------|----------|---------|
@@ -223,8 +232,8 @@ seite serve [options]
 | Flag | Description |
 |------|-------------|
 | `--host` | Host to bind to (default: `127.0.0.1`, use `0.0.0.0` for network access) |
-| `--port` | Port to serve on (auto-finds an available port if the default is taken; an explicitly passed `--port` that's busy is an error instead) |
-| `--build` | Build the site before serving |
+| `-p`, `--port` | Port to serve on (auto-finds an available port if the default is taken; an explicitly passed `--port` that's busy is an error instead) |
+| `--build` | Build the site before serving (the default) |
 | `--open` | Open the site in the default browser after starting |
 | `--no-repl` | Don't read commands from stdin; just serve (with live reload) until interrupted |
 | `--force-new` | Start a server even when `.seite/dev.json` records one already running here |
@@ -239,12 +248,14 @@ A failed build doesn't stop the server, including the first one: fix the file, s
 
 Unless `--no-repl` is passed, an interactive REPL accepts commands:
 
-- `new <collection> "Title"`: create content
-- `agent [prompt]`: launch AI agent
-- `theme apply <name>`: apply theme and rebuild
-- `build`: rebuild the site
+- `new <collection> "Title" [--lang <code>]`: create content
+- `agent [prompt]`: open your coding agent in the site, like `seite agent [prompt]` (interactive; `SEITE_AGENT` picks the agent)
+- `theme`: list themes; `theme <name>`: apply a bundled or installed theme and rebuild
+- `build [--drafts]`: rebuild the site
 - `status`: show server info
-- `stop`: stop the server
+- `stop` (or `quit`, `exit`): stop the server
+
+In a workspace, the REPL has only `status` (the workspace's sites) and `stop`.
 
 While it runs, the server records `{pid, port, url, started_at}` in `.seite/dev.json` (the workspace root in a workspace; gitignored) and removes it on `stop`, Ctrl-C, or SIGTERM. `seite context` reports it, and a second `seite serve` in the same directory prints the running server's URL and exits instead of starting another. A recorded server only counts when its pid is alive and its port accepts connections on 127.0.0.1; the URL is rebuilt from the port, never taken from the file, and a symlinked `dev.json` is ignored.
 
@@ -274,7 +285,7 @@ seite new <collection> "Title" [options]
 
 | Flag | Description |
 |------|-------------|
-| `--tags` | Comma-separated tags |
+| `-t`, `--tags` | Comma-separated tags |
 | `--draft` | Mark as draft (excluded from builds unless `seite build --drafts`) |
 | `--lang` | Language code for translations (e.g., `es`, `fr`) |
 
@@ -325,6 +336,40 @@ seite collection add changelog    # Add changelog collection
 seite collection add roadmap      # Add roadmap collection
 seite collection list             # Show all configured collections
 ```
+
+## seite contact
+
+Configure the `[contact]` section used by the `{{< contact_form() >}}` shortcode. See [Contact Forms](/docs/contact-forms).
+
+```bash
+seite contact setup [--provider <p>] [--endpoint <id>] [--region na1|eu1] [--redirect <url>] [--subject <prefix>]
+seite contact status
+seite contact remove
+```
+
+| Flag (`setup`) | Description |
+|------|-------------|
+| `--provider` | `formspree`, `web3forms`, `netlify`, `hubspot`, or `typeform` (prompted when omitted) |
+| `--endpoint` | Provider-specific endpoint or form ID |
+| `--region` | HubSpot region: `na1` or `eu1` |
+| `--redirect` | URL to send visitors to after they submit |
+| `--subject` | Email subject line prefix |
+
+`setup` asks before replacing an existing `[contact]` section.
+
+## seite cms
+
+Write the configuration for a free Git-based CMS from your collections and their [frontmatter schemas](/docs/configuration#frontmatter-schemas). See [CMS](/docs/cms).
+
+```bash
+seite cms setup pages-cms            # writes .pages.yml
+seite cms setup decap [--branch main] # writes static/admin/index.html + static/admin/config.yml
+```
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing files (each is backed up under `.seite/cache/backups/` first) |
+| `--branch <name>` | Decap: the branch the CMS commits to (default: the current git branch, else `main`) |
 
 ## seite access
 
@@ -383,6 +428,21 @@ seite theme export my-theme --description "My custom dark theme"
 
 Bundled themes: the starters `default`, `docs`, `landing`, `blank`, and the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`. They are examples and starting points; every theme includes seite's [partials](/docs/templates#seite-partials) for the SEO head, search and language switcher. Installed themes are stored in `templates/themes/` and listed alongside bundled themes. See the [Theme Gallery](/docs/theme-gallery) for visual previews.
 
+## seite og
+
+Render one page's [social preview card](/docs/configuration#og) to a PNG, to check a layout without a full build. It works before `[og]` is enabled, using the defaults.
+
+```bash
+seite og preview /posts/hello-world
+seite og preview content/posts/hello.md --template bold
+seite og preview / --out card.png    # the site card (`/<lang>/` for a language's card)
+```
+
+| Flag | Description |
+|------|-------------|
+| `--out <path>` | Where to write the PNG (default: `.seite/cache/og-preview.png`) |
+| `--template <name>` | Try another layout without editing `seite.toml`: `default`, `minimal`, or `bold` |
+
 ## seite trust
 
 ```bash
@@ -403,8 +463,11 @@ seite deploy [options]
 
 | Flag | Description |
 |------|-------------|
-| `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
+| `-t`, `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
 | `--dry-run` | Preview what would be deployed without deploying |
+| `--preview` | Deploy to a preview URL instead of production (automatic on a branch other than `main`/`master` when auto-commit is on) |
+| `--verify` | Verify the deployment afterwards (production deploys are always verified) |
+| `--build` | Build before deploying (the default) |
 | `--domain` | Set up a custom domain (prints DNS records, updates config, attaches to platform) |
 | `--setup` | Run guided deploy setup |
 | `--skip-checks` | Skip pre-flight checks |
@@ -493,7 +556,7 @@ Known packs:
 | `seomachine` | [SEOMachine](https://github.com/TheCraigHewitt/seomachine): SEO research, writing, and optimization skills for every coding agent, plus subagents and slash commands for Claude Code |
 | `impeccable` | The [impeccable](https://github.com/pbakaus/impeccable) design skill (`/impeccable`, `$impeccable` in Codex) |
 
-`impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (all five when none are recorded). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
+`impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (all six when none are recorded; Copilot is impeccable's `github` provider). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
 
 `seomachine` is pinned: seite downloads each file from one exact upstream commit (the pin is compiled into the binary together with a SHA-256 for every file) and verifies every hash before writing anything. A mismatch or failed download aborts the install with nothing written. `seite skill update seomachine` moves to the pin of the seite you are running, never to upstream `main`; the pin changes only when seite is released. SEOMachine is MIT-licensed (copyright Castos and SEO Machine Contributors), which permits this redistribution; its licence file stays upstream.
 
@@ -628,6 +691,31 @@ Seite checks for available updates in the background (at most once every 24 hour
 ```
 
 The check is non-blocking and silently skipped when offline. It never runs with `CI`, `DO_NOT_TRACK`, or `SEITE_NO_UPDATE_CHECK` set, when stdout/stderr aren't both a terminal (scripts, agents, piped output), or under `--json`; that also covers `seite self-update` (which already checks) and `seite mcp` (JSON-RPC over stdio).
+
+## seite perf
+
+Run a Google PageSpeed Insights audit of a public URL (the site's `base_url` by default). Production deploys run it automatically when the URL is public.
+
+```bash
+seite perf [url] [--strategy mobile|desktop] [--key <api-key>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--strategy` | `mobile` (default) or `desktop` |
+| `--key` | PageSpeed Insights API key (optional; raises the rate limit) |
+
+For an offline audit of the built site, use [`seite audit`](#seite-audit).
+
+## seite telemetry
+
+```bash
+seite telemetry status   # whether telemetry is on, and why
+seite telemetry on
+seite telemetry off
+```
+
+Anonymous usage telemetry is never sent when `DO_NOT_TRACK` is set; `SEITE_TELEMETRY` overrides the stored choice.
 
 ## Agent-facing commands
 

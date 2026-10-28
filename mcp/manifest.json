@@ -3,8 +3,8 @@
   "name": "seite",
   "display_name": "seite \u2014 AI-native Static Site Generator",
   "version": "VERSION_PLACEHOLDER",
-  "description": "Build and manage static sites via MCP. Create content, apply themes, search, and deploy.",
-  "long_description": "seite is a Rust-powered static site generator with a built-in MCP server. It exposes site content, configuration, themes, and build tools to any AI agent. Ships with portable AGENTS.md guidance, Claude Code integration, and llms.txt generation.",
+  "description": "Build, check, audit, and edit a seite static site via MCP: create content, inspect pages, search, apply themes, and read the docs.",
+  "long_description": "seite is a single-binary static site generator written in Rust, built so an AI agent can run a site end to end. This MCP server is for chat apps without a shell, such as Claude Desktop: it exposes the site's content, configuration, themes, and docs, and tools to build, check, audit, and edit it. Coding agents (Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI, GitHub Copilot) use the seite CLI and the /seite skill instead. Every build also writes llms.txt, llms-full.txt, and a markdown copy of each page.",
   "author": {
     "name": "seite-sh",
     "url": "https://seite.sh"
@@ -25,6 +25,8 @@
     }
   },
   "tools": [
+    { "name": "seite_check", "description": "Report every problem in the site (config, frontmatter, shortcodes, templates, links) without touching the output" },
+    { "name": "seite_audit", "description": "Free offline SEO, AI-visibility, accessibility, content and performance audit with source file and line per finding" },
     { "name": "seite_build", "description": "Build the site to the output directory" },
     { "name": "seite_create_content", "description": "Create a new content file with frontmatter" },
     { "name": "seite_get_page", "description": "Inspect one page: resolved frontmatter, URL, body, and rendered HTML" },
@@ -34,7 +36,11 @@
     { "name": "seite_list_templates", "description": "Templates, blocks, context variables, shortcodes, and data keys" },
     { "name": "seite_apply_theme", "description": "Apply a bundled or installed theme" },
     { "name": "seite_create_collection", "description": "Add a preset collection to the site" },
-    { "name": "seite_lookup_docs", "description": "Look up seite documentation by topic or keyword" }
+    { "name": "seite_lookup_docs", "description": "Look up seite documentation by topic or keyword" },
+    { "name": "seite_get_errors", "description": "Last build outcome and browser errors from the running dev server" },
+    { "name": "seite_get_preview_url", "description": "The running dev server's URL for the site or one page" },
+    { "name": "seite_list_routes", "description": "Page URLs present in the output directory" },
+    { "name": "seite_reload", "description": "Make the running dev server rebuild now and reload open preview pages" }
   ],
   "keywords": ["static-site-generator", "mcp", "rust", "claude-code", "ai-agent", "llms-txt"],
   "license": "MIT",

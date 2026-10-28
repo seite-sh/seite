@@ -170,7 +170,9 @@ The workspace dev server routes requests by site name:
 - `http://localhost:3000/blog/`: blog site
 - `http://localhost:3000/docs/`: docs site
 
-File watching is per-site: when you edit a blog post, only the blog rebuilds. Live reload works across all sites.
+File watching is per-site: when you edit a blog post, only the blog rebuilds. Live reload, the build-error overlay and browser-error reporting work across all sites, and `seite preview` reports every site's last build. The workspace REPL has only `status` and `stop`, and the workspace server has no [MCP endpoint](/docs/mcp-server#over-http-from-the-dev-server): use `seite serve --site <name>` for that.
+
+The agent-facing commands (`seite page`, `seite search`, `seite stats`, `seite templates`, `seite frontmatter`, `seite og preview`) work on one site: at the workspace root, pass `--site <name>`.
 
 ## Deploying
 

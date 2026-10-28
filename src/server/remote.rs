@@ -2,7 +2,7 @@
 //! `seite context`, the runtime tools of stdio `seite mcp`).
 //!
 //! The server is found through `.seite/dev.json` exactly like
-//! [`crate::cli::context::running_dev_server`] does (live pid + open loopback
+//! `crate::cli::context::running_dev_server` does (live pid + open loopback
 //! port; the URL is rebuilt as `http://127.0.0.1:<port>`, never read from the
 //! file), first in the site root, then in the enclosing workspace root.
 //! Requests go to 127.0.0.1 only, with no proxy, so the Host header is

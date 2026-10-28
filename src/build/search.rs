@@ -18,7 +18,7 @@
 //!   `meta.shards[n]` is the first term of `terms/<n>.json`.
 //! - **Postings** are `[page id delta, weight]` pairs. The weight combines
 //!   where the term occurs: title > headings > tags > description > body
-//!   (see [`FIELD_WEIGHTS`]); the client multiplies it by an IDF.
+//!   (see `FIELD_WEIGHTS`); the client multiplies it by an IDF.
 //! - **Pages** get one small fragment each (title, URL, collection, date,
 //!   description and the first [`TEXT_CHARS`] characters of the text), so
 //!   rendering the top results costs a handful of small fetches.

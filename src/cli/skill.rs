@@ -188,9 +188,9 @@ fn known_pack_description(name: &str) -> Option<&'static str> {
 // impeccable (third-party npm installer)
 // ---------------------------------------------------------------------------
 
-/// Pack name of the impeccable design skill (https://github.com/pbakaus/impeccable).
+/// Pack name of the impeccable design skill (<https://github.com/pbakaus/impeccable>).
 ///
-/// Unlike [`known_packs`], seite does not download its files: install and
+/// Unlike `known_packs`, seite does not download its files: install and
 /// update delegate to the package's own installer, which knows each agent's
 /// layout. The installer is fetched (pinned, [`IMPECCABLE_VERSION`]) into a
 /// fresh temp prefix from a temp working directory, so a project-local

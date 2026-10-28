@@ -52,8 +52,8 @@ pub struct InitArgs {
     #[arg(long)]
     pub contact_endpoint: Option<String>,
 
-    /// Coding agents to set the site up for (comma-separated: claude,codex,opencode,cursor,gemini,
-    /// or all). Default: all
+    /// Coding agents to set the site up for (comma-separated:
+    /// claude,codex,opencode,cursor,gemini,copilot, or all). Default: all
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
 

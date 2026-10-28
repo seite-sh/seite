@@ -335,6 +335,8 @@ seite ships 11 themes inside the binary. They are examples and starting points; 
 
 **Gallery** (examples, applied with `seite theme apply <name>`): `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`.
 
+Every bundled theme cross-fades between pages with CSS view transitions (`@view-transition { navigation: auto; }`), only under `prefers-reduced-motion: no-preference`; see [Page transitions](/docs/custom-themes#page-transitions).
+
 ## Applying Themes
 
 ```bash

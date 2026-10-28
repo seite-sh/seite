@@ -28,8 +28,8 @@ pub struct UpgradeArgs {
     pub check: bool,
 
     /// Change which coding agents the project is set up for (comma-separated:
-    /// claude,codex,opencode,cursor,gemini, or all). Adds files for newly selected
-    /// agents; files of deselected agents are left in place but no longer maintained.
+    /// claude,codex,opencode,cursor,gemini,copilot, or all). Adds files for newly
+    /// selected agents; files of deselected agents are left in place but no longer maintained.
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
 
@@ -47,7 +47,7 @@ pub struct UpgradeArgs {
     pub agent: bool,
 
     /// With --agent: the coding-agent harness to start (claude, codex,
-    /// opencode, cursor, gemini). Defaults to `SEITE_AGENT`, else claude.
+    /// opencode, cursor, gemini, copilot). Defaults to `SEITE_AGENT`, else claude.
     #[arg(long, value_name = "HARNESS", requires = "agent")]
     pub with: Option<String>,
 }
@@ -3539,15 +3539,6 @@ fn refresh_hooks(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) {
         return;
     }
     let path = root.join(hook_path(agent));
-    if actions
-        .iter()
-        .any(|a| a.replaced_path() == Some(path.as_path()))
-    {
-        return;
-    }
-    let Some(mut doc) = read_json_object(&path) else {
-        return;
-    };
     // Merging tiers that are already present only rewrites bare commands.
     let (stop, post_edit) = crate::cli::harness_hooks::installed_hooks(root, agent);
     let present: Vec<_> = [
@@ -3557,14 +3548,48 @@ fn refresh_hooks(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) {
     .into_iter()
     .filter_map(|(on, kind)| on.then_some(kind))
     .collect();
+    let updated = format!("Updated the seite check hooks in {}", hook_path(agent));
+    // Another step already rewrites this file (Claude's settings.json gets
+    // its permissions narrowed): refresh the hooks in that pending copy.
+    if let Some(action) = actions
+        .iter_mut()
+        .find(|a| a.replaced_path() == Some(path.as_path()))
+    {
+        match action {
+            UpgradeAction::Create {
+                content,
+                description,
+                ..
+            } => {
+                if let Ok(serde_json::Value::Object(mut doc)) = serde_json::from_str(content) {
+                    if let Ok(true) = merge_hook_kinds(agent, &mut doc, &present) {
+                        *content = pretty_json(&serde_json::Value::Object(doc));
+                        description.push_str(" + updated seite check hooks");
+                    }
+                }
+            }
+            UpgradeAction::MergeJson {
+                merged, additions, ..
+            } => {
+                if let Some(Ok(true)) = merged
+                    .as_object_mut()
+                    .map(|doc| merge_hook_kinds(agent, doc, &present))
+                {
+                    additions.push(updated);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        return;
+    };
     if let Ok(true) = merge_hook_kinds(agent, &mut doc, &present) {
         actions.push(UpgradeAction::MergeJson {
             path,
             merged: serde_json::Value::Object(doc),
-            additions: vec![format!(
-                "Updated the seite check hooks in {}",
-                hook_path(agent)
-            )],
+            additions: vec![updated],
         });
     }
 }

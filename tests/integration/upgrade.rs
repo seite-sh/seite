@@ -1707,6 +1707,52 @@ fn test_upgrade_keeps_a_deleted_post_edit_hook_deleted() {
     assert!(settings["hooks"].get("Stop").is_some());
 }
 
+/// A 0.20.1 settings.json needs both its permissions narrowed and its bare
+/// Stop hook wrapped: one upgrade must do both (the hook refresh goes into the
+/// pending settings rewrite), leaving nothing for a second run.
+#[test]
+fn test_upgrade_020_claude_settings_converge_in_one_run() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join(".claude/settings.json"),
+        include_str!("../fixtures/claude-settings-0.20.1.json"),
+    )
+    .unwrap();
+    set_project_version(&site_dir, "0.20.1");
+    let meta_path = site_dir.join(".seite/config.json");
+    let mut meta = read_json_file(&meta_path);
+    meta["hooks_installed"] = serde_json::json!(["claude"]);
+    fs::write(&meta_path, meta.to_string()).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let settings = read_json_file(&site_dir.join(".claude/settings.json"));
+    let stop = settings["hooks"]["Stop"].to_string();
+    assert!(
+        stop.contains(&hook_command(Agent::Claude, HookKind::Stop)),
+        "{stop}"
+    );
+    assert!(!stop.contains("\"seite check --hook claude\""), "{stop}");
+    assert!(
+        !settings["permissions"]["allow"]
+            .to_string()
+            .contains("Bash(seite theme:*)"),
+        "{settings}"
+    );
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}
+
 #[test]
 fn test_upgrade_narrows_legacy_theme_permissions() {
     let tmp = TempDir::new().unwrap();

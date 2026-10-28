@@ -337,7 +337,10 @@ dist/
 ├── robots.txt           # Robots + AI crawler directives, Content Signals
 ├── llms.txt             # LLM summary
 ├── llms-full.txt        # Full LLM content
-├── search-index.json    # Client-side search data
+├── atom.xml             # Atom feed
+├── search-index.json    # Basic search data (titles, descriptions, tags)
+├── search/              # Full-text search index ([build] search = "full")
+├── og/                  # Generated social cards ([og])
 ├── 404.html             # Error page
 ├── posts/
 │   ├── hello-world.html

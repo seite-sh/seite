@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A static site generator where Claude Code is the interface.
+  The static site generator your agent can run end to end, for free.
 </p>
 
 <p align="center">
@@ -15,93 +15,95 @@
 
 ---
 
-<p align="center">
-  <img src="https://seite.sh/static/demo.svg" alt="seite demo" width="700">
-</p>
+seite is a single-binary static site generator written in Rust. A new site comes set up for your coding agent (Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI, or GitHub Copilot): a compact `AGENTS.md`, one `/seite` skill, and check hooks that hand errors back to the agent. The agent writes content, designs the theme, checks its own work, previews, and deploys. seite needs no API keys and no paid services.
 
-You already have Claude Code. seite gives it something to work on.
+## Why switch to seite
 
-```bash
-seite agent "write a post about our v1 launch — here are the notes: ..."
-seite agent "redesign the homepage hero, we just pivoted to B2B"
-seite agent "create changelog entries for these release notes: ..."
-seite agent        # interactive session
-```
+1. **Your agent runs the site, whichever agent you use.** Typed frontmatter schemas, `seite check`, the check hooks, and `seite context` let an agent find and fix its own mistakes. Works with all six agents above, including OpenCode, which can run free and local models.
+2. **Zero subscriptions.** Full-text search, social cards, comments (giscus or utterances), newsletter and contact forms (providers with free tiers), a Git-based CMS (Pages CMS or Decap), scheduled publishing (a daily cron in the generated GitHub Actions workflow), an SEO audit, and deploys to GitHub Pages, Cloudflare Pages, or Netlify.
+3. **One binary, everything included.** Image resizing and WebP, social cards, full-text search, RSS and Atom feeds, sitemaps, SEO and GEO metadata, i18n, and optional Tailwind CSS through its standalone CLI. No Node.js.
+4. **Visible to AI by default.** `llms.txt`, `llms-full.txt`, a `.md` copy of every page, `sitemap.md`, JSON-LD, Content Signals in `robots.txt`, and `Accept: text/markdown` negotiation (dev server, and Cloudflare Pages with `markdown_negotiation = true` or `[access]`).
+5. **A free SEO and GEO audit.** `seite audit` reports missing or weak descriptions, thin and orphan pages, duplicate titles, heading structure, missing alt text, AI visibility, and page weight, each with the file to edit. `--json` output is made for agents.
+6. **Switch in one command.** `seite import wordpress|ghost|jekyll|hugo` moves posts, pages, tags, images, and old URLs (as redirects) into a seite site, then your agent finishes with `/seite check` and `seite audit`.
 
-The agent reads your config, your templates, and your existing content before writing anything. Output lands in the right directory with the right frontmatter. You review a diff and ship it.
-
-No new subscription. No new UI to learn. No new commands. Just the Claude Code subscription you already have — now it can manage your whole website.
+## Quickstart
 
 ```bash
 curl -fsSL https://seite.sh/install.sh | sh
 seite init mysite --title "My Site" --collections posts,docs,pages
-cd mysite && seite serve
+cd mysite
 ```
 
-## Why seite
+Open your coding agent in `mysite/` and ask it for something:
 
-Most static site generators produce HTML and stop there. seite builds for **three audiences at once**:
+```text
+/seite new post "Hello world"
+/seite theme "warm editorial serif, one coral accent"
+/seite check
+/seite deploy
+```
 
-- **Browsers** get pages with full SEO metadata, Open Graph, Twitter Cards, and JSON-LD structured data
-- **LLMs** get `llms.txt`, `llms-full.txt`, and a `.md` copy of every page for direct consumption
-- **AI tools** get a built-in MCP server that exposes your entire site as structured resources
-
-All from Markdown + YAML frontmatter. No JavaScript runtime. No build dependencies. One binary does everything. 331 tests, 139 unit and 192 integration.
-
-## AI integration
-
-### Agent
-
-`seite agent` spawns Claude Code with full site context — config, content inventory, templates, and available commands. No API keys, no setup. Uses your existing Claude Code subscription.
-
-`seite init` generates `AGENTS.md` with your site's full schema so compatible coding agents are oriented before they write a single character. A one-line `CLAUDE.md` imports the same instructions for Claude Code. Output lands in the right directory, with the right frontmatter, following your conventions. You review a diff and ship it.
+(`$seite …` in Codex.) To see the site yourself:
 
 ```bash
-seite agent "write a post about our v1.2 release — here are the notes: ..."
-seite agent "rewrite the homepage hero, our positioning shifted to B2B"
-seite agent "generate docs stubs for each CLI command"
-seite agent        # interactive session
+seite serve --open
 ```
+
+`http://localhost:3000` reloads on every change, and build errors show up in the page as an overlay.
 
 ### The `/seite` skill for an existing site
 
-No `seite init` needed. Install the skill for any agent with the [skills CLI](https://skills.sh), or the skill plus the check hooks as a Claude Code plugin:
+`seite init` is not required to give an agent the skill. Install it for any agent with the [skills CLI](https://skills.sh), or install the skill plus the check hooks as a Claude Code plugin:
 
 ```bash
 npx skills add seite-sh/seite
 ```
 
 ```text
-/plugin install seite --marketplace seite-sh/seite
+/plugin marketplace add seite-sh/seite
+/plugin install seite@seite
 ```
 
-On Claude Code before 2.1.275, run `/plugin marketplace add seite-sh/seite`, then `/plugin install seite@seite`. See [Coding Agents](https://seite.sh/docs/agent#using-seite-with-an-existing-site).
+See [Coding Agents](https://seite.sh/docs/agent#using-seite-with-an-existing-site).
 
-### MCP server
+## Working with coding agents
 
-`seite mcp` runs a Model Context Protocol server over stdio. Claude Code auto-starts it via `.mcp.json`, generated by `seite init`. Any MCP-compatible AI tool (Codex CLI, OpenCode, Cursor, ...) can use it; it speaks MCP revisions 2024-11-05 through 2025-11-25 via `initialize`, and the stateless 2026-07-28 revision via `server/discover`.
+`seite init --agents claude,codex,opencode,cursor,gemini,copilot` (all six by default) writes:
 
-**Resources** — `seite://docs`, `seite://config`, `seite://content`, `seite://themes`, `seite://trust` (templates: `seite://content/{collection}`, `seite://docs/{slug}`)
+- `AGENTS.md`, imported by one-line `CLAUDE.md` and `GEMINI.md` files (Copilot reads `AGENTS.md` directly)
+- the `/seite` skill: `check`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`
+- path-scoped context rules, project permissions, and `.seite/docs/` (the docs for your seite version)
+- two check hooks per agent: after each edit (checks that file) and at the end of a turn (checks the site); `seite hooks on|off|status` manages them
 
-**Tools** — `seite_build`, `seite_create_content`, `seite_get_page`, `seite_update_frontmatter`, `seite_search`, `seite_content_stats`, `seite_list_templates`, `seite_apply_theme`, `seite_create_collection`, `seite_lookup_docs`
+Agents use the CLI. Commands built for them, all with `--json`:
 
-This means your AI tool doesn't just have read access to your site — it has a structured interface to build, search, and modify it.
+```bash
+seite context        # once per session: site, collections, theme, dev server, directives
+seite check          # config, frontmatter, templates, links; never writes dist/
+seite audit          # SEO, GEO, accessibility, content, performance findings and a score
+seite preview        # running dev server: URL, last build, browser errors
+seite docs <query>   # also: page, search, stats, templates, frontmatter, explain
+```
 
-### LLM discovery
+`seite agent` starts an agent in the site and passes your prompt through unchanged:
 
-Every build generates `llms.txt` (summary) and `llms-full.txt` (complete markdown) for LLM indexing, plus a `.md` copy of every page. Multilingual sites get per-language versions. Traditional SEO and GEO handled in one pipeline, automatically.
+```bash
+seite agent "write a post about our launch"
+seite agent --with codex --once "fix every seite check error"
+```
+
+The MCP server (`seite mcp`) is for chat apps without a shell, such as Claude Desktop. Coding agents get it only with `seite init --mcp` or `seite upgrade --mcp`. See [MCP Server](https://seite.sh/docs/mcp-server).
 
 ## Features
 
-- **Bundled themes** — starters (default, docs, landing, blank) and a gallery of examples (minimal, dark, brutalist, bento, terminal, magazine, academic); SEO, search and i18n come from seite-managed partials, so redesigns keep them — or design your own with `seite theme new` and your agent / impeccable
-- **6 collection presets** — posts, docs, pages, changelog, roadmap, and trust center
-- **Multi-language** — filename-based i18n with per-language URLs, RSS feeds, sitemaps, search indexes, and hreflang tags
-- **Image pipeline** — auto-resize, WebP conversion, srcset/`<picture>` elements, lazy loading
-- **Deploy anywhere** — GitHub Pages, Cloudflare Pages, Netlify with guided setup, pre-flight checks, and `--dry-run`
-- **Analytics** — Google Analytics, GTM, Plausible, Fathom, Umami with optional cookie consent banner
-- **Shortcodes** — `youtube`, `vimeo`, `gist`, `callout`, `figure` built-in, plus user-defined templates
-- **Multi-site workspaces** — manage multiple sites from one directory with unified dev server
-- **Self-update** — `seite self-update` fetches the latest release with SHA256 checksum verification
+- **Themes**: four starters (`default`, `docs`, `landing`, `blank`) and a gallery of seven (`minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`). SEO, search, and i18n come from seite-managed partials, so a redesign keeps them. `seite theme new` starts your own design.
+- **Collections**: six presets (posts, docs, pages, changelog, roadmap, trust center), typed frontmatter schemas, taxonomies, series, related pages, and scheduled publishing.
+- **Search**: `[build] search = "full"` writes a sharded full-text index that works on any static host.
+- **Social cards**: `[og]` draws a 1200x630 PNG per page, in your brand colors.
+- **Multi-language**: filename-based translations with per-language URLs, feeds, sitemaps, search, and hreflang.
+- **Images**: resizing, WebP, `srcset`/`<picture>`, lazy loading.
+- **Deploy**: GitHub Pages, Cloudflare Pages, Netlify, with guided setup, pre-flight checks, `--dry-run`, and optional password-protected collections on Cloudflare Pages.
+- **Also**: shortcodes, data files, analytics with an optional consent banner, Tailwind CSS v4 without Node, multi-site workspaces, `seite self-update` with SHA-256 verification.
 
 ## Install
 
@@ -117,43 +119,23 @@ curl -fsSL https://seite.sh/install.sh | sh
 irm https://seite.sh/install.ps1 | iex
 ```
 
-**From source (requires Rust):**
+**From source (Rust 1.88 or newer):**
 
 ```bash
 cargo install seite
 ```
 
-**Pin a specific version:**
+Both installers put `seite` in `~/.local/bin` (override with `INSTALL_DIR`); the shell installer also checks the archive's SHA-256 against the release's checksum file. To pin a version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh
+curl -fsSL https://seite.sh/install.sh | VERSION=v0.21.0 sh
 ```
 
-## Quickstart
-
-```bash
-seite init mysite --title "My Site" --collections posts,docs,pages
-cd mysite
-seite serve
-```
-
-Open `http://localhost:3000`. Edit content in `content/`, templates in `templates/`. Live reload on every change.
-
-```bash
-# Create content
-seite new post "Hello World" --tags intro,rust
-seite new doc "Getting Started"
-seite new changelog "v1.0.0" --tags new,improvement
-
-# Deploy
-seite deploy              # commit, push, build, deploy
-seite deploy --dry-run    # preview what would happen
-seite deploy --setup      # guided first-time setup
+```powershell
+$env:VERSION = "v0.21.0"; irm https://seite.sh/install.ps1 | iex
 ```
 
 ## Build output
-
-`seite build` runs a 13-step pipeline and produces:
 
 ```
 dist/
@@ -161,247 +143,67 @@ dist/
 ├── posts/
 │   ├── hello-world.html       # HTML for browsers
 │   └── hello-world.md         # Markdown for LLMs
-├── docs/
-│   └── getting-started.html
-├── feed.xml
-├── sitemap.xml
+├── og/                        # social cards, with [og]
+├── search/                    # full-text index, with search = "full"
+├── feed.xml, atom.xml
+├── sitemap.xml, sitemap.md
 ├── search-index.json
 ├── robots.txt
-├── llms.txt
-├── llms-full.txt
+├── llms.txt, llms-full.txt
 ├── 404.html
 └── static/
 ```
 
-Every HTML page includes canonical URLs, Open Graph tags, Twitter Cards, JSON-LD structured data, and a link to its markdown alternate.
-
-## Collections
-
-| Preset | Dated | RSS | Nested | Use case |
-|--------|:-----:|:---:|:------:|----------|
-| **posts** | ✓ | ✓ | — | Blog posts, articles |
-| **docs** | — | — | ✓ | Documentation with sidebar navigation |
-| **pages** | — | — | — | Standalone pages (About, Contact) |
-| **changelog** | ✓ | ✓ | — | Release notes with colored tag badges |
-| **roadmap** | — | — | — | Public roadmap with status tracking |
-| **trust** | — | — | ✓ | Compliance hub (SOC 2, ISO 27001, GDPR) |
-
-```bash
-seite collection add changelog
-seite new changelog "v2.0" --tags new,breaking
-```
-
-## Themes
-
-Six themes ship with the binary — no downloads, no CDNs:
-
-| Theme | Description |
-|-------|-------------|
-| **default** | Clean centered column, system fonts, blue links |
-| **minimal** | Georgia serif, literary feel, generous whitespace |
-| **dark** | True black `#0a0a0a`, violet accents, visible focus rings |
-| **docs** | Fixed sidebar with auto-scrolling nav, GitHub-style |
-| **brutalist** | Cream background, thick black borders, hard shadows, yellow accents |
-| **bento** | CSS grid cards, rounded corners, mixed sizes, soft shadows |
-
-```bash
-seite theme list
-seite theme apply dark
-seite theme create "neon cyberpunk on black"
-seite theme install https://example.com/t.tera
-seite theme export my-theme
-```
-
-## Multi-language
-
-Filename-based translations. Single-language sites need no config.
-
-```
-content/posts/
-├── hello-world.md        → /posts/hello-world
-├── hello-world.es.md     → /es/posts/hello-world
-└── hello-world.fr.md     → /fr/posts/hello-world
-```
-
-```toml
-[languages.es]
-title = "Mi Sitio"
-
-[languages.fr]
-title = "Mon Site"
-```
-
-## Configuration
-
-```toml
-# seite.toml — minimal
-[site]
-title = "My Site"
-base_url = "https://example.com"
-
-[[collections]]
-name = "posts"
-```
-
-<details>
-<summary><strong>Full reference</strong></summary>
-
-```toml
-[site]
-title = "My Site"
-description = "A site built with seite"
-base_url = "https://example.com"
-language = "en"
-author = "Your Name"
-
-[[collections]]
-name = "posts"
-# name = "docs" | "pages" | "changelog" | "roadmap" | "trust"
-# paginate = 10
-
-[build]
-output_dir = "dist"
-data_dir = "data"
-minify = true
-fingerprint = true
-
-[deploy]
-target = "github-pages"   # or "cloudflare" or "netlify"
-auto_commit = true
-
-[images]
-widths = [480, 800, 1200]
-quality = 80
-webp = true
-lazy_loading = true
-
-[analytics]
-provider = "plausible"    # or "google", "gtm", "fathom", "umami"
-id = "example.com"
-cookie_consent = false
-
-[languages.es]
-title = "Mi Sitio"
-
-[trust]
-company = "Acme Corp"
-frameworks = ["soc2", "iso27001"]
-```
-
-</details>
-
-## Data files
-
-Drop YAML, JSON, or TOML in `data/` and access in any template:
-
-```yaml
-# data/nav.yaml
-- title: Blog
-  url: /posts
-- title: Docs
-  url: /docs
-```
-
-Available as `{{ data.nav }}` in all templates.
-
-## Workspaces
-
-```bash
-seite workspace init my-workspace
-seite workspace add blog --collections posts,pages
-seite workspace add docs --collections docs
-seite build --site blog
-seite serve
-seite deploy
-```
-
-## Deployment
-
-```bash
-seite deploy
-seite deploy --dry-run
-seite deploy --setup
-seite deploy --domain example.com
-```
-
-```toml
-[deploy]
-target = "cloudflare"    # or "github-pages" or "netlify"
-```
-
-`seite init` auto-generates the CI workflow for your chosen target.
+Every HTML page has a canonical URL, Open Graph and Twitter tags, JSON-LD, and a link to its markdown copy when one is written. Builds are byte-identical run to run.
 
 ## Telemetry
 
-seite collects **anonymous, opt-out** usage telemetry to understand which commands are used and whether they succeed. No personal data, no file paths, no content.
+seite collects **anonymous, opt-out** usage telemetry to see which commands are used and whether they succeed. Each command sends its name, the seite version, OS and architecture, whether it succeeded, and a coarse duration bucket (`<1s`, `1-5s`, `5-30s`, `30s+`). The shell and PowerShell installers send one install event (version, OS, architecture, installer).
 
-**What is collected:**
-
-| Field | Example |
-|-------|---------|
-| Command name | `build` |
-| seite version | `0.12.2` |
-| OS / architecture | `macos` / `aarch64` |
-| Success (exit 0?) | `true` |
-| Coarse duration bucket | `1-5s` |
-| Install source | `shell` / `cargo` |
-
-**What is never collected:** file paths, site domains or URLs, page content, command arguments or flag values, environment variables, usernames, or any stable identifier.
-
-Data is sent to the `cli.seite.sh` partition — a dedicated namespace that is completely separate from your site's own analytics. Full details: **[seite.sh/telemetry](https://seite.sh/telemetry)**
-
-**Opt out at any time:**
+**Never collected:** file paths, site domains or URLs, page content, command arguments or flag values, environment variables, usernames, or any stable identifier. Data goes to the `cli.seite.sh` partition, separate from your site's analytics. Details: **[seite.sh/telemetry](https://seite.sh/telemetry)**
 
 ```bash
-seite telemetry off        # persisted preference (survives shell restarts)
-```
-
-Or set an environment variable for one run or in your shell profile:
-
-```bash
-export SEITE_TELEMETRY=0   # disable via env var
-export DO_NOT_TRACK=1      # respects the universal DO_NOT_TRACK standard
-```
-
-Telemetry is also automatically disabled in CI (when the `CI` environment variable is set to any non-empty value). Check your current status:
-
-```bash
+seite telemetry off        # persisted opt-out
 seite telemetry status
-seite telemetry on         # re-enable if you opted out
+export SEITE_TELEMETRY=0   # or DO_NOT_TRACK=1 (also honored by the installers)
 ```
+
+Telemetry is off when the `CI` environment variable is set.
 
 ## Documentation
 
-Full docs at **[seite.sh/docs](https://seite.sh/docs/getting-started)**
+Full docs at **[seite.sh/docs](https://seite.sh/docs/getting-started)**:
 
 - [Getting Started](https://seite.sh/docs/getting-started)
+- [Coding Agents](https://seite.sh/docs/agent)
+- [Audit](https://seite.sh/docs/audit)
+- [Import](https://seite.sh/docs/import)
 - [Configuration](https://seite.sh/docs/configuration)
 - [Collections](https://seite.sh/docs/collections)
-- [Templates](https://seite.sh/docs/templates)
-- [Shortcodes](https://seite.sh/docs/shortcodes)
-- [Multi-language](https://seite.sh/docs/i18n)
+- [Templates](https://seite.sh/docs/templates) and [Theme Gallery](https://seite.sh/docs/theme-gallery)
 - [Deployment](https://seite.sh/docs/deployment)
+- [CMS](https://seite.sh/docs/cms)
+- [MCP Server](https://seite.sh/docs/mcp-server)
 - [CLI Reference](https://seite.sh/docs/cli-reference)
-- [Trust Center](https://seite.sh/docs/trust-center)
+- [Error Reference](https://seite.sh/docs/errors)
 
 ## Contributing
 
-seite is early and issues, PRs, and feedback are genuinely welcome. Especially useful:
+Issues, PRs, and feedback are welcome. Especially useful:
 
-- **Bug reports** with a repro case (even a minimal `seite.toml` + content file)
-- **New theme ideas** — open an issue first to align on direction before building
-- **Docs improvements** — if something confused you, it'll confuse others
-- **Real-world usage** — if you build something with seite, share it
+- **Bug reports** with a repro case (even a minimal `seite.toml` and one content file)
+- **Reports from running seite with your agent**: what it got wrong, and which agent and model
+- **Docs improvements**: if something confused you, it will confuse others
 
 ```bash
 git clone https://github.com/seite-sh/seite
 cargo build
-cargo test        # 331 tests (139 unit + 192 integration)
+cargo test
 cargo clippy      # must be zero warnings
 cargo fmt --all
 ```
 
-Open an issue before starting a large PR — saves everyone time.
+`./local-install.sh` builds a release binary and installs it to `~/.local/bin`. Open an issue before starting a large PR.
 
 ## License
 

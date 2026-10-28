@@ -12,7 +12,7 @@ By the end of this guide you'll have a working site with a blog post, a docs pag
 
 No runtime dependencies are required. seite is a single binary that runs on macOS, Linux, and Windows. If you want to install from source rather than using the prebuilt binary, you'll need the [Rust toolchain](https://rustup.rs/).
 
-To let a coding agent run the site, install any of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex CLI, OpenCode, Cursor, or Gemini CLI. seite sets the site up for all of them; see [Coding Agents](/docs/agent).
+To let a coding agent run the site, install any of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex CLI, OpenCode, Cursor, Gemini CLI, or GitHub Copilot CLI. seite sets the site up for all of them and needs no API keys of its own; see [Coding Agents](/docs/agent).
 
 ## Installation
 
@@ -22,12 +22,12 @@ To let a coding agent run the site, install any of [Claude Code](https://docs.an
 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
-This downloads a prebuilt binary for your platform and installs it to `~/.local/bin`.
+This downloads a prebuilt binary for your platform, checks its SHA-256 against the release's checksum file, and installs it to `~/.local/bin` (set `INSTALL_DIR` to change that).
 
 To install a specific version:
 
 ```bash
-VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh
+curl -fsSL https://seite.sh/install.sh | VERSION=v0.21.0 sh
 ```
 
 ### Quick install (Windows)
@@ -36,9 +36,11 @@ VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh
 irm https://seite.sh/install.ps1 | iex
 ```
 
+It installs to `~/.local/bin` as well; set `$env:VERSION = "v0.21.0"` first to pin a version.
+
 ### Install from source
 
-If you have the Rust toolchain installed (all platforms):
+If you have the Rust toolchain installed (1.88 or newer, all platforms):
 
 ```bash
 cargo install seite
@@ -94,13 +96,40 @@ mysite/
 ├── .cursor/       # Cursor rules, permissions, hooks
 ├── .codex/        # Codex CLI hooks
 ├── .gemini/       # Gemini CLI hooks and /seite command
-├── .agents/       # The /seite skill for Codex, Cursor, OpenCode, and Gemini CLI
+├── .opencode/     # OpenCode /seite command and hook plugin (+ opencode.json)
+├── .github/       # GitHub Copilot hooks and instructions
+├── .agents/       # The /seite skill for Codex, Cursor, OpenCode, Gemini CLI, and Copilot
 └── .seite/        # Project metadata and the docs for this seite version (.seite/docs/)
 ```
 
-The agent files cover Claude Code, Codex CLI, OpenCode, Cursor, and Gemini CLI by default. Pass `--agents claude,cursor` (any subset) to generate only the ones you use, and `--mcp` to also wire in the MCP server; see the [CLI reference](/docs/cli-reference#seite-init).
+Without `--agents`, `seite init` sets up all six agents (the interactive picker preselects the ones it finds on your machine). Pass `--agents claude,cursor` (any subset of `claude,codex,opencode,cursor,gemini,copilot`) to generate only the ones you use, and `--mcp` to also wire in the MCP server; see the [CLI reference](/docs/cli-reference#seite-init).
 
 The [`seite.toml`](/docs/configuration) file controls your site's title, description, base URL, and collections. The defaults work out of the box. You can tune settings later as needed.
+
+## Let Your Coding Agent Run the Site
+
+Open your coding agent in `mysite/`. It finds everything it needs in the project:
+
+- **`AGENTS.md`**: what the site is, its layout and collections, the content format, and the hard rules. Claude Code and Gemini CLI read it through `CLAUDE.md` / `GEMINI.md`.
+- **The `/seite` skill** (`$seite` in Codex): `check`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`.
+- **Check hooks**: after each edit, seite checks the edited file; at the end of a turn, it checks the whole site and hands any errors back so the agent fixes them before it stops.
+
+Each agent has a one-time trust step before it uses the project config (for example, Claude Code's workspace trust prompt); `AGENTS.md` lists them under "Agent setup".
+
+The agent starts a session with `seite context`, which prints the config, collections, theme, running dev server, and pending upgrades. Then ask for what you want:
+
+```text
+/seite new post "Hello world"
+/seite theme "minimal serif with warm colors"
+/seite check
+/seite preview
+```
+
+`/seite check` runs `seite check`, fixes each error at its file and line, and checks once more. `/seite preview` opens the running dev server (in the built-in browser of Claude's desktop app and Cursor) or starts one. While `seite serve` runs, `seite preview` reports its URL, the last build's errors, and errors from the browser console, so the agent sees what you see.
+
+You can also start an agent from the terminal: `seite agent "write a hello world post"` opens Claude Code (or `--with codex|opencode|cursor|gemini|copilot`) with that prompt. See [Coding Agents](/docs/agent) for everything the agent setup includes.
+
+The rest of this guide shows the same steps as commands you run yourself.
 
 ## Create Content
 
@@ -133,9 +162,6 @@ seite new page "About"
 
 Open the generated markdown file in your editor and write your content below the `---` frontmatter delimiter. Add a `description` field for better SEO: seite uses it for meta tags, Open Graph, and JSON-LD structured data automatically.
 
-{{% callout(type="tip") %}}
-Want an agent to write your first post? Open your coding agent in the site and run `/seite new post "Hello world"`, or run `seite agent "write a hello world blog post about launching my site"`. See [Coding Agents](/docs/agent) for more.
-{{% end %}}
 
 ## Build Your Static Site
 
@@ -151,7 +177,8 @@ Builds are fast: typically under a second, even with dozens of pages. Every buil
 - **Markdown copies** alongside every HTML file, so AI models and developer tools can consume your content directly.
 - **RSS feed** at `/feed.xml` for subscribers.
 - **XML sitemap** at `/sitemap.xml` with hreflang alternates if you add [translations](/docs/i18n).
-- **Search index** at `/search-index.json`: client-side search works out of the box in all bundled themes.
+- **Search index**: with `[build] search = "full"` (written by `seite init`), a full-text index under `/search/` that the bundled themes' search box queries; `/search-index.json` (titles, descriptions, tags) is written too.
+- **Social cards** under `/og/`: a 1200x630 image per page for link previews, with `[og] generate = true` (also written by `seite init`).
 - **LLM discovery files** at `/llms.txt` and `/llms-full.txt`, plus `/sitemap.md` (every page's markdown URL), making your site discoverable by AI search engines and coding agents. Each page's `.md` copy points to them.
 
 This triple output (HTML + Markdown + LLM files) is what makes seite an AI-native static site generator. Your content is readable by browsers, search engines, and AI models from a single build command.
@@ -178,6 +205,14 @@ seite check --strict
 ```
 
 `seite build` runs the same link and asset validation as part of a normal build (reported as warnings, or errors with `seite build --strict`), so `seite check` is most useful when you want to validate content without producing output, or want the fastest possible feedback loop while editing.
+
+For SEO, AI visibility, accessibility, and page weight, run the audit. It prints findings with the file to edit and a score:
+
+```bash
+seite audit
+```
+
+See [Audit](/docs/audit).
 
 ## Development Server
 
@@ -279,12 +314,14 @@ Now that your static site generator is up and running, explore these guides to g
 - [Collections](/docs/collections): understand how posts, docs, pages, changelog, and roadmap collections work and how to add custom ones
 - [Configuration](/docs/configuration): the full `seite.toml` reference for images, analytics, contact forms, and more
 - [Templates & Themes](/docs/templates): customize the look, override template blocks, and browse the bundled starter and gallery themes
-- [Building Custom Themes](/docs/custom-themes): create a theme from scratch or modify a bundled one with the theme builder skill
+- [Building Custom Themes](/docs/custom-themes): start from the `blank` starter and design a theme with your coding agent
 - [Deployment](/docs/deployment): detailed setup for GitHub Pages, Cloudflare Pages, and Netlify including custom domains
 - [Multi-Language](/docs/i18n): add translations with filename-based i18n and per-language RSS, sitemap, and search
 - [Shortcodes](/docs/shortcodes): embed YouTube, Vimeo, callouts, figures, contact forms, and custom components
 - [Contact Forms](/docs/contact-forms): add a contact form with Formspree, Web3Forms, Netlify Forms, HubSpot, or Typeform
 - [Workspaces](/docs/workspace): manage multiple sites in a single repository
-- [Coding Agents](/docs/agent): run the site with Claude Code, Codex, OpenCode, Cursor, or Gemini CLI
+- [Coding Agents](/docs/agent): run the site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI, or GitHub Copilot
+- [Audit](/docs/audit): SEO, GEO, accessibility, and performance findings for the built site
+- [Import](/docs/import): move a WordPress, Ghost, Jekyll, or Hugo site into seite
 - [MCP Server](/docs/mcp-server): structured access for chat apps such as Claude Desktop
 - [CLI Reference](/docs/cli-reference): every command and flag in one place

@@ -249,6 +249,7 @@ Every theme (bundled or installed) is a Tera template that serves as `base.html`
 - **Search**: `{% include "seite/search.html" %}` where the box goes, `{% include "seite/scripts.html" %}` before `</body>`
 - **Language switcher**: `{% include "seite/lang-switcher.html" %}`
 - **Accessibility**: skip-to-main link, focus styles, `prefers-reduced-motion`
+- **Page transitions**: a cross-fade between pages, `@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }` (CSS only, same-origin navigations; browsers without view transitions load pages as usual)
 
 The bundled examples keep their CSS inline in `<style>`; `blank` links `static/css/site.css`, which is easier for agents and design tools to edit.
 
@@ -269,4 +270,4 @@ In the dev server REPL, type `theme` to list themes or `theme <name>` to apply a
 
 - [Design your own theme](/docs/custom-themes): the blank starter, impeccable, and the theme contract
 - [Templates & Themes](/docs/templates): customize theme blocks, override templates, and use data files
-- [AI Agent](/docs/agent): use Claude for content creation, site management, and more
+- [Coding Agents](/docs/agent): work on your site with Claude Code, Codex, Cursor and other coding agents
