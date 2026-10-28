@@ -2218,6 +2218,10 @@ pub const FAIL_CLOSED_CHECK: &str = "Cloudflare fail closed";
 /// project when a main-site collection is private, plus the project of every
 /// private subdomain collection. Mirrors the project resolution `seite deploy`
 /// uses, so the check covers exactly what gets uploaded.
+///
+/// A group used only by private subdomains never reaches the main project: the
+/// main build sees only main-site collections (`main_site_collections()`), so
+/// it neither copies that group's `static/private/<group>` assets nor routes it.
 pub fn protected_cloudflare_projects(config: &SiteConfig, paths: &ResolvedPaths) -> Vec<String> {
     if config.access.is_none() {
         return Vec::new();
