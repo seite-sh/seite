@@ -478,7 +478,7 @@ Per agent, `--agents` (default: the agents in `.seite/config.json`, else all; `u
 - Subagents (`.claude/agents/`) and slash commands (`.claude/commands/`) are Claude Code-only and installed only when `claude` is selected; for other agents seite says so and the generated AGENTS.md section lists which agents got the pack.
 - Context templates (`context/`), analytics scripts (`scripts/seo/`), and `requirements-seo.txt` are agent-independent. Existing files that seite did not install are never overwritten.
 
-`seite skill remove seomachine` and `seite skill update` change only files the manifest lists, and keep any file you edited since the install (its SHA-256 no longer matches the recorded one), with a note. Manifests from before 0.20.2 have no hashes: `remove` deletes those files as before, `update` keeps files it no longer installs.
+`seite skill remove seomachine` and `seite skill update` delete only regular files that the manifest lists *and* that the pinned pack can install (the manifest lives in your repository, so it is not trusted: other paths, directories and symlinks are ignored with a warning). They keep any file you edited since the install (its SHA-256 no longer matches the recorded one) and report it. Manifests from before 0.20.2 have no hashes: `remove` deletes those files as before except `context/` templates, and `update` keeps any file that differs from the new pinned version instead of overwriting it (delete it and update again to refresh).
 
 Installed packs are recorded in `.claude/.seite-skill-packs.json` (pinned commit, agents, and a hash per installed file). With `--json`, `skill list` returns `data.bundled`, `data.packs` (`{name, description, installed, source}`), and `data.custom_skills`.
 

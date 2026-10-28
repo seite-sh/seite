@@ -156,11 +156,11 @@ fn test_skill_remove_pack_keeps_edited_files_and_reads_old_manifest() {
 
     let agents = site_dir.join(".claude/agents");
     std::fs::create_dir_all(&agents).unwrap();
-    std::fs::write(agents.join("kept.md"), "my edit").unwrap();
-    std::fs::write(agents.join("gone.md"), "as installed").unwrap();
-    std::fs::write(agents.join("legacy.md"), "no hash recorded").unwrap();
+    std::fs::write(agents.join("editor.md"), "my edit").unwrap();
+    std::fs::write(agents.join("cluster-strategist.md"), "as installed").unwrap();
+    std::fs::write(agents.join("seo-optimizer.md"), "no hash recorded").unwrap();
 
-    // `gone.md` matches its recorded SHA-256; `kept.md` does not; `legacy.md`
+    // `cluster-strategist.md` matches its recorded SHA-256; `editor.md` does not; `seo-optimizer.md`
     // comes from a manifest that predates hashes.
     let gone_hash = {
         // sha256("as installed")
@@ -171,7 +171,7 @@ fn test_skill_remove_pack_keeps_edited_files_and_reads_old_manifest() {
             .collect::<String>()
     };
     let manifest = format!(
-        r#"{{"packs":{{"seomachine":{{"source":"github:a/b","branch":"abc","installed_at":"t","files":[".claude/agents/kept.md",".claude/agents/gone.md",".claude/agents/legacy.md"],"hashes":{{".claude/agents/kept.md":"{}",".claude/agents/gone.md":"{gone_hash}"}}}}}}}}"#,
+        r#"{{"packs":{{"seomachine":{{"source":"github:a/b","branch":"abc","installed_at":"t","files":[".claude/agents/editor.md",".claude/agents/cluster-strategist.md",".claude/agents/seo-optimizer.md"],"hashes":{{".claude/agents/editor.md":"{}",".claude/agents/cluster-strategist.md":"{gone_hash}"}}}}}}}}"#,
         "0".repeat(64)
     );
     std::fs::write(site_dir.join(".claude/.seite-skill-packs.json"), manifest).unwrap();
@@ -183,11 +183,11 @@ fn test_skill_remove_pack_keeps_edited_files_and_reads_old_manifest() {
         .success();
 
     assert_eq!(
-        std::fs::read_to_string(agents.join("kept.md")).unwrap(),
+        std::fs::read_to_string(agents.join("editor.md")).unwrap(),
         "my edit"
     );
-    assert!(!agents.join("gone.md").exists());
-    assert!(!agents.join("legacy.md").exists());
+    assert!(!agents.join("cluster-strategist.md").exists());
+    assert!(!agents.join("seo-optimizer.md").exists());
 }
 
 // --- impeccable (pinned npm installer; fake npm on PATH) ---

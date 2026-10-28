@@ -530,6 +530,10 @@ struct PackEntry {
     /// Agent ids the pack was installed for.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     agents: Vec<String>,
+    /// Files an earlier update left in place (edited by the user) and then
+    /// stopped tracking; `remove` reports them instead of forgetting them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    kept: Vec<String>,
     /// SHA-256 of each installed file as written, to tell later edits apart
     /// from untouched files on update and remove.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -1207,16 +1211,30 @@ fn resolve_agents(
 
 /// Reduce a SKILL.md frontmatter to `name` and `description`, the portable
 /// Agent Skills subset every agent accepts (same rule as the seite skill in
-/// `.agents/skills/`). Content without frontmatter is returned unchanged.
-fn portable_skill_md(content: &str) -> String {
-    let Some(rest) = content.strip_prefix("---\n") else {
+/// `.agents/skills/`). Keys are matched at column 0; indented lines, block
+/// scalars (`>-`, `|`) and list items belong to the key above them, so nested
+/// keys such as `metadata: {name: ..}` never leak through. Line endings are
+/// preserved (CRLF files stay CRLF). A skill with no `name` gets
+/// `fallback_name` (its directory name), which the spec requires. Content
+/// without a closed frontmatter block is returned unchanged.
+fn portable_skill_md(content: &str, fallback_name: &str) -> String {
+    let Some(first) = content.split_inclusive('\n').next() else {
         return content.to_string();
     };
-    let mut out = String::from("---\n");
+    if first.trim_end() != "---" {
+        return content.to_string();
+    }
+    let eol = if first.ends_with("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut kept = String::new();
+    let mut has_name = false;
     let mut keep = false;
-    let mut consumed = 0;
+    let mut consumed = first.len();
     let mut closed = false;
-    for line in rest.split_inclusive('\n') {
+    for line in content[first.len()..].split_inclusive('\n') {
         consumed += line.len();
         if line.trim_end() == "---" {
             closed = true;
@@ -1227,19 +1245,25 @@ fn portable_skill_md(content: &str) -> String {
         if !continuation {
             let key = line.split(':').next().unwrap_or("").trim();
             keep = key == "name" || key == "description";
+            has_name |= key == "name";
         }
         if keep {
-            out.push_str(line);
+            kept.push_str(line);
             if !line.ends_with('\n') {
-                out.push('\n');
+                kept.push_str(eol);
             }
         }
     }
     if !closed {
         return content.to_string();
     }
-    out.push_str("---\n");
-    out.push_str(&rest[consumed..]);
+    let mut out = format!("---{eol}");
+    if !has_name {
+        out.push_str(&format!("name: {fallback_name}{eol}"));
+    }
+    out.push_str(&kept);
+    out.push_str(&format!("---{eol}"));
+    out.push_str(&content[consumed..]);
     out
 }
 
@@ -1301,7 +1325,7 @@ fn plan_files(files: &[(PinnedFile, Vec<u8>)], agents: &[Agent]) -> Vec<Planned>
                 let content = match frontmatter {
                     SkillFrontmatter::ClaudeCode => bytes.clone(),
                     SkillFrontmatter::Portable => std::str::from_utf8(bytes)
-                        .map(|t| portable_skill_md(t).into_bytes())
+                        .map(|t| portable_skill_md(t, name).into_bytes())
                         .unwrap_or_else(|_| bytes.clone()),
                 };
                 push(format!("{dir}/{name}/SKILL.md"), content, false, true);
@@ -1336,6 +1360,8 @@ struct Applied {
     hashes: BTreeMap<String, String>,
     notes: Vec<String>,
     written: usize,
+    /// Files this run created (not overwrote), for rollback.
+    created: Vec<PathBuf>,
 }
 
 /// Write the plan. A file is overwritten only if it is new, identical, or
@@ -1345,12 +1371,33 @@ struct Applied {
 fn apply_plan(root: &Path, plan: &[Planned], prev: Option<&PackEntry>) -> anyhow::Result<Applied> {
     let mut created: Vec<PathBuf> = Vec::new();
     let result = apply_plan_inner(root, plan, prev, &mut created);
-    if result.is_err() {
-        for path in created {
-            let _ = crate::safe_fs::remove(root, &path);
+    match result {
+        Ok(mut applied) => {
+            applied.created = created;
+            Ok(applied)
+        }
+        Err(e) => {
+            rollback(root, &created);
+            Err(e)
         }
     }
-    result
+}
+
+/// Best-effort undo of newly created files after a failed install. Files an
+/// update overwrote are not restored: staging every write in a temp tree
+/// would double the I/O for a failure that can only be a local I/O error,
+/// since all content was already downloaded and hash-verified in memory.
+fn rollback(root: &Path, created: &[PathBuf]) {
+    for path in created {
+        if fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
+            let _ = fs::remove_file(path);
+            if let Some(parent) = path.parent() {
+                if crate::safe_fs::guard(root, parent).is_ok() {
+                    let _ = fs::remove_dir(parent);
+                }
+            }
+        }
+    }
 }
 
 fn apply_plan_inner(
@@ -1369,6 +1416,7 @@ fn apply_plan_inner(
         hashes: BTreeMap::new(),
         notes: Vec::new(),
         written: 0,
+        created: Vec::new(),
     };
     for item in plan {
         let path = root.join(&item.dest);
@@ -1385,9 +1433,11 @@ fn apply_plan_inner(
             None => Act::Write,
             Some(d) if sha256_hex(d) == new_hash => Act::Adopt,
             Some(_) if item.keep_existing => Act::Keep { modified: false },
+            // No recorded hash (pre-0.20.2 install): cannot tell an edit from
+            // an old release, so a differing file is kept.
             Some(d) if tracked => match &prev_hash {
-                Some(h) if *h != sha256_hex(d) => Act::Keep { modified: true },
-                _ => Act::Write,
+                Some(h) if *h == sha256_hex(d) => Act::Write,
+                _ => Act::Keep { modified: true },
             },
             Some(_) => Act::Keep { modified: false },
         };
@@ -1412,7 +1462,10 @@ fn apply_plan_inner(
             Act::Keep { modified } => {
                 if !item.keep_existing {
                     applied.notes.push(if modified {
-                        format!("kept {} (edited since install)", item.dest)
+                        format!(
+                            "kept {} (differs from the pinned version and may be edited; delete it and run `seite skill update` to refresh)",
+                            item.dest
+                        )
                     } else {
                         format!("kept {} (existing file not installed by seite)", item.dest)
                     });
@@ -1429,36 +1482,73 @@ fn apply_plan_inner(
     Ok(applied)
 }
 
-/// Remove a file the previous install placed if it is still as installed
-/// (recorded hash matches); returns false when it was kept. A missing file
-/// counts as removed.
+/// What happened to one manifest entry on remove or update.
+#[derive(Debug, PartialEq, Eq)]
+enum Removal {
+    Removed,
+    /// Edited (hash differs), or a legacy entry that cannot be verified.
+    Kept,
+    /// Not a path the pack can install, or not a regular file: never touched.
+    Skipped,
+}
+
+/// Every path the pinned pack can install for any agent (tracked files
+/// only). The manifest lives in the repository, so it is untrusted input:
+/// only these paths are ever deleted on its say-so.
+fn owned_paths(pack: &SkillPack) -> BTreeSet<String> {
+    let Ok(pin) = Pin::parse(pack.pin) else {
+        return BTreeSet::new();
+    };
+    let files: Vec<(PinnedFile, Vec<u8>)> =
+        pin.files.iter().map(|f| (f.clone(), Vec::new())).collect();
+    plan_files(&files, &Agent::ALL)
+        .into_iter()
+        .filter(|p| p.track)
+        .map(|p| p.dest)
+        .collect()
+}
+
+/// Remove a file the previous install placed if it is still as installed.
+///
+/// Deletes regular files only (never a directory or symlink, so a crafted
+/// manifest cannot wipe `.git` or `content/`), and only paths in `owned`.
+/// Entries without a recorded hash (installed before 0.20.2) are removed
+/// when `legacy_ok`, except `context/` templates, which are the user's.
 fn remove_if_unmodified(
     root: &Path,
     entry: &PackEntry,
+    owned: &BTreeSet<String>,
     file: &str,
     legacy_ok: bool,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Removal> {
+    if !owned.contains(file) {
+        return Ok(Removal::Skipped);
+    }
     let path = root.join(file);
-    if fs::symlink_metadata(&path).is_err() {
-        return Ok(true);
+    let Ok(meta) = fs::symlink_metadata(&path) else {
+        return Ok(Removal::Removed);
+    };
+    if !meta.is_file() {
+        return Ok(Removal::Skipped);
     }
     crate::safe_fs::guard(root, &path)?;
     let unmodified = match (entry.hashes.get(file), fs::read(&path)) {
         (Some(h), Ok(bytes)) => *h == sha256_hex(&bytes),
+        (Some(_), Err(_)) => false,
         // Manifests from before hashes were recorded cannot tell: `remove`
         // deletes (as it always did), an update keeps the file.
-        (None, _) => legacy_ok,
-        (Some(_), Err(_)) => false,
+        (None, _) => legacy_ok && !file.starts_with("context/"),
     };
-    if unmodified {
-        crate::safe_fs::remove(root, &path)?;
-        if let Some(parent) = path.parent() {
-            if crate::safe_fs::guard(root, parent).is_ok() {
-                let _ = fs::remove_dir(parent);
-            }
+    if !unmodified {
+        return Ok(Removal::Kept);
+    }
+    fs::remove_file(&path)?;
+    if let Some(parent) = path.parent() {
+        if crate::safe_fs::guard(root, parent).is_ok() {
+            let _ = fs::remove_dir(parent);
         }
     }
-    Ok(unmodified)
+    Ok(Removal::Removed)
 }
 
 /// Install (or update to the binary's pin) a downloaded pack for `agents`.
@@ -1514,58 +1604,85 @@ fn install_pack_with(
     let manifest = load_manifest(root);
     let prev = manifest.packs.get(pack.name).cloned();
     let mut applied = apply_plan(root, &plan, prev.as_ref())?;
+    let created = std::mem::take(&mut applied.created);
 
-    // Files an earlier install placed that this one no longer does (an agent
-    // dropped, or a file removed from the pin).
-    if let Some(prev) = &prev {
-        let planned: BTreeSet<&str> = plan.iter().map(|p| p.dest.as_str()).collect();
-        for file in prev.files.iter().filter(|f| !planned.contains(f.as_str())) {
-            if !remove_if_unmodified(root, prev, file, false)? {
-                applied
-                    .notes
-                    .push(format!("kept {file} (edited since install)"));
+    // Everything after this point rolls back the files created above if it
+    // fails (see `rollback` for what is not undone).
+    let finish = (|| -> anyhow::Result<Vec<String>> {
+        scaffold_env_example(root)?;
+        for dir in ["context", "research", "output", "topics"] {
+            crate::safe_fs::create_dir_all(root, &root.join(dir))?;
+        }
+        ensure_gitignore_entries(
+            root,
+            &[
+                "research/",
+                "output/",
+                "topics/",
+                ".env",
+                "credentials/",
+                ".claude/.seite-skill-packs.json",
+            ],
+        )?;
+        let links_map = generate_internal_links_map(root);
+        crate::safe_fs::write(
+            root,
+            &root.join("context").join("internal-links-map.md"),
+            &links_map,
+        )?;
+        append_agent_instructions_section(root, agents)?;
+
+        // Files an earlier install placed that this one no longer does (an
+        // agent dropped, or a file removed from the pin). Only paths the pack
+        // can install are touched; edited ones are kept and remembered.
+        let mut kept: Vec<String> = Vec::new();
+        if let Some(prev) = &prev {
+            let owned = owned_paths(pack);
+            let planned: BTreeSet<&str> = plan.iter().map(|p| p.dest.as_str()).collect();
+            for file in prev.files.iter().filter(|f| !planned.contains(f.as_str())) {
+                match remove_if_unmodified(root, prev, &owned, file, false)? {
+                    Removal::Removed => {}
+                    Removal::Kept => {
+                        applied
+                            .notes
+                            .push(format!("kept {file} (edited since install)"));
+                        kept.push(file.clone());
+                    }
+                    Removal::Skipped => applied
+                        .notes
+                        .push(format!("ignored {file}: not a file this pack installs")),
+                }
+            }
+            // Earlier leftovers still on disk stay on the list.
+            for file in &prev.kept {
+                if !kept.contains(file) && fs::symlink_metadata(root.join(file)).is_ok() {
+                    kept.push(file.clone());
+                }
             }
         }
-    }
 
-    scaffold_env_example(root)?;
-    for dir in ["context", "research", "output", "topics"] {
-        crate::safe_fs::create_dir_all(root, &root.join(dir))?;
+        let mut manifest = load_manifest(root);
+        manifest.packs.insert(
+            pack.name.to_string(),
+            PackEntry {
+                source: format!("github:{}", pin.repo),
+                branch: pin.commit.clone(),
+                installed_at: chrono::Utc::now().to_rfc3339(),
+                files: applied.files.clone(),
+                commit: Some(pin.commit.clone()),
+                date: Some(pin.date.clone()),
+                agents: crate::cli::harness::to_ids(agents),
+                kept: kept.clone(),
+                hashes: applied.hashes.clone(),
+            },
+        );
+        save_manifest(root, &manifest)?;
+        Ok(kept)
+    })();
+    if let Err(e) = finish {
+        rollback(root, &created);
+        return Err(e);
     }
-    ensure_gitignore_entries(
-        root,
-        &[
-            "research/",
-            "output/",
-            "topics/",
-            ".env",
-            "credentials/",
-            ".claude/.seite-skill-packs.json",
-        ],
-    )?;
-    let links_map = generate_internal_links_map(root);
-    crate::safe_fs::write(
-        root,
-        &root.join("context").join("internal-links-map.md"),
-        &links_map,
-    )?;
-    append_agent_instructions_section(root, agents)?;
-
-    let mut manifest = load_manifest(root);
-    manifest.packs.insert(
-        pack.name.to_string(),
-        PackEntry {
-            source: format!("github:{}", pin.repo),
-            branch: pin.commit.clone(),
-            installed_at: chrono::Utc::now().to_rfc3339(),
-            files: applied.files.clone(),
-            commit: Some(pin.commit.clone()),
-            date: Some(pin.date.clone()),
-            agents: crate::cli::harness::to_ids(agents),
-            hashes: applied.hashes.clone(),
-        },
-    );
-    save_manifest(root, &manifest)?;
 
     for note in &applied.notes {
         human::info(&format!("  {note}"));
@@ -1812,14 +1929,31 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         crate::cli::agent_instructions::validate_paths(root)?;
         human::info(&format!("Removing skill pack '{}'...", name));
 
-        let mut kept: Vec<&str> = Vec::new();
+        let owned = find_pack(name).map(owned_paths).unwrap_or_default();
+        let (mut removed, mut kept) = (0usize, 0usize);
         for file in &entry.files {
-            if !remove_if_unmodified(root, &entry, file, true)? {
-                kept.push(file);
+            match remove_if_unmodified(root, &entry, &owned, file, true)? {
+                Removal::Removed => removed += 1,
+                Removal::Kept => {
+                    kept += 1;
+                    human::info(&format!(
+                        "  kept {file} ({})",
+                        if file.starts_with("context/") && !entry.hashes.contains_key(file) {
+                            "your template"
+                        } else {
+                            "edited since install"
+                        }
+                    ));
+                }
+                Removal::Skipped => human::warning(&format!(
+                    "  ignored {file}: not a file this pack installs (the manifest is not trusted)"
+                )),
             }
         }
-        for file in &kept {
-            human::info(&format!("  kept {file} (edited since install)"));
+        for file in &entry.kept {
+            human::info(&format!(
+                "  left {file} (edited, kept by an earlier update)"
+            ));
         }
 
         // Remove generated sections from canonical and legacy locations so
@@ -1837,10 +1971,8 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
         save_manifest(root, &manifest)?;
         human::success(&format!(
-            "Removed pack '{}' ({} files removed, {} edited files kept).",
-            name,
-            entry.files.len() - kept.len(),
-            kept.len()
+            "Removed pack '{}' ({removed} files removed, {kept} edited or template files kept).",
+            name
         ));
         return Ok(());
     }
@@ -2388,38 +2520,38 @@ mod tests {
         // Create a fake installed pack with a few files
         let agent_dir = tmp.path().join(".claude").join("agents");
         fs::create_dir_all(&agent_dir).unwrap();
-        fs::write(agent_dir.join("test-agent.md"), "# Agent").unwrap();
+        fs::write(agent_dir.join("editor.md"), "# Agent").unwrap();
 
         let cmd_dir = tmp.path().join(".claude").join("commands");
         fs::create_dir_all(&cmd_dir).unwrap();
-        fs::write(cmd_dir.join("test-cmd.md"), "# Command").unwrap();
+        fs::write(cmd_dir.join("write.md"), "# Command").unwrap();
 
         // Write manifest
         let mut manifest = SkillPacksManifest::default();
         manifest.packs.insert(
-            "test-pack".to_string(),
+            "seomachine".to_string(),
             PackEntry {
                 source: "github:user/repo".to_string(),
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec![
-                    ".claude/agents/test-agent.md".to_string(),
-                    ".claude/commands/test-cmd.md".to_string(),
+                    ".claude/agents/editor.md".to_string(),
+                    ".claude/commands/write.md".to_string(),
                 ],
                 ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
 
-        let result = remove_from(tmp.path(), "test-pack");
+        let result = remove_from(tmp.path(), "seomachine");
 
         assert!(result.is_ok());
-        assert!(!agent_dir.join("test-agent.md").exists());
-        assert!(!cmd_dir.join("test-cmd.md").exists());
+        assert!(!agent_dir.join("editor.md").exists());
+        assert!(!cmd_dir.join("write.md").exists());
 
         // Manifest should no longer have the pack
         let updated = load_manifest(tmp.path());
-        assert!(!updated.packs.contains_key("test-pack"));
+        assert!(!updated.packs.contains_key("seomachine"));
 
         let instructions = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(instructions.contains("# Project"));
@@ -2439,35 +2571,31 @@ mod tests {
         fs::write(&external, &original_instructions).unwrap();
         symlink(&external, tmp.path().join("AGENTS.md")).unwrap();
 
-        let pack_file = tmp
-            .path()
-            .join(".claude")
-            .join("agents")
-            .join("test-agent.md");
+        let pack_file = tmp.path().join(".claude").join("agents").join("editor.md");
         fs::create_dir_all(pack_file.parent().unwrap()).unwrap();
         fs::write(&pack_file, "# Agent").unwrap();
 
         let mut manifest = SkillPacksManifest::default();
         manifest.packs.insert(
-            "test-pack".to_string(),
+            "seomachine".to_string(),
             PackEntry {
                 source: "github:user/repo".to_string(),
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
-                files: vec![".claude/agents/test-agent.md".to_string()],
+                files: vec![".claude/agents/editor.md".to_string()],
                 ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
 
-        let result = remove_from(tmp.path(), "test-pack");
+        let result = remove_from(tmp.path(), "seomachine");
 
         assert!(result.is_err());
         assert!(
             pack_file.exists(),
             "pack files must remain after preflight fails"
         );
-        assert!(load_manifest(tmp.path()).packs.contains_key("test-pack"));
+        assert!(load_manifest(tmp.path()).packs.contains_key("seomachine"));
         assert_eq!(fs::read_to_string(external).unwrap(), original_instructions);
     }
 
@@ -3001,9 +3129,9 @@ mod tests {
 
     #[test]
     fn test_skill_portable_frontmatter_without_frontmatter_is_unchanged() {
-        assert_eq!(portable_skill_md("# Just text\n"), "# Just text\n");
+        assert_eq!(portable_skill_md("# Just text\n", "n"), "# Just text\n");
         assert_eq!(
-            portable_skill_md("---\nname: x\nno close\n"),
+            portable_skill_md("---\nname: x\nno close\n", "n"),
             "---\nname: x\nno close\n"
         );
     }
@@ -3024,9 +3152,10 @@ mod tests {
         let pack = fixture_pack(&files);
         install_pack_with(root, &pack, &[Agent::Claude, Agent::Codex], &serve(files)).unwrap();
 
+        // No hash recorded: a differing legacy file is kept, not overwritten.
         assert_eq!(
             fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
-            "# Editor"
+            "# Old editor"
         );
         assert!(root.join(".agents/skills/seo-audit/SKILL.md").is_file());
         let entry = &load_manifest(root).packs["seomachine"];
@@ -3037,6 +3166,22 @@ mod tests {
         assert!(!entry
             .files
             .contains(&".claude/agents/retired.md".to_string()));
+    }
+
+    #[test]
+    fn test_skill_update_adopts_identical_legacy_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/agents")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md"), "# Editor").unwrap();
+        let old = r#"{"packs":{"seomachine":{"source":"github:owner/fixture","branch":"x","installed_at":"t","files":[".claude/agents/editor.md"]}}}"#;
+        fs::write(root.join(".claude/.seite-skill-packs.json"), old).unwrap();
+        install_fixture(root, &[Agent::Claude]);
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
     }
 
     #[test]
@@ -3131,5 +3276,178 @@ mod tests {
             vec![Agent::Claude]
         );
         assert!(resolve_agents(tmp.path(), Some("nope"), &[]).is_err());
+    }
+
+    // --- hardening: the manifest is repository-controlled input ---
+
+    fn write_manifest(root: &Path, json: &str) {
+        fs::create_dir_all(root.join(".claude")).unwrap();
+        fs::write(root.join(".claude/.seite-skill-packs.json"), json).unwrap();
+    }
+
+    #[test]
+    fn test_skill_crafted_manifest_deletes_nothing_outside_the_pack() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("site");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git/HEAD"), "ref").unwrap();
+        fs::create_dir_all(root.join("content/posts")).unwrap();
+        fs::write(root.join("content/posts/a.md"), "post").unwrap();
+        fs::write(root.join("seite.toml"), "[site]").unwrap();
+        fs::write(root.join(".env"), "SECRET=1").unwrap();
+        fs::write(tmp.path().join("x"), "outside").unwrap();
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "abs").unwrap();
+
+        let files = [
+            ".git",
+            "content",
+            "seite.toml",
+            ".env",
+            "../x",
+            victim.to_str().unwrap(),
+            ".claude",
+            "context/../seite.toml",
+        ];
+        // Legacy (no hashes) and hashed variants.
+        for hashed in [false, true] {
+            let hashes: BTreeMap<String, String> = files
+                .iter()
+                .map(|f| (f.to_string(), sha256_hex(b"")))
+                .collect();
+            let mut manifest = SkillPacksManifest::default();
+            manifest.packs.insert(
+                "seomachine".to_string(),
+                PackEntry {
+                    files: files.iter().map(|f| f.to_string()).collect(),
+                    hashes: if hashed { hashes } else { BTreeMap::new() },
+                    ..Default::default()
+                },
+            );
+            save_manifest(&root, &manifest).unwrap();
+            remove_from(&root, "seomachine").unwrap();
+
+            assert!(root.join(".git/HEAD").is_file());
+            assert!(root.join("content/posts/a.md").is_file());
+            assert!(root.join("seite.toml").is_file());
+            assert!(root.join(".env").is_file());
+            assert!(tmp.path().join("x").is_file());
+            assert!(victim.is_file());
+        }
+    }
+
+    #[test]
+    fn test_skill_update_stale_loop_ignores_paths_the_pack_cannot_install() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("seite.toml"), "[site]").unwrap();
+        fs::create_dir_all(root.join("content")).unwrap();
+        let bad_hash = sha256_hex(b"[site]");
+        let manifest = format!(
+            r#"{{"packs":{{"seomachine":{{"source":"s","branch":"b","installed_at":"t","files":["seite.toml","content"],"hashes":{{"seite.toml":"{bad_hash}"}}}}}}}}"#
+        );
+        write_manifest(root, &manifest);
+        let applied = install_fixture(root, &[Agent::Claude]);
+        assert!(root.join("seite.toml").is_file());
+        assert!(root.join("content").is_dir());
+        assert!(applied
+            .notes
+            .iter()
+            .any(|n| n.contains("ignored seite.toml")));
+        assert!(!load_manifest(root).packs["seomachine"]
+            .files
+            .contains(&"seite.toml".to_string()));
+    }
+
+    #[test]
+    fn test_skill_remove_never_deletes_a_directory_or_symlink_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // A pack path that is a directory (owned name, wrong kind).
+        fs::create_dir_all(root.join(".claude/agents/editor.md/inner")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md/inner/f"), "keep").unwrap();
+        write_manifest(
+            root,
+            r#"{"packs":{"seomachine":{"source":"s","branch":"b","installed_at":"t","files":[".claude/agents/editor.md"]}}}"#,
+        );
+        remove_from(root, "seomachine").unwrap();
+        assert!(root.join(".claude/agents/editor.md/inner/f").is_file());
+    }
+
+    #[test]
+    fn test_skill_legacy_remove_keeps_context_templates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("context")).unwrap();
+        fs::write(root.join("context/brand-voice.md"), "my voice").unwrap();
+        write_manifest(
+            root,
+            r#"{"packs":{"seomachine":{"source":"s","branch":"b","installed_at":"t","files":["context/brand-voice.md"]}}}"#,
+        );
+        remove_from(root, "seomachine").unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("context/brand-voice.md")).unwrap(),
+            "my voice"
+        );
+    }
+
+    #[test]
+    fn test_skill_update_remembers_kept_files_for_remove() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".agents/skills/seo-audit/SKILL.md"), "edited").unwrap();
+        // Drop codex: its edited skill is kept and remembered.
+        install_fixture(root, &[Agent::Claude]);
+        let entry = load_manifest(root).packs.remove("seomachine").unwrap();
+        assert_eq!(
+            entry.kept,
+            vec![".agents/skills/seo-audit/SKILL.md".to_string()]
+        );
+        assert!(!entry
+            .files
+            .contains(&".agents/skills/seo-audit/SKILL.md".to_string()));
+        // A later update keeps remembering it while it exists.
+        install_fixture(root, &[Agent::Claude]);
+        assert_eq!(load_manifest(root).packs["seomachine"].kept.len(), 1);
+    }
+
+    #[test]
+    fn test_skill_failure_after_apply_rolls_back_created_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // `research` as a file makes the post-apply scaffolding fail.
+        fs::write(root.join("research"), "not a dir").unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        assert!(install_pack_with(root, &pack, &[Agent::Claude], &serve(files)).is_err());
+        assert!(!root.join(".claude/agents/editor.md").exists());
+        assert!(!root.join("requirements-seo.txt").exists());
+        assert!(!root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .exists());
+        assert!(!load_manifest(root).packs.contains_key("seomachine"));
+    }
+
+    #[test]
+    fn test_skill_portable_frontmatter_edge_cases() {
+        // Folded scalar, nested metadata with its own name key.
+        let src = "---\nname: a\nmetadata:\n  name: nested\n  tags: x\ndescription: >-\n  folded line one\n  line two\nversion: 2\n---\nBody\n";
+        assert_eq!(
+            portable_skill_md(src, "fb"),
+            "---\nname: a\ndescription: >-\n  folded line one\n  line two\n---\nBody\n"
+        );
+        // CRLF stays CRLF.
+        let crlf = "---\r\nname: a\r\nversion: 1\r\ndescription: d\r\n---\r\nBody\r\n";
+        assert_eq!(
+            portable_skill_md(crlf, "fb"),
+            "---\r\nname: a\r\ndescription: d\r\n---\r\nBody\r\n"
+        );
+        // Missing name falls back to the directory name; a nested name does not count.
+        let noname = "---\ndescription: d\nmetadata:\n  name: nested\n---\nBody\n";
+        assert_eq!(
+            portable_skill_md(noname, "seo-audit"),
+            "---\nname: seo-audit\ndescription: d\n---\nBody\n"
+        );
     }
 }

@@ -16,6 +16,9 @@ REPO="TheCraigHewitt/seomachine"
 PIN="$(cd "$(dirname "$0")/.." && pwd)/src/cli/seomachine.pin"
 REQ="${1:-}"
 
+OUT="$(mktemp)"
+trap 'rm -f "$OUT"' EXIT
+
 if [ -z "$REQ" ]; then
   REQ="$(gh api "repos/$REPO/commits/main" --jq .sha)"
 fi
@@ -24,23 +27,39 @@ DATE="$(gh api "repos/$REPO/commits/$SHA" --jq .commit.committer.date)"
 LICENSE="$(gh api "repos/$REPO/license" --jq .license.spdx_id)"
 
 if command -v sha256sum >/dev/null 2>&1; then
-  HASH() { sha256sum | cut -d' ' -f1; }
+  hash_stdin() { sha256sum | cut -d' ' -f1; }
 else
-  HASH() { shasum -a 256 | cut -d' ' -f1; }
+  hash_stdin() { shasum -a 256 | cut -d' ' -f1; }
 fi
 
-PATHS="$(awk '!/^#/ && NF { print $NF }' "$PIN")"
-OUT="$(mktemp)"
 {
   echo "# repo $REPO"
   echo "# commit $SHA"
   echo "# date $DATE"
   echo "# licence $LICENSE"
   echo "# Refreshed by scripts/refresh-seomachine-pin.sh. Format: <sha256>  <path>."
-  for p in $PATHS; do
-    h="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/$SHA/$p" | HASH)"
-    echo "$h  $p"
-  done
 } > "$OUT"
-mv "$OUT" "$PIN"
-echo "pinned $REPO at $SHA ($DATE), $(echo "$PATHS" | wc -l | tr -d ' ') files, licence $LICENSE"
+
+COUNT=0
+while read -r path; do
+  # Pin paths are repo-relative: no absolute paths, no dot segments, no
+  # characters beyond a conservative set (the Rust parser rejects the rest).
+  case "$path" in
+    /* | *..* | *//* | *[!A-Za-z0-9._/-]*)
+      echo "refusing unsafe path in pin: $path" >&2
+      exit 1
+      ;;
+  esac
+  h="$(curl -fsSL "https://raw.githubusercontent.com/$REPO/$SHA/$path" | hash_stdin)"
+  echo "$h  $path" >> "$OUT"
+  COUNT=$((COUNT + 1))
+done < <(awk '!/^#/ && NF { print $NF }' "$PIN")
+
+if [ "$COUNT" -eq 0 ]; then
+  echo "pin file lists no paths" >&2
+  exit 1
+fi
+
+# Only now touch the pin: a failure above leaves it unchanged.
+cat "$OUT" > "$PIN"
+echo "pinned $REPO at $SHA ($DATE), $COUNT files, licence $LICENSE"
