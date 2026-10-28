@@ -116,3 +116,43 @@ fn test_skill_update_nothing_installed() {
         .success()
         .stdout(predicate::str::contains("Nothing to update"));
 }
+
+#[test]
+fn test_skill_update_regenerates_links_map_without_packs() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "skilllinks", "Links Test", "posts,pages");
+    let site_dir = tmp.path().join("skilllinks");
+
+    // Serve posts under /blog, like seite-sh does.
+    let config_path = site_dir.join("seite.toml");
+    let config = fs::read_to_string(&config_path).unwrap();
+    let rewritten = config.replace("url_prefix = \"/posts\"", "url_prefix = \"/blog\"");
+    assert_ne!(config, rewritten, "expected posts url_prefix in seite.toml");
+    fs::write(&config_path, rewritten).unwrap();
+
+    fs::write(
+        site_dir.join("content/posts/2026-03-13-hugo-alternative.md"),
+        "---\ntitle: \"Hugo Alternative\"\n---\nBody\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/pages/about.md"),
+        "---\ntitle: About\n---\nBody\n",
+    )
+    .unwrap();
+    fs::create_dir_all(site_dir.join("context")).unwrap();
+
+    page_cmd()
+        .args(["skill", "update"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Regenerated internal links map"))
+        .stdout(predicate::str::contains("Nothing to update").not());
+
+    let map = fs::read_to_string(site_dir.join("context/internal-links-map.md")).unwrap();
+    assert!(map.contains("- [Hugo Alternative](/blog/hugo-alternative)"));
+    assert!(map.contains("- [About](/about)"));
+    assert!(!map.contains("/posts/hugo-alternative"));
+    assert!(!map.contains("/pages/about"));
+}
