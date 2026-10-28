@@ -18,6 +18,10 @@ ignore = [
     # core2 is unmaintained (all versions yanked) but pulled in transitively
     # by rav1e (AVIF encoder) via bitstream-io; no safe upgrade available
     "RUSTSEC-2026-0105",
+    # unsafe-libyaml is unmaintained (archived) but is the parser behind
+    # serde_yaml_ng; no safe upgrade exists. Moving to a safe-Rust YAML crate
+    # (e.g. serde-saphyr) is a separate change.
+    "RUSTSEC-2024-0449",
 ]
 
 [licenses]
