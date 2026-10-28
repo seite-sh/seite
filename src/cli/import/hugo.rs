@@ -127,6 +127,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
                 continue;
             }
         };
+        let text = convert::defuse_markers(&text);
         let (fm, body, body_line) = match super::split_frontmatter(&text) {
             Ok(Some(parts)) => parts,
             Ok(None) => (Value::Object(Default::default()), text.as_str(), 1),
@@ -587,7 +588,7 @@ fn shortcodes(
                     .split_once('#')
                     .map(|(_, a)| format!("#{a}"))
                     .unwrap_or_default();
-                let token = format!("SEITEIMPORTREF{}X", item.refs.len());
+                let token = convert::marker('R', item.refs.len());
                 item.refs.push(RefLink {
                     token: token.clone(),
                     key,
@@ -643,7 +644,7 @@ fn shortcodes(
     out.push_str(&body[last..]);
     // Any other `{{<` / `{{%` (malformed tags, text) is escaped; only the
     // generated shortcodes and code spans/fences (tokens) keep delimiters.
-    tokens.restore(&convert::neutralize_shortcode_delimiters(&out))
+    convert::finish_markdown(&out, &tokens, false, &mut Vec::new())
 }
 
 /// `text` as an inline code span (backtick fence longer than any run inside).
@@ -682,7 +683,10 @@ mod tests {
             out.contains(r#"{{< figure(src="cat.jpg", caption="A \"cat\"") >}}"#),
             "{out}"
         );
-        assert!(out.contains("[about](SEITEIMPORTREF0X)"), "{out}");
+        assert!(
+            out.contains(&format!("[about]({})", convert::marker('R', 0))),
+            "{out}"
+        );
         assert!(out.contains("```go\nfunc main() {}\n```"), "{out}");
         assert!(out.contains(r#"`{{< tweet user="x" id="1" >}}`"#), "{out}");
         assert!(out.contains("`{{% notice note %}}`"), "{out}");

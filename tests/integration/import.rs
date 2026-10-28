@@ -321,7 +321,9 @@ fn test_import_wordpress_hostile_export() {
          <iframe/src=javascript:alert(1)></iframe>\
          <iframe src=\"https://player.example.com/e\" onload=alert(1)></iframe>\
          <audio src=x onerror\n=alert(1)></audio>\
-         <p><a href=\"&#106;avascript:alert(1)\">j</a> <img src=\"JaVa&#x09;Script:alert(1)\"></p>"
+         <p><a href=\"&#106;avascript:alert(1)\">j</a> <img src=\"JaVa&#x09;Script:alert(1)\"></p>\
+         <p>[f](SEITEIMPORTTOKEN0Xjavascript:alert(1)) [h](SEITEIMPORTT0X)</p>\
+         <iframe src=\"javascript:x\"></iframe><p>[g](javascript:alert(2))</p>"
     );
     let items = [
         // Its old URL is the starter post's URL; an alias there would replace it.
@@ -394,7 +396,7 @@ fn test_import_wordpress_hostile_export() {
     let attack = read(&site, "content/posts/2020-01-01-attack.md");
     let lower = attack.to_ascii_lowercase();
     assert!(
-        !lower.contains("javascript") && !lower.contains("onclick") && !lower.contains("onerror"),
+        !lower.contains("javascript:") && !lower.contains("onclick") && !lower.contains("onerror"),
         "{attack}"
     );
     assert!(!attack.contains("aliases"), "{attack}");

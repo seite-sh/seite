@@ -16,6 +16,42 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+/// Prefix of every placeholder marker. Source text never contains it:
+/// [`defuse_markers`] breaks it up before conversion starts.
+const MARKER_PREFIX: &str = "SEITEIMPORT";
+
+/// A random per-process nonce in every marker, so a marker can't be
+/// guessed and forged even if [`defuse_markers`] were missed somewhere.
+fn nonce() -> &'static str {
+    static NONCE: LazyLock<String> = LazyLock::new(|| {
+        let mut bytes = [0u8; 8];
+        if getrandom::fill(&mut bytes).is_err() {
+            // No OS randomness: still unpredictable enough to tell apart
+            // from source text, which never contains the prefix.
+            let t = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            bytes = (t as u64 ^ u64::from(std::process::id())).to_le_bytes();
+        }
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    });
+    &NONCE
+}
+
+/// A placeholder marker: letters and digits only (survives htmd), `kind`
+/// one letter (`T` token, `R` reference, `P` preformatted block).
+pub(crate) fn marker(kind: char, n: usize) -> String {
+    format!("{MARKER_PREFIX}{}{kind}{n}X", nonce())
+}
+
+/// Make source text unable to contain a placeholder marker (applied to every
+/// body before conversion).
+pub(crate) fn defuse_markers(text: &str) -> String {
+    // Case-sensitive like the markers; `SEITE_IMPORT` reads the same.
+    text.replace(MARKER_PREFIX, "SEITE_IMPORT")
+}
+
 /// Placeholder tokens that survive HTML → Markdown conversion unchanged.
 #[derive(Default)]
 pub(crate) struct Tokens {
@@ -23,9 +59,13 @@ pub(crate) struct Tokens {
 }
 
 impl Tokens {
-    /// Store `value` and return the token that stands for it.
+    /// Store generated text (a seite shortcode, a code span or fence) and
+    /// return the token that stands for it. Empty values get no token.
     pub(crate) fn push(&mut self, value: String) -> String {
-        let token = format!("SEITEIMPORTTOKEN{}X", self.values.len());
+        if value.is_empty() {
+            return String::new();
+        }
+        let token = marker('T', self.values.len());
         self.values.push(value);
         token
     }
@@ -39,15 +79,120 @@ impl Tokens {
     }
 
     /// Replace every token in `text` with its value (values may contain
-    /// earlier tokens, so restore newest first).
+    /// earlier tokens; they are expanded too).
     pub(crate) fn restore(&self, text: &str) -> String {
-        let mut out = text.to_string();
-        for (i, value) in self.values.iter().enumerate().rev() {
-            let token = format!("SEITEIMPORTTOKEN{i}X");
-            out = out.replace(&token, value);
-        }
-        out
+        self.restore_tracked(text).0
     }
+
+    /// [`Self::restore`], also returning the byte spans of the output that
+    /// came from token values (generated text), for
+    /// [`neutralize_except`].
+    pub(crate) fn restore_tracked(&self, text: &str) -> (String, Vec<std::ops::Range<usize>>) {
+        let mut out = String::with_capacity(text.len());
+        let mut spans = Vec::new();
+        self.expand(text, &mut out, &mut spans, 0, true);
+        (out, spans)
+    }
+
+    fn expand(
+        &self,
+        text: &str,
+        out: &mut String,
+        spans: &mut Vec<std::ops::Range<usize>>,
+        depth: usize,
+        top: bool,
+    ) {
+        let prefix = format!("{MARKER_PREFIX}{}T", nonce());
+        let mut rest = text;
+        while let Some(at) = rest.find(&prefix) {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + prefix.len()..];
+            let digits = after.chars().take_while(char::is_ascii_digit).count();
+            let index = after[..digits].parse::<usize>().ok();
+            let closed = after[digits..].starts_with('X');
+            match (index.and_then(|i| self.values.get(i)), closed) {
+                (Some(value), true) if depth < 8 => {
+                    let start = out.len();
+                    self.expand(value, out, spans, depth + 1, false);
+                    if top {
+                        spans.push(start..out.len());
+                    }
+                    rest = &after[digits + 1..];
+                }
+                // Not a token of ours (cannot come from source text, which
+                // is defused): drop the marker prefix.
+                _ => rest = after,
+            }
+        }
+        out.push_str(rest);
+    }
+}
+
+/// [`neutralize_shortcode_delimiters`] outside the `keep` spans (generated
+/// shortcodes from [`Tokens::restore_tracked`]).
+pub(crate) fn neutralize_except(md: &str, keep: &[std::ops::Range<usize>]) -> String {
+    // Skip fenced code (of the whole text) and the generated spans.
+    let mut skip: Vec<std::ops::Range<usize>> = fenced_ranges(md);
+    skip.extend(keep.iter().cloned());
+    skip.sort_by_key(|r| r.start);
+    let mut out = String::with_capacity(md.len() + 8);
+    let mut last = 0;
+    for span in skip.iter().chain(std::iter::once(&(md.len()..md.len()))) {
+        let start = span.start.max(last);
+        let end = span.end.max(start);
+        out.push_str(
+            &md[last..start]
+                .replace("{{<", "{{\\<")
+                .replace("{{%", "{{\\%"),
+        );
+        out.push_str(&md[start..end]);
+        last = end;
+    }
+    out
+}
+
+/// The end of every converted body: restore tokens, then escape shortcode
+/// delimiters everywhere except the generated spans, then (for converted
+/// HTML, `sanitize_links`) replace links whose destination can run script.
+/// Working on the final text means no token value spliced next to source
+/// text can form a link or a shortcode that was not checked.
+pub(crate) fn finish_markdown(
+    md: &str,
+    tokens: &Tokens,
+    sanitize_links: bool,
+    notes: &mut Vec<String>,
+) -> String {
+    let (restored, spans) = tokens.restore_tracked(md);
+    let neutral = neutralize_except(&restored, &spans);
+    if !sanitize_links {
+        return neutral;
+    }
+    let (clean, replaced) = sanitize_markdown_links(&neutral);
+    if replaced > 0 {
+        notes.push(format!(
+            "{replaced} link(s)/image(s) with a script URL (javascript:, vbscript:, data:) were replaced by their text"
+        ));
+    }
+    defang_script_schemes(&clean)
+}
+
+/// `javascript:` / `vbscript:` left as plain text (outside fenced code) are
+/// written with a zero-width space before the colon: it reads the same but
+/// can never become a working URL by a later splice or template.
+fn defang_script_schemes(md: &str) -> String {
+    static SCHEME: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)(javascript|vbscript)\s*:").expect("valid regex"));
+    let fences = fenced_ranges(md);
+    SCHEME
+        .replace_all(md, |c: &regex::Captures| {
+            let m = c.get(0).expect("match");
+            if fences.iter().any(|r| r.contains(&m.start())) {
+                m.as_str().to_string()
+            } else {
+                format!("{}\u{200B}:", &c[1])
+            }
+        })
+        .into_owned()
 }
 
 /// Escape a value for a seite shortcode string argument (`"..."`).
@@ -159,19 +304,6 @@ pub(crate) fn html_to_markdown(html: &str) -> String {
     tidy_markdown(&md)
 }
 
-/// [`html_to_markdown`] for untrusted HTML: links and images whose
-/// destination can run script become their text ([`sanitize_markdown_links`]);
-/// a note says how many.
-pub(crate) fn markdown_from_html(html: &str, notes: &mut Vec<String>) -> String {
-    let (md, replaced) = sanitize_markdown_links(&html_to_markdown(html));
-    if replaced > 0 {
-        notes.push(format!(
-            "{replaced} link(s)/image(s) with a script URL (javascript:, vbscript:, data:) were replaced by their text"
-        ));
-    }
-    md
-}
-
 /// Collapse runs of blank lines and trim the ends.
 pub(crate) fn tidy_markdown(md: &str) -> String {
     static BLANKS: LazyLock<Regex> =
@@ -256,7 +388,9 @@ pub(crate) fn is_dangerous_url(raw: &str) -> bool {
         .filter(|c| !c.is_whitespace() && !c.is_control() && *c != '\\')
         .collect::<String>()
         .to_ascii_lowercase();
-    if compact.starts_with("javascript:") || compact.starts_with("vbscript:") {
+    // Anywhere in the value, not only as the scheme: a prefix spliced in
+    // front (a placeholder, a stray character) must not hide one.
+    if compact.contains("javascript:") || compact.contains("vbscript:") {
         return true;
     }
     match compact.strip_prefix("data:") {
@@ -889,7 +1023,7 @@ mod tests {
 <iframe src="https://player.example.com/embed/1" onload="x()" srcdoc="<script>"></iframe>
 <video src="javascript:alert(1)" poster="https://ex.com/p.jpg" onplay="x()"><script>alert(1)</script><source src="v.mp4"></video>"#;
         let prepared = prepare_html(html, &mut tokens, &mut notes);
-        let md = tokens.restore(&markdown_from_html(&prepared, &mut notes));
+        let md = finish_markdown(&html_to_markdown(&prepared), &tokens, true, &mut notes);
         let lower = md.to_ascii_lowercase();
         assert!(
             !lower.contains("javascript")
@@ -969,7 +1103,7 @@ mod tests {
             &mut tokens,
             &mut notes,
         );
-        let out = tokens.restore(&markdown_from_html(&prepared, &mut notes));
+        let out = finish_markdown(&html_to_markdown(&prepared), &tokens, true, &mut notes);
         assert!(!out.to_ascii_lowercase().contains("javascript"), "{out}");
     }
 

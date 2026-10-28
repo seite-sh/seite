@@ -138,6 +138,7 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
                 continue;
             }
         };
+        let text = convert::defuse_markers(&text);
         let (fm, body, body_line) = match super::split_frontmatter(&text) {
             Ok(Some(parts)) => parts,
             Ok(None) if kind == Kind::Post => (Value::Object(Default::default()), text.as_str(), 1),
@@ -286,11 +287,16 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             let liquid = liquid(body, body_line, &mut item, &mut warnings);
             let mut notes = Vec::new();
             let prepared = convert::prepare_html(&liquid, &mut tokens, &mut notes);
-            let md = convert::markdown_from_html(&prepared, &mut notes);
+            let md = convert::finish_markdown(
+                &convert::html_to_markdown(&prepared),
+                &tokens,
+                true,
+                &mut notes,
+            );
             for note in notes {
                 warnings.push(Warning::for_item(&item, None, "untrusted-html", note));
             }
-            tokens.restore(&convert::neutralize_shortcode_delimiters(&md))
+            md
         } else {
             // Markdown is kept as written; HTML in it that can run script
             // is reported, not rewritten.
@@ -434,7 +440,7 @@ fn liquid(body: &str, first_line: usize, item: &mut Item, warnings: &mut Vec<War
         } else {
             target.trim_start_matches('/').to_string()
         };
-        let token = format!("SEITEIMPORTREF{}X", item.refs.len());
+        let token = convert::marker('R', item.refs.len());
         item.refs.push(RefLink {
             token: token.clone(),
             key,
@@ -546,7 +552,10 @@ mod tests {
         let body = "See {% post_url 2020-01-01-hi %} and [a]({{ site.baseurl }}/about/).\n\n{% highlight ruby linenos %}\nputs 1\n{% endhighlight %}\n\n{% raw %}{{ keep }}{% endraw %}\n\n{% include note.html %}\n";
         let out = liquid(body, 5, &mut item, &mut warnings);
         assert!(
-            out.contains("See SEITEIMPORTREF0X and [a](/about/)."),
+            out.contains(&format!(
+                "See {} and [a](/about/).",
+                convert::marker('R', 0)
+            )),
             "{out}"
         );
         assert!(out.contains("```ruby\nputs 1\n```"), "{out}");
