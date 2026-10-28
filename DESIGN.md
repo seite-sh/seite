@@ -203,7 +203,7 @@ components:
 
 seite.sh plays the developer-tool category standard straight, at bun.sh's level of craft. The page proves the product by running it: real commands typed into dark terminal panels, real output, a real release pulled from the changelog. Everything else stays out of the way. A white ground (near-black in dark mode), near-black ink, one teal accent, heavy Archivo headlines, system sans for reading, and Martian Mono for anything a machine would print. The same system runs on every page: homepage, docs, blog, changelog, roadmap and tags.
 
-Density is calm and editorial rather than dashboard-tight: one centred column about 1040px wide, generous section padding, and grids of cells divided by 1px rules instead of floating cards. Depth comes from tone and line, never from shadow. The world refuses decoration (glows, gradients, mood art) and empty claims; when proof is absent, the page shows a command instead.
+Density is calm and editorial rather than dashboard-tight: one centred column about 1072px wide, generous section padding, and grids of cells divided by 1px rules instead of floating cards. Depth comes from tone and line, never from shadow. The world refuses decoration (glows, gradients, mood art) and empty claims; when proof is absent, the page shows a command instead.
 
 Tokens in the frontmatter are the light theme, which the rendered review evidence shows. A dark theme ships beside it through the user toggle and `prefers-color-scheme`; `:root` defaults to dark. Every dark counterpart is recorded in the frontmatter under the same name with a `-dark` suffix (and mirrored in the sidecar's `colorMeta`); tokens without a `-dark` entry hold one value in both themes. The prose below names both where the role changes.
 
@@ -258,7 +258,7 @@ Used only inside terminal panels, the install command and code blocks.
 
 **Display Font:** Archivo (with system-ui fallback), weights 700 and 800; every h1 and h2 site-wide and the wordmark
 **Body Font:** system sans (system-ui, -apple-system, Segoe UI, Helvetica, Arial)
-**Label/Mono Font:** Martian Mono (with ui-monospace, SF Mono, Menlo fallback), weights 400 and 500
+**Label/Mono Font:** Martian Mono (with ui-monospace, SF Mono, Menlo fallback), weights 400 and 700 (700 for changelog version numbers; only these weights are loaded, so nothing is synthesised)
 
 **Character:** A heavy, tightly tracked grotesque headline over a neutral native body face, with a wide technical mono for everything typed or printed. The pairing reads like a well-made CLI's homepage: confident at the top, quiet in the paragraphs, literal in the code.
 
@@ -281,7 +281,7 @@ Used only inside terminal panels, the install command and code blocks.
 
 ## Layout
 
-A single centred column: homepage content is 1040px wide (`max-width: calc(1040px + 3rem)` with 1.5rem gutters). Inner pages, the nav and the footer use the base 1120px container (pre-existing; the system column is 1040px).
+A single centred column: every page, the nav and the footer share the base `.container` (1120px including 1.5rem gutters, so 1072px of content), so the logo, the hero and the footer start on the same left edge. Wide content tables scroll inside themselves below 640px rather than widening the page.
 
 Sections are separated by 1px top rules and padded 5.5rem top and bottom (4rem under 640px; the hero uses 4.5rem / 3.5rem, 3rem / 2.5rem on mobile; the closing call to action 6rem / 5rem). A section opens with a two-column head: headline left, lede right, bottom-aligned, 3.5rem apart, then 2.5rem to the content.
 
@@ -303,7 +303,7 @@ Small, consistent radii from three tokens: 4px for controls (buttons, tabs, comm
 ## Components
 
 ### Buttons
-- **Shape:** gently squared (4px radius), 44px minimum height, 0 1.15rem padding, label weight 600 at 0.95rem; an optional trailing 14px SVG arrow or leading 16px SVG icon.
+- **Shape:** gently squared (4px radius), 44px minimum height, 0 1.15rem padding, label weight 600 at 1rem; an optional trailing 14px SVG arrow or leading 16px SVG icon.
 - **Primary (ink):** ink fill with on-ink text. Used for the one main action per block (Read Getting Started, Read the release notes).
 - **Hover / Focus:** hover drops opacity to 0.85 over 0.15s; focus shows the global 2px teal outline at 3px offset.
 - **Secondary (line):** transparent with a 1px strong-rule border and heading-colour text; hover darkens the border to dim text.
@@ -342,7 +342,7 @@ Small, consistent radii from three tokens: 4px for controls (buttons, tabs, comm
 - **Style:** raised paper, 1px rule, 4px radius, mono 0.75rem in heading colour with a teal, unselectable `$ ` prompt; sits at the foot of each tool cell and scrolls horizontally rather than wrapping.
 
 ### Walkthrough Steps
-- **Style:** full-width buttons on an 8px radius with a mono step number, a 0.95rem/600 title, the mono command beneath, and a description revealed only when pressed.
+- **Style:** full-width buttons on an 8px radius with a mono step number, a 1rem/600 title, the mono command beneath, and a description revealed only when pressed.
 - **State:** hover and pressed both take raised paper; pressed adds a 1px rule and turns the step number teal.
 
 ### Navigation
@@ -351,7 +351,7 @@ Small, consistent radii from three tokens: 4px for controls (buttons, tabs, comm
 - **Mobile:** under 640px the links drop into a full-width panel under the bar, one per ruled row, ending with the full-width ink CTA. The hamburger swaps its SVG to a close icon via `aria-expanded`.
 
 ### Announcement Bar
-- **Style:** a full-width ink strip above the nav, 0.8rem on-ink text centred and truncated to one line, linking the latest changelog entry with a trailing SVG arrow; underline on hover.
+- **Style:** a full-width ink strip above the nav in light mode, 0.8rem on-ink text centred and truncated to one line, linking the latest changelog entry with a trailing SVG arrow; underline on hover. In dark mode it drops to raised paper with body text and a 1px bottom rule, so it never becomes a white band across a dark page.
 
 ## Do's and Don'ts
 

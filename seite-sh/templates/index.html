@@ -13,7 +13,6 @@
 
 {% block extra_css %}
 <style>
-    .home .container { max-width: calc(1040px + 3rem); }
     .mono { font-family: var(--mono); font-size: 0.9em; }
 
     /* ── Buttons ─────────────────────────────────── */
@@ -210,8 +209,7 @@
         border-radius: var(--radius-sm);
         padding: 0.05em 0.3em;
         color: var(--heading);
-        -webkit-box-decoration-break: clone;
-        box-decoration-break: clone;
+        white-space: nowrap;
     }
 
     /* Four tools */
@@ -301,6 +299,7 @@
         .walk-out { order: -1; position: sticky; top: 64px; z-index: 2; background: var(--bg); padding-bottom: 0.5rem; }
     }
     @media (max-width: 640px) {
+        .tool p code, .feat p code { white-space: normal; overflow-wrap: anywhere; }
         .hero { padding: 3rem 0 2.5rem; }
         .sec { padding: 4rem 0; }
         .tools, .feats { grid-template-columns: minmax(0, 1fr); }
@@ -516,7 +515,9 @@
     // Line kinds: c = command, o = success, d = dim note
     function inner(line) {
         var t = esc(line[1]);
-        if (line[0] === 'c') return '<span class="t-prompt">$ </span>' + t.replace(/(--[a-z-]+|"[^"]*"?)/g, '<span class="t-flag">$1</span>');
+        var hl = t.replace(/(--[a-z-]+|"[^"]*"?)/g, '<span class="t-flag">$1</span>');
+        if (line[0] === 'c') return '<span class="t-prompt">$ </span>' + hl;
+        if (line[0] === 'k') return '    ' + hl;
         return t;
     }
     function render(line) {
@@ -536,13 +537,14 @@
             function next() {
                 if (i >= lines.length) { el.insertAdjacentHTML('beforeend', '<span class="ln"><span class="t-prompt">$ </span><span class="caret"></span></span>'); return; }
                 var line = lines[i++];
-                if (line[0] !== 'c') { el.insertAdjacentHTML('beforeend', render(line)); timer = setTimeout(next, 240); return; }
+                if (line[0] !== 'c' && line[0] !== 'k') { el.insertAdjacentHTML('beforeend', render(line)); timer = setTimeout(next, 240); return; }
+                var kind = line[0];
                 var full = line[1], n = 0, span = document.createElement('span');
                 span.className = 'ln';
                 el.appendChild(span);
                 (function type() {
                     n = Math.min(full.length, n + 2);
-                    span.innerHTML = inner(['c', full.slice(0, n)]) + (n < full.length ? '<span class="caret"></span>' : '');
+                    span.innerHTML = inner([kind, full.slice(0, n)]) + (n < full.length ? '<span class="caret"></span>' : '');
                     timer = setTimeout(n < full.length ? type : next, n < full.length ? 20 : 360);
                 })();
             }
@@ -577,20 +579,21 @@
 
     // Hero: the same request, handed to each agent
     var agents = {
-        claude: { cmd: 'seite agent "write the v1.2 release post"', files: 'AGENTS.md, .mcp.json, .claude/rules, .claude/skills/seite' },
-        codex: { cmd: 'seite agent --with codex "write the v1.2 release post"', files: 'AGENTS.md, .codex/config.toml, .agents/skills/seite' },
-        opencode: { cmd: 'seite agent --with opencode "write the v1.2 release post"', files: 'AGENTS.md, opencode.json, .opencode/commands/seite.md' },
-        cursor: { cmd: 'seite agent --with cursor "write the v1.2 release post"', files: 'AGENTS.md, .cursor/mcp.json, .cursor/rules' }
+        claude: { flag: '', files: '.mcp.json, .claude/' },
+        codex: { flag: ' --with codex', files: '.codex/, .agents/' },
+        opencode: { flag: ' --with opencode', files: 'opencode.json' },
+        cursor: { flag: ' --with cursor', files: '.cursor/' }
     };
     var agentPlay = player(document.getElementById('agent-term'));
     var currentAgent = 'claude';
     function playAgent() {
         var a = agents[currentAgent];
         agentPlay([
-            ['c', a.cmd],
-            ['d', 'reads ' + a.files],
-            ['d', 'MCP server "seite" connected, 11 tools'],
-            ['o', '✓ content/posts/2026-10-22-v1-2-release.md'],
+            ['c', 'seite agent' + a.flag + ' \\'],
+            ['k', '"write the v1.2 release post"'],
+            ['d', 'reads AGENTS.md, ' + a.files],
+            ['d', 'MCP server seite: 11 tools'],
+            ['o', '✓ content/posts/v1-2-release.md'],
             ['d', 'stop hook: seite check'],
             ['o', '✓ No problems found'],
             ['c', 'seite deploy'],
@@ -603,9 +606,9 @@
 
     // A minute with seite
     var steps = [
-        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed seite to ~/.local/bin/seite']],
-        [['c', 'seite init mysite --title "My Site"'], ['o', '✓ Created mysite/ with posts, docs and pages'], ['d', 'AGENTS.md, .mcp.json, .claude/, .codex/, .cursor/'], ['c', 'cd mysite']],
-        [['c', 'seite agent "write the launch post"'], ['d', 'launching Claude Code with site context'], ['o', '✓ content/posts/2026-10-22-launch.md'], ['d', 'review the diff, then ask for changes or keep it']],
+        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed to ~/.local/bin']],
+        [['c', 'seite init mysite --title "My Site"'], ['o', '✓ Created mysite/ with posts, docs and pages'], ['d', 'AGENTS.md, .mcp.json, .claude/ …'], ['c', 'cd mysite']],
+        [['c', 'seite agent "write the launch post"'], ['d', 'launching Claude Code with site context'], ['o', '✓ content/posts/launch.md'], ['d', 'review the diff, then keep it']],
         [['c', 'seite check'], ['o', '✓ No problems found']],
         [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 14 pages'], ['o', '✓ Deployed to Cloudflare Pages']]
     ];

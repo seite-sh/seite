@@ -70,7 +70,7 @@
         <!-- Site-wide display and mono faces: without them Chrome falls back to Courier New -->
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Martian+Mono:wght@400;500&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Martian+Mono:wght@400;700&display=swap">
 
         {% block head %}{% endblock %}
 
@@ -182,6 +182,15 @@
 
             pre, code, kbd, samp {
                 font-family: var(--mono);
+            }
+
+            /* Wide content tables scroll inside themselves on phones instead of widening the page */
+            @media (max-width: 640px) {
+                main table {
+                    display: block;
+                    max-width: 100%;
+                    overflow-x: auto;
+                }
             }
 
             /* The highlighter inlines its own background; code blocks share the terminal palette */
@@ -463,6 +472,12 @@
                 font-size: 0.9rem;
                 text-align: center;
                 padding: 0.45rem 1rem;
+            }
+
+            [data-theme="dark"] .announce {
+                background: var(--bg-raised);
+                color: var(--text);
+                border-bottom: 1px solid var(--border);
             }
 
             .announce a {
