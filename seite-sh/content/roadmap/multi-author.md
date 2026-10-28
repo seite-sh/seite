@@ -8,7 +8,7 @@ weight: 9
 
 Promote `author` from a site-level config field to a first-class per-content frontmatter field. Authors become entities with bios, avatars, and social links. Auto-generate per-author archive pages (like tag pages). Currently achievable via `extra.author` in frontmatter but without archive pages or structured data.
 
-### Components
+## Components
 
 - `author` frontmatter field (string or object with name, bio, avatar, links)
 - Author data file (`data/authors.yaml`) for centralized author profiles

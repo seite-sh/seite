@@ -1,7 +1,7 @@
 ---
-title: "What Is llms.txt? A Developer's Guide to AI Discoverability"
+title: "What Is llms.txt? A Developer's Guide"
 date: 2026-03-13
-description: "What is llms.txt? A markdown file that tells AI what your site is about. Learn the format, what the data says, and how to generate it automatically on every build."
+description: "What is llms.txt? A markdown file that tells AI what your site is about. Learn the format, what the data says, and how to generate it on every build."
 tags:
  - llms-txt
  - ai

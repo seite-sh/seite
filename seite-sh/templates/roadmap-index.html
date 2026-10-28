@@ -183,7 +183,7 @@
     {% if in_progress | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--in-progress">{{ t.in_progress }}</span>
+            <h2 class="rm-status rm-status--in-progress">{{ t.in_progress }}</h2>
             <span class="rm-count">{{ in_progress | length }} item{% if in_progress | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -200,7 +200,7 @@
     {% if planned | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--planned">{{ t.planned }}</span>
+            <h2 class="rm-status rm-status--planned">{{ t.planned }}</h2>
             <span class="rm-count">{{ planned | length }} item{% if planned | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -217,7 +217,7 @@
     {% if done | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status rm-status--done">{{ t.done }}</span>
+            <h2 class="rm-status rm-status--done">{{ t.done }}</h2>
             <span class="rm-count">{{ done | length }} item{% if done | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">
@@ -234,7 +234,7 @@
     {% if other | length > 0 %}
     <section class="rm-section">
         <div class="rm-section-header">
-            <span class="rm-status">{{ t.other }}</span>
+            <h2 class="rm-status">{{ t.other }}</h2>
             <span class="rm-count">{{ other | length }} item{% if other | length != 1 %}s{% endif %}</span>
         </div>
         <div class="rm-grid">

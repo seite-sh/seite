@@ -1,5 +1,5 @@
 ---
-title: "Static Site Generator with Built-In SEO: 2026 Checklist"
+title: "Static Site Generator with Built-In SEO: Checklist"
 date: 2026-03-13
 description: "Not all SSGs include canonical URLs, JSON-LD, and llms.txt out of the box. Here's the 12-point checklist to evaluate any static site generator for SEO."
 tags:
@@ -20,8 +20,6 @@ extra:
     - SEO static site generator
     - generative engine optimization
 ---
-
-# Static Site Generator with Built-In SEO: 2026 Checklist
 
 Every static site generator claims built-in SEO. Most of them ship you an empty `<meta name="description">` tag and call it done. Getting static site SEO right means more than a tag that exists: it means a tag that works correctly for every page type, generated from your config, without theme maintenance.
 

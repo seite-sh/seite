@@ -1,8 +1,8 @@
 ---
-title: "AI Static Site Generator: What It Means and Why It Matters"
+title: "AI Static Site Generator: What It Is, Why It Matters"
 date: 2026-03-13
-updated: 2026-09-28
-description: "An AI static site generator outputs HTML, markdown, and llms.txt from one build. See how AI-native architecture differs from Hugo, Astro, and AI website builders."
+updated: 2026-10-29
+description: "An AI static site generator outputs HTML, markdown, and llms.txt from one build. How AI-native architecture differs from Hugo, Astro, and AI website builders."
 tags:
   - ai
   - static-site-generator
@@ -53,11 +53,11 @@ Here's what's missing from traditional SSGs:
 
 **No AI-readable output.** Hugo produces HTML. That's it. There's no `llms.txt` file that tells AI search engines what your site is about. There's no raw markdown output alongside the HTML. There's no structured discovery file. Your content is locked inside HTML tags that AI models have to parse.
 
-**No AI-powered content creation.** Want to use your coding agent to write a blog post? With Hugo, you need to know the filename format, frontmatter schema, and directory structure. There's no command that spawns an agent with full site context.
+**No AI-powered content creation.** Want to use your coding agent to write a blog post? With Hugo, you need to know the filename format, frontmatter schema, and directory structure. Nothing tells the agent how your site is put together.
 
 Traditional SSGs are excellent compilers. They take markdown and produce HTML. But compiling is only half the job now. The other half is making your site legible to AI, both during development and after deployment. A Rust static site generator like [Zola](https://www.getzola.org/) gives you the single-binary simplicity and sub-second builds, but it still produces HTML only. The AI layer is missing entirely.
 
-Want to see what AI-native development looks like? [Get started with seite](/docs/getting-started) and run `seite agent "write a post about your first impressions"`: the agent knows your site structure, frontmatter format, and build commands before it types a character.
+Want to see what AI-native development looks like? [Get started with seite](/docs/getting-started) and ask your coding agent to `/seite new post "First impressions"`: it knows your site structure, frontmatter format, and build commands before it types a character.
 
 ## Why AI Website Builders Aren't the Answer Either
 
@@ -85,11 +85,11 @@ The AI doesn't replace your workflow. It plugs into it.
 
 Four architectural decisions separate an AI-first SSG from everything else.
 
-### AI Context: AGENTS.md and MCP Server
+### AI Context: AGENTS.md, a /seite Skill, and Check Hooks
 
-When you run `seite init`, the tool generates an `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The canonical file includes your collections, content inventory, frontmatter format, template list, URL patterns, and every available CLI command. An AI agent reads it once and understands your project.
+When you run `seite init`, the tool generates an `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The file is short (about 3.5 KB): what the site is, its layout, collections, content format, hard rules, and the workflow. An AI agent reads it once and understands your project. `seite init` also writes a routed `/seite` skill (`$seite` in Codex) for checking, writing, theming, auditing and deploying, plus check hooks that run `seite check` after each edit and at the end of each turn and hand errors back to the agent.
 
-But a static file isn't enough. seite also ships an [MCP server](/docs/mcp-server) that gives AI tools real-time, structured access to your site:
+For tools that want structured access, seite also ships an [MCP server](/docs/mcp-server) with typed access to your site:
 
 - `seite://config` returns your `seite.toml` as typed JSON
 - `seite://content` returns your content inventory with metadata
@@ -99,19 +99,17 @@ But a static file isn't enough. seite also ships an [MCP server](/docs/mcp-serve
 - `seite_search` searches your content by title, description, or tags
 - `seite_check` validates the whole site and returns file-and-line diagnostics
 
-That's three of its resources and four of its 11 tools; the [MCP server docs](/docs/mcp-server) list the rest.
+That's three of its resources and four of its tools; the [MCP server docs](/docs/mcp-server) list the rest. Every tool also has a CLI equivalent (`seite search`, `seite page`, `seite check`), so agents get the same answers without MCP.
 
-`seite init` registers the server for Claude Code, Codex, OpenCode and Cursor, and the agent starts it when it opens your project. No API keys. The AI tool works with site concepts (collections, content items, themes) instead of parsing raw files.
+MCP is opt-in: `seite init --mcp` registers the server for each agent you set up. No API keys. The AI tool works with site concepts (collections, content items, themes) instead of parsing raw files.
 
 ### AI Agent Integration
 
-`seite agent` spawns Claude Code as a subprocess with your full site context injected as a system prompt. The agent knows your collections, existing content, templates, and commands.
-
-Two modes:
+seite works with six coding agents: Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot. The context lives in the project, so you open your agent in the site directory and ask. `seite agent` is a thin launcher if you prefer starting from seite:
 
 ```bash
-seite agent "create a blog post about Rust error handling"  # one-shot
-seite agent                                                   # interactive session
+seite agent "create a blog post about Rust error handling"   # starts Claude Code with that prompt
+seite agent --with codex "create a blog post about Rust"    # or another agent
 ```
 
 This isn't "AI writes your website." It's "AI has a seat at your workbench." The agent can create content, modify templates, troubleshoot build errors, and deploy, all while understanding the site's structure and conventions. It can even manage [shortcodes](/docs/shortcodes) and build [custom themes](/docs/custom-themes). Read more about the [AI agent capabilities](/docs/agent).
@@ -140,9 +138,9 @@ Traditional SSGs require CSS knowledge to customize a theme. seite offers a shor
 seite theme create "coral brutalist with lime accents and hard shadows"
 ```
 
-This spawns Claude Code with a detailed prompt that includes all template variables, Tera block requirements, and SEO guardrails. Claude writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
+This runs `/seite theme` in your coding agent (or in your current session: type `/seite theme coral brutalist …` there directly). The skill carries the template variables, Tera block requirements, and SEO guardrails. The agent writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
 
-10 bundled themes (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic) are compiled into the binary and work without downloads. Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding — why seite ships themes in the binary instead of downloading them — see [10 Built-In Themes, 0 Downloads](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
+11 bundled themes are compiled into the binary and work without downloads: 4 starters (default, docs, landing, and blank for designing your own) and a 7-theme gallery (minimal, dark, brutalist, bento, terminal, magazine, academic). Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding — why seite ships themes in the binary instead of downloading them — see [Static Site Generator with 11 Built-In Themes](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
 
 ## How AI Discoverability Changes the Game
 
@@ -179,9 +177,9 @@ hugo build                          # produces HTML only
 **seite:**
 ```bash
 seite new post "My Post" --tags rust,web   # creates file with full frontmatter
-# OR: seite agent "write a post about Rust web frameworks"
+# OR, in your agent: /seite new post "Rust web frameworks"
 seite build                                 # produces HTML + markdown + llms.txt
-# AI context file auto-generated, MCP server available
+# AGENTS.md, /seite skill and check hooks auto-generated
 ```
 
 And here's what the build output looks like:
@@ -222,19 +220,19 @@ Here's how the major static site generators compare on AI-related capabilities:
 | Single binary (no runtime) | Yes (Go) | No (Node.js) | Yes (Rust) | Yes (Rust) |
 | Sub-second builds | Yes | Varies | Yes | Yes |
 | AI context file (AGENTS.md) | No | No | No | Auto-generated |
-| MCP server for AI tools | No | No | No | Built-in |
+| MCP server for AI tools | No | No | No | Built-in (opt-in) |
 | llms.txt output | No | No | No | Every build |
 | Markdown output per page | No | No | No | Every build |
-| AI theme generation | No | No | No | `seite theme create` |
-| AI agent integration | No | No | No | `seite agent` |
+| AI theme generation | No | No | No | `/seite theme` |
+| AI agent integration | No | No | No | `/seite` skill + check hooks, 6 agents |
 | Built-in deploy | No | No | No | GitHub Pages, Cloudflare, Netlify |
-| Bundled themes | Community | Community | Community | 10 compiled into binary |
+| Bundled themes | Community | Community | Community | 11 compiled into binary |
 | RSS feed | Plugin | Plugin | Built-in | Built-in |
-| Client-side search | Plugin | Plugin | Built-in | Built-in |
+| Client-side search | Plugin | Plugin | Built-in | Built-in, full-text |
 
 Hugo, Astro, and Zola are strong tools for what they do. The difference is that none of them were designed for a world where AI agents are part of the development workflow and AI search engines are part of the audience.
 
-The difference compounds when you add an AI agent to the workflow. A coding agent working with Hugo has to explore the project, read `config.toml`, figure out the theme structure, and infer your content model. A coding agent working with seite reads `AGENTS.md`, connects to the MCP server, and starts working immediately with full knowledge of your site's [configuration](/docs/configuration), [collections](/docs/collections), and [templates](/docs/templates).
+The difference compounds when you add an AI agent to the workflow. A coding agent working with Hugo has to explore the project, read `config.toml`, figure out the theme structure, and infer your content model. A coding agent working with seite reads `AGENTS.md`, runs `seite context`, and starts working immediately with full knowledge of your site's [configuration](/docs/configuration), [collections](/docs/collections), and [templates](/docs/templates).
 
 ## Getting Started with an AI Static Site Generator
 
@@ -249,7 +247,7 @@ seite init mysite --title "My Site" --collections posts,docs,pages
 
 # Create your first post with AI
 cd mysite
-seite agent "write a blog post about why I chose this stack"
+seite agent "write a blog post about why I chose this stack"   # or ask your open agent
 
 # Or create manually
 seite new post "Hello World" --tags intro
@@ -264,8 +262,8 @@ Your site now has:
 - [Documentation with sidebar navigation](/blog/build-docs-site-command-line)
 - Static pages
 - Client-side search
-- AI context files (AGENTS.md, CLAUDE.md compatibility import, MCP server config)
-- 10 themes to choose from
+- AI context files (AGENTS.md, CLAUDE.md compatibility import, the `/seite` skill and check hooks)
+- 11 themes to choose from
 
 To [deploy](/docs/deployment):
 
@@ -283,7 +281,7 @@ An AI static site generator is a CLI tool that builds static websites while givi
 
 ### How is seite different from Hugo or Astro?
 
-Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds portable AI context files (`AGENTS.md` plus a `CLAUDE.md` compatibility import), an MCP server for AI tool integration, triple output (HTML + markdown + llms.txt), and built-in AI agent and theme generation. It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
+Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds portable AI context files (`AGENTS.md` plus a `CLAUDE.md` compatibility import), a `/seite` skill and check hooks for six coding agents, an opt-in MCP server, and triple output (HTML + markdown + llms.txt). It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
 
 ### Do I need Node.js to use seite?
 
@@ -295,11 +293,11 @@ llms.txt is a structured markdown file at your site root that tells AI models wh
 
 ### Can AI write my entire website?
 
-AI website builders can generate a site from a prompt, but you get throwaway HTML with no content model or developer workflow. seite takes a different approach: AI works *with* you inside a structured system. `seite agent` gives Claude Code full context about your site so it can create content, modify templates, and troubleshoot builds, all while respecting your markdown-based workflow and git history.
+AI website builders can generate a site from a prompt, but you get throwaway HTML with no content model or developer workflow. seite takes a different approach: AI works *with* you inside a structured system. AGENTS.md and the `/seite` skill give your coding agent full context about your site so it can create content, modify templates, and troubleshoot builds, all while respecting your markdown-based workflow and git history.
 
 ### Is seite free?
 
-Yes. seite is free, open source, and MIT licensed. No paid tiers. The AI agent feature requires a Claude Code subscription (it spawns Claude Code as a subprocess), but the static site generator itself is completely free.
+Yes. seite is free, open source, and MIT licensed. No paid tiers, no API keys. The agent features use the coding agent you already run (Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot), and the static site generator itself is completely free.
 
 ### What deploy targets does seite support?
 
@@ -317,7 +315,7 @@ The AI static site generator is a new category. It's a tool where AI understands
 
 Three things to remember:
 
-1. **AI context is architecture, not documentation.** An AGENTS.md file and MCP server aren't nice-to-haves. They determine whether AI agents can work effectively with your site.
+1. **AI context is architecture, not documentation.** An AGENTS.md file, a skill and check hooks aren't nice-to-haves. They determine whether AI agents can work effectively with your site.
 2. **Triple output is the new standard.** HTML alone isn't enough. Markdown and llms.txt make your content discoverable by the next generation of search.
 3. **AI should work *with* your workflow, not replace it.** The best AI integration respects git, CLI, and markdown. It doesn't lock you into a cloud dashboard.
 

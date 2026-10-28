@@ -1,9 +1,11 @@
 ---
 title: Comment System
-description: Shortcodes for Giscus, Utterances, and Disqus comment integration
+description: "Shortcodes for Giscus and Utterances comment integration"
 tags:
-- planned
+- done
 weight: 4
 ---
 
-Add comment shortcodes following the same pattern as the existing `contact_form` shortcode. Support Giscus (GitHub Discussions-backed), Utterances (GitHub Issues-backed), and Disqus as providers. Configure via `[comments]` in `seite.toml` with provider and repo/site-id. Themes can include the comment block in post templates by default. Extends seite's existing pattern of provider-based integrations.
+Shipped in v0.21.0. `{{< comments() >}}` embeds [giscus](https://giscus.app) (GitHub Discussions) or [utterances](https://utteranc.es) (GitHub Issues), configured in a `[comments]` section of `seite.toml`. Themes can include it in post templates with `{% include "seite/comments.html" %}`. Settings are validated when the config loads; without a `[comments]` section the shortcode renders nothing and warns. Disqus is not supported.
+
+A `{{< newsletter() >}}` shortcode for Buttondown and Kit shipped in the same release.

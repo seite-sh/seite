@@ -1,6 +1,7 @@
 ---
-title: "WordPress Alternative for Developers: Why Static Sites Win"
+title: "WordPress Alternative for Developers: Go Static"
 date: 2026-03-13
+updated: 2026-10-29
 description: "The best WordPress alternative for developers isn't Squarespace. It's a static site generator. Zero hosting cost, no security patches, and AI-readable output."
 tags:
   - wordpress
@@ -103,7 +104,7 @@ If you've decided to replace WordPress with a static site generator, the next qu
 | Contact forms | No | No | No | No | [Built-in shortcode](/docs/contact-forms) |
 | llms.txt output | No | No | No | No | Every build |
 | Markdown copies | No | No | No | No | Every build |
-| AI agent | No | No | No | No | `seite agent` |
+| AI agent | No | No | No | No | `/seite` skill, 6 agents |
 
 **For blogs:** If you need a WordPress alternative for your blog, any SSG handles date-ordered content and RSS. Hugo and seite are the fastest. For a detailed Hugo vs seite comparison, see the [Hugo alternative guide](/blog/hugo-alternative). If you are evaluating Astro as your WordPress replacement, the [Astro alternative for static sites](/blog/astro-alternative-for-static-sites) article covers the tradeoffs between Astro's component island model and a Node.js-free Rust binary. If you want the simplest blog setup, seite's [collections system](/docs/collections) gives you posts, docs, pages, changelog, and roadmap from a single config file.
 
@@ -149,11 +150,11 @@ Ready to leave WordPress for a static site? The migration is simpler than it loo
 
 ### Export Your Content
 
-WordPress has built-in export (`Tools > Export`) that produces an XML file. Tools like [wordpress-export-to-markdown](https://github.com/lonekorean/wordpress-export-to-markdown) convert that XML into markdown files with YAML frontmatter. Your posts, pages, and metadata come through intact.
+WordPress has built-in export (`Tools > Export`) that produces an XML file. Since v0.21.0, `seite import wordpress export.xml` reads it directly: posts and pages become markdown with YAML frontmatter, tags and categories carry over, `[caption]` and embeds become shortcodes, and images from your site are downloaded into `static/images/imported/`. Run it with `--dry-run` first. Anything it couldn't convert is listed in `.seite/cache/import-report.md`. See the [import docs](/docs/import).
 
 ### Map Your URL Structure
 
-WordPress URLs like `/2026/03/my-post/` become `/posts/my-post` in a static site. Set up redirects for any URLs that have external backlinks. Cloudflare Pages and Netlify both support redirect rules in a `_redirects` file.
+WordPress URLs like `/2026/03/my-post/` become `/posts/my-post` in a static site. The importer writes your old permalinks and slugs into each page's `aliases:`, so the old URLs keep redirecting. For anything else with external backlinks, Cloudflare Pages and Netlify both support redirect rules in a `_redirects` file.
 
 ### Choose a Deploy Target
 
@@ -164,7 +165,8 @@ Static sites deploy anywhere. [Cloudflare Pages](/blog/deploy-static-site-cloudf
 ```bash
 curl -fsSL https://seite.sh/install.sh | sh
 seite init mysite --title "My Site" --collections posts,docs,pages
-# Copy your converted markdown files to content/posts/
+cd mysite
+seite import wordpress ../export.xml
 seite build
 seite serve  # Preview at localhost:3000
 ```

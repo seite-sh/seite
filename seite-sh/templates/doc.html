@@ -228,7 +228,7 @@
         margin-bottom: 2.5rem;
     }
 
-    .toc h4 {
+    .toc .toc-heading {
         font-family: inherit;
         font-size: 0.75rem;
         text-transform: uppercase;
@@ -499,7 +499,7 @@
         border-radius: var(--radius-sm);
     }
 
-    .docs-toc h4 {
+    .docs-toc .toc-heading {
         font-family: inherit;
         font-size: 0.75rem;
         text-transform: uppercase;
@@ -653,7 +653,7 @@
     {% if page.toc | length > 1 %}
     <aside class="docs-toc" aria-label="{{ t.on_this_page | default(value='On this page') }}">
         <nav>
-            <h4>{{ t.on_this_page | default(value="On this page") }}</h4>
+            <p class="toc-heading">{{ t.on_this_page | default(value="On this page") }}</p>
             <ul>
                 {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
                 {% endfor %}</ul>
@@ -667,7 +667,7 @@
         <h1>{{ page.title }}</h1>
         {% if page.toc | length > 1 %}
         <nav class="toc" aria-label="Table of contents">
-            <h4>{{ t.on_this_page | default(value="On this page") }}</h4>
+            <p class="toc-heading">{{ t.on_this_page | default(value="On this page") }}</p>
             <ul>
                 {% for entry in page.toc %}<li class="toc-level-{{ entry.level }}"><a href="#{{ entry.id }}">{{ entry.text }}</a></li>
                 {% endfor %}</ul>

@@ -1,6 +1,6 @@
 ---
 title: "Templates and Themes"
-description: "Customize your seite static site with Tera templates, overridable blocks, seite-managed SEO partials, bundled starter and gallery themes, and data-driven navigation."
+description: "Customize your seite site with Tera templates, overridable blocks, seite-managed SEO partials, bundled starter and gallery themes, and data-driven navigation."
 weight: 4
 ---
 

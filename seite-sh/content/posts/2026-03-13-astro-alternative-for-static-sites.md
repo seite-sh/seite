@@ -1,7 +1,7 @@
 ---
-title: "Astro Alternative for Static Sites: JavaScript Framework vs Rust Binary"
+title: "Astro Alternative for Static Sites: Rust vs Node.js"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Astro excels at component islands. For content sites, seite is the astro alternative: a Rust binary, zero Node.js, sub-second builds, and AI-native output."
 tags:
  - static-site-generator
@@ -14,8 +14,6 @@ extra:
  meta_description: "Astro excels at component islands. For content sites, seite is the astro alternative: a Rust binary, zero Node.js, sub-second builds, and AI-native output."
  url_slug: "astro-alternative-for-static-sites"
 ---
-
-# Astro Alternative for Static Sites: JavaScript Framework vs Rust Binary
 
 [Astro](https://astro.build/) calls itself a web framework for content-driven websites. seite calls itself a static site generator. The difference is not marketing; it is architecture. One is a JavaScript framework that outputs static files. The other is a Rust binary that takes markdown and outputs HTML, markdown, and llms.txt. For a blog or docs site, understanding which problem you are actually solving determines which tool fits.
 
@@ -91,11 +89,11 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | Contact forms | Integration required | Built-in shortcode |
 | llms.txt output | No | Every build |
 | Markdown copies per page | No | Every build |
-| AI agent integration | No | `seite agent` |
-| MCP server | No | Built-in |
+| AI agent integration | No | `/seite` skill + check hooks, 6 agents |
+| MCP server | No | Built-in (opt-in) |
 | AGENTS.md context | No | Auto-generated |
-| Bundled themes | Via Starlight / community | 10 compiled into binary |
-| AI theme generation | No | `seite theme create` |
+| Bundled themes | Via Starlight / community | 11 compiled into binary |
+| AI theme generation | No | `/seite theme` |
 | RSS feed | Integration required | Built-in |
 | Sitemap with hreflang | Integration required | Built-in |
 | JSON-LD structured data | Manual | Automatic every build |
@@ -123,7 +121,7 @@ seite is the right astro alternative for static sites when. As a Rust-based astr
 
 - Every page is markdown. Blog posts, docs pages, a landing page written as markdown. No interactive islands needed.
 - You want zero runtime dependencies. Single binary, curl install, no Node.js, no npm.
-- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the CLAUDE.md compatibility import, MCP server, and `seite agent` handle the integration automatically.
+- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the `/seite` skill and check hooks handle the integration for Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot; an MCP server is one flag away.
 - You want your site content to appear in AI search (ChatGPT, Perplexity, Claude's web browsing). llms.txt, markdown copies, and AI-aware robots.txt handle the GEO layer without configuration.
 - You are a startup that needs blog, docs, landing page, and changelog from one init command. Not four separate tools, not four deploys, not four billing accounts.
 - You want sub-second builds without a Node.js build pipeline.

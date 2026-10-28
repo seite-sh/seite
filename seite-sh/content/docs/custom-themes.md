@@ -1,6 +1,6 @@
 ---
 title: "Design Your Own Theme"
-description: "Design a custom seite theme with impeccable or your coding agent: start from the blank starter, keep seite's SEO partials, put the look in static/css/site.css, verify with seite check."
+description: "Design a custom seite theme with impeccable or your coding agent: start from the blank starter, keep seite's SEO partials, style in site.css, verify with check."
 weight: 5
 ---
 

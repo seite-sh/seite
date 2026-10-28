@@ -1,6 +1,6 @@
 ---
 title: "Audit"
-description: "seite audit: a free, offline SEO, AI-visibility (GEO), accessibility, content and performance audit of your built site, with the source file to fix for every finding."
+description: "seite audit is a free, offline SEO, AI-visibility, accessibility, content and performance audit of your built site, with the source file to fix per finding."
 weight: 11
 ---
 

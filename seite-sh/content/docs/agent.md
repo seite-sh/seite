@@ -1,6 +1,6 @@
 ---
 title: "Coding Agents"
-description: "Run your seite site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI, or GitHub Copilot: one AGENTS.md, one /seite skill, check hooks that hand errors back, and no API keys or paid services."
+description: "Run your seite site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI or Copilot: one AGENTS.md, one /seite skill, check hooks, no API keys or paid service."
 weight: 9
 ---
 

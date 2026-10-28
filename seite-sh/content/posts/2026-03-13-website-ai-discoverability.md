@@ -1,7 +1,7 @@
 ---
-title: "Website AI Discoverability: The Third Audience Your Site Is Missing"
+title: "Website AI Discoverability: Your Third Audience"
 date: 2026-03-13
-description: "Website AI discoverability is no longer optional. Your site has three audiences now — humans, search engines, and AI models. Here's the architecture that reaches all three."
+description: "Your site has three audiences now: humans, search engines, and AI models. Here's the architecture for website AI discoverability that reaches all three."
 tags:
  - ai
  - seo
@@ -13,8 +13,6 @@ extra:
  meta_description: "Your website has always had two audiences. It now has three. Most developers are optimizing for one. Here's what the third audience needs and how to reach it."
  url_slug: "website-ai-discoverability"
 ---
-
-# Website AI Discoverability: The Third Audience Your Site Is Missing
 
 Your website has always had two audiences. It now has three. Most developers are optimizing for one.
 

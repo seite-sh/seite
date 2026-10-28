@@ -1,5 +1,5 @@
 ---
-title: "Deploy a Static Site to Cloudflare Pages in One Command"
+title: "Deploy a Static Site to Cloudflare Pages"
 date: 2026-03-13
 updated: 2026-09-28
 description: "Deploy your static site to Cloudflare Pages with one CLI command. Free global CDN, preview deploys, custom domains, and zero dashboard clicking. Step-by-step."

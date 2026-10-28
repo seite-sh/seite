@@ -1,6 +1,6 @@
 ---
 title: "Theme Gallery"
-description: "seite's bundled themes: four starters (default, docs, landing, blank) and a gallery of seven example looks, all embedded in the binary. Or design your own with impeccable or your coding agent."
+description: "seite's 11 bundled themes: four starters (default, docs, landing, blank) and seven gallery looks, all embedded in the binary. Or design your own with an agent."
 weight: 10
 ---
 

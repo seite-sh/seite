@@ -1,6 +1,6 @@
 ---
 title: "Shortcodes for Rich Content"
-description: "Embed YouTube videos, callout boxes, figures, GitHub Gists, contact forms, comments and newsletter forms in your seite static site using built-in and custom shortcodes."
+description: "Embed YouTube videos, callouts, figures, GitHub Gists, contact forms, comments and newsletter forms in your seite site with built-in and custom shortcodes."
 weight: 6
 ---
 

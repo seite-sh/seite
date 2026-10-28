@@ -1,6 +1,6 @@
 ---
 title: "MCP Server for AI Integration"
-description: "Give chat apps such as Claude Desktop structured access to your static site's content, configuration, and build tools via the Model Context Protocol. Opt-in for coding agents, no API keys."
+description: "Give chat apps such as Claude Desktop structured access to your site's content, configuration and build tools via the Model Context Protocol. No API keys."
 weight: 10
 ---
 
@@ -317,4 +317,4 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 - [Coding Agents](/docs/agent): how Claude Code, Codex and the other agents work on a seite site
 - [CLI Reference](/docs/cli-reference): the `seite mcp` command reference
 - [Configuration](/docs/configuration): the full `seite.toml` reference
-- [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native
+- [AI Static Site Generator: What It Is, Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native

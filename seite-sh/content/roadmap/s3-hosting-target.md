@@ -1,6 +1,6 @@
 ---
 title: S3 Hosting Target
-description: AWS S3 + CloudFront deploy support
+description: "Deploy target for AWS S3 with a CloudFront CDN, alongside GitHub Pages, Cloudflare Pages, and Netlify"
 tags:
 - planned
 weight: 11

@@ -1,7 +1,7 @@
 ---
 title: "Build a Docs Site from the Command Line in 5 Minutes"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Build a docs site from the command line without installing Node.js or Python. Get search, sidebar nav, and AI-readable markdown in under 5 minutes. Start now."
 tags:
   - documentation
@@ -185,7 +185,7 @@ Apply the built-in docs theme with one command:
 seite theme apply docs
 ```
 
-This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Ten bundled [themes](/docs/templates) are compiled into the binary; no npm install, no downloads ever. See [10 Built-In Themes, 0 Downloads](/blog/compiled-themes-binary) for the engineering rationale.
+This gives you a fixed 260px sidebar with auto-scrolling navigation, section grouping by directory, GitHub-style colors, and responsive collapse on mobile. Eleven bundled [themes](/docs/templates) are compiled into the binary; no npm install, no downloads ever. See [Static Site Generator with 11 Built-In Themes](/blog/compiled-themes-binary) for the engineering rationale.
 
 ### Search Works Automatically
 
@@ -195,7 +195,7 @@ Every `seite build` generates a `search-index.json` file. The docs theme include
 
 Fenced code blocks with language annotations get highlighted at build time via syntect. No plugin to install. No JavaScript highlighter to load. The highlighting happens during the build, so the rendered HTML includes styled code blocks with zero client-side cost.
 
-**Want to customize the theme?** Edit `templates/base.html` directly or run `seite theme create "your description"` to [generate a custom theme with AI](/docs/custom-themes). Every theme preserves the SEO and accessibility fundamentals.
+**Want to customize the theme?** Edit `templates/base.html` directly or ask your coding agent for `/seite theme your description` to [generate a custom theme with AI](/docs/custom-themes). Every theme preserves the SEO and accessibility fundamentals.
 
 ## Why You Can Build a Docs Site from the Command Line Without Node.js
 
@@ -246,7 +246,7 @@ dist/docs/
 
 The [llms.txt](/blog/what-is-llms-txt) file lists every docs page with a link to its markdown version. An AI model can read `llms.txt`, find the relevant page, and fetch clean markdown without parsing HTML. This is [generative engine optimization](/blog/generative-engine-optimization) for your documentation; making your content citable by AI search engines and readable by AI coding assistants.
 
-You can also use an AI coding agent to generate and maintain your documentation from the command line — see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) for the full `seite agent` workflow, or [how we built seite.sh with Claude Code](/blog/built-with-seite-claude-code) for an honest behind-the-scenes account.
+You can also use an AI coding agent to generate and maintain your documentation from the command line — see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) for the full agent workflow, or [how we built seite.sh with Claude Code](/blog/built-with-seite-claude-code) for an honest behind-the-scenes account.
 
 68% of developers rely on technical documentation as their primary learning resource. Increasingly, they access that documentation through AI intermediaries. If your docs are locked inside HTML that AI models struggle to parse, you're invisible to a growing percentage of your users.
 

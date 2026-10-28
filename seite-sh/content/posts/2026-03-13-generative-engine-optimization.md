@@ -195,7 +195,7 @@ Every GEO guide recommends server-side rendering because AI crawlers cannot exec
 
 Static sites do not have this problem. Every page is pre-rendered HTML. There is no JavaScript dependency for content display. When ChatGPT-User or PerplexityBot requests a page, they get the full content immediately.
 
-If you want to go further and let an AI coding agent build and optimize your site end-to-end, see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) — the `seite agent` command understands your GEO setup and can audit and update content directly.
+If you want to go further and let an AI coding agent build and optimize your site end-to-end, see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) — with `seite audit` and the `/seite` skill, your agent can check your GEO setup and update content directly.
 
 Beyond rendering, static sites align with GEO best practices by default:
 

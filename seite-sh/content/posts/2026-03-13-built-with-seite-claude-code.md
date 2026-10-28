@@ -1,5 +1,5 @@
 ---
-title: "We Built Our Website with Our Own Tool (and Claude Code)"
+title: "We Built Our Website with seite and Claude Code"
 date: 2026-03-13
 description: "A behind-the-scenes account of building seite.sh with seite and Claude Code: what the agent got right, what took longer, and what we'd do differently."
 tags:
