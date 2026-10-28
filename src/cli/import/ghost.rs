@@ -226,23 +226,32 @@ pub(crate) fn parse(path: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             ));
         }
 
-        let html = post.get("html").and_then(Value::as_str).map(replace_url);
+        let html = post
+            .get("html")
+            .and_then(Value::as_str)
+            .map(|h| convert::defuse_markers(&replace_url(h)));
         item.body = match html.filter(|h| !h.trim().is_empty()) {
             Some(html) => {
                 let mut tokens = Tokens::default();
                 let mut notes = Vec::new();
                 let prepared = convert::prepare_html(&html, &mut tokens, &mut notes);
-                let md = convert::markdown_from_html(&prepared, &mut notes);
+                let md = convert::finish_markdown(
+                    &convert::html_to_markdown(&prepared),
+                    &tokens,
+                    true,
+                    &mut notes,
+                );
                 for note in notes {
                     parsed
                         .warnings
                         .push(Warning::for_item(&item, None, "untrusted-html", note));
                 }
-                let md = convert::neutralize_shortcode_delimiters(&md);
-                tokens.restore(&md)
+                md
             }
             None => match json_str(post.get("plaintext")) {
-                Some(text) => convert::neutralize_shortcode_delimiters(&text),
+                Some(text) => {
+                    convert::neutralize_shortcode_delimiters(&convert::defuse_markers(&text))
+                }
                 None => {
                     parsed.warnings.push(Warning::for_item(
                         &item,

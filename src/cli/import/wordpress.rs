@@ -440,6 +440,7 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
 
 /// Convert a `content:encoded` body to Markdown.
 fn convert_body(html: &str, first_line: usize, item: &Item, warnings: &mut Vec<Warning>) -> String {
+    let html = &convert::defuse_markers(html);
     static BLOCK_COMMENT: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?s)<!--\s*/?wp:.*?-->").expect("valid regex"));
     static EMBED_WRAPPER: LazyLock<Regex> = LazyLock::new(|| {
@@ -461,12 +462,11 @@ fn convert_body(html: &str, first_line: usize, item: &Item, warnings: &mut Vec<W
     let html = if is_blocks { html } else { autop(&html) };
     let mut notes = Vec::new();
     let html = convert::prepare_html(&html, &mut tokens, &mut notes);
-    let md = convert::markdown_from_html(&html, &mut notes);
+    let md = convert::finish_markdown(&convert::html_to_markdown(&html), &tokens, true, &mut notes);
     for note in notes {
         warnings.push(Warning::for_item(item, None, "untrusted-html", note));
     }
-    let md = convert::neutralize_shortcode_delimiters(&md);
-    tokens.restore(&md)
+    md
 }
 
 /// WordPress shortcodes we know, plus anything shaped like one.
@@ -641,7 +641,7 @@ fn autop(html: &str) -> String {
     let mut pres = Vec::new();
     let html = PRE.replace_all(html, |c: &regex::Captures| {
         pres.push(c[0].to_string());
-        format!("<pre>SEITEIMPORTPRE{}X</pre>", pres.len() - 1)
+        format!("<pre>{}</pre>", convert::marker('P', pres.len() - 1))
     });
     let html = html.replace("\r\n", "\n");
     let mut out = Vec::new();
@@ -658,7 +658,7 @@ fn autop(html: &str) -> String {
     }
     let mut joined = out.join("\n\n");
     for (i, pre) in pres.iter().enumerate() {
-        joined = joined.replace(&format!("<pre>SEITEIMPORTPRE{i}X</pre>"), pre);
+        joined = joined.replace(&format!("<pre>{}</pre>", convert::marker('P', i)), pre);
     }
     joined
 }
@@ -689,6 +689,42 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].code, "wp-shortcode");
         assert_eq!(warnings[0].source, "export.xml:29");
+    }
+
+    #[test]
+    fn test_convert_body_forged_tokens_cannot_build_links_or_shortcodes() {
+        // Old-format markers, a guessed nonce-less marker, and an iframe that
+        // is removed (no token) right before attacker text.
+        let real = convert::marker('T', 0);
+        let html = format!(
+            "<p>[x](SEITEIMPORTTOKEN0Xjavascript:alert(1))</p>\
+             <iframe src=\"javascript:x\"></iframe><p>[y](javascript:alert(2))</p>\
+             <p>{real} SEITEIMPORTT0X [z]({real}) {{{{SEITEIMPORTT1X contact_form() >}}}}</p>\
+             [caption]<img src=\"https://ex.com/a.jpg\" alt=\"a\"/> cap[/caption]"
+        );
+        let mut warnings = Vec::new();
+        let md = convert_body(&html, 1, &item(), &mut warnings);
+        assert!(!md.contains("SEITEIMPORT"), "{md}");
+        let (rendered, _) = crate::build::markdown::markdown_to_html(&md);
+        assert!(
+            !rendered.to_ascii_lowercase().contains("javascript:"),
+            "{rendered}"
+        );
+        let (calls, errors) = crate::shortcodes::parser::parse_shortcodes_recovering(
+            &md,
+            std::path::Path::new("x.md"),
+        );
+        assert!(errors.is_empty(), "{errors:?}\n{md}");
+        let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["figure"], "{md}");
+    }
+
+    #[test]
+    fn test_tokens_never_restore_empty_values() {
+        let mut tokens = Tokens::default();
+        assert_eq!(tokens.push(String::new()), "");
+        let t = tokens.push("v".into());
+        assert_eq!(tokens.restore(&format!("a{t}b")), "avb");
     }
 
     #[test]
