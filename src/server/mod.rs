@@ -244,31 +244,7 @@ fn run_serve_loop(
 }
 
 fn resolve_file_path(output_dir: &Path, url_path: &str) -> Option<std::path::PathBuf> {
-    let clean = url_path.split('?').next().unwrap_or(url_path);
-    let clean = clean.trim_start_matches('/');
-    if clean.is_empty() {
-        return Some(output_dir.join("index.html"));
-    }
-
-    // Exact file match (e.g., /posts/hello-world.md, /feed.xml, /robots.txt)
-    let candidate = output_dir.join(clean);
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-
-    // Clean URL → .html file (e.g., /posts/hello-world → posts/hello-world.html)
-    let html_candidate = output_dir.join(format!("{clean}.html"));
-    if html_candidate.is_file() {
-        return Some(html_candidate);
-    }
-
-    // Directory with index.html (e.g., / → index.html)
-    let index = candidate.join("index.html");
-    if index.is_file() {
-        return Some(index);
-    }
-
-    None
+    dev::resolve_output_file(output_dir, url_path)
 }
 
 fn guess_mime(path: &Path) -> &'static str {

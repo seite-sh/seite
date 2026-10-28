@@ -44,6 +44,17 @@ jobs:
       - name: Test
         run: cargo test
 
+  # Windows-only code (cfg(windows)) never compiles on the Linux jobs; the
+  # release builds a Windows binary, so check it here, before a merge tags.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - name: Check
+        run: cargo check --all-targets
+
   shellcheck:
     runs-on: ubuntu-latest
     steps:

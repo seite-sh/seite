@@ -945,7 +945,8 @@ impl SiteConfig {
             .map(|message| (message, "timezone".to_string()))
             .or_else(|| crate::content::schema::validate_config(self).err())
             .or_else(|| crate::build::tailwind::validate_config(self).err())
-            .or_else(|| embeds::validate_config(self).err());
+            .or_else(|| embeds::validate_config(self).err())
+            .or_else(|| self.validate_dirs().err());
         let Some((message, key)) = problem else {
             return Ok(());
         };
@@ -963,6 +964,64 @@ impl SiteConfig {
                 Err(PageError::Diagnostics(d.into()))
             }
         }
+    }
+
+    /// Every directory setting stays inside the project, and the output
+    /// directory (emptied by every full build) holds no source directory, so a
+    /// cloned repository's `seite.toml` can neither delete nor publish files
+    /// outside it: `output_dir = "../x"` would empty `../x`, `public_dir = "/"`
+    /// would copy the disk into `dist/`.
+    fn validate_dirs(&self) -> std::result::Result<(), (String, String)> {
+        let b = &self.build;
+        let dirs = [
+            ("output_dir", &b.output_dir),
+            ("content_dir", &b.content_dir),
+            ("template_dir", &b.template_dir),
+            ("static_dir", &b.static_dir),
+            ("data_dir", &b.data_dir),
+            ("public_dir", &b.public_dir),
+        ];
+        for (name, value) in dirs {
+            if let Some(why) = dir_outside_project(value, false) {
+                return Err((
+                    format!("[build] {name} = \"{value}\" {why}"),
+                    format!("[build]{name}"),
+                ));
+            }
+        }
+        let out = dir_components(&b.output_dir);
+        if matches!(out.first().map(String::as_str), Some(".git" | ".seite")) {
+            return Err((
+                format!(
+                    "[build] output_dir = \"{}\" is inside {}, which every build would empty",
+                    b.output_dir, out[0]
+                ),
+                "[build]output_dir".into(),
+            ));
+        }
+        for (name, value) in &dirs[1..] {
+            if dir_components(value).starts_with(&out) {
+                return Err((
+                    format!(
+                        "[build] output_dir = \"{}\" contains {name} = \"{value}\": every build empties the output directory, so pick a separate one (e.g. \"dist\")",
+                        b.output_dir
+                    ),
+                    "[build]output_dir".into(),
+                ));
+            }
+        }
+        for c in &self.collections {
+            if let Some(why) = dir_outside_project(&c.directory, true) {
+                return Err((
+                    format!(
+                        "collection '{}': directory = \"{}\" {why}",
+                        c.name, c.directory
+                    ),
+                    "directory".into(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn validate_access(&self) -> Result<()> {
@@ -1233,9 +1292,73 @@ impl SiteConfig {
     }
 }
 
+/// Why `value` (a directory relative to the project, or to the content
+/// directory) could point outside it, or `None` when it can't: it must be
+/// relative, without `..`, a drive prefix or backslashes, and (unless
+/// `allow_empty`) name a directory below the root.
+pub fn dir_outside_project(value: &str, allow_empty: bool) -> Option<&'static str> {
+    use std::path::Component;
+    if value.contains(['\\', '\0']) {
+        return Some("must not contain backslashes");
+    }
+    let mut named = false;
+    for part in Path::new(value).components() {
+        match part {
+            Component::Normal(_) => named = true,
+            Component::CurDir => {}
+            Component::ParentDir => return Some("must stay inside the project (no `..`)"),
+            Component::RootDir | Component::Prefix(_) => {
+                return Some("must be a path relative to the project")
+            }
+        }
+    }
+    (!named && !allow_empty).then_some("must name a directory inside the project")
+}
+
+/// The named components of a relative directory, lowercased (macOS and
+/// Windows file systems are case-insensitive).
+fn dir_components(value: &str) -> Vec<String> {
+    Path::new(value)
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().to_lowercase()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dir_outside_project_rules() {
+        for ok in ["dist", "./dist", "out/site", "public"] {
+            assert_eq!(dir_outside_project(ok, false), None, "{ok}");
+        }
+        for bad in ["../dist", "/var/www", "a/../../b", "", ".", "a\\b"] {
+            assert!(dir_outside_project(bad, false).is_some(), "{bad}");
+        }
+        assert_eq!(dir_outside_project("", true), None);
+    }
+
+    #[test]
+    fn output_dir_must_not_hold_sources() {
+        let mut config = make_config("https://example.com", vec![]);
+        for (out, content) in [
+            ("content", "content"),
+            ("site", "site/content"),
+            ("Content", "content"),
+            (".git/x", "content"),
+        ] {
+            config.build.output_dir = out.into();
+            config.build.content_dir = content.into();
+            assert!(config.validate_dirs().is_err(), "{out} / {content}");
+        }
+        config.build.output_dir = "dist".into();
+        config.build.content_dir = "content".into();
+        assert!(config.validate_dirs().is_ok());
+    }
 
     fn make_config(base_url: &str, collections: Vec<CollectionConfig>) -> SiteConfig {
         SiteConfig {

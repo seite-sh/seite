@@ -28,7 +28,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub deploy_target: Option<String>,
 
-    /// Collections to include (comma-separated: posts,docs,pages,trust)
+    /// Collections to include (comma-separated: posts,docs,pages,changelog,roadmap,trust)
     #[arg(long)]
     pub collections: Option<String>,
 

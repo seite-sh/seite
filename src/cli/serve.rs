@@ -199,7 +199,9 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let dev_root = ws_root_opt.clone().unwrap_or_else(|| cwd.clone());
 
     if !args.force_new {
-        if let Some(running) = crate::cli::context::running_dev_server(&dev_root) {
+        if let Some(running) = crate::cli::context::running_dev_server(&dev_root).filter(|s| {
+            crate::server::remote::confirms(s, &dev_root, std::time::Duration::from_millis(800))
+        }) {
             human::info(&format!(
                 "Dev server already running at {} (pid {}). Use --force-new to start another.",
                 running.url, running.pid

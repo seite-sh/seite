@@ -1323,7 +1323,15 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
 
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    extend_dedup(&mut actions, check_agent_harness(root, &agents, args.mcp));
+    // A pre-0.19 project gets AGENTS.md from the migration step above; plan
+    // the shims that import it in the same run.
+    let agents_md_planned = actions
+        .iter()
+        .any(|a| matches!(a, UpgradeAction::MigrateAgentInstructions { .. }));
+    extend_dedup(
+        &mut actions,
+        check_agent_harness(root, &agents, args.mcp, agents_md_planned),
+    );
     // Turn-end `seite check` hooks, once per agent: merged into (or next to)
     // the actions above, and skipped for agents recorded as done so a hook
     // the user deleted stays deleted.
@@ -3397,12 +3405,17 @@ fn check_codex_config(root: &Path) -> Vec<UpgradeAction> {
 
 /// Create an instructions shim (`CLAUDE.md`, `GEMINI.md`) that imports
 /// AGENTS.md, for an agent that needs one, when the project has none.
-fn check_instructions_shim(root: &Path, agent: Agent) -> Vec<UpgradeAction> {
+/// `agents_md_planned`: an earlier action of this run creates AGENTS.md.
+fn check_instructions_shim(
+    root: &Path,
+    agent: Agent,
+    agents_md_planned: bool,
+) -> Vec<UpgradeAction> {
     let Some(name) = agent.spec().instructions_shim else {
         return vec![];
     };
     let shim = root.join(name);
-    if shim.exists() || !root.join("AGENTS.md").exists() {
+    if shim.exists() || !(agents_md_planned || root.join("AGENTS.md").exists()) {
         return vec![];
     }
     vec![UpgradeAction::Create {
@@ -3414,12 +3427,17 @@ fn check_instructions_shim(root: &Path, agent: Agent) -> Vec<UpgradeAction> {
 
 /// Every harness file the selected agents need, merged into what exists.
 /// MCP config is only added or changed with `mcp`.
-fn check_agent_harness(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeAction> {
+fn check_agent_harness(
+    root: &Path,
+    agents: &[Agent],
+    mcp: bool,
+    agents_md_planned: bool,
+) -> Vec<UpgradeAction> {
     let features = SiteFeatures::detect(root);
     let mut actions = Vec::new();
 
     for &agent in agents {
-        actions.extend(check_instructions_shim(root, agent));
+        actions.extend(check_instructions_shim(root, agent, agents_md_planned));
     }
     if agents.contains(&Agent::Claude) {
         actions.extend(check_claude_config(root, mcp));

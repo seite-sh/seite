@@ -106,6 +106,21 @@ fn find_server(site_root: &Path, timeout: Duration) -> Result<(DevServer, Value)
     Ok((server, status))
 }
 
+/// Whether `server` (from `.seite/dev.json`) really is a seite dev server for
+/// `root`: its `/__seite/status` answers with the recorded pid and this root.
+/// The file can be committed to a repository, pointing at any live pid and
+/// any local port, so the pid and an open port alone prove nothing.
+pub fn confirms(server: &DevServer, root: &Path, timeout: Duration) -> bool {
+    let Ok(status) = get_json(server.port, "/__seite/status", timeout) else {
+        return false;
+    };
+    status.get("pid").and_then(Value::as_u64) == Some(u64::from(server.pid))
+        && status
+            .get("root")
+            .and_then(Value::as_str)
+            .is_some_and(|r| same_dir(Path::new(r), root))
+}
+
 /// This site's base URL on the server described by `status`: the server
 /// root itself (a site, or the workspace root), or a workspace server's
 /// `/<name>` mount. `Err` when the server serves something else.

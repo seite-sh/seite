@@ -11,9 +11,9 @@
 - **Search** — `[build] search = "full"` (written by `seite init`) builds a full-text index of page text under `dist/search/` (sharded, loaded lazily, any static host); every bundled theme's search box (`seite/search.html` + `seite/scripts.html`) ranks results and shows highlighted snippets. Absent key = `"basic"` (`dist/search-index.json` only: titles, descriptions, tags; always written unless `search = false`). Drafts, scheduled, `noindex`, unlisted and private pages are never indexed.
 - **Math/LaTeX rendering** — Add `math = true` to `[build]` for server-side KaTeX rendering of `$inline$` and `$$display$$` math expressions. KaTeX CSS loaded automatically from CDN.
 - **Mermaid diagrams** — Add `mermaid = true` to `[build]` to render fenced ` ```mermaid ` code blocks as client-side diagrams.
-- **Password access** — Add `[access]` to `seite.toml` to password-protect any `private = true` collection via a generated Cloudflare Pages Worker. See Configuration section below.
-- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See Configuration section below.
-- **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See Configuration section below.
+- **Password access** — Add `[access]` to `seite.toml` to password-protect any `private = true` collection via a generated Cloudflare Pages Worker. See `config-reference.md`.
+- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See `config-reference.md`.
+- **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See `config-reference.md`.
 - **Tag pages** — Auto-generated `/tags/` index and `/tags/{tag}/` archive pages, included in sitemap
 - **404 page** — Auto-generated `dist/404.html` using the `404.html` template. Customize by creating `templates/404.html`. Dev server serves it on 404 responses.
 - **Table of contents** — `{{ page.toc }}` is auto-generated from heading hierarchy; all headings get `id` anchors for deep linking

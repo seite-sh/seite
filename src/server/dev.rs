@@ -194,6 +194,31 @@ pub const LIVERELOAD_SCRIPT: &str = r#"<script>
 })();
 </script>"#;
 
+/// The file in `output_dir` a request path names (query string ignored): the
+/// exact file, else `<path>.html`, else `<path>/index.html`. `None` for a path
+/// that could leave the output directory (a `.` or `..` segment, a backslash or
+/// NUL) or that resolves outside it through a symlink: tiny_http hands over the
+/// raw request target, so `GET /../seite.toml` would otherwise read any file.
+pub fn resolve_output_file(output_dir: &Path, url_path: &str) -> Option<PathBuf> {
+    let clean = url_path.split('?').next().unwrap_or(url_path);
+    let clean = clean.trim_start_matches('/');
+    if clean.contains(['\\', '\0']) || clean.split('/').any(|s| s == "." || s == "..") {
+        return None;
+    }
+    let inside = |candidate: PathBuf| -> Option<PathBuf> {
+        let real = candidate.canonicalize().ok()?;
+        let root = output_dir.canonicalize().ok()?;
+        (real.starts_with(&root) && real.is_file()).then_some(candidate)
+    };
+    if clean.is_empty() {
+        return Some(output_dir.join("index.html"));
+    }
+    let candidate = output_dir.join(clean);
+    inside(candidate.clone())
+        .or_else(|| inside(output_dir.join(format!("{clean}.html"))))
+        .or_else(|| inside(candidate.join("index.html")))
+}
+
 /// Insert [`LIVERELOAD_SCRIPT`] before the last `</body>` (case-sensitive);
 /// HTML without one is returned unchanged.
 pub fn inject_livereload(html_bytes: &[u8]) -> Vec<u8> {
@@ -1434,6 +1459,34 @@ fn send_event(writer: &mut Box<dyn Write + Send>, message: &str) -> std::io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_output_file_stays_inside_the_output_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let out = tmp.path().join("dist");
+        std::fs::create_dir_all(out.join("posts")).unwrap();
+        std::fs::write(out.join("posts/a.html"), "a").unwrap();
+        std::fs::write(tmp.path().join("seite.toml"), "secret").unwrap();
+        assert_eq!(
+            resolve_output_file(&out, "/posts/a"),
+            Some(out.join("posts/a.html"))
+        );
+        for path in [
+            "/../seite.toml",
+            "/posts/../../seite.toml",
+            "/./posts/a.html",
+            "/..\\seite.toml",
+            "/posts/a.html\0",
+        ] {
+            assert_eq!(resolve_output_file(&out, path), None, "{path}");
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.path().join("seite.toml"), out.join("leak.txt"))
+                .unwrap();
+            assert_eq!(resolve_output_file(&out, "/leak.txt"), None);
+        }
+    }
 
     fn facts<'a>(
         method: &'a str,

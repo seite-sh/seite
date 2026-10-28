@@ -321,6 +321,11 @@ paths:
       "Bash(seite explain:*)",
       "Bash(seite hooks:*)",
       "Bash(seite collection list)",
+      "Bash(seite audit:*)",
+      "Bash(seite audit)",
+      "Bash(seite preview:*)",
+      "Bash(seite preview)",
+      "Bash(seite og preview:*)",
       "Glob",
       "Grep",
       "WebSearch"
@@ -614,6 +619,9 @@ If the installed `seite` is older than the project expects, tell the user to run
       "Shell(seite:explain*)",
       "Shell(seite:hooks*)",
       "Shell(seite:collection list*)",
+      "Shell(seite:audit*)",
+      "Shell(seite:preview*)",
+      "Shell(seite:og preview*)",
       "Write(content/**)",
       "Write(templates/**)",
       "Write(static/**)",
@@ -942,7 +950,10 @@ Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/
       "seite frontmatter*": "allow",
       "seite explain*": "allow",
       "seite hooks*": "allow",
-      "seite collection list*": "allow"
+      "seite collection list*": "allow",
+      "seite audit*": "allow",
+      "seite preview*": "allow",
+      "seite og preview*": "allow"
     },
     "glob": "allow",
     "grep": "allow",

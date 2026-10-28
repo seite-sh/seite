@@ -66,7 +66,16 @@ pub struct ExternalOptions {
     pub own_origins: Vec<String>,
     /// Report problems as errors instead of warnings.
     pub strict: bool,
+    /// Also request hosts that resolve to loopback/private/link-local
+    /// addresses. Off unless the user sets `SEITE_EXTERNAL_PRIVATE=1`: links
+    /// come from the repository, which must not make this machine send
+    /// requests into its network (routers, metadata endpoints, local admin
+    /// pages). Refused links are counted as skipped.
+    pub allow_private: bool,
 }
+
+/// User-level opt-in to checking links to private/internal addresses.
+pub const ALLOW_PRIVATE_ENV: &str = "SEITE_EXTERNAL_PRIVATE";
 
 impl ExternalOptions {
     pub fn for_site(config: &crate::config::SiteConfig, strict: bool) -> Self {
@@ -84,6 +93,7 @@ impl ExternalOptions {
             skip: check.external_skip,
             own_origins,
             strict,
+            allow_private: std::env::var_os(ALLOW_PRIVATE_ENV).is_some_and(|v| v == "1"),
         }
     }
 }
@@ -134,6 +144,8 @@ pub enum Outcome {
     Broken(String),
     /// Could not be confirmed (timeout, 5xx, blocked, …): reason.
     Unreachable(String),
+    /// Not requested: the host resolves to a private/internal address.
+    Private,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,17 +213,25 @@ pub fn check_urls(urls: &[String], opts: &ExternalOptions) -> HashMap<String, Ou
         queue: VecDeque<String>,
         active: HashMap<String, usize>,
     }
-    let agent = ureq::Agent::new_with_config(
-        ureq::config::Config::builder()
-            .timeout_global(Some(opts.timeout))
-            .max_redirects(opts.max_redirects)
-            .http_status_as_error(false)
-            .user_agent(format!(
-                "seite-linkcheck/{} (+https://seite.sh)",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .build(),
-    );
+    let config = ureq::config::Config::builder()
+        .timeout_global(Some(opts.timeout))
+        .max_redirects(opts.max_redirects)
+        .http_status_as_error(false)
+        .user_agent(format!(
+            "seite-linkcheck/{} (+https://seite.sh)",
+            env!("CARGO_PKG_VERSION")
+        ));
+    let agent = if opts.allow_private {
+        ureq::Agent::new_with_config(config.build())
+    } else {
+        // No proxy: the resolver must see each target host (redirects
+        // included), and it connects only to the addresses it approved.
+        ureq::Agent::with_parts(
+            config.proxy(None).build(),
+            ureq::unversioned::transport::DefaultConnector::default(),
+            crate::cli::import::images::PublicOnlyResolver::strict(),
+        )
+    };
     let state = Mutex::new(State {
         queue: urls.iter().cloned().collect(),
         active: HashMap::new(),
@@ -295,6 +315,9 @@ fn classify(result: Result<u16, ureq::Error>, timeout: Duration) -> Outcome {
             Outcome::Unreachable("too many redirects (more than 5)".into())
         }
         Err(ureq::Error::ConnectionFailed) => Outcome::Unreachable("connection failed".into()),
+        Err(ureq::Error::Io(e)) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Outcome::Private
+        }
         Err(ureq::Error::Io(e)) => Outcome::Unreachable(format!("connection error: {e}")),
         Err(e) => Outcome::Unreachable(e.to_string()),
     }
@@ -362,6 +385,11 @@ pub fn run(input: &ExternalCheck, opts: &ExternalOptions) -> (Vec<Diagnostic>, S
         let (ok, reason) = match &outcome {
             Outcome::Ok => (true, None),
             Outcome::Broken(r) | Outcome::Unreachable(r) => (false, Some(r.clone())),
+            Outcome::Private => {
+                summary.checked -= 1;
+                summary.skipped += 1;
+                continue;
+            }
         };
         cache.links.insert(
             url.clone(),
@@ -498,7 +526,19 @@ mod tests {
             skip: vec![],
             own_origins: vec![],
             strict: false,
+            allow_private: true,
         }
+    }
+
+    #[test]
+    fn test_check_urls_skips_private_addresses_by_default() {
+        let (base, hits) = server();
+        let mut o = opts();
+        o.allow_private = false;
+        let urls = vec![format!("{base}/ok")];
+        let r = check_urls(&urls, &o);
+        assert_eq!(r[&urls[0]], Outcome::Private);
+        assert_eq!(hits.load(Ordering::SeqCst), 0, "nothing was requested");
     }
 
     #[test]

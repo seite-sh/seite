@@ -232,30 +232,7 @@ fn route_request<'a>(url_path: &str, sites: &'a [(String, PathBuf)]) -> Option<(
 }
 
 fn resolve_file_path(output_dir: &Path, url_path: &str) -> Option<PathBuf> {
-    let clean = url_path.trim_start_matches('/');
-    if clean.is_empty() {
-        return Some(output_dir.join("index.html"));
-    }
-
-    // Exact file match
-    let candidate = output_dir.join(clean);
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-
-    // Clean URL -> .html file
-    let html_candidate = output_dir.join(format!("{clean}.html"));
-    if html_candidate.is_file() {
-        return Some(html_candidate);
-    }
-
-    // Directory with index.html
-    let index = candidate.join("index.html");
-    if index.is_file() {
-        return Some(index);
-    }
-
-    None
+    crate::server::dev::resolve_output_file(output_dir, url_path)
 }
 
 fn generate_workspace_index(sites: &[(String, PathBuf)]) -> String {

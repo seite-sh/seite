@@ -357,7 +357,9 @@ jobs:
 
   deploy-site:
     name: Deploy docs site
-    needs: build
+    # After the release exists: the site publishes version.txt, which
+    # install.sh downloads from the release.
+    needs: [build, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

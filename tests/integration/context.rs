@@ -229,32 +229,74 @@ fn test_serve_writes_and_removes_dev_json() {
     }
 }
 
+/// A planted `.seite/dev.json` (a live pid and some local port that is not a
+/// seite server) must not stop `seite serve`; a real running server does.
 #[cfg(unix)]
 #[test]
-fn test_serve_refuses_second_server_when_dev_json_alive() {
+fn test_serve_refuses_second_server_only_when_status_confirms() {
+    use std::io::Write;
+    use std::process::Stdio;
+
     let tmp = TempDir::new().unwrap();
     let dir = site(&tmp);
+    let dev = dir.join(".seite/dev.json");
     std::fs::create_dir_all(dir.join(".seite")).unwrap();
-    // A live pid (ours) and a listening loopback port stand in for a server.
+    // A live pid (ours) and a listening loopback port that is not seite.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let fake_port = listener.local_addr().unwrap().port();
     std::fs::write(
-        dir.join(".seite/dev.json"),
+        &dev,
         format!(
-            r#"{{"pid":{},"port":{port},"url":"https://evil.example","started_at":"2026-01-01T00:00:00Z"}}"#,
+            r#"{{"pid":{},"port":{fake_port},"url":"https://evil.example","started_at":"2026-01-01T00:00:00Z"}}"#,
             std::process::id()
         ),
     )
     .unwrap();
-    page_cmd()
-        .arg("serve")
-        .current_dir(&dir)
-        .timeout(std::time::Duration::from_secs(20))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(format!("http://127.0.0.1:{port}")))
-        .stdout(predicate::str::contains("evil.example").not());
-    drop(listener);
+
+    for attempt in 0..5 {
+        let port = free_port();
+        let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("seite"))
+            .args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+            .current_dir(&dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let child_pid = child.id();
+        let ours = |dev: &std::path::Path| {
+            std::fs::read_to_string(dev)
+                .ok()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                .is_some_and(|v| v["pid"] == child_pid)
+        };
+        let start = std::time::Instant::now();
+        while !ours(&dev)
+            && child.try_wait().unwrap().is_none()
+            && start.elapsed() < std::time::Duration::from_secs(10)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        if !ours(&dev) {
+            let _ = child.kill();
+            let _ = child.wait();
+            assert!(attempt < 4, "serve did not start past the planted dev.json");
+            continue;
+        }
+        // Now a real server runs here: a second serve reports it and exits.
+        page_cmd()
+            .arg("serve")
+            .current_dir(&dir)
+            .timeout(std::time::Duration::from_secs(20))
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(format!("http://127.0.0.1:{port}")))
+            .stdout(predicate::str::contains("evil.example").not());
+        child.stdin.take().unwrap().write_all(b"stop\n").unwrap();
+        assert!(child.wait().unwrap().success());
+        drop(listener);
+        return;
+    }
 }
 
 #[test]

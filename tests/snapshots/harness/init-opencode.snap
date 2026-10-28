@@ -377,7 +377,10 @@ Detailed guides live in `.agents/rules/`. Before editing, read the guides for th
       "seite frontmatter*": "allow",
       "seite explain*": "allow",
       "seite hooks*": "allow",
-      "seite collection list*": "allow"
+      "seite collection list*": "allow",
+      "seite audit*": "allow",
+      "seite preview*": "allow",
+      "seite og preview*": "allow"
     },
     "glob": "allow",
     "grep": "allow",

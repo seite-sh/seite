@@ -508,7 +508,9 @@ pub fn compile(bin: &Path, tw: &TailwindSection, root: &Path) -> Result<Vec<u8>,
             .map_err(|e| fail(format!("cannot copy the Tailwind CLI: {e}"), ""))?;
         copy
     };
-    let mut command = Command::new(bin);
+    // Borrowed: `bin` is used again in the error message (on Windows it is
+    // an owned copy, which `Command::new(bin)` would move).
+    let mut command = Command::new(bin.as_os_str());
     command
         .current_dir(&cwd)
         .arg("--cwd")

@@ -1,5 +1,6 @@
 ==> (upgrade changes) <==
 Canonical AGENTS.md project instructions
+GEMINI.md (@AGENTS.md import for Gemini CLI)
 Allowed Edit(static/**) in .claude/settings.json
 Allowed Edit(seite.toml) in .claude/settings.json
 Allowed Bash(seite check:*) in .claude/settings.json
@@ -18,6 +19,11 @@ Allowed Bash(seite frontmatter:*) in .claude/settings.json
 Allowed Bash(seite explain:*) in .claude/settings.json
 Allowed Bash(seite hooks:*) in .claude/settings.json
 Allowed Bash(seite collection list) in .claude/settings.json
+Allowed Bash(seite audit:*) in .claude/settings.json
+Allowed Bash(seite audit) in .claude/settings.json
+Allowed Bash(seite preview:*) in .claude/settings.json
+Allowed Bash(seite preview) in .claude/settings.json
+Allowed Bash(seite og preview:*) in .claude/settings.json
 Added the seite check hooks to .claude/settings.json
 .claude/rules/seo-requirements.md
 .claude/rules/templates.md
@@ -361,7 +367,12 @@ paths:
       "Bash(seite frontmatter:*)",
       "Bash(seite explain:*)",
       "Bash(seite hooks:*)",
-      "Bash(seite collection list)"
+      "Bash(seite collection list)",
+      "Bash(seite audit:*)",
+      "Bash(seite audit)",
+      "Bash(seite preview:*)",
+      "Bash(seite preview)",
+      "Bash(seite og preview:*)"
     ]
   },
   "mcpServers": {
@@ -664,6 +675,9 @@ Old body.
       "Shell(seite:explain*)",
       "Shell(seite:hooks*)",
       "Shell(seite:collection list*)",
+      "Shell(seite:audit*)",
+      "Shell(seite:preview*)",
+      "Shell(seite:og preview*)",
       "Write(content/**)",
       "Write(templates/**)",
       "Write(static/**)",
@@ -895,6 +909,9 @@ Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/
 ==> CLAUDE.md <==
 @AGENTS.md
 
+==> GEMINI.md <==
+@AGENTS.md
+
 ==> opencode.json <==
 {
   "$schema": "https://opencode.ai/config.json",
@@ -929,7 +946,10 @@ Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/
       "seite frontmatter*": "allow",
       "seite explain*": "allow",
       "seite hooks*": "allow",
-      "seite collection list*": "allow"
+      "seite collection list*": "allow",
+      "seite audit*": "allow",
+      "seite preview*": "allow",
+      "seite og preview*": "allow"
     },
     "glob": "allow",
     "grep": "allow",

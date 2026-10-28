@@ -32,7 +32,7 @@
 mod convert;
 mod ghost;
 mod hugo;
-mod images;
+pub(crate) mod images;
 mod jekyll;
 mod report;
 mod wordpress;

@@ -1477,6 +1477,20 @@ fn link_server() -> String {
     format!("http://127.0.0.1:{port}")
 }
 
+/// `run_json` with `SEITE_EXTERNAL_PRIVATE=1`: the link server is on 127.0.0.1,
+/// which `check --external` otherwise never requests.
+fn run_json_private(dir: &std::path::Path, args: &[&str]) -> (bool, serde_json::Value) {
+    let output = page_cmd()
+        .env("SEITE_EXTERNAL_PRIVATE", "1")
+        .arg("--json")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    let doc = serde_json::from_slice(&output.stdout).unwrap();
+    (output.status.success(), doc)
+}
+
 #[test]
 fn test_check_external_reports_broken_links_with_source_lines() {
     let base = link_server();
@@ -1501,7 +1515,7 @@ fn test_check_external_reports_broken_links_with_source_lines() {
     assert!(ok);
     assert!(!site.join(".seite/cache/links.json").exists());
 
-    let (ok, doc) = run_json(&site, &["check", "--external"]);
+    let (ok, doc) = run_json_private(&site, &["check", "--external"]);
     assert!(ok, "warnings only: {doc}");
     let diags = diagnostics_of(&doc);
     let broken = diags
@@ -1536,7 +1550,7 @@ fn test_check_external_reports_broken_links_with_source_lines() {
     assert!(gitignore.contains("/.seite/cache/"));
 
     // Second run: the working link comes from the cache; --strict fails.
-    let (ok, doc) = run_json(&site, &["check", "--external", "--strict"]);
+    let (ok, doc) = run_json_private(&site, &["check", "--external", "--strict"]);
     assert!(!ok);
     assert_eq!(doc["data"]["external"]["cached"], 1, "{doc}");
     assert!(diagnostics_of(&doc)

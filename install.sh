@@ -136,7 +136,7 @@ resolve_version() {
 
   if [ -z "$TAG" ]; then
     error "Could not determine latest release version."
-    echo "  Try pinning a version: VERSION=v0.1.0 curl -fsSL ... | sh"
+    echo "  Try pinning a version: curl -fsSL ... | VERSION=v0.21.0 sh"
     exit 1
   fi
 

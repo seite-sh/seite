@@ -1599,3 +1599,47 @@ fn test_build_markdown_alternate_homepage_with_content_multilingual() {
 
     assert_markdown_alternates_resolve(&dist, "https://example.github.io/repo");
 }
+
+/// A cloned repository's seite.toml must not point the build (which empties
+/// its output directory) or the public/static copy outside the project.
+#[test]
+fn test_build_refuses_directories_outside_the_project() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Dirs", "posts");
+    let site_dir = tmp.path().join("site");
+    let victim = tmp.path().join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), "keep").unwrap();
+    let original = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    let absolute = victim.display().to_string().replace('\\', "/");
+
+    for (key, value) in [
+        ("output_dir", "../victim"),
+        ("output_dir", absolute.as_str()),
+        ("output_dir", "content"),
+        ("output_dir", "."),
+        ("public_dir", "../victim"),
+        ("static_dir", "/"),
+    ] {
+        let toml = if original.contains(&format!("{key} = ")) {
+            let start = original.find(&format!("{key} = ")).unwrap();
+            let end = start + original[start..].find('\n').unwrap();
+            format!(
+                "{}{key} = \"{value}\"{}",
+                &original[..start],
+                &original[end..]
+            )
+        } else {
+            original.replace("[build]\n", &format!("[build]\n{key} = \"{value}\"\n"))
+        };
+        fs::write(site_dir.join("seite.toml"), toml).unwrap();
+        page_cmd()
+            .arg("build")
+            .current_dir(&site_dir)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(key));
+        assert!(victim.join("keep.txt").exists(), "{key} = {value}");
+        assert!(site_dir.join("content").exists(), "{key} = {value}");
+    }
+}

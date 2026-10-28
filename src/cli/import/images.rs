@@ -680,10 +680,22 @@ fn bare_host(host: &str) -> String {
 /// address unless the host (and port) was given on the command line
 /// (`--allow-host`, `--site-url`).
 #[derive(Debug)]
-struct PublicOnlyResolver {
+pub(crate) struct PublicOnlyResolver {
     /// (host without brackets, explicit port)
     exempt: Vec<(String, Option<u16>)>,
     inner: ureq::unversioned::resolver::DefaultResolver,
+}
+
+impl PublicOnlyResolver {
+    /// Refuses every non-public address, with no exemptions (`seite check
+    /// --external`: a cloned repository's links must not reach the local
+    /// network).
+    pub(crate) fn strict() -> Self {
+        Self {
+            exempt: Vec::new(),
+            inner: ureq::unversioned::resolver::DefaultResolver::default(),
+        }
+    }
 }
 
 impl ureq::unversioned::resolver::Resolver for PublicOnlyResolver {

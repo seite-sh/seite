@@ -55,8 +55,9 @@ impl Agent {
     ];
 
     /// What a project with no stored agent selection (from before the
-    /// selection existed) is maintained for: the agents seite 0.20 knew.
-    /// Agents added later are opt-in there (`seite upgrade --agents`).
+    /// selection existed) is maintained for: the four agents seite 0.20 knew
+    /// plus Gemini CLI (0.21's free path; its files only add hooks and a
+    /// `/seite` command). Copilot is opt-in there (`seite upgrade --agents`).
     pub const LEGACY_DEFAULT: [Agent; 5] = [
         Agent::Claude,
         Agent::Codex,
@@ -1181,6 +1182,11 @@ pub const CLAUDE_ALLOWED_TOOLS: &[&str] = &[
     "Bash(seite explain:*)",
     "Bash(seite hooks:*)",
     "Bash(seite collection list)",
+    "Bash(seite audit:*)",
+    "Bash(seite audit)",
+    "Bash(seite preview:*)",
+    "Bash(seite preview)",
+    "Bash(seite og preview:*)",
     "Glob",
     "Grep",
     "WebSearch",
@@ -1222,6 +1228,11 @@ pub const CLAUDE_ALLOWED_TOOLS_UPGRADE: &[&str] = &[
     "Bash(seite explain:*)",
     "Bash(seite hooks:*)",
     "Bash(seite collection list)",
+    "Bash(seite audit:*)",
+    "Bash(seite audit)",
+    "Bash(seite preview:*)",
+    "Bash(seite preview)",
+    "Bash(seite og preview:*)",
 ];
 
 /// Paths the agent may edit without asking (Claude `Write/Edit(...)`,
@@ -1248,6 +1259,9 @@ const ALLOWED_COMMANDS: &[&str] = &[
     "seite explain",
     "seite hooks",
     "seite collection list",
+    "seite audit",
+    "seite preview",
+    "seite og preview",
 ];
 
 /// `.claude/settings.json` for a new site: permissions, plus (with `mcp`)

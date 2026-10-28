@@ -175,8 +175,8 @@ fn deployment() -> DocPage {
 fn agent() -> DocPage {
     DocPage {
         slug: "agent",
-        title: "AI Agent",
-        description: "Use Claude Code as an AI assistant with full site context.",
+        title: "Coding Agents",
+        description: "Set up and run the site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot.",
         weight: 9,
         raw_content: include_str!("../seite-sh/content/docs/agent.md"),
     }

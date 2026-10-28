@@ -306,7 +306,7 @@ fn print_welcome() {
         println!("    seite serve              Start dev server with live reload");
         println!("    seite new post \"Title\"   Create a new post");
         println!("    seite deploy             Deploy to production");
-        println!("    seite agent \"prompt\"     AI assistant with full site context");
+        println!("    seite agent \"prompt\"     Open your coding agent with a prompt");
         println!("    seite --help             See all commands");
     } else {
         println!("  {}", style("Get started:").bold());

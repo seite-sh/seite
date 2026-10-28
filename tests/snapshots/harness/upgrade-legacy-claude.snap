@@ -18,6 +18,11 @@ Allowed Bash(seite frontmatter:*) in .claude/settings.json
 Allowed Bash(seite explain:*) in .claude/settings.json
 Allowed Bash(seite hooks:*) in .claude/settings.json
 Allowed Bash(seite collection list) in .claude/settings.json
+Allowed Bash(seite audit:*) in .claude/settings.json
+Allowed Bash(seite audit) in .claude/settings.json
+Allowed Bash(seite preview:*) in .claude/settings.json
+Allowed Bash(seite preview) in .claude/settings.json
+Allowed Bash(seite og preview:*) in .claude/settings.json
 Added the seite check hooks to .claude/settings.json
 .claude/rules/seo-requirements.md
 .claude/rules/templates.md
@@ -137,7 +142,12 @@ paths:
       "Bash(seite frontmatter:*)",
       "Bash(seite explain:*)",
       "Bash(seite hooks:*)",
-      "Bash(seite collection list)"
+      "Bash(seite collection list)",
+      "Bash(seite audit:*)",
+      "Bash(seite audit)",
+      "Bash(seite preview:*)",
+      "Bash(seite preview)",
+      "Bash(seite og preview:*)"
     ]
   },
   "mcpServers": {

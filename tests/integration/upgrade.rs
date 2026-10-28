@@ -2175,3 +2175,37 @@ fn test_upgrade_adds_copilot_to_claude_site_with_shared_mcp() {
         .success()
         .stdout(predicate::str::contains("up to date"));
 }
+
+/// A pre-0.19 project with only CLAUDE.md gets AGENTS.md from the migration
+/// step and the GEMINI.md shim that imports it in the same run.
+#[test]
+fn test_upgrade_pre_019_creates_shims_in_one_run() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude,gemini");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join("GEMINI.md")).unwrap();
+    fs::write(
+        site_dir.join("CLAUDE.md"),
+        "# My site\n\nWrite posts in content/posts.\n",
+    )
+    .unwrap();
+    set_project_version(&site_dir, "0.18.0");
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    assert!(site_dir.join("AGENTS.md").exists());
+    assert!(fs::read_to_string(site_dir.join("GEMINI.md"))
+        .unwrap()
+        .contains("@AGENTS.md"));
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}

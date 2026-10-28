@@ -112,7 +112,7 @@ pub enum Command {
     /// Deploy the site to a hosting provider
     Deploy(deploy::DeployArgs),
 
-    /// Open a coding agent (Claude Code, Codex, OpenCode, Cursor, Gemini CLI) in the site
+    /// Open a coding agent (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, Copilot) in the site
     Agent(agent::AgentArgs),
 
     /// Manage collections
@@ -131,7 +131,7 @@ pub enum Command {
     /// Manage private password access on Cloudflare Pages
     Access(access::AccessArgs),
 
-    /// Manage Claude Code skills and skill packs
+    /// Manage coding-agent skills and skill packs
     Skill(skill::SkillArgs),
 
     /// Manage themes
