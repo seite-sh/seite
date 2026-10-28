@@ -15,6 +15,7 @@ pub mod frontmatter;
 pub mod harness;
 pub mod harness_hooks;
 pub mod hooks;
+pub mod import;
 pub mod init;
 pub mod mcp;
 pub mod new;
@@ -115,6 +116,10 @@ pub enum Command {
     /// Manage collections
     Collection(collection::CollectionArgs),
 
+    /// Import content from WordPress (WXR), Ghost (JSON), Jekyll or Hugo,
+    /// with images, old-URL redirects and a report of what to finish by hand
+    Import(import::ImportArgs),
+
     /// Manage contact form configuration
     Contact(contact::ContactArgs),
 
@@ -214,6 +219,7 @@ mod tests {
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
         assert!(subcommands.contains(&"access"));
+        assert!(subcommands.contains(&"import"));
         for agent_facing in [
             "context",
             "docs",

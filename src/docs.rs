@@ -32,6 +32,7 @@ pub fn all() -> Vec<DocPage> {
         theme_gallery(),
         cli_reference(),
         audit(),
+        import(),
         errors(),
         releases(),
     ];
@@ -217,6 +218,16 @@ fn audit() -> DocPage {
         description: "seite audit: a free, offline SEO, AI-visibility (GEO), accessibility, content and performance audit of your built site, with the source file to fix for every finding.",
         weight: 11,
         raw_content: include_str!("../seite-sh/content/docs/audit.md"),
+    }
+}
+
+fn import() -> DocPage {
+    DocPage {
+        slug: "import",
+        title: "Import",
+        description: "seite import: move a WordPress, Ghost, Jekyll or Hugo site into seite in one command, with images, old-URL redirects and a report your coding agent can finish.",
+        weight: 12,
+        raw_content: include_str!("../seite-sh/content/docs/import.md"),
     }
 }
 

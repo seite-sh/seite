@@ -22,6 +22,7 @@ mod frontmatter;
 mod harness_snapshots;
 mod hooks;
 mod i18n;
+mod import;
 mod init;
 mod links;
 mod mcp;

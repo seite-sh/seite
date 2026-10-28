@@ -108,6 +108,11 @@ getrandom = "0.4"
 resvg = { version = "0.49", default-features = false, features = ["text"] }
 # Glyph coverage and advance widths for card text layout (already compiled in through resvg)
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
+# `seite import`: WordPress/Ghost HTML bodies → Markdown (Apache-2.0; html5ever
+# parser, maintained, turndown.js rules incl. tables and fenced code)
+htmd = "0.5"
+# `seite import`: resolve/compare export URLs (already compiled in through ureq)
+url = "2"
 
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]

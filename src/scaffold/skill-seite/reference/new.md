@@ -7,3 +7,4 @@
 5. To schedule a post (sites with `[build] schedule = true`), give it a future `date:`; it publishes on that date (daily rebuild). Don't link to it from published pages before then (`link-to-scheduled`). `expires: YYYY-MM-DD` takes a page down after that day. `seite serve` and `seite build --future` show scheduled posts.
 6. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
 7. Verify as in [check.md](check.md). A `frontmatter-schema` error names the field, what it expects, and the line to fix.
+8. Moving a whole site in? `seite import <wordpress|ghost|jekyll|hugo> <export-or-dir>` (`--dry-run` first), then work through `.seite/cache/import-report.md` and verify as in [check.md](check.md).
