@@ -65,6 +65,8 @@ pub fn access_routes(config: &SiteConfig) -> Vec<AccessRoute> {
 pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
     let decoded_path = urlencoding::decode(path).ok()?;
     if decoded_path.contains('\\')
+        || decoded_path.contains("//")
+        || has_encoded_separator(&decoded_path)
         || decoded_path
             .split('/')
             .any(|segment| segment == "." || segment == "..")
@@ -81,6 +83,13 @@ pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a s
                 || decoded_path == format!("{}.html", route.prefix)
         })
         .map(|route| route.group.as_str())
+}
+
+/// `%2F`, `%5C` or `%2E` still present after one decode (a double-encoded
+/// separator or dot), which the Worker refuses.
+fn has_encoded_separator(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    ["%2f", "%5c", "%2e"].iter().any(|e| lower.contains(e))
 }
 
 /// Write the generated Cloudflare Pages advanced-mode Worker. Returns true
@@ -192,7 +201,10 @@ function routeFor(path) {
 function decodePath(path) {
   try {
     const decoded = decodeURIComponent(path);
-    if (decoded.includes("\\") || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
+    // Refuse paths the route check and the asset server could read
+    // differently: backslashes, empty (`//`) or dot segments, and escapes left
+    // after one decode (`%2F`, `%5C`, `%2E` from double encoding).
+    if (decoded.includes("\\") || decoded.includes("//") || /%(2f|5c|2e)/i.test(decoded) || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
     return decoded;
   } catch {
     return null;
@@ -375,6 +387,28 @@ session_hours = 24
         assert_eq!(matching_group(&routes, "/members/profile"), Some("members"));
         assert_eq!(matching_group(&routes, "/members.md"), Some("members"));
         assert_eq!(matching_group(&routes, "/membership"), None);
+    }
+
+    #[test]
+    fn access_route_matching_refuses_empty_segments_and_double_encoding() {
+        let routes = vec![AccessRoute {
+            prefix: "/members".into(),
+            group: "members".into(),
+        }];
+
+        for path in [
+            "//members/secret.md",
+            "/members//secret",
+            "/members%252Fsecret",
+            "/x/%252e%252e/members/secret",
+            "/x/%252E%252E/members/secret",
+            "/members%255Csecret",
+        ] {
+            assert_eq!(matching_group(&routes, path), None, "{path}");
+        }
+        let worker = generate_worker(&routes, 24);
+        assert!(worker.contains(r#"decoded.includes("//")"#));
+        assert!(worker.contains("/%(2f|5c|2e)/i.test(decoded)"));
     }
 
     #[test]
