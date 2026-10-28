@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude || true",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

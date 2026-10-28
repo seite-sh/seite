@@ -40,7 +40,10 @@ fn test_hooks_status_reports_fresh_site_as_installed() {
 
     let rows = status_rows(&site_dir, &[]);
     let ids: Vec<&str> = rows.iter().map(|r| r["agent"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["claude", "codex", "opencode", "cursor", "gemini"]);
+    assert_eq!(
+        ids,
+        ["claude", "codex", "opencode", "cursor", "gemini", "copilot"]
+    );
     for r in &rows {
         assert_eq!(r["stop"], true, "{r}");
         assert_eq!(r["post_edit"], true, "{r}");

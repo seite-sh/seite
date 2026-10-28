@@ -38,7 +38,7 @@ pub struct CheckArgs {
     #[arg(
         long,
         value_name = "AGENT",
-        value_parser = ["claude", "codex", "cursor", "opencode", "gemini"],
+        value_parser = ["claude", "codex", "cursor", "opencode", "gemini", "copilot"],
         conflicts_with = "strict"
     )]
     pub hook: Option<String>,

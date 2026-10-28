@@ -732,7 +732,7 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     let doc = json_stdout(&output);
     assert_eq!(
         doc["data"]["agents"],
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
     );
 
     let opencode = read_json_file(&site_dir.join("opencode.json"));
@@ -774,10 +774,11 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     );
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(agents_md.contains("`.codex/config.toml`"));
-    assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`)"));
+    assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`)"));
+    assert!(site_dir.join(".github/hooks/seite.json").exists());
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
     );
 }
 
@@ -831,7 +832,7 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .stdout(predicate::str::contains("up to date"));
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
     );
     assert_eq!(harness_snapshot(&site_dir), fresh);
 
@@ -1064,7 +1065,9 @@ fn test_init_writes_stop_hooks_for_selected_agents() {
             "cursor",
             "cursor:post-edit",
             "gemini",
-            "gemini:post-edit"
+            "gemini:post-edit",
+            "copilot",
+            "copilot:post-edit"
         ])
     );
 
@@ -1141,7 +1144,9 @@ fn test_upgrade_adds_stop_hooks_to_existing_project() {
             "cursor",
             "cursor:post-edit",
             "gemini",
-            "gemini:post-edit"
+            "gemini:post-edit",
+            "copilot",
+            "copilot:post-edit"
         ])
     );
     // Everything except the user's own Cursor hook file matches a fresh init
@@ -2010,4 +2015,86 @@ fn test_upgrade_with_requires_agent() {
         .current_dir(&site_dir)
         .assert()
         .failure();
+}
+
+#[test]
+fn test_init_and_upgrade_copilot_harness() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "copilot");
+    let site_dir = tmp.path().join("site");
+    let hooks = read_json_file(&site_dir.join(".github/hooks/seite.json"));
+    assert_eq!(hooks["version"], 1);
+    assert_eq!(
+        hooks["hooks"]["Stop"][0]["bash"],
+        hook_command(Agent::Copilot, HookKind::Stop)
+    );
+    assert!(site_dir
+        .join(".github/instructions/templates.instructions.md")
+        .is_file());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").is_file());
+    assert!(!site_dir.join("CLAUDE.md").exists());
+    let fresh = harness_snapshot(&site_dir);
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+
+    // Missing files come back exactly as init wrote them; then a no-op.
+    fs::remove_file(site_dir.join(".github/instructions/templates.instructions.md")).unwrap();
+    fs::remove_file(site_dir.join(".agents/skills/seite/SKILL.md")).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+
+    // `seite hooks off` removes Copilot's handlers (keyed on `bash`).
+    page_cmd()
+        .args(["hooks", "off", "--agents", "copilot"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let text = fs::read_to_string(site_dir.join(".github/hooks/seite.json")).unwrap();
+    assert!(!text.contains("seite check --hook"), "{text}");
+}
+
+#[test]
+fn test_upgrade_adds_copilot_to_claude_site_with_shared_mcp() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["upgrade", "--force", "--agents", "claude,copilot", "--mcp"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert!(site_dir.join(".github/hooks/seite.json").is_file());
+    assert!(site_dir
+        .join(".github/instructions/seo-requirements.instructions.md")
+        .is_file());
+    // Copilot shares Claude Code's `.mcp.json`; no `.github/mcp.json`.
+    let mcp = read_json_file(&site_dir.join(".mcp.json"));
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+    assert!(!site_dir.join(".github/mcp.json").exists());
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["claude", "copilot"])
+    );
+    page_cmd()
+        .args(["upgrade", "--force", "--mcp"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
 }

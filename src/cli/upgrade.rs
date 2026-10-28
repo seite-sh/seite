@@ -3435,6 +3435,19 @@ fn check_agent_harness(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeA
             "Gemini CLI",
         ));
     }
+    if agents.contains(&Agent::Copilot) {
+        // Copilot reads Claude Code's `.mcp.json`; with Claude selected it is
+        // already handled (with the legacy settings.json migration) above.
+        if mcp && !agents.contains(&Agent::Claude) {
+            actions.extend(check_mcp_servers_json(root, ".mcp.json", "GitHub Copilot"));
+        }
+        actions.extend(missing_rules(
+            root,
+            ".github/instructions",
+            "instructions.md",
+            harness::copilot_rule,
+        ));
+    }
     actions.extend(check_command_files(root, agents));
     if harness::uses_shared_skills(agents) {
         for skill in harness::skills(features) {

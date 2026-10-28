@@ -1,0 +1,18 @@
+{
+  "name": "seite",
+  "version": "0.20.2",
+  "description": "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI (https://seite.sh).",
+  "author": {
+    "name": "seite",
+    "url": "https://seite.sh"
+  },
+  "homepage": "https://seite.sh",
+  "repository": "https://github.com/seite-sh/seite",
+  "license": "MIT",
+  "keywords": [
+    "seite",
+    "static-site-generator",
+    "seo",
+    "llms-txt"
+  ]
+}

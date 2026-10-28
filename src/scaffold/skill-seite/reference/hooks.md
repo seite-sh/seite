@@ -7,3 +7,5 @@ Hooks run `seite check` for the agent: after each file edit (`seite check --file
 - `seite hooks off [--agents a,b] [--tier stop|post-edit|all]`: remove seite's hook entries and leave every other hook alone. `seite upgrade` does not add them back.
 
 On Windows the hook commands need a POSIX shell (Git Bash).
+
+Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). When the project has its own copy, the plugin's copy stays quiet.

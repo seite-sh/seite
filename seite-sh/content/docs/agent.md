@@ -1,6 +1,6 @@
 ---
 title: "Coding Agents"
-description: "Run your seite site with Claude Code, Codex, OpenCode, Cursor, or Gemini CLI: one AGENTS.md, one /seite skill, check hooks that hand errors back, and no API keys or paid services."
+description: "Run your seite site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI, or GitHub Copilot: one AGENTS.md, one /seite skill, check hooks that hand errors back, and no API keys or paid services."
 weight: 9
 ---
 
@@ -8,11 +8,11 @@ seite is built so a coding agent can run a site end to end: write content, desig
 
 ## What `seite init` sets up
 
-`seite init --agents claude,codex,opencode,cursor,gemini` (default: all; the interactive picker preselects the agents found on your machine) writes:
+`seite init --agents claude,codex,opencode,cursor,gemini,copilot` (default: all; the interactive picker preselects the agents found on your machine) writes:
 
-- **`AGENTS.md`**: a compact project guide every agent reads. It covers what the site is, the layout, the collections, the content format, the hard rules, and the workflow. Claude Code and Gemini CLI read it through one-line `CLAUDE.md` / `GEMINI.md` files that import it.
-- **The `seite` skill**: one routed skill, `/seite <command>` (Codex: `$seite <command>`), with a short `SKILL.md` and one reference file per command in `reference/`. Claude Code reads it from `.claude/skills/seite/`; Codex, Cursor, OpenCode, and Gemini CLI read `.agents/skills/seite/`. OpenCode gets a `/seite` command wrapper in `.opencode/commands/`, Gemini CLI in `.gemini/commands/seite.toml`.
-- **Context rules**: path-scoped guides (templates, SEO, i18n, shortcodes, data files, config) in `.claude/rules/` and `.cursor/rules/`, loaded automatically for matching files. Codex, OpenCode, and Gemini CLI find them through the index in `AGENTS.md` (`.agents/rules/` when no Claude or Cursor rules exist).
+- **`AGENTS.md`**: a compact project guide every agent reads. It covers what the site is, the layout, the collections, the content format, the hard rules, and the workflow. Claude Code and Gemini CLI read it through one-line `CLAUDE.md` / `GEMINI.md` files that import it; GitHub Copilot reads `AGENTS.md` directly.
+- **The `seite` skill**: one routed skill, `/seite <command>` (Codex: `$seite <command>`), with a short `SKILL.md` and one reference file per command in `reference/`. Claude Code reads it from `.claude/skills/seite/`; Codex, Cursor, OpenCode, Gemini CLI, and GitHub Copilot read `.agents/skills/seite/`. OpenCode gets a `/seite` command wrapper in `.opencode/commands/`, Gemini CLI in `.gemini/commands/seite.toml`.
+- **Context rules**: path-scoped guides (templates, SEO, i18n, shortcodes, data files, config) in `.claude/rules/`, `.cursor/rules/`, and `.github/instructions/*.instructions.md` (Copilot, `applyTo` globs), loaded automatically for matching files. Codex, OpenCode, and Gemini CLI find them through the index in `AGENTS.md` (`.agents/rules/` when no Claude, Cursor, or Copilot rules exist).
 - **Local docs**: `.seite/docs/` holds the documentation for the installed seite version, so agents look things up without a network call. `seite docs <query>` searches it. It is gitignored (not committed): `seite context`, `seite docs`, and `seite upgrade` write it when it is missing or from another seite version, and drop pages the version no longer ships.
 - **Permissions**: `.claude/settings.json`, `.cursor/cli.json`, and `opencode.json` let the agent read the site, edit `content/`, `templates/`, `static/`, `data/`, and `seite.toml`, and run the read-only and site-editing `seite` commands without asking. Themes are limited to `seite theme apply` and `seite theme list`; `seite theme create`, `seite agent`, and `seite deploy` still ask. `.env` files are never readable. `seite upgrade` narrows the broader rules seite 0.20 wrote (`Bash(seite theme:*)`, `Shell(seite)`, `"seite theme*"`) when they are still exactly as written.
 - **Check hooks**: see [Check hooks](#check-hooks).
@@ -29,6 +29,7 @@ Each agent has a one-time step before the project config takes effect. `AGENTS.m
 | OpenCode | None |
 | Cursor | Trust the workspace (`cursor-agent --trust` or the prompt) |
 | Gemini CLI | Trust the folder (`gemini trust`) and approve the project hooks |
+| GitHub Copilot | Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders) |
 
 ## The `/seite` skill
 
@@ -66,8 +67,9 @@ Each agent gets two hooks that run `seite check` for it and hand errors back. Wa
 | Cursor | `.cursor/hooks.json` | `postToolUse` (`Write`) | `stop` |
 | OpenCode | `.opencode/plugins/seite-check.js` | `tool.execute.after` | `session.idle` |
 | Gemini CLI | `.gemini/settings.json` | `AfterTool` (`write_file\|replace`) | `AfterAgent` |
+| GitHub Copilot | `.github/hooks/seite.json` | `PostToolUse` (`edit\|create`) | `Stop` |
 
-Every hook command is wrapped so a missing `seite` binary exits 0 silently (`command -v seite >/dev/null 2>&1 && seite check --hook … || true`); a collaborator without seite is never blocked. The wrapper is POSIX shell syntax: on Windows, hooks need Git Bash (Cursor runs hooks in PowerShell there, where the wrapper does not work). The hook exits 0 on every path and is silent outside a seite site.
+Every hook command is wrapped so a missing `seite` binary exits 0 silently (`command -v seite >/dev/null 2>&1 && seite check --hook … || true`); a collaborator without seite is never blocked. The wrapper is POSIX shell syntax: on Windows, hooks need Git Bash (Cursor runs hooks in PowerShell there, where the wrapper does not work; Copilot's hooks set only the `bash` command, so they don't run under PowerShell). The hook exits 0 on every path and is silent outside a seite site.
 
 ```bash
 seite hooks status                 # installed / missing, per agent
@@ -96,12 +98,13 @@ seite agent --with gemini "add a docs page"     # another agent
 | `opencode` | `opencode` | `opencode run "<prompt>"` | `curl -fsSL https://opencode.ai/install \| bash` |
 | `cursor` | `cursor-agent` | `cursor-agent -p "<prompt>" --output-format text` | `curl https://cursor.com/install -fsS \| bash` |
 | `gemini` | `gemini` | `gemini -p "<prompt>"` | `npm install -g @google/gemini-cli` |
+| `copilot` | `copilot` | `copilot -p "<prompt>"` | `npm install -g @github/copilot` |
 
 `SEITE_AGENT` sets the default harness. If the binary isn't on `PATH`, `seite agent` fails right away with the install command.
 
-Auto-approval is a separate, explicit flag: `seite agent --once --auto-approve "<prompt>"` adds `opencode run --auto`, `cursor-agent --force --approve-mcps`, or `gemini --approval-mode=yolo`. It only takes effect from an interactive terminal outside any agent session; the global `--yes` (or `SEITE_YES=1`) never adds it.
+Auto-approval is a separate, explicit flag: `seite agent --once --auto-approve "<prompt>"` adds `opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`, or `copilot --allow-all-tools`. It only takes effect from an interactive terminal outside any agent session; the global `--yes` (or `SEITE_YES=1`) never adds it.
 
-`seite agent` and `seite theme create` refuse to start a nested agent when they run inside a coding agent's session (detected from the variables the agents set for their commands: `CLAUDECODE`, `CODEX_THREAD_ID`, `GEMINI_CLI`, `OPENCODE`, `CURSOR_AGENT`, and the hook project-dir variables). The error tells you to run `/seite theme …` (or the request) directly in the session you are in.
+`seite agent` and `seite theme create` refuse to start a nested agent when they run inside a coding agent's session (detected from the variables the agents set for their commands: `CLAUDECODE`, `CODEX_THREAD_ID`, `GEMINI_CLI`, `OPENCODE`, `CURSOR_AGENT`, and the hook project-dir variables; Copilot documents no such variable, so a session inside Copilot is not detected). The error tells you to run `/seite theme …` (or the request) directly in the session you are in.
 
 ## `seite theme create`
 
@@ -111,7 +114,47 @@ seite theme create "dark mode with neon green accents"
 
 With impeccable installed, this prints how to run `/impeccable` with your description. Otherwise it runs your agent once with `/seite theme <description>` (`$seite theme …` in Codex), then suggests `seite skill install impeccable` for deeper design work. It never passes an auto-approve flag, so the agent asks before anything its permissions don't allow.
 
+With `SEITE_AGENT=copilot`, the prompt is "Use the /seite skill: theme <description>", since Copilot runs a skill that the prompt names.
+
 With `SEITE_AGENT=gemini`, Gemini CLI may not expand custom commands such as `/seite` in headless (`-p`) mode (unverified); if the theme isn't generated, run `/seite theme <description>` in an interactive `gemini` session instead.
+
+## GitHub Copilot
+
+`seite init --agents copilot` (or `seite upgrade --agents …,copilot`) sets a site up for Copilot CLI, the Copilot cloud agent, and agent mode in VS Code:
+
+- Copilot reads `AGENTS.md` itself, so no extra instructions file is written.
+- The skill goes to `.agents/skills/seite/`, which Copilot loads. Ask for it by name: "Use the /seite skill to check the site".
+- Context rules go to `.github/instructions/<name>.instructions.md` with `applyTo` globs.
+- Hooks go to `.github/hooks/seite.json` (`Stop` and `PostToolUse`), the same two-tier check as the other agents. In the cloud agent, where `seite` is usually not installed, they exit silently.
+- With `--mcp`, Copilot uses the same `.mcp.json` as Claude Code. Copilot gives `.mcp.json` precedence over `.github/mcp.json`, so seite writes only `.mcp.json`.
+- Copilot has no project permissions file, so seite writes none. Approve tools when Copilot asks, or pass `--allow-tool` yourself.
+
+## Using seite with an existing site
+
+`seite init` is not required. For a site you already have, or one made with an older seite, two installs give your agent the `/seite` skill without touching the project files:
+
+**Any agent, with the [skills CLI](https://skills.sh)** ([vercel-labs/skills](https://github.com/vercel-labs/skills)):
+
+```bash
+npx skills add seite-sh/seite              # pick agents interactively
+npx skills add seite-sh/seite -a claude-code -a codex   # or name them
+npx skills add seite-sh/seite -g           # install for your user, every project
+```
+
+This copies the `seite` skill (`SKILL.md` and its `reference/` files) from the `skills/seite/` directory of the seite repository into each agent's skills directory (`.claude/skills/` for Claude Code; `.agents/skills/` for Codex, Cursor, OpenCode, Gemini CLI, and GitHub Copilot). It installs only the skill: no hooks, no rules, no permissions.
+
+**Claude Code, as a plugin** (the skill plus the check hooks):
+
+```text
+/plugin marketplace add seite-sh/seite
+/plugin install seite@seite
+```
+
+From a shell, `claude plugin marketplace add seite-sh/seite` and `claude plugin install seite@seite`. The plugin carries the `/seite` skill and the same two hooks as `.claude/settings.json` (after each edit, and at the end of a turn). It adds no MCP server.
+
+A plugin's hooks fire in every project where it is enabled, so they cost almost nothing outside a seite site. `command -v seite` is a shell builtin, and `seite check --hook claude` looks for a `seite.toml` in the working directory and its parents. Without one, it exits 0 and prints nothing, and it skips the update check and telemetry. In a site whose `.claude/settings.json` already has seite's hooks (from `seite init` or `seite hooks on`), the plugin's copy steps aside, so each check runs once. `seite hooks` manages only the project's hooks; turn the plugin's hooks off by disabling the plugin in `/plugin`.
+
+Both installs need the `seite` CLI on your `PATH` (`curl -fsSL https://seite.sh/install.sh | sh`). The skill checks for it and asks before installing it. They come from the repository's default branch, so they can be newer than your installed `seite`; `seite self-update` brings the binary up to date. `seite upgrade --agents …` later adds the full set (rules, permissions, project hooks) for a project.
 
 ## Keeping a site current
 

@@ -28,6 +28,7 @@ pub mod self_update;
 pub mod serve;
 pub(crate) mod site_tools;
 pub mod skill;
+pub mod skill_export;
 pub mod stats;
 pub mod telemetry;
 pub mod templates;

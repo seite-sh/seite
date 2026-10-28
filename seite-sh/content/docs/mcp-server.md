@@ -90,6 +90,7 @@ seite upgrade --mcp           # existing site
 | Cursor | `.cursor/mcp.json` (approve it in Cursor's MCP settings, or `cursor-agent mcp enable seite`) |
 | OpenCode | `opencode.json` `mcp.seite` |
 | Gemini CLI | `.gemini/settings.json` `mcpServers.seite` (needs a trusted folder) |
+| GitHub Copilot | `.mcp.json` (the same file as Claude Code; Copilot CLI loads it in trusted folders, check with `/mcp`) |
 
 Claude Code, Cursor, and Gemini CLI share the same JSON shape:
 

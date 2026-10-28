@@ -24,11 +24,19 @@
 //! | cursor   | `.cursor/hooks.json` `hooks`         | `stop` (`{"followup_message"}`)                 | `postToolUse` `Write` (`{"additional_context"}`)    |
 //! | opencode | `.opencode/plugins/seite-check.js`   | `session.idle` (plugin prompts the session)     | `tool.execute.after` (plugin appends to the tool output) |
 //! | gemini   | `.gemini/settings.json` `hooks`      | `AfterAgent` (`{"decision":"deny","reason"}`)   | `AfterTool` `write_file\|replace` (`additionalContext`) |
+//! | copilot  | `.github/hooks/seite.json` `hooks`   | `Stop` (`{"decision":"block","reason"}`)        | `PostToolUse` `edit\|create` (`{"additionalContext"}`) |
 //!
 //! Sources: <https://code.claude.com/docs/en/hooks>,
 //! <https://learn.chatgpt.com/docs/hooks>, <https://cursor.com/docs/agent/hooks>,
 //! <https://opencode.ai/docs/plugins/> (types from `@opencode-ai/plugin` 1.18),
-//! <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>.
+//! <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>,
+//! <https://docs.github.com/en/copilot/reference/hooks-configuration>.
+//!
+//! The same Claude Code hooks also ship in seite's Claude Code plugin
+//! (`plugins/seite/hooks/hooks.json`, see `cli::skill_export`), which fires in
+//! every project: outside a seite site the command finds no `seite.toml` and
+//! exits 0 with no output, and inside a site whose `.claude/settings.json`
+//! already runs the same hook, the plugin's copy stands down.
 //!
 //! Every protocol here exits 0 and speaks JSON on stdout, so a crash or a
 //! non-zero exit is always the harness's "hook failed, carry on" path.
@@ -76,6 +84,9 @@ const STDIN_TIMEOUT: Duration = Duration::from_secs(5);
 /// OpenCode plugin file (OpenCode has no declarative hook config; project
 /// plugins in `.opencode/plugins/` load automatically).
 pub const OPENCODE_PLUGIN_PATH: &str = ".opencode/plugins/seite-check.js";
+
+/// Copilot's repository hook file (any `.github/hooks/*.json` loads).
+pub const COPILOT_HOOKS_PATH: &str = ".github/hooks/seite.json";
 
 /// The two hook tiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,6 +219,7 @@ pub fn hook_path(agent: Agent) -> &'static str {
         Agent::Cursor => ".cursor/hooks.json",
         Agent::Opencode => OPENCODE_PLUGIN_PATH,
         Agent::Gemini => ".gemini/settings.json",
+        Agent::Copilot => COPILOT_HOOKS_PATH,
     }
 }
 
@@ -289,6 +301,27 @@ fn hook_entry(agent: Agent, kind: HookKind) -> Option<(&'static str, Value)> {
                 "timeout": POST_EDIT_TIMEOUT_SECS * 1000
             }] }),
         ),
+        // Copilot: the PascalCase event names get the VS Code-compatible
+        // payload (snake_case `cwd`, `tool_input`, `stop_hook_active`, as in
+        // Claude Code). Handlers are flat; `bash` is the POSIX command
+        // (Copilot CLI on macOS/Linux and the cloud agent), `timeoutSec` is
+        // seconds. https://docs.github.com/en/copilot/reference/hooks-configuration
+        (Agent::Copilot, HookKind::Stop) => (
+            "Stop",
+            json!({ "type": "command", "bash": command, "timeoutSec": HOOK_TIMEOUT_SECS }),
+        ),
+        // The matcher is a full-match regex on the tool name: Copilot's own
+        // `edit`/`create`, plus the Claude names the PascalCase payload may
+        // report (which one it uses is undocumented).
+        (Agent::Copilot, HookKind::PostEdit) => (
+            "PostToolUse",
+            json!({
+                "type": "command",
+                "matcher": "edit|create|Edit|Write|MultiEdit",
+                "bash": command,
+                "timeoutSec": POST_EDIT_TIMEOUT_SECS
+            }),
+        ),
         (Agent::Opencode, _) => return None,
     };
     Some(entry)
@@ -321,8 +354,9 @@ pub fn merge_hook_kinds(
     if agent == Agent::Opencode {
         return Err(Unmergeable);
     }
-    if agent == Agent::Cursor && !doc.contains_key("version") {
-        // Cursor requires the schema version; put it first in a new file.
+    if matches!(agent, Agent::Cursor | Agent::Copilot) && !doc.contains_key("version") {
+        // Cursor and Copilot require the schema version; put it first in a
+        // new file.
         let rest = std::mem::take(doc);
         doc.insert("version".into(), json!(1));
         doc.extend(rest);
@@ -430,11 +464,14 @@ fn seite_command_kind(command: &str) -> Option<HookKind> {
 /// Whether `handler` (a hook handler object) runs a seite-generated command
 /// of one of `kinds`.
 fn is_seite_handler(handler: &Value, kinds: &[HookKind]) -> bool {
-    handler
-        .get("command")
-        .and_then(Value::as_str)
-        .and_then(seite_command_kind)
-        .is_some_and(|k| kinds.contains(&k))
+    // `command` everywhere; Copilot's POSIX command is `bash`.
+    ["command", "bash"].iter().any(|key| {
+        handler
+            .get(*key)
+            .and_then(Value::as_str)
+            .and_then(seite_command_kind)
+            .is_some_and(|k| kinds.contains(&k))
+    })
 }
 
 /// Remove seite's hooks (both tiers) from a JSON hook config, keeping every
@@ -617,7 +654,7 @@ fn evaluate(agent: Agent, input: &Value, include_drafts: bool) -> anyhow::Result
     let Some(root) = find_site_root(&start_dirs(input)) else {
         return Ok(None);
     };
-    if should_skip(agent, input, &root) {
+    if should_skip(agent, input, &root) || plugin_duplicate(agent, &root, HookKind::Stop) {
         return Ok(None);
     }
     let diagnostics = crate::cli::check::check_site(&root, include_drafts)?;
@@ -649,6 +686,9 @@ fn evaluate_post_edit(agent: Agent, input: &Value) -> anyhow::Result<Option<Valu
     let Some(root) = find_site_root(&starts) else {
         return Ok(None);
     };
+    if plugin_duplicate(agent, &root, HookKind::PostEdit) {
+        return Ok(None);
+    }
     let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
     let files: Vec<PathBuf> = edited
         .iter()
@@ -773,6 +813,27 @@ pub fn should_skip(agent: Agent, input: &Value, root: &Path) -> bool {
     false
 }
 
+/// Whether this run is the Claude Code plugin's copy of a hook that the
+/// site's own `.claude/settings.json` also runs (`seite init` wrote both):
+/// the plugin's copy stands down so the agent gets one report. Claude Code
+/// exports `CLAUDE_PLUGIN_ROOT` (the plugin's install directory) to plugin
+/// hook processes; a settings.json hook has no plugin, so it is unset or
+/// empty there. https://code.claude.com/docs/en/hooks
+fn plugin_duplicate(agent: Agent, root: &Path, kind: HookKind) -> bool {
+    agent == Agent::Claude
+        && std::env::var_os("CLAUDE_PLUGIN_ROOT").is_some_and(|v| !v.is_empty())
+        && project_hook_installed(root, agent, kind)
+}
+
+/// Whether the site's own hook config runs seite's `kind` hook for `agent`.
+fn project_hook_installed(root: &Path, agent: Agent, kind: HookKind) -> bool {
+    let (stop, post_edit) = installed_hooks(root, agent);
+    match kind {
+        HookKind::Stop => stop,
+        HookKind::PostEdit => post_edit,
+    }
+}
+
 fn cursor_hook_installed(root: &Path) -> bool {
     std::fs::read_to_string(root.join(hook_path(Agent::Cursor)))
         .is_ok_and(|text| has_seite_hook(&text))
@@ -830,7 +891,11 @@ pub fn encode(agent: Agent, input: &Value, reason: &str) -> Value {
         Agent::Claude if !runs_in_cursor(input) => json!({
             "hookSpecificOutput": { "hookEventName": "Stop", "additionalContext": reason }
         }),
-        Agent::Claude | Agent::Codex => json!({ "decision": "block", "reason": reason }),
+        // Copilot `Stop`: `block` forces another turn with `reason` as the
+        // prompt.
+        Agent::Claude | Agent::Codex | Agent::Copilot => {
+            json!({ "decision": "block", "reason": reason })
+        }
         Agent::Cursor => json!({ "followup_message": reason }),
         Agent::Opencode => json!({ "message": reason }),
         // Gemini CLI `AfterAgent`: `deny` rejects the response and sends
@@ -851,6 +916,8 @@ pub fn encode_post_edit(agent: Agent, reason: &str) -> Value {
         }),
         Agent::Cursor => json!({ "additional_context": reason }),
         Agent::Opencode => json!({ "message": reason }),
+        // Copilot `postToolUse` output: top-level `additionalContext`.
+        Agent::Copilot => json!({ "additionalContext": reason }),
     }
 }
 
@@ -962,6 +1029,39 @@ mod tests {
             encode(Agent::Gemini, &plain, "r"),
             json!({ "decision": "deny", "reason": "r" })
         );
+        assert_eq!(encode(Agent::Copilot, &plain, "r"), block);
+        assert_eq!(
+            encode_post_edit(Agent::Copilot, "r"),
+            json!({ "additionalContext": "r" })
+        );
+    }
+
+    #[test]
+    fn copilot_hooks_merge_and_remove_by_bash_field() {
+        let mut doc = Map::new();
+        assert_eq!(merge_hook(Agent::Copilot, &mut doc), Ok(true));
+        assert_eq!(doc.keys().next().map(String::as_str), Some("version"));
+        assert_eq!(doc["hooks"]["Stop"][0]["timeoutSec"], HOOK_TIMEOUT_SECS);
+        assert_eq!(
+            doc["hooks"]["PostToolUse"][0]["bash"],
+            hook_command(Agent::Copilot, HookKind::PostEdit)
+        );
+        assert!(doc["hooks"]["PostToolUse"][0].get("command").is_none());
+        assert_eq!(merge_hook(Agent::Copilot, &mut doc), Ok(false));
+        // A user's own hook survives removal of seite's.
+        doc["hooks"]["Stop"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({ "type": "command", "bash": "echo hi" }));
+        assert!(remove_hooks(&mut doc));
+        assert_eq!(
+            doc["hooks"]["Stop"],
+            json!([{ "type": "command", "bash": "echo hi" }])
+        );
+        assert!(doc["hooks"].get("PostToolUse").is_none());
+        // Copilot's `edit` tool input (`path`) through the PascalCase payload.
+        let input = json!({ "tool_name": "edit", "tool_input": { "path": "content/a.md" } });
+        assert_eq!(edited_paths(&input), ["content/a.md"]);
     }
 
     #[test]
@@ -1344,7 +1444,8 @@ mod tests {
         assert!(paths.contains(&".codex/hooks.json"));
         assert!(paths.contains(&".cursor/hooks.json"));
         assert!(paths.contains(&OPENCODE_PLUGIN_PATH));
-        assert_eq!(paths.len(), 5);
+        assert!(paths.contains(&COPILOT_HOOKS_PATH));
+        assert_eq!(paths.len(), 6);
     }
 
     #[test]

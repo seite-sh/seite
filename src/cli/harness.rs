@@ -1,8 +1,8 @@
 //! Coding-agent harness files for generated sites.
 //!
 //! A seite site can be set up for several coding agents at once: Claude Code,
-//! OpenAI Codex CLI, OpenCode, Cursor (editor + `cursor-agent`), and Gemini
-//! CLI. Each one reads project context from different places, so this module
+//! OpenAI Codex CLI, OpenCode, Cursor (editor + `cursor-agent`), Gemini
+//! CLI, and GitHub Copilot (CLI, cloud agent, VS Code). Each one reads project context from different places, so this module
 //! declares every rules file, the `seite` skill (with its reference files),
 //! and the optional MCP server entry **once**, and every per-agent difference
 //! as a row of [`PROVIDERS`] (with the reason and source for each quirk), then
@@ -15,6 +15,7 @@
 //! | codex    | `.codex/config.toml`    | (index in AGENTS.md)  | `.agents/skills/` | `$seite` |
 //! | opencode | `opencode.json`         | (index in AGENTS.md)  | `.agents/skills/` | `.opencode/commands/seite.md` |
 //! | gemini   | `.gemini/settings.json` | (index in AGENTS.md)  | `.agents/skills/` | `.gemini/commands/seite.toml` |
+//! | copilot  | `.mcp.json`             | `.github/instructions/*.instructions.md` | `.agents/skills/` | skill |
 //!
 //! Coding agents use the `seite` CLI; the MCP server is only wired in with
 //! `seite init --mcp` / `seite upgrade --mcp` (it is aimed at chat apps
@@ -39,16 +40,18 @@ pub enum Agent {
     Opencode,
     Cursor,
     Gemini,
+    Copilot,
 }
 
 impl Agent {
     /// Every supported agent, in canonical order.
-    pub const ALL: [Agent; 5] = [
+    pub const ALL: [Agent; 6] = [
         Agent::Claude,
         Agent::Codex,
         Agent::Opencode,
         Agent::Cursor,
         Agent::Gemini,
+        Agent::Copilot,
     ];
 
     /// This agent's row in [`PROVIDERS`].
@@ -59,6 +62,7 @@ impl Agent {
             Agent::Opencode => &PROVIDERS[2],
             Agent::Cursor => &PROVIDERS[3],
             Agent::Gemini => &PROVIDERS[4],
+            Agent::Copilot => &PROVIDERS[5],
         }
     }
 
@@ -74,6 +78,16 @@ impl Agent {
 
     pub fn from_id(id: &str) -> Option<Agent> {
         Agent::ALL.into_iter().find(|a| a.id() == id)
+    }
+
+    /// The agent's provider name in impeccable's installer (`--providers`),
+    /// which matches seite's id except for Copilot (`github`).
+    /// https://github.com/pbakaus/impeccable/blob/main/scripts/lib/transformers/providers.js
+    pub fn impeccable_provider(self) -> &'static str {
+        match self {
+            Agent::Copilot => "github",
+            other => other.id(),
+        }
     }
 }
 
@@ -111,6 +125,8 @@ pub enum RulesFormat {
     ClaudePaths,
     /// Cursor MDC: `description` / `globs` / `alwaysApply` ([`cursor_rule`]).
     CursorMdc,
+    /// GitHub Copilot `*.instructions.md`: `applyTo` ([`copilot_rule`]).
+    CopilotInstructions,
 }
 
 impl RulesFormat {
@@ -118,6 +134,7 @@ impl RulesFormat {
         match self {
             RulesFormat::ClaudePaths => claude_rule(rule),
             RulesFormat::CursorMdc => cursor_rule(rule),
+            RulesFormat::CopilotInstructions => copilot_rule(rule),
         }
     }
 }
@@ -216,7 +233,7 @@ pub const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
 pub const SHARED_SKILLS_DIR: &str = ".agents/skills";
 
 /// The provider table, in [`Agent::ALL`] order.
-pub const PROVIDERS: [AgentSpec; 5] = [
+pub const PROVIDERS: [AgentSpec; 6] = [
     AgentSpec {
         agent: Agent::Claude,
         id: "claude",
@@ -399,6 +416,56 @@ pub const PROVIDERS: [AgentSpec; 5] = [
         notes: &["Hook timeouts are milliseconds in Gemini CLI (seconds elsewhere)."],
         binaries: &["gemini"],
         home_dirs: &[".gemini"],
+    },
+    AgentSpec {
+        agent: Agent::Copilot,
+        id: "copilot",
+        label: "GitHub Copilot",
+        config_display: "`.github/hooks/seite.json`",
+        // Copilot CLI reads project MCP servers from `.mcp.json` (cwd up to
+        // the repo root) and `.github/mcp.json`; `.mcp.json` wins when both
+        // exist, so seite shares Claude Code's `.mcp.json` rather than
+        // writing a second file that would be shadowed. Copilot's own
+        // examples add `"type": "local"` and `"tools": ["*"]`; what a file
+        // without them defaults to is undocumented (unverified).
+        // https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
+        mcp_config: ".mcp.json",
+        mcp_format: McpFormat::McpServersJson,
+        mcp_config_display: "`.mcp.json`",
+        // Path-specific custom instructions: `.github/instructions/
+        // **/NAME.instructions.md` with an `applyTo` glob list (Copilot CLI,
+        // cloud agent, VS Code).
+        // https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions
+        rules: Some(RulesDir {
+            dir: ".github/instructions",
+            ext: "instructions.md",
+            format: RulesFormat::CopilotInstructions,
+        }),
+        // Project skills load from `.github/skills`, `.claude/skills`, or
+        // `.agents/skills`; `name` (lowercase, hyphens) and `description` are
+        // required, and every file in the skill directory is available.
+        // https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
+        skills_dir: SHARED_SKILLS_DIR,
+        skill_frontmatter: SkillFrontmatter::Portable,
+        // No documented project permission allowlist (approvals are CLI
+        // flags such as `--allow-tool`).
+        permissions_file: None,
+        // A skill runs when the prompt names it (`/seite ...`), so no
+        // command file. (Same page as the skills directories.)
+        command_files: None,
+        // Copilot CLI, cloud agent, and VS Code read AGENTS.md themselves.
+        // https://docs.github.com/en/copilot/reference/custom-instructions-support
+        instructions_shim: None,
+        // "Repository ... hooks require workspace admission"; project MCP
+        // servers load "only after you confirm folder trust".
+        // https://docs.github.com/en/copilot/reference/hooks-configuration
+        setup_step: "Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders)",
+        mcp_step: "check the server with `/mcp`",
+        notes: &["Hooks use the `bash` field, so they don't run under PowerShell on Windows."],
+        binaries: &["copilot"],
+        // `$COPILOT_HOME`, default `~/.copilot`.
+        // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
+        home_dirs: &[".copilot"],
     },
 ];
 
@@ -753,6 +820,17 @@ pub fn cursor_rule(rule: &Rule) -> String {
     result
 }
 
+/// `.github/instructions/<name>.instructions.md`: Copilot's path-specific
+/// instructions, `applyTo` being one comma-separated glob list.
+pub fn copilot_rule(rule: &Rule) -> String {
+    let mut result = String::with_capacity(rule.content.len() + 128);
+    result.push_str("---\n");
+    result.push_str(&format!("applyTo: {}\n", yaml_quote(&rule.paths.join(","))));
+    result.push_str("---\n");
+    result.push_str(rule.content);
+    result
+}
+
 fn yaml_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -782,20 +860,26 @@ pub fn rules_index(features: SiteFeatures, agents: &[Agent]) -> String {
 
     let auto: Vec<&str> = native_rules(agents).map(|(a, _)| a.label()).collect();
     let mut md = format!("Detailed guides live in `{dir}/`");
-    for (agent, rules) in native_rules(agents).filter(|(_, r)| r.dir != dir) {
-        md.push_str(&format!(
-            " ({}: same guides as `{}/*.{}`)",
-            agent.label(),
-            rules.dir,
-            rules.ext
-        ));
+    let copies: Vec<String> = native_rules(agents)
+        .filter(|(_, r)| r.dir != dir)
+        .map(|(agent, rules)| {
+            format!(
+                "{}: same guides as `{}/*.{}`",
+                agent.label(),
+                rules.dir,
+                rules.ext
+            )
+        })
+        .collect();
+    if !copies.is_empty() {
+        md.push_str(&format!(" ({})", copies.join("; ")));
     }
     if auto.is_empty() {
         md.push_str(". Before editing, read the guides for the files you touch:\n\n");
     } else {
         md.push_str(&format!(
             ". {} load{} them automatically for matching files; other agents should read the matching guides before editing:\n\n",
-            auto.join(" and "),
+            and_list(&auto),
             if auto.len() == 1 { "s" } else { "" }
         ));
     }
@@ -805,6 +889,15 @@ pub fn rules_index(features: SiteFeatures, agents: &[Agent]) -> String {
         md.push_str(&format!("- {}: {}\n", globs.join(", "), files.join(", ")));
     }
     md
+}
+
+/// "A", "A and B", "A, B and C".
+fn and_list(items: &[&str]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.to_string(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1548,6 +1641,7 @@ pub fn plan(agents: &[Agent], features: SiteFeatures, mcp: bool) -> Vec<PlannedF
     let mut files = Vec::new();
 
     let mut skill_dirs: Vec<&str> = Vec::new();
+    let mut mcp_configs: Vec<&str> = Vec::new();
     for spec in PROVIDERS.iter().filter(|p| has(agents, p.agent)) {
         if let Some(shim) = spec.instructions_shim {
             files.push(file(shim, crate::cli::agent_instructions::CLAUDE_SHIM));
@@ -1558,7 +1652,12 @@ pub fn plan(agents: &[Agent], features: SiteFeatures, mcp: bool) -> Vec<PlannedF
         }
         // OpenCode's MCP server lives in its permissions file (rendered
         // above with `mcp`); the others get a separate MCP config.
-        if mcp && permissions_path != Some(spec.mcp_config) {
+        // `.mcp.json` is shared by Claude Code and Copilot; write it once.
+        if mcp
+            && permissions_path != Some(spec.mcp_config)
+            && !mcp_configs.contains(&spec.mcp_config)
+        {
+            mcp_configs.push(spec.mcp_config);
             files.push(file(spec.mcp_config, spec.mcp_format.render()));
         }
         if spec.agent == Agent::Claude {
@@ -1773,6 +1872,30 @@ mod tests {
     }
 
     #[test]
+    fn copilot_rule_uses_apply_to() {
+        let out = copilot_rule(rule("i18n").unwrap());
+        assert!(
+            out.starts_with(
+                "---\napplyTo: \"content/**,templates/**,data/i18n/**\"\n---\n## Multi-language"
+            ),
+            "{out}"
+        );
+        let paths: Vec<String> = plan(&[Agent::Copilot], ALL_FEATURES, true)
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        assert!(paths.contains(&".github/instructions/i18n.instructions.md".to_string()));
+        assert!(paths.contains(&".github/hooks/seite.json".to_string()));
+        assert!(paths.contains(&".mcp.json".to_string()));
+        assert!(!paths.iter().any(|p| p.starts_with(".agents/rules")));
+        // `.mcp.json` is planned once when Claude Code and Copilot share it.
+        let both = plan(&[Agent::Claude, Agent::Copilot], ALL_FEATURES, true);
+        assert_eq!(both.iter().filter(|f| f.path == ".mcp.json").count(), 1);
+        assert_eq!(Agent::Copilot.impeccable_provider(), "github");
+        assert_eq!(Agent::Gemini.impeccable_provider(), "gemini");
+    }
+
+    #[test]
     fn claude_rule_keeps_paths_frontmatter() {
         let out = claude_rule(rule("data-files").unwrap());
         assert!(out.starts_with("---\npaths:\n  - \"data/**\"\n---\n## Data Files"));
@@ -1960,7 +2083,10 @@ mod tests {
     fn rules_index_groups_globs() {
         let idx = rules_index(ALL_FEATURES, &Agent::ALL);
         assert!(idx.contains("`.claude/rules/`"));
-        assert!(idx.contains("Claude Code and Cursor load them automatically"));
+        assert!(idx.contains("Claude Code, Cursor and GitHub Copilot load them automatically"));
+        assert!(idx.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`)"));
+        let two = rules_index(ALL_FEATURES, &[Agent::Claude, Agent::Cursor]);
+        assert!(two.contains("Claude Code and Cursor load them automatically"));
         assert!(idx.contains(
             "- `seite.toml`: `config-reference.md`, `private-collections.md`, `contact-form.md`"
         ));
@@ -2098,7 +2224,10 @@ mod tests {
             assert_eq!(agent.spec().agent, agent);
         }
         let ids: Vec<_> = Agent::ALL.iter().map(|a| a.id()).collect();
-        assert_eq!(ids, ["claude", "codex", "opencode", "cursor", "gemini"]);
+        assert_eq!(
+            ids,
+            ["claude", "codex", "opencode", "cursor", "gemini", "copilot"]
+        );
         assert_eq!(Agent::from_id("gemini"), Some(Agent::Gemini));
     }
 
@@ -2160,7 +2289,7 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("[check | audit | new"));
-        assert_eq!(extract_version(&rendered), 6);
+        assert_eq!(extract_version(&rendered), 7);
         assert!(body.contains("## Routing"));
         assert_eq!(SKILLS.len(), 1, "one routed skill");
     }
@@ -2264,7 +2393,7 @@ mod tests {
         );
         assert!(body.contains("skill({ name: \"seite\" })"), "{body}");
         assert!(body.contains("$ARGUMENTS"));
-        assert_eq!(extract_version(content), 6);
+        assert_eq!(extract_version(content), 7);
 
         let (_, gemini) = &files[1];
         let parsed: toml::Table = toml::from_str(gemini).unwrap();
@@ -2273,7 +2402,7 @@ mod tests {
             Some(skill("seite").unwrap().description())
         );
         assert!(parsed["prompt"].as_str().unwrap().contains("{{args}}"));
-        assert_eq!(extract_version(gemini), 6);
+        assert_eq!(extract_version(gemini), 7);
         assert!(
             command_files(&[Agent::Claude, Agent::Codex, Agent::Cursor], ALL_FEATURES).is_empty()
         );
@@ -2385,10 +2514,10 @@ mod tests {
 
     #[test]
     fn interactive_defaults_fall_back_to_all() {
-        assert_eq!(interactive_defaults(&[]), vec![true; 5]);
+        assert_eq!(interactive_defaults(&[]), vec![true; 6]);
         assert_eq!(
             interactive_defaults(&[Agent::Claude, Agent::Cursor]),
-            vec![true, false, false, true, false]
+            vec![true, false, false, true, false, false]
         );
     }
 }

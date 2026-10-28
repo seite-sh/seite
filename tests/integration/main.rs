@@ -35,6 +35,7 @@ mod search_full;
 mod self_update;
 mod shortcodes;
 mod skill;
+mod skill_export;
 mod stats;
 mod tailwind;
 mod templates;
