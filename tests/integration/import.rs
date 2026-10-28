@@ -316,7 +316,12 @@ fn test_import_wordpress_hostile_export() {
     let hostile_body = format!(
         "<p><a href=\"java&#x09;script:alert(1)\" onclick=\"steal()\">click</a></p>\
          <iframe src=\"https://evil.example/x\"></iframe>\
-         <p><img src=\"http://{host}/uploads/logo.png\" onerror=\"alert(1)\"></p>"
+         <p><img src=\"http://{host}/uploads/logo.png\" onerror=\"alert(1)\"></p>\
+         <video/onerror=alert(1) src=x.mp4></video>\
+         <iframe/src=javascript:alert(1)></iframe>\
+         <iframe src=\"https://player.example.com/e\" onload=alert(1)></iframe>\
+         <audio src=x onerror\n=alert(1)></audio>\
+         <p><a href=\"&#106;avascript:alert(1)\">j</a> <img src=\"JaVa&#x09;Script:alert(1)\"></p>"
     );
     let items = [
         // Its old URL is the starter post's URL; an alias there would replace it.
@@ -416,6 +421,29 @@ fn test_import_wordpress_hostile_export() {
     assert!(
         read(&site, "dist/posts/hello-world.html").contains("<html"),
         "the starter post is intact"
+    );
+    // The built page carries none of the payloads.
+    let page = read(&site, "dist/posts/attack.html").to_ascii_lowercase();
+    let article = page
+        .split_once("<article")
+        .map_or(page.as_str(), |(_, a)| a)
+        .split_once("</article>")
+        .map_or(page.as_str(), |(a, _)| a);
+    // (Inert payload text may remain; no attribute or link may carry it.)
+    for bad in [
+        "javascript:",
+        "onerror",
+        "onclick",
+        "onload",
+        "href=\"java",
+        "src=\"java",
+    ] {
+        assert!(!article.contains(bad), "{bad} in built page:\n{article}");
+    }
+    let md = read(&site, "dist/posts/attack.md").to_ascii_lowercase();
+    assert!(
+        !md.contains("javascript:") && !md.contains("onerror"),
+        "{md}"
     );
 }
 

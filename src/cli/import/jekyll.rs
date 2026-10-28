@@ -286,12 +286,11 @@ pub(crate) fn parse(dir: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
             let liquid = liquid(body, body_line, &mut item, &mut warnings);
             let mut notes = Vec::new();
             let prepared = convert::prepare_html(&liquid, &mut tokens, &mut notes);
+            let md = convert::markdown_from_html(&prepared, &mut notes);
             for note in notes {
                 warnings.push(Warning::for_item(&item, None, "untrusted-html", note));
             }
-            tokens.restore(&convert::neutralize_shortcode_delimiters(
-                &convert::html_to_markdown(&prepared),
-            ))
+            tokens.restore(&convert::neutralize_shortcode_delimiters(&md))
         } else {
             // Markdown is kept as written; HTML in it that can run script
             // is reported, not rewritten.

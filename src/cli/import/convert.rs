@@ -156,7 +156,20 @@ pub(crate) fn html_to_markdown(html: &str) -> String {
     // htmd only fails on I/O errors of its in-memory writer; fall back to
     // the text with tags stripped rather than losing the body.
     let md = converter.convert(html).unwrap_or_else(|_| strip_tags(html));
-    sanitize_markdown_links(&tidy_markdown(&md))
+    tidy_markdown(&md)
+}
+
+/// [`html_to_markdown`] for untrusted HTML: links and images whose
+/// destination can run script become their text ([`sanitize_markdown_links`]);
+/// a note says how many.
+pub(crate) fn markdown_from_html(html: &str, notes: &mut Vec<String>) -> String {
+    let (md, replaced) = sanitize_markdown_links(&html_to_markdown(html));
+    if replaced > 0 {
+        notes.push(format!(
+            "{replaced} link(s)/image(s) with a script URL (javascript:, vbscript:, data:) were replaced by their text"
+        ));
+    }
+    md
 }
 
 /// Collapse runs of blank lines and trim the ends.
@@ -240,7 +253,7 @@ pub(crate) fn is_dangerous_url(raw: &str) -> bool {
     let decoded = decode_entities(raw);
     let compact: String = decoded
         .chars()
-        .filter(|c| !c.is_whitespace() && !c.is_control())
+        .filter(|c| !c.is_whitespace() && !c.is_control() && *c != '\\')
         .collect::<String>()
         .to_ascii_lowercase();
     if compact.starts_with("javascript:") || compact.starts_with("vbscript:") {
@@ -254,49 +267,203 @@ pub(crate) fn is_dangerous_url(raw: &str) -> bool {
     }
 }
 
-/// Remove `on*` event attributes, `srcdoc`, and script-capable URLs from
-/// every start tag in an HTML fragment kept verbatim, and drop `<script>`,
-/// `<object>` and `<embed>` elements inside it.
+/// Elements kept in sanitized HTML, with their allowed attributes.
+/// Anything else is unwrapped (its text and allowed children kept), except
+/// [`DROPPED_ELEMENTS`], which go with everything inside them.
+const ALLOWED_ELEMENTS: &[(&str, &[&str])] = &[
+    (
+        "video",
+        &[
+            "src",
+            "poster",
+            "width",
+            "height",
+            "controls",
+            "loop",
+            "muted",
+            "playsinline",
+            "preload",
+            "title",
+        ],
+    ),
+    (
+        "audio",
+        &["src", "controls", "loop", "muted", "preload", "title"],
+    ),
+    ("source", &["src", "type", "media"]),
+    ("track", &["src", "kind", "srclang", "label", "default"]),
+    (
+        "iframe",
+        &[
+            "src",
+            "width",
+            "height",
+            "title",
+            "allow",
+            "allowfullscreen",
+            "loading",
+            "frameborder",
+            "referrerpolicy",
+        ],
+    ),
+    (
+        "img",
+        &["src", "alt", "width", "height", "title", "loading"],
+    ),
+    ("figure", &[]),
+    ("figcaption", &[]),
+    ("a", &["href", "title"]),
+    ("p", &[]),
+    ("br", &[]),
+    ("em", &[]),
+    ("strong", &[]),
+];
+
+/// Elements removed with their whole content.
+const DROPPED_ELEMENTS: &[&str] = &[
+    "script", "style", "object", "embed", "applet", "svg", "math", "template", "noscript", "base",
+    "link", "meta", "form", "input", "button", "textarea", "select", "frame", "frameset",
+];
+
+const VOID_ELEMENTS: &[&str] = &["img", "source", "track", "br"];
+
+/// Whether a URL attribute value may be kept: relative, or http(s); `data:`
+/// PNG/JPEG/GIF/WebP only on `<img>`. The value is the parser's decoded one.
+fn url_allowed(value: &str, element: &str) -> bool {
+    let compact: String = value
+        .chars()
+        .filter(|c| !c.is_whitespace() && !c.is_control())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let scheme = compact.split_once(':').map(|(s, _)| s).filter(|s| {
+        !s.is_empty()
+            && !s.contains(['/', '?', '#'])
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    });
+    match scheme {
+        None => true,
+        Some("http" | "https") => true,
+        Some("data") if element == "img" => !is_dangerous_url(&compact),
+        Some(_) => false,
+    }
+}
+
+/// Escape text or a double-quoted attribute value for HTML output.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Sanitize an HTML fragment kept verbatim (iframes on allowed hosts,
+/// video/audio): it is parsed with html5ever (the same parser browsers'
+/// tokenization rules follow) and **rebuilt from the parsed tree** through
+/// [`ALLOWED_ELEMENTS`]; event handlers, `style`, unknown attributes and
+/// non-http(s) URLs never make it out, however the source spelled them
+/// (`<video/onerror=…>`, entity-encoded schemes, …). Iframes keep their
+/// `src` only on an allowed player host ([`iframe_allowed`]); an iframe
+/// without one is dropped.
 pub(crate) fn sanitize_html_fragment(html: &str) -> String {
-    static DROP: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(
-            r"(?is)<(script|object|embed|style)\b.*?(?:</(?:script|object|embed|style)\s*>|$)",
-        )
-        .expect("valid regex")
-    });
-    static TAG: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"(?s)<[a-zA-Z](?:[^>"']|"[^"]*"|'[^']*')*>"#).expect("valid regex")
-    });
-    static ATTR: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"(?is)\s+([a-z_:][-a-z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)"#)
-            .expect("valid regex")
-    });
-    static BARE_ON: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?i)\s+on[a-z]+\b(?:\s*=)?").expect("valid regex"));
-    let html = TAG.replace_all(html, |c: &regex::Captures| {
-        let tag = ATTR.replace_all(&c[0], |a: &regex::Captures| {
-            let name = a[1].to_ascii_lowercase();
-            let value = a[2].trim_matches(['"', '\'']);
-            let url_attr = matches!(
-                name.as_str(),
-                "src"
-                    | "href"
-                    | "poster"
-                    | "action"
-                    | "formaction"
-                    | "data"
-                    | "xlink:href"
-                    | "background"
-            );
-            if name.starts_with("on") || name == "srcdoc" || (url_attr && is_dangerous_url(value)) {
-                String::new()
-            } else {
-                a[0].to_string()
+    let converter = htmd::HtmlToMarkdown::new();
+    let Ok(document) = converter.html_to_tree(html) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    // html → (head, body); the fragment lives in body (iframes/video may be
+    // hoisted into head in odd documents, so walk both).
+    for child in document.children.borrow().iter() {
+        write_sanitized(child, &mut out, true);
+    }
+    out
+}
+
+fn write_sanitized(node: &markup5ever_rcdom::Handle, out: &mut String, structural: bool) {
+    use markup5ever_rcdom::NodeData;
+    match &node.data {
+        NodeData::Text { contents } => out.push_str(&html_escape(&contents.borrow())),
+        NodeData::Element { name, attrs, .. } => {
+            let tag = name.local.as_ref().to_ascii_lowercase();
+            if structural && matches!(tag.as_str(), "html" | "head" | "body") {
+                for child in node.children.borrow().iter() {
+                    write_sanitized(child, out, true);
+                }
+                return;
             }
-        });
-        BARE_ON.replace_all(&tag, "").into_owned()
-    });
-    DROP.replace_all(&html, "").into_owned()
+            if DROPPED_ELEMENTS.contains(&tag.as_str()) {
+                return;
+            }
+            let Some((_, allowed)) = ALLOWED_ELEMENTS.iter().find(|(t, _)| *t == tag) else {
+                for child in node.children.borrow().iter() {
+                    write_sanitized(child, out, false);
+                }
+                return;
+            };
+            let attrs = attrs.borrow();
+            let mut kept = String::new();
+            for attr in attrs.iter() {
+                let key = attr.name.local.as_ref().to_ascii_lowercase();
+                if !attr.name.ns.is_empty() || !allowed.contains(&key.as_str()) {
+                    continue;
+                }
+                let value: &str = &attr.value;
+                let is_url = matches!(key.as_str(), "src" | "href" | "poster");
+                if is_url && !url_allowed(value, &tag) {
+                    continue;
+                }
+                if tag == "iframe" && key == "src" && !iframe_allowed(value) {
+                    continue;
+                }
+                kept.push_str(&format!(" {key}=\"{}\"", html_escape(value)));
+            }
+            if tag == "iframe" && !kept.contains(" src=\"") {
+                return;
+            }
+            out.push('<');
+            out.push_str(&tag);
+            out.push_str(&kept);
+            out.push('>');
+            if VOID_ELEMENTS.contains(&tag.as_str()) {
+                return;
+            }
+            // Iframe content is not markup; nothing inside is kept.
+            if tag != "iframe" {
+                for child in node.children.borrow().iter() {
+                    write_sanitized(child, out, false);
+                }
+            }
+            out.push_str("</");
+            out.push_str(&tag);
+            out.push('>');
+        }
+        // Comments, doctypes, processing instructions: dropped.
+        _ => {
+            for child in node.children.borrow().iter() {
+                write_sanitized(child, out, structural);
+            }
+        }
+    }
+}
+
+/// The `src` of the first `<iframe>` in an HTML fragment, as the parser
+/// reads it (handles `<iframe/src=…>` and entity-encoded values).
+pub(crate) fn iframe_src(html: &str) -> Option<String> {
+    fn find(node: &markup5ever_rcdom::Handle) -> Option<String> {
+        use markup5ever_rcdom::NodeData;
+        if let NodeData::Element { name, attrs, .. } = &node.data {
+            if name.local.as_ref().eq_ignore_ascii_case("iframe") {
+                return attrs
+                    .borrow()
+                    .iter()
+                    .find(|a| a.name.local.as_ref().eq_ignore_ascii_case("src"))
+                    .map(|a| a.value.to_string());
+            }
+        }
+        node.children.borrow().iter().find_map(find)
+    }
+    let document = htmd::HtmlToMarkdown::new().html_to_tree(html).ok()?;
+    find(&document)
 }
 
 /// Iframe hosts kept as HTML: YouTube, Vimeo and `player.*` hosts, https only.
@@ -315,27 +482,75 @@ fn iframe_allowed(src: &str) -> bool {
             || host.starts_with("player."))
 }
 
-/// Script-capable link/image destinations in converted Markdown → `#`.
-pub(crate) fn sanitize_markdown_links(md: &str) -> String {
-    static DEST: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(\]\(\s*)(<[^>\n]*>|(?:\\.|[^)\n\\])*)").expect("valid regex")
-    });
-    DEST.replace_all(md, |c: &regex::Captures| {
-        let dest = c[2].trim_start_matches('<').trim_end_matches('>');
-        if is_dangerous_url(dest) {
-            format!("{}#", &c[1])
-        } else {
-            c[0].to_string()
+/// Links and images whose destination can run script, found the way the
+/// build will read the Markdown (pulldown-cmark with the build's options,
+/// so escapes, entities and `<…>` destinations are already resolved): each
+/// is replaced by its text (an image by its alt text). Returns the new
+/// Markdown and how many were replaced.
+pub(crate) fn sanitize_markdown_links(md: &str) -> (String, usize) {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let options = build_markdown_options();
+
+    // (span, dangerous, text inside)
+    let mut stack: Vec<(std::ops::Range<usize>, bool, String)> = Vec::new();
+    let mut replacements: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    for (event, range) in Parser::new_ext(md, options).into_offset_iter() {
+        match event {
+            Event::Start(Tag::Link { dest_url, .. })
+            | Event::Start(Tag::Image { dest_url, .. }) => {
+                stack.push((range, is_dangerous_url(&dest_url), String::new()));
+            }
+            Event::End(TagEnd::Link) | Event::End(TagEnd::Image) => {
+                let Some((span, dangerous, text)) = stack.pop() else {
+                    continue;
+                };
+                let ancestor_dangerous = stack.iter().any(|s| s.1);
+                if let Some(parent) = stack.last_mut() {
+                    parent.2.push_str(&text);
+                }
+                if dangerous && !ancestor_dangerous {
+                    replacements.push((span, escape_markdown_text(&text)));
+                }
+            }
+            Event::Text(t) | Event::Code(t) => {
+                if let Some(top) = stack.last_mut() {
+                    top.2.push_str(&t);
+                }
+            }
+            _ => {}
         }
-    })
-    .into_owned()
+    }
+    let count = replacements.len();
+    let mut out = md.to_string();
+    replacements.sort_by_key(|(r, _)| std::cmp::Reverse(r.start));
+    for (range, text) in replacements {
+        if range.end <= out.len()
+            && out.is_char_boundary(range.start)
+            && out.is_char_boundary(range.end)
+        {
+            out.replace_range(range, &text);
+        }
+    }
+    (out, count)
+}
+
+/// Backslash-escape Markdown punctuation in plain text.
+fn escape_markdown_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_ascii_punctuation() {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Lines of a Markdown body (Jekyll, Hugo; kept as written) with HTML that
 /// can run script: `<script`, `on*=` attributes, `javascript:` URLs.
 pub(crate) fn untrusted_html_lines(body: &str) -> Vec<(usize, &'static str)> {
     static RISKY: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"(?i)(<script\b)|(<[a-z][^>]*\son[a-z]+\s*=)|(javascript\s*:)"#)
+        Regex::new(r#"(?i)(<script\b)|(<[a-z][^>]*[\s/"']on[a-z]+\s*=)|(javascript\s*:)"#)
             .expect("valid regex")
     });
     let mut out: Vec<(usize, &'static str)> = Vec::new();
@@ -347,12 +562,45 @@ pub(crate) fn untrusted_html_lines(body: &str) -> Vec<(usize, &'static str)> {
         } else {
             "a javascript: URL"
         };
-        let line = line_of(body, c.get(0).expect("match").start());
-        if out.last().is_none_or(|(l, _)| *l != line) {
-            out.push((line, what));
-        }
+        out.push((line_of(body, c.get(0).expect("match").start()), what));
     }
+    // Obfuscated destinations (`&#106;avascript:`, `java\script:`) as the
+    // build will read them.
+    for span in dangerous_link_spans(body) {
+        out.push((line_of(body, span.start), "a link with a script URL"));
+    }
+    out.sort();
+    out.dedup_by_key(|(l, _)| *l);
     out
+}
+
+/// Source spans of links/images whose destination (as pulldown-cmark
+/// resolves it) can run script.
+fn dangerous_link_spans(md: &str) -> Vec<std::ops::Range<usize>> {
+    use pulldown_cmark::{Event, Parser, Tag};
+    Parser::new_ext(md, build_markdown_options())
+        .into_offset_iter()
+        .filter_map(|(event, range)| match event {
+            Event::Start(Tag::Link { dest_url, .. })
+            | Event::Start(Tag::Image { dest_url, .. })
+                if is_dangerous_url(&dest_url) =>
+            {
+                Some(range)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The pulldown-cmark options `src/build/markdown.rs` renders with.
+fn build_markdown_options() -> pulldown_cmark::Options {
+    use pulldown_cmark::Options;
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options
 }
 
 /// Generic HTML preparation before [`html_to_markdown`] (WordPress, Ghost,
@@ -380,19 +628,19 @@ pub(crate) fn prepare_html(html: &str, tokens: &mut Tokens, notes: &mut Vec<Stri
     }
     let html = IFRAME.replace_all(html, |c: &regex::Captures| {
         let tag = &c[0];
-        let src = attr(tag, "src").unwrap_or_default();
+        let src = iframe_src(tag).unwrap_or_default();
         let token = if let Some(embed) = embed_for_url(&src) {
             tokens.push(embed)
         } else if iframe_allowed(&src) {
             tokens.push_untrusted(&sanitize_html_fragment(tag))
-        } else if src.is_empty() || is_dangerous_url(&src) {
-            notes.push("an iframe without a usable src was removed".to_string());
+        } else if src.trim().is_empty() || !url_allowed(&src, "a") || !src.contains("://") {
+            notes.push("an iframe without a usable http(s) src was removed".to_string());
             tokens.push(String::new())
         } else {
             notes.push(format!(
                 "iframe from {src} replaced by a link (only YouTube, Vimeo and player.* embeds are kept)"
             ));
-            let escaped = escape_delimiters_html(&src.replace('"', "%22").replace('<', "%3C"));
+            let escaped = escape_delimiters_html(&html_escape(&src));
             tokens.push(format!("<a href=\"{escaped}\">{escaped}</a>"))
         };
         format!("<p>{token}</p>")
@@ -641,7 +889,7 @@ mod tests {
 <iframe src="https://player.example.com/embed/1" onload="x()" srcdoc="<script>"></iframe>
 <video src="javascript:alert(1)" poster="https://ex.com/p.jpg" onplay="x()"><script>alert(1)</script><source src="v.mp4"></video>"#;
         let prepared = prepare_html(html, &mut tokens, &mut notes);
-        let md = tokens.restore(&html_to_markdown(&prepared));
+        let md = tokens.restore(&markdown_from_html(&prepared, &mut notes));
         let lower = md.to_ascii_lowercase();
         assert!(
             !lower.contains("javascript")
@@ -656,7 +904,11 @@ mod tests {
                 && !lower.contains("srcdoc"),
             "{md}"
         );
-        assert!(md.contains("[click](#)"), "{md}");
+        let (rendered, _) = crate::build::markdown::markdown_to_html(&md);
+        assert!(
+            rendered.contains("click") && !rendered.to_ascii_lowercase().contains("href=\"java"),
+            "{rendered}"
+        );
         assert!(
             md.contains(r#"<a href="https://evil.example/frame">"#),
             "{md}"
@@ -675,6 +927,82 @@ mod tests {
             "{notes:?}"
         );
         assert!(notes.iter().any(|n| n.contains("removed")), "{notes:?}");
+    }
+
+    /// Parser-differential bypasses of a regex sanitizer.
+    #[test]
+    fn test_sanitizer_bypasses() {
+        for html in [
+            "<video/onerror=alert(1) src=x.mp4></video>",
+            "<audio src=x onerror\n=alert(1)></audio>",
+            "<video src=x.mp4><source src=java&#x09;script:alert(1)></video>",
+            "<video poster=\"JaVaScRiPt:alert(1)\" style=\"x:expression(1)\"></video>",
+            "<iframe/src=javascript:alert(1)></iframe>",
+            "<iframe src=\"https://player.example.com/x\"><script>alert(1)</script></iframe>",
+        ] {
+            let out = sanitize_html_fragment(html).to_ascii_lowercase();
+            assert!(
+                !out.contains("onerror")
+                    && !out.contains("javascript")
+                    && !out.contains("<script")
+                    && !out.contains("style="),
+                "{html} → {out}"
+            );
+        }
+        assert_eq!(
+            sanitize_html_fragment("<video/onerror=alert(1) src=x.mp4 controls></video>"),
+            r#"<video src="x.mp4" controls=""></video>"#
+        );
+        // An iframe off the allow-list loses its src and is dropped.
+        assert_eq!(
+            sanitize_html_fragment(r#"<iframe src="https://evil.example/x"></iframe>"#),
+            ""
+        );
+        assert_eq!(
+            iframe_src("<iframe/src=javascript:alert(1)></iframe>").as_deref(),
+            Some("javascript:alert(1)")
+        );
+        let mut tokens = Tokens::default();
+        let mut notes = Vec::new();
+        let prepared = prepare_html(
+            "<iframe/src=javascript:alert(1)></iframe>",
+            &mut tokens,
+            &mut notes,
+        );
+        let out = tokens.restore(&markdown_from_html(&prepared, &mut notes));
+        assert!(!out.to_ascii_lowercase().contains("javascript"), "{out}");
+    }
+
+    #[test]
+    fn test_markdown_links_checked_as_rendered() {
+        for md in [
+            "[x](java\\script:alert(1))",
+            "[x](&#106;avascript:alert(1))",
+            "[x](<javascript:alert(1)>)",
+            "![pic](JaVa&#x09;Script:alert(1))",
+            "[x][r]\n\n[r]: javascript:alert(1)",
+            "[x](data:text/html;base64,PHNjcmlwdD4=)",
+        ] {
+            let (out, n) = sanitize_markdown_links(md);
+            assert_eq!(n, 1, "{md} → {out}");
+            let (html, _) = crate::build::markdown::markdown_to_html(&out);
+            assert!(
+                !html.to_ascii_lowercase().contains("href=\"j")
+                    && !html.contains("src=\"J")
+                    && !html.contains("data:text"),
+                "{md} → {html}"
+            );
+        }
+        let (out, n) =
+            sanitize_markdown_links("[ok](https://ex.com) ![i](data:image/png;base64,AA)");
+        assert_eq!(
+            (out.as_str(), n),
+            ("[ok](https://ex.com) ![i](data:image/png;base64,AA)", 0)
+        );
+        assert_eq!(
+            untrusted_html_lines("a\n\n[x](&#106;avascript:1)\n").len(),
+            1
+        );
     }
 
     #[test]
