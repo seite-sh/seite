@@ -30,7 +30,8 @@
       "seite check*": "allow",
       "seite new*": "allow",
       "seite serve*": "allow",
-      "seite theme*": "allow"
+      "seite theme apply*": "allow",
+      "seite theme list*": "allow"
     },
     "glob": "allow",
     "grep": "allow",

@@ -12,7 +12,9 @@
       "Bash(seite build)",
       "Bash(seite new:*)",
       "Bash(seite serve:*)",
-      "Bash(seite theme:*)",
+      "Bash(seite theme apply:*)",
+      "Bash(seite theme list:*)",
+      "Bash(seite theme list)",
       "Glob",
       "Grep",
       "WebSearch",
@@ -20,7 +22,21 @@
       "Edit(static/**)",
       "Edit(seite.toml)",
       "Bash(seite check:*)",
-      "Bash(seite check)"
+      "Bash(seite check)",
+      "Bash(seite context:*)",
+      "Bash(seite context)",
+      "Bash(seite docs:*)",
+      "Bash(seite docs)",
+      "Bash(seite page:*)",
+      "Bash(seite search:*)",
+      "Bash(seite stats:*)",
+      "Bash(seite stats)",
+      "Bash(seite templates:*)",
+      "Bash(seite templates)",
+      "Bash(seite frontmatter:*)",
+      "Bash(seite explain:*)",
+      "Bash(seite hooks:*)",
+      "Bash(seite collection list)"
     ],
     "deny": [
       "Read(.env)",
@@ -36,8 +52,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "seite check --hook claude",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude || true",
             "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit || true",
+            "timeout": 30
           }
         ]
       }

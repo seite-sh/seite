@@ -5,9 +5,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "seite check --hook codex",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook codex || true",
             "timeout": 120,
             "statusMessage": "Running seite check"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook codex --post-edit || true",
+            "timeout": 30
           }
         ]
       }
