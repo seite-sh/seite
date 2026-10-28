@@ -44,7 +44,7 @@ opencode.json (permissions for OpenCode)
 .gemini/commands/seite.toml (slash command → skill)
 .agents/skills/seite/SKILL.md (/seite skill)
 .agents/skills/seite/reference/ (12 files)
-.seite/docs/ (18 doc pages for seite 0.20.2)
+.seite/docs/ (19 doc pages for seite 0.20.2)
 .gitignore (/.seite/docs/, /.seite/dev.json, /.seite/cache/, /.seite/upgrade-brief.md)
 Project instructions (per-agent setup table)
 Project instructions (context rules index)
@@ -199,6 +199,7 @@ The homepage or a standalone landing page. It needs a `pages` collection (`seite
 5. To schedule a post (sites with `[build] schedule = true`), give it a future `date:`; it publishes on that date (daily rebuild). Don't link to it from published pages before then (`link-to-scheduled`). `expires: YYYY-MM-DD` takes a page down after that day. `seite serve` and `seite build --future` show scheduled posts.
 6. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
 7. Verify as in [check.md](check.md). A `frontmatter-schema` error names the field, what it expects, and the line to fix.
+8. Moving a whole site in? `seite import <wordpress|ghost|jekyll|hugo> <export-or-dir>` (`--dry-run` first), then work through `.seite/cache/import-report.md` and verify as in [check.md](check.md).
 
 ==> .agents/skills/seite/reference/preview.md <==
 # /seite preview
@@ -545,6 +546,7 @@ The homepage or a standalone landing page. It needs a `pages` collection (`seite
 5. To schedule a post (sites with `[build] schedule = true`), give it a future `date:`; it publishes on that date (daily rebuild). Don't link to it from published pages before then (`link-to-scheduled`). `expires: YYYY-MM-DD` takes a page down after that day. `seite serve` and `seite build --future` show scheduled posts.
 6. Link to other pages with relative `.md` paths, e.g. `[intro](../docs/intro.md)`.
 7. Verify as in [check.md](check.md). A `frontmatter-schema` error names the field, what it expects, and the line to fix.
+8. Moving a whole site in? `seite import <wordpress|ghost|jekyll|hugo> <export-or-dir>` (`--dry-run` first), then work through `.seite/cache/import-report.md` and verify as in [check.md](check.md).
 
 ==> .claude/skills/seite/reference/preview.md <==
 # /seite preview

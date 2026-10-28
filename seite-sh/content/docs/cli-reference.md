@@ -22,6 +22,7 @@ Run `seite <command> --help` for quick inline help on any command.
 | `audit` | Free SEO, AI-visibility, accessibility and performance audit |
 | `serve` | Development server with live reload |
 | `new` | Create content files |
+| `import` | Import a WordPress, Ghost, Jekyll or Hugo site |
 | `agent` | Open a coding agent in the site |
 | `theme` | Manage themes |
 | `hooks` | Turn the coding-agent check hooks on or off |
@@ -188,6 +189,28 @@ seite audit [options]
 | `--top <n>` | Findings listed per category in the human report (default 10; `--json` has all) |
 
 With `--json`, `data` is `{"summary": {"score", "errors", "warnings", "notices", "pages", "by_category"}, "omitted", "findings": [{"code", "severity", "category", "page_url", "file", "line", "message", "hint", "docs_url"}]}`, sorted deterministically. The MCP tool `seite_audit` returns the same document.
+
+## seite import
+
+Import posts and pages from WordPress (WXR `.xml`), Ghost (JSON export), or a Jekyll or Hugo site directory into the current site, with images, `aliases:` redirects for the old URLs, and a report (`.seite/cache/import-report.md`) of what to finish by hand. See [Import](/docs/import) for the full mapping.
+
+```bash
+seite import <wordpress|ghost|jekyll|hugo> <source> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--collection <name>` | Collection for posts (default `posts`; must exist) |
+| `--pages-collection <name>` | Collection for pages (default `pages`; must exist) |
+| `--dry-run` | Report only; write nothing |
+| `--force` | Overwrite existing content files (default: skip and report) |
+| `--drafts` | Also import drafts/pending/private/scheduled/members-only items as `draft: true` |
+| `--no-images` | Don't download or copy images |
+| `--allow-host <host>` | Also download images from this host (`host` or `host:port`; repeatable) |
+| `--site-url <url>` | The old site's URL when the export doesn't name it (Ghost) |
+| `--max-download-mb <n>` | Total image download budget (default 500) |
+
+With `--json`, `data` is `{"source", "source_path", "dry_run", "summary": {"posts"|"pages": {"imported", "skipped", "failed"}}, "images": {"downloaded", "copied", "deduplicated", "failed", "refused", "planned"}, "items": [{"source_id", "source", "kind", "title", "status", "reason", "collection", "path", "url", "aliases", "draft"}], "warnings": [{"source", "code", "message", "path", "item"}], "report"}`.
 
 ## seite serve
 

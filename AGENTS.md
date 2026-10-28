@@ -23,6 +23,7 @@ cargo run -- serve --open  # Dev server + open browser
 cargo run -- preview # Running dev server: URL, last build, browser errors (exit 1 if none/failed)
 cargo run -- serve --host 0.0.0.0  # Bind to all interfaces
 cargo run -- new post "My Post" --tags rust,web
+cargo run -- import wordpress export.xml   # also ghost <json>, jekyll <dir>, hugo <dir>; --dry-run, --drafts, --allow-host
 cargo run -- agent "create a blog post about Rust"
 cargo run -- hooks status        # coding-agent check hooks (on|off|status)
 cargo run -- check --file content/posts/x.md  # fast per-file check
@@ -51,11 +52,12 @@ src/
   themes.rs            11 bundled themes (starters default/docs/landing/blank + gallery) from src/themes/*.tera; layout + CSS only
   shortcodes/          ShortcodeRegistry, parser, builtins (youtube, vimeo, gist, callout, figure, contact_form, comments, newsletter)
   build/               build pipeline (mod.rs), analytics, base_path, code_copy, links, markdown, feed, sitemap, discovery, images, math, mermaid, taxonomy, related, series, content_model, external_links (`seite check --external`), search (full-text index + tokenizer), og/ (social cards: mod.rs plan/cache, card.rs layout + resvg), tailwind (`[build.tailwind]`: pinned CLI download/verify/cache, compile)
-  docs.rs              Embedded docs (18 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
+  docs.rs              Embedded docs (19 pages from seite-sh/content/docs/ + releases; `error_sections()` backs `seite explain`)
   i18n.rs              Language-map resolution + `i18n`/`localize` Tera filter (per-language data values)
   meta.rs              Project metadata (.seite/config.json)
   mcp/                 MCP server (JSON-RPC over stdio): mod.rs, resources.rs, tools.rs
-  cli/                 subcommands: init, new, build, check, serve, deploy, agent, theme, hooks, mcp, workspace, upgrade, contact, cms, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
+  cli/import/          `seite import`: wordpress (quick-xml WXR), ghost (JSON), jekyll, hugo → shared plan/write in mod.rs; convert.rs (htmd HTML→Markdown, embeds, tokens), images.rs (allow-listed downloads / confined copies → static/images/imported/<slug>/), report.rs (.seite/cache/import-report.md)
+  cli/                 subcommands: init, new, import, build, check, serve, deploy, agent, theme, hooks, mcp, workspace, upgrade, contact, cms, collection, access, skill, self_update, completions, perf, telemetry; agent-facing context, docs, page, search, stats, templates, frontmatter, explain (thin adapters over MCP tool handlers via site_tools.rs)
   trust.rs             Per-user project trust list (`seite trust`; gates `[build.tailwind]`)
   update_check.rs      Background update check (24h cache)
   scaffold/            Static markdown for generated AGENTS.md + .claude/rules/ (include_str!)

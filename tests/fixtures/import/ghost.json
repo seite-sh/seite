@@ -1,0 +1,73 @@
+{
+  "db": [
+    {
+      "meta": { "exported_on": 1700000000000, "version": "5.75.0" },
+      "data": {
+        "posts": [
+          {
+            "id": "p1",
+            "uuid": "u1",
+            "title": "Ghost Story",
+            "slug": "ghost-story",
+            "html": "<p>Hello from <a href=\"__GHOST_URL__/about/\">Ghost</a>.</p><figure class=\"kg-card kg-image-card kg-card-hascaption\"><img src=\"__GHOST_URL__/content/images/2021/01/photo.png\" class=\"kg-image\" alt=\"Photo\"><figcaption>A caption</figcaption></figure><figure class=\"kg-card kg-embed-card\"><iframe width=\"200\" height=\"113\" src=\"https://www.youtube.com/embed/dQw4w9WgXcQ?feature=oembed\"></iframe></figure><!--kg-card-begin: markdown--><p>Markdown card</p><!--kg-card-end: markdown-->",
+            "plaintext": "Hello from Ghost.",
+            "feature_image": "__GHOST_URL__/content/images/2021/01/featured.png",
+            "type": "post",
+            "status": "published",
+            "visibility": "public",
+            "custom_excerpt": "A story told by Ghost.",
+            "canonical_url": null,
+            "created_at": "2021-01-04T23:00:00.000Z",
+            "updated_at": "2021-02-01T10:00:00.000Z",
+            "published_at": "2021-01-05T08:30:00.000Z"
+          },
+          {
+            "id": "p2",
+            "title": "About Ghost",
+            "slug": "about",
+            "html": "<p>The about page.</p>",
+            "type": "page",
+            "status": "published",
+            "visibility": "public",
+            "published_at": "2020-12-01T00:00:00.000Z"
+          },
+          {
+            "id": "p3",
+            "title": "Draft idea",
+            "slug": "draft-idea",
+            "html": null,
+            "plaintext": "Only plaintext here.",
+            "type": "post",
+            "status": "draft",
+            "visibility": "public",
+            "published_at": null,
+            "created_at": "2021-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "p4",
+            "title": "Paid insights",
+            "slug": "paid-insights",
+            "html": "<p>Members only.</p>",
+            "type": "post",
+            "status": "published",
+            "visibility": "paid",
+            "published_at": "2021-04-01T00:00:00.000Z"
+          }
+        ],
+        "tags": [
+          { "id": "t1", "name": "Stories", "slug": "stories", "visibility": "public" },
+          { "id": "t2", "name": "#internal", "slug": "hash-internal", "visibility": "internal" },
+          { "id": "t3", "name": "Ghosts", "slug": "ghosts", "visibility": "public" }
+        ],
+        "posts_tags": [
+          { "post_id": "p1", "tag_id": "t3", "sort_order": 1 },
+          { "post_id": "p1", "tag_id": "t1", "sort_order": 0 },
+          { "post_id": "p1", "tag_id": "t2", "sort_order": 2 }
+        ],
+        "users": [ { "id": "1", "name": "Casper Writer", "slug": "casper" } ],
+        "posts_authors": [ { "post_id": "p1", "author_id": "1", "sort_order": 0 } ],
+        "settings": [ { "key": "title", "value": "My Ghost" } ]
+      }
+    }
+  ]
+}

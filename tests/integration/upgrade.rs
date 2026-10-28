@@ -1957,7 +1957,12 @@ fn test_upgrade_agent_unknown_version_includes_latest_only() {
         stdout.contains(&format!("### v{}", env!("CARGO_PKG_VERSION"))),
         "{stdout}"
     );
-    assert!(stdout.contains("### v0.20.0"), "{stdout}");
+    // Older notes are either included or, once the notes outgrow the size
+    // cap, replaced by a pointer to the full release notes.
+    assert!(
+        stdout.contains("### v0.20.0") || stdout.contains("older ones omitted for size"),
+        "{stdout}"
+    );
 }
 
 #[test]

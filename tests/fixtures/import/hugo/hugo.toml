@@ -1,0 +1,5 @@
+baseURL = "https://hugo.example.com/"
+title = "Old Hugo Site"
+
+[permalinks]
+  posts = "/:year/:month/:slug/"
