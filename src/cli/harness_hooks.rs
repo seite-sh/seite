@@ -729,7 +729,16 @@ pub fn edited_paths(input: &Value) -> Vec<String> {
         push(p);
     }
     let tool_input = input.get("tool_input");
-    if let Some(obj) = tool_input.and_then(Value::as_object) {
+    // Copilot types `tool_input` as `unknown`: also accept a JSON-encoded
+    // object (https://docs.github.com/en/copilot/reference/hooks-configuration).
+    let decoded: Option<Value> = tool_input
+        .and_then(Value::as_str)
+        .and_then(|s| serde_json::from_str(s).ok())
+        .filter(Value::is_object);
+    if let Some(obj) = tool_input
+        .and_then(Value::as_object)
+        .or_else(|| decoded.as_ref().and_then(Value::as_object))
+    {
         for key in ["file_path", "filePath", "path", "target_file"] {
             if let Some(p) = obj.get(key).and_then(Value::as_str) {
                 push(p);
@@ -1062,6 +1071,8 @@ mod tests {
         // Copilot's `edit` tool input (`path`) through the PascalCase payload.
         let input = json!({ "tool_name": "edit", "tool_input": { "path": "content/a.md" } });
         assert_eq!(edited_paths(&input), ["content/a.md"]);
+        let encoded = json!({ "tool_name": "create", "tool_input": "{\"path\":\"content/b.md\"}" });
+        assert_eq!(edited_paths(&encoded), ["content/b.md"]);
     }
 
     #[test]
