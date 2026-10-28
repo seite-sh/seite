@@ -58,6 +58,12 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 
 **How to fix:** Add `<a href="#main" class="skip-link">Skip to main content</a>` as the first element in `<body>` and `id="main"` on `<main>` (the bundled themes have it).
 
+## alias-collision
+
+**What it means:** A build warning: an entry in a page's `aliases:` would write its redirect page over a file the build already produced (another page, a collection index, a tag page, a feed). seite never replaces real output with a redirect, so that alias was skipped. The file and line are the page with the alias.
+
+**How to fix:** Remove the alias, or move the page that owns that URL. After `seite import`, check the old URLs the importer kept; it already drops aliases that clash with pages it knows about.
+
 ## broken-link
 
 **What it means:** an internal link points at a page (or, for relative `.md` links, a content file) that does not exist in the built site. Reported as a warning, or as an error with `--strict`.

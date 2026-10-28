@@ -337,11 +337,19 @@ impl Images {
             return None;
         }
         let fetched = match &target {
-            Target::Remote(u) => self
-                .download(u)
-                .map(|(bytes, ext)| (bytes, name_from_url(u, ext))),
-            Target::Local(p) => self.read_local(p).map(|bytes| (bytes, name_from_path(p))),
+            Target::Remote(u) => self.download(u).map(|bytes| (bytes, basename_of_url(u))),
+            Target::Local(p) => self.read_local(p).map(|bytes| (bytes, basename_of_path(p))),
         };
+        // The format (and so the extension) comes from the bytes, never from
+        // the name or Content-Type; SVG (can carry script) and anything else
+        // unrecognised is not stored.
+        let fetched = fetched.and_then(|(bytes, raw)| match sniff_image(&bytes) {
+            Some(ext) => Ok((bytes, safe_name(&raw, ext))),
+            None => Err(
+                "not a PNG, JPEG, GIF, WebP or AVIF image (SVG and other formats are not imported)"
+                    .to_string(),
+            ),
+        });
         let result = match fetched {
             Ok((bytes, name)) => match self.store(&bytes, &name, item.slug) {
                 Ok((url, new)) => {
@@ -492,7 +500,7 @@ impl Images {
 
     /// GET an image, following redirects only to allowed hosts. Returns the
     /// bytes and an extension derived from the Content-Type.
-    fn download(&mut self, url: &url::Url) -> Result<(Vec<u8>, Option<&'static str>), String> {
+    fn download(&mut self, url: &url::Url) -> Result<Vec<u8>, String> {
         let mut current = url.clone();
         for _ in 0..=MAX_REDIRECTS {
             if !matches!(current.scheme(), "http" | "https") {
@@ -581,7 +589,7 @@ impl Images {
                     other => format!("download failed: {other}"),
                 })?;
             self.total += bytes.len() as u64;
-            return Ok((bytes, extension_for_content_type(&content_type)));
+            return Ok(bytes);
         }
         Err(format!("more than {MAX_REDIRECTS} redirects"))
     }
@@ -724,6 +732,7 @@ fn is_public_ip(ip: std::net::IpAddr) -> bool {
                 || o[0] == 0
                 || (o[0] == 100 && (64..128).contains(&o[1]))
                 || (o[0] == 198 && (o[1] == 18 || o[1] == 19))
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0)
                 || o[0] >= 240)
         }
         std::net::IpAddr::V6(v6) => {
@@ -737,7 +746,11 @@ fn is_public_ip(ip: std::net::IpAddr) -> bool {
                 || (seg[0] & 0xfe00) == 0xfc00
                 || (seg[0] & 0xffc0) == 0xfe80
                 || (seg[0] == 0x2001 && seg[1] == 0x0db8)
-                || (seg[0] == 0x64 && seg[1] == 0xff9b))
+                || (seg[0] == 0x64 && seg[1] == 0xff9b)
+                // 6to4, Teredo and IPv4-compatible (::a.b.c.d) embed IPv4
+                || seg[0] == 0x2002
+                || (seg[0] == 0x2001 && seg[1] == 0)
+                || seg[..6].iter().all(|s| *s == 0))
         }
     }
 }
@@ -757,57 +770,55 @@ pub(crate) fn has_image_extension(reference: &str) -> bool {
         .is_some_and(|ext| IMAGE_EXTENSIONS.contains(&ext.as_str()))
 }
 
-fn extension_for_content_type(ct: &str) -> Option<&'static str> {
-    let mime = ct.split(';').next().unwrap_or("").trim();
-    Some(match mime {
-        "image/png" => "png",
-        "image/jpeg" | "image/jpg" => "jpg",
-        "image/gif" => "gif",
-        "image/webp" => "webp",
-        "image/svg+xml" => "svg",
-        "image/avif" => "avif",
-        _ => return None,
-    })
-}
-
 /// A safe file name: slugified stem + lowercase image extension.
-fn safe_name(raw: &str, fallback_ext: Option<&str>) -> String {
+fn safe_name(raw: &str, ext: &str) -> String {
     let decoded = urlencoding::decode(raw)
         .map(|c| c.into_owned())
         .unwrap_or_else(|_| raw.to_string());
-    let (stem, ext) = match decoded.rsplit_once('.') {
-        Some((s, e)) if IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()) => {
-            (s.to_string(), Some(e.to_ascii_lowercase()))
-        }
-        _ => (decoded.clone(), None),
+    let stem = match decoded.rsplit_once('.') {
+        Some((s, e)) if IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()) => s,
+        _ => decoded.as_str(),
     };
-    let stem = slug::slugify(&stem);
+    let stem = slug::slugify(stem);
     let stem = if stem.is_empty() {
         "image".to_string()
     } else {
         stem
     };
-    match ext.or_else(|| fallback_ext.map(str::to_string)) {
-        Some(e) => format!("{stem}.{e}"),
-        None => stem,
+    format!("{stem}.{ext}")
+}
+
+/// The image format by its magic bytes: png, jpg, gif, webp or avif.
+fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("webp")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && matches!(&bytes[8..12], b"avif" | b"avis")
+    {
+        Some("avif")
+    } else {
+        None
     }
 }
 
-fn name_from_url(u: &url::Url, ext: Option<&str>) -> String {
-    let last = u
-        .path_segments()
+fn basename_of_url(u: &url::Url) -> String {
+    u.path_segments()
         .and_then(|mut s| s.next_back())
-        .unwrap_or("");
-    safe_name(last, ext)
+        .unwrap_or("")
+        .to_string()
 }
 
-fn name_from_path(p: &Path) -> String {
-    safe_name(
-        &p.file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        None,
-    )
+fn basename_of_path(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -827,9 +838,15 @@ mod tests {
 
     #[test]
     fn test_safe_name() {
-        assert_eq!(safe_name("My%20Photo.JPG", None), "my-photo.jpg");
-        assert_eq!(safe_name("download", Some("png")), "download.png");
-        assert_eq!(safe_name("..", None), "image");
+        assert_eq!(safe_name("My%20Photo.JPG", "jpg"), "my-photo.jpg");
+        assert_eq!(safe_name("download.svg", "png"), "download.png");
+        assert_eq!(safe_name("..", "gif"), "image.gif");
+        assert_eq!(
+            sniff_image(b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+            None
+        );
+        assert_eq!(sniff_image(b"\x89PNG\r\n\x1a\nrest"), Some("png"));
+        assert_eq!(sniff_image(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
     }
 
     #[test]
@@ -848,6 +865,10 @@ mod tests {
             "fe80::1",
             "::ffff:127.0.0.1",
             "224.0.0.1",
+            "192.0.0.8",
+            "2002:7f00:1::1",
+            "2001:0:4136:e378::1",
+            "::127.0.0.1",
         ] {
             assert!(!public(private), "{private}");
         }

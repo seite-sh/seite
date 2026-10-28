@@ -54,6 +54,49 @@ pub(crate) const MAX_EXPORT_BYTES: u64 = 200 * 1024 * 1024;
 /// Where the import report is written (gitignored with `.seite/cache/`).
 pub const REPORT_PATH: &str = ".seite/cache/import-report.md";
 
+/// Most items (WXR `<item>`s, Ghost posts, Jekyll/Hugo files) one import reads.
+pub(crate) const MAX_ITEMS: usize = 100_000;
+
+/// Largest single Jekyll/Hugo content file read.
+pub(crate) const MAX_SOURCE_FILE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Slugs the build gives other meanings (collection index, not-found page).
+const RESERVED_SLUGS: &[&str] = &["index", "404"];
+
+/// Text from the source made safe to print and to quote in the report:
+/// control characters (newlines included) and bidi overrides become spaces.
+pub(crate) fn clean_text(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// Read a Jekyll/Hugo source file, refusing ones over [`MAX_SOURCE_FILE_BYTES`].
+pub(crate) fn read_source_file(path: &Path) -> Result<String, String> {
+    let len = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+    if len > MAX_SOURCE_FILE_BYTES {
+        return Err(format!(
+            "file is {} MB; content files over {} MB are not imported",
+            len / (1024 * 1024),
+            MAX_SOURCE_FILE_BYTES / (1024 * 1024)
+        ));
+    }
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+/// Error when a source has more than [`MAX_ITEMS`] items.
+pub(crate) fn too_many_items(display: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{display} has more than {MAX_ITEMS} items; split it and import the parts separately"
+    )
+}
+
 #[derive(Args)]
 pub struct ImportArgs {
     /// What to import from
@@ -541,7 +584,7 @@ fn import(
                 &fm,
             )
             .url;
-            if taken.contains(&slug) {
+            if taken.contains(&slug) || RESERVED_SLUGS.contains(&slug.as_str()) {
                 continue;
             }
             match site_urls.get(&url) {
@@ -550,6 +593,8 @@ fn import(
             }
             let clash = if n == 2 {
                 None
+            } else if RESERVED_SLUGS.contains(&base.as_str()) {
+                Some("seite (reserved name)".to_string())
             } else if taken.contains(&base) {
                 Some("another imported item".to_string())
             } else {
@@ -583,6 +628,17 @@ fn import(
             url,
         });
     }
+
+    // Every page URL known now (existing content of every collection plus
+    // the imported items): aliases must not claim any of them.
+    let mut known_urls: Vec<String> = plans.iter().map(|p| p.url.clone()).collect();
+    for c in &config.collections {
+        let urls = existing
+            .remove(c.name.as_str())
+            .unwrap_or_else(|| existing_urls(config, &paths.content, c));
+        known_urls.extend(urls.into_keys());
+    }
+    let alias_guard = AliasGuard::new(config, known_urls.iter().map(String::as_str));
 
     // Cross-references between imported items.
     let mut by_key: HashMap<String, String> = HashMap::new();
@@ -655,7 +711,15 @@ fn import(
             url,
         } = plan;
         let kind_key = item.kind.unwrap_or(Kind::Post).plural();
-        let aliases = clean_aliases(&item.aliases, &url);
+        let (aliases, refused) = clean_aliases(&item.aliases, &url, &alias_guard);
+        for (alias, why) in refused {
+            warnings.push(Warning::for_item(
+                &item,
+                None,
+                "alias-rejected",
+                format!("old URL {alias} not kept as an alias: {why}; add a redirect by hand if it matters"),
+            ));
+        }
         let mut record = ItemRecord {
             source_id: item.source_id.clone(),
             source: item.source_ref.clone(),
@@ -809,6 +873,22 @@ fn import(
         }
     }
 
+    // Source-derived text is printed and written to the report: no control
+    // or bidi characters.
+    for w in &mut warnings {
+        w.message = clean_text(&w.message);
+        w.source = clean_text(&w.source);
+    }
+    for r in &mut records {
+        r.title = clean_text(&r.title);
+        r.source = clean_text(&r.source);
+        r.source_id = clean_text(&r.source_id);
+        r.reason = r.reason.as_deref().map(clean_text);
+        for a in &mut r.aliases {
+            *a = clean_text(a);
+        }
+    }
+
     records.sort_by(|a, b| (a.kind, &a.source_id).cmp(&(b.kind, &b.source_id)));
     warnings.sort();
     warnings.dedup();
@@ -938,25 +1018,134 @@ pub(crate) fn sanitize_slug(raw: &str) -> Option<String> {
     (!slug.is_empty() && content::create::validate_slug(&slug).is_ok()).then_some(slug)
 }
 
+/// Output paths an alias must never claim: a redirect page there would
+/// replace (or shadow) real output.
+pub(crate) struct AliasGuard {
+    /// Keys (`a/b`, lowercase) of every page URL: existing, imported,
+    /// collection indexes, language homepages.
+    taken: HashSet<String>,
+    /// First path segments the build owns (`static`, `tags`, …).
+    prefixes: HashSet<String>,
+    /// Collection URL prefixes whose `/page/N` the build paginates.
+    collection_prefixes: Vec<String>,
+}
+
+/// Last path segments that name generated files.
+const RESERVED_NAMES: &[&str] = &[
+    "index",
+    "index.md",
+    "404",
+    "feed.xml",
+    "atom.xml",
+    "rss.xml",
+    "sitemap.xml",
+    "sitemap.md",
+    "robots.txt",
+    "llms.txt",
+    "llms-full.txt",
+    "search-index.json",
+    "asset-manifest.json",
+    "_redirects",
+    "_headers",
+    "_worker.js",
+    "_routes.json",
+];
+
+fn alias_key(p: &str) -> String {
+    p.trim_matches('/').to_ascii_lowercase()
+}
+
+impl AliasGuard {
+    pub(crate) fn new<'a>(config: &SiteConfig, urls: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut taken: HashSet<String> = urls.into_iter().map(alias_key).collect();
+        let mut collection_prefixes = Vec::new();
+        for c in &config.collections {
+            let prefix = alias_key(&c.url_prefix);
+            taken.insert(prefix.clone());
+            if !prefix.is_empty() {
+                collection_prefixes.push(prefix);
+            }
+        }
+        for lang in config.all_languages() {
+            taken.insert(lang.to_ascii_lowercase());
+        }
+        let mut prefixes: HashSet<String> = [
+            "static",
+            "og",
+            "search",
+            "tags",
+            "series",
+            "private-assets",
+            "page",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for t in &config.taxonomies {
+            prefixes.insert(alias_key(t.url_prefix.as_deref().unwrap_or(&t.name)));
+        }
+        Self {
+            taken,
+            prefixes,
+            collection_prefixes,
+        }
+    }
+
+    /// Why `key` may not be an alias, if it may not.
+    fn refuse(&self, key: &str) -> Option<&'static str> {
+        if key.is_empty() {
+            return Some("it is the homepage");
+        }
+        if self.taken.contains(key) {
+            return Some("a page already has that URL");
+        }
+        let last = key.rsplit('/').next().unwrap_or(key);
+        if RESERVED_NAMES.contains(&last) {
+            return Some("it names a file the build generates");
+        }
+        let first = key.split('/').next().unwrap_or(key);
+        if self.prefixes.contains(first) {
+            return Some("it is under a path the build generates");
+        }
+        if self
+            .collection_prefixes
+            .iter()
+            .any(|p| key.starts_with(&format!("{p}/page/")))
+        {
+            return Some("it is a collection pagination page");
+        }
+        None
+    }
+}
+
 /// Old URLs worth a redirect: root-relative paths without `..`, query or
 /// fragment, `index.html` / `.html` removed (the redirect page is written
 /// as `<alias>.html`), not equal to the new URL, deduplicated in order.
-pub(crate) fn clean_aliases(aliases: &[String], new_url: &str) -> Vec<String> {
-    let key = |p: &str| p.trim_matches('/').to_ascii_lowercase();
-    let new_key = key(new_url);
+/// Returns the kept aliases and the refused ones with the reason (see
+/// [`AliasGuard`]).
+pub(crate) fn clean_aliases(
+    aliases: &[String],
+    new_url: &str,
+    guard: &AliasGuard,
+) -> (Vec<String>, Vec<(String, &'static str)>) {
+    let new_key = alias_key(new_url);
     let mut seen = HashSet::new();
     let mut out = Vec::new();
+    let mut refused = Vec::new();
     for alias in aliases {
         let Some(path) = normalize_alias(alias) else {
             continue;
         };
-        let k = key(&path);
-        if k.is_empty() || k == new_key || !seen.insert(k) {
+        let k = alias_key(&path);
+        if k.is_empty() || k == new_key || !seen.insert(k.clone()) {
             continue;
         }
-        out.push(path);
+        match guard.refuse(&k) {
+            Some(why) => refused.push((path, why)),
+            None => out.push(path),
+        }
     }
-    out
+    (out, refused)
 }
 
 fn normalize_alias(alias: &str) -> Option<String> {
@@ -1141,8 +1330,27 @@ pub(crate) fn read_export(path: &Path, display: &str) -> anyhow::Result<String> 
 mod tests {
     use super::*;
 
+    fn site_config() -> SiteConfig {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("seite.toml");
+        std::fs::write(
+            &path,
+            "collections = []\n\n[site]\ntitle = \"T\"\nbase_url = \"https://example.com\"\n\
+             language = \"en\"\n\n[[taxonomies]]\nname = \"categories\"\n",
+        )
+        .unwrap();
+        let mut config = SiteConfig::load(&path).unwrap();
+        config.collections = vec![
+            CollectionConfig::preset_posts(),
+            CollectionConfig::preset_pages(),
+        ];
+        config
+    }
+
     #[test]
     fn test_clean_aliases() {
+        let config = site_config();
+        let guard = AliasGuard::new(&config, ["/posts/hello", "/about-us", "/posts/other"]);
         let aliases = vec![
             "https://old.example/2020/01/02/hello.html".to_string(),
             "/posts/hello/".to_string(),
@@ -1151,10 +1359,44 @@ mod tests {
             "/about/index.html".to_string(),
             "/?p=12".to_string(),
         ];
+        let (kept, refused) = clean_aliases(&aliases, "/posts/hello", &guard);
         assert_eq!(
-            clean_aliases(&aliases, "/posts/hello"),
+            kept,
             vec!["/2020/01/02/hello".to_string(), "/about".to_string()]
         );
+        assert!(refused.is_empty(), "{refused:?}");
+    }
+
+    #[test]
+    fn test_clean_aliases_never_claims_real_output() {
+        let config = site_config();
+        let guard = AliasGuard::new(&config, ["/posts/other", "/about-us"]);
+        let hostile: Vec<String> = [
+            "/posts/other/",
+            "/about-us",
+            "/posts",
+            "/",
+            "/index.html",
+            "/blog/index",
+            "/404.html",
+            "/static/css/style.css",
+            "/og/index.png",
+            "/search/meta.json",
+            "/tags/rust/",
+            "/categories/news/",
+            "/private-assets/x",
+            "/llms.txt",
+            "/feed.xml",
+            "/posts/page/2/",
+            "/en",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let (kept, refused) = clean_aliases(&hostile, "/posts/hello", &guard);
+        assert!(kept.is_empty(), "{kept:?}");
+        // `/` and `/index.html` (the homepage) are dropped silently.
+        assert_eq!(refused.len(), hostile.len() - 2, "{refused:?}");
     }
 
     #[test]

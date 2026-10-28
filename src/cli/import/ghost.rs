@@ -98,6 +98,9 @@ pub(crate) fn parse(path: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         ..Default::default()
     };
     let mut needs_url = false;
+    if list("posts").len() > super::MAX_ITEMS {
+        return Err(super::too_many_items(&ctx.display));
+    }
     for (index, post) in list("posts").iter().enumerate() {
         let id = id_of(post).unwrap_or_else(|| index.to_string());
         let source_id = format!("ghost:{id}");
@@ -227,7 +230,13 @@ pub(crate) fn parse(path: &Path, ctx: &ParseCtx) -> anyhow::Result<Parsed> {
         item.body = match html.filter(|h| !h.trim().is_empty()) {
             Some(html) => {
                 let mut tokens = Tokens::default();
-                let prepared = convert::prepare_html(&html, &mut tokens);
+                let mut notes = Vec::new();
+                let prepared = convert::prepare_html(&html, &mut tokens, &mut notes);
+                for note in notes {
+                    parsed
+                        .warnings
+                        .push(Warning::for_item(&item, None, "untrusted-html", note));
+                }
                 let md =
                     convert::neutralize_shortcode_delimiters(&convert::html_to_markdown(&prepared));
                 tokens.restore(&md)
