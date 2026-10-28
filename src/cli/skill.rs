@@ -1310,7 +1310,9 @@ fn no_symlink_below(root: &Path, path: &Path) -> bool {
         match fs::symlink_metadata(&current) {
             Ok(meta) if meta.file_type().is_symlink() => return false,
             Ok(_) => {}
-            Err(_) => return true, // the rest does not exist yet
+            // The rest does not exist yet; any other error fails closed.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(_) => return false,
         }
     }
     true
