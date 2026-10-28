@@ -30,7 +30,8 @@ pub struct PreviewArgs {
     /// (/posts/hello); `/` or `/<lang>/` renders the site card
     pub target: String,
 
-    /// Where to write the PNG (default: .seite/cache/og-preview.png)
+    /// Where to write the PNG, inside the site (default:
+    /// .seite/cache/og-preview.png)
     #[arg(long)]
     pub out: Option<PathBuf>,
 
@@ -128,11 +129,27 @@ fn preview(args: &PreviewArgs, site_filter: Option<&str>) -> anyhow::Result<()> 
 
     let out = match &args.out {
         Some(out) => {
-            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-                std::fs::create_dir_all(parent)?;
+            // Inside the site only: agents may run `og preview` without
+            // asking, so `--out` must not reach other files.
+            let out = if out.is_absolute() {
+                out.clone()
+            } else {
+                std::env::current_dir()?.join(out)
+            };
+            // Spell it like the (canonical) site root: canonicalize the
+            // deepest existing ancestor, keep the rest as given.
+            let out = out
+                .ancestors()
+                .find_map(|a| {
+                    let rest = out.strip_prefix(a).ok()?;
+                    Some(a.canonicalize().ok()?.join(rest))
+                })
+                .unwrap_or(out);
+            if let Some(parent) = out.parent() {
+                crate::safe_fs::create_dir_all(&state.cwd, parent)?;
             }
-            std::fs::write(out, &png)?;
-            out.clone()
+            crate::safe_fs::write(&state.cwd, &out, &png)?;
+            out
         }
         None => {
             let out = state.cwd.join(".seite/cache/og-preview.png");

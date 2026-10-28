@@ -32,7 +32,7 @@ cd $T/site-default
 ls -a . .claude .claude/skills .agents .cursor .gemini .github .opencode .seite
 wc -c AGENTS.md; seite hooks status; seite context | tail -15
 ```
-expect: AGENTS.md <= ~3.5 KB, CLAUDE.md/GEMINI.md `@AGENTS.md` shims, `.claude/{settings.json,launch.json,rules,skills/seite}`, `.cursor/{cli.json,rules/*.mdc}`, `opencode.json`, `.opencode/{commands,plugins}`, `.gemini/{settings.json,commands/seite.toml}`, `.github/{hooks/seite.json,instructions}`, `.agents/skills/seite`, `.seite/docs/` (gitignored). Hooks status shows both tiers for all six. `seite context` ends with `NAME: message` directives.
+expect: AGENTS.md about 4 KB (six agents), CLAUDE.md/GEMINI.md `@AGENTS.md` shims, `.claude/{settings.json,launch.json,rules,skills/seite}`, `.cursor/{cli.json,rules/*.mdc}`, `opencode.json`, `.opencode/{commands,plugins}`, `.gemini/{settings.json,commands/seite.toml}`, `.github/{hooks/seite.json,instructions}`, `.agents/skills/seite`, `.seite/docs/` (gitignored). Hooks status shows both tiers for all six. `seite context` ends with `NAME: message` directives.
 
 ### Dev server, live reload, overlay, console forwarding
 ```sh
@@ -70,7 +70,7 @@ Per agent, in a fresh copy of the site (`cp -r $T/site-default $T/agent-<name>`)
 3. `change the theme accent color`
 4. `fix all check errors` (first break two things: a bad `date:` and a `[[broken](/nope)` link)
 
-Pass = finished with no unexpected permission prompts (only the expected ones); `seite check --strict` clean afterwards; the `/seite` skill was used (Codex: `$seite`); post-edit hook fired after an edit (introduce a bad frontmatter field and see the agent get the error immediately) and the turn-end hook fired once; result looks right in `seite serve`.
+Pass = finished without permission prompts for the pre-approved commands (`seite build|check|new|serve|audit|preview|og preview|context|docs|page|search|stats|templates|frontmatter|explain|hooks`, `seite theme apply|list`, edits under `content/ templates/ static/ data/`); expected prompts are only the agent's one-time step from AGENTS.md → Agent setup and commands outside that list (`git`, `seite deploy`, …); `seite check --strict` clean afterwards; the `/seite` skill was used (Codex: `$seite`); post-edit hook fired after an edit (introduce a bad frontmatter field and see the agent get the error immediately) and the turn-end hook fired once; result looks right in `seite serve`.
 
 ```sh
 seite agent --with claude   "write a post about local-first software"    # Claude Code
@@ -111,7 +111,7 @@ seite upgrade -y
 git status --short; ls -a .claude/skills .claude/rules .agents 2>&1; wc -c AGENTS.md; seite hooks status
 seite check --strict && seite build
 ```
-expect: `--check` exits 1 (outdated); upgrade removes the unmodified legacy skills and design-prompts rule, prunes legacy AGENTS.md sections, adds the `seite` skill + references, adds hooks for the 0.20 agent set (no copilot; one-time `copilot-agent` notice), writes `.seite/docs/` (gitignored), no MCP files added, no `[og]`/`search` added (one-time notices only). A second `seite upgrade -y` changes nothing.
+expect: `--check` exits 1 (outdated); upgrade removes the unmodified legacy skills and design-prompts rule, prunes only the legacy AGENTS.md sections it owns (retired skills, serve REPL) when unedited — the 0.20 Commands / MCP Server sections stay, so AGENTS.md is still long (stale; `seite upgrade --agent` trims it) —, adds the `seite` skill + references, adds hooks for claude, codex, opencode, cursor and gemini (gemini's files are new; no copilot; one-time `copilot-agent` notice), writes `.seite/docs/` (gitignored), no MCP files added, no `[og]`/`search` added (one-time notices only). A second `seite upgrade -y` changes nothing.
 
 ```sh
 # edited legacy files must survive
@@ -197,7 +197,7 @@ seite cms setup pages-cms; seite cms setup decap; cat .pages.yml | head; ls stat
 seite cms setup decap     # expect: refuses to overwrite; --force backs up under .seite/cache/backups/
 printf '\n[comments]\nprovider = "giscus"\nrepo = "o/r"\nrepo_id = "R_x"\ncategory = "General"\ncategory_id = "DIC_x"\n\n[newsletter]\nprovider = "buttondown"\nusername = "demo"\n' >> seite.toml
 printf '\n{{< comments() >}}\n\n{{< newsletter() >}}\n' >> content/posts/$(ls content/posts | head -1)
-seite check --strict && seite build && grep -l "giscus\|buttondown" dist/posts/*/index.html | head -2
+seite check --strict && seite build && grep -l "giscus\|buttondown" dist/posts/*.html | head -2
 seite deploy --dry-run; seite deploy --dry-run --target cloudflare; seite deploy --dry-run --target netlify
 ```
 expect: Pages CMS `.pages.yml` / Decap `static/admin/{index.html,config.yml}` match collections and schema; giscus/buttondown markup in page; every dry-run lists steps and makes no commit/push/network call (`git status` unchanged, no `dist` upload).
@@ -390,7 +390,7 @@ Tests that require a real browser or deployed environment and can't be covered b
 
 - [ ] `curl -fsSL https://seite.sh/install.sh | sh` downloads and installs successfully
 - [ ] `irm https://seite.sh/install.ps1 | iex` works on Windows
-- [ ] `VERSION=v0.1.0 curl -fsSL https://seite.sh/install.sh | sh` pins to a specific version
+- [ ] `curl -fsSL https://seite.sh/install.sh | VERSION=v0.21.0 sh` pins to a specific version
 - [ ] `https://seite.sh/version.txt` returns the latest release tag (e.g., `v0.2.0`)
 
 ### Download redirects

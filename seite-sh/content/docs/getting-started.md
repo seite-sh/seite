@@ -111,7 +111,7 @@ The [`seite.toml`](/docs/configuration) file controls your site's title, descrip
 Open your coding agent in `mysite/`. It finds everything it needs in the project:
 
 - **`AGENTS.md`**: what the site is, its layout and collections, the content format, and the hard rules. Claude Code and Gemini CLI read it through `CLAUDE.md` / `GEMINI.md`.
-- **The `/seite` skill** (`$seite` in Codex): `check`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`.
+- **The `/seite` skill** (`$seite` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`.
 - **Check hooks**: after each edit, seite checks the edited file; at the end of a turn, it checks the whole site and hands any errors back so the agent fixes them before it stops.
 
 Each agent has a one-time trust step before it uses the project config (for example, Claude Code's workspace trust prompt); `AGENTS.md` lists them under "Agent setup".
@@ -119,7 +119,7 @@ Each agent has a one-time trust step before it uses the project config (for exam
 The agent starts a session with `seite context`, which prints the config, collections, theme, running dev server, and pending upgrades. Then ask for what you want:
 
 ```text
-/seite new post "Hello world"
+/seite new post "My first post"
 /seite theme "minimal serif with warm colors"
 /seite check
 /seite preview
@@ -127,7 +127,7 @@ The agent starts a session with `seite context`, which prints the config, collec
 
 `/seite check` runs `seite check`, fixes each error at its file and line, and checks once more. `/seite preview` opens the running dev server (in the built-in browser of Claude's desktop app and Cursor) or starts one. While `seite serve` runs, `seite preview` reports its URL, the last build's errors, and errors from the browser console, so the agent sees what you see.
 
-You can also start an agent from the terminal: `seite agent "write a hello world post"` opens Claude Code (or `--with codex|opencode|cursor|gemini|copilot`) with that prompt. See [Coding Agents](/docs/agent) for everything the agent setup includes.
+You can also start an agent from the terminal: `seite agent "write a post about our launch"` opens Claude Code (or `--with codex|opencode|cursor|gemini|copilot`) with that prompt. See [Coding Agents](/docs/agent) for everything the agent setup includes.
 
 The rest of this guide shows the same steps as commands you run yourself.
 
@@ -136,14 +136,14 @@ The rest of this guide shows the same steps as commands you run yourself.
 Add a blog post:
 
 ```bash
-seite new post "Hello World" --tags intro,welcome
+seite new post "My first post" --tags intro,welcome
 ```
 
-This creates `content/posts/2026-02-18-hello-world.md` with frontmatter:
+This creates `content/posts/2026-02-18-my-first-post.md` (dated today) with frontmatter:
 
 ```yaml
 ---
-title: "Hello World"
+title: "My first post"
 date: 2026-02-18
 tags:
   - intro

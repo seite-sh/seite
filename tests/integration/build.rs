@@ -1643,3 +1643,25 @@ fn test_build_refuses_directories_outside_the_project() {
         assert!(site_dir.join("content").exists(), "{key} = {value}");
     }
 }
+
+/// A committed `dist` symlink must not make the build empty its target.
+#[cfg(unix)]
+#[test]
+fn test_build_refuses_symlinked_output_dir() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Symlink", "posts");
+    let site_dir = tmp.path().join("site");
+    let victim = tmp.path().join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), "keep").unwrap();
+    let _ = fs::remove_dir_all(site_dir.join("dist"));
+    std::os::unix::fs::symlink(&victim, site_dir.join("dist")).unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+    assert!(victim.join("keep.txt").exists());
+}

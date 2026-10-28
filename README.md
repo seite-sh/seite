@@ -37,7 +37,7 @@ cd mysite
 Open your coding agent in `mysite/` and ask it for something:
 
 ```text
-/seite new post "Hello world"
+/seite new post "My first post"
 /seite theme "warm editorial serif, one coral accent"
 /seite check
 /seite deploy
@@ -71,7 +71,7 @@ See [Coding Agents](https://seite.sh/docs/agent#using-seite-with-an-existing-sit
 `seite init --agents claude,codex,opencode,cursor,gemini,copilot` (all six by default) writes:
 
 - `AGENTS.md`, imported by one-line `CLAUDE.md` and `GEMINI.md` files (Copilot reads `AGENTS.md` directly)
-- the `/seite` skill: `check`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`
+- the `/seite` skill: `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`
 - path-scoped context rules, project permissions, and `.seite/docs/` (the docs for your seite version)
 - two check hooks per agent: after each edit (checks that file) and at the end of a turn (checks the site); `seite hooks on|off|status` manages them
 

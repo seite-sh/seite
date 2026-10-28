@@ -1,6 +1,6 @@
 # seite
 
-AI-native static site generator for the modern web
+The static site generator your coding agent can run end to end, for free. HTML, Markdown and llms.txt from one Rust binary.
 
 A static site built with [seite](https://seite.sh): markdown in, HTML + markdown + `llms.txt` out.
 

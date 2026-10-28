@@ -39,7 +39,7 @@ The stack underneath:
 - **pulldown-cmark**: CommonMark Markdown parsing
 - **syntect**: syntax highlighting
 - **image**: resizing and WebP conversion
-- **Claude Code**: agent integration for `seite agent` and `seite theme create`
+- **Your coding agent**: Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI or GitHub Copilot, set up by `seite init` with `AGENTS.md`, the `/seite` skill and check hooks, and launched by `seite agent`
 
 ## Open source
 

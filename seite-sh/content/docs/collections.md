@@ -8,7 +8,7 @@ Collections are the core content model in seite. The static site generator ships
 
 ## Overview
 
-Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Five presets are available:
+Collections are groups of related content. Each collection has its own directory under `content/`, URL prefix, and template. Six presets are available:
 
 | Preset | Directory | Dated | RSS | Listed | Nested | URL Pattern |
 |--------|-----------|-------|-----|--------|--------|-------------|
@@ -26,20 +26,39 @@ Collections are configured in `seite.toml` (created during [`seite init`](/docs/
 ```toml
 [[collections]]
 name = "posts"
-
-[[collections]]
-name = "docs"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+nested = false
+default_template = "post.html"
 
 [[collections]]
 name = "pages"
+label = "Pages"
+directory = "pages"
+has_date = false
+has_rss = false
+listed = false
+url_prefix = ""
+nested = false
+default_template = "page.html"
 ```
 
-Each preset comes with sensible defaults. You can override any field:
+`name`, `label`, `directory` and `default_template` are required in every entry; a `[[collections]]` table with only `name` fails with `config-invalid: missing field`. `seite init --collections …` and `seite collection add <preset>` write each preset's full table, so you rarely type one by hand. Edit any field, or add one:
 
 ```toml
 [[collections]]
 name = "posts"
 label = "Blog"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+default_template = "post.html"
 paginate = 10
 ```
 
@@ -48,16 +67,16 @@ paginate = 10
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | required | Collection identifier |
-| `label` | string | capitalized name | Display name in templates |
-| `directory` | string | name | Content directory under `content/` |
-| `url_prefix` | string | `/name` | URL prefix for items |
-| `default_template` | string | preset-based | Template file for rendering |
-| `has_date` | bool | preset-based | Items have dates |
-| `has_rss` | bool | preset-based | Include in RSS feed |
-| `listed` | bool | preset-based | Show on index page |
+| `label` | string | required | Display name in templates |
+| `directory` | string | required | Content directory under `content/` (relative, no `..`) |
+| `url_prefix` | string | `""` | URL prefix for items (`""` serves them at the site root, like pages) |
+| `default_template` | string | required | Template file for rendering |
+| `has_date` | bool | `false` | Items have dates |
+| `has_rss` | bool | `false` | Include in RSS feed |
+| `listed` | bool | `false` | Show on index page |
 | `private` | bool | `false` | Build the hub + pages but hide them from all discovery (sitemap, llms.txt, search, feeds, social cards). With [`[access]`](/docs/configuration#access) the pages are also password-protected on Cloudflare Pages. See [Private collections](/docs/configuration#private-collections) |
 | `access_group` | string | collection name | Password group of a private collection when `[access]` is set; collections with the same group share a password |
-| `nested` | bool | preset-based | Support subdirectories as groups |
+| `nested` | bool | `false` | Support subdirectories as groups |
 | `paginate` | int | none | Items per page (enables pagination) |
 | `subdomain` | string | none | Deploy to `{subdomain}.{base_domain}` |
 | `subdomain_base_url` | string | none | Explicit URL override for subdomain (e.g., `https://docs.example.com`) |
@@ -215,6 +234,7 @@ Any collection can be deployed to its own subdomain. Set `subdomain` on the coll
 ```toml
 [[collections]]
 name = "docs"
+# label, directory, default_template, … as written by the preset
 subdomain = "docs"           # → docs.example.com
 deploy_project = "my-docs"   # optional: Cloudflare/Netlify project name
 ```
@@ -242,6 +262,7 @@ If your `base_url` contains `www` (e.g., `https://www.example.com`), the auto-de
 ```toml
 [[collections]]
 name = "docs"
+# label, directory, default_template, … as before
 subdomain = "docs"
 subdomain_base_url = "https://docs.example.com"  # explicit override
 deploy_project = "my-docs"
@@ -296,6 +317,7 @@ Enable pagination on any listed collection:
 ```toml
 [[collections]]
 name = "posts"
+# label, directory, default_template, … as before
 paginate = 10
 ```
 

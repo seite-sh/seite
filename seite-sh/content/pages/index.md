@@ -49,7 +49,7 @@ extra:
   step_3_title: "Create content with your agent"
   step_3_body: "Open your agent and ask for <code>/seite new post \"Launch\"</code>. It writes the post into the right directory with the right frontmatter, and the check hooks catch mistakes before it finishes. Review a diff. Ship it."
   step_4_title: "Deploy anywhere"
-  step_4_body: "<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify, all built in. Or run <code>seite deploy --setup-ci</code> for an auto-generated GitHub Actions workflow."
+  step_4_body: "<code>seite deploy</code>. Pre-flight checks, build, push. GitHub Pages, Cloudflare, or Netlify, all built in. Or run <code>seite deploy --setup</code> to create the project, the CI workflow and the custom domain."
 
   dogfood_line: "This site is built with seite: the docs, the changelog, the llms.txt. All of it."
 

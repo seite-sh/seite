@@ -439,6 +439,7 @@ pub fn build_site(
     // update the existing output in place. They never clean it, so a failure
     // there can leave a mix of old and freshly rendered pages but never wipes
     // the site; the next successful build brings it back in sync.
+    guard_output(&paths.root, &paths.output)?;
     clean_stale_build_dirs(&paths.output);
     let in_place = changeset
         .as_ref()
@@ -714,6 +715,32 @@ impl Drop for StagedOutputs {
     }
 }
 
+/// A full build empties its output directory (and replaces a symlinked one's
+/// contents). An output inside the project that goes through a symlink
+/// (e.g. `dist` linked to a web server's docroot) is used only when its
+/// target is empty or already holds a site build (`index.html` and
+/// `sitemap.xml`): a committed `dist -> ~/Documents` must not make a build
+/// empty `~/Documents`. Outputs outside the project (scratch builds) are
+/// seite's own temp dirs; workspace outputs are guarded when it loads.
+pub(crate) fn guard_output(root: &Path, output: &Path) -> Result<()> {
+    if !output.starts_with(root) {
+        return Ok(());
+    }
+    let Err(e) = crate::safe_fs::guard(root, output) else {
+        return Ok(());
+    };
+    let looks_like_output = fs::read_dir(output).is_ok_and(|mut entries| {
+        entries.next().is_none()
+            || (output.join("index.html").is_file() && output.join("sitemap.xml").is_file())
+    });
+    if looks_like_output {
+        return Ok(());
+    }
+    Err(PageError::Build(format!(
+        "output directory: {e:#}; its target is neither empty nor an earlier build (index.html + sitemap.xml), so seite won't empty it"
+    )))
+}
+
 /// Replace `output` with `staging`.
 ///
 /// Renames the previous output aside, renames staging into place, then
@@ -899,6 +926,7 @@ fn build_subdomain_sites(
         // Create subdomain-specific paths
         // Subdomain outputs are always rebuilt from scratch, into staging.
         let mut sub_paths = paths.clone();
+        guard_output(&paths.root, &subdomain_output)?;
         clean_stale_build_dirs(&subdomain_output);
         sub_paths.output = staged.stage(&paths.root, &subdomain_output)?;
 

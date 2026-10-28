@@ -21,13 +21,29 @@ timezone = "Europe/Berlin"
 
 [[collections]]
 name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+default_template = "post.html"
 paginate = 10
 
 [[collections]]
 name = "docs"
+label = "Documentation"
+directory = "docs"
+listed = true
+url_prefix = "/docs"
+nested = true
+default_template = "doc.html"
 
 [[collections]]
 name = "pages"
+label = "Pages"
+directory = "pages"
+default_template = "page.html"
 
 [build]
 output_dir = "dist"
@@ -76,7 +92,7 @@ Set `base_url` to your real domain before deploying. Leaving it as `localhost` w
 
 ## [[collections]]
 
-Each `[[collections]]` entry defines a content collection. See [Collections](/docs/collections) for full details.
+Each `[[collections]]` entry defines a content collection. `name`, `label`, `directory` and `default_template` are required; the booleans default to `false` and `url_prefix` to `""` (`seite init` and `seite collection add` write a preset's full table). See [Collections](/docs/collections) for full details.
 
 ```toml
 [[collections]]
@@ -230,6 +246,8 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `future` | bool | `false` | With `schedule`: build future-dated content too. `seite build --future` does the same for one build; `seite serve` always previews it |
 | `tailwind` | table | absent | Compile a Tailwind CSS v4 stylesheet with the standalone CLI (see [Tailwind CSS](#tailwind-css)) |
 | `search` | `"full"` \| `"basic"` \| `false` | `"basic"` | Client-side search. `"full"`: full-text index of page text under `search/` (see [Search](#search)); `"basic"`: `search-index.json` only (titles, descriptions, tags); `false`: no index and no search box. `seite init` writes `"full"`; existing sites keep `"basic"` until they add it |
+
+Directory settings (`output_dir`, `content_dir`, `template_dir`, `static_dir`, `data_dir`, `public_dir`, a collection's `directory`, and in `seite-workspace.toml` a site's `output_dir` and `shared_data`/`shared_static`/`shared_templates`) must be relative paths that name a directory inside the project: no `..`, no absolute path, no backslashes. Every full build empties `output_dir`, so it may not be or contain a source directory and may not lie inside `.git` or `.seite`. A setting that breaks these rules is a `config-invalid` error at its line in the config file.
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.

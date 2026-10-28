@@ -392,7 +392,15 @@ fn test_og_preview_writes_png() {
         "2025-01-01-first.md",
         "title: First\ndate: 2025-01-01",
     );
-    let out = tmp.path().join("card.png");
+    // --out stays inside the site (agents run `og preview` without asking).
+    let outside = tmp.path().join("card.png");
+    let (ok, _) = run_json(
+        &site,
+        &["og", "preview", "/", "--out", outside.to_str().unwrap()],
+    );
+    assert!(!ok);
+    assert!(!outside.exists());
+    let out = site.join("card.png");
     for target in ["/posts/first", "content/posts/2025-01-01-first.md", "/"] {
         let (ok, doc) = run_json(
             &site,

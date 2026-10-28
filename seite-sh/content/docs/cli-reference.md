@@ -148,7 +148,7 @@ seite check [options]
 | `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`, `copilot`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
 | `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine). Not with `--file` or `--hook` |
-| `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots and `[check] external_skip`. Never runs by default or in hooks; not with `--file` or `--hook` |
+| `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots, `[check] external_skip`, and hosts that resolve to private, loopback or link-local addresses (counted as `skipped`; set `SEITE_EXTERNAL_PRIVATE=1` to check those too). Never runs by default or in hooks; not with `--file` or `--hook` |
 
 Exits 0 when there are no errors (in `--strict` mode: no diagnostics at all) and 1 otherwise. Each diagnostic has a stable `code` that agents and CI can match on. The most common are below; the [error reference](/docs/errors) lists every code (`seite explain <code>` prints one):
 
@@ -715,7 +715,7 @@ seite telemetry on
 seite telemetry off
 ```
 
-Anonymous usage telemetry is never sent when `DO_NOT_TRACK` is set; `SEITE_TELEMETRY` overrides the stored choice.
+Anonymous usage telemetry is never sent when `DO_NOT_TRACK` is set; `SEITE_TELEMETRY` overrides the stored choice, and CI runs (`CI` set) send nothing unless `SEITE_TELEMETRY=1`. [Telemetry](/telemetry) lists exactly what is sent.
 
 ## Agent-facing commands
 

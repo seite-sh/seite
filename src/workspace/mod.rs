@@ -246,7 +246,21 @@ pub fn load_site_in_workspace(
 ) -> Result<(SiteConfig, ResolvedPaths)> {
     let site_root = ws_root.join(&ws_site.path);
     let config = SiteConfig::load(&site_root.join("seite.toml"))?;
-    Ok(apply_site_overrides(ws_root, ws_site, config))
+    let (config, paths) = apply_site_overrides(ws_root, ws_site, config);
+    guard_ws_output(ws_root, ws_site, &paths)?;
+    Ok((config, paths))
+}
+
+/// A workspace site's `output_dir` is emptied by every build: refuse one
+/// that goes through a symlink to anything but an earlier build (see
+/// `build::guard_output`).
+fn guard_ws_output(ws_root: &Path, ws_site: &WorkspaceSite, paths: &ResolvedPaths) -> Result<()> {
+    if ws_site.output_dir.is_some() {
+        crate::build::guard_output(ws_root, &paths.output).map_err(|e| {
+            PageError::Workspace(format!("site '{}' output_dir: {e}", ws_site.name))
+        })?;
+    }
+    Ok(())
 }
 
 /// Like [`load_site_in_workspace`], but loads the config with
@@ -265,6 +279,7 @@ pub fn load_site_in_workspace_with_diagnostics(
     let site_root = ws_root.join(&ws_site.path);
     let (config, warnings) = SiteConfig::load_with_diagnostics(&site_root.join("seite.toml"))?;
     let (config, paths) = apply_site_overrides(ws_root, ws_site, config);
+    guard_ws_output(ws_root, ws_site, &paths)?;
     Ok((config, paths, warnings))
 }
 

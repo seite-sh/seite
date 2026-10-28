@@ -87,7 +87,7 @@ Four architectural decisions separate an AI-first SSG from everything else.
 
 ### AI Context: AGENTS.md, a /seite Skill, and Check Hooks
 
-When you run `seite init`, the tool generates an `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The file is short (about 3.5 KB): what the site is, its layout, collections, content format, hard rules, and the workflow. An AI agent reads it once and understands your project. `seite init` also writes a routed `/seite` skill (`$seite` in Codex) for checking, writing, theming, auditing and deploying, plus check hooks that run `seite check` after each edit and at the end of each turn and hand errors back to the agent.
+When you run `seite init`, the tool generates an `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The file is short (about 4 KB): what the site is, its layout, collections, content format, hard rules, and the workflow. An AI agent reads it once and understands your project. `seite init` also writes a routed `/seite` skill (`$seite` in Codex) for checking, writing, theming, auditing and deploying, plus check hooks that run `seite check` after each edit and at the end of each turn and hand errors back to the agent.
 
 For tools that want structured access, seite also ships an [MCP server](/docs/mcp-server) with typed access to your site:
 
@@ -250,7 +250,7 @@ cd mysite
 seite agent "write a blog post about why I chose this stack"   # or ask your open agent
 
 # Or create manually
-seite new post "Hello World" --tags intro
+seite new post "My first post" --tags intro
 
 # Build and preview
 seite build
