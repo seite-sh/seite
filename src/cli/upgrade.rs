@@ -279,27 +279,314 @@ fn check_private_collections_rule(root: &Path) -> Vec<UpgradeAction> {
         .collect()
 }
 
+/// Upgrade the project in the current directory (or, from a workspace root,
+/// every workspace site). See [`run_for_site`].
 pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
-    let root = std::env::current_dir()?;
+    run_for_site(args, None)
+}
+
+/// Upgrade the project in the current directory. In a workspace, `--site
+/// <name>` (or running from the workspace root, which has no `seite.toml`)
+/// upgrades the workspace's sites instead, behind a single confirmation.
+pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    let cwd = std::env::current_dir()?;
+    if let Some(ws_root) = crate::workspace::find_workspace_root(&cwd) {
+        if site_filter.is_some() || !cwd.join("seite.toml").exists() {
+            let ws_config =
+                crate::workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
+            return run_workspace(args, &ws_config, &ws_root, site_filter);
+        }
+    }
+    if site_filter.is_some() {
+        human::warning("--site flag ignored (not in a workspace)");
+    }
 
     // Verify this is a page project
-    if !root.join("seite.toml").exists() {
+    if !cwd.join("seite.toml").exists() {
         anyhow::bail!(
-            "No seite.toml found in current directory. Run this command from a seite project root."
+            "No seite.toml found in current directory. Run this command from a seite project root or a workspace."
         );
     }
 
+    let mut plan = plan_upgrade(&cwd, args)?;
+    let binary_ver = meta::binary_version();
+
+    if plan.actions.is_empty() {
+        // No file changes needed, but still stamp the version if it's behind.
+        // This handles the case where upgrade steps exist but their checks found
+        // nothing to do (files already present), or where the binary was bumped
+        // without adding new upgrade steps (e.g. 0.4.0 → 0.4.3 with only bug fixes).
+        // Likewise record a new or first-time agent (or hook) selection.
+        if !args.check {
+            plan.finish_without_changes()?;
+        }
+        report_deselected(&plan.deselected);
+        human::success(&format!(
+            "Project is up to date (seite {}).",
+            meta::format_version(binary_ver)
+        ));
+        crate::output::json::set_data(plan.data(false));
+        return Ok(());
+    }
+
+    // Show what will change
+    human::header(&format!(
+        "Upgrading from {} → {}",
+        plan.source_label(),
+        meta::format_version(binary_ver)
+    ));
+    crate::human_println!();
+    for line in &plan.changes {
+        human::info(&format!("  {line}"));
+    }
+    crate::human_println!();
+
+    // --check mode: just report and fail (exit 1 = upgrade needed; useful for CI)
+    if args.check {
+        human::info("Run `seite upgrade` to apply these changes.");
+        crate::output::json::set_data(plan.data(false));
+        return Err(pending_error(plan.changes.len(), None));
+    }
+
+    // Confirm unless --force
+    if !args.force {
+        let proceed = crate::cli::prompt::confirm("Apply these upgrades?", true)?;
+        if !proceed {
+            human::info("Upgrade cancelled.");
+            crate::output::json::set_data(plan.data(false));
+            return Ok(());
+        }
+    }
+
+    plan.apply()?;
+    crate::output::json::set_data(plan.data(true));
+
+    crate::human_println!();
+    human::success(&format!(
+        "Project upgraded to seite {}",
+        meta::format_version(binary_ver)
+    ));
+    hint_trim_instructions(&plan.root);
+    Ok(())
+}
+
+/// Upgrade every (or the `site_filter`) site of a workspace: plan them all,
+/// show the changes grouped by site, confirm once, then apply.
+fn run_workspace(
+    args: &UpgradeArgs,
+    ws_config: &crate::workspace::WorkspaceConfig,
+    ws_root: &Path,
+    site_filter: Option<&str>,
+) -> anyhow::Result<()> {
+    let binary_ver = meta::binary_version();
+    let mut plans = Vec::new();
+    for ws_site in ws_config.sites_to_operate(site_filter)? {
+        let site_root = ws_root.join(&ws_site.path);
+        if !site_root.join("seite.toml").exists() {
+            anyhow::bail!(
+                "site '{}' has no seite.toml at {}",
+                ws_site.name,
+                site_root.display()
+            );
+        }
+        let plan = plan_upgrade(&site_root, args)
+            .map_err(|e| e.context(format!("site '{}'", ws_site.name)))?;
+        plans.push((ws_site.name.clone(), plan));
+    }
+
+    let workspace_data = |plans: &[(String, UpgradePlan)], up_to_date: bool, applied: bool| {
+        let sites: Vec<serde_json::Value> = plans
+            .iter()
+            .map(|(name, plan)| {
+                let mut data = plan.data(applied);
+                data["site"] = serde_json::json!(name);
+                data
+            })
+            .collect();
+        serde_json::json!({
+            "up_to_date": up_to_date,
+            "applied": applied,
+            "version": meta::format_version(binary_ver),
+            "workspace": ws_config.workspace.name,
+            "sites": sites,
+        })
+    };
+    let pending: usize = plans.iter().map(|(_, p)| p.changes.len()).sum();
+
+    if pending == 0 {
+        for (_, plan) in &plans {
+            if !args.check {
+                plan.finish_without_changes()?;
+            }
+            report_deselected(&plan.deselected);
+        }
+        human::success(&format!(
+            "All {} workspace site{} up to date (seite {}).",
+            plans.len(),
+            if plans.len() == 1 { " is" } else { "s are" },
+            meta::format_version(binary_ver)
+        ));
+        crate::output::json::set_data(workspace_data(&plans, true, false));
+        return Ok(());
+    }
+
+    human::header(&format!(
+        "Upgrading workspace '{}' → {}",
+        ws_config.workspace.name,
+        meta::format_version(binary_ver)
+    ));
+    for (name, plan) in &plans {
+        crate::human_println!();
+        if plan.changes.is_empty() {
+            human::info(&format!("Site '{name}': up to date"));
+            continue;
+        }
+        human::info(&format!("Site '{name}' (from {}):", plan.source_label()));
+        for line in &plan.changes {
+            human::info(&format!("  {line}"));
+        }
+    }
+    crate::human_println!();
+
+    if args.check {
+        human::info("Run `seite upgrade` to apply these changes.");
+        let outdated = plans.iter().filter(|(_, p)| !p.changes.is_empty()).count();
+        crate::output::json::set_data(workspace_data(&plans, false, false));
+        return Err(pending_error(pending, Some(outdated)));
+    }
+
+    if !args.force {
+        let proceed = crate::cli::prompt::confirm("Apply these upgrades?", true)?;
+        if !proceed {
+            human::info("Upgrade cancelled.");
+            crate::output::json::set_data(workspace_data(&plans, false, false));
+            return Ok(());
+        }
+    }
+
+    for (name, plan) in &mut plans {
+        if plan.actions.is_empty() {
+            plan.finish_without_changes()?;
+        } else {
+            plan.apply()
+                .map_err(|e| e.context(format!("upgrading site '{name}'")))?;
+        }
+    }
+    crate::output::json::set_data(workspace_data(&plans, true, true));
+
+    crate::human_println!();
+    human::success(&format!(
+        "Workspace sites upgraded to seite {}",
+        meta::format_version(binary_ver)
+    ));
+    for (_, plan) in &plans {
+        hint_trim_instructions(&plan.root);
+    }
+    Ok(())
+}
+
+/// The `--check` failure: the number of pending changes (and outdated sites).
+fn pending_error(changes: usize, sites: Option<usize>) -> anyhow::Error {
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    let in_sites = sites
+        .map(|n| format!(" in {n} site{}", plural(n)))
+        .unwrap_or_default();
+    anyhow::anyhow!(
+        "project needs upgrading: {changes} pending change{}{in_sites}",
+        plural(changes)
+    )
+}
+
+/// Everything `seite upgrade` would do to one project, computed without
+/// writing anything.
+struct UpgradePlan {
+    root: PathBuf,
+    project_ver: (u64, u64, u64),
+    actions: Vec<UpgradeAction>,
+    changes: Vec<String>,
+    agents: Vec<Agent>,
+    deselected: Vec<Agent>,
+    hooks_installed: Vec<String>,
+    /// The agent or hook selection differs from what `.seite/config.json` records.
+    record_selection: bool,
+}
+
+impl UpgradePlan {
+    fn source_label(&self) -> String {
+        if self.project_ver == (0, 0, 0) {
+            "pre-tracking".to_string()
+        } else {
+            meta::format_version(self.project_ver)
+        }
+    }
+
+    /// The `--json` payload for this project.
+    fn data(&self, applied: bool) -> serde_json::Value {
+        let binary_ver = meta::format_version(meta::binary_version());
+        let agents = harness::to_ids(&self.agents);
+        let unmaintained = harness::to_ids(&self.deselected);
+        if self.changes.is_empty() {
+            serde_json::json!({
+                "up_to_date": true,
+                "applied": false,
+                "version": binary_ver,
+                "changes": [],
+                "agents": agents,
+                "unmaintained_agents": unmaintained,
+            })
+        } else {
+            serde_json::json!({
+                "up_to_date": applied,
+                "applied": applied,
+                "from": self.source_label(),
+                "to": binary_ver,
+                "changes": self.changes,
+                "agents": agents,
+                "unmaintained_agents": unmaintained,
+            })
+        }
+    }
+
+    /// Stamp the current version and the agent/hook selection.
+    fn write_meta(&self) -> anyhow::Result<()> {
+        let existing = meta::load(&self.root);
+        let mut new_meta = meta::PageMeta::stamp_current_version(existing.as_ref());
+        new_meta.agents = Some(harness::to_ids(&self.agents));
+        new_meta.hooks_installed = Some(self.hooks_installed.clone());
+        meta::write(&self.root, &new_meta)?;
+        Ok(())
+    }
+
+    /// With no file changes, still stamp a stale version or a new selection.
+    fn finish_without_changes(&self) -> anyhow::Result<()> {
+        if self.project_ver < meta::binary_version() || self.record_selection {
+            self.write_meta()?;
+        }
+        Ok(())
+    }
+
+    /// Apply every action, then stamp the new version and selection.
+    fn apply(&mut self) -> anyhow::Result<()> {
+        for action in std::mem::take(&mut self.actions) {
+            apply_action(action)?;
+        }
+        report_deselected(&self.deselected);
+        self.write_meta()
+    }
+}
+
+/// Collect every upgrade action the project at `root` needs.
+fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> {
     // Historical upgrade steps can append to the project instructions before
     // the v0.19 migration runs. Reject symlinks and other non-file entries up
     // front so no action can write through a path outside the project.
-    crate::cli::agent_instructions::validate_paths(&root)?;
+    crate::cli::agent_instructions::validate_paths(root)?;
 
-    let project_ver = meta::project_version(&root);
-    let binary_ver = meta::binary_version();
+    let project_ver = meta::project_version(root);
 
     // Which coding agents to maintain: --agents, else the stored selection,
     // else (projects from before the selection existed) every agent.
-    let stored_agents = meta::load(&root)
+    let stored_agents = meta::load(root)
         .and_then(|m| m.agents)
         .map(|ids| harness::from_ids(&ids));
     let agents = match &args.agents {
@@ -318,14 +605,14 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
     let mut actions: Vec<UpgradeAction> = Vec::new();
     for step in upgrade_steps() {
         if step.introduced_in > project_ver {
-            let step_actions = (step.check)(&root);
+            let step_actions = (step.check)(root);
             extend_dedup(&mut actions, step_actions);
         }
     }
     // Historical steps predate the agent selection; don't let them recreate
     // Claude Code files for a project that no longer uses Claude Code.
     if !agents.contains(&Agent::Claude) {
-        actions.retain(|a| !a.replaced_path().is_some_and(|p| is_claude_owned(&root, p)));
+        actions.retain(|a| !a.replaced_path().is_some_and(|p| is_claude_owned(root, p)));
     }
 
     // Decide whether a migration action is needed after seeing every older
@@ -336,11 +623,11 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
         let older_action_creates_instructions = actions
             .iter()
             .any(|action| action.targets_path(&claude_path));
-        if crate::cli::agent_instructions::needs_migration(&root)
+        if crate::cli::agent_instructions::needs_migration(root)
             || older_action_creates_instructions
         {
             actions.push(UpgradeAction::MigrateAgentInstructions {
-                root: root.clone(),
+                root: root.to_path_buf(),
                 description: "Canonical AGENTS.md project instructions".into(),
             });
         }
@@ -348,122 +635,34 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
 
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    extend_dedup(&mut actions, check_agent_harness(&root, &agents));
+    extend_dedup(&mut actions, check_agent_harness(root, &agents));
     // Turn-end `seite check` hooks, once per agent: merged into (or next to)
     // the actions above, and skipped for agents recorded as done so a hook
     // the user deleted stays deleted.
-    let stored_hooks = meta::load(&root).and_then(|m| m.hooks_installed);
+    let stored_hooks = meta::load(root).and_then(|m| m.hooks_installed);
     let hooks_installed = add_stop_hooks(
-        &root,
+        root,
         &agents,
         stored_hooks.as_deref().unwrap_or_default(),
         &mut actions,
     );
     let record_hooks = stored_hooks.as_ref() != Some(&hooks_installed);
 
-    let agent_ids = harness::to_ids(&agents);
-    let deselected_ids = harness::to_ids(&deselected);
-    let write_meta = || -> anyhow::Result<()> {
-        let existing = meta::load(&root);
-        let mut new_meta = meta::PageMeta::stamp_current_version(existing.as_ref());
-        new_meta.agents = Some(agent_ids.clone());
-        new_meta.hooks_installed = Some(hooks_installed.clone());
-        meta::write(&root, &new_meta)?;
-        Ok(())
-    };
+    let changes = actions.iter().flat_map(|a| a.describe()).collect();
+    Ok(UpgradePlan {
+        root: root.to_path_buf(),
+        project_ver,
+        actions,
+        changes,
+        agents,
+        deselected,
+        hooks_installed,
+        record_selection: record_agents || record_hooks,
+    })
+}
 
-    if actions.is_empty() {
-        // No file changes needed, but still stamp the version if it's behind.
-        // This handles the case where upgrade steps exist but their checks found
-        // nothing to do (files already present), or where the binary was bumped
-        // without adding new upgrade steps (e.g. 0.4.0 → 0.4.3 with only bug fixes).
-        // Likewise record a new or first-time agent (or hook) selection.
-        if !args.check && (project_ver < binary_ver || record_agents || record_hooks) {
-            write_meta()?;
-        }
-        report_deselected(&deselected);
-        human::success(&format!(
-            "Project is up to date (seite {}).",
-            meta::format_version(binary_ver)
-        ));
-        crate::output::json::set_data(serde_json::json!({
-            "up_to_date": true,
-            "applied": false,
-            "version": meta::format_version(binary_ver),
-            "changes": [],
-            "agents": agent_ids,
-            "unmaintained_agents": deselected_ids,
-        }));
-        return Ok(());
-    }
-
-    // Show what will change
-    let from_label = if project_ver == (0, 0, 0) {
-        "pre-tracking".to_string()
-    } else {
-        meta::format_version(project_ver)
-    };
-    human::header(&format!(
-        "Upgrading from {} → {}",
-        from_label,
-        meta::format_version(binary_ver)
-    ));
-    crate::human_println!();
-
-    let changes: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
-    for line in &changes {
-        human::info(&format!("  {line}"));
-    }
-    crate::human_println!();
-    let upgrade_data = |applied: bool| {
-        serde_json::json!({
-            "up_to_date": applied,
-            "applied": applied,
-            "from": from_label,
-            "to": meta::format_version(binary_ver),
-            "changes": changes,
-            "agents": agent_ids,
-            "unmaintained_agents": deselected_ids,
-        })
-    };
-
-    // --check mode: just report and fail (exit 1 = upgrade needed; useful for CI)
-    if args.check {
-        human::info("Run `seite upgrade` to apply these changes.");
-        anyhow::bail!(
-            "project needs upgrading: {} pending change{}",
-            changes.len(),
-            if changes.len() == 1 { "" } else { "s" }
-        );
-    }
-
-    // Confirm unless --force
-    if !args.force {
-        let proceed = crate::cli::prompt::confirm("Apply these upgrades?", true)?;
-        if !proceed {
-            human::info("Upgrade cancelled.");
-            crate::output::json::set_data(upgrade_data(false));
-            return Ok(());
-        }
-    }
-
-    // Apply all actions
-    for action in actions {
-        apply_action(action)?;
-    }
-    report_deselected(&deselected);
-
-    // Stamp the new version (and the agent selection)
-    write_meta()?;
-    crate::output::json::set_data(upgrade_data(true));
-
-    crate::human_println!();
-    human::success(&format!(
-        "Project upgraded to seite {}",
-        meta::format_version(binary_ver)
-    ));
-
-    // Hint about trimming the canonical project instructions if rules files were created.
+/// Hint about trimming the canonical project instructions if rules files were created.
+fn hint_trim_instructions(root: &Path) {
     if root.join(".claude/rules").exists() {
         let instructions_path = if root.join("AGENTS.md").exists() {
             root.join("AGENTS.md")
@@ -480,8 +679,6 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
             }
         }
     }
-
-    Ok(())
 }
 
 /// Apply one upgrade action.

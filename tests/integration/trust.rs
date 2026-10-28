@@ -700,3 +700,170 @@ fn test_subdomain_collection_hub_uses_collection_index_template() {
         );
     }
 }
+
+/// Runs the generated password Worker under Node against the built output
+/// (an `env.ASSETS` that decodes the path once and resolves it like a file
+/// server) and checks that path tricks never reach a protected file: empty
+/// segments (`//`) and separators or dots that are still encoded after one
+/// decode. Skipped when `node` is not installed.
+#[test]
+fn test_password_worker_refuses_path_tricks() {
+    if std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("node not found; skipping");
+        return;
+    }
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Private Access", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    add_collection_line(&site_dir, "posts", "private = true");
+    add_collection_line(&site_dir, "posts", "access_group = \"members\"");
+    enable_password_access(&site_dir);
+    let post = fs::read_dir(site_dir.join("content/posts"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .find(|e| e.file_name().to_string_lossy().ends_with("hello-world.md"))
+        .unwrap()
+        .path();
+    let mut body = fs::read_to_string(&post).unwrap();
+    body.push_str("\nPROTECTED-MARKER\n");
+    fs::write(&post, body).unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let dist = site_dir.join("dist");
+    let md = dist.join("posts/hello-world.md");
+    assert!(fs::read_to_string(&md)
+        .unwrap()
+        .contains("PROTECTED-MARKER"));
+
+    fs::copy(dist.join("_worker.js"), tmp.path().join("worker.mjs")).unwrap();
+    let harness = r#"
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+// Workers-only extension of SubtleCrypto, used by the password check.
+if (!crypto.subtle.timingSafeEqual) {
+  crypto.subtle.timingSafeEqual = (a, b) => {
+    const x = new Uint8Array(ArrayBuffer.isView(a) ? a.buffer : a);
+    const y = new Uint8Array(ArrayBuffer.isView(b) ? b.buffer : b);
+    if (x.length !== y.length) throw new TypeError("length mismatch");
+    let diff = 0;
+    for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+    return diff === 0;
+  };
+}
+const [dist, workerPath, requestsJson] = process.argv.slice(2);
+const worker = (await import(pathToFileURL(workerPath).href)).default;
+const env = {
+  SEITE_PASSWORD_MEMBERS: "open sesame",
+  SEITE_SESSION_SECRET_MEMBERS: "test-session-secret",
+  ASSETS: {
+    async fetch(request) {
+      const p = decodeURIComponent(new URL(request.url).pathname);
+      for (const c of p.endsWith("/") ? [p + "index.html"] : [p, p + ".html"]) {
+        const file = path.join(dist, c);
+        if (fs.existsSync(file) && fs.statSync(file).isFile()) return new Response(fs.readFileSync(file), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  },
+};
+const out = [];
+for (const entry of JSON.parse(requestsJson)) {
+  const [p, form] = Array.isArray(entry) ? entry : [entry, null];
+  const init = form
+    ? { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: "https://example.com" }, body: new URLSearchParams(form).toString() }
+    : {};
+  const response = await worker.fetch(new Request("https://example.com" + p, init), env);
+  out.push({ path: p, status: response.status, location: response.headers.get("Location"), body: await response.text() });
+}
+console.log(JSON.stringify(out));
+"#;
+    fs::write(tmp.path().join("harness.mjs"), harness).unwrap();
+    let requests = serde_json::json!([
+        "/posts/hello-world.md",
+        "//posts/hello-world.md",
+        "/x//posts/hello-world.md",
+        "/posts//hello-world.md",
+        "/posts%252Fhello-world.md",
+        "/x/%252e%252e/posts/hello-world.md",
+        "/x/%252E%252E/posts/hello-world.md",
+        "/posts%255Chello-world.md",
+        "/x/%25252e%25252e/posts/hello-world.md",
+        "/%25252Fposts/hello-world.md",
+        "/%2570osts/hello-world.md",
+        "/%2570osts/hello-world.md%25",
+        "/%2525252525252570osts/hello-world.md",
+        "/posts/hello-world.md%zz",
+        "/",
+    ]);
+    let output = std::process::Command::new("node")
+        .arg(tmp.path().join("harness.mjs"))
+        .arg(&dist)
+        .arg(tmp.path().join("worker.mjs"))
+        .arg(requests.to_string())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let results: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    for result in &results {
+        let path = result["path"].as_str().unwrap();
+        let body = result["body"].as_str().unwrap();
+        assert!(
+            !body.contains("PROTECTED-MARKER"),
+            "{path} served protected content without a session"
+        );
+        if path != "/posts/hello-world.md" && path != "/" {
+            assert_eq!(result["status"], 400, "{path}");
+        }
+        if path == "/posts/hello-world.md" {
+            assert_ne!(
+                result["status"], 400,
+                "the protected page asks for a password"
+            );
+        }
+    }
+    assert_eq!(
+        results.last().unwrap()["status"],
+        200,
+        "the homepage stays public"
+    );
+
+    // After a correct login, `next` may only lead back into the site.
+    let logins = serde_json::json!([
+        ["/_seite/access/login", {"group": "members", "password": "open sesame", "next": "/posts/hello-world"}],
+        ["/_seite/access/login", {"group": "members", "password": "open sesame", "next": "/\\evil.com"}],
+        ["/_seite/access/login", {"group": "members", "password": "open sesame", "next": "/\t/evil.com"}],
+        ["/_seite/access/login", {"group": "members", "password": "open sesame", "next": "//evil.com"}],
+        ["/_seite/access/login", {"group": "members", "password": "open sesame", "next": "https://evil.com"}],
+    ]);
+    let output = std::process::Command::new("node")
+        .arg(tmp.path().join("harness.mjs"))
+        .arg(&dist)
+        .arg(tmp.path().join("worker.mjs"))
+        .arg(logins.to_string())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let results: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(results[0]["status"], 303, "{}", results[0]);
+    assert_eq!(results[0]["location"], "/posts/hello-world");
+    for result in &results[1..] {
+        assert_eq!(result["status"], 303, "{result}");
+        assert_eq!(result["location"], "/", "{result}");
+    }
+}

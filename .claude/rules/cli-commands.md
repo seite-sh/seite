@@ -7,7 +7,7 @@ paths:
 - clap 4.5 with derive macros
 - Each subcommand: `src/cli/{name}.rs` with `{Command}Args` + `pub fn run(args) -> anyhow::Result<()>`
 - Interactive prompts go through `src/cli/prompt.rs` (wraps `dialoguer`), never called directly — it degrades safely under `--yes`/`-y`/`SEITE_YES=1` or a non-TTY: defaults are used where one exists, otherwise the command errors naming the missing flag
-- Global `--json` prints exactly one document on stdout (`{"ok","command","data","warnings"}` or `{"ok":false,"error":{"message","chain"}}`); set a command's payload with `output::json::set_data()`. Rejected for `serve`, `agent`, `mcp`, `completions`, `self-update`
+- Global `--json` prints exactly one document on stdout (`{"ok","command","data","warnings"}` or `{"ok":false,"error":{"message","chain"}}`, plus `data` if the command set it before failing); set a command's payload with `output::json::set_data()`. Rejected for `serve`, `agent`, `mcp`, `completions`, `self-update`
 
 ## Subcommands
 init, new, build, check, serve, deploy, agent, theme, mcp, workspace, upgrade, contact, collection, access, skill, self-update, completions, perf, telemetry
@@ -31,7 +31,7 @@ GitHub Pages (git push), Cloudflare (wrangler), Netlify. `auto_commit = true` by
 `seite skill install|list|remove|update`. Known: `seomachine` (11 agents, 22 commands, 25 skills). Manifest in `.claude/.seite-skill-packs.json`. SEOMachine AGENTS.md section managed by HTML comment markers.
 
 ## Coding-Agent Harness Files
-`seite init --agents` / `seite upgrade --agents` (claude, codex, opencode, cursor; default all, stored in `.seite/config.json`). All rules, skills, and MCP entries come from `src/cli/harness.rs`; upgrade merges via `check_agent_harness()` in `src/cli/upgrade.rs`.
+`seite init --agents` / `seite upgrade --agents` (in a workspace root or with `--site`, upgrade plans every site and confirms once) (claude, codex, opencode, cursor; default all, stored in `.seite/config.json`). All rules, skills, and MCP entries come from `src/cli/harness.rs`; upgrade merges via `check_agent_harness()` in `src/cli/upgrade.rs`.
 
 ## Built-in Skills
 `/seite` (verb dispatcher: check, new, preview, build, deploy, theme, collection; OpenCode gets a `.opencode/commands/seite.md` wrapper), `/theme-builder` (4-phase theme creation), `/brand-identity` (5-phase visual identity), `/landing-page` (conditional on pages collection). Scaffolded by init into `.claude/skills/` (Claude) and `.agents/skills/` (Codex/Cursor/OpenCode), upgraded with version tracking (`# seite-skill-version: N`). Per-agent paths/formats come from `harness::PROVIDERS`.

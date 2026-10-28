@@ -140,7 +140,7 @@ seite deploy
 
 Staged secrets apply to the *next* deployment, so the password isn't live until you deploy. Deploy from the Pages project's production branch (`main` for projects seite created) and run `seite deploy --preview` to activate it on preview. Visitors to `/investors` now get a login form. The rest of the site stays public.
 
-`set-password` also switches the Pages project to **Fail closed**, and `seite deploy` checks that setting before it uploads (since v0.20.1). Every request on a password-enabled project runs the Worker. In *Fail open* mode, which Cloudflare's API uses by default, Cloudflare serves static files without the Worker once your Workers request limit is reached. More on that in the limits below.
+`set-password` also switches the Pages project to **Fail closed**, and `seite deploy` checks that setting before it uploads (since v0.20.3). Every request on a password-enabled project runs the Worker. In *Fail open* mode, which Cloudflare's API uses by default, Cloudflare serves static files without the Worker once your Workers request limit is reached. More on that in the limits below.
 
 The [password-protecting paths and subdomains](/docs/deployment#password-protecting-paths-and-subdomains) section of the deployment guide has the same flow in reference form.
 
