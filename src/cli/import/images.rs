@@ -157,14 +157,12 @@ impl Images {
                 ),
             }
         }
-        let agent = ureq::Agent::new_with_config(
-            ureq::config::Config::builder()
-                .timeout_global(Some(REQUEST_TIMEOUT))
-                .max_redirects(0)
-                .http_status_as_error(false)
-                .user_agent(concat!("seite-import/", env!("CARGO_PKG_VERSION")))
-                .build(),
-        );
+        let exempt = allowed
+            .iter()
+            .filter(|h| h.explicit)
+            .map(|h| (bare_host(&h.host), h.port))
+            .collect();
+        let agent = build_agent(exempt);
         let confine_canonical = opts
             .confine_root
             .as_ref()
@@ -506,13 +504,8 @@ impl Images {
                     host_port(&current)
                 ));
             }
-            let explicit = self
-                .allowed
-                .iter()
-                .any(|h| h.explicit && h.matches(&current));
-            if !explicit {
-                ensure_public(&current)?;
-            }
+            // Public-address checks happen in the agent's resolver
+            // (`PublicOnlyResolver`), on the very addresses it connects to.
             let response = self
                 .agent
                 .get(current.as_str())
@@ -646,30 +639,72 @@ impl Images {
     }
 }
 
-/// Refuse a URL whose host is, or resolves to, a non-public address.
-fn ensure_public(u: &url::Url) -> Result<(), String> {
-    use std::net::ToSocketAddrs;
-    let refuse = |ip: std::net::IpAddr| {
-        format!(
-            "{} is a private/internal address ({ip}); pass --allow-host {} to download from it",
-            host_port(u),
-            host_port(u)
-        )
-    };
-    let port = u.port_or_known_default().unwrap_or(80);
-    let addrs: Vec<std::net::IpAddr> = match u.host() {
-        Some(url::Host::Ipv4(ip)) => vec![ip.into()],
-        Some(url::Host::Ipv6(ip)) => vec![ip.into()],
-        Some(url::Host::Domain(d)) => (d, port)
-            .to_socket_addrs()
-            .map_err(|e| format!("cannot resolve {d}: {e}"))?
-            .map(|a| a.ip())
-            .collect(),
-        None => return Err("URL has no host".into()),
-    };
-    match addrs.into_iter().find(|ip| !is_public_ip(*ip)) {
-        Some(ip) => Err(refuse(ip)),
-        None => Ok(()),
+/// The download agent: no proxy (the resolver must see the target host),
+/// no automatic redirects (each hop is checked by hand), and
+/// [`PublicOnlyResolver`], so the socket ureq connects to is exactly an
+/// address that passed the public-address check (no DNS-rebinding window).
+fn build_agent(exempt: Vec<(String, Option<u16>)>) -> ureq::Agent {
+    let config = ureq::config::Config::builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
+        .max_redirects(0)
+        .http_status_as_error(false)
+        .proxy(None)
+        .user_agent(concat!("seite-import/", env!("CARGO_PKG_VERSION")))
+        .build();
+    ureq::Agent::with_parts(
+        config,
+        ureq::unversioned::transport::DefaultConnector::default(),
+        PublicOnlyResolver {
+            exempt,
+            inner: ureq::unversioned::resolver::DefaultResolver::default(),
+        },
+    )
+}
+
+/// `[::1]` → `::1`, lowercase.
+fn bare_host(host: &str) -> String {
+    host.trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase()
+}
+
+/// Resolves like ureq's default resolver, then refuses any non-public
+/// address unless the host (and port) was given on the command line
+/// (`--allow-host`, `--site-url`).
+#[derive(Debug)]
+struct PublicOnlyResolver {
+    /// (host without brackets, explicit port)
+    exempt: Vec<(String, Option<u16>)>,
+    inner: ureq::unversioned::resolver::DefaultResolver,
+}
+
+impl ureq::unversioned::resolver::Resolver for PublicOnlyResolver {
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        config: &ureq::config::Config,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        let addrs = self.inner.resolve(uri, config, timeout)?;
+        let host = bare_host(uri.host().unwrap_or(""));
+        let port = uri.port_u16();
+        if self.exempt.iter().any(|(h, p)| *h == host && *p == port) {
+            return Ok(addrs);
+        }
+        if let Some(bad) = addrs.iter().find(|a| !is_public_ip(a.ip())) {
+            let shown = match port {
+                Some(p) => format!("{host}:{p}"),
+                None => host.clone(),
+            };
+            return Err(ureq::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "{shown} is a private/internal address ({}); pass --allow-host {shown} to download from it",
+                    bad.ip()
+                ),
+            )));
+        }
+        Ok(addrs)
     }
 }
 
@@ -818,8 +853,39 @@ mod tests {
         }
         assert!(public("93.184.216.34"));
         assert!(public("2606:4700::1111"));
-        let u = url::Url::parse("http://169.254.169.254/latest/meta-data").unwrap();
-        assert!(ensure_public(&u).unwrap_err().contains("private/internal"));
+    }
+
+    /// The agent's resolver refuses private addresses before connecting,
+    /// unless the host:port was given on the command line.
+    #[test]
+    fn test_resolver_refuses_private_addresses() {
+        // A closed local port: refusal must come from the resolver.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url = format!("http://127.0.0.1:{port}/x.png");
+        let err = build_agent(Vec::new())
+            .get(&url)
+            .call()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("private/internal address"), "{err}");
+        let err = build_agent(Vec::new())
+            .get("http://169.254.169.254/latest/meta-data")
+            .call()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("private/internal address"), "{err}");
+        // Exempt (explicit) host: the resolver lets it through; the
+        // connection itself then fails.
+        let err = build_agent(vec![("127.0.0.1".into(), Some(port))])
+            .get(&url)
+            .call()
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("private/internal address"), "{err}");
     }
 
     #[test]
