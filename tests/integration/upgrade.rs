@@ -664,7 +664,8 @@ fn test_upgrade_creates_rules_files() {
 #[test]
 fn test_upgrade_stamps_version_even_when_no_actions() {
     let tmp = TempDir::new().unwrap();
-    init_site(&tmp, "site", "Version Stamp", "posts,pages");
+    // The agents a project from before the stored selection was set up for.
+    init_site_with_agents(&tmp, "site", "claude,codex,opencode,cursor,gemini");
     let site_dir = tmp.path().join("site");
 
     // Simulate a project whose files are already up to date but whose
@@ -819,22 +820,47 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .success()
         .stdout(predicate::str::contains("up to date"));
 
-    // Sites without a stored selection are treated as "all" and get it recorded.
+    // Sites without a stored selection get seite 0.20's agent set recorded
+    // (Copilot stays opt-in; its existing files are kept, never deleted),
+    // plus a one-time notice that Copilot is available.
     let meta_path = site_dir.join(".seite/config.json");
     let mut meta = read_json_file(&meta_path);
     meta.as_object_mut().unwrap().remove("agents");
     fs::write(&meta_path, meta.to_string()).unwrap();
+    // Only AGENTS.md's setup table and rules index drop the Copilot rows.
     page_cmd()
         .args(["upgrade", "--force"])
         .current_dir(&site_dir)
         .assert()
         .success()
-        .stdout(predicate::str::contains("up to date"));
+        .stdout(predicate::str::contains("per-agent setup table"))
+        .stdout(predicate::str::contains(
+            "--agents claude,codex,opencode,cursor,gemini,copilot",
+        ));
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
+        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
     );
-    assert_eq!(harness_snapshot(&site_dir), fresh);
+    let without_agents_md = |files: Vec<(String, String)>| -> Vec<(String, String)> {
+        files
+            .into_iter()
+            .filter(|(p, _)| p != "AGENTS.md")
+            .collect()
+    };
+    assert_eq!(
+        without_agents_md(harness_snapshot(&site_dir)),
+        without_agents_md(fresh.clone())
+    );
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(!agents_md.contains("| GitHub Copilot |"));
+    // The notice is shown once.
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"))
+        .stdout(predicate::str::contains("GitHub Copilot is supported").not());
 
     // Deselecting keeps files but stops maintaining them.
     page_cmd()

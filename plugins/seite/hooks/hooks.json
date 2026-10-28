@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude || true",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude --plugin || true",
             "timeout": 120
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit || true",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit --plugin || true",
             "timeout": 30
           }
         ]

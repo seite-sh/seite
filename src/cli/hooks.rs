@@ -137,7 +137,8 @@ fn on_off(b: bool) -> &'static str {
     }
 }
 
-/// `--agents`, else the project's stored selection, else every agent.
+/// `--agents`, else the project's stored selection, else the agents seite
+/// 0.20 set up (projects from before the selection was stored).
 fn resolve_agents(root: &Path, flag: Option<&str>) -> anyhow::Result<Vec<Agent>> {
     if let Some(list) = flag {
         return harness::parse_agent_list(list);
@@ -146,7 +147,7 @@ fn resolve_agents(root: &Path, flag: Option<&str>) -> anyhow::Result<Vec<Agent>>
         .and_then(|m| m.agents)
         .map(|ids| harness::from_ids(&ids))
         .filter(|a| !a.is_empty())
-        .unwrap_or_else(|| Agent::ALL.to_vec()))
+        .unwrap_or_else(|| Agent::LEGACY_DEFAULT.to_vec()))
 }
 
 /// `(stop, post_edit)` hook state per agent.

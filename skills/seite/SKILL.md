@@ -30,7 +30,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
-- This skill drives the `seite` CLI. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`). If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.

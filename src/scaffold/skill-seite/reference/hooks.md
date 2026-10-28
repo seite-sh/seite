@@ -8,4 +8,4 @@ Hooks run `seite check` for the agent: after each file edit (`seite check --file
 
 On Windows the hook commands need a POSIX shell (Git Bash).
 
-Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). When the project has its own copy, the plugin's copy stays quiet.
+Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). The plugin's end-of-turn check runs only after an edit inside the site, and the plugin's hooks stay quiet when the project has its own copy.

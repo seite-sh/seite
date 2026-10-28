@@ -40,14 +40,6 @@ Added the seite check hooks to .claude/settings.json
 .cursor/rules/features.mdc
 .cursor/rules/private-collections.mdc
 opencode.json (permissions for OpenCode)
-.github/instructions/seo-requirements.instructions.md
-.github/instructions/templates.instructions.md
-.github/instructions/i18n.instructions.md
-.github/instructions/data-files.instructions.md
-.github/instructions/shortcodes.instructions.md
-.github/instructions/config-reference.instructions.md
-.github/instructions/features.instructions.md
-.github/instructions/private-collections.instructions.md
 .opencode/commands/seite.md (slash command → skill)
 .gemini/commands/seite.toml (slash command → skill)
 .agents/skills/seite/SKILL.md (/seite skill)
@@ -60,7 +52,6 @@ Project instructions (context rules index)
 .opencode/plugins/seite-check.js (seite check hooks for OpenCode)
 .cursor/hooks.json (seite check hooks for Cursor)
 .gemini/settings.json (seite check hooks for Gemini CLI)
-.github/hooks/seite.json (seite check hooks for GitHub Copilot)
 
 ==> .agents/skills/seite/SKILL.md <==
 ---
@@ -95,7 +86,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
-- This skill drives the `seite` CLI. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`). If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
@@ -180,7 +171,7 @@ Hooks run `seite check` for the agent: after each file edit (`seite check --file
 
 On Windows the hook commands need a POSIX shell (Git Bash).
 
-Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). When the project has its own copy, the plugin's copy stays quiet.
+Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). The plugin's end-of-turn check runs only after an edit inside the site, and the plugin's hooks stay quiet when the project has its own copy.
 
 ==> .agents/skills/seite/reference/landing.md <==
 # /seite landing [page]
@@ -441,7 +432,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
-- This skill drives the `seite` CLI. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`). If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
@@ -526,7 +517,7 @@ Hooks run `seite check` for the agent: after each file edit (`seite check --file
 
 On Windows the hook commands need a POSIX shell (Git Bash).
 
-Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). When the project has its own copy, the plugin's copy stays quiet.
+Hooks that came with the seite Claude Code plugin (`/plugin install seite@seite`) are not in the project files: `seite hooks` neither lists nor removes them. Turn them off by disabling the plugin in `/plugin` (or `claude plugin disable seite@seite`). The plugin's end-of-turn check runs only after an edit inside the site, and the plugin's hooks stay quiet when the project has its own copy.
 
 ==> .claude/skills/seite/reference/landing.md <==
 # /seite landing [page]
@@ -806,76 +797,6 @@ Activate the `seite` skill (.agents/skills/seite/SKILL.md) and follow its Routin
   }
 }
 
-==> .github/hooks/seite.json <==
-{
-  "version": 1,
-  "hooks": {
-    "Stop": [
-      {
-        "type": "command",
-        "bash": "command -v seite >/dev/null 2>&1 && seite check --hook copilot || true",
-        "timeoutSec": 120
-      }
-    ],
-    "PostToolUse": [
-      {
-        "type": "command",
-        "matcher": "edit|create|Edit|Write|MultiEdit",
-        "bash": "command -v seite >/dev/null 2>&1 && seite check --hook copilot --post-edit || true",
-        "timeoutSec": 30
-      }
-    ]
-  }
-}
-
-==> .github/instructions/config-reference.instructions.md <==
----
-applyTo: "seite.toml"
----
-[… body of rule `config-reference` elided …]
-
-==> .github/instructions/data-files.instructions.md <==
----
-applyTo: "data/**"
----
-[… body of rule `data-files` elided …]
-
-==> .github/instructions/features.instructions.md <==
----
-applyTo: "content/**,templates/**"
----
-[… body of rule `features` elided …]
-
-==> .github/instructions/i18n.instructions.md <==
----
-applyTo: "content/**,templates/**,data/i18n/**"
----
-[… body of rule `i18n` elided …]
-
-==> .github/instructions/private-collections.instructions.md <==
----
-applyTo: "seite.toml,content/**"
----
-[… body of rule `private-collections` elided …]
-
-==> .github/instructions/seo-requirements.instructions.md <==
----
-applyTo: "templates/**"
----
-[… body of rule `seo-requirements` elided …]
-
-==> .github/instructions/shortcodes.instructions.md <==
----
-applyTo: "content/**,templates/shortcodes/**"
----
-[… body of rule `shortcodes` elided …]
-
-==> .github/instructions/templates.instructions.md <==
----
-applyTo: "templates/**"
----
-[… body of rule `templates` elided …]
-
 ==> .opencode/commands/seite.md <==
 ---
 description: "Work on this seite static site — write or edit content, check and fix errors, audit SEO and accessibility, preview, build, deploy, design the theme or brand, build landing pages, add collections, upgrade seite, and manage the check hooks. Use for any change to content/, templates/, data/, static/, public/, or seite.toml."
@@ -954,13 +875,12 @@ Custom instructions the user wrote.
 | OpenCode | `opencode.json`, `.opencode/plugins/seite-check.js` | None |
 | Cursor | `.cursor/cli.json`, `.cursor/hooks.json` | Trust the workspace (`cursor-agent --trust` or answer the prompt) |
 | Gemini CLI | `.gemini/settings.json` | Trust the folder (`gemini trust` or the prompt) and approve the project hooks when asked |
-| GitHub Copilot | `.github/hooks/seite.json` | Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders) |
 <!-- /seite:agent-setup -->
 
 ## Context Rules
 
 <!-- seite:context-rules -->
-Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`). Claude Code, Cursor and GitHub Copilot load them automatically for matching files; other agents should read the matching guides before editing:
+Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`). Claude Code and Cursor load them automatically for matching files; other agents should read the matching guides before editing:
 
 - `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`
 - `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`

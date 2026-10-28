@@ -10,22 +10,26 @@
 //!   <https://github.com/vercel-labs/skills>).
 //! - `claude-plugin`: a Claude Code plugin in `<dir>`: `.claude-plugin/plugin.json`,
 //!   `skills/seite/` (Claude frontmatter, with `argument-hint`), and
-//!   `hooks/hooks.json` (the same two-tier `seite check --hook claude` hooks
-//!   `seite init` writes, silent outside a seite site). No MCP server: coding
-//!   agents use the CLI. <https://code.claude.com/docs/en/plugins-reference>
+//!   `hooks/hooks.json` (the two-tier `seite check --hook claude` hooks of
+//!   `seite init`, with `--plugin`: silent outside a seite site, turn-end
+//!   check only after an edit inside the site, standing down when the project
+//!   runs its own; see `cli::harness_hooks`). No MCP server: coding agents
+//!   use the CLI. <https://code.claude.com/docs/en/plugins-reference>
 //! - `repo`: what this repository checks in, at `<dir>` = the repo root:
 //!   `skills/seite/`, `plugins/seite/`, and the marketplace manifest
 //!   `.claude-plugin/marketplace.json`. `tests/integration/skill_export.rs`
 //!   fails when the checked-in copy differs from a fresh render.
 //!
 //! Files under the paths an export owns that it no longer renders are removed,
-//! so a dropped reference file doesn't linger.
+//! so a dropped reference file doesn't linger, but only inside a skill
+//! directory whose `SKILL.md` carries seite's `# seite-skill-version` marker
+//! (anything else is refused, so a mistyped target can't lose files).
 
 use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum};
 
-use crate::cli::harness::{self, Agent, Skill, SkillFrontmatter};
+use crate::cli::harness::{self, Skill, SkillFrontmatter};
 use crate::output::human;
 
 /// Regenerates the copy checked into this repository.
@@ -148,11 +152,11 @@ fn plugin_files(base: &str) -> Vec<(String, String)> {
             join(base, ".claude-plugin/plugin.json"),
             harness::pretty_json(&plugin_json()),
         ),
-        // `{"hooks": {"Stop": […], "PostToolUse": […]}}`: exactly the hooks
-        // `seite init` merges into `.claude/settings.json`.
+        // `{"hooks": {"Stop": […], "PostToolUse": […]}}`: the hooks `seite
+        // init` merges into `.claude/settings.json`, marked `--plugin`.
         (
             join(base, "hooks/hooks.json"),
-            crate::cli::harness_hooks::new_hook_file(Agent::Claude),
+            crate::cli::harness_hooks::plugin_hooks_json(),
         ),
     ];
     files.extend(skill_dir_files(
@@ -234,6 +238,19 @@ fn collect_files(path: &Path, out: &mut Vec<PathBuf>) {
 pub fn export(dir: &Path, format: ExportFormat) -> anyhow::Result<(usize, usize)> {
     std::fs::create_dir_all(dir)?;
     let stale = stale_files(dir, format);
+    // Delete only inside directories that hold seite's own skill.
+    for owned in owned_paths(format) {
+        let owned = dir.join(owned);
+        if owned.is_dir()
+            && stale.iter().any(|p| p.starts_with(&owned))
+            && !is_seite_skill_dir(&owned)
+        {
+            anyhow::bail!(
+                "refusing to delete files in {}: its SKILL.md is not the seite skill (no `# seite-skill-version` line); pick an empty or seite-owned directory",
+                owned.display()
+            );
+        }
+    }
     for path in &stale {
         crate::safe_fs::remove(dir, path)?;
     }
@@ -247,6 +264,11 @@ pub fn export(dir: &Path, format: ExportFormat) -> anyhow::Result<(usize, usize)
         written += 1;
     }
     Ok((written, stale.len()))
+}
+
+/// Whether `dir/SKILL.md` is a seite skill (carries the version marker).
+fn is_seite_skill_dir(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("SKILL.md")).is_ok_and(|t| harness::extract_version(&t) > 0)
 }
 
 pub fn run(args: &ExportArgs) -> anyhow::Result<()> {
@@ -319,13 +341,13 @@ mod tests {
             .unwrap();
         assert_eq!(
             stop,
-            "command -v seite >/dev/null 2>&1 && seite check --hook claude || true"
+            "command -v seite >/dev/null 2>&1 && seite check --hook claude --plugin || true"
         );
         let post = &hooks["hooks"]["PostToolUse"][0];
         assert_eq!(post["matcher"], "Write|Edit|MultiEdit");
         assert_eq!(
             post["hooks"][0]["command"],
-            "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit || true"
+            "command -v seite >/dev/null 2>&1 && seite check --hook claude --post-edit --plugin || true"
         );
     }
 
@@ -360,6 +382,12 @@ mod tests {
         let dir = tmp.path();
         std::fs::create_dir_all(dir.join("seite/reference")).unwrap();
         std::fs::write(dir.join("seite/reference/gone.md"), "old").unwrap();
+        // Not seite's skill directory: nothing is deleted.
+        std::fs::write(dir.join("seite/SKILL.md"), "---\nname: seite\n---\nmine\n").unwrap();
+        let err = export(dir, ExportFormat::Skills).unwrap_err().to_string();
+        assert!(err.contains("refusing to delete"), "{err}");
+        assert!(dir.join("seite/reference/gone.md").exists());
+        std::fs::write(dir.join("seite/SKILL.md"), "# seite-skill-version: 1\n").unwrap();
         std::fs::write(dir.join("unrelated.md"), "keep").unwrap();
         let (written, removed) = export(dir, ExportFormat::Skills).unwrap();
         assert_eq!(written, render(ExportFormat::Skills).len());

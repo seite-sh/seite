@@ -54,6 +54,17 @@ impl Agent {
         Agent::Copilot,
     ];
 
+    /// What a project with no stored agent selection (from before the
+    /// selection existed) is maintained for: the agents seite 0.20 knew.
+    /// Agents added later are opt-in there (`seite upgrade --agents`).
+    pub const LEGACY_DEFAULT: [Agent; 5] = [
+        Agent::Claude,
+        Agent::Codex,
+        Agent::Opencode,
+        Agent::Cursor,
+        Agent::Gemini,
+    ];
+
     /// This agent's row in [`PROVIDERS`].
     pub fn spec(self) -> &'static AgentSpec {
         match self {

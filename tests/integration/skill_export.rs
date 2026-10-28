@@ -120,50 +120,69 @@ fn test_check_hook_silent_outside_site() {
     }
 }
 
-/// Inside a site whose `.claude/settings.json` already runs seite's hooks
-/// (`seite init`), the plugin's copy (`CLAUDE_PLUGIN_ROOT` set) stays quiet;
-/// the project's own copy still reports.
+/// The plugin's copy (`--plugin`): its turn-end check runs only after its
+/// post-edit hook saw an edit inside the site, and both stand down when the
+/// project's `.claude/settings.json` or `.claude/settings.local.json` runs the
+/// same hook. The project's own hooks never stand down.
 #[test]
-fn test_check_hook_plugin_copy_defers_to_project_hook() {
+fn test_check_hook_plugin_copy_scoping_and_dedupe() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "site", "Hook Dedupe", "posts");
     let site = tmp.path().join("site");
-    fs::write(
-        site.join("content/posts/broken.md"),
-        "---\ntitle: [unclosed\n---\nbody\n",
-    )
-    .unwrap();
-    let run = |plugin_root: Option<&str>| {
-        let mut cmd = page_cmd();
-        cmd.args(["check", "--hook", "claude"])
+    let broken = site.join("content/posts/broken.md");
+    fs::write(&broken, "---\ntitle: [unclosed\n---\nbody\n").unwrap();
+    let marker = site.join(seite::cli::harness_hooks::PLUGIN_EDIT_MARKER);
+    let edit_input = serde_json::json!({
+        "cwd": site.display().to_string(),
+        "tool_name": "Edit",
+        "tool_input": { "file_path": broken.display().to_string() }
+    })
+    .to_string();
+    let run = |extra: &[&str], stdin: &str| {
+        let mut args = vec!["check", "--hook", "claude"];
+        args.extend_from_slice(extra);
+        let output = page_cmd()
+            .args(&args)
             .current_dir(&site)
             .env_remove("CLAUDE_PROJECT_DIR")
             .env_remove("CURSOR_PROJECT_DIR")
             .env_remove("GEMINI_PROJECT_DIR")
-            .env_remove("CLAUDE_PLUGIN_ROOT")
-            .write_stdin(r#"{"stop_hook_active":false}"#);
-        if let Some(root) = plugin_root {
-            cmd.env("CLAUDE_PLUGIN_ROOT", root);
-        }
-        cmd.output().unwrap()
+            .write_stdin(stdin.to_string())
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{args:?}");
+        String::from_utf8(output.stdout).unwrap()
     };
-    let project = run(None);
-    assert!(project.status.success());
-    assert!(
-        String::from_utf8_lossy(&project.stdout).contains("additionalContext"),
-        "{}",
-        String::from_utf8_lossy(&project.stdout)
-    );
-    let plugin = run(Some("/plugins/seite"));
-    assert!(plugin.status.success());
-    assert!(plugin.stdout.is_empty());
+    let stop = r#"{"stop_hook_active":false}"#;
 
-    // Without the project hook, the plugin's copy reports.
+    // Project hooks (from `seite init`) always report.
+    assert!(run(&[], stop).contains("additionalContext"));
+    // Plugin turn end without an edit this turn: nothing, even with errors.
+    assert!(run(&["--plugin"], stop).is_empty());
+    // Plugin post-edit arms the turn-end check but stays quiet (the project
+    // runs its own after-edit hook); its turn end stands down too, and
+    // clears the marker.
+    assert!(run(&["--post-edit", "--plugin"], &edit_input).is_empty());
+    assert!(marker.is_file());
+    assert!(run(&["--plugin"], stop).is_empty());
+    assert!(!marker.exists());
+
+    // Without project hooks the plugin's copy reports, once per edited turn.
     page_cmd()
         .args(["hooks", "off", "--agents", "claude"])
         .current_dir(&site)
         .assert()
         .success();
-    let plugin = run(Some("/plugins/seite"));
-    assert!(String::from_utf8_lossy(&plugin.stdout).contains("additionalContext"));
+    let post = run(&["--post-edit", "--plugin"], &edit_input);
+    assert!(post.contains("additionalContext"), "{post}");
+    assert!(post.contains("Output of `seite check` about this site's files"));
+    let end = run(&["--plugin"], stop);
+    assert!(end.contains("additionalContext"), "{end}");
+    assert!(run(&["--plugin"], stop).is_empty());
+
+    // `.claude/settings.local.json` counts as the project's own hook.
+    let local = seite::cli::harness_hooks::new_hook_file(seite::cli::harness::Agent::Claude);
+    fs::write(site.join(".claude/settings.local.json"), local).unwrap();
+    assert!(run(&["--post-edit", "--plugin"], &edit_input).is_empty());
+    assert!(run(&["--plugin"], stop).is_empty());
 }

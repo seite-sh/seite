@@ -150,9 +150,15 @@ This copies the `seite` skill (`SKILL.md` and its `reference/` files) from the `
 /plugin install seite@seite
 ```
 
-From a shell, `claude plugin marketplace add seite-sh/seite` and `claude plugin install seite@seite`. The plugin carries the `/seite` skill and the same two hooks as `.claude/settings.json` (after each edit, and at the end of a turn). It adds no MCP server.
+From a shell, `claude plugin marketplace add seite-sh/seite` and `claude plugin install seite@seite`. The plugin carries the `/seite` skill and the same two hooks as `.claude/settings.json` (after each edit, and at the end of a turn), run as `seite check --hook claude --plugin`. It adds no MCP server.
 
-A plugin's hooks fire in every project where it is enabled, so they cost almost nothing outside a seite site. `command -v seite` is a shell builtin, and `seite check --hook claude` looks for a `seite.toml` in the working directory and its parents. Without one, it exits 0 and prints nothing, and it skips the update check and telemetry. In a site whose `.claude/settings.json` already has seite's hooks (from `seite init` or `seite hooks on`), the plugin's copy steps aside, so each check runs once. `seite hooks` manages only the project's hooks; turn the plugin's hooks off by disabling the plugin in `/plugin`.
+A plugin's hooks fire in every project where it is enabled, including repositories you only cloned, so the plugin's copy is scoped tightly:
+
+- Outside a seite site it costs almost nothing. `command -v seite` is a shell builtin, and `seite check --hook claude --plugin` looks for a `seite.toml` in the working directory and its parents. Without one, it exits 0 and prints nothing, and it skips the update check and telemetry.
+- The end-of-turn check runs only in a turn where the agent edited a file inside the site. The after-edit hook leaves a marker in `.seite/cache/`, and the end-of-turn hook runs only when it finds the marker, which it removes.
+- When the project's `.claude/settings.json` or `.claude/settings.local.json` already runs seite's hooks (from `seite init` or `seite hooks on`), the plugin's copy steps aside, so each check runs once.
+
+Every hook message starts with a line saying it is `seite check` output about the site's files, and each diagnostic line is cut at 300 characters, since diagnostics quote file content. `seite hooks` manages only the project's hooks; turn the plugin's hooks off by disabling the plugin in `/plugin`.
 
 Both installs need the `seite` CLI on your `PATH` (`curl -fsSL https://seite.sh/install.sh | sh`). The skill checks for it and asks before installing it. They come from the repository's default branch, so they can be newer than your installed `seite`; `seite self-update` brings the binary up to date. `seite upgrade --agents …` later adds the full set (rules, permissions, project hooks) for a project.
 
@@ -166,7 +172,7 @@ seite upgrade --mcp       # also wire in the MCP server
 seite upgrade --agent     # upgrade, then print (or launch an agent with) a brief of the release notes to apply
 ```
 
-Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, refreshes `.seite/docs/` after a seite update, and adds `/.seite/docs/` and `/.seite/dev.json` to `.gitignore`. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`. Every file it writes or deletes must be a real file inside the project: a symlink anywhere on the path (for example a committed `.claude/skills/seite/SKILL.md` pointing elsewhere) stops the upgrade with an error naming it.
+A project with no stored agent selection (from before seite stored one) is maintained for Claude Code, Codex, OpenCode, Cursor, and Gemini CLI; upgrade adds Copilot only when `--agents` names it, and says once that it is available. Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, refreshes `.seite/docs/` after a seite update, and adds `/.seite/docs/` and `/.seite/dev.json` to `.gitignore`. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`. Every file it writes or deletes must be a real file inside the project: a symlink anywhere on the path (for example a committed `.claude/skills/seite/SKILL.md` pointing elsewhere) stops the upgrade with an error naming it.
 
 Sites from seite 0.20 and earlier also had the `theme-builder`, `brand-identity`, and `landing-page` skills and a `design-prompts` rule. `/seite theme`, `/seite brand`, and `/seite landing` replace them. Upgrade removes copies that are still exactly as seite wrote them (checked against the content hash of every released version) and keeps edited copies, with a notice shown once. It does the same for the `AGENTS.md` sections 0.20 wrote about those skills and the dev-server REPL, leaving a one-line pointer to `/seite theme`, `/seite brand`, and `/seite landing`.
 
