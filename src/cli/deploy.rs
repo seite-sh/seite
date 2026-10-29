@@ -505,9 +505,9 @@ fn run_setup(
 
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
+            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
             let workflow = deploy::generate_github_actions_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
+            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
         }
         "cloudflare" => {
@@ -516,9 +516,9 @@ fn run_setup(
 
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
+            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
             let workflow = deploy::generate_cloudflare_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
+            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
 
             human::info("Set these GitHub secrets for CI:");
@@ -531,14 +531,18 @@ fn run_setup(
 
             // Generate netlify.toml
             let netlify_config = deploy::generate_netlify_config(config);
-            std::fs::write(paths.root.join("netlify.toml"), &netlify_config)?;
+            crate::safe_fs::write(
+                &paths.root,
+                &paths.root.join("netlify.toml"),
+                &netlify_config,
+            )?;
             human::success("Created netlify.toml");
 
             // Also generate GitHub Actions workflow as an alternative
             let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
+            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
             let workflow = deploy::generate_netlify_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
+            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
 
             human::info("Set these GitHub secrets for CI:");
@@ -667,7 +671,8 @@ fn run_setup(
             let contact_value = toml::Value::try_from(&contact)?;
             doc.insert("contact".to_string(), contact_value);
             let new_contents = toml::to_string_pretty(&doc)?;
-            std::fs::write(config_path, new_contents)?;
+            let site_root = config_path.parent().unwrap_or(Path::new("."));
+            crate::safe_fs::write(site_root, config_path, new_contents)?;
             human::success("Added [contact] section to seite.toml");
         }
     }

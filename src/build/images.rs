@@ -43,6 +43,55 @@ pub fn process_images(
     process_images_with_private_filter(paths, config, false, true).map(|(manifest, _)| manifest)
 }
 
+/// Images decoded at the same time. Each may take up to
+/// `MAX_IMAGE_PIXELS` × 8 bytes (16-bit RGBA): the pixel cap bounds one
+/// image, this bounds the build (one decode per core used ~5 GB on 14 cores).
+const MAX_PARALLEL_DECODES: usize = 4;
+
+/// A counting semaphore: at most `n` holders of a [`SlotGuard`] at once.
+struct Slots {
+    free: std::sync::Mutex<usize>,
+    released: std::sync::Condvar,
+}
+
+struct SlotGuard<'a>(&'a Slots);
+
+impl Slots {
+    fn new(n: usize) -> Self {
+        Self {
+            free: std::sync::Mutex::new(n.max(1)),
+            released: std::sync::Condvar::new(),
+        }
+    }
+
+    fn acquire(&self) -> SlotGuard<'_> {
+        let mut free = self
+            .free
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while *free == 0 {
+            free = self
+                .released
+                .wait(free)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *free -= 1;
+        SlotGuard(self)
+    }
+}
+
+impl Drop for SlotGuard<'_> {
+    fn drop(&mut self) {
+        let mut free = self
+            .0
+            .free
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *free += 1;
+        self.0.released.notify_one();
+    }
+}
+
 /// Largest source image (width × height) decoded into resized copies. A
 /// decoded image takes 4 bytes per pixel and every source is decoded in
 /// parallel, so a few small PNGs claiming 10000×10000 (a "decompression
@@ -91,6 +140,7 @@ pub fn process_images_with_private_filter(
         .collect();
 
     let problems = std::sync::Mutex::new(Vec::new());
+    let decode_slots = Slots::new(MAX_PARALLEL_DECODES);
     let manifest: HashMap<String, ProcessedImage> = entries
         .par_iter()
         .filter_map(|entry| {
@@ -121,6 +171,7 @@ pub fn process_images_with_private_filter(
                 .strip_prefix(&paths.static_dir)
                 .unwrap_or(entry.path());
 
+            let _slot = decode_slots.acquire();
             match process_single_image(entry.path(), rel, &paths.output, config, &ext) {
                 Ok(processed) => {
                     let key = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));

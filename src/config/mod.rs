@@ -1059,6 +1059,12 @@ impl SiteConfig {
                 return Err((format!("{name} = \"{p}\" {PROJECT_RULE}"), key.to_string()));
             }
         }
+        if let Some(domain) = self.deploy.domain.as_deref().filter(|d| !is_domain_name(d)) {
+            return Err((
+                format!("[deploy] domain = \"{domain}\" must be a host name like `example.com` (letters, digits, `-`, `.`)"),
+                "[deploy]domain".into(),
+            ));
+        }
         for t in &self.taxonomies {
             if !is_plain_identifier(&t.name) {
                 return Err((
@@ -1388,6 +1394,19 @@ pub fn is_project_name(value: &str) -> bool {
         && value
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// A host name for `[deploy] domain` (passed to `netlify domains:add` and
+/// Cloudflare's API): dot-separated labels of letters, digits and `-`, no
+/// label starting or ending with `-`.
+pub fn is_domain_name(value: &str) -> bool {
+    value.len() <= 253
+        && value.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
 }
 
 const PROJECT_RULE: &str = "must be lowercase letters, digits or `-` (at most 63)";

@@ -263,17 +263,23 @@ pub fn apply_theme(
         )));
     };
 
-    std::fs::create_dir_all(templates_dir)?;
+    // Never through a symlink: agents may run `seite theme apply` without
+    // asking, and a cloned repository could link base.html (or templates/)
+    // to a file outside the project.
+    let confined = |e: anyhow::Error| PageError::Other(format!("{e:#}"));
+    crate::safe_fs::create_dir_all(project_root, templates_dir).map_err(confined)?;
     let base_path = templates_dir.join("base.html");
+    crate::safe_fs::guard(project_root, &base_path).map_err(confined)?;
     let backup = if base_path.exists() && active_theme(project_root, templates_dir) == "custom" {
         let backup_path = next_backup_path(&base_path);
-        std::fs::copy(&base_path, &backup_path)?;
+        let current = std::fs::read(&base_path)?;
+        crate::safe_fs::write(project_root, &backup_path, current).map_err(confined)?;
         Some(backup_path)
     } else {
         None
     };
 
-    std::fs::write(&base_path, html)?;
+    crate::safe_fs::write(project_root, &base_path, html).map_err(confined)?;
     let stylesheet = match stylesheet {
         Some((rel, css)) => write_stylesheet(project_root, static_dir, rel, css)?,
         None => None,

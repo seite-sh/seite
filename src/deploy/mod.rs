@@ -659,11 +659,8 @@ pub fn try_fix_check(
             })
         }
         "Netlify site" => {
-            let site_name = paths
-                .root
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("my-site");
+            let site_name = project_name_from_dir(&paths.root);
+            let site_name = site_name.as_deref().unwrap_or("my-site");
             Some(FixAction {
                 prompt: format!("Create Netlify site '{site_name}'?"),
                 manual_instructions: vec![
@@ -1282,8 +1279,13 @@ pub fn detect_cloudflare_project(paths: &ResolvedPaths) -> Option<String> {
             }
         }
     }
-    // The directory name, as a project name (`My Site` → `my-site`).
-    let dir = paths.root.file_name()?.to_str()?.to_ascii_lowercase();
+    project_name_from_dir(&paths.root)
+}
+
+/// The site directory's name as a project/site name (`My Site` →
+/// `my-site`), or `None` when nothing valid is left.
+pub fn project_name_from_dir(root: &Path) -> Option<String> {
+    let dir = root.file_name()?.to_str()?.to_ascii_lowercase();
     let slug: String = dir
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })

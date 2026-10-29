@@ -703,10 +703,10 @@ fn save_installed_theme(
     body: &str,
 ) -> anyhow::Result<PathBuf> {
     let themes_dir = root.join("templates").join("themes");
-    std::fs::create_dir_all(&themes_dir)?;
+    crate::safe_fs::create_dir_all(root, &themes_dir)?;
 
     let dest = themes_dir.join(format!("{theme_name}.tera"));
-    std::fs::write(&dest, body)?;
+    crate::safe_fs::write(root, &dest, body)?;
     Ok(dest)
 }
 
@@ -768,8 +768,9 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
     }
     let exported = build_export_content(&content, description);
 
-    let themes_dir = PathBuf::from("templates").join("themes");
-    std::fs::create_dir_all(&themes_dir)?;
+    let root = std::env::current_dir()?;
+    let themes_dir = root.join("templates").join("themes");
+    crate::safe_fs::create_dir_all(&root, &themes_dir)?;
 
     let dest = themes_dir.join(format!("{name}.tera"));
     if dest.exists() {
@@ -780,7 +781,7 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
-    std::fs::write(&dest, exported)?;
+    crate::safe_fs::write(&root, &dest, exported)?;
 
     for css in &inlined {
         human::info(&format!("Inlined {css} into the exported theme"));
