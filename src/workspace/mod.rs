@@ -133,6 +133,14 @@ impl WorkspaceConfig {
             }
         }
         for site in &self.sites {
+            if let Some(why) = crate::config::dir_outside_project(&site.path, true) {
+                return Err(PageError::Workspace(format!(
+                    "site '{}': path = \"{}\" {why}",
+                    site.name, site.path
+                )));
+            }
+        }
+        for site in &self.sites {
             let Some(output_dir) = &site.output_dir else {
                 continue;
             };

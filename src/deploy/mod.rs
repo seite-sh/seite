@@ -1217,6 +1217,11 @@ pub fn deploy_cloudflare(
     project: &str,
     preview: bool,
 ) -> Result<Option<String>> {
+    if !crate::config::is_project_name(project) {
+        return Err(PageError::Deploy(format!(
+            "invalid Cloudflare Pages project name '{project}' (lowercase letters, digits, `-`)"
+        )));
+    }
     let output_dir = &paths.output;
 
     let mut args = vec![
@@ -1267,7 +1272,9 @@ pub fn detect_cloudflare_project(paths: &ResolvedPaths) -> Option<String> {
                 if trimmed.starts_with("name") {
                     if let Some(val) = trimmed.split('=').nth(1) {
                         let name = val.trim().trim_matches('"').trim_matches('\'');
-                        if !name.is_empty() {
+                        // wrangler.toml is repository content: use only a
+                        // valid project name (it reaches wrangler's argv).
+                        if crate::config::is_project_name(name) {
                             return Some(name.to_string());
                         }
                     }
@@ -1275,11 +1282,17 @@ pub fn detect_cloudflare_project(paths: &ResolvedPaths) -> Option<String> {
             }
         }
     }
-    paths
-        .root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string())
+    // The directory name, as a project name (`My Site` → `my-site`).
+    let dir = paths.root.file_name()?.to_str()?.to_ascii_lowercase();
+    let slug: String = dir
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .chars()
+        .take(63)
+        .collect();
+    crate::config::is_project_name(&slug).then_some(slug)
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,6 +1304,11 @@ pub fn deploy_netlify(
     site_id: Option<&str>,
     preview: bool,
 ) -> Result<Option<String>> {
+    if let Some(id) = site_id.filter(|id| !crate::config::is_project_name(id)) {
+        return Err(PageError::Deploy(format!(
+            "invalid Netlify site name or ID '{id}' (lowercase letters, digits, `-`)"
+        )));
+    }
     let output_dir = &paths.output;
 
     let mut args = vec!["deploy", "--dir", output_dir.to_str().unwrap_or("dist")];
@@ -2187,7 +2205,8 @@ fn cloudflare_list_domains(project: &str) -> Result<Vec<String>> {
     })?;
 
     let url = format!(
-        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{}/domains",
+        urlencoding::encode(project)
     );
 
     let mut response = ureq::get(&url)
@@ -2231,7 +2250,8 @@ pub fn cloudflare_attach_domain(project: &str, domain: &str) -> Result<bool> {
     })?;
 
     let url = format!(
-        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{project}/domains"
+        "https://api.cloudflare.com/client/v4/accounts/{account_id}/pages/projects/{}/domains",
+        urlencoding::encode(project)
     );
 
     let body = serde_json::json!({ "name": domain });
@@ -3765,7 +3785,13 @@ compatibility_date = "2026-01-01"
             .path()
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|s| s.to_string());
+            // As a project name: lowercase, other characters → `-`.
+            .map(|s| {
+                s.to_ascii_lowercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+                    .trim_matches('-')
+                    .to_string()
+            });
         assert_eq!(project, expected);
     }
 
@@ -4064,7 +4090,13 @@ target = "github-pages"
             .path()
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|s| s.to_string());
+            // As a project name: lowercase, other characters → `-`.
+            .map(|s| {
+                s.to_ascii_lowercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+                    .trim_matches('-')
+                    .to_string()
+            });
         assert_eq!(project, dir_name);
     }
 
@@ -5361,7 +5393,13 @@ target = "github-pages"
             .path()
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|s| s.to_string());
+            // As a project name: lowercase, other characters → `-`.
+            .map(|s| {
+                s.to_ascii_lowercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+                    .trim_matches('-')
+                    .to_string()
+            });
         assert_eq!(project, dir_name);
     }
 
@@ -5377,7 +5415,13 @@ target = "github-pages"
             .path()
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|s| s.to_string());
+            // As a project name: lowercase, other characters → `-`.
+            .map(|s| {
+                s.to_ascii_lowercase()
+                    .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+                    .trim_matches('-')
+                    .to_string()
+            });
         assert_eq!(project, dir_name);
     }
 

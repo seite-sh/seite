@@ -54,7 +54,7 @@ pub struct DeployArgs {
     pub no_commit: bool,
 }
 
-const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve`";
+const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve` (if your default branch is not main or master, deploy with --no-commit)";
 
 pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
@@ -289,6 +289,9 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     // --- Deploy subdomain collections ---
+    // A subdomain that didn't deploy fails the command (after the rest ran):
+    // it may hold password-protected content that is now out of date.
+    let mut subdomain_failures: Vec<String> = Vec::new();
     for collection in config.subdomain_collections() {
         let subdomain = collection.subdomain.as_ref().unwrap();
         let subdomain_output = paths.subdomain_output(&collection.name);
@@ -298,6 +301,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 "Subdomain output for '{subdomain}' not found at {} — skipping",
                 subdomain_output.display()
             ));
+            subdomain_failures.push(format!("{subdomain}: no build output"));
             continue;
         }
 
@@ -324,7 +328,8 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
                         Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
                         Err(e) => {
-                            human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                            human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"));
+                            subdomain_failures.push(format!("{subdomain}: {e}"));
                         }
                     }
                 } else {
@@ -332,6 +337,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         "No deploy_project for subdomain '{subdomain}'. \
                          Set deploy_project on the collection or deploy.project globally."
                     ));
+                    subdomain_failures.push(format!("{subdomain}: no deploy_project"));
                 }
             }
             "netlify" => {
@@ -343,7 +349,8 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                     Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
                     Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
                     Err(e) => {
-                        human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                        human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"));
+                        subdomain_failures.push(format!("{subdomain}: {e}"));
                     }
                 }
             }
@@ -375,7 +382,16 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         "url": deploy_url,
         "preview": preview,
         "dry_run": false,
+        "subdomain_failures": subdomain_failures,
     }));
+    if !subdomain_failures.is_empty() {
+        return Err(PageError::Deploy(format!(
+            "{} subdomain deploy(s) failed: {}",
+            subdomain_failures.len(),
+            subdomain_failures.join("; ")
+        ))
+        .into());
+    }
     Ok(())
 }
 

@@ -119,31 +119,27 @@ enum UpgradeAction {
 }
 
 impl UpgradeAction {
+    /// One line per change, with its verb: the `--check` list and the
+    /// migration brief, where an agent must tell a deletion from a creation.
     fn describe(&self) -> Vec<String> {
         match self {
-            UpgradeAction::Create { description, .. } => {
-                vec![description.clone()]
-            }
+            UpgradeAction::Create { description, .. } => vec![format!("Write {description}")],
             UpgradeAction::MergeJson { additions, .. } => additions.clone(),
             UpgradeAction::Update { description, .. }
-            | UpgradeAction::SyncInstructionsBlock { description, .. } => {
-                vec![description.clone()]
+            | UpgradeAction::SyncInstructionsBlock { description, .. }
+            | UpgradeAction::InjectToml { description, .. } => {
+                vec![format!("Update {description}")]
             }
-            UpgradeAction::InjectToml { description, .. } => {
-                vec![description.clone()]
+            UpgradeAction::Append { description, .. } => vec![format!("Append to {description}")],
+            UpgradeAction::StampProjectVersion { description } => vec![description.clone()],
+            UpgradeAction::MigrateAgentInstructions { description, .. } => {
+                vec![format!("Migrate to {description}")]
             }
-            UpgradeAction::Append { description, .. } => {
-                vec![description.clone()]
+            UpgradeAction::PruneLegacySections { description, .. } => {
+                vec![format!("Prune {description}")]
             }
-            UpgradeAction::StampProjectVersion { description } => {
-                vec![description.clone()]
-            }
-            UpgradeAction::MigrateAgentInstructions { description, .. }
-            | UpgradeAction::PruneLegacySections { description, .. }
-            | UpgradeAction::Remove { description, .. }
-            | UpgradeAction::WriteFiles { description, .. } => {
-                vec![description.clone()]
-            }
+            UpgradeAction::Remove { description, .. } => vec![format!("Remove {description}")],
+            UpgradeAction::WriteFiles { description, .. } => vec![format!("Write {description}")],
         }
     }
 
@@ -370,19 +366,68 @@ fn og_feature_notice(root: &Path) -> Option<Notice> {
     })
 }
 
-/// One-time notice that GitHub Copilot can be set up, for projects not
-/// maintained for it (upgrade never adds an agent on its own).
+/// One-time notice that GitHub Copilot and Gemini CLI can be set up, for
+/// projects not maintained for them (upgrade never adds an agent on its own;
+/// every 0.20 project stores its agents, so 0.21's new ones are opt-in).
 fn copilot_notice(agents: &[Agent]) -> Option<Notice> {
-    (!agents.contains(&Agent::Copilot)).then(|| {
+    let missing: Vec<Agent> = [Agent::Gemini, Agent::Copilot]
+        .into_iter()
+        .filter(|a| !agents.contains(a))
+        .collect();
+    (!missing.is_empty()).then(|| {
         let mut ids: Vec<&str> = agents.iter().map(|a| a.id()).collect();
-        ids.push(Agent::Copilot.id());
+        ids.extend(missing.iter().map(|a| a.id()));
+        let labels: Vec<&str> = missing.iter().map(|a| a.label()).collect();
         Notice {
             key: "copilot-agent".into(),
             text: format!(
-                "GitHub Copilot is supported: `seite upgrade --agents {}` adds its hooks (.github/hooks/seite.json) and path rules (.github/instructions/); Copilot reads AGENTS.md and the .agents/skills/seite skill. See https://seite.sh/docs/agent#github-copilot",
-                ids.join(",")
+                "{} {} supported: `seite upgrade --agents {}` adds {} hooks, `/seite` skill and context rules (Gemini CLI: GEMINI.md and .gemini/; GitHub Copilot: .github/hooks/seite.json and .github/instructions/). See https://seite.sh/docs/agent",
+                labels.join(" and "),
+                if missing.len() == 1 { "is" } else { "are" },
+                ids.join(","),
+                if missing.len() == 1 { "its" } else { "their" },
             ),
         }
+    })
+}
+
+/// One-time notice for password-protected sites: 0.21 checks that each
+/// Cloudflare Pages project fails closed, but only when deploying.
+fn access_fail_closed_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    config.access.is_some().then(|| Notice {
+        key: "access-fail-closed".into(),
+        text: "Password access: on Workers Free, a Cloudflare Pages project set to fail open serves protected files without the password Worker once the daily request allowance runs out. Your next `seite deploy` checks every protected project and offers to set it to Fail closed (or set Workers & Pages → project → Settings → Runtime yourself). See https://seite.sh/docs/deployment#set-every-protected-project-to-fail-closed".into(),
+    })
+}
+
+/// seite.toml that 0.20 accepted but 0.21's stricter checks refuse (e.g.
+/// `output_dir = "public"`, a dotted collection name): the upgrade itself
+/// succeeds, the next build would not. Keyed by the message, so a different
+/// problem shows again.
+fn config_invalid_notice(root: &Path) -> Option<Notice> {
+    let path = root.join("seite.toml");
+    let err = crate::config::SiteConfig::load_with_diagnostics(&path).err()?;
+    let message = match &err {
+        crate::error::PageError::Diagnostics(d) => d
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("; "),
+        other => other.to_string(),
+    };
+    let hash: String = {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(message.as_bytes())
+            .iter()
+            .take(6)
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    Some(Notice {
+        key: format!("config-invalid-{hash}"),
+        text: format!("seite.toml needs a change before it builds with 0.21: {message} (see `seite explain config-invalid`)"),
     })
 }
 
@@ -1005,10 +1050,11 @@ fn build_brief(
     }
     brief.push_str(
         "\n## What to do\n\n\
-         1. Read the release notes above. For every manual migration step or breaking change they describe, apply it to this site's content, templates, and config. Skip steps that don't apply to this site.\n\
-         2. Keep the site's own customizations: edit, don't overwrite, files the site has changed (templates, `seite.toml`, content).\n\
-         3. Run `seite check` and then `seite build`. Fix what they report (`seite explain <code>` describes a code) and re-run until both are clean.\n\
-         4. Report what you changed, and anything you left for the user to decide.\n",
+         1. Read the release notes above. For every breaking change and required migration step they describe, apply it to this site's content, templates, and config. Skip steps that don't apply to this site.\n\
+         2. Do not turn on optional features (\"opt-ins\", e.g. full-text search, social cards, scheduled publishing, more agents) and do not deploy or publish (`seite deploy` pushes to production): list those for the user to decide.\n\
+         3. Keep the site's own customizations: edit, don't overwrite, files the site has changed (templates, `seite.toml`, content).\n\
+         4. Run `seite check` and then `seite build`. Fix what they report (`seite explain <code>` describes a code) and re-run until both are clean.\n\
+         5. Report what you changed, and anything you left for the user to decide.\n",
     );
     if sites.len() > 1 {
         brief.push_str(
@@ -1366,6 +1412,8 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(og_feature_notice(root));
     notices.extend(timezone_notice(root));
     notices.extend(copilot_notice(&agents));
+    notices.extend(access_fail_closed_notice(root));
+    notices.extend(config_invalid_notice(root));
     let shown = meta::load(root)
         .and_then(|m| m.notices_shown)
         .unwrap_or_default();
@@ -4017,7 +4065,7 @@ mod tests {
             content: "content".into(),
             description: "test file".into(),
         };
-        assert_eq!(action.describe(), vec!["test file"]);
+        assert_eq!(action.describe(), vec!["Write test file"]);
     }
 
     #[test]
@@ -4037,7 +4085,10 @@ mod tests {
             content: "new section".into(),
             description: "README.md (added section)".into(),
         };
-        assert_eq!(action.describe(), vec!["README.md (added section)"]);
+        assert_eq!(
+            action.describe(),
+            vec!["Append to README.md (added section)"]
+        );
     }
 
     #[test]

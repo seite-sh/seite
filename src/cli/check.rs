@@ -390,7 +390,7 @@ fn check_site_full(
     //    subdomain sites) move; every source path (root, content, templates,
     //    data, ...) stays the real site's, so links such as
     //    `/content/pages/x.md` resolve exactly as they do in `seite build`.
-    let (scratch, _scratch_paths, built) = scratch_build(&config, &paths, include_drafts)?;
+    let (scratch, _scratch_paths, built) = scratch_build(&config, &paths, include_drafts, false)?;
     let opts = BuildOptions {
         include_drafts,
         incremental: false,
@@ -460,11 +460,12 @@ fn check_site_full(
         if let Some(tw) = future_config.build.tailwind.as_mut() {
             tw.never_run = true;
         }
-        let found: Vec<Diagnostic> = match build::build_site(&future_config, &future_paths, &opts) {
-            Ok(result) => result.diagnostics.into_iter().collect(),
-            Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
-            Err(_) => Vec::new(),
-        };
+        let found: Vec<Diagnostic> =
+            match build::build_site_scratch(&future_config, &future_paths, &opts) {
+                Ok(result) => result.diagnostics.into_iter().collect(),
+                Err(PageError::Diagnostics(d)) => d.into_iter().collect(),
+                Err(_) => Vec::new(),
+            };
         let wanted: Vec<std::path::PathBuf> = scheduled
             .iter()
             .map(|p| p.strip_prefix(root).unwrap_or(p).to_path_buf())
@@ -501,10 +502,16 @@ fn check_site_full(
 /// as `/content/pages/x.md` resolve exactly as in `seite build`, and the
 /// project's `dist/` is never touched. The output lives as long as the
 /// returned `TempDir` (shared by `seite check` and `seite audit`).
+///
+/// `image_variants`: decode `[images]` sources into resized copies. `seite
+/// audit` needs them (its findings read the generated `srcset` and file
+/// sizes); `seite check` and the hooks pass false, so images are only
+/// checked from their headers (see [`build::build_site_scratch`]).
 pub fn scratch_build(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
     include_drafts: bool,
+    image_variants: bool,
 ) -> crate::error::Result<(
     tempfile::TempDir,
     crate::config::ResolvedPaths,
@@ -529,7 +536,11 @@ pub fn scratch_build(
         include_drafts,
         incremental: false,
     };
-    let built = build::build_site(&config, &scratch_paths, &opts);
+    let built = if image_variants {
+        build::build_site(&config, &scratch_paths, &opts)
+    } else {
+        build::build_site_scratch(&config, &scratch_paths, &opts)
+    };
     Ok((scratch, scratch_paths, built))
 }
 

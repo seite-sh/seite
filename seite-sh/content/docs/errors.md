@@ -120,7 +120,7 @@ category_id = "DIC_kwDO…"
 
 **What it means:** `seite.toml` could not be loaded: a TOML syntax error, or a value of the wrong type. Nothing else can be checked until it loads.
 
-**Common causes:** an unclosed quote or bracket, a string where a number or boolean is expected (`minify = "yes"`), a duplicated table or key. `[comments]` and `[newsletter]` values are also checked against the provider's format (they end up in HTML): `repo` must be `owner/name`, giscus `repo_id`/`category_id` and the Buttondown `username` may contain only letters, digits, `_` and `-`, the Kit `form_id` is a number, and `mapping`, `issue_term`, `theme` and `loading` take only the values listed in [Shortcodes](/docs/shortcodes#comments).
+**Common causes:** an unclosed quote or bracket, a string where a number or boolean is expected (`minify = "yes"`), a duplicated table or key. `[comments]` and `[newsletter]` values are also checked against the provider's format (they end up in HTML): `repo` must be `owner/name`, giscus `repo_id`/`category_id` and the Buttondown `username` may contain only letters, digits, `_` and `-`, the Kit `form_id` is a number, and `mapping`, `issue_term`, `theme` and `loading` take only the values listed in [Shortcodes](/docs/shortcodes#comments). Values that become paths, URLs or command arguments follow fixed rules (see `[build]` in [Configuration](/docs/configuration)): directory settings inside the project with no `..`, an `output_dir` that neither contains nor lies inside a source directory (`output_dir = "public"` is refused), plain collection/taxonomy names and language codes, URL prefixes without `.`, `..`, `:` or backslashes, and deploy project names of lowercase letters, digits and `-`.
 
 **How to fix:** fix the line and column named in the diagnostic.
 
@@ -337,6 +337,14 @@ extra:
 **Common causes:** a language was added to `seite.toml` (`[languages.xx]`) without translating the data files, or a typo in a language code.
 
 **How to fix:** add the missing language key to the value named in the message, or remove the language from `seite.toml` if the site is not translated yet. See [multi-language sites](/docs/i18n).
+
+## image-too-large
+
+**What it means:** with `[images]` set, an image under `static/` is larger than 40 megapixels (width × height, read from the file header). seite does not decode it, so it gets no resized copies, WebP/AVIF variants or `srcset`; the original is still published as it is. Reported as a warning. Decoding takes 4 bytes per pixel for every image at once, so a few small files claiming huge dimensions would otherwise take gigabytes of memory in `seite build`, `seite check` and agent hooks.
+
+**Common causes:** an uncompressed camera or design export, a scan, or a deliberately crafted file in a cloned repository.
+
+**How to fix:** scale the image down (for example to at most 8000×5000) and replace the file in `static/`. If you meant to publish it unprocessed, the warning is harmless.
 
 ## link-to-scheduled
 
@@ -571,6 +579,14 @@ font = "static/fonts/NotoSansJP-Bold.ttf"
 
 **How to fix:** use one of the available shortcodes listed in the message, or create `templates/shortcodes/<name>.html`.
 
+## symlinked-source
+
+**What it means:** a file or directory under `content/` or `templates/` (including `templates/shortcodes/`) is a symbolic link. The build reads and publishes those files (HTML, `.md` copies, `llms-full.txt`, the search index), so a committed link such as `content/posts/x.md -> ~/notes.md` would publish a file from outside the project. seite refuses every symlink there, even one that stays inside the project. An error: `seite build`, `seite check` and the dev server stop before reading any content or template.
+
+**Common causes:** a post or template linked from another folder or repository instead of copied; a cloned repository that contains such links.
+
+**How to fix:** replace the link with a copy of the file: delete the link and copy the target into its place.
+
 ## taxonomy-reserved-name
 
 **What it means:** a `[[taxonomies]]` entry is named after a frontmatter field seite reads itself (`title`, `date`, `extra`, `series`, `draft`, …). Pages assign terms with a top-level key named after the taxonomy, and that key already means something else, so the taxonomy never gets terms. Reported as a warning.
@@ -620,6 +636,12 @@ seite trust            # --revoke undoes it, --list shows trusted projects
 ```
 
 The decision is stored per user (in seite's config directory, keyed by the site's path), never in the repository. Coding agents are not allowed to run `seite trust`. In CI, set `SEITE_TRUST_PROJECT=1` in the build step's environment (the workflows seite generates do this for Tailwind sites); see [Tailwind CSS](/docs/configuration#tailwind-css).
+
+## template-cycle
+
+**What it means:** templates `include`, `extends` or `import` each other in a loop (`loop.html` includes `loop.html`, or `a.html` includes `b.html`, which includes `a.html`). Rendering such a template never ends, so seite reports an error instead of rendering. The location is the tag that leads back into the loop; the message lists the chain. Templates you don't provide count with their built-in version (a built-in `post.html` extends your `base.html`). Only quoted template names are followed; tags inside `{# comments #}` and `{% raw %}` are ignored.
+
+**How to fix:** remove the include, extends or import that leads back to a template already being rendered. To reuse markup in several templates, move it into a partial that includes nothing of the templates using it, or into a macro.
 
 ## template-markdown-link
 

@@ -1,6 +1,6 @@
 ==> (upgrade changes) <==
-Canonical AGENTS.md project instructions
-GEMINI.md (@AGENTS.md import for Gemini CLI)
+Migrate to Canonical AGENTS.md project instructions
+Write GEMINI.md (@AGENTS.md import for Gemini CLI)
 Allowed Edit(static/**) in .claude/settings.json
 Allowed Edit(seite.toml) in .claude/settings.json
 Allowed Bash(seite check:*) in .claude/settings.json
@@ -25,39 +25,39 @@ Allowed Bash(seite preview:*) in .claude/settings.json
 Allowed Bash(seite preview) in .claude/settings.json
 Allowed Bash(seite og preview:*) in .claude/settings.json
 Added the seite check hooks to .claude/settings.json
-.claude/rules/seo-requirements.md
-.claude/rules/templates.md
-.claude/rules/i18n.md
-.claude/rules/data-files.md
-.claude/rules/shortcodes.md
-.claude/rules/config-reference.md
-.claude/rules/features.md
-.claude/rules/private-collections.md
-.claude/launch.json (dev server for the Claude desktop app's preview)
-.claude/skills/seite/SKILL.md (/seite skill)
-.claude/skills/seite/reference/ (12 files)
-.cursor/cli.json (Cursor CLI permissions for seite)
-.cursor/rules/seo-requirements.mdc
-.cursor/rules/templates.mdc
-.cursor/rules/i18n.mdc
-.cursor/rules/data-files.mdc
-.cursor/rules/shortcodes.mdc
-.cursor/rules/config-reference.mdc
-.cursor/rules/features.mdc
-.cursor/rules/private-collections.mdc
-opencode.json (permissions for OpenCode)
-.opencode/commands/seite.md (slash command → skill)
-.gemini/commands/seite.toml (slash command → skill)
-.agents/skills/seite/SKILL.md (/seite skill)
-.agents/skills/seite/reference/ (12 files)
-.seite/docs/ (19 doc pages for seite 0.21.0)
-.gitignore (/.seite/docs/, /.seite/dev.json, /.seite/cache/, /.seite/upgrade-brief.md)
-Project instructions (per-agent setup table)
-Project instructions (context rules index)
-.codex/hooks.json (seite check hooks for Codex CLI)
-.opencode/plugins/seite-check.js (seite check hooks for OpenCode)
-.cursor/hooks.json (seite check hooks for Cursor)
-.gemini/settings.json (seite check hooks for Gemini CLI)
+Write .claude/rules/seo-requirements.md
+Write .claude/rules/templates.md
+Write .claude/rules/i18n.md
+Write .claude/rules/data-files.md
+Write .claude/rules/shortcodes.md
+Write .claude/rules/config-reference.md
+Write .claude/rules/features.md
+Write .claude/rules/private-collections.md
+Write .claude/launch.json (dev server for the Claude desktop app's preview)
+Write .claude/skills/seite/SKILL.md (/seite skill)
+Write .claude/skills/seite/reference/ (12 files)
+Write .cursor/cli.json (Cursor CLI permissions for seite)
+Write .cursor/rules/seo-requirements.mdc
+Write .cursor/rules/templates.mdc
+Write .cursor/rules/i18n.mdc
+Write .cursor/rules/data-files.mdc
+Write .cursor/rules/shortcodes.mdc
+Write .cursor/rules/config-reference.mdc
+Write .cursor/rules/features.mdc
+Write .cursor/rules/private-collections.mdc
+Write opencode.json (permissions for OpenCode)
+Write .opencode/commands/seite.md (slash command → skill)
+Write .gemini/commands/seite.toml (slash command → skill)
+Write .agents/skills/seite/SKILL.md (/seite skill)
+Write .agents/skills/seite/reference/ (12 files)
+Write .seite/docs/ (19 doc pages for seite 0.21.0)
+Append to .gitignore (/.seite/docs/, /.seite/dev.json, /.seite/cache/, /.seite/upgrade-brief.md)
+Update Project instructions (per-agent setup table)
+Update Project instructions (context rules index)
+Write .codex/hooks.json (seite check hooks for Codex CLI)
+Write .opencode/plugins/seite-check.js (seite check hooks for OpenCode)
+Write .cursor/hooks.json (seite check hooks for Cursor)
+Write .gemini/settings.json (seite check hooks for Gemini CLI)
 
 ==> .agents/skills/seite/SKILL.md <==
 ---

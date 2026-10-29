@@ -249,7 +249,17 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | `tailwind` | table | absent | Compile a Tailwind CSS v4 stylesheet with the standalone CLI (see [Tailwind CSS](#tailwind-css)) |
 | `search` | `"full"` \| `"basic"` \| `false` | `"basic"` | Client-side search. `"full"`: full-text index of page text under `search/` (see [Search](#search)); `"basic"`: `search-index.json` only (titles, descriptions, tags); `false`: no index and no search box. `seite init` writes `"full"`; existing sites keep `"basic"` until they add it |
 
-Directory settings (`output_dir`, `content_dir`, `template_dir`, `static_dir`, `data_dir`, `public_dir`, a collection's `directory`, and in `seite-workspace.toml` a site's `output_dir` and `shared_data`/`shared_static`/`shared_templates`) must be relative paths that name a directory inside the project: no `..`, no absolute path, no backslashes. Every full build empties `output_dir`, so it may not be or contain a source directory and may not lie inside `.git` or `.seite`. A setting that breaks these rules is a `config-invalid` error at its line in the config file.
+Directory settings (`output_dir`, `content_dir`, `template_dir`, `static_dir`, `data_dir`, `public_dir`, a collection's `directory`, and in `seite-workspace.toml` a site's `output_dir` and `shared_data`/`shared_static`/`shared_templates`) must be relative paths that name a directory inside the project: no `..`, no absolute path, no backslashes. Every full build empties `output_dir`, so it may not be, contain or lie inside a source directory (`output_dir = "public"`, a Hugo habit, is refused because it is the `public_dir`; so is `static/out`) and may not lie inside `.git` or `.seite`. A workspace site's `path` must be relative and inside the workspace.
+
+Other values that become output paths, command arguments or URLs follow fixed rules too:
+
+- Collection and taxonomy names and language codes (`[languages.<code>]`): letters, digits, `-` or `_`.
+- URL prefixes (a collection's or taxonomy's `url_prefix`): a URL path like `/blog`, with no `.`, `..` or empty segments, no `:` and no backslashes (`url_prefix = "https://example.com/posts"` is an error; use `subdomain` for another host).
+- Deploy project names (`[deploy] project`, a collection's `deploy_project`, and a `name` read from `wrangler.toml`): lowercase letters, digits or `-`, at most 63 characters. (A `wrangler.toml` name that breaks the rule is ignored.)
+
+A setting that breaks these rules is a `config-invalid` error at its line in the config file.
+
+A source directory (content, templates, static, data, public, or a collection's `directory`) reached through a symlink is refused, and so is any symlink inside `content/` or `templates/` (`symlinked-source`), so a cloned site can't publish files from elsewhere on your machine. Replace a link with a copy of the file.
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.

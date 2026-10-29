@@ -1000,6 +1000,16 @@ impl SiteConfig {
             ));
         }
         for (name, value) in &dirs[1..] {
+            // Output inside a source dir copies itself into the next build.
+            if out.starts_with(&dir_components(value)) {
+                return Err((
+                    format!(
+                        "[build] output_dir = \"{}\" is inside {name} = \"{value}\": the next build would copy the output into itself; pick a separate directory (e.g. \"dist\")",
+                        b.output_dir
+                    ),
+                    "[build]output_dir".into(),
+                ));
+            }
             if dir_components(value).starts_with(&out) {
                 return Err((
                     format!(
@@ -1036,6 +1046,17 @@ impl SiteConfig {
                     ),
                     "url_prefix".into(),
                 ));
+            }
+        }
+        let projects = std::iter::once(("[deploy]project", self.deploy.project.as_deref())).chain(
+            self.collections
+                .iter()
+                .map(|c| ("deploy_project", c.deploy_project.as_deref())),
+        );
+        for (key, project) in projects {
+            if let Some(p) = project.filter(|p| !is_project_name(p)) {
+                let name = key.trim_start_matches("[deploy]");
+                return Err((format!("{name} = \"{p}\" {PROJECT_RULE}"), key.to_string()));
             }
         }
         for t in &self.taxonomies {
@@ -1358,6 +1379,19 @@ pub fn dir_outside_project(value: &str, allow_empty: bool) -> Option<&'static st
     (!named && !allow_empty).then_some("must name a directory inside the project")
 }
 
+/// A Cloudflare Pages project or Netlify site name/ID: lowercase letters,
+/// digits and `-`, 1–63 characters. These reach `wrangler`/`netlify`
+/// argument lists (on Windows through a `.cmd` shim) and API URLs.
+pub fn is_project_name(value: &str) -> bool {
+    (1..=63).contains(&value.len())
+        && value.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && value
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+const PROJECT_RULE: &str = "must be lowercase letters, digits or `-` (at most 63)";
+
 const IDENTIFIER_RULE: &str =
     "must be letters, digits, `-` or `_` (it becomes part of output paths)";
 
@@ -1408,6 +1442,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn project_names_are_validated() {
+        for ok in ["my-site", "site2", "a"] {
+            assert!(is_project_name(ok), "{ok}");
+        }
+        for bad in [
+            "x&calc",
+            "My-Site",
+            "-x",
+            "",
+            "a b",
+            "x\"y",
+            &"a".repeat(64),
+        ] {
+            assert!(!is_project_name(bad), "{bad}");
+        }
+        let mut config = make_config("https://example.com", vec![]);
+        config.deploy.project = Some("x&calc".into());
+        assert!(config.validate_dirs().is_err());
+    }
+
+    #[test]
     fn url_path_problem_rules() {
         for ok in ["", "/", "/blog", "/docs/v2/", "blog"] {
             assert_eq!(url_path_problem(ok), None, "{ok}");
@@ -1436,6 +1491,7 @@ mod tests {
             ("site", "site/content"),
             ("Content", "content"),
             (".git/x", "content"),
+            ("content/out", "content"),
         ] {
             config.build.output_dir = out.into();
             config.build.content_dir = content.into();

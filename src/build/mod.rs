@@ -349,6 +349,28 @@ pub fn build_site(
     paths: &ResolvedPaths,
     opts: &BuildOptions,
 ) -> Result<BuildResult> {
+    build_site_with(config, paths, opts, true)
+}
+
+/// [`build_site`] into an output that is thrown away (`seite check`, agent
+/// hooks, MCP `seite_check`): `[images]` sources are only checked from their
+/// headers (`image-too-large`), never decoded into resized copies, since
+/// nothing reads them. `seite audit` uses [`build_site`]: its findings look
+/// at the generated `srcset` and image sizes.
+pub fn build_site_scratch(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+) -> Result<BuildResult> {
+    build_site_with(config, paths, opts, false)
+}
+
+fn build_site_with(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+    image_variants: bool,
+) -> Result<BuildResult> {
     // Subdomain collections are removed from the main output and rebuilt as
     // independent root-mounted sites.
     let has_subdomains = config.has_subdomains();
@@ -439,7 +461,17 @@ pub fn build_site(
     // update the existing output in place. They never clean it, so a failure
     // there can leave a mix of old and freshly rendered pages but never wipes
     // the site; the next successful build brings it back in sync.
-    guard_sources(paths)?;
+    guard_sources(config, paths)?;
+    // Before anything reads a content file or template: symlinked sources
+    // (they could publish files from outside the project) and template
+    // include/extends/import cycles (rendering one never ends).
+    let mut refused = symlinked_source_diagnostics(paths);
+    refused.extend(templates::template_cycle_diagnostics(&paths.templates));
+    if !refused.is_empty() {
+        let mut refused = refused.relative_to(&paths.root);
+        refused.sort();
+        return Err(PageError::Diagnostics(refused));
+    }
     guard_output(&paths.root, &paths.output)?;
     clean_stale_build_dirs(&paths.output);
     let in_place = changeset
@@ -483,6 +515,7 @@ pub fn build_site(
         &changeset,
         &paths.output,
         &main_external,
+        image_variants,
     )?;
 
     let mut warnings = result.warnings;
@@ -498,6 +531,7 @@ pub fn build_site(
             &mut warnings,
             &mut staged,
             &mut diagnostics,
+            image_variants,
         )?
     } else {
         Vec::new()
@@ -716,17 +750,60 @@ impl Drop for StagedOutputs {
     }
 }
 
+/// Every symlink (file or directory) under the content and template
+/// directories, as a `symlinked-source` error. The build reads and
+/// publishes those files, so a committed `content/posts/x.md ->
+/// ~/notes.md` or `templates/shortcodes/x.html -> ~/.aws/credentials` would
+/// put files from outside the project into `dist/`, `llms-full.txt` and the
+/// search index. Every symlink is refused, even one that stays inside the
+/// project: one rule, nothing to resolve, and the same as [`guard_sources`]
+/// for whole directories. (static/, public/ and data/ walks only take
+/// regular files, so their symlinks are skipped already.)
+pub(crate) fn symlinked_source_diagnostics(paths: &ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
+    for dir in [&paths.content, &paths.templates] {
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in WalkDir::new(dir)
+            .min_depth(1)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path_is_symlink())
+        {
+            found.push(
+                Diagnostic::error(
+                    "symlinked-source",
+                    "this file is a symlink: seite does not build from symlinked content or templates (it could publish files from outside the project)",
+                )
+                .with_file(entry.path())
+                .with_hint("replace the link with a copy of the file"),
+            );
+        }
+    }
+    found
+}
+
 /// The build copies and publishes what the source directories hold: refuse
 /// one inside the project that goes through a symlink (a committed
 /// `static -> ~/.ssh` would put private files into `dist/` and the deploy).
-fn guard_sources(paths: &crate::config::ResolvedPaths) -> Result<()> {
-    for dir in [
+fn guard_sources(config: &SiteConfig, paths: &crate::config::ResolvedPaths) -> Result<()> {
+    let collection_dirs: Vec<PathBuf> = config
+        .collections
+        .iter()
+        .map(|c| paths.content.join(&c.directory))
+        .collect();
+    let dirs = [
         &paths.content,
         &paths.templates,
         &paths.static_dir,
         &paths.data_dir,
         &paths.public_dir,
-    ] {
+    ]
+    .into_iter()
+    .chain(collection_dirs.iter());
+    for dir in dirs {
         if dir.starts_with(&paths.root) && fs::symlink_metadata(dir).is_ok() {
             crate::safe_fs::guard(&paths.root, dir).map_err(|e| {
                 PageError::Build(format!(
@@ -919,6 +996,7 @@ fn refresh_subdomain_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths
 /// For each collection with `subdomain` set, construct a synthetic `SiteConfig`
 /// with only that collection and call the build pipeline on it with a separate
 /// output directory and subdomain-specific `base_url`.
+#[allow(clippy::too_many_arguments)]
 fn build_subdomain_sites(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -927,6 +1005,7 @@ fn build_subdomain_sites(
     warnings: &mut Vec<String>,
     staged: &mut StagedOutputs,
     diagnostics: &mut Diagnostics,
+    image_variants: bool,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -966,6 +1045,7 @@ fn build_subdomain_sites(
             &None,
             &subdomain_output,
             &external,
+            image_variants,
         )?;
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
@@ -1096,6 +1176,9 @@ fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> b
 /// `display_output`: the final output directory. `paths.output` may be a
 /// staging directory that is renamed to `display_output` after the build;
 /// reported paths (e.g. broken links on generated pages) use the final one.
+///
+/// `image_variants`: false for scratch builds ([`build_site_scratch`]).
+#[allow(clippy::too_many_arguments)]
 fn build_site_inner(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -1104,6 +1187,7 @@ fn build_site_inner(
     changeset: &Option<cache::ChangeSet>,
     display_output: &Path,
     external_sources: &HashMap<PathBuf, String>,
+    image_variants: bool,
 ) -> Result<BuildResult> {
     // Taxonomy URL collisions would make pages overwrite each other (also
     // reported when seite.toml is loaded; repeated here for every build path).
@@ -3022,11 +3106,17 @@ fn build_site_inner(
     }
     let image_manifest = if let Some(ref images_config) = config.images {
         if !images_config.widths.is_empty() {
-            images::process_images_with_private_filter(
+            let (manifest, image_problems) = images::process_images_with_private_filter(
                 paths,
                 images_config,
                 config.access.is_some(),
-            )?
+                image_variants,
+            )?;
+            for d in image_problems {
+                warnings.push(d.message.clone());
+                diagnostics.push(d);
+            }
+            manifest
         } else {
             HashMap::new()
         }

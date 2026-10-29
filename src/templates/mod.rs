@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::config::CollectionConfig;
@@ -979,25 +980,202 @@ fn reachable_templates(template_dir: &Path, name: &str, source: &str) -> Vec<(St
 /// Template names in the `include` / `extends` / `import` tags of `source`
 /// (every quoted string in the tag, so `include ["a.html", "b.html"]` works).
 fn template_references(source: &str) -> Vec<String> {
+    template_references_located(source)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// [`template_references`] with the 1-based line of each tag. Tags inside
+/// `{# comments #}` and `{% raw %}` blocks are not references.
+fn template_references_located(source: &str) -> Vec<(String, usize)> {
     let mut names = Vec::new();
-    let mut rest = source;
-    while let Some(start) = rest.find("{%") {
+    let mut pos = 0;
+    while pos < source.len() {
+        let rest = &source[pos..];
+        let next_tag = rest.find("{%");
+        let next_comment = rest.find("{#");
+        let start = match (next_tag, next_comment) {
+            (Some(t), Some(c)) if c < t => {
+                // Skip the comment (an unclosed one runs to the end).
+                match rest[c + 2..].find("#}") {
+                    Some(end) => {
+                        pos += c + 2 + end + 2;
+                        continue;
+                    }
+                    None => break,
+                }
+            }
+            (Some(t), _) => t,
+            (None, _) => break,
+        };
         let after = &rest[start + 2..];
         let Some(end) = after.find("%}") else { break };
         let tag = after[..end].trim_start_matches('-').trim_start();
+        let tag_end = pos + start + 2 + end + 2;
+        if tag.starts_with("raw") {
+            // Everything up to `{% endraw %}` is literal text.
+            let mut scan = tag_end;
+            loop {
+                let Some(open) = source[scan..].find("{%") else {
+                    return names;
+                };
+                let inner = &source[scan + open + 2..];
+                let Some(close) = inner.find("%}") else {
+                    return names;
+                };
+                scan += open + 2 + close + 2;
+                let inner_tag =
+                    inner[..close].trim_matches(|c: char| c == '-' || c.is_whitespace());
+                if inner_tag == "endraw" {
+                    break;
+                }
+            }
+            pos = scan;
+            continue;
+        }
         if ["include", "extends", "import"]
             .iter()
             .any(|kw| tag.starts_with(kw))
         {
+            let line = source[..pos + start].matches('\n').count() + 1;
             for (i, part) in tag.split(['"', '\'']).enumerate() {
                 if i % 2 == 1 && !part.is_empty() && !part.contains("..") {
-                    names.push(part.to_string());
+                    names.push((part.to_string(), line));
                 }
             }
         }
-        rest = &after[end + 2..];
+        pos = tag_end;
     }
     names
+}
+
+/// Report every cycle of `include` / `extends` / `import` tags among the
+/// templates the build renders: the user's `*.html` under `template_dir`
+/// (including `shortcodes/`), and the embedded template of a name the user
+/// does not provide (an embedded `post.html` extends the user's
+/// `base.html`). Tera recurses into such a cycle until the stack overflows
+/// and aborts the process (`seite check`, the dev server, the MCP server),
+/// so the build reports a `template-cycle` error instead of rendering. Only
+/// literal names are followed (`{% include name_var %}` cannot be resolved
+/// statically). Symlinked templates are skipped (`symlinked-source`).
+pub fn template_cycle_diagnostics(template_dir: &Path) -> Diagnostics {
+    let mut user = std::collections::BTreeMap::new();
+    if template_dir.is_dir() {
+        for entry in walkdir::WalkDir::new(template_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
+        {
+            let Ok(rel) = entry.path().strip_prefix(template_dir) else {
+                continue;
+            };
+            let name = rel.to_string_lossy().replace('\\', "/");
+            // Unreadable templates are reported as template-parse.
+            if let Ok(source) = std::fs::read_to_string(entry.path()) {
+                user.insert(name, (entry.path().to_path_buf(), source));
+            }
+        }
+    }
+    cycle_diagnostics(&user, embedded_default)
+}
+
+/// Cycles among `user` templates (name → file, source), following
+/// references to `fallback(name)` sources for names `user` lacks. One
+/// `template-cycle` error per cycle, at the tag in a user template that
+/// closes it (or, when an embedded template closes it, at the user
+/// template's tag that leads into the embedded one).
+pub(crate) fn cycle_diagnostics(
+    user: &std::collections::BTreeMap<String, (std::path::PathBuf, String)>,
+    fallback: impl Fn(&str) -> Option<&'static str>,
+) -> Diagnostics {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        Active,
+        Done,
+    }
+    struct Walk<'a, F> {
+        user: &'a std::collections::BTreeMap<String, (std::path::PathBuf, String)>,
+        fallback: F,
+        marks: HashMap<String, Mark>,
+        // (template, line of the tag that leads to the next one)
+        stack: Vec<(String, usize)>,
+        found: Diagnostics,
+    }
+    impl<F: Fn(&str) -> Option<&'static str>> Walk<'_, F> {
+        fn source(&self, name: &str) -> Option<String> {
+            match self.user.get(name) {
+                Some((_, source)) => Some(source.clone()),
+                None => (self.fallback)(name).map(str::to_string),
+            }
+        }
+        fn visit(&mut self, name: &str) {
+            let Some(source) = self.source(name) else {
+                return;
+            };
+            self.marks.insert(name.to_string(), Mark::Active);
+            self.stack.push((name.to_string(), 0));
+            for (target, line) in template_references_located(&source) {
+                if let Some(top) = self.stack.last_mut() {
+                    top.1 = line;
+                }
+                match self.marks.get(&target) {
+                    Some(Mark::Done) => {}
+                    Some(Mark::Active) => self.report(&target),
+                    None => self.visit(&target),
+                }
+            }
+            self.stack.pop();
+            self.marks.insert(name.to_string(), Mark::Done);
+        }
+        fn report(&mut self, target: &str) {
+            let Some(from) = self.stack.iter().position(|(n, _)| n == target) else {
+                return;
+            };
+            let cycle = &self.stack[from..];
+            let chain: Vec<&str> = cycle
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .chain([target])
+                .collect();
+            // The last user template on the cycle: its tag leads (back) on.
+            let Some((file, line)) = cycle
+                .iter()
+                .rev()
+                .find_map(|(n, line)| self.user.get(n).map(|(path, _)| (path.clone(), *line)))
+            else {
+                return;
+            };
+            self.found.push(
+                Diagnostic::error(
+                    "template-cycle",
+                    format!(
+                        "template cycle: {} (rendering it would never end)",
+                        chain.join(" → ")
+                    ),
+                )
+                .with_file(file)
+                .with_line(line)
+                .with_hint(
+                    "remove the include, extends or import that leads back to a template already being rendered",
+                ),
+            );
+        }
+    }
+    let mut walk = Walk {
+        user,
+        fallback,
+        marks: HashMap::new(),
+        stack: Vec::new(),
+        found: Diagnostics::new(),
+    };
+    for name in user.keys() {
+        if !walk.marks.contains_key(name) {
+            walk.visit(name);
+        }
+    }
+    walk.found
 }
 
 /// 1-based column of the first `{{ page.url }}.md` in `line` (whitespace

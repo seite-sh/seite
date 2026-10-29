@@ -440,7 +440,7 @@ seite og preview / --out card.png    # the site card (`/<lang>/` for a language'
 
 | Flag | Description |
 |------|-------------|
-| `--out <path>` | Where to write the PNG (default: `.seite/cache/og-preview.png`) |
+| `--out <path>` | Where to write the PNG, inside the site (default: `.seite/cache/og-preview.png`); a path outside the site, or through a symlink, is refused |
 | `--template <name>` | Try another layout without editing `seite.toml`: `default`, `minimal`, or `bold` |
 
 ## seite trust

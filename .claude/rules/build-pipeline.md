@@ -11,7 +11,7 @@ Steps run in this order inside `build_site_inner` (`src/build/mod.rs`; step numb
 2. Load Tera templates (user + embedded defaults, collection-aware)
 2b. Load shortcode registry (built-in + user `templates/shortcodes/`)
 2.5. Load data files (`data/` → `{{ data.filename }}` in templates)
-2.6. Tailwind (`[build.tailwind]`, `src/build/tailwind.rs`): resolve the pinned, SHA-256-verified standalone CLI (or env `SEITE_TAILWIND_BIN`; never seite.toml), require a trusted root (`crate::trust`, else `tailwind-untrusted`), guard `input` (no symlinks, inside root), run from an empty temp cwd with `--cwd <root>` `<bin> -i <input> -o <tmp> --minify` with cwd = site root; errors (`tailwind-failed`, `tailwind-download-failed`) join `fatal`. The bytes are written in Step 10. Runs on every build (incremental too); `never_run` (check, audit, hooks, MCP check/audit) never runs it
+2.6. Tailwind (`[build.tailwind]`, `src/build/tailwind.rs`): resolve the pinned, SHA-256-verified standalone CLI (or env `SEITE_TAILWIND_BIN`; never seite.toml), require a trusted root (`crate::trust`, else `tailwind-untrusted`), guard `input` (no symlinks, inside root), run `<bin> -i <input> -o <tmp> --minify --cwd <root>` from an empty temp dir as cwd; errors (`tailwind-failed`, `tailwind-download-failed`) join `fatal`. The bytes are written in Step 10. Runs on every build (incremental too); `never_run` (check, audit, hooks, MCP check/audit) never runs it
 3. Process each collection: walk content, parse frontmatter, expand shortcodes, render markdown, detect language, resolve slugs/URLs, compute word count/reading time/excerpt/ToC, build translation map, sort; then build the `ContentModel` once (taxonomy terms, `page.related` via a term → pages index, series) and render item pages with `page.taxonomies` / `page.related` / `page.series` added
 4. Render index page(s) per language
 4b. Paginated collection index pages
@@ -68,7 +68,7 @@ struct Frontmatter {
     template: Option<String>,      // override collection default
     robots: Option<String>,        // per-page <meta name="robots">
     weight: Option<i32>,           // ordering for non-date collections
-    extra: HashMap<String, Value>, // → {{ page.extra.field }}
+    extra: IndexMap<String, Value>, // source order → {{ page.extra.field }}
     expires: Option<NaiveDate>,    // last published day (content::schedule)
     series: Option<String>,        // → page.series, /series/<slug>/
     series_order: Option<i32>,
@@ -101,7 +101,7 @@ Per collection, `content::schema::Schema::for_site` validates each parsed file (
 
 `data/` holds YAML/JSON/TOML loaded at build time → `{{ data.filename }}` in templates. Nested dirs create nested keys. Two files with same stem = build error.
 
-All 6 themes render `data.nav` (navigation) and `data.footer` (links + copyright). Internal links auto-prefixed with `{{ lang_prefix }}`; external links (with `external: true`) get `target="_blank"`.
+All 11 bundled themes render `data.nav` (navigation) and `data.footer` (links + copyright). Internal links auto-prefixed with `{{ lang_prefix }}`; external links (with `external: true`) get `target="_blank"`.
 
 UI string translations: `data/i18n/{lang}.yaml` overrides English defaults, injected as `{{ t }}`.
 
@@ -110,7 +110,7 @@ UI string translations: `data/i18n/{lang}.yaml` overrides English defaults, inje
 - Inline `{{< name(args) >}}` and body `{{% name(args) %}} markdown {{% end %}}`
 - Named args: `key="string"`, `key=42`, `key=true`
 - Expanded before markdown rendering; not expanded inside code blocks
-- Built-ins: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`, `contact_form`
+- Built-ins: `youtube`, `vimeo`, `gist`, `callout` (body), `figure`, `contact_form`, `comments` (`[comments]`), `newsletter` (`[newsletter]`)
 - User-defined: `templates/shortcodes/*.html` (override built-ins by name)
 - To add a built-in: create template in `src/shortcodes/builtins/`, add entry in `builtins.rs`
 - Diagnostics: `parser::parse_shortcodes_recovering()` reports a malformed tag, skips past it, and keeps scanning, so `ShortcodeRegistry::expand_diagnostic()` returns every `shortcode-syntax` / `shortcode-unknown` problem in a file (sorted by line/column); `expand()` still surfaces only the first

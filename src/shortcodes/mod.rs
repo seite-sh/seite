@@ -39,11 +39,30 @@ impl ShortcodeRegistry {
             known.insert(builtin.name.to_string());
         }
 
-        // Load user-defined shortcodes (override built-ins with same name)
+        // Load user-defined shortcodes (override built-ins with same name).
+        // A symlinked one is refused (`symlinked-source`, like the build): it
+        // could render a file from outside the project into pages. Cycles of
+        // includes among them are refused before anything renders
+        // (`template-cycle`: Tera would recurse until the stack overflows).
+        let mut refused = crate::diagnostics::Diagnostics::new();
+        let mut user_sources = std::collections::BTreeMap::new();
         if shortcodes_dir.exists() {
-            for entry in std::fs::read_dir(shortcodes_dir)? {
-                let entry = entry?;
+            let mut entries =
+                std::fs::read_dir(shortcodes_dir)?.collect::<std::io::Result<Vec<_>>>()?;
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
                 let path = entry.path();
+                if entry.file_type()?.is_symlink() {
+                    refused.push(
+                        Diagnostic::error(
+                            "symlinked-source",
+                            "this file is a symlink: seite does not build from symlinked content or templates (it could publish files from outside the project)",
+                        )
+                        .with_file(&path)
+                        .with_hint("replace the link with a copy of the file"),
+                    );
+                    continue;
+                }
                 if path.extension().and_then(|e| e.to_str()) == Some("html") {
                     let name = path
                         .file_stem()
@@ -64,10 +83,16 @@ impl ShortcodeRegistry {
                                 path.display()
                             ))
                         })?;
+                    user_sources.insert(template_name, (path.clone(), content));
                     known.insert(name.clone());
                     user_defined.insert(name);
                 }
             }
+        }
+        // Built-in shortcodes include nothing, so only user ones can cycle.
+        refused.extend(crate::templates::cycle_diagnostics(&user_sources, |_| None));
+        if !refused.is_empty() {
+            return Err(PageError::Diagnostics(refused));
         }
 
         Ok(Self {

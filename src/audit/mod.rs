@@ -964,7 +964,8 @@ pub fn run(opts: &AuditOptions) -> Result<Report> {
         );
         return Ok(audit(&site, opts.categories));
     }
-    let (scratch, scratch_paths, built) = crate::cli::check::scratch_build(&config, &paths, false)?;
+    let (scratch, scratch_paths, built) =
+        crate::cli::check::scratch_build(&config, &paths, false, true)?;
     let result = built.map_err(|e| {
         PageError::Build(format!(
             "the site does not build, so it can't be audited ({e}); run `seite check` and fix the errors first"

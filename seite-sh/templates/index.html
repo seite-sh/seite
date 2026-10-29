@@ -602,7 +602,7 @@
             ['d', 'turn-end hook: seite check'],
             ['o', '✓ No problems found'],
             ['k', '> ' + a.skill + ' deploy'],
-            ['o', '✓ Deployed to Cloudflare Pages']
+            ['o', '✓ Deployed successfully']
         ]);
     }
     group(document.querySelector('.agent-tabs'), 'aria-selected', function (b) { currentAgent = b.getAttribute('data-agent'); playAgent(); });
@@ -611,11 +611,11 @@
 
     // A minute with seite
     var steps = [
-        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed to ~/.local/bin']],
+        [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['o', 'info  Downloading seite-aarch64-apple-darwin.tar.gz...'], ['o', 'info  Installed seite to /Users/you/.local/bin/seite']],
         [['c', 'seite init mysite --title "My Site" --collections posts,docs,pages --deploy-target cloudflare'], ['o', "✓ Created new site in 'mysite'"], ['d', 'AGENTS.md, /seite skill, check hooks …'], ['c', 'cd mysite']],
         [['c', 'claude'], ['k', '> /seite new post "Launch"'], ['d', 'reads AGENTS.md and the /seite skill'], ['o', '✓ content/posts/2026-10-29-launch.md'], ['d', 'review the diff, then keep it']],
         [['c', 'seite check'], ['o', '✓ No problems found']],
-        [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 0 docs, 0 pages, 2 posts'], ['o', '✓ Deployed to Cloudflare Pages']]
+        [['c', 'seite deploy'], ['d', 'pre-flight checks, then the build'], ['o', '✓ Built 0 docs, 0 pages, 2 posts in 0.1s'], ['o', '✓ Deployed successfully'], ['o', 'ℹ Live at: https://mysite.pages.dev']]
     ];
     var walkPlay = player(document.getElementById('walk-term'));
     var currentStep = 0, started = false;

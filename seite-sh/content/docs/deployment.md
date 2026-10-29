@@ -79,7 +79,7 @@ seite build
 seite deploy
 ```
 
-This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" and publishes nothing.
+This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" and publishes nothing. If your repository's default branch has another name, deploy from it with `--no-commit`.
 
 ### Dry run
 
@@ -196,7 +196,9 @@ deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
 
 `subdomain_base_url` overrides the auto-derived subdomain URL. This is useful when `base_url` contains `www` (e.g., `https://www.example.com` would otherwise produce `docs.www.example.com`).
 
-`deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to. If omitted, the global `deploy.project` is used as a fallback.
+`deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to (lowercase letters, digits and `-`, at most 63 characters). If omitted, the global `deploy.project` is used as a fallback.
+
+If a subdomain fails to deploy, has no build output, or has no project (Cloudflare Pages), `seite deploy` still deploys the rest, then exits with status 1 and names each failure (`--json`: `data.subdomain_failures`).
 
 `seite deploy --dry-run` shows the full subdomain deploy plan. In a workspace, cross-site domain conflicts are detected and warned about at deploy time.
 
@@ -349,7 +351,7 @@ After `seite build`, the `dist/` directory contains everything needed:
 ```
 dist/
 ├── index.html           # Homepage
-├── index.md             # Homepage markdown
+├── index.md             # Homepage markdown (only with content/pages/index.md)
 ├── feed.xml             # RSS feed
 ├── sitemap.xml          # XML sitemap
 ├── sitemap.md           # Every page's markdown URL, for agents

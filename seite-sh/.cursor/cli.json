@@ -22,7 +22,10 @@
       "Write(templates/**)",
       "Write(static/**)",
       "Write(data/**)",
-      "Write(seite.toml)"
+      "Write(seite.toml)",
+      "Shell(seite:audit*)",
+      "Shell(seite:preview*)",
+      "Shell(seite:og preview*)"
     ],
     "deny": [
       "Read(.env)",

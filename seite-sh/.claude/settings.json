@@ -36,7 +36,12 @@
       "Bash(seite frontmatter:*)",
       "Bash(seite explain:*)",
       "Bash(seite hooks:*)",
-      "Bash(seite collection list)"
+      "Bash(seite collection list)",
+      "Bash(seite audit:*)",
+      "Bash(seite audit)",
+      "Bash(seite preview:*)",
+      "Bash(seite preview)",
+      "Bash(seite og preview:*)"
     ],
     "deny": [
       "Read(.env)",

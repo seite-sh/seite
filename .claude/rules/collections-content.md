@@ -34,7 +34,7 @@ Opt-in `[build] schedule = true` (init writes it), dated collections only: futur
 `[[taxonomies]]` (name, label, url_prefix, feed, paginate, template, term_template) adds term pages beyond the implicit `tags`; frontmatter assigns terms with a top-level key of the taxonomy's name (captured by `Frontmatter::other`). `series:` / `series_order:` frontmatter drive `page.series` and `/series/<slug>/`. `[build] related` (default 3) and per-collection `related` size `page.related`. See `.claude/rules/build-pipeline.md`.
 
 ## Singular→Plural Normalization
-`find_collection()` normalizes "post" → "posts", "doc" → "docs", "seite" → "pages"
+`find_collection()` normalizes "post" → "posts", "doc" → "docs", "page" → "pages"
 
 ## Collection Index Pages
 `content/{collection}/index.md` is extracted, injected as `{{ page.content }}` in index template. Supports `extra.redirect_to`. Paginated collections show on page 1 only. `{{ nav }}` variable available (cached from page rendering).

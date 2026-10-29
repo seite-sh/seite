@@ -76,7 +76,7 @@ cd mysite
 ```
 
 {{% callout(type="info") %}}
-All flags are optional. Run `seite init mysite` and interactive prompts will guide you through each setting. You can also add [changelog and roadmap collections](/docs/collections) later.
+All flags are optional at a terminal: run `seite init mysite` and interactive prompts guide you through each setting. Without a terminal (CI, a coding agent, a script) pass `--deploy-target github-pages|cloudflare|netlify`; the other settings fall back to defaults. You can also add [changelog and roadmap collections](/docs/collections) later.
 {{% end %}}
 
 This creates the following structure:
@@ -88,16 +88,21 @@ mysite/
 │   ├── docs/      # Documentation with sidebar navigation
 │   └── pages/     # Standalone pages (about, contact, etc.)
 ├── templates/     # Tera templates (override bundled themes)
+├── data/          # YAML/JSON/TOML data files for templates
 ├── public/        # Root-level files (favicon.ico, .well-known/, _redirects)
 ├── static/        # Static assets (CSS, JS, images) → dist/static/
 ├── seite.toml      # Site configuration
-├── AGENTS.md      # Instructions for every coding agent (+ CLAUDE.md, GEMINI.md imports)
+├── .gitignore     # Ignores dist/ and seite's generated files
+├── AGENTS.md      # Instructions for every coding agent
+├── CLAUDE.md      # Imports AGENTS.md for Claude Code (GEMINI.md: same for Gemini CLI)
+├── GEMINI.md
+├── opencode.json  # OpenCode permissions
 ├── .claude/       # Claude Code rules, /seite skill, permissions, hooks, launch.json
 ├── .cursor/       # Cursor rules, permissions, hooks
 ├── .codex/        # Codex CLI hooks
 ├── .gemini/       # Gemini CLI hooks and /seite command
-├── .opencode/     # OpenCode /seite command and hook plugin (+ opencode.json)
-├── .github/       # GitHub Copilot hooks and instructions
+├── .opencode/     # OpenCode /seite command and hook plugin
+├── .github/       # GitHub Copilot hooks and instructions; deploy workflow (GitHub Pages)
 ├── .agents/       # The /seite skill for Codex, Cursor, OpenCode, Gemini CLI, and Copilot
 └── .seite/        # Project metadata and the docs for this seite version (.seite/docs/)
 ```
@@ -143,14 +148,14 @@ This creates `content/posts/2026-02-18-my-first-post.md` (dated today) with fron
 
 ```yaml
 ---
-title: "My first post"
+title: My first post
 date: 2026-02-18
 tags:
-  - intro
-  - welcome
+- intro
+- welcome
 ---
 
-Your content here...
+Write your content here.
 ```
 
 Add a documentation page or a standalone page:
@@ -222,7 +227,7 @@ Start a dev server with live reload:
 seite serve --open
 ```
 
-The `--open` flag launches the site in your default browser automatically. The server starts at `http://localhost:3000` (auto-increments if the port is taken), displays both local and network URLs, and watches for file changes. An interactive REPL lets you run commands without restarting:
+The `--open` flag launches the site in your default browser automatically. The server starts at `http://127.0.0.1:3000` (auto-increments if the port is taken), prints its local URL (plus a network URL with `--host 0.0.0.0`), and watches for file changes. An interactive REPL lets you run commands without restarting:
 
 ```
 seite> new post "Another Post"

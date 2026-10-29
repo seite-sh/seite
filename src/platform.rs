@@ -13,12 +13,27 @@ use std::process::Command;
 /// call `Command::new("git")` directly.
 pub fn npm_cmd(name: &str) -> Command {
     if cfg!(windows) {
+        // Run the shim itself when it is on PATH: Rust escapes arguments for
+        // `.cmd`/`.bat` programs (and refuses ones it can't), whereas
+        // `cmd /C name args` hands `&`, `|` or `"` in an argument (a project
+        // name from seite.toml, a branch name) to cmd unquoted.
+        if let Some(program) = find_on_path(&[format!("{name}.cmd"), format!("{name}.exe")]) {
+            return Command::new(program);
+        }
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", name]);
         cmd
     } else {
         Command::new(name)
     }
+}
+
+/// The first of `names` found in a `PATH` directory.
+fn find_on_path(names: &[String]) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .flat_map(|dir| names.iter().map(move |n| dir.join(n)))
+        .find(|p| p.is_file())
 }
 
 /// Resolve the user's home directory in a cross-platform way.
