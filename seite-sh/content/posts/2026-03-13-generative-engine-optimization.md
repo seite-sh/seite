@@ -1,6 +1,7 @@
 ---
 title: "Generative Engine Optimization: The 5 Files AI Cites"
 date: 2026-03-13
+updated: 2026-10-29
 description: "Generative engine optimization with actual code. The 5 files, robots.txt config, and JSON-LD that make AI search engines cite your site."
 tags:
   - seo
@@ -74,7 +75,7 @@ These three techniques are the foundation of how to optimize content for ChatGPT
 
 **Source preferences vary by platform.** Wikipedia accounts for 47.9% of ChatGPT's most-cited sources, while Reddit makes up 46.7% of Perplexity's top sources. This means different AI engines weight different authority signals. Content that reads like an encyclopedia entry performs well on ChatGPT. Content with community validation and practical examples performs better on Perplexity.
 
-**Zero-click context.** [65% of Google searches now end without a click](https://sparktoro.com/blog/in-2024-we-saw-a-historic-shift-in-how-google-search-works/) to any website, according to SparkToro. AI search accelerates this trend. If your content is not cited in the AI-generated answer itself, users may never visit your site at all. GEO optimization ensures you are part of the answer, not just a link below it.
+**Zero-click context.** [Nearly 60% of Google searches ended without a click](https://sparktoro.com/blog/2024-zero-click-search-study-for-every-1000-us-google-searches-only-374-clicks-go-to-the-open-web-in-the-eu-its-360/) in 2024 (58.5% in the US, 59.7% in the EU), according to SparkToro. AI search accelerates this trend. If your content is not cited in the AI-generated answer itself, users may never visit your site at all. GEO optimization ensures you are part of the answer, not just a link below it.
 
 **Structured data.** JSON-LD schema markup (BlogPosting, Article, FAQPage) gives AI engines a machine-readable summary of your content. This is the same structured data Google uses for rich results, so implementing it serves both SEO and GEO.
 
@@ -243,11 +244,11 @@ Check your analytics for traffic from AI sources. In Google Analytics 4, filter 
 
 Check your server logs or CDN analytics for AI crawler user agents: `ChatGPT-User`, `OAI-SearchBot`, `PerplexityBot`, `ClaudeBot`, `Googlebot` (for AI Overviews). If these crawlers are not visiting your site, your `robots.txt` may be blocking them or your site may not be discoverable.
 
-Cloudflare users can check the [AI Crawl Metrics](https://developers.cloudflare.com/bots/concepts/bot-scores/) page for a breakdown of AI bot traffic.
+Cloudflare users can see a breakdown of AI bot traffic in [AI Crawl Control](https://developers.cloudflare.com/ai-crawl-control/).
 
 ### Freshness Cadence
 
-AI citations decay. Update your highest-value content quarterly. The [Princeton GEO study](https://arxiv.org/abs/2311.09735) found that freshness is a significant factor in citation likelihood. A page updated in 2026 is more citable than the same content last touched in 2024.
+Content goes stale. Review your highest-value pages quarterly, update what changed, and set `updated:` in the frontmatter so the page's `dateModified` and sitemap `lastmod` show readers and crawlers that it is current.
 
 ## Frequently Asked Questions
 

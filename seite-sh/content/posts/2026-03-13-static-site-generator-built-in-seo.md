@@ -1,6 +1,7 @@
 ---
 title: "Static Site Generator with Built-In SEO: Checklist"
 date: 2026-03-13
+updated: 2026-10-29
 description: "Not all SSGs include canonical URLs, JSON-LD, and llms.txt out of the box. Here's the 12-point checklist to evaluate any static site generator for SEO."
 tags:
   - seo
@@ -102,7 +103,7 @@ Test this by pasting your URL into the [Meta Tags debugger](https://metatags.io)
 
 ### 6. Twitter/X Card Tags
 
-Twitter/X Cards use a parallel tag system. `twitter:card = summary_large_image` when the page has an image. `twitter:card = summary` when it does not. This should switch automatically based on whether `image:` is set in frontmatter, not require a separate template condition you maintain manually.
+Twitter/X Cards use a parallel tag system. `twitter:card = summary_large_image` when the page has an image. `twitter:card = summary` when it does not. This should switch automatically, not require a separate template condition you maintain manually. In seite, a page has an image when `image:` is set in frontmatter or when a generated social card exists (`[og] generate = true`, which new sites have), so most pages get `summary_large_image`.
 
 ### 7. JSON-LD Structured Data
 
@@ -112,7 +113,7 @@ Rafael built a developer tools blog on a popular static site generator with a hi
 
 Six months of content. Zero structured data in search results.
 
-JSON-LD tells search engines and AI engines what your content *is*, not just what it says. `BlogPosting` includes the author, publish date and modified date. `Article` covers docs and evergreen content. `WebSite` covers the homepage and enables sitelinks search in Google results. This should be generated from your content model automatically, not depend on theme maintenance or a plugin someone else has to update. Verify with [Google's Rich Results Test](https://search.google.com/test/rich-results) after your first build.
+JSON-LD tells search engines and AI engines what your content *is*, not just what it says. `BlogPosting` includes the author, publish date and modified date. `Article` covers docs and evergreen content. `WebSite` covers the homepage and tells search engines the site's name. This should be generated from your content model automatically, not depend on theme maintenance or a plugin someone else has to update. Verify with [Google's Rich Results Test](https://search.google.com/test/rich-results) after your first build.
 
 ## Tier 3: Advanced SEO That Separates Good from Great
 
@@ -168,7 +169,7 @@ Here is how the major static site generators score across all 15 features (12 SE
 | Per-page robots (frontmatter) | No | Plugin | No | No | Built-in |
 | RSS autodiscovery in `<head>` | Theme | Plugin | No | No | Built-in |
 | hreflang for multilingual | Manual | Plugin | Manual | Manual | Built-in |
-| Asset fingerprinting | No | Built-in | Plugin | Built-in | Built-in |
+| Asset fingerprinting | Built-in (Hugo Pipes) | Built-in | Plugin | Built-in | Built-in |
 | Markdown alternate link | No | No | No | No | Built-in |
 | llms.txt | No | No | No | No | Built-in |
 | AI-aware robots.txt | Manual | Plugin | Manual | Manual | Built-in |

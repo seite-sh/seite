@@ -18,7 +18,7 @@ pub struct SkillArgs {
 
 #[derive(Subcommand)]
 pub enum SkillCommand {
-    /// Install a skill pack or individual skill from a URL
+    /// Install a known skill pack (seomachine, impeccable) or a single skill from a SKILL.md URL
     Install {
         /// Known pack name (e.g., "seomachine") or URL to a SKILL.md file
         source: String,
@@ -2924,7 +2924,15 @@ private = true
 
     #[test]
     fn test_impeccable_providers_default_to_all_agents() {
-        let all = ["claude", "codex", "opencode", "cursor", "gemini", "github"];
+        let all = [
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "github",
+            "antigravity",
+        ];
         assert_eq!(impeccable_providers(None), all);
         assert_eq!(impeccable_providers(Some(&[])), all);
         // Unknown ids are dropped; nothing known left means all.

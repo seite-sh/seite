@@ -28,7 +28,7 @@ pub struct UpgradeArgs {
     pub check: bool,
 
     /// Change which coding agents the project is set up for (comma-separated:
-    /// claude,codex,opencode,cursor,gemini,copilot, or all). Adds files for newly
+    /// claude,codex,opencode,cursor,gemini,copilot,antigravity, or all). Adds files for newly
     /// selected agents; files of deselected agents are left in place but no longer maintained.
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
@@ -47,7 +47,7 @@ pub struct UpgradeArgs {
     pub agent: bool,
 
     /// With --agent: the coding-agent harness to start (claude, codex,
-    /// opencode, cursor, gemini, copilot). Defaults to `SEITE_AGENT`, else claude.
+    /// opencode, cursor, gemini, copilot, antigravity). Defaults to `SEITE_AGENT`, else claude.
     #[arg(long, value_name = "HARNESS", requires = "agent")]
     pub with: Option<String>,
 }
@@ -366,11 +366,21 @@ fn og_feature_notice(root: &Path) -> Option<Notice> {
     })
 }
 
-/// One-time notice that GitHub Copilot and Gemini CLI can be set up, for
+/// One-time notice that Gemini CLI, GitHub Copilot and Antigravity CLI can be
+/// set up, for
 /// projects not maintained for them (upgrade never adds an agent on its own;
 /// every 0.20 project stores its agents, so 0.21's new ones are opt-in).
+/// "A", "A and B", "A, B and C".
+fn and_list(items: &[&str]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.to_string(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 fn copilot_notice(agents: &[Agent]) -> Option<Notice> {
-    let missing: Vec<Agent> = [Agent::Gemini, Agent::Copilot]
+    let missing: Vec<Agent> = [Agent::Gemini, Agent::Copilot, Agent::Antigravity]
         .into_iter()
         .filter(|a| !agents.contains(a))
         .collect();
@@ -378,14 +388,25 @@ fn copilot_notice(agents: &[Agent]) -> Option<Notice> {
         let mut ids: Vec<&str> = agents.iter().map(|a| a.id()).collect();
         ids.extend(missing.iter().map(|a| a.id()));
         let labels: Vec<&str> = missing.iter().map(|a| a.label()).collect();
+        let files: Vec<&str> = missing
+            .iter()
+            .map(|a| match a {
+                Agent::Gemini => "Gemini CLI: GEMINI.md and .gemini/",
+                Agent::Copilot => {
+                    "GitHub Copilot: .github/hooks/seite.json and .github/instructions/"
+                }
+                _ => "Antigravity CLI: .agents/hooks.json and .agents/rules/",
+            })
+            .collect();
         Notice {
             key: "copilot-agent".into(),
             text: format!(
-                "{} {} supported: `seite upgrade --agents {}` adds {} hooks, `/seite` skill and context rules (Gemini CLI: GEMINI.md and .gemini/; GitHub Copilot: .github/hooks/seite.json and .github/instructions/). See https://seite.sh/docs/agent",
-                labels.join(" and "),
+                "{} {} supported: `seite upgrade --agents {}` adds {} hooks, `/seite` skill and context rules ({}). See https://seite.sh/docs/agent",
+                and_list(&labels),
                 if missing.len() == 1 { "is" } else { "are" },
                 ids.join(","),
                 if missing.len() == 1 { "its" } else { "their" },
+                files.join("; "),
             ),
         }
     })
@@ -1367,13 +1388,24 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     // the cron step: its regenerated workflow already carries it.
     extend_dedup(&mut actions, check_ci_tailwind_trust(root));
 
+    // Sites that never had project instructions (0.20's `seite workspace
+    // add`, hand-made sites) get the AGENTS.md `seite init` writes. Its setup
+    // table shows MCP exactly as `check_instructions_blocks` will, so the
+    // next run finds nothing to change.
+    let agents_md_path = root.join("AGENTS.md");
+    let show_mcp = args.mcp || harness::mcp_configured(root, &agents);
+    let missing_instructions = check_missing_instructions(root, &agents, show_mcp, &actions);
+    extend_dedup(&mut actions, missing_instructions);
+
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    // A pre-0.19 project gets AGENTS.md from the migration step above; plan
-    // the shims that import it in the same run.
-    let agents_md_planned = actions
-        .iter()
-        .any(|a| matches!(a, UpgradeAction::MigrateAgentInstructions { .. }));
+    // A pre-0.19 project gets AGENTS.md from the migration step above, a
+    // site without instructions from the step just before; plan the shims
+    // that import it in the same run.
+    let agents_md_planned = actions.iter().any(|a| {
+        matches!(a, UpgradeAction::MigrateAgentInstructions { .. })
+            || a.targets_path(&agents_md_path)
+    });
     extend_dedup(
         &mut actions,
         check_agent_harness(root, &agents, args.mcp, agents_md_planned),
@@ -1401,6 +1433,10 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let (template_actions, template_notices) = check_default_templates(root);
     actions.extend(template_actions);
     notices.extend(template_notices);
+    // Rules files seite wrote: refreshed when untouched.
+    let (rule_actions, rule_notices) = check_rules_refresh(root, &agents);
+    extend_dedup(&mut actions, rule_actions);
+    notices.extend(rule_notices);
     // Bundled themes from before the seite/* partials: replaced when untouched.
     let (theme_actions, theme_notices) = check_bundled_theme_base(root);
     extend_dedup(&mut actions, theme_actions);
@@ -2127,6 +2163,276 @@ fn check_default_templates(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
 }
 
 // ---------------------------------------------------------------------------
+// Rules files (`.claude/rules/`, `.cursor/rules/`, `.github/instructions/`,
+// `.agents/rules/`)
+// ---------------------------------------------------------------------------
+
+/// SHA-256 (as [`template_hash`]) of every rendering seite has released of
+/// one rules file, per format, oldest first; the **last entry of each list is
+/// the current rendering**. `.agents/rules/` used the Claude rendering
+/// before 0.21, so its history is `claude` followed by `agents`.
+struct RuleHashes {
+    name: &'static str,
+    claude: &'static [&'static str],
+    cursor: &'static [&'static str],
+    copilot: &'static [&'static str],
+    /// `.agents/rules/` with Antigravity's frontmatter (0.21.0 on).
+    agents: &'static [&'static str],
+}
+
+/// Every released rendering of each rule in [`harness::RULES`]. Recomputed
+/// from the release tags v0.5.0..v0.20.2: before 0.20 `seite init`/`upgrade`
+/// wrapped `src/scaffold/<rule>.md` with `rules_file(paths, ..)` (the same
+/// bytes as today's `claude_rule`); 0.20.x rendered `harness::RULES` with
+/// `claude_rule`/`cursor_rule` (`git show <tag>:src/cli/harness.rs`,
+/// `git show <tag>:src/scaffold/<file>`). Cursor rules exist since 0.20.0,
+/// Copilot instructions and the `.agents/rules/` frontmatter since 0.21.0.
+/// **Editing a rule (its content, paths
+/// or description)? Append the new hashes** (the test
+/// `current_rules_are_in_hash_table` prints them), so sites with the
+/// previous version keep upgrading.
+const RULE_HASHES: &[RuleHashes] = &[
+    RuleHashes {
+        name: "seo-requirements",
+        // Claude: v0.5.0..v0.20.2, current. Cursor: v0.20.x, current.
+        claude: &[
+            "77198dd7896c45bb85b1b72eb687985d5799703cfd248b7227119fce91090958",
+            "167cf143329888518acff003165df3c06ae0967158a949333ecff771fad422ae",
+        ],
+        cursor: &[
+            "f777b65abb2f142b34f6b86a735da83fdd242409e0a08a00cc9aee8d6a4bfba6",
+            "f48fc7ebc43d26c66a4d878f3b773ca058fe31b6f4c2c6dd62160051da9bf2ae",
+        ],
+        copilot: &["04235a73351f0c05bc4d2ef8eeb2929bcb62b4365de856c7858558231d670792"],
+        agents: &["f43ad6d41ec29277d93e7f0dacdce047c44512b42e2ae0e9b5dbb958574678e9"],
+    },
+    RuleHashes {
+        name: "templates",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "a08c345fc625f0b64616e8e6cfac2ccb32a7cb3de0ef32b7dcdaaebfc342af27",
+            "2a70722278a17f283718d1b0c65f9368033c1f94589883e03e7dde4fff1f6867",
+            "f84a734586f6fd6f0d7c4683c7b392a022013c1ed271945e6daa52f60b91db16",
+            "bf71a4fdd11bd5aebfc1c5e9965c3202209d8dc8a2c50133dbe1df93d332f66c",
+        ],
+        cursor: &[
+            "7b400d1aa3782b278463e17fe253ef7930ceb2b4cde479a38153c0b6f9467c79",
+            "649e36fd741cd5c1ca01ac2ee10ace20da95d53e09e910b54c6d09796caf5880",
+            "3506cbaac45d9d070dd569ef8579c617969010f145c88a11d809cc11c35f91a3",
+        ],
+        copilot: &[
+            "d848127ad653998cafa97c8361b6636c31120ce4a23f1a92629fa98b543afd8a",
+            "804c4893e2dc1577c4cd51ceba2bd71559e77cd6daeb6e99b27782641dc5e32d",
+        ],
+        agents: &["327f5dfb4dc30f452a6f14d033a48aa16b011e8242febf05ca9e93503276e4c5"],
+    },
+    RuleHashes {
+        name: "i18n",
+        // Claude: v0.5.0..v0.13.0, v0.14.0..current. Cursor: v0.20.0..current.
+        claude: &[
+            "f7c021936c29fe0bf012b5c05d29426e6da0aee298c732d47bfea15efdbeab12",
+            "4f1e0952abeb3211df37fd7a1d50637ff94877bc3cab269deb2a13a3d284d7cd",
+        ],
+        cursor: &["b7dddf3eac3e372ea80006acadfb5e670318201aacce31a65677ee7daef3c4a1"],
+        copilot: &["79982e1a9d9ee27244a0610ae08b680dce909ba1cd30e9f4cb500857b8878390"],
+        agents: &["19f1aab4f77d0bb6f5127afe5716dc754ff7a4426d56e63c111eaa0e09058637"],
+    },
+    RuleHashes {
+        name: "data-files",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "095703b611609b30ace7dc6b8a83ab1912c3977b7b0e2a50d967dbee338612df",
+            "50416c7648ad484e614294a10f299e8cca6357a91469aa1fb4ba59c098ae93bd",
+            "faa38caabd796c6db9ebd16c8dffa575f148cb1c0498652a43cfcf299aa225a9",
+        ],
+        cursor: &[
+            "9b4bcb0e8f0df8f96a41832d4cf99c974ba7b98a044d1353a61744fa4766d8da",
+            "ea1f34f45773ef218de1ae8e069bc4a94ebddbd7c8e6ab57c3fb0c3e773532a2",
+        ],
+        copilot: &["e450fdc0de471b14cf0d51b2ddcce3c499f6f14de3378db2d65454c8f6e667de"],
+        agents: &["cf23812a09d15aa09b58d9217cc44a3112ef813023caa1671e8047357a2f3376"],
+    },
+    RuleHashes {
+        name: "shortcodes",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "0a900db2caf0eacfd35dcf8a75c24cc8794f37fae5d7fe0149ed2fce2663cd88",
+            "461693487812c44990f0660d1e8a8e3d9cfe01088c856b8c3211bb2a7e1ee087",
+            "c3a19b7f56979115d0f66e04ff6a1c1cfea1216b90fa366c748bc930dd2034e3",
+        ],
+        cursor: &[
+            "8b8a13217286b68f48d58700c9a332c6fbbb219b1a4bfaf8092c12ceb0683fcd",
+            "0fd38967a0cdf4d17cd43b78c9b70b3746e7ce5732e7ec36e41115cdf38ab8fb",
+        ],
+        copilot: &["80dfd02c16dc2062434fd325d5526ba8a49d58181392b4d6676abaeeea3dcbb7"],
+        agents: &["ac20851c0aa8883adcc512e1218062d79ece7af0adfd1a3769436c7770b627e1"],
+    },
+    RuleHashes {
+        name: "config-reference",
+        // Claude: v0.5.0..v0.6.0, v0.7.0..v0.10.0, v0.10.1..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "f8340537bd23279f40ac02da541af83adf415c4bc02105932ddb828817b605eb",
+            "f32482fe3c355e1661130aba9a246a968ecfa8b57d513297cc8f1ccbe5fa202b",
+            "43d66d0638f0dba7ff2cb71b58eef143dddefaa4435f05c329cceb3a65a02112",
+            "cfab9a1fa714848092d2ddfd6956d937bc3874bb67b851adb00ea0aa5aef61df",
+            "4a123d1a8303de22d921d875ccd2c6b2c6d0f80372d06fe885ec70d188935976",
+            "39d8831f0f2356762e7d32a740012543459831d9f2327ad17cb43fad1624bfd3",
+        ],
+        cursor: &[
+            "edb020964aaf2a414fcae77567e7c178225c95394133c2054cdcd2bbb9021d47",
+            "61a7fb096cb0992f2e7dc6b0003f359b27df73230dfe9f597a3f4614779999f2",
+            "0fe6682a911ef1d4ee9c2e9e23ec9adbad867db881074d745a40f1ae2ca7ffa5",
+        ],
+        copilot: &[
+            "c7341c42a74582ef5b6e5de0f19294be68b7c18cbfc58d403d30da60c4ffa38e",
+            "66b92eae3a85c618f4f2f7e38426bfc5df4bf15865c5c1688016a28d7b5b894d",
+        ],
+        agents: &["9709e3bbd37f17c78cd918163f0b72e08089eb8d1247e5866aa121ba85dbcb45"],
+    },
+    RuleHashes {
+        name: "features",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "ef249e7a97828e2931b2900f7857c0f7ff9b10e441a1958e691322d711e26549",
+            "c00cee2995167a4eff6e2b7b4e14ec0d2fc6047c1641749aa4e450519b7d443b",
+            "50d52f68f852c12be44d0b59f891c8e6110680cd9a24f5bccf1313f66ccbf398",
+            "792ef605fbd98dd7337e49c6b996e836cd5b164bba866e4602ab06f7c3d0768a",
+        ],
+        cursor: &[
+            "623686aaaa2764b4593bd2ea9e487e404a8ede7f24335221635eb4bf04ea6f85",
+            "61c2a3ff1bccd32d6a063c339388aa3e0ae66d11b24b1e30423bfbbe853f046a",
+            "89a432c83bbc0fdc73b2bcb4526efd09ac80ded88b24b75a5819ee016db77edb",
+        ],
+        copilot: &[
+            "755a2129d2260ffa4b7bbc9a313a4a6076044197aaaa4eb2e0cca1e81fe27da0",
+            "b141ab52120a54ad2e7a6eef0d4f6a3f882ca03116ccc3249988b0925cc55aff",
+        ],
+        agents: &["ccf8cb295c76716edef1780a360b6fd0f21429bd7a31b20ea830d4bf788ce712"],
+    },
+    RuleHashes {
+        name: "private-collections",
+        // Claude: v0.16.0..v0.17.1, v0.18.0, v0.18.1, v0.18.2..v0.20.2, current. Cursor: v0.20.x, current.
+        claude: &[
+            "06dbebaca17a5602cd55108a99a93031a6258249ad0706c6c870daeaed6c8022",
+            "941072456e9199bea9f3de00cda0a935aecdc8829f74cee9f4fddc1f3c09594c",
+            "d3a17d339c5d5c19b2248a2bd3688404f34c70866fc787754547e8484913a328",
+            "fa3cea063e6ef2bc5d2813e681472f2493e62442c7df282c209513be2997c8ad",
+            "8deada85b36bfc82fd45c0a50b8fc3102c13f8f4a5db131f93f05f95117e4514",
+        ],
+        cursor: &[
+            "1ad3a477a31fcf853db1332b278f537a9ad11087b4fc51331f3e190b35c15e4f",
+            "25b31bb470a4eb5d8593767c16711a4bdcd8cfa66d4d4e374e2b8128ab4b50fc",
+        ],
+        copilot: &["f529c48f6921320a1887b89544250f44ffb1152a681b51088816b800d50017c0"],
+        agents: &["d47442db04c749daf66e3564b7059804589bd06682bf811ebebb6a398faaf5d8"],
+    },
+    RuleHashes {
+        name: "contact-form",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "5596aa9a28816e674d841aca371d2ae19b71dc203c862f34672cde146238e518",
+            "f7ef44932dd7e660b3b6054a9451645c07555d03cfed636e009d7354b6b1b522",
+            "cb57bed082e2f94db42c10610f61f006c5d7c6a10d3c04148ee86df8146ae8c5",
+        ],
+        cursor: &[
+            "58fe4f8a5e70c37ea32844e03bfa08b5a0f5a8d670e4eae562eb13df2bad2bcc",
+            "2d441ade6287163d2b732bd6914770cdd49abdcd1a440f5fd1a0442ef1c751e3",
+        ],
+        copilot: &["264181f972082340a5a62f010cda2e8c614515520894b3f6d10fc715fef97a5a"],
+        agents: &["d3866f9ef854320d1d5b070b27f69b18294e8cf05f55c5be57e9e9340f4a7f36"],
+    },
+    RuleHashes {
+        name: "trust-center",
+        // Claude: v0.5.0..current. Cursor: v0.20.0..current.
+        claude: &[
+            "65d016b34548a70a4a7f20b6742545a9f6a24d492e72b9dce458a4736795353f",
+            "5d8e0b072e64f719ad9e7d1025cf43d28e8f4ba8da0bfb396f19d56bb31ae599",
+        ],
+        cursor: &[
+            "3eca4dddb3ddc271162acf8d4ebe8eeb7fc347f981c366dc0897e64075de2615",
+            "a4ec1a6c62d3ba77626f42394219ba8f00843362a21a269f94152357150bda56",
+        ],
+        copilot: &[
+            "b060253d1d99a75decf0c3e78091b00bbcd39db5b7cf2f07dabf16545f15f354",
+            "3a9ba4078b26f76bdc63da61224712aee907f26e393cd6c40d09c919b0a0cc35",
+        ],
+        agents: &["fefbfffd6929a8074a1babf7bb66fb6d060a154c5d4a6012bba40b7651f89a5e"],
+    },
+];
+
+/// The released renderings of rule `name` in `format`, oldest first.
+fn rule_hashes(name: &str, format: harness::RulesFormat) -> Vec<&'static str> {
+    let Some(entry) = RULE_HASHES.iter().find(|e| e.name == name) else {
+        return Vec::new();
+    };
+    match format {
+        harness::RulesFormat::ClaudePaths => entry.claude.to_vec(),
+        harness::RulesFormat::CursorMdc => entry.cursor.to_vec(),
+        harness::RulesFormat::CopilotInstructions => entry.copilot.to_vec(),
+        harness::RulesFormat::AgentsGlob => {
+            entry.claude.iter().chain(entry.agents).copied().collect()
+        }
+    }
+}
+
+/// The rules directories seite maintains for `agents`: each agent's native
+/// one, plus the shared `.agents/rules/` copy when that is the index target.
+fn maintained_rules_dirs(agents: &[Agent]) -> Vec<harness::RulesDir> {
+    let mut dirs: Vec<harness::RulesDir> = Vec::new();
+    let native = agents.iter().filter_map(|a| a.spec().rules);
+    let shared = harness::uses_shared_rules(agents).then_some(harness::SHARED_RULES);
+    for dir in native.chain(shared) {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    dirs
+}
+
+/// Refresh each rules file of the selected agents that is still exactly as
+/// an earlier seite wrote it ([`RULE_HASHES`]), so sites stop carrying
+/// guidance that is now wrong (0.20's "search is always basic"). An edited
+/// copy is kept, with a one-time notice. Missing files are created by
+/// [`missing_rules`].
+fn check_rules_refresh(root: &Path, agents: &[Agent]) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let mut actions = Vec::new();
+    let mut notices = Vec::new();
+    for dir in maintained_rules_dirs(agents) {
+        for rule in harness::RULES {
+            let rel = format!("{}/{}.{}", dir.dir, rule.name, dir.ext);
+            let path = root.join(&rel);
+            // Regular files only: never follow a symlink out of the project.
+            if !fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let current = dir.format.render(rule);
+            let hash = template_hash(&content);
+            if hash == template_hash(&current) {
+                continue;
+            }
+            if rule_hashes(rule.name, dir.format).contains(&hash.as_str()) {
+                actions.push(UpgradeAction::Update {
+                    path,
+                    content: current,
+                    description: format!("{rel} (guidance for this seite version)"),
+                });
+            } else {
+                notices.push(Notice {
+                    key: format!("edited-rule:{rel}"),
+                    text: format!(
+                        "Kept {rel} (edited since seite wrote it), so it may describe an older seite. For the current version, move your changes elsewhere, delete the file, and run `seite upgrade`."
+                    ),
+                });
+            }
+        }
+    }
+    (actions, notices)
+}
+
+// ---------------------------------------------------------------------------
 // Bundled themes written to templates/base.html
 // ---------------------------------------------------------------------------
 
@@ -2173,6 +2479,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "dd2ec66f4f544217097508197ef07840d4e080726b9ae094b34e7d4c2de5ad24",
             "8f53eea39d36f27d80588b2d13be68aa659b5c0e44d160369a241d7413fdf83d",
             "acd43b28a899405f5c4dcf2aa4a48ea6de241e014519cd683c96f2accb0172e3",
+            "ecb9e4d06093182b194ed1cd18fd3d08b79af57e8d56672fbce916f139e7d76e",
         ],
     ),
     (
@@ -2208,6 +2515,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "e9ec1aeb94ffb008f68ded0eb02a12f55ab495e78aed05cb768f27d01dacfb0d",
             "bac947d8408c456c35c5244c9c23d352ac9e195a074a3797de85acec0de22b9a",
             "e91dcbcff4b136c55dad30739ed65fa87514043ebc45ce760638b2b3a8520171",
+            "e581bbf21320bb4f9fd05b219b3df5b71cd29a9ee250a4900bf63aac5b4b1b1d",
         ],
     ),
     (
@@ -2221,6 +2529,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "fdf3edd9113b2c9df03e456191241876f89669011890ca8ecee1d6d07f8772be",
             "f34d4793be84e9aa96e6256c012bd83161029980cb9365ac7e46d0ca1151aab9",
             "3db0dd68e0a361ea2c8a93c2bf70d61de0ab91a4ed36b1361ad295a24d18dd3f",
+            "a36a3db5d1bf019978162a524d8c571f4e6365b683b5b72a62617454ffc69e30",
         ],
     ),
     (
@@ -2262,6 +2571,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "d64bb60b1c7e2cdc544ca5833072f6891e39625e2631352bd5eea8c1d76fc427",
             "3ab28d59da8c926b74d62ae5a27947df00d0346cb51cd3d2bb31784c03bfdff6",
             "f311e00564e5da14d74d262df84faa2609ab5795b4ed24614171263c539b5729",
+            "f685a8fc79837a510ba6419d7cb68f64558eed6d81dff87d2b8efc6d6cc15c71",
         ],
     ),
     (
@@ -2296,6 +2606,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "724794a6a2e401271dc7787fec722239be103c0bbc2acc82d11900b7fcd79471",
             "7b4e157e98a3d7b19721f88ac26792fdd2fa6e94490e18b73e1ea200ba3a8ea7",
             "429842578289b1b6792c4a69b093b544815df6dd4eb90da49c23b1d251c02984",
+            "a73c7e4d96a216b0f389029b952f97b46a607747640acf20c0b90555a84fdab4",
         ],
     ),
     (
@@ -2328,6 +2639,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "63fa19e04d563818fe23726d67498e19147b1f28d39531f19723cfc6bf0bd44a",
             "32ac5aa459691e572d4ba20bee595aff2580f6b6e47091a640d790a82ab2c79a",
             "962e9c2a9ad09e1059626af8daa9b2578ec1d5a76365f8b3b6da23bae2433cc0",
+            "b6c20399440268fb086264e448ec7e94113607b10d7f9aaa5df558309bcfd4c9",
         ],
     ),
     (
@@ -2360,6 +2672,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "22f6e094348547ef0e71c718d49fcc87a8ea96c8222aeb59ad1f6fd4924e55ec",
             "3aba02ba86b0e79f7d8de9f1af74763e2fa15e871471ed241ed62692d76fafe3",
             "4227e18cd7ffde7ea1974dd96044dfc137c5bcc71dc16070cd29fcbba5bdc806",
+            "52a4922d36150059d1bf0f127f3df7f45a9d2ce3764970bbfa0b5f7eb2fbe20c",
         ],
     ),
     (
@@ -2373,6 +2686,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "b1d9cbc5ffcfc5d219b8fd863ef18c9fe1b8204568be69a5feca4929ebd970b7",
             "20f690a9805b2a6e990fc666217ec32bb14d0e9d6595de8d2e4721681684f243",
             "d12d23dc3f0a2da4f85b679552915a6457144b7d9b1f9d1e1c1e7895dd78c5d7",
+            "47ce3dfa522970dfa2717a994d45f2bd5f354a54e0440fd67713a675511f5230",
         ],
     ),
     (
@@ -2387,6 +2701,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "c10197ce9620c1a3004799517287ec618422c6c431d4fde972e33f472b3be1ba",
             "3b20c6ff0e0620b18f72c0f4f5c19ffd45da4606df4b9c75c1316355f927fcf0",
             "69fa0bd43fea1c045d30dfc906e79802a203f47ef31b806bb8f4a991a0ff3989",
+            "926a9b011e55aace96f34ad8e940bff605def4d54dcf57d46dc89f5b37417c7b",
         ],
     ),
     (
@@ -2400,6 +2715,7 @@ const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
             "9a692e0451c2e271b0578d210f5876673b73c68d9efd775410275cb3d2b7ef57",
             "04aed39b34e7f8c24a251bd3de9fa7312b969182a91770da0ce2c7f6885d5d31",
             "1138b0e7b7053dc1dc763647224755138f2fc73787269c5908eb2df8eb84d515",
+            "fe3c3185eaac2f6baa13ee8a4e56cf14a79c24a7c847033f102a67474608bd8e",
         ],
     ),
 ];
@@ -2855,8 +3171,8 @@ fn check_gitignore_dist_subdomains(root: &Path) -> Vec<UpgradeAction> {
 
 /// A `Create` action for a rules file that is missing from `dir`.
 ///
-/// Rules files are created only when missing — never overwritten — so user
-/// edits survive upgrades.
+/// Existing rules files are refreshed only when still exactly as seite wrote
+/// them ([`check_rules_refresh`]), so user edits survive upgrades.
 fn missing_rule(
     root: &Path,
     dir: &str,
@@ -3473,6 +3789,35 @@ fn check_instructions_shim(
     }]
 }
 
+/// Create AGENTS.md (as `seite init` writes it) for a site with neither
+/// AGENTS.md nor CLAUDE.md: 0.20's `seite workspace add` wrote none, and
+/// hand-made sites may have none. A CLAUDE.md, existing or written by an
+/// earlier action (`planned`), is left to the migration; a `seite.toml` that
+/// doesn't load, to the `config-invalid` notice.
+fn check_missing_instructions(
+    root: &Path,
+    agents: &[Agent],
+    mcp: bool,
+    planned: &[UpgradeAction],
+) -> Vec<UpgradeAction> {
+    let exists = |name: &str| fs::symlink_metadata(root.join(name)).is_ok();
+    let claude_md = root.join("CLAUDE.md");
+    let migrating = planned.iter().any(|a| {
+        matches!(a, UpgradeAction::MigrateAgentInstructions { .. }) || a.targets_path(&claude_md)
+    });
+    if exists("AGENTS.md") || exists("CLAUDE.md") || migrating {
+        return vec![];
+    }
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return vec![];
+    };
+    vec![UpgradeAction::Create {
+        path: root.join("AGENTS.md"),
+        content: crate::cli::init::agents_md_for(&config, agents, mcp),
+        description: "AGENTS.md (project instructions for every coding agent)".into(),
+    }]
+}
+
 /// Every harness file the selected agents need, merged into what exists.
 /// MCP config is only added or changed with `mcp`.
 fn check_agent_harness(
@@ -3520,6 +3865,13 @@ fn check_agent_harness(
             "Gemini CLI",
         ));
     }
+    if agents.contains(&Agent::Antigravity) && mcp {
+        actions.extend(check_mcp_servers_json(
+            root,
+            ".agents/mcp_config.json",
+            "Antigravity CLI",
+        ));
+    }
     if agents.contains(&Agent::Copilot) {
         // Copilot reads Claude Code's `.mcp.json`; with Claude selected it is
         // already handled (with the legacy settings.json migration) above.
@@ -3539,12 +3891,12 @@ fn check_agent_harness(
             actions.extend(check_skill(root, harness::SHARED_SKILLS_DIR, skill));
         }
     }
-    if harness::uses_shared_rules(agents) {
+    if harness::uses_shared_rules(agents) || agents.contains(&Agent::Antigravity) {
         actions.extend(missing_rules(
             root,
-            ".agents/rules",
-            "md",
-            harness::claude_rule,
+            harness::SHARED_RULES.dir,
+            harness::SHARED_RULES.ext,
+            harness::agents_rule,
         ));
     }
     actions.extend(check_local_docs(root));
@@ -5084,6 +5436,95 @@ mod tests {
         }
         let files: Vec<&str> = DEFAULT_TEMPLATES.iter().map(|t| t.file).collect();
         assert_eq!(files, ["post.html", "index.html", "trust-index.html"]);
+    }
+
+    #[test]
+    fn current_rules_are_in_hash_table() {
+        use harness::RulesFormat;
+        let mut missing = Vec::new();
+        for rule in harness::RULES {
+            for format in [
+                RulesFormat::ClaudePaths,
+                RulesFormat::CursorMdc,
+                RulesFormat::CopilotInstructions,
+                RulesFormat::AgentsGlob,
+            ] {
+                let hash = template_hash(&format.render(rule));
+                let hashes = rule_hashes(rule.name, format);
+                if hashes.last() != Some(&hash.as_str()) {
+                    missing.push(format!("{} {format:?}: append \"{hash}\"", rule.name));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "rules changed; update RULE_HASHES:\n{}",
+            missing.join("\n")
+        );
+        for e in RULE_HASHES {
+            for h in e
+                .claude
+                .iter()
+                .chain(e.cursor)
+                .chain(e.copilot)
+                .chain(e.agents)
+            {
+                assert!(
+                    h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()),
+                    "{}",
+                    e.name
+                );
+            }
+        }
+        let names: Vec<&str> = RULE_HASHES.iter().map(|e| e.name).collect();
+        let rules: Vec<&str> = harness::RULES.iter().map(|r| r.name).collect();
+        assert_eq!(names, rules);
+    }
+
+    #[test]
+    fn test_check_rules_refresh_updates_unedited_and_keeps_edited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/rules")).unwrap();
+        fs::create_dir_all(root.join(".cursor/rules")).unwrap();
+        // features.md / features.mdc as `seite init` 0.20.2 wrote them.
+        let claude = include_str!("../../tests/fixtures/rules-0.20.2/features.md");
+        let cursor = include_str!("../../tests/fixtures/rules-0.20.2/features.mdc");
+        fs::write(root.join(".claude/rules/features.md"), claude).unwrap();
+        fs::write(root.join(".cursor/rules/features.mdc"), cursor).unwrap();
+        // An edited copy, and a current one.
+        let templates = harness::rule("templates").unwrap();
+        fs::write(
+            root.join(".claude/rules/templates.md"),
+            format!("{}\nMy own note.\n", harness::claude_rule(templates)),
+        )
+        .unwrap();
+        fs::write(
+            root.join(".claude/rules/i18n.md"),
+            harness::claude_rule(harness::rule("i18n").unwrap()),
+        )
+        .unwrap();
+
+        let (actions, notices) = check_rules_refresh(root, &[Agent::Claude, Agent::Cursor]);
+        let updated: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                UpgradeAction::Update { path, .. } => {
+                    Some(path.strip_prefix(root).unwrap().display().to_string())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            updated,
+            [".claude/rules/features.md", ".cursor/rules/features.mdc"]
+        );
+        let keys: Vec<&str> = notices.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["edited-rule:.claude/rules/templates.md"]);
+
+        // Deselected agents' rules are left alone.
+        let (actions, notices) = check_rules_refresh(root, &[Agent::Codex]);
+        assert!(actions.is_empty() && notices.is_empty());
     }
 
     #[test]

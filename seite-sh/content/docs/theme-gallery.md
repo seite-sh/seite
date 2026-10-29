@@ -1,7 +1,7 @@
 ---
 title: "Theme Gallery"
 description: "seite's 11 bundled themes: four starters (default, docs, landing, blank) and seven gallery looks, all embedded in the binary. Or design your own with an agent."
-weight: 10
+weight: 6
 ---
 
 seite ships 11 themes inside the binary: four **starters** that `seite init` offers, and a **gallery** of seven example looks. They are starting points. For a site that looks like yours, start from `blank` and design it with your coding agent or impeccable: see [Design your own theme](/docs/custom-themes).

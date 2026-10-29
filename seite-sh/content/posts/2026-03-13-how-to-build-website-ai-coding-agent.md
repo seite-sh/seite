@@ -17,7 +17,7 @@ extra:
 
 Your AI coding agent already knows how to build websites. The problem is your static site generator doesn't tell it anything.
 
-Claude Code, Cursor, GitHub Copilot — [82% of developers now use or plan to use AI coding tools](https://survey.stackoverflow.co/2024/ai/) — these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
+Claude Code, Cursor, GitHub Copilot — [76% of developers use or plan to use AI tools in their development process](https://survey.stackoverflow.co/2024/ai/), per Stack Overflow's 2024 survey — these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
 
 Learning how to build a website with an AI coding agent requires two things most tutorials miss: a site generator that gives the agent structured context, and a workflow where the agent can take meaningful action instead of answering questions. This tutorial covers both. You'll build a complete site with landing page, blog, documentation and deploy using seite and Claude Code. The whole thing takes under an hour. The agent does most of the work.
 
@@ -225,7 +225,7 @@ For an honest behind-the-scenes account of using seite and Claude Code to build 
 
 ### What's in the AGENTS.md file and can I edit it?
 
-`seite init` generates root `AGENTS.md` with your site's structure, commands and conventions, plus a root `CLAUDE.md` that imports it. Edit `AGENTS.md` to add project-specific context, team conventions or content guidelines. `seite upgrade` refreshes only its own marked blocks and keeps your edits. You can also add [path-scoped rules files](/docs/agent) in `.claude/rules/` for context that only loads when working with specific file types.
+`seite init` generates a compact root `AGENTS.md`: the workflow (run `seite context`, use the `/seite` skill, verify with `seite check`), the project layout, your collections, the content format and a few rules, plus `CLAUDE.md` and `GEMINI.md` files that import it. Commands live in the `/seite` skill rather than in `AGENTS.md`. Edit `AGENTS.md` to add project-specific context, team conventions or content guidelines; `seite upgrade` refreshes only its own marked blocks and keeps your edits. Path-scoped [rules files](/docs/agent) (`.claude/rules/` for Claude Code, `.cursor/rules/` for Cursor, `.github/instructions/` for Copilot) add context that only loads when working with matching files.
 
 ## Give Your Agent a Site It Can Work With
 

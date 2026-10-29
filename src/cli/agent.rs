@@ -20,14 +20,15 @@ pub struct AgentArgs {
     pub once: bool,
 
     /// Coding-agent harness to drive: claude, codex, opencode, cursor,
-    /// gemini, or copilot. Defaults to `SEITE_AGENT` when set, otherwise
+    /// gemini, copilot, or antigravity. Defaults to `SEITE_AGENT` when set, otherwise
     /// claude.
     #[arg(long, value_name = "HARNESS")]
     pub with: Option<String>,
 
     /// With --once: pass the harness's own auto-approve flag (opencode
     /// `--auto`, cursor `--force --approve-mcps`, gemini
-    /// `--approval-mode=yolo`, copilot `--allow-all-tools`). Honored only from an interactive terminal,
+    /// `--approval-mode=yolo`, copilot `--allow-all-tools`, antigravity
+    /// `--dangerously-skip-permissions`). Honored only from an interactive terminal,
     /// never inside another agent's session; the global `--yes` never
     /// implies it.
     #[arg(long)]
@@ -64,6 +65,11 @@ const AGENT_SESSION_MARKERS: &[(&str, &str)] = &[
     // (https://cursor.com/docs/agent/hooks).
     ("CURSOR_AGENT", "Cursor"),
     ("CURSOR_PROJECT_DIR", "Cursor"),
+    // Antigravity CLI (agy 1.4.10, verified): ANTIGRAVITY_AGENT=1 for shell
+    // tool commands, ANTIGRAVITY_CONVERSATION_ID for those and for hooks.
+    // Not in its docs (https://antigravity.google/docs/settings).
+    ("ANTIGRAVITY_AGENT", "Antigravity CLI"),
+    ("ANTIGRAVITY_CONVERSATION_ID", "Antigravity CLI"),
     // Last: Gemini CLI also exports this alias to its hooks.
     ("CLAUDE_PROJECT_DIR", "Claude Code"),
     // GitHub Copilot CLI: no documented variable marks its shell commands
@@ -121,10 +127,19 @@ pub enum Harness {
     Cursor,
     Gemini,
     Copilot,
+    Antigravity,
 }
 
 /// Every harness name `--with`/`SEITE_AGENT` accepts.
-const VALID_HARNESSES: [&str; 6] = ["claude", "codex", "opencode", "cursor", "gemini", "copilot"];
+const VALID_HARNESSES: [&str; 7] = [
+    "claude",
+    "codex",
+    "opencode",
+    "cursor",
+    "gemini",
+    "copilot",
+    "antigravity",
+];
 
 impl Harness {
     fn parse(name: &str) -> Option<Harness> {
@@ -135,6 +150,7 @@ impl Harness {
             "cursor" => Some(Harness::Cursor),
             "gemini" => Some(Harness::Gemini),
             "copilot" => Some(Harness::Copilot),
+            "antigravity" => Some(Harness::Antigravity),
             _ => None,
         }
     }
@@ -147,6 +163,7 @@ impl Harness {
             Harness::Cursor => "cursor",
             Harness::Gemini => "gemini",
             Harness::Copilot => "copilot",
+            Harness::Antigravity => "antigravity",
         }
     }
 
@@ -159,6 +176,7 @@ impl Harness {
             Harness::Cursor => "cursor-agent",
             Harness::Gemini => "gemini",
             Harness::Copilot => "copilot",
+            Harness::Antigravity => "agy",
         }
     }
 
@@ -180,6 +198,9 @@ impl Harness {
             }
             Harness::Copilot => {
                 "npm install -g @github/copilot (https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)"
+            }
+            Harness::Antigravity => {
+                "curl -fsSL https://antigravity.google/cli/install.sh | bash (https://antigravity.google/docs/getting-started?tab=cli)"
             }
         }
     }
@@ -221,6 +242,10 @@ impl Harness {
             // `-p PROMPT`: run programmatically, exit when done.
             // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
             Harness::Copilot => vec!["-p".into(), prompt.into()],
+            // `agy -p PROMPT`: print mode, one turn. Shell commands no user
+            // allow rule covers are auto-denied there.
+            // https://antigravity.google/docs/settings (`agy --help`)
+            Harness::Antigravity => vec!["-p".into(), prompt.into()],
         };
         if auto {
             match self {
@@ -231,6 +256,7 @@ impl Harness {
                 }
                 Harness::Gemini => args.push("--approval-mode=yolo".into()),
                 Harness::Copilot => args.push("--allow-all-tools".into()),
+                Harness::Antigravity => args.push("--dangerously-skip-permissions".into()),
                 Harness::Claude | Harness::Codex => {}
             }
         }
@@ -247,9 +273,11 @@ impl Harness {
             // `claude "<prompt>"` starts an interactive session with it.
             Harness::Claude | Harness::Codex | Harness::Cursor => vec![p.into()],
             Harness::Opencode => vec!["--prompt".into(), p.into()],
-            // `-i` runs the prompt, then stays interactive (Gemini CLI and
-            // Copilot CLI alike).
-            Harness::Gemini | Harness::Copilot => vec!["-i".into(), p.into()],
+            // `-i` runs the prompt, then stays interactive (Gemini CLI,
+            // Copilot CLI and Antigravity CLI alike).
+            Harness::Gemini | Harness::Copilot | Harness::Antigravity => {
+                vec!["-i".into(), p.into()]
+            }
         }
     }
 }
@@ -441,6 +469,36 @@ mod tests {
             .contains("@google/gemini-cli"));
         assert_eq!(Harness::Copilot.binary(), "copilot");
         assert!(Harness::Copilot.install_hint().contains("@github/copilot"));
+        assert_eq!(Harness::Antigravity.binary(), "agy");
+        assert!(Harness::Antigravity
+            .install_hint()
+            .contains("antigravity.google/cli/install.sh"));
+    }
+
+    #[test]
+    fn test_antigravity_harness_args() {
+        assert_eq!(
+            Harness::Antigravity.one_shot_args("hi", false),
+            ["-p", "hi"]
+        );
+        assert_eq!(
+            Harness::Antigravity.one_shot_args("hi", true),
+            ["-p", "hi", "--dangerously-skip-permissions"]
+        );
+        assert_eq!(
+            Harness::Antigravity.interactive_args(Some("hi")),
+            ["-i", "hi"]
+        );
+        // Skills are slash commands in agy.
+        assert_eq!(Harness::Antigravity.skill_prompt("check"), "/seite check");
+        assert_eq!(
+            agent_session_with(|v| v == "ANTIGRAVITY_AGENT"),
+            Some("Antigravity CLI")
+        );
+        assert_eq!(
+            agent_session_with(|v| v == "ANTIGRAVITY_CONVERSATION_ID"),
+            Some("Antigravity CLI")
+        );
     }
 
     #[test]

@@ -303,7 +303,7 @@
         .roadmap-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
         .roadmap-card { padding: 1rem 1.25rem; border: 1px solid #111; transition: all 0.2s ease; background: #fff; }
         .roadmap-card:hover { border-color: #e63946; box-shadow: 4px 4px 0 #e63946; }
-        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.95rem; font-family: 'Playfair Display', Georgia, serif; }
+        .roadmap-card h2, .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.95rem; font-family: 'Playfair Display', Georgia, serif; }
         .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: #555; font-size: 0.85rem; }
         .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
         .roadmap-column-header { font-size: 0.95rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-family: 'Playfair Display', Georgia, serif; border-bottom: 1px solid #111; padding-bottom: 0.5rem; }
@@ -313,7 +313,7 @@
         .roadmap-milestone { position: relative; margin-bottom: 2rem; }
         .roadmap-milestone-dot { position: absolute; left: -1.75rem; top: 0.3rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #e63946; background: #fff; }
         .roadmap-milestone-dot .roadmap-status { display: none; }
-        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-family: 'Playfair Display', Georgia, serif; }
+        .roadmap-milestone-content h2, .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-family: 'Playfair Display', Georgia, serif; font-size: 1.17em; }
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: #555; font-size: 0.85rem; }
 
         /* ===== FOOTER — Editorial Small Caps ===== */

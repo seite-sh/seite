@@ -124,6 +124,7 @@ This project includes a built-in MCP (Model Context Protocol) server (`seite mcp
 | Cursor | `.cursor/cli.json`, `.cursor/hooks.json` | Trust the workspace (`cursor-agent --trust` or answer the prompt) |
 | Gemini CLI | `.gemini/settings.json` | Trust the folder (`gemini trust` or the prompt) and approve the project hooks when asked |
 | GitHub Copilot | `.github/hooks/seite.json` | Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders) |
+| Antigravity CLI | `.agents/hooks.json` | None; for `agy -p`, allow seite commands in your user settings (`command(seite check)`) |
 <!-- /seite:agent-setup -->
 
 Use this file for commands, config options, template syntax, and patterns. Use the MCP server to check **current site state** before creating or modifying content:
@@ -185,7 +186,7 @@ For a background preview while you keep editing, `seite serve --no-repl &` runs 
 ## Context Rules
 
 <!-- seite:context-rules -->
-Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`). Claude Code, Cursor and GitHub Copilot load them automatically for matching files; other agents should read the matching guides before editing:
+Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`; Antigravity CLI: same guides as `.agents/rules/*.md`). Claude Code, Cursor, GitHub Copilot and Antigravity CLI load them automatically for matching files; other agents should read the matching guides before editing:
 
 - `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`
 - `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`

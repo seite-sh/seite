@@ -1,7 +1,7 @@
 ---
 title: "seite CLI Reference"
 description: "Complete reference for every seite command, flag, and option, from init and build to deploy, agent, and self-update. Includes workspace and MCP commands."
-weight: 11
+weight: 18
 ---
 
 Every feature of the seite static site generator is accessible through its CLI. This page documents every command, flag, and option.
@@ -77,7 +77,7 @@ seite init <name> [options]
 | `--contact-provider` | Contact form provider: `formspree`, `web3forms`, `netlify`, `hubspot`, `typeform` (see [Contact forms](/docs/contact-forms)) |
 | `--contact-endpoint` | Contact form endpoint or form ID for that provider |
 | `--theme` | Starter theme: `default`, `docs`, `landing`, or `blank` (for designing your own). Default: `docs` for a docs-only site, `default` otherwise. Gallery themes are applied later with `seite theme apply <name>` |
-| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini,copilot` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
+| `--agents` | Coding agents to set up: `claude,codex,opencode,cursor,gemini,copilot,antigravity` or `all` (default: all; the interactive picker preselects the agents installed on your machine) |
 | `--mcp` | Also add the seite MCP server to each agent's config (off by default: coding agents use the CLI) |
 
 `seite.toml` gets `[site] timezone` set to the system's IANA time zone (from `TZ` — empty means UTC; a POSIX rule such as `CET-1CEST` is not an IANA name — else the OS setting; `seite workspace add` does the same), so "today" for scheduled posts is the same on every machine and in CI; when no zone can be detected, the line is written commented out.
@@ -103,10 +103,11 @@ Every site gets an `AGENTS.md` (read by every agent) and the docs for the instal
 | `cursor` (Cursor editor + `cursor-agent`) | `.cursor/cli.json`, `.cursor/hooks.json`, `.cursor/rules/*.mdc` (same guides, `globs` frontmatter) |
 | `codex` (Codex CLI) | `.codex/hooks.json` |
 | `opencode` (OpenCode) | `opencode.json` (permission defaults), `.opencode/commands/seite.md`, `.opencode/plugins/seite-check.js` |
+| `antigravity` (Antigravity CLI) | `.agents/hooks.json` (hooks), `.agents/rules/*.md` (`trigger: glob` frontmatter), `/seite` from `.agents/skills/seite/`; reads `AGENTS.md` directly |
 | `gemini` (Gemini CLI) | `GEMINI.md` (`@AGENTS.md` import), `.gemini/settings.json` (hooks), `.gemini/commands/seite.toml` |
 | `copilot` (GitHub Copilot) | `.github/hooks/seite.json` (hooks), `.github/instructions/*.instructions.md` (rules); reads `AGENTS.md` directly |
 
-Codex, Cursor, OpenCode, Gemini CLI, and GitHub Copilot read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, shared by Claude Code and Copilot, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
+Codex, Cursor, OpenCode, Antigravity CLI, Gemini CLI, and GitHub Copilot read the `seite` skill from `.agents/skills/seite/`. With `--mcp`, each agent also gets its MCP config (`.mcp.json`, shared by Claude Code and Copilot, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` `mcp`, `.gemini/settings.json` `mcpServers`, `.agents/mcp_config.json`). Every agent gets the `/seite` skill (`$seite …` in Codex): `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks` (see [Coding Agents](/docs/agent)). The selection is stored in `.seite/config.json` so `seite upgrade` keeps the same set of files current.
 
 ## seite build
 
@@ -145,7 +146,7 @@ seite check [options]
 | `--strict` | Fail on warnings too (unknown config keys, broken links, ...) |
 | `--drafts` | Include draft content |
 | `--file <path>...` | Check only these files (repeatable; a path that is missing, outside the site or of an unhandled type is a `check-file-skipped` warning): frontmatter and shortcodes for content, Tera syntax for templates, syntax for data files, unknown keys for `seite.toml`. No render and no link check, so it's fast enough to run after every edit |
-| `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`, `copilot`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
+| `--hook <agent>` | Run as a coding agent's hook (`claude`, `codex`, `cursor`, `opencode`, `gemini`, `copilot`, `antigravity`): reads the hook input on stdin, answers in that agent's hook protocol only when there are errors, and always exits 0. `seite init` wires it up; see [Check hooks](/docs/agent#check-hooks) |
 | `--post-edit` | With `--hook`: check only the file(s) the agent just edited, named in the hook input, instead of the whole site |
 | `--future` | Treat future-dated (scheduled) posts as published, like `seite build --future` (links to them are then fine). Not with `--file` or `--hook` |
 | `--external` | Also check external `http(s)` links in the rendered site over the network: 8 at a time (2 per host), 10 s timeout, `HEAD` then `GET`, up to 5 redirects. Working links are cached for 7 days in `.seite/cache/links.json`; failures are re-checked every run. Skips hosts that block bots, `[check] external_skip`, and hosts that resolve to private, loopback or link-local addresses (counted as `skipped`; set `SEITE_EXTERNAL_PRIVATE=1` to check those too). Never runs by default or in hooks; not with `--file` or `--hook` |
@@ -310,9 +311,9 @@ seite agent [prompt] [--once] [--with <harness>] [--auto-approve]
 
 | Flag | Description |
 |------|-------------|
-| `--once` | Run the prompt once and exit (`claude -p`, `codex exec`, `opencode run`, `cursor-agent -p`, `gemini -p`, `copilot -p`) |
-| `--with` | `claude` (default), `codex`, `opencode`, `cursor`, `gemini`, or `copilot`; `SEITE_AGENT` sets the default |
-| `--auto-approve` | With `--once`, pass the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`, `copilot --allow-all-tools`). Only honored from an interactive terminal outside an agent session; `--yes` never implies it |
+| `--once` | Run the prompt once and exit (`claude -p`, `codex exec`, `opencode run`, `cursor-agent -p`, `gemini -p`, `copilot -p`, `agy -p`) |
+| `--with` | `claude` (default), `codex`, `opencode`, `cursor`, `antigravity`, `gemini`, or `copilot`; `SEITE_AGENT` sets the default |
+| `--auto-approve` | With `--once`, pass the harness's own auto-approve flag (`opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`, `copilot --allow-all-tools`, `agy --dangerously-skip-permissions`). Only honored from an interactive terminal outside an agent session; `--yes` never implies it |
 
 Without `--once`, the agent starts an interactive session, seeded with the prompt when one is given. Run inside a coding agent's session, `seite agent` (and `seite theme create`) refuses to start a nested agent. If the harness isn't installed, the error names the install command. See [Coding Agents](/docs/agent).
 
@@ -355,7 +356,7 @@ seite contact remove
 | `--redirect` | URL to send visitors to after they submit |
 | `--subject` | Email subject line prefix |
 
-`setup` asks before replacing an existing `[contact]` section.
+`setup` asks before replacing an existing `[contact]` section. When the site has a `pages` collection and no `content/pages/contact.md` yet, `setup` also creates that page (title "Contact", body `{{< contact_form() >}}`). `remove` deletes only the `[contact]` section; the page stays.
 
 ## seite cms
 
@@ -506,6 +507,8 @@ seite workspace <subcommand>
 | `--path` | Site directory path (default: `sites/<name>`) |
 | `--title` | Site title |
 | `--collections` | Comma-separated collections (default: `posts,pages`) |
+| `--agents` | Coding agents to set the site up for, as `seite init --agents` (default: all) |
+| `--mcp` | Also add the seite MCP server to each agent's config |
 
 ```bash
 seite workspace init my-workspace
@@ -556,13 +559,13 @@ Known packs:
 | `seomachine` | [SEOMachine](https://github.com/TheCraigHewitt/seomachine): SEO research, writing, and optimization skills for every coding agent, plus subagents and slash commands for Claude Code |
 | `impeccable` | The [impeccable](https://github.com/pbakaus/impeccable) design skill (`/impeccable`, `$impeccable` in Codex) |
 
-`impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (all six when none are recorded; Copilot is impeccable's `github` provider). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
+`impeccable` is installed by its own npm installer, pinned to a version seite has reviewed: seite fetches `impeccable@<version>` with `npm install` into a fresh temporary directory (so a project `.npmrc` or `node_modules` can't substitute it), then runs `impeccable install --providers=<agents> --scope=project -y` in the site root, where `<agents>` are the coding agents in `.seite/config.json` (every agent seite supports when none are recorded; Copilot is impeccable's `github` provider). `seite skill update impeccable` runs `impeccable update --scope=project -y` the same way. Both need Node.js (for `npm`) and ask before running the third-party package; `--yes` (or `SEITE_YES=1`) skips the question. `seite skill list` shows impeccable as installed when seite recorded it or when an `impeccable` skill folder exists in `.claude/skills/` or `.agents/skills/`. `seite skill remove impeccable` deletes those skill folders (only when their `SKILL.md` is impeccable's) and leaves any other files its installer added.
 
 `seomachine` is pinned: seite downloads each file from one exact upstream commit (the pin is compiled into the binary together with a SHA-256 for every file) and verifies every hash before writing anything. A mismatch or failed download aborts the install with nothing written. `seite skill update seomachine` moves to the pin of the seite you are running, never to upstream `main`; the pin changes only when seite is released. SEOMachine is MIT-licensed (copyright Castos and SEO Machine Contributors), which permits this redistribution; its licence file stays upstream.
 
 Per agent, `--agents` (default: the agents in `.seite/config.json`, else all; `update` reuses the agents the pack was installed for) decides where files go:
 
-- Skills (`SKILL.md`) go to each selected agent's skills directory: `.claude/skills/` for Claude Code with the full frontmatter, `.agents/skills/` for Codex, OpenCode, Cursor, Gemini CLI, and Copilot with `name` and `description` only.
+- Skills (`SKILL.md`) go to each selected agent's skills directory: `.claude/skills/` for Claude Code with the full frontmatter, `.agents/skills/` for Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, and Copilot with `name` and `description` only.
 - Subagents (`.claude/agents/`) and slash commands (`.claude/commands/`) are Claude Code-only and installed only when `claude` is selected; for other agents seite says so and the generated AGENTS.md section lists which agents got the pack.
 - Context templates (`context/`), analytics scripts (`scripts/seo/`), and `requirements-seo.txt` are agent-independent. Existing files that seite did not install are never overwritten.
 
@@ -592,10 +595,10 @@ seite upgrade [options]
 |------|-------------|
 | `--force` | Apply all upgrades without confirmation |
 | `--check` | Check for needed upgrades without applying (exits with code 1 if outdated) |
-| `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor,gemini,copilot` or `all`) |
+| `--agents` | Change the coding agents the project is set up for (`claude,codex,opencode,cursor,gemini,copilot,antigravity` or `all`) |
 | `--mcp` | Also add the seite MCP server to the selected agents' configs. Without it, existing MCP config is left untouched |
 | `--agent` | After upgrading, build a migration brief and hand it to a coding agent (see below). Cannot be combined with `--check` |
-| `--with` | With `--agent`: the agent to start (`claude`, `codex`, `opencode`, `cursor`, `gemini`, `copilot`). Defaults to `SEITE_AGENT`, else `claude` |
+| `--with` | With `--agent`: the agent to start (`claude`, `codex`, `opencode`, `cursor`, `antigravity`, `gemini`, `copilot`). Defaults to `SEITE_AGENT`, else `claude` |
 
 ```bash
 seite upgrade                # Interactive: shows changes, asks for confirmation
@@ -620,7 +623,7 @@ Upgrade is **additive and non-destructive**:
 - Creates or merges `.claude/settings.json` (permissions and hooks) and `.claude/launch.json`, adding new entries and never removing yours. MCP config (`.mcp.json`, `enabledMcpjsonServers`, the other agents' MCP entries) is only added with `--mcp`; with it, a legacy `mcpServers` block in `settings.json` is moved into `.mcp.json`
 - Migrates project guidance to `AGENTS.md` while preserving existing instructions
 - Keeps `CLAUDE.md` as a compatibility import of `AGENTS.md`
-- Adds missing files for the selected coding agents (see [`seite init`](#seite-init)); projects created before agent selection existed are treated as `all`, and the selection is recorded. Existing configs are merged, never replaced. Rules files are only created when missing; the `seite` skill and its `reference/` files are refreshed when the bundled `seite-skill-version` is newer
+- Adds missing files for the selected coding agents (see [`seite init`](#seite-init)); projects created before agent selection existed (no stored selection) are maintained for the 0.20 set `claude,codex,opencode,cursor,gemini` (not Copilot or Antigravity; pass `--agents` to add them), and the selection is recorded. Sites with no `AGENTS.md` at all (such as 0.20 workspace sites) get one, plus the per-agent shims. Existing configs are merged, never replaced. Rules files are created when missing and refreshed when they are an unedited copy of an earlier release (edited rules are kept, with a notice); the `seite` skill and its `reference/` files are refreshed when the bundled `seite-skill-version` is newer
 - Removes the pre-0.21 `theme-builder`, `brand-identity`, and `landing-page` skills and the `design-prompts` rule when they are unmodified (content-hash match against every released version); edited copies stay, with a notice
 - Writes `.seite/docs/` (missing pages always; every page after a seite update, dropping pages the new version doesn't ship) and gitignores it
 - Adds hooks for agents that never had them, and the after-edit hook to agents whose turn-end hook is still in place (hooks you removed stay removed)

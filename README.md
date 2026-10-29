@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  The static site generator your agent can run end to end, for free.
+  The static site generator your coding agent can run end to end, for free.
 </p>
 
 <p align="center">
@@ -15,22 +15,22 @@
 
 ---
 
-seite is a single-binary static site generator written in Rust. A new site comes set up for your coding agent (Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI, or GitHub Copilot): a compact `AGENTS.md`, one `/seite` skill, and check hooks that hand errors back to the agent. The agent writes content, designs the theme, checks its own work, previews, and deploys. seite needs no API keys and no paid services.
+seite is a single-binary static site generator written in Rust. A new site comes set up for your coding agent (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, or GitHub Copilot): a compact `AGENTS.md`, one `/seite` skill, and check hooks that hand errors back to the agent. The agent writes content, designs the theme, checks its own work, previews, and deploys. seite itself needs no API keys and no paid services (your deploy host, and any form, comment or newsletter provider, has its own account).
 
 ## Why switch to seite
 
-1. **Your agent runs the site, whichever agent you use.** Typed frontmatter schemas, `seite check`, the check hooks, and `seite context` let an agent find and fix its own mistakes. Works with all six agents above, including OpenCode, which can run free and local models.
-2. **Zero subscriptions.** Full-text search, social cards, comments (giscus or utterances), newsletter and contact forms (providers with free tiers), a Git-based CMS (Pages CMS or Decap), scheduled publishing (a daily cron in the generated GitHub Actions workflow), an SEO audit, and deploys to GitHub Pages, Cloudflare Pages, or Netlify.
+1. **Your coding agent runs the site, whichever one you use.** Typed frontmatter schemas, `seite check`, the check hooks, and `seite context` let an agent find and fix its own mistakes. Works with all six agents above, including OpenCode, which can run free and local models.
+2. **Zero subscriptions.** Full-text search, social cards, comments (giscus or utterances), newsletter and contact forms (providers with free tiers), a Git-based CMS (Pages CMS or Decap), scheduled publishing (a daily cron in the generated GitHub Actions workflow for GitHub Pages and Cloudflare), an SEO audit, and deploys to GitHub Pages, Cloudflare Pages, or Netlify.
 3. **One binary, everything included.** Image resizing and WebP, social cards, full-text search, RSS and Atom feeds, sitemaps, SEO and GEO metadata, i18n, and optional Tailwind CSS through its standalone CLI. No Node.js.
 4. **Visible to AI by default.** `llms.txt`, `llms-full.txt`, a `.md` copy of every page, `sitemap.md`, JSON-LD, Content Signals in `robots.txt`, and `Accept: text/markdown` negotiation (dev server, and Cloudflare Pages with `markdown_negotiation = true` or `[access]`).
 5. **A free SEO and GEO audit.** `seite audit` reports missing or weak descriptions, thin and orphan pages, duplicate titles, heading structure, missing alt text, AI visibility, and page weight, each with the file to edit. `--json` output is made for agents.
-6. **Switch in one command.** `seite import wordpress|ghost|jekyll|hugo` moves posts, pages, tags, images, and old URLs (as redirects) into a seite site, then your agent finishes with `/seite check` and `seite audit`.
+6. **Switch in one command.** `seite import wordpress|ghost|jekyll|hugo` moves posts, pages, tags, images, and old URLs (as redirects) into a seite site, then your coding agent finishes with `/seite check` and `seite audit`.
 
 ## Quickstart
 
 ```bash
 curl -fsSL https://seite.sh/install.sh | sh
-seite init mysite --title "My Site" --collections posts,docs,pages
+seite init mysite --title "My Site" --collections posts,docs,pages --deploy-target github-pages
 cd mysite
 ```
 
@@ -49,7 +49,7 @@ Open your coding agent in `mysite/` and ask it for something:
 seite serve --open
 ```
 
-`http://localhost:3000` reloads on every change, and build errors show up in the page as an overlay.
+The dev server (`http://127.0.0.1:3000`) reloads on every change, and build errors show up in the page as an overlay.
 
 ### The `/seite` skill for an existing site
 
@@ -68,9 +68,9 @@ See [Coding Agents](https://seite.sh/docs/agent#using-seite-with-an-existing-sit
 
 ## Working with coding agents
 
-`seite init --agents claude,codex,opencode,cursor,gemini,copilot` (all six by default) writes:
+`seite init --agents claude,codex,opencode,cursor,gemini,copilot,antigravity` (all seven by default) writes:
 
-- `AGENTS.md`, imported by one-line `CLAUDE.md` and `GEMINI.md` files (Copilot reads `AGENTS.md` directly)
+- `AGENTS.md`, imported by one-line `CLAUDE.md` and `GEMINI.md` files (Copilot and Antigravity CLI read `AGENTS.md` directly)
 - the `/seite` skill: `check`, `audit`, `new`, `preview`, `build`, `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`
 - path-scoped context rules, project permissions, and `.seite/docs/` (the docs for your seite version)
 - two check hooks per agent: after each edit (checks that file) and at the end of a turn (checks the site); `seite hooks on|off|status` manages them

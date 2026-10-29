@@ -35,8 +35,6 @@ A static site has no database. No server-side runtime. No plugin system executin
 
 ### Performance WordPress Can't Fix with Plugins
 
-WordPress has the lowest Core Web Vitals pass rate of any major CMS platform. [HTTP Archive data reported by Search Engine Journal](https://www.searchenginejournal.com/wordpress-core-web-vitals/) shows a 43.44% pass rate, meaning more than half of WordPress sites fail Google's own performance benchmarks.
-
 The problem is architectural. Every WordPress page request hits a PHP process, queries a MySQL database, assembles the response, and sends it back. Caching plugins mitigate this, but they're patching over a fundamentally dynamic architecture to produce what should have been a static file in the first place.
 
 Static HTML doesn't have this problem. There's no server-side processing. A CDN serves pre-built files in milliseconds. Time to First Byte drops from 1 to 2 seconds on a typical WordPress site to 30 to 50 milliseconds on a static site. You don't install caching plugins because there's nothing to cache.
@@ -57,7 +55,7 @@ WordPress is open source. The software costs $0. Everything around it costs mone
 | Developer time: updates | 2-4 hours/month | 0 hours |
 | **Annual total** | **$2,000-5,000+** | **$0** |
 
-The $0 column isn't aspirational. Cloudflare Pages, GitHub Pages, and Netlify all offer free static hosting with unlimited bandwidth. Your SSL is automatic. Your backup is `git push`. Your security model is "no server to compromise." See how to [deploy a static site to Cloudflare Pages](/blog/deploy-static-site-cloudflare-pages) in one command.
+The $0 column isn't aspirational. Cloudflare Pages (unlimited bandwidth), GitHub Pages and Netlify all offer free static hosting; GitHub Pages and Netlify's free plans have usage limits that a typical developer blog stays well within. Your SSL is automatic. Your backup is `git push`. Your security model is "no server to compromise." See how to [deploy a static site to Cloudflare Pages](/blog/deploy-static-site-cloudflare-pages) in one command.
 
 ## What Developers Actually Need (And WordPress Doesn't Provide)
 
@@ -99,7 +97,7 @@ If you've decided to replace WordPress with a static site generator, the next qu
 | Single binary | Yes | No (Node.js) | No (Node.js) | No (Ruby) | Yes |
 | Build speed | Sub-second | Seconds | Seconds | Slow | Sub-second |
 | Templates | Go templates | JSX/Astro | 10+ languages | Liquid | Tera (Jinja2) |
-| Built-in deploy | No | No | No | GitHub Pages only | GitHub Pages, Cloudflare, Netlify |
+| Built-in deploy | `hugo deploy` (S3, GCS, Azure) | No | No | No (GitHub Pages builds it) | GitHub Pages, Cloudflare, Netlify |
 | Built-in search | No | No | No | No | Yes |
 | Contact forms | No | No | No | No | [Built-in shortcode](/docs/contact-forms) |
 | llms.txt output | No | No | No | No | Every build |
@@ -209,11 +207,11 @@ Yes. seite supports multiple [collections](/docs/collections) in a single site: 
 
 ### How much does it cost to host a static site?
 
-$0. Cloudflare Pages, GitHub Pages, and Netlify all offer free static hosting with SSL, CDN distribution, and unlimited bandwidth on their free tiers. There are no servers to provision, no databases to manage, and no hosting plans to upgrade as your traffic grows.
+$0 for most sites. Cloudflare Pages, GitHub Pages, and Netlify all offer free static hosting with SSL and CDN distribution. Cloudflare Pages has unlimited bandwidth on the free tier; GitHub Pages and Netlify's free plans have usage limits (check their current terms if you expect heavy traffic). There are no servers to provision and no databases to manage.
 
 ### Can WordPress sites be converted to static sites?
 
-Yes. Export your WordPress content as XML, convert to markdown using open-source tools like wordpress-export-to-markdown, and place the files in your static site's content directory. Most content transfers cleanly. Templates need to be recreated, but seite's bundled [themes](/docs/templates) and [theme generation](/docs/templates) make this fast.
+Yes. Export your WordPress content as XML (Tools → Export), then run `seite import wordpress export.xml`: posts and pages become Markdown files with frontmatter, images from your site are downloaded, and old URLs are kept as aliases. Add `--dry-run` to preview it first. Most content transfers cleanly; anything that didn't is listed in `.seite/cache/import-report.md`. Templates need to be recreated, but seite's bundled [themes](/docs/templates) and [theme generation](/docs/templates) make this fast.
 
 ## WordPress Was Built for Bloggers. You're a Developer.
 

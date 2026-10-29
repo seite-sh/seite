@@ -1,7 +1,7 @@
 ---
 title: "Error Reference"
 description: "Every diagnostic code reported by seite check and seite build, and every seite audit finding: what it means, common causes, and how to fix it."
-weight: 12
+weight: 19
 ---
 
 `seite check` and `seite build` report problems as compiler-style lines such as `content/posts/a.md:3:1: error[frontmatter-parse]: ...`. The part in brackets is a stable **diagnostic code**. Each code has a section below; run `seite explain <code>` to print it in the terminal. In `--json` output every diagnostic carries a `docs_url` pointing at its section here.
@@ -111,9 +111,9 @@ Errors fail `seite check` and `seite build`. Warnings fail only with `--strict`.
 [comments]
 provider = "giscus"
 repo = "owner/repo"
-repo_id = "R_kgDO…"          # from https://giscus.app
+repo_id = "R_kgDOAbCdEf"          # from https://giscus.app
 category = "Announcements"
-category_id = "DIC_kwDO…"
+category_id = "DIC_kwDOAbCdEf4Cg1Hj"
 ```
 
 ## config-invalid
@@ -340,7 +340,7 @@ extra:
 
 ## image-too-large
 
-**What it means:** with `[images]` set, an image under `static/` is larger than 40 megapixels (width × height, read from the file header). seite does not decode it, so it gets no resized copies, WebP/AVIF variants or `srcset`; the original is still published as it is. Reported as a warning. Decoding takes 4 bytes per pixel for every image at once, so a few small files claiming huge dimensions would otherwise take gigabytes of memory in `seite build`, `seite check` and agent hooks.
+**What it means:** with `[images]` set, an image under `static/` is larger than 40 megapixels (width × height, read from the file header). seite does not decode it, so it gets no resized copies, WebP/AVIF variants or `srcset`; the original is still published as it is. Reported as a warning. A decoded image takes 4 bytes per pixel and seite decodes up to 4 images in parallel, so a few small files claiming huge dimensions would otherwise take gigabytes of memory in `seite build`, `seite check` and agent hooks.
 
 **Common causes:** an uncompressed camera or design export, a scan, or a deliberately crafted file in a cloned repository.
 
@@ -581,33 +581,11 @@ font = "static/fonts/NotoSansJP-Bold.ttf"
 
 ## symlinked-source
 
-**What it means:** a file or directory under `content/` or `templates/` (including `templates/shortcodes/`) is a symbolic link. The build reads and publishes those files (HTML, `.md` copies, `llms-full.txt`, the search index), so a committed link such as `content/posts/x.md -> ~/notes.md` would publish a file from outside the project. seite refuses every symlink there, even one that stays inside the project. An error: `seite build`, `seite check` and the dev server stop before reading any content or template.
+**What it means:** a source directory (`content/`, `templates/`, `static/`, `data/`, `public/` or a collection's `directory`) is reached through a symbolic link, or a file or directory under `content/` or `templates/` (including `templates/shortcodes/`) is one. The build reads and publishes those files (HTML, `.md` copies, `llms-full.txt`, the search index), so a committed link such as `content/posts/x.md -> ~/notes.md` would publish a file from outside the project. seite refuses every symlink there, even one that stays inside the project. An error: `seite build`, `seite check` and the dev server stop before reading any content or template. (A symlinked *file* inside `static/`, `data/` or `public/` is not an error: it is skipped with a warning and never copied or loaded.)
 
 **Common causes:** a post or template linked from another folder or repository instead of copied; a cloned repository that contains such links.
 
 **How to fix:** replace the link with a copy of the file: delete the link and copy the target into its place.
-
-## taxonomy-reserved-name
-
-**What it means:** a `[[taxonomies]]` entry is named after a frontmatter field seite reads itself (`title`, `date`, `extra`, `series`, `draft`, …). Pages assign terms with a top-level key named after the taxonomy, and that key already means something else, so the taxonomy never gets terms. Reported as a warning.
-
-**Common causes:** naming a taxonomy `series` or `extra`.
-
-**How to fix:** rename the taxonomy, e.g. `topics`, and use that key in frontmatter.
-
-## taxonomy-url-collision
-
-**What it means:** a `[[taxonomies]]` entry's URL prefix is already used by a collection, another taxonomy (including `/tags`), the series index pages (`/series`), or a language (`/es`). Their pages would be written to the same paths and overwrite each other, so the build stops. Reported as an error.
-
-**Common causes:** `url_prefix = "/posts"` on a taxonomy, or a taxonomy named after a collection or a language code.
-
-**How to fix:** give the taxonomy its own `url_prefix`:
-
-```toml
-[[taxonomies]]
-name = "categories"
-url_prefix = "/categories"   # not "/posts"
-```
 
 ## tailwind-download-failed
 
@@ -636,6 +614,28 @@ seite trust            # --revoke undoes it, --list shows trusted projects
 ```
 
 The decision is stored per user (in seite's config directory, keyed by the site's path), never in the repository. Coding agents are not allowed to run `seite trust`. In CI, set `SEITE_TRUST_PROJECT=1` in the build step's environment (the workflows seite generates do this for Tailwind sites); see [Tailwind CSS](/docs/configuration#tailwind-css).
+
+## taxonomy-reserved-name
+
+**What it means:** a `[[taxonomies]]` entry is named after a frontmatter field seite reads itself (`title`, `date`, `extra`, `series`, `draft`, …). Pages assign terms with a top-level key named after the taxonomy, and that key already means something else, so the taxonomy never gets terms. Reported as a warning.
+
+**Common causes:** naming a taxonomy `series` or `extra`.
+
+**How to fix:** rename the taxonomy, e.g. `topics`, and use that key in frontmatter.
+
+## taxonomy-url-collision
+
+**What it means:** a `[[taxonomies]]` entry's URL prefix is already used by a collection, another taxonomy (including `/tags`), the series index pages (`/series`), or a language (`/es`). Their pages would be written to the same paths and overwrite each other, so the build stops. Reported as an error.
+
+**Common causes:** `url_prefix = "/posts"` on a taxonomy, or a taxonomy named after a collection or a language code.
+
+**How to fix:** give the taxonomy its own `url_prefix`:
+
+```toml
+[[taxonomies]]
+name = "categories"
+url_prefix = "/categories"   # not "/posts"
+```
 
 ## template-cycle
 

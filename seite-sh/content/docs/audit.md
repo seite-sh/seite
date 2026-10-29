@@ -1,7 +1,7 @@
 ---
 title: "Audit"
 description: "seite audit is a free, offline SEO, AI-visibility, accessibility, content and performance audit of your built site, with the source file to fix per finding."
-weight: 11
+weight: 17
 ---
 
 `seite audit` checks the built site the way a paid SEO crawler would, for free and without network access: titles and descriptions, headings, thin and orphan pages, broken `#anchors`, the sitemap, hreflang, how visible the site is to AI assistants (llms.txt, markdown copies, JSON-LD, robots.txt), accessibility basics, links to drafts and scheduled posts, and page weight. Every finding has a stable code, the page it is on, and the file to edit (the markdown source or the template), so a coding agent can fix it on its own.
@@ -27,9 +27,9 @@ The human report starts with the score and counts, then lists the top findings p
 Audit: score 97/100 — 0 errors, 1 warning, 2 notices (6 pages)
 
 SEO — 0 errors, 1 warning, 2 notices
-  warning[seo-title-duplicate] /: <title> "My Site" is also used by /posts/ (and 1 more page)
-      --> templates/base.html:7
-      fix: make each page's title unique; search engines show one result per title
+  warning[seo-thin-content] /posts/hello: 42 words (under 150)
+      --> content/posts/hello.md:1
+      fix: expand the page to at least 150 words, merge it into a related page, or mark it a draft
 ```
 
 `--json` (and the MCP tool `seite_audit`) return one document with a stable shape:
@@ -61,7 +61,7 @@ Every key is always present: `page_url` is `null` for site-wide findings (robots
 
 `score = 100 − Σ penalty`, clamped to 0–100. Each finding costs its severity's weight — **error 10, warning 3, notice 0** (notices are suggestions: reported, never scored) — at most **3 findings per code** count, and one category costs at most **30**. One kind of problem on every page can't sink the score on its own, and fixing a kind of problem always raises it. A page without a description gets `seo-description-missing` only, not also `geo-llms-no-summary`. With `--category`, the score covers the selected categories only.
 
-Starter content passes every check above notice level. On a fresh `seite init` site the bundled themes still title the posts index like the homepage (`seo-title-duplicate`), and tag pages and the trust index have notices and an ambiguous "Learn more" link; the themes are being fixed.
+A fresh `seite init` site with the bundled starter themes and starter content audits clean (score 100, no findings), so anything the audit reports afterwards comes from your own changes.
 
 ## Checks
 

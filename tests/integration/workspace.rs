@@ -566,7 +566,7 @@ fn test_workspace_add_checks_real_sites_not_config_text() {
 
 // --- workspace upgrade ---
 
-/// A workspace with two sites added by `seite workspace add` (no
+/// A workspace with two sites as 0.20's `seite workspace add` left them (no
 /// `.seite/config.json`, so both start out pre-tracking).
 fn workspace_with_two_sites(tmp: &TempDir) {
     page_cmd()
@@ -575,11 +575,7 @@ fn workspace_with_two_sites(tmp: &TempDir) {
         .assert()
         .success();
     for site in ["blog", "docs"] {
-        page_cmd()
-            .args(["workspace", "add", site])
-            .current_dir(tmp.path())
-            .assert()
-            .success();
+        add_020_workspace_site(tmp.path(), site);
     }
 }
 
@@ -731,4 +727,50 @@ fn test_agent_commands_at_workspace_root_ask_for_site() {
         .as_str()
         .unwrap()
         .ends_with("sites/blog"));
+}
+
+#[test]
+fn test_workspace_add_writes_agent_files_like_init() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "blog",
+            "--collections",
+            "posts",
+            "--agents",
+            "claude,codex",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site_dir = tmp.path().join("sites/blog");
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("<!-- seite:context-rules -->"));
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+    // Only the selected agents: no Gemini shim.
+    assert!(!site_dir.join("GEMINI.md").exists());
+    assert!(site_dir.join(".claude/rules/features.md").is_file());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").is_file());
+    assert!(site_dir.join(".codex/hooks.json").is_file());
+    let meta = fs::read_to_string(site_dir.join(".seite/config.json")).unwrap();
+    assert!(
+        meta.contains("\"claude\"") && meta.contains("\"codex\""),
+        "{meta}"
+    );
+    // What `seite upgrade` would give the site: nothing left to do.
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
 }

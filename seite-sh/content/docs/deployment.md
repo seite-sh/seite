@@ -1,7 +1,7 @@
 ---
 title: "Deploying Your Static Site"
 description: "Deploy your seite static site to GitHub Pages, Cloudflare Pages, or Netlify with one command. Preview deploys, custom domains, and subdomain support built in."
-weight: 8
+weight: 9
 ---
 
 Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. On Cloudflare Pages and Netlify, deploying from a branch other than `main` creates a preview deploy automatically, and custom domains are wired up interactively.
@@ -45,7 +45,7 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 
 By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
-**Branch-based preview (Cloudflare Pages and Netlify):** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually. GitHub Pages has no preview deploys (one live site per repository), so for `github-pages` `seite deploy` refuses to run from another branch or with `--preview` instead of overwriting the live site; merge to `main` and deploy from there, or preview locally with `seite serve`.
+**Branch-based preview (Cloudflare Pages and Netlify):** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually. GitHub Pages has no preview deploys (one live site per repository), so for `github-pages` `seite deploy` refuses to run from another branch or with `--preview` instead of overwriting the live site; merge to `main` and deploy from there, or preview locally with `seite serve`. The branch and production/preview decision is made before auto-commit, so a refused deploy commits, pushes and publishes nothing. `seite deploy --dry-run` prints the same plan: branch, production or preview, and whether it would commit and push.
 
 To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 
@@ -79,7 +79,7 @@ seite build
 seite deploy
 ```
 
-This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" and publishes nothing. If your repository's default branch has another name, deploy from it with `--no-commit`.
+This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" before auto-commit, so nothing is committed, pushed or published. If your repository's default branch has another name, deploy from it with `--no-commit`.
 
 ### Dry run
 
@@ -143,6 +143,8 @@ seite deploy --target cloudflare --dry-run
 target = "netlify"
 ```
 
+For Netlify, `seite init` writes a `netlify.toml` (build command and publish directory) and no GitHub Actions workflow: connect the repository in Netlify to have it build on every push, or deploy from your machine with `seite deploy`.
+
 ### Deploy
 
 ```bash
@@ -189,6 +191,9 @@ When `deploy.domain` is set, pre-flight checks will verify the domain is attache
 ```toml
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
+default_template = "doc.html"
 subdomain = "docs"           # → docs.example.com
 subdomain_base_url = "https://docs.example.com"  # optional: explicit URL override
 deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
@@ -221,6 +226,9 @@ session_hours = 168
 
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
+default_template = "doc.html"
 private = true
 access_group = "staff"
 subdomain = "docs"
@@ -279,7 +287,7 @@ Cloudflare also does not apply [`_headers`](https://developers.cloudflare.com/pa
 
 Only plain paths negotiate: a request path with `%` escapes, `//`, a backslash or a `.`/`..` segment always gets the normal response, and the Worker re-checks the exact `.md` path it fetches (for `[access]`, against the same password route). An extensionless path tries `<path>.md`, then `<path>/index.md`.
 
-Netlify: `_redirects` and `netlify.toml` redirect conditions only match `Country`, `Language`, `Role` and `Cookie`, not `Accept`, so negotiation needs an Edge Function. Edge Functions count against your plan's usage on every matching request, and they are deployed only when Netlify builds the site (the `netlify.toml` seite generates) or by `netlify deploy` run from the site root; the generated GitHub Actions workflow uploads `dist/` only. seite does not generate one. If you want it anyway, a minimal version (untested example; HTML responses keep no `Vary` header):
+Netlify: `_redirects` and `netlify.toml` redirect conditions only match `Country`, `Language`, `Role` and `Cookie`, not `Accept`, so negotiation needs an Edge Function. Edge Functions count against your plan's usage on every matching request, and they are deployed only when Netlify builds the site (the `netlify.toml` seite generates) or by `netlify deploy` run from the site root. seite does not generate one. If you want it anyway, a minimal version (untested example; HTML responses keep no `Vary` header):
 
 ```js
 // netlify/edge-functions/markdown.js
@@ -317,8 +325,8 @@ With `[build] schedule = true`, posts with a future `date` are left out of the b
   With `schedule = true`, `seite upgrade` adds it to a workflow that is still exactly as seite generated it; if you edited yours, it prints the lines to add instead.
 
   GitHub disables scheduled workflows in public repositories after 60 days without repository activity (and emails you first). Re-enable it under *Actions → Deploy → Enable workflow* (or `gh workflow enable deploy.yml`), or push any commit before then; manual runs (`workflow_dispatch`) keep working meanwhile.
-- **Cloudflare Pages / Netlify via GitHub Actions:** the generated workflow for these targets has the same daily trigger (the build runs in Actions, then deploys with your `CLOUDFLARE_*` / `NETLIFY_*` secrets).
-- **Cloudflare Pages / Netlify with `seite deploy` from your machine:** either commit the generated workflow (and its secrets) so GitHub Actions rebuilds daily, or use the host's free **build hook**: Netlify (*Site configuration → Build & deploy → Build hooks*) and Cloudflare Pages Git-connected projects (*Settings → Builds → Deploy hooks*) give you a URL that starts a build when called. Call it daily from any free scheduler, for example a scheduled GitHub Actions workflow:
+- **Cloudflare Pages via GitHub Actions:** the generated workflow has the same daily trigger (the build runs in Actions, then deploys to the configured or detected Pages project with your `CLOUDFLARE_*` secrets).
+- **Netlify, or Cloudflare Pages with `seite deploy` from your machine:** for Cloudflare, commit the generated workflow (and its secrets) so GitHub Actions rebuilds daily; for either host, use its free **build hook**: Netlify (*Site configuration → Build & deploy → Build hooks*) and Cloudflare Pages Git-connected projects (*Settings → Builds → Deploy hooks*) give you a URL that starts a build when called. Call it daily from any free scheduler, for example a scheduled GitHub Actions workflow:
 
   ```yaml
   on:

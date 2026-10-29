@@ -62,38 +62,22 @@ Here is the step-by-step path from nothing to a live site with all five sections
 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
-One command. One 15 MB Rust binary. No Node.js, no Python, no package managers to configure. If you have a shell, you can install seite.
+One command. One Rust binary (about 24 MB, an ~8 MB download). No Node.js, no Python, no package managers to configure. If you have a shell, you can install seite.
 
 ### Step 2: Initialize with All Five Sections (2 Minutes)
 
 ```bash
 seite init mysite \
- --title "Acme" \
- --collections posts,docs,pages,changelog
+  --title "Acme" \
+  --collections posts,docs,pages,changelog \
+  --deploy-target cloudflare
 ```
 
-This scaffolds your entire project: directory structure, `seite.toml` config, placeholder templates and starter content for every collection. The project is ready to build immediately.
+This scaffolds your project: directory structure, a `seite.toml` with every collection spelled out, templates, a starter blog post and a first changelog entry (`v0.1.0`). The docs and pages folders start empty. The project builds immediately.
 
-Your `seite.toml` will have all five sections configured:
+The contact form is one more command. `seite contact setup` asks for a provider (Formspree, Web3Forms, Netlify Forms, HubSpot or Typeform) and your form ID, writes the `[contact]` section and creates a contact page:
 
 ```toml
-[site]
-title = "Acme"
-base_url = "https://acme.com"
-language = "en"
-
-[[collections]]
-name = "posts"
-
-[[collections]]
-name = "docs"
-
-[[collections]]
-name = "pages"
-
-[[collections]]
-name = "changelog"
-
 [contact]
 provider = "formspree"
 endpoint = "your-form-id"
@@ -150,13 +134,13 @@ For the detailed walkthrough, see [deploy to Cloudflare Pages in one command](/b
 
 **Total time: 45-55 minutes.** That is the honest number. Install and init are fast. The content window depends on how much you write and how much you let the agent draft. But the site structure, the theme, the deploy pipeline: those are done in under 15 minutes.
 
-> **Ready to start?** Follow the [getting started guide](/docs/getting-started) for the full setup walkthrough with screenshots and config examples.
+> **Ready to start?** Follow the [getting started guide](/docs/getting-started) for the full setup walkthrough with config examples.
 
 ## What You Actually Get at the End
 
 After `seite deploy`, here is what is live at your domain:
 
-**Landing page** at `/` with your hero, value proposition and contact form shortcode (`{{< contact_form() >}}`). No Typeform account. No form backend to maintain. seite handles the form submission routing through your configured provider.
+**Landing page** at `/` with your hero, value proposition and contact form shortcode (`{{< contact_form() >}}`). No form backend to maintain: the form posts to your provider (a free Formspree or Web3Forms account, or Netlify Forms when you host on Netlify), and seite renders the markup for it.
 
 **Docs site** at `/docs` with sidebar navigation automatically generated from your docs files. Group docs by directory; the sidebar reflects the structure. The `docs` theme gives you the sidebar layout if you prefer it.
 
@@ -186,14 +170,14 @@ Here is the honest breakdown. Prices are from published pricing pages as of Marc
 | **Docs** | Yes | No | No | No |
 | **Blog** | Yes | No | Yes | Yes |
 | **Changelog** | Yes | No | No | No |
-| **Contact form** | Yes (built in) | No (add Typeform) | No | No (plugin) |
+| **Contact form** | Yes (shortcode + free form provider) | Yes (native forms) | No | No (plugin) |
 | **Deploy automation** | Yes (one command) | Manual | Manual | Manual |
 | **AI agent** | Yes (built in) | No | No | No |
-| **Hosting cost** | $0 (Cloudflare Pages) | Included | $9+/mo | Included |
+| **Hosting cost** | $0 (Cloudflare Pages) | Included | Included | Included |
 
-Webflow Starter covers landing pages but not docs, changelog or contact forms. [Ghost Creator](https://ghost.org/pricing/) covers the blog, requires Node.js hosting and nothing else. WordPress.com Pro covers most sections but at $300/year, requires plugins for forms and has no CLI workflow.
+Webflow Starter covers landing pages and simple forms but not docs or a changelog. [Ghost Creator](https://ghost.org/pricing/) is hosted and covers the blog and newsletter, and little else. WordPress.com Pro covers most sections but at $300/year, requires plugins for forms and has no CLI workflow.
 
-The typical startup stack (Webflow + Ghost + Typeform) runs $576/year and still misses docs and the changelog. seite is $0 and ships everything.
+The typical startup stack (Webflow + Ghost + Typeform) runs $576/year and still misses docs and the changelog. seite is $0 for the tool and the hosting; the form provider and your domain are the only accounts you add.
 
 For a deeper look at [why static sites cost less than WordPress](/blog/wordpress-alternative-for-developers), that post covers the hosting and maintenance cost gap in detail.
 

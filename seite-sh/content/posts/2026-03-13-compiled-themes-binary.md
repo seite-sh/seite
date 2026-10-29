@@ -57,8 +57,9 @@ pub fn terminal() -> Theme {
 
 pub fn all() -> Vec<Theme> {
     vec![
-        default(), minimal(), dark(), docs(), brutalist(),
-        bento(), landing(), terminal(), magazine(), academic(),
+        default(), docs(), landing(), blank(),      // starters
+        minimal(), dark(), brutalist(), bento(),    // gallery
+        terminal(), magazine(), academic(),
     ]
 }
 ```
@@ -113,7 +114,7 @@ Six of these are the ones this post originally covered (default, minimal, dark, 
 
 The fifth, **blank** (v0.21.0), isn't a finished design. It's semantic markup with its CSS in `static/css/site.css`, the starting point `seite theme new` gives you for a design of your own.
 
-The [theme gallery](/docs/theme-gallery) has visual previews of the original six, plus the install and export workflow. The quickest way to judge the newer four is to apply them to your own site and run `seite serve`. Add `--json` to `seite theme list` and you get the same list, plus any installed themes, as structured data.
+The [theme gallery](/docs/theme-gallery) has a visual preview of every bundled theme, plus the install and export workflow. The quickest way to judge one on your content is to apply it to your own site and run `seite serve`. Add `--json` to `seite theme list` and you get the same list, plus any installed themes, as structured data.
 
 ## What `seite theme apply` Does to Your Files
 
@@ -210,7 +211,7 @@ Compiling themes in buys a lot. It also costs some things. Here's the accounting
 
 **Theme updates follow seite releases.** A fix to a bundled theme ships with the next seite version, not on its own schedule.
 
-**Your `base.html` is a copy.** Upgrading seite doesn't rewrite `templates/base.html`. To pick up improvements to a bundled theme, re-apply it. If you'd customized it, your version lands in `base.html.bak` and you merge your changes back by hand. That's the price of owning the file.
+**Your `base.html` is a copy.** Upgrading seite doesn't rewrite `templates/base.html`. To pick up improvements to a bundled theme, re-apply it. If you'd customized it, your version is saved as `base.html.bak` (or `base.html.bak.1`, `.2`, … when that exists) and you merge your changes back by hand. That's the price of owning the file.
 
 For us that trade is worth it. A theme you can't build without a network connection is a theme that will eventually fail a build for reasons unrelated to your site.
 

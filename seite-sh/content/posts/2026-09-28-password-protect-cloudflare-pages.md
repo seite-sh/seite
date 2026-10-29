@@ -1,6 +1,7 @@
 ---
-title: "Password Protect Cloudflare Pages Without a Worker"
+title: "Password Protect Cloudflare Pages, No Worker Code"
 date: 2026-09-28
+updated: 2026-10-29
 description: "Password protect Cloudflare Pages paths or whole subdomains from seite.toml. Separate password groups, signed sessions and no Worker code or Zero Trust setup."
 tags:
   - cloudflare

@@ -1,7 +1,7 @@
 ---
 title: "MCP Server for AI Integration"
 description: "Give chat apps such as Claude Desktop structured access to your site's content, configuration and build tools via the Model Context Protocol. No API keys."
-weight: 10
+weight: 11
 ---
 
 AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
@@ -26,6 +26,8 @@ Add the server to Claude Desktop's config (`claude_desktop_config.json`, opened 
 ```
 
 Restart Claude Desktop. The chat can then read your content, check the site, create posts, and build it. Use the full path to `seite` (`which seite`) if Claude Desktop doesn't find it on `PATH`. Other chat apps that speak MCP over stdio take the same command.
+
+Each release also attaches a one-click bundle per platform (`seite-<platform>.mcpb`, with the `seite` binary inside). Open it with Claude Desktop; on install it asks for your site folder and passes it as `--dir`.
 
 ## Over HTTP, from the dev server
 
@@ -89,10 +91,11 @@ seite upgrade --mcp           # existing site
 | Codex CLI | `.codex/config.toml` `[mcp_servers.seite]` (trusted projects only) |
 | Cursor | `.cursor/mcp.json` (approve it in Cursor's MCP settings, or `cursor-agent mcp enable seite`) |
 | OpenCode | `opencode.json` `mcp.seite` |
+| Antigravity CLI | `.agents/mcp_config.json` `mcpServers.seite` |
 | Gemini CLI | `.gemini/settings.json` `mcpServers.seite` (needs a trusted folder) |
 | GitHub Copilot | `.mcp.json` (the same file as Claude Code; Copilot CLI loads it in trusted folders, check with `/mcp`) |
 
-Claude Code, Cursor, and Gemini CLI share the same JSON shape:
+Claude Code, Cursor, Antigravity CLI, and Gemini CLI share the same JSON shape:
 
 ```json
 {

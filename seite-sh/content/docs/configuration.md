@@ -124,7 +124,7 @@ A collection can declare typed frontmatter fields. `seite build` and `seite chec
 ```toml
 [[collections]]
 name = "posts"
-# ...
+# label, directory, default_template, … as before
 strict_fields = true            # optional: warn about keys the schema does not declare
 
 [collections.fields.description]
@@ -171,6 +171,8 @@ Set `private = true` to keep a collection **out of every public discovery surfac
 ```toml
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
 private = true
 access_group = "staff"
 url_prefix = "/docs"
@@ -180,7 +182,7 @@ default_template = "doc.html"
 When `private = true`:
 
 - **The collection builds fully** — every item page *and* its auto-generated hub/index page render (with the collection's index template and `data.*` context), for the default language and every `/{lang}/` variant. Unlike `listed = false`, the hub is **not** suppressed.
-- **Its pages are excluded** from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds, and tag pages.
+- **Its pages are excluded** from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, the full-text index under `search/`, RSS/Atom feeds, and tag pages.
 - **Every page is stamped** `<meta name="robots" content="noindex, nofollow">` unless it sets its own `robots` frontmatter.
 - **Internal links still resolve** and the `.md` alternates keep generating (they live under the gated path).
 
@@ -256,10 +258,11 @@ Other values that become output paths, command arguments or URLs follow fixed ru
 - Collection and taxonomy names and language codes (`[languages.<code>]`): letters, digits, `-` or `_`.
 - URL prefixes (a collection's or taxonomy's `url_prefix`): a URL path like `/blog`, with no `.`, `..` or empty segments, no `:` and no backslashes (`url_prefix = "https://example.com/posts"` is an error; use `subdomain` for another host).
 - Deploy project names (`[deploy] project`, a collection's `deploy_project`, and a `name` read from `wrangler.toml`): lowercase letters, digits or `-`, at most 63 characters. (A `wrangler.toml` name that breaks the rule is ignored.)
+- The custom domain (`[deploy] domain`, also set by `seite deploy --domain`): a bare host name such as `www.example.com` — dot-separated labels of letters, digits and `-` (1–63 characters each, none starting or ending with `-`), at most 253 characters, with no scheme, port, path or trailing dot.
 
 A setting that breaks these rules is a `config-invalid` error at its line in the config file.
 
-A source directory (content, templates, static, data, public, or a collection's `directory`) reached through a symlink is refused, and so is any symlink inside `content/` or `templates/` (`symlinked-source`), so a cloned site can't publish files from elsewhere on your machine. Replace a link with a copy of the file.
+Symlinks never let a cloned site publish files from elsewhere on your machine. A source directory (content, templates, static, data, public, or a collection's `directory`) reached through a symlink, and any symlink inside `content/` or `templates/`, is a `symlinked-source` error. A symlinked file inside `static/`, `data/` or `public/` is skipped (not copied or loaded) with a warning naming it. Replace a link with a copy of the file.
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
@@ -290,7 +293,7 @@ output = "css/tailwind.css"          # inside the output's static/ dir → /stat
 
 Only real builds run Tailwind: `seite build`, `seite serve` (on every rebuild, so a class added to a template or a markdown file shows up on the next reload) and the MCP `seite_build` tool. `seite check`, `seite audit`, coding-agent check hooks and the other MCP tools never run it; they treat the entry CSS as a plain stylesheet. A Tailwind error stops the build with [`tailwind-failed`](/docs/errors#tailwind-failed); a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed).
 
-**CI and hosted builds.** A CI runner has no trust list, so off-machine builds trust the project for one run through the environment: `SEITE_TRUST_PROJECT=1`. It is read from the process environment only, never from `seite.toml` or `.env` files, so a repository cannot set it for a local `seite build`. The deploy workflows seite generates (GitHub Pages, Cloudflare Pages and Netlify via GitHub Actions) set it on the build step when the site has `[build.tailwind]`, and the generated `netlify.toml` prefixes its build command with it. `seite theme new --tailwind` and `seite upgrade` add it to a workflow or `netlify.toml` that is still exactly as seite generated it, and otherwise print what to add. If Cloudflare Pages or Netlify build the site from git with settings seite did not generate, add `SEITE_TRUST_PROJECT=1` as a build environment variable there.
+**CI and hosted builds.** A CI runner has no trust list, so off-machine builds trust the project for one run through the environment: `SEITE_TRUST_PROJECT=1`. It is read from the process environment only, never from `seite.toml` or `.env` files, so a repository cannot set it for a local `seite build`. The deploy workflows seite generates (GitHub Pages and Cloudflare Pages via GitHub Actions) set it on the build step when the site has `[build.tailwind]`, and the generated `netlify.toml` prefixes its build command with it. `seite theme new --tailwind` and `seite upgrade` add it to a workflow or `netlify.toml` that is still exactly as seite generated it, and otherwise print what to add. If Cloudflare Pages or Netlify build the site from git with settings seite did not generate, add `SEITE_TRUST_PROJECT=1` as a build environment variable there.
 
 **Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment (an absolute path), never through `seite.toml`:
 
@@ -369,11 +372,11 @@ When `mermaid = false` (the default), a ` ```mermaid ` block is treated like any
 
 ### CSS processing
 
-seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate design choice: all theme CSS lives inline in the Tera template file, making themes completely self-contained single files with no external dependencies. This means:
+seite does not include a Sass/SCSS/PostCSS preprocessor. The bundled themes keep their CSS inline in the Tera template, so each is one self-contained file. Other options:
 
-- No build toolchain beyond the `seite` binary itself
-- Themes are portable: install from a URL, no asset pipeline setup
-- AI-generated themes (`seite theme create`) produce one complete file
+- The `blank` starter (and `seite theme new`) links a plain stylesheet, `static/css/site.css`, which you edit directly.
+- `[build.tailwind]` compiles a Tailwind CSS v4 stylesheet with the pinned standalone CLI, no Node needed (see [Tailwind CSS](#tailwind-css)).
+- `seite theme create "<description>"` starts your coding agent with `/seite theme`, which writes the design into `templates/base.html`.
 
 Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template: seite copies everything in `static/` to the output directory.
 
@@ -495,7 +498,7 @@ Optional. Add language sections to enable multi-language support:
 ```toml
 [languages.es]
 title = "Mi Sitio"
-description = "Un blog personal y documentaci&oacute;n"
+description = "Un blog personal y documentación"
 
 [languages.fr]
 title = "Mon Site"
@@ -517,6 +520,8 @@ Optional. When this section is present, `seite` automatically processes images i
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
 When configured, images in `static/` are resized to each width, optionally converted to WebP and/or AVIF, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. AVIF sources appear first in the `<picture>` element so browsers that support AVIF use it (best compression), falling back to WebP, then the original format. To disable image processing, remove the `[images]` section entirely.
+
+Images larger than 40 megapixels (width × height, read from the file header) are not decoded: they are published as they are, without resized copies, variants or `srcset`, and reported as an [`image-too-large`](/docs/errors#image-too-large) warning. Up to 4 images are decoded at a time.
 
 ## [analytics]
 
@@ -630,9 +635,9 @@ Comment threads for the `comments()` shortcode and the `seite/comments.html` par
 [comments]
 provider = "giscus"
 repo = "owner/repo"
-repo_id = "R_kgDO…"
+repo_id = "R_kgDOAbCdEf"
 category = "Announcements"
-category_id = "DIC_kwDO…"
+category_id = "DIC_kwDOAbCdEf4Cg1Hj"
 ```
 
 | Field | Provider | Default | Description |
@@ -815,9 +820,7 @@ For multi-site setups, a `seite-workspace.toml` at the workspace root configures
 ```toml
 [workspace]
 name = "my-workspace"
-shared_data = "data"           # Shared data directory (optional)
-shared_static = "static"       # Shared static assets (optional)
-shared_templates = "templates" # Shared templates (optional)
+# shared_data / shared_static / shared_templates: reserved, not read by builds yet
 
 [[sites]]
 name = "blog"
@@ -829,13 +832,9 @@ path = "sites/blog"
 name = "docs"
 path = "sites/docs"
 
-[cross_site]
-unified_sitemap = false    # Combine all sites into one sitemap
-cross_site_links = false   # Validate links across sites
-unified_search = false     # Combined search index
 ```
 
-See [Workspaces](/docs/workspace) for the full guide.
+`shared_data`, `shared_static`, `shared_templates` and the `[cross_site]` table (`unified_sitemap`, `cross_site_links`, `unified_search`) are accepted but not implemented: each site builds only from its own directories, with its own sitemap and search index. See [Workspaces](/docs/workspace) for the full guide.
 
 ## Next Steps
 

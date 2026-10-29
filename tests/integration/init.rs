@@ -148,6 +148,12 @@ fn test_init_cloudflare_creates_workflow() {
     let content = fs::read_to_string(&workflow_path).unwrap();
     assert!(content.contains("Cloudflare"));
     assert!(content.contains("wrangler-action"));
+    // Deploys to the project `seite deploy` uses (the directory name, now
+    // in seite.toml), not a placeholder.
+    assert!(content.contains("--project-name mysite"), "{content}");
+    assert!(!content.contains("your-project-name"));
+    let config = fs::read_to_string(tmp.path().join("mysite/seite.toml")).unwrap();
+    assert!(config.contains("project = \"mysite\""), "{config}");
 }
 
 #[test]
@@ -183,11 +189,10 @@ fn test_init_netlify_target() {
     assert!(content.contains("[build]"));
     assert!(content.contains("seite build"));
 
-    // Should also generate GitHub Actions workflow
+    // No GitHub Actions workflow: Netlify's own git builds run netlify.toml,
+    // and a production-deploying workflow as well would deploy twice.
     let workflow_path = tmp.path().join("mysite/.github/workflows/deploy.yml");
-    assert!(workflow_path.exists());
-    let workflow = fs::read_to_string(&workflow_path).unwrap();
-    assert!(workflow.contains("Netlify"));
+    assert!(!workflow_path.exists());
 }
 
 #[test]
@@ -472,7 +477,15 @@ fn test_init_agents_default_writes_all_harness_files() {
 
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
+        serde_json::json!([
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "copilot",
+            "antigravity"
+        ])
     );
 }
 

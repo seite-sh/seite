@@ -284,6 +284,22 @@ fn command_name(command: &Command) -> &'static str {
     }
 }
 
+/// The collection argument the welcome screen suggests for `seite new`: the
+/// site's first collection (singular where `seite new` accepts it), else a
+/// generic `<collection>`.
+fn welcome_collection() -> String {
+    let Ok(config) = seite::config::SiteConfig::load(std::path::Path::new("seite.toml")) else {
+        return "<collection>".into();
+    };
+    match config.collections.first().map(|c| c.name.as_str()) {
+        Some("posts") => "post".into(),
+        Some("docs") => "doc".into(),
+        Some("pages") => "page".into(),
+        Some(name) if !name.is_empty() && !name.contains(char::is_whitespace) => name.into(),
+        _ => "<collection>".into(),
+    }
+}
+
 /// Show a friendly welcome screen when no subcommand is given.
 fn print_welcome() {
     use console::style;
@@ -297,14 +313,15 @@ fn print_welcome() {
         style("seite").bold().cyan(),
         style(format!("v{version}")).dim()
     );
-    println!("  {}", style("AI-native static site generator").dim());
+    println!("  {}", style(seite::cli::TAGLINE).dim());
     println!();
 
     if has_project {
         println!("  {}", style("Commands:").bold());
         println!("    seite build              Build the site");
         println!("    seite serve              Start dev server with live reload");
-        println!("    seite new post \"Title\"   Create a new post");
+        let new_cmd = format!("seite new {} \"Title\"", welcome_collection());
+        println!("    {new_cmd:<25}Create new content");
         println!("    seite deploy             Deploy to production");
         println!("    seite agent \"prompt\"     Open your coding agent with a prompt");
         println!("    seite --help             See all commands");

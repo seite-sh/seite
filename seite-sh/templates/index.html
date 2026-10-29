@@ -168,10 +168,8 @@
     .agent-panel-head strong, .agent-panel-head span { display: block; }
     .agent-panel-head strong { font-size: 0.9rem; color: var(--heading); }
     .agent-panel-head span { font-size: 0.75rem; color: var(--text-dim); }
-    .agent-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 0.75rem; }
-    .agent-tabs button { border-radius: 0; border: 0; border-left: 1px solid var(--border); min-height: 34px; padding: 0 0.25rem; white-space: nowrap; }
-    .agent-tabs button:nth-child(3n+1) { border-left: 0; }
-    .agent-tabs button:nth-child(n+4) { border-top: 1px solid var(--border); }
+    .agent-tabs { display: flex; flex-wrap: wrap; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 0.75rem; }
+    .agent-tabs button { flex: 1 1 22%; border-radius: 0; border: 0; background: var(--bg); min-height: 34px; padding: 0 0.25rem; white-space: nowrap; }
     .agent-tabs button[aria-selected="true"] { background: var(--ink); color: var(--on-ink); }
     .agent-tabs button:hover:not([aria-selected="true"]) { color: var(--heading); background: var(--bg-raised); }
     .agent-panel .term-body { min-height: 16rem; }
@@ -354,7 +352,7 @@
 
         <div class="agent-panel">
             <div class="agent-panel-head">
-                <strong>Hand the site to your agent</strong>
+                <strong>Hand the site to your coding agent</strong>
                 <span>one /seite skill, every agent</span>
             </div>
             <div class="agent-tabs" role="tablist" aria-label="Coding agent">
@@ -362,6 +360,7 @@
                 <button type="button" role="tab" aria-selected="false" data-agent="codex">Codex</button>
                 <button type="button" role="tab" aria-selected="false" data-agent="opencode">OpenCode</button>
                 <button type="button" role="tab" aria-selected="false" data-agent="cursor">Cursor</button>
+                <button type="button" role="tab" aria-selected="false" data-agent="antigravity">Antigravity</button>
                 <button type="button" role="tab" aria-selected="false" data-agent="gemini">Gemini CLI</button>
                 <button type="button" role="tab" aria-selected="false" data-agent="copilot">Copilot</button>
             </div>
@@ -380,7 +379,7 @@
 <div class="works">
     <div class="container works-inner">
         <span class="works-label">Works with</span>
-        <ul aria-label="Coding agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li><li>Cursor</li><li>Gemini CLI</li><li>GitHub Copilot</li></ul>
+        <ul aria-label="Coding agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li><li>Cursor</li><li>Antigravity CLI</li><li>Gemini CLI</li><li>GitHub Copilot</li></ul>
         <span class="sep" aria-hidden="true"></span>
         <ul aria-label="Deploy targets"><li>GitHub Pages</li><li>Cloudflare Pages</li><li>Netlify</li></ul>
     </div>
@@ -390,7 +389,7 @@
 <section class="sec" id="features">
     <div class="container">
         <div class="sec-head">
-            <h2>One binary for the whole site. <span>Your agent drives all of it.</span></h2>
+            <h2>One binary for the whole site. <span>Your coding agent drives all of it.</span></h2>
             <p class="sec-lede">{{ page.extra.comparison_sub | default(value="Most teams stitch together a CMS, a form provider, a deploy pipeline, and a changelog tool, then glue it with scripts. seite handles all of it.") }}</p>
         </div>
         <div class="tools">
@@ -415,7 +414,7 @@
             <div class="tool">
                 <h3>Deploy</h3>
                 <div class="replaces">replaces Vercel · custom CI</div>
-                <p>GitHub Pages, Cloudflare Pages or Netlify, with pre-flight checks, preview deploys and password protection.</p>
+                <p>GitHub Pages, Cloudflare Pages or Netlify, with pre-flight checks, preview deploys (Cloudflare and Netlify) and password protection (Cloudflare).</p>
                 <div class="cmd"><span>$ </span>seite deploy</div>
             </div>
         </div>
@@ -427,15 +426,15 @@
     <div class="container">
         <div class="sec-head">
             <h2>{{ page.extra.quickstart_title_1 | default(value="Up and running in thirty seconds.") }}</h2>
-            <p class="sec-lede">Install, scaffold, hand it to your agent, check, deploy. Pick a step to see what it does.</p>
+            <p class="sec-lede">Install, scaffold, hand it to your coding agent, check, deploy. Pick a step to see what it does.</p>
         </div>
         <div class="walk">
             <ol class="steps">
                 <li class="step"><button type="button" aria-pressed="true" data-step="0"><span class="step-n">01</span><span class="step-t">Install</span><span class="step-c">curl -fsSL seite.sh/install.sh | sh</span><span class="step-d">One static binary for macOS, Linux and Windows. No Node.js, no runtime dependencies.</span></button></li>
                 <li class="step"><button type="button" aria-pressed="false" data-step="1"><span class="step-n">02</span><span class="step-t">Scaffold</span><span class="step-c">seite init mysite</span><span class="step-d">Config, templates, collections and the agent files: AGENTS.md, rules, the /seite skill and check hooks.</span></button></li>
-                <li class="step"><button type="button" aria-pressed="false" data-step="2"><span class="step-n">03</span><span class="step-t">Hand it to your agent</span><span class="step-c">/seite new post "Launch"</span><span class="step-d">In Claude Code, Codex, OpenCode, Cursor, Gemini CLI or Copilot. The agent reads the site's context and writes content in the right place, with the right frontmatter. You review a diff.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="2"><span class="step-n">03</span><span class="step-t">Hand it to your coding agent</span><span class="step-c">/seite new post "Launch"</span><span class="step-d">In Claude Code, Codex, OpenCode, Cursor, Gemini CLI or Copilot. The agent reads the site's context and writes content in the right place, with the right frontmatter. You review a diff.</span></button></li>
                 <li class="step"><button type="button" aria-pressed="false" data-step="3"><span class="step-n">04</span><span class="step-t">Check</span><span class="step-c">seite check</span><span class="step-d">Validates config, content, templates and links without writing anything. The agent's hooks run it too, after each edit and at the end of each turn.</span></button></li>
-                <li class="step"><button type="button" aria-pressed="false" data-step="4"><span class="step-n">05</span><span class="step-t">Deploy</span><span class="step-c">seite deploy</span><span class="step-d">Pre-flight checks, build and push to GitHub Pages, Cloudflare Pages or Netlify.</span></button></li>
+                <li class="step"><button type="button" aria-pressed="false" data-step="4"><span class="step-n">05</span><span class="step-t">Deploy</span><span class="step-c">seite deploy</span><span class="step-d">Pre-flight checks, build and push to GitHub Pages, Cloudflare Pages or Netlify, using git and the host's own CLI (gh, wrangler or netlify).</span></button></li>
             </ol>
             <div class="walk-out">
                 <div class="term">
@@ -467,7 +466,7 @@
         </div>
         <dl class="stats">
             <div class="stat"><dt>Build time</dt><dd><span class="num">&lt; 1 s</span><span class="note">This whole site, 150+ pages from docs to roadmap.</span></dd></div>
-            <div class="stat"><dt>Coding agents</dt><dd><span class="num">6</span><span class="note">Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot.</span></dd></div>
+            <div class="stat"><dt>Coding agents</dt><dd><span class="num">7</span><span class="note">Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot.</span></dd></div>
             <div class="stat"><dt>API keys needed</dt><dd><span class="num">0</span><span class="note">Search, social cards and the audit run without a paid service.</span></dd></div>
             <div class="stat"><dt>Bundled themes</dt><dd><span class="num">11</span><span class="note">4 starters, 7 gallery. Or describe one: <span class="mono">/seite theme</span>.</span></dd></div>
         </dl>
@@ -586,6 +585,7 @@
         codex: { cmd: 'codex', skill: '$seite', files: '.agents/skills/seite/' },
         opencode: { cmd: 'opencode', skill: '/seite', files: '.agents/skills/seite/' },
         cursor: { cmd: 'cursor-agent', skill: '/seite', files: '.agents/skills/seite/' },
+        antigravity: { cmd: 'agy', skill: '/seite', files: '.agents/skills/seite/' },
         gemini: { cmd: 'gemini', skill: '/seite', files: '.gemini/commands/seite.toml' },
         copilot: { cmd: 'copilot', skill: 'Use the /seite skill:', files: '.agents/skills/seite/' }
     };

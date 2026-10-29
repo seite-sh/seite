@@ -116,16 +116,61 @@ All bundled themes and default templates use the `{{ t }}` object for UI text. T
 | `t.all_tags` | All tags |
 | `t.tagged` | Tagged |
 | `t.changelog` | Changelog |
+| `t.all_releases` | All releases |
 | `t.roadmap` | Roadmap |
 | `t.not_found_title` | Page Not Found |
 | `t.not_found_message` | The page you requested could not be found. |
 | `t.go_home` | Go to the homepage |
-| `t.prev_post` | Previous |
-| `t.next_post` | Next |
 | `t.in_progress` | In Progress |
 | `t.planned` | Planned |
 | `t.done` | Done |
 | `t.other` | Other |
+| `t.trust_center` | Trust Center |
+| `t.trust_hero_subtitle` | Security, compliance, and data protection at {site}. |
+| `t.certifications_compliance` | Certifications & Compliance |
+| `t.active` | Active |
+| `t.learn_more` | Learn more |
+| `t.auditor` | Auditor |
+| `t.scope` | Scope |
+| `t.issued` | Issued |
+| `t.expires` | Expires |
+| `t.subprocessors` | Subprocessors |
+| `t.vendor` | Vendor |
+| `t.purpose` | Purpose |
+| `t.location` | Location |
+| `t.dpa` | DPA |
+| `t.yes` | Yes |
+| `t.no` | No |
+| `t.faq` | Frequently Asked Questions |
+| `t.resources` | Resources |
+| `t.previous` | Previous |
+| `t.next` | Next |
+| `t.prev_post` | Previous |
+| `t.next_post` | Next |
+| `t.on_this_page` | On this page |
+| `t.search_docs` | Search docs… |
+| `t.search_documentation` | Search documentation |
+| `t.toggle_theme` | Toggle light/dark mode |
+| `t.toggle_sidebar` | Toggle sidebar |
+| `t.built_with` | Built with |
+| `t.get_started` | Get started |
+| `t.view_on_github` | View on GitHub |
+| `t.rss` | RSS |
+| `t.changelog_subtitle` | All notable changes. Subscribe via |
+| `t.roadmap_subtitle` | What we're working on and what's coming next. |
+| `t.open_an_issue` | Open an issue |
+| `t.have_a_feature_request` | Have a feature request? |
+| `t.contact_name` | Name |
+| `t.contact_email` | Email |
+| `t.contact_message` | Message |
+| `t.contact_submit` | Send Message |
+| `t.newsletter_email` | Email address |
+| `t.newsletter_submit` | Subscribe |
+| `t.documentation` | Documentation |
+| `t.callout_info` | Info |
+| `t.callout_tip` | Tip |
+| `t.callout_warning` | Warning |
+| `t.callout_danger` | Danger |
 | `t.categories` | Categories |
 | `t.related` | Related |
 | `t.series` | Series |

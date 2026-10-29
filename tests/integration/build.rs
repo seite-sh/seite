@@ -1730,4 +1730,72 @@ fn test_build_refuses_symlinked_source_dir() {
         .failure()
         .stderr(predicate::str::contains("symlink"));
     assert!(!site_dir.join("dist/static/id_rsa").exists());
+
+    // Reported as the documented, located `symlinked-source` error (not a
+    // generic `build-failed`).
+    let out = page_cmd()
+        .args(["check", "--json"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "{stdout}");
+    let doc: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let diags = doc["error"]["diagnostics"].as_array().expect("diagnostics");
+    assert!(
+        diags.iter().any(|d| d["code"] == "symlinked-source"
+            && d["severity"] == "error"
+            && d["file"] == "static"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("build-failed"), "{stdout}");
+}
+
+/// Symlinked files in static/ and data/ are skipped: say so (a warning per
+/// link) instead of leaving a missing asset unexplained.
+#[cfg(unix)]
+#[test]
+fn test_build_warns_about_skipped_symlinked_static_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Static file link", "posts");
+    let site_dir = tmp.path().join("site");
+    let outside = tmp.path().join("logo.png");
+    fs::write(&outside, "PNG").unwrap();
+    std::os::unix::fs::symlink(&outside, site_dir.join("static/logo.png")).unwrap();
+    std::os::unix::fs::symlink(&outside, site_dir.join("data/team.yaml")).unwrap();
+
+    let out = page_cmd()
+        .args(["check", "--json"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    let doc: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let diags = doc["data"]["diagnostics"].as_array().expect("diagnostics");
+    for file in ["static/logo.png", "data/team.yaml"] {
+        assert!(
+            diags.iter().any(|d| d["code"] == "symlinked-source"
+                && d["severity"] == "warning"
+                && d["file"] == file),
+            "{file}: {stdout}"
+        );
+    }
+
+    let out = page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        all.contains("symlinked-source"),
+        "build prints the warning: {all}"
+    );
+    assert!(!site_dir.join("dist/static/logo.png").exists());
 }

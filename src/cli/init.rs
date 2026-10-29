@@ -53,7 +53,7 @@ pub struct InitArgs {
     pub contact_endpoint: Option<String>,
 
     /// Coding agents to set the site up for (comma-separated:
-    /// claude,codex,opencode,cursor,gemini,copilot, or all). Default: all
+    /// claude,codex,opencode,cursor,gemini,copilot,antigravity, or all). Default: all
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
 
@@ -187,7 +187,14 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         deploy: crate::config::DeploySection {
             target: target.clone(),
             repo: None,
-            project: None,
+            // Cloudflare: the project `seite deploy` would detect from the
+            // directory name, written down so the generated CI workflow
+            // deploys to it (instead of a placeholder).
+            project: if matches!(target, DeployTarget::Cloudflare) {
+                crate::deploy::project_name_from_dir(&root)
+            } else {
+                None
+            },
             domain: None,
             auto_commit: true,
             markdown_negotiation: false,
@@ -394,14 +401,10 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             fs::write(workflow_dir.join("deploy.yml"), workflow)?;
         }
         DeployTarget::Netlify => {
-            // Generate netlify.toml
+            // netlify.toml only: Netlify's own git builds run it. A GitHub
+            // Actions workflow as well would deploy every push twice.
             let netlify_config = crate::deploy::generate_netlify_config(&config);
             fs::write(root.join("netlify.toml"), &netlify_config)?;
-            // Also generate GitHub Actions workflow as alternative
-            let workflow_dir = root.join(".github/workflows");
-            fs::create_dir_all(&workflow_dir)?;
-            let workflow = crate::deploy::generate_netlify_workflow(&config);
-            fs::write(workflow_dir.join("deploy.yml"), workflow)?;
         }
     }
 
@@ -450,7 +453,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             &title,
             &description,
             &collections,
-            trust_opts.as_ref(),
+            trust_opts.as_ref().map(|o| o.company.as_str()),
             &agents,
             args.mcp,
         ),
@@ -473,6 +476,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             starter.name
         )
     });
+    if matches!(target, DeployTarget::Netlify) {
+        human::info("Deploy: netlify.toml is set up for Netlify's git builds (no GitHub Actions workflow; see https://seite.sh/docs/deployment#netlify)");
+    }
     crate::human_println!();
     human::info("Next steps:");
     crate::human_println!("  cd {name}");
@@ -968,12 +974,38 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
 /// collections, the content format, the hard rules, and the workflow. Details
 /// live in the `seite` skill, the context rules, and `.seite/docs/`, so
 /// nothing here is repeated there.
+/// AGENTS.md for an existing site, from its `seite.toml`: what `seite init`
+/// writes, for sites that never got one (`seite upgrade` on a 0.20
+/// `workspace add` or hand-made site, and `seite workspace add`).
+pub(crate) fn agents_md_for(config: &SiteConfig, agents: &[Agent], mcp: bool) -> String {
+    let trust_company = config
+        .collections
+        .iter()
+        .any(|c| c.name == "trust")
+        .then(|| {
+            config
+                .trust
+                .as_ref()
+                .and_then(|t| t.company.as_deref())
+                .unwrap_or(&config.site.title)
+        });
+    generate_agents_md(
+        config,
+        &config.site.title,
+        &config.site.description,
+        &config.collections,
+        trust_company,
+        agents,
+        mcp,
+    )
+}
+
 fn generate_agents_md(
     config: &SiteConfig,
     title: &str,
     description: &str,
     collections: &[CollectionConfig],
-    trust_opts: Option<&TrustOptions>,
+    trust_company: Option<&str>,
     agents: &[Agent],
     mcp: bool,
 ) -> String {
@@ -1048,10 +1080,9 @@ fn generate_agents_md(
     {
         md.push('\n');
     }
-    if let Some(opts) = trust_opts {
+    if let Some(company) = trust_company {
         md.push_str(&format!(
-            "\nTrust center for **{}** at `/trust/` (data in `data/trust/`).\n",
-            opts.company
+            "\nTrust center for **{company}** at `/trust/` (data in `data/trust/`).\n"
         ));
     }
     md.push('\n');

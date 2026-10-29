@@ -218,7 +218,15 @@ fn test_init_json_reports_project() {
     );
     assert_eq!(
         doc["data"]["agents"],
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
+        serde_json::json!([
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "copilot",
+            "antigravity"
+        ])
     );
 }
 

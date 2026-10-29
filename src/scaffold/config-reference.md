@@ -63,7 +63,7 @@ mode = "password"       # only supported mode today
 session_hours = 168     # 1-8760; how long a visitor's password session lasts
 ```
 
-Adding `[access]` turns on password protection, enforced by a generated Cloudflare Pages Worker, for every collection with `private = true`. See `.claude/rules/private-collections.md` for `access_group`, protected static assets, and private subdomains. Manage passwords with `seite access groups` and `seite access set-password <group>`.
+Adding `[access]` turns on password protection, enforced by a generated Cloudflare Pages Worker, for every collection with `private = true`. See the private-collections rule for `access_group`, protected static assets, and private subdomains. Manage passwords with `seite access groups` and `seite access set-password <group>`.
 
 ### Comments & Newsletter
 

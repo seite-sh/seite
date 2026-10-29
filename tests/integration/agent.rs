@@ -209,6 +209,7 @@ mod fake_harness {
             ("GEMINI_CLI", "Gemini CLI"),
             ("OPENCODE", "OpenCode"),
             ("CURSOR_AGENT", "Cursor"),
+            ("ANTIGRAVITY_AGENT", "Antigravity CLI"),
         ] {
             let fake = Fake::new();
             fake.cmd(&["agent", "--once", "hi"])

@@ -780,3 +780,127 @@ fn test_deploy_without_tty_refuses_localhost_base_url_before_side_effects() {
     assert_eq!(git(&site, &["rev-parse", "HEAD"]), head, "no auto-commit");
     assert_eq!(git(&remote, &["for-each-ref"]), "", "nothing pushed");
 }
+
+/// A git repository on `branch` with one commit (rev-parse fails before it).
+fn git_repo_on_branch(dir: &std::path::Path, branch: &str) {
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=seite test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+            ])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(status.status.success(), "git {args:?}: {status:?}");
+    };
+    git(&["init", "-q", "-b", branch]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "init"]);
+}
+
+fn git_commit_count(dir: &std::path::Path) -> String {
+    let out = std::process::Command::new("git")
+        .args(["rev-list", "--count", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn test_deploy_dry_run_reports_branch_preview_and_push() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Branch Plan", "posts");
+    let site_dir = tmp.path().join("site");
+    git_repo_on_branch(&site_dir, "feature");
+
+    // Cloudflare from a non-main branch: the same auto-preview as a real
+    // deploy, and it says it would commit and push.
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "cloudflare"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Source branch: feature"))
+        .stdout(predicate::str::contains("Mode: preview"))
+        .stdout(predicate::str::contains(
+            "would commit all changes and push feature",
+        ));
+
+    let out = page_cmd()
+        .args(["--json", "deploy", "--dry-run", "--target", "netlify"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(doc["data"]["preview"], true, "{doc}");
+    assert_eq!(doc["data"]["mode"], "preview");
+    assert_eq!(doc["data"]["auto_preview"], true);
+    assert_eq!(doc["data"]["branch"], "feature");
+    assert_eq!(doc["data"]["commit_and_push"], true);
+
+    // --no-commit: no push, no auto-preview.
+    page_cmd()
+        .args([
+            "deploy",
+            "--dry-run",
+            "--target",
+            "cloudflare",
+            "--no-commit",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mode: production"))
+        .stdout(predicate::str::contains("no commit or push"));
+
+    // GitHub Pages from a non-main branch: the dry run reports the refusal
+    // the real deploy would give.
+    let out = page_cmd()
+        .args(["--json", "deploy", "--dry-run", "--target", "github-pages"])
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        doc["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("GitHub Pages has no preview deploys"),
+        "{doc}"
+    );
+    assert_eq!(doc["data"]["preview"], true, "{doc}");
+}
+
+#[test]
+fn test_deploy_github_pages_refuses_branch_before_committing() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Push", "posts");
+    let site_dir = tmp.path().join("site");
+    git_repo_on_branch(&site_dir, "feature");
+    fs::write(
+        site_dir.join("content/posts/new.md"),
+        "---\ntitle: New\n---\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .args(["deploy", "--skip-checks", "--target", "github-pages"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "GitHub Pages has no preview deploys",
+        ));
+    // Refused before auto-commit: nothing committed (or pushed).
+    assert_eq!(git_commit_count(&site_dir), "1");
+}

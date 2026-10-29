@@ -733,7 +733,15 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     let doc = json_stdout(&output);
     assert_eq!(
         doc["data"]["agents"],
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
+        serde_json::json!([
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "copilot",
+            "antigravity"
+        ])
     );
 
     let opencode = read_json_file(&site_dir.join("opencode.json"));
@@ -775,11 +783,19 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     );
     let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
     assert!(agents_md.contains("`.codex/config.toml`"));
-    assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`)"));
+    assert!(agents_md.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`; Antigravity CLI: same guides as `.agents/rules/*.md`)"));
     assert!(site_dir.join(".github/hooks/seite.json").exists());
     assert_eq!(
         stored_agents(&site_dir),
-        serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini", "copilot"])
+        serde_json::json!([
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "copilot",
+            "antigravity"
+        ])
     );
 }
 
@@ -1093,7 +1109,9 @@ fn test_init_writes_stop_hooks_for_selected_agents() {
             "gemini",
             "gemini:post-edit",
             "copilot",
-            "copilot:post-edit"
+            "copilot:post-edit",
+            "antigravity",
+            "antigravity:post-edit",
         ])
     );
 
@@ -1172,7 +1190,9 @@ fn test_upgrade_adds_stop_hooks_to_existing_project() {
             "gemini",
             "gemini:post-edit",
             "copilot",
-            "copilot:post-edit"
+            "copilot:post-edit",
+            "antigravity",
+            "antigravity:post-edit",
         ])
     );
     // Everything except the user's own Cursor hook file matches a fresh init
@@ -2147,6 +2167,204 @@ fn test_init_and_upgrade_copilot_harness() {
 }
 
 #[test]
+fn test_init_and_upgrade_antigravity_harness() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "antigravity");
+    let site_dir = tmp.path().join("site");
+    let hooks = read_json_file(&site_dir.join(".agents/hooks.json"));
+    let ours = &hooks["seite-check"];
+    assert_eq!(
+        ours["Stop"][0]["command"],
+        hook_command(Agent::Antigravity, HookKind::Stop)
+    );
+    assert_eq!(
+        ours["PostInvocation"][0]["command"],
+        hook_command(Agent::Antigravity, HookKind::PostEdit)
+    );
+    let rule = fs::read_to_string(site_dir.join(".agents/rules/templates.md")).unwrap();
+    assert!(
+        rule.starts_with("---\ntrigger: glob\nglobs: \"templates/**\"\n"),
+        "{rule}"
+    );
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").is_file());
+    assert!(!site_dir.join("GEMINI.md").exists());
+    assert!(!site_dir.join("CLAUDE.md").exists());
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("| Antigravity CLI | `.agents/hooks.json` |"));
+    assert!(agents_md.contains("Antigravity CLI loads them automatically"));
+    let fresh = harness_snapshot(&site_dir);
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+
+    // `seite hooks off|on` removes and restores both tiers.
+    let status = |site: &std::path::Path| {
+        let output = page_cmd()
+            .args(["--json", "hooks", "status", "--agents", "antigravity"])
+            .current_dir(site)
+            .output()
+            .unwrap();
+        json_stdout(&output)["data"]["agents"][0].clone()
+    };
+    assert_eq!(status(&site_dir)["post_edit"], true);
+    page_cmd()
+        .args(["hooks", "off", "--agents", "antigravity"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let text = fs::read_to_string(site_dir.join(".agents/hooks.json")).unwrap();
+    assert!(!text.contains("seite check --hook"), "{text}");
+    assert_eq!(status(&site_dir)["stop"], false);
+    page_cmd()
+        .args(["hooks", "on", "--agents", "antigravity"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert_eq!(harness_snapshot(&site_dir), fresh);
+}
+
+#[test]
+fn test_upgrade_adds_antigravity_and_refreshes_shared_rules() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "codex");
+    let site_dir = tmp.path().join("site");
+    // `.agents/rules/` as seite wrote it before 0.21 (Claude's `paths:`
+    // frontmatter, which Antigravity would discard).
+    let old = "---\npaths:\n  - \"data/**\"\n---\n";
+    let rule_path = site_dir.join(".agents/rules/data-files.md");
+    let current = fs::read_to_string(&rule_path).unwrap();
+    let body = current.splitn(3, "---\n").nth(2).unwrap();
+    fs::write(&rule_path, format!("{old}{body}")).unwrap();
+
+    page_cmd()
+        .args([
+            "upgrade",
+            "--force",
+            "--agents",
+            "codex,antigravity",
+            "--mcp",
+        ])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    assert_eq!(fs::read_to_string(&rule_path).unwrap(), current);
+    assert!(site_dir.join(".agents/hooks.json").is_file());
+    let mcp = read_json_file(&site_dir.join(".agents/mcp_config.json"));
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+    assert_eq!(
+        stored_agents(&site_dir),
+        serde_json::json!(["codex", "antigravity"])
+    );
+    page_cmd()
+        .args(["upgrade", "--force", "--mcp"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+}
+
+/// `seite check --hook antigravity` end to end, with the hook input agy
+/// 1.4.10 sends.
+#[test]
+fn test_check_hook_antigravity_protocol() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "antigravity");
+    let site_dir = tmp.path().join("site");
+    let root = site_dir.canonicalize().unwrap();
+    let ws = root.display().to_string();
+    let hook = |args: &[&str], input: serde_json::Value| -> String {
+        let mut full = vec!["check", "--hook", "antigravity"];
+        full.extend_from_slice(args);
+        let output = page_cmd()
+            .args(&full)
+            // Antigravity runs hooks in the directory of hooks.json.
+            .current_dir(site_dir.join(".agents"))
+            .write_stdin(input.to_string())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let stop = serde_json::json!({
+        "conversationId": "conv-1",
+        "executionNum": 0,
+        "fullyIdle": true,
+        "error": "",
+        "terminationReason": "NO_TOOL_CALL",
+        "workspacePaths": [ws],
+    });
+    // Clean site: nothing printed, the agent stops.
+    assert_eq!(hook(&[], stop.clone()), "");
+
+    // The agent writes a broken post: PostToolUse records it silently,
+    // PostInvocation hands the error back.
+    let broken = root.join("content/posts/2026-01-01-broken.md");
+    fs::write(&broken, "---\ntitle: Broken: yes\n---\nBody.\n").unwrap();
+    let tool = serde_json::json!({
+        "conversationId": "conv-1",
+        "stepIdx": 2,
+        "toolCall": { "name": "write_file", "args": { "Path": broken.display().to_string(), "Content": "x" } },
+        "workspacePaths": [ws],
+    });
+    assert_eq!(hook(&["--post-edit"], tool), "");
+    let invocation = serde_json::json!({
+        "conversationId": "conv-1",
+        "invocationNum": 0,
+        "initialNumSteps": 1,
+        "workspacePaths": [ws],
+    });
+    let out: serde_json::Value =
+        serde_json::from_str(&hook(&["--post-edit"], invocation.clone())).unwrap();
+    let message = out["injectSteps"][0]["ephemeralMessage"].as_str().unwrap();
+    assert!(
+        message.contains("content/posts/2026-01-01-broken.md:2"),
+        "{message}"
+    );
+    assert!(message.contains("frontmatter-parse"), "{message}");
+    // Each edit is reported once.
+    assert_eq!(hook(&["--post-edit"], invocation), "");
+
+    // Turn end: continue once with the errors, then let the agent stop.
+    let out: serde_json::Value = serde_json::from_str(&hook(&[], stop.clone())).unwrap();
+    assert_eq!(out["decision"], "continue");
+    assert!(out["reason"]
+        .as_str()
+        .unwrap()
+        .contains("frontmatter-parse"));
+    assert_eq!(hook(&[], stop.clone()), "");
+    // Next turn: continues again (still broken); another conversation too.
+    assert!(hook(&[], stop.clone()).contains("\"continue\""));
+    let mut other = stop.clone();
+    other["conversationId"] = "conv-2".into();
+    assert!(hook(&[], other).contains("\"continue\""));
+    // Errored or cancelled turns, and background work, never continue.
+    for (key, value) in [
+        ("terminationReason", serde_json::json!("USER_CANCELED")),
+        ("fullyIdle", serde_json::json!(false)),
+        ("error", serde_json::json!("boom")),
+    ] {
+        let mut input = stop.clone();
+        input["conversationId"] = "conv-3".into();
+        input[key] = value;
+        assert_eq!(hook(&[], input), "", "{key}");
+    }
+    // A continued run that ends abnormally still clears the marker, so the
+    // next normal turn end is checked again.
+    let mut conv4 = stop.clone();
+    conv4["conversationId"] = "conv-4".into();
+    assert!(hook(&[], conv4.clone()).contains("\"continue\""));
+    let mut aborted = conv4.clone();
+    aborted["terminationReason"] = "MAX_INVOCATIONS".into();
+    assert_eq!(hook(&[], aborted), "");
+    assert!(hook(&[], conv4).contains("\"continue\""));
+}
+
+#[test]
 fn test_upgrade_adds_copilot_to_claude_site_with_shared_mcp() {
     let tmp = TempDir::new().unwrap();
     init_site_with_agents(&tmp, "site", "claude");
@@ -2208,4 +2426,124 @@ fn test_upgrade_pre_019_creates_shims_in_one_run() {
         .assert()
         .success()
         .stdout(predicate::str::contains("up to date"));
+}
+
+#[test]
+fn test_upgrade_020_workspace_site_gets_agents_md_and_shims() {
+    // A workspace as 0.20.2's `seite workspace init` + `workspace add blog`
+    // left it: seite.toml only, no AGENTS.md/CLAUDE.md, no .seite/config.json.
+    let tmp = TempDir::new().unwrap();
+    let site_dir = add_020_workspace_site(tmp.path(), "blog");
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.starts_with("# blog\n"), "{agents_md}");
+    assert!(agents_md.contains("<!-- seite:context-rules -->"));
+    assert!(agents_md.contains("`.claude/rules/`"));
+    // Shims for the agents maintained by default (0.20's set: Claude, Gemini).
+    for shim in ["CLAUDE.md", "GEMINI.md"] {
+        assert_eq!(
+            fs::read_to_string(site_dir.join(shim)).unwrap(),
+            "@AGENTS.md\n",
+            "{shim}"
+        );
+    }
+    assert!(site_dir.join(".claude/rules/features.md").is_file());
+
+    // Converged: nothing left to do, at the workspace root or in the site.
+    for dir in [tmp.path(), site_dir.as_path()] {
+        page_cmd()
+            .args(["upgrade", "--check"])
+            .current_dir(dir)
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn test_upgrade_keeps_existing_claude_md_without_writing_agents_md_over_it() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude");
+    let site_dir = tmp.path().join("site");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::write(site_dir.join("CLAUDE.md"), "# My own guidance\n").unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    // A site with its own CLAUDE.md is left to the user (pre-0.19 sites to
+    // the migration): no generated AGENTS.md beside it. (The seite blocks
+    // go into CLAUDE.md, the project's instructions file.)
+    let claude = fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap();
+    assert!(claude.starts_with("# My own guidance\n"), "{claude}");
+    assert!(!site_dir.join("AGENTS.md").exists());
+}
+
+#[test]
+fn test_upgrade_refreshes_unedited_020_rules_and_keeps_edited_ones() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "claude,cursor");
+    let site_dir = tmp.path().join("site");
+    // features.md / features.mdc exactly as `seite init` 0.20.2 wrote them
+    // (they still say search is always basic).
+    let claude_rule = site_dir.join(".claude/rules/features.md");
+    let cursor_rule = site_dir.join(".cursor/rules/features.mdc");
+    let current_claude = fs::read_to_string(&claude_rule).unwrap();
+    let current_cursor = fs::read_to_string(&cursor_rule).unwrap();
+    fs::write(
+        &claude_rule,
+        include_str!("../fixtures/rules-0.20.2/features.md"),
+    )
+    .unwrap();
+    fs::write(
+        &cursor_rule,
+        include_str!("../fixtures/rules-0.20.2/features.mdc"),
+    )
+    .unwrap();
+    // An edited rule: kept, with a one-time notice.
+    let edited_rule = site_dir.join(".claude/rules/templates.md");
+    let edited = format!(
+        "{}\nOur house style: no inline styles.\n",
+        fs::read_to_string(&edited_rule).unwrap()
+    );
+    fs::write(&edited_rule, &edited).unwrap();
+    let notice = "Kept .claude/rules/templates.md (edited since seite wrote it)";
+
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(".claude/rules/features.md"))
+        .stdout(predicate::str::contains(notice).not());
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(notice));
+
+    assert_eq!(fs::read_to_string(&claude_rule).unwrap(), current_claude);
+    assert_eq!(fs::read_to_string(&cursor_rule).unwrap(), current_cursor);
+    assert_eq!(fs::read_to_string(&edited_rule).unwrap(), edited);
+
+    // Converged, and the notice is shown once.
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(notice).not());
 }

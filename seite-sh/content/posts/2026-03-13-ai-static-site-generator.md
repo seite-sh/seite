@@ -33,7 +33,7 @@ That definition matters because it draws a line between three categories of tool
 
 **AI website builders** (Relume, CodeDesign, TeleportHQ) use AI to generate sites for you. You describe what you want, and the AI produces HTML, CSS, and maybe some JavaScript. The output is a website, but it's not a workflow. There's no git history, no CLI, no content model. The AI generates *for* you, then steps away.
 
-**AI-native SSGs** give AI agents the context they need to work *with* you. The site has machine-readable project files that describe the content model, an [MCP server](/docs/mcp-server) for structured access to content and config, and a build pipeline that outputs formats AI can consume. The AI doesn't just generate your site. It understands your site. [seite](https://seite.sh) is the first static site generator built on this architecture: a single Rust binary with AI agent integration, MCP server, and triple output baked into the build pipeline.
+**AI-native SSGs** give AI agents the context they need to work *with* you. The site has machine-readable project files that describe the content model, an [MCP server](/docs/mcp-server) for structured access to content and config, and a build pipeline that outputs formats AI can consume. The AI doesn't just generate your site. It understands your site. [seite](https://seite.sh) is a static site generator built on this architecture: a single Rust binary with AI agent integration, MCP server, and triple output baked into the build pipeline.
 
 The practical difference shows up the moment you try to use Claude Code, Cursor, or any coding agent on your project. With a traditional SSG, the agent has to explore, guess, and frequently get things wrong. With an AI-native SSG, the agent reads a context file and knows your collections, templates, URL patterns, and available commands before writing a single line.
 
@@ -225,10 +225,10 @@ Here's how the major static site generators compare on AI-related capabilities:
 | Markdown output per page | No | No | No | Every build |
 | AI theme generation | No | No | No | `/seite theme` |
 | AI agent integration | No | No | No | `/seite` skill + check hooks, 6 agents |
-| Built-in deploy | No | No | No | GitHub Pages, Cloudflare, Netlify |
+| Built-in deploy | `hugo deploy` (S3, GCS, Azure) | No | No | GitHub Pages, Cloudflare, Netlify |
 | Bundled themes | Community | Community | Community | 11 compiled into binary |
-| RSS feed | Plugin | Plugin | Built-in | Built-in |
-| Client-side search | Plugin | Plugin | Built-in | Built-in, full-text |
+| RSS feed | Built-in | Package (`@astrojs/rss`) | Built-in | Built-in |
+| Client-side search | Third-party | Integration | Built-in | Built-in, full-text |
 
 Hugo, Astro, and Zola are strong tools for what they do. The difference is that none of them were designed for a world where AI agents are part of the development workflow and AI search engines are part of the audience.
 

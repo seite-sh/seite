@@ -6,8 +6,8 @@ description: Available themes and templates in seite.
 
 # Seite Themes
 
-Seite ships with 11 bundled themes: 4 starters and 7 gallery examples. Each is a self-contained
-`base.html` template compiled into the binary — no downloads needed. Preview them all at
+Seite ships with 11 bundled themes: 4 starters and 7 gallery examples. Each is a `base.html` template
+compiled into the binary (the `blank` starter also writes its CSS to `static/css/site.css`) — no downloads needed. Preview them all at
 https://seite.sh/docs/theme-gallery.
 
 ## Apply a Theme
@@ -28,7 +28,7 @@ seite theme new             # scaffold the blank starter: templates/base.html + 
 ```
 
 Then ask your coding agent: `/seite theme "coral brutalist with lime accents"` (Claude Code, Codex
-CLI, OpenCode, Cursor, Gemini CLI or GitHub Copilot; `$seite theme …` in Codex). With the optional
+CLI, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot; `$seite theme …` in Codex). With the optional
 impeccable skill installed (`seite skill install impeccable`), it uses `/impeccable` for the design.
 From a terminal outside an agent session, `seite theme create "<description>"` starts your coding
 agent on the same task (with impeccable installed, it prints the `/impeccable` steps instead).

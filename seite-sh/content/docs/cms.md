@@ -1,7 +1,7 @@
 ---
 title: Git-based CMS
 description: "Give editors a web UI for your seite site with a free Git-based CMS, Pages CMS or Decap CMS, configured from your collections and schema in one command."
-weight: 16
+weight: 15
 ---
 
 seite sites are markdown files in a Git repository, so any Git-based CMS can edit them: the CMS reads and commits files through the GitHub API, and your normal deploy publishes the change. `seite cms setup` writes the CMS configuration from `seite.toml`: one CMS collection per seite collection, with fields from the built-in frontmatter and your [frontmatter schema](/docs/configuration#frontmatter-schemas).

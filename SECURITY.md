@@ -4,7 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | Yes       |
+| 0.21.x (latest minor) | Yes |
+| Older   | No        |
+
+Security fixes ship in a new release of the latest minor version; upgrade with `seite self-update`.
 
 ## Reporting a Vulnerability
 

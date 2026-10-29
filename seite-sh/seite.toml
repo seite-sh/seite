@@ -3,7 +3,7 @@ title = "seite"
 description = "The static site generator your coding agent can run end to end, for free. HTML, Markdown and llms.txt from one Rust binary."
 base_url = "https://seite.sh"
 language = "en"
-author = ""
+author = "Omar Sanchez"
 
 [[collections]]
 name = "docs"

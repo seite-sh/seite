@@ -1374,7 +1374,8 @@ fn test_stats_and_context_report_expired_and_next_scheduled() {
 
 #[test]
 fn test_init_workflow_has_daily_cron() {
-    for target in ["github-pages", "cloudflare", "netlify"] {
+    // Netlify gets no workflow (netlify.toml only; Netlify builds on push).
+    for target in ["github-pages", "cloudflare"] {
         let tmp = TempDir::new().unwrap();
         page_cmd()
             .args([

@@ -50,7 +50,7 @@ This is the [triple output pattern](/blog/ai-static-site-generator): HTML for br
 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
-That downloads a single 15MB binary to `~/.local/bin`. No runtime. No package manager. No `pip install`, no `npm install`, no virtual environment activation. The binary runs on macOS, Linux, and Windows.
+That downloads a single binary (a ~8 MB archive, ~24 MB unpacked) to `~/.local/bin`. No runtime. No package manager. No `pip install`, no `npm install`, no virtual environment activation. The binary runs on macOS, Linux, and Windows.
 
 On Windows:
 
@@ -70,16 +70,14 @@ This creates a project with a docs [collection](/docs/collections) and a pages c
 my-docs/
   seite.toml              # Site configuration
   content/
-    docs/
-      getting-started.md  # Your first doc
+    docs/                 # empty: your docs go here
     pages/
-      index.md            # Homepage
   templates/              # Tera (Jinja2-compatible) templates
   static/                 # CSS, images, assets
-  .claude/                # AI agent context (auto-generated)
+  AGENTS.md               # instructions for coding agents (plus per-agent files)
 ```
 
-The `seite.toml` [configuration](/docs/configuration) is minimal:
+The content folders start empty. The generated `seite.toml` [configuration](/docs/configuration) spells out every collection's settings (label, directory, URL prefix, template, frontmatter fields) plus build, deploy, image and social-card defaults, so everything is visible and editable. The part that matters for a docs site looks like this:
 
 ```toml
 [site]
@@ -88,12 +86,14 @@ base_url = "http://localhost:3000"
 
 [[collections]]
 name = "docs"
-
-[[collections]]
-name = "pages"
+label = "Documentation"
+directory = "docs"
+url_prefix = "/docs"
+nested = true
+default_template = "doc.html"
 ```
 
-You can start writing docs immediately. Open `content/docs/getting-started.md` and write markdown.
+Create your first page with `seite new doc "Getting Started"`, or drop a markdown file into `content/docs/`.
 
 ### Step 3: Deploy (60 Seconds)
 
@@ -189,7 +189,7 @@ This gives you a fixed 260px sidebar with auto-scrolling navigation, section gro
 
 ### Search Works Automatically
 
-Every `seite build` generates a `search-index.json` file. The docs theme includes a search input wired to it. No configuration, no external search service, no API key. Type a query, get instant results from your docs.
+New sites are created with `search = "full"`, so every `seite build` writes a full-text index of your page text to `dist/search/` (plus the smaller `search-index.json`). The docs theme includes a search input wired to it. No external search service, no API key. Type a query, get results from your docs.
 
 ### Syntax Highlighting Works Automatically
 
@@ -206,11 +206,10 @@ If you're looking for the best documentation site generator, the first question 
 | **Prerequisites** | Python 3.8+, pip | Node.js 18+, npm | Go (or binary) | None |
 | **Install command** | `pip install mkdocs` | `npx create-docusaurus` | `brew install hugo` | `curl ...` one-liner |
 | **Steps to first build** | 6 | 5 | 4 | 3 |
-| **Dependency size** | ~50MB (pip packages) | ~200MB (node_modules) | ~15MB (binary) | ~15MB (binary) |
-| **Deploy built-in** | No | No | No | Yes |
+| **Deploy built-in** | `mkdocs gh-deploy` (GitHub Pages) | `docusaurus deploy` (GitHub Pages) | `hugo deploy` (cloud storage) | Yes (GitHub Pages, Cloudflare, Netlify) |
 | **Markdown output** | No | No | No | Yes |
 | **llms.txt** | No | No | No | Yes |
-| **Search built-in** | Plugin required | Yes | Theme-dependent | Yes |
+| **Search built-in** | Yes (bundled plugin) | Plugin required | Theme-dependent | Yes |
 
 [MkDocs](https://www.mkdocs.org/getting-started/) is a solid tool. So is [Docusaurus](https://docusaurus.io/docs/installation). But they carry the weight of their ecosystems.
 
@@ -226,7 +225,7 @@ When he audited `node_modules`, he found 1,200+ packages powering what was essen
 
 The [Stack Overflow 2025 Developer Survey](https://survey.stackoverflow.co/2025/) found that 22% of developers use static site generators for documentation. [Markdown is the most admired collaboration tool](https://survey.stackoverflow.co/2025/) for three years running. The tooling should match the simplicity of the format. If you want to create a documentation website from markdown, your docs site generator should be as simple as the content format itself.
 
-Hugo deserves a mention here. It's also a single binary, fast builds, no runtime dependencies. It's a strong [documentation site generator](/blog/hugo-alternative). Where it falls short for docs specifically: no built-in deploy command, no AI-readable output, and configuring a docs sidebar requires more template work than most developers expect. If you're coming from WordPress or another CMS, the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide covers why static sites are the better path for docs and blogs alike.
+Hugo deserves a mention here. It's also a single binary, fast builds, no runtime dependencies. It's a strong [documentation site generator](/blog/hugo-alternative). Where it falls short for docs specifically: no AI-readable output by default, and configuring a docs sidebar requires more template work than most developers expect. If you're coming from WordPress or another CMS, the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide covers why static sites are the better path for docs and blogs alike.
 
 ## Docs That AI Can Read
 
@@ -248,7 +247,7 @@ The [llms.txt](/blog/what-is-llms-txt) file lists every docs page with a link to
 
 You can also use an AI coding agent to generate and maintain your documentation from the command line — see [how to build a website with an AI coding agent](/blog/how-to-build-website-ai-coding-agent) for the full agent workflow, or [how we built seite.sh with Claude Code](/blog/built-with-seite-claude-code) for an honest behind-the-scenes account.
 
-68% of developers rely on technical documentation as their primary learning resource. Increasingly, they access that documentation through AI intermediaries. If your docs are locked inside HTML that AI models struggle to parse, you're invisible to a growing percentage of your users.
+Developers increasingly reach documentation through AI intermediaries. If your docs are locked inside HTML that AI models struggle to parse, you're invisible to a growing percentage of your users.
 
 A markdown documentation site that outputs both formats gives you the best of both worlds. Browsers get styled, navigable HTML. AI gets clean, parseable markdown. Neither audience compromises for the other.
 

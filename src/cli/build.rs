@@ -103,6 +103,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 | "frontmatter-schema-unknown"
                 | "comments-not-configured"
                 | "newsletter-not-configured"
+                | "symlinked-source"
         )
     }) {
         human::warning(&d.to_string());

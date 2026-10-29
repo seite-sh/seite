@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
+use crate::cli::harness::{self, Agent, SiteFeatures};
 use crate::config::CollectionConfig;
+use crate::meta;
 use crate::output::human;
 use crate::workspace::{self, WorkspaceConfig};
 
@@ -50,6 +52,15 @@ pub struct WorkspaceAddArgs {
     /// Collections to include (comma-separated: posts,docs,pages)
     #[arg(long)]
     pub collections: Option<String>,
+
+    /// Coding agents to set the site up for (comma-separated:
+    /// claude,codex,opencode,cursor,gemini,copilot, or all). Default: all
+    #[arg(long, value_name = "LIST")]
+    pub agents: Option<String>,
+
+    /// Also wire the seite MCP server into each agent's config
+    #[arg(long)]
+    pub mcp: bool,
 }
 
 pub fn run(args: &WorkspaceArgs) -> anyhow::Result<()> {
@@ -172,6 +183,9 @@ fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
         anyhow::bail!("site '{}' already exists in the workspace", args.name);
     }
 
+    // Coding agents to set the site up for, as `seite init` asks.
+    let agents = harness::resolve_init_agents(args.agents.as_deref())?;
+
     // Create site directory structure
     let title = args.title.clone().unwrap_or_else(|| args.name.clone());
     let collections_str = args.collections.as_deref().unwrap_or("posts,pages");
@@ -185,6 +199,7 @@ fn run_add(args: &WorkspaceAddArgs) -> anyhow::Result<()> {
     }
     fs::create_dir_all(site_dir.join("templates"))?;
     fs::create_dir_all(site_dir.join("static"))?;
+    fs::create_dir_all(site_dir.join("public"))?;
 
     // Generate seite.toml for the site
     let mut collections_toml = String::new();
@@ -242,6 +257,12 @@ target = "github-pages"
     );
     fs::write(site_dir.join("seite.toml"), page_toml)?;
 
+    // The coding-agent setup `seite init` writes, so a new workspace site
+    // matches what `seite upgrade` gives one without it (and a later
+    // `seite upgrade --check` finds nothing to do).
+    let config = crate::config::SiteConfig::load(&site_dir.join("seite.toml"))?;
+    write_agent_setup(&site_dir, &config, &agents, args.mcp)?;
+
     // Append site entry to workspace config
     let site_entry = format!(
         r#"
@@ -258,7 +279,49 @@ path = "{}"
     human::success(&format!("Added site '{}' at {}", args.name, site_path));
     human::info(&format!("  Collections: {collections_str}"));
     human::info(&format!("  Config: {}/seite.toml", site_path));
+    human::info(&format!(
+        "  Set up for {} (see {site_path}/AGENTS.md); open your coding agent in {site_path}/",
+        agents
+            .iter()
+            .map(|a| a.label())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
 
+    Ok(())
+}
+
+/// Write a site's coding-agent files as `seite init` does: the selection and
+/// hook tiers in `.seite/config.json`, the harness files (rules, `/seite`
+/// skill, hooks, CLAUDE.md/GEMINI.md shims, opt-in MCP), `.seite/docs/`, the
+/// `.gitignore` for seite's local state, and AGENTS.md. They live in the site
+/// directory, so agents pick them up when started there (as with every
+/// per-site `seite upgrade`), not from the workspace root.
+fn write_agent_setup(
+    root: &std::path::Path,
+    config: &crate::config::SiteConfig,
+    agents: &[Agent],
+    mcp: bool,
+) -> anyhow::Result<()> {
+    meta::write(
+        root,
+        &meta::PageMeta {
+            agents: Some(harness::to_ids(agents)),
+            hooks_installed: Some(crate::cli::harness_hooks::all_tier_ids(agents)),
+            ..meta::PageMeta::current()
+        },
+    )?;
+    harness::write_plan(root, agents, SiteFeatures::from_config(config), mcp)?;
+    harness::write_local_docs(root)?;
+    let gitignore = root.join(".gitignore");
+    if !gitignore.exists() {
+        crate::safe_fs::write(root, &gitignore, harness::GITIGNORE)?;
+    }
+    crate::safe_fs::write(
+        root,
+        &root.join("AGENTS.md"),
+        crate::cli::init::agents_md_for(config, agents, mcp),
+    )?;
     Ok(())
 }
 

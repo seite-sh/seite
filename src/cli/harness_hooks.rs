@@ -25,12 +25,22 @@
 //! | opencode | `.opencode/plugins/seite-check.js`   | `session.idle` (plugin prompts the session)     | `tool.execute.after` (plugin appends to the tool output) |
 //! | gemini   | `.gemini/settings.json` `hooks`      | `AfterAgent` (`{"decision":"deny","reason"}`)   | `AfterTool` `write_file\|replace` (`additionalContext`) |
 //! | copilot  | `.github/hooks/seite.json` `hooks`   | `Stop` (`{"decision":"block","reason"}`)        | `PostToolUse` `edit\|create` (`{"additionalContext"}`) |
+//! | antigravity | `.agents/hooks.json` `seite-check` | `Stop` (`{"decision":"continue","reason"}`)   | `PostToolUse` records the file, `PostInvocation` checks it (`injectSteps`) |
+//!
+//! Antigravity's `PostToolUse` output is `{}` (no channel back to the
+//! model; stderr and exit codes aren't shown to it either, verified with agy
+//! 1.4.10), so its post-edit tier is two hooks: `PostToolUse` on the file
+//! tools records each edited site file under [`ANTIGRAVITY_STATE_DIR`], and
+//! `PostInvocation` (which fires once the invocation's tool calls have run)
+//! checks the recorded files and injects the errors as an
+//! `ephemeralMessage` step before the next model call.
 //!
 //! Sources: <https://code.claude.com/docs/en/hooks>,
 //! <https://learn.chatgpt.com/docs/hooks>, <https://cursor.com/docs/agent/hooks>,
 //! <https://opencode.ai/docs/plugins/> (types from `@opencode-ai/plugin` 1.18),
 //! <https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md>,
-//! <https://docs.github.com/en/copilot/reference/hooks-configuration>.
+//! <https://docs.github.com/en/copilot/reference/hooks-configuration>,
+//! <https://antigravity.google/docs/hooks>.
 //!
 //! seite's Claude Code plugin (`plugins/seite/hooks/hooks.json`, see
 //! `cli::skill_export`) ships the same two hooks with `--plugin`
@@ -113,6 +123,24 @@ pub const OPENCODE_PLUGIN_PATH: &str = ".opencode/plugins/seite-check.js";
 
 /// Copilot's repository hook file (any `.github/hooks/*.json` loads).
 pub const COPILOT_HOOKS_PATH: &str = ".github/hooks/seite.json";
+
+/// Antigravity's workspace hook file.
+pub const ANTIGRAVITY_HOOKS_PATH: &str = ".agents/hooks.json";
+
+/// The hook name seite's entries live under in [`ANTIGRAVITY_HOOKS_PATH`]
+/// (its top-level keys are hook names, each mapping events to handlers).
+pub const ANTIGRAVITY_HOOK_NAME: &str = "seite-check";
+
+/// Per-conversation hook state for Antigravity (edited files waiting for the
+/// post-invocation check, the turn-end continuation marker), gitignored with
+/// the rest of `.seite/cache/`.
+pub const ANTIGRAVITY_STATE_DIR: &str = ".seite/cache/antigravity";
+
+/// Antigravity's file tools: the CLI's `write_file`/`edit_file` (agy 1.4.10,
+/// verified) and the names its docs use (`write_to_file`,
+/// `replace_file_content`, `multi_replace_file_content`).
+const ANTIGRAVITY_EDIT_TOOLS: &str =
+    "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content";
 
 /// The two hook tiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,6 +300,16 @@ pub fn hook_path(agent: Agent) -> &'static str {
         Agent::Opencode => OPENCODE_PLUGIN_PATH,
         Agent::Gemini => ".gemini/settings.json",
         Agent::Copilot => COPILOT_HOOKS_PATH,
+        Agent::Antigravity => ANTIGRAVITY_HOOKS_PATH,
+    }
+}
+
+/// The key of `agent`'s hook config that maps event names to entries:
+/// `hooks` everywhere, seite's own hook name in Antigravity's file.
+fn hooks_key(agent: Agent) -> &'static str {
+    match agent {
+        Agent::Antigravity => ANTIGRAVITY_HOOK_NAME,
+        _ => "hooks",
     }
 }
 
@@ -283,9 +321,16 @@ pub fn hook_path(agent: Agent) -> &'static str {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Unmergeable;
 
-/// `(event name, entry)` for `agent`'s `kind` hook in its JSON hook config.
-/// `None` for OpenCode, whose hooks live in a plugin file.
+/// `(event name, entry)` for `agent`'s `kind` hook in its JSON hook config
+/// (the first one, for agents with several: see [`hook_entries`]). `None`
+/// for OpenCode, whose hooks live in a plugin file.
 fn hook_entry(agent: Agent, kind: HookKind) -> Option<(&'static str, Value)> {
+    hook_entries(agent, kind).into_iter().next()
+}
+
+/// Every `(event name, entry)` of `agent`'s `kind` hook (one, except
+/// Antigravity's post-edit tier, which takes two events). Empty for OpenCode.
+fn hook_entries(agent: Agent, kind: HookKind) -> Vec<(&'static str, Value)> {
     let command = hook_command(agent, kind);
     let entry = match (agent, kind) {
         (Agent::Claude, HookKind::Stop) => (
@@ -374,9 +419,32 @@ fn hook_entry(agent: Agent, kind: HookKind) -> Option<(&'static str, Value)> {
                 "timeoutSec": POST_EDIT_TIMEOUT_SECS
             }),
         ),
-        (Agent::Opencode, _) => return None,
+        // Antigravity: Stop/PostInvocation handlers sit directly under the
+        // event; PostToolUse entries take a `matcher` regex and `hooks`.
+        // `timeout` is seconds (default 30). https://antigravity.google/docs/hooks
+        (Agent::Antigravity, HookKind::Stop) => (
+            "Stop",
+            json!({ "type": "command", "command": command, "timeout": HOOK_TIMEOUT_SECS }),
+        ),
+        (Agent::Antigravity, HookKind::PostEdit) => {
+            return vec![
+                (
+                    "PostToolUse",
+                    json!({ "matcher": ANTIGRAVITY_EDIT_TOOLS, "hooks": [{
+                        "type": "command",
+                        "command": command,
+                        "timeout": POST_EDIT_TIMEOUT_SECS
+                    }] }),
+                ),
+                (
+                    "PostInvocation",
+                    json!({ "type": "command", "command": command, "timeout": POST_EDIT_TIMEOUT_SECS }),
+                ),
+            ]
+        }
+        (Agent::Opencode, _) => return Vec::new(),
     };
-    Some(entry)
+    vec![entry]
 }
 
 /// Whether `value` (a hook entry) is seite's `kind` hook.
@@ -414,26 +482,25 @@ pub fn merge_hook_kinds(
         doc.extend(rest);
     }
     let hooks = doc
-        .entry("hooks")
+        .entry(hooks_key(agent))
         .or_insert_with(|| Value::Object(Map::new()))
         .as_object_mut()
         .ok_or(Unmergeable)?;
     let mut changed = false;
     for &kind in kinds {
-        let Some((event, entry)) = hook_entry(agent, kind) else {
-            continue;
-        };
-        let list = hooks
-            .entry(event)
-            .or_insert_with(|| Value::Array(Vec::new()))
-            .as_array_mut()
-            .ok_or(Unmergeable)?;
-        if list.iter().any(|v| is_seite_hook(v, kind)) {
-            changed |= wrap_bare_commands(list, agent, kind);
-            continue;
+        for (event, entry) in hook_entries(agent, kind) {
+            let list = hooks
+                .entry(event)
+                .or_insert_with(|| Value::Array(Vec::new()))
+                .as_array_mut()
+                .ok_or(Unmergeable)?;
+            if list.iter().any(|v| is_seite_hook(v, kind)) {
+                changed |= wrap_bare_commands(list, agent, kind);
+                continue;
+            }
+            list.push(entry);
+            changed = true;
         }
-        list.push(entry);
-        changed = true;
     }
     Ok(changed)
 }
@@ -535,12 +602,26 @@ pub fn remove_hooks(doc: &mut Map<String, Value>) -> bool {
 /// Remove seite's `kinds` hooks from a JSON hook config, keeping every other
 /// hook: only handlers whose command is exactly one seite generates (any
 /// version) go, never one that merely mentions `seite check`. Event lists
-/// and the `hooks` object are dropped when they end up empty. `true` when
-/// anything was removed.
+/// and the `hooks` object (Antigravity: the `seite-check` hook) are dropped
+/// when they end up empty. `true` when anything was removed.
 pub fn remove_hook_kinds(doc: &mut Map<String, Value>, kinds: &[HookKind]) -> bool {
-    let Some(hooks) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
-        return false;
-    };
+    let mut removed = false;
+    for key in ["hooks", ANTIGRAVITY_HOOK_NAME] {
+        let Some(hooks) = doc.get_mut(key).and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if remove_from_events(hooks, kinds) {
+            removed = true;
+            if hooks.is_empty() {
+                doc.remove(key);
+            }
+        }
+    }
+    removed
+}
+
+/// [`remove_hook_kinds`] on one event → entries map; drops emptied events.
+fn remove_from_events(hooks: &mut Map<String, Value>, kinds: &[HookKind]) -> bool {
     let mut removed = false;
     for list in hooks.values_mut().filter_map(Value::as_array_mut) {
         let before = list.len();
@@ -566,9 +647,6 @@ pub fn remove_hook_kinds(doc: &mut Map<String, Value>, kinds: &[HookKind]) -> bo
     }
     if removed {
         hooks.retain(|_, v| v.as_array().is_none_or(|l| !l.is_empty()));
-        if hooks.is_empty() {
-            doc.remove("hooks");
-        }
     }
     removed
 }
@@ -655,12 +733,14 @@ pub fn installed_hooks(root: &Path, agent: Agent) -> (bool, bool) {
         return (false, false);
     };
     let has = |kind| {
-        hook_entry(agent, kind).is_some_and(|(event, _)| {
-            doc.get("hooks")
-                .and_then(|h| h.get(event))
-                .and_then(Value::as_array)
-                .is_some_and(|l| l.iter().any(|v| is_seite_hook(v, kind)))
-        })
+        let entries = hook_entries(agent, kind);
+        !entries.is_empty()
+            && entries.iter().all(|(event, _)| {
+                doc.get(hooks_key(agent))
+                    .and_then(|h| h.get(*event))
+                    .and_then(Value::as_array)
+                    .is_some_and(|l| l.iter().any(|v| is_seite_hook(v, kind)))
+            })
     };
     (has(HookKind::Stop), has(HookKind::PostEdit))
 }
@@ -679,6 +759,7 @@ pub fn run(agent: Agent, include_drafts: bool, kind: HookKind, plugin: bool) -> 
     let plugin = plugin && agent == Agent::Claude;
     let outcome = std::panic::catch_unwind(|| match kind {
         HookKind::Stop => evaluate(agent, &input, include_drafts, plugin),
+        HookKind::PostEdit if agent == Agent::Antigravity => antigravity_post_edit(&input),
         HookKind::PostEdit => evaluate_post_edit(agent, &input, plugin),
     });
     let doc = match outcome {
@@ -718,11 +799,150 @@ fn evaluate(
     if plugin && (!take_plugin_marker(&root) || project_hook_installed(&root, HookKind::Stop)) {
         return Ok(None);
     }
+    // Antigravity reports no "already continued" flag: a marker per
+    // conversation makes every second turn end in a row stop. Taken before
+    // `should_skip`, so a continued run that ends abnormally doesn't leave
+    // the marker behind for the next normal turn end.
+    if agent == Agent::Antigravity {
+        prune_antigravity_state(&root);
+        if take_state(&root, &antigravity_continued_marker(input)) {
+            return Ok(None);
+        }
+    }
     if should_skip(agent, input, &root) {
         return Ok(None);
     }
     let diagnostics = crate::cli::check::check_site(&root, include_drafts)?;
-    Ok(block_reason(&diagnostics).map(|reason| encode(agent, input, &reason)))
+    let Some(reason) = block_reason(&diagnostics) else {
+        return Ok(None);
+    };
+    if agent == Agent::Antigravity {
+        let marker = root.join(antigravity_continued_marker(input));
+        if crate::safe_fs::write(&root, &marker, "").is_err() {
+            // Without the marker the next turn end would continue again.
+            return Ok(None);
+        }
+    }
+    Ok(Some(encode(agent, input, &reason)))
+}
+
+/// Antigravity's post-edit tier ([`ANTIGRAVITY_STATE_DIR`], module docs):
+/// `PostToolUse` input (`toolCall`) records the edited site files and
+/// prints nothing; `PostInvocation` input (`invocationNum`) checks the
+/// files recorded for the conversation and hands errors back as an
+/// `ephemeralMessage`.
+fn antigravity_post_edit(input: &Value) -> anyhow::Result<Option<Value>> {
+    if input.get("toolCall").is_some() {
+        if let Some((root, files)) = edited_site_files(input) {
+            for file in files {
+                let rel = file.to_string_lossy();
+                let name = format!(
+                    "{}-edit-{}",
+                    antigravity_conversation_key(input),
+                    short_hash(&rel)
+                );
+                let path = root.join(ANTIGRAVITY_STATE_DIR).join(name);
+                crate::safe_fs::write(&root, &path, rel.as_bytes())?;
+            }
+        }
+        return Ok(None);
+    }
+    if input.get("invocationNum").is_none() {
+        return Ok(None);
+    }
+    let Some(root) = find_site_root(&start_dirs(input)) else {
+        return Ok(None);
+    };
+    let prefix = format!("{}-edit-", antigravity_conversation_key(input));
+    let dir = root.join(ANTIGRAVITY_STATE_DIR);
+    let mut files: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with(&prefix) {
+                continue;
+            }
+            let path = entry.path();
+            // Regular files only, and taken before checking: each edit is
+            // reported once.
+            let text = std::fs::symlink_metadata(&path)
+                .ok()
+                .filter(|m| m.is_file())
+                .and_then(|_| std::fs::read_to_string(&path).ok());
+            let _ = crate::safe_fs::remove(&root, &path);
+            if let Some(rel) = text.map(|t| PathBuf::from(t.trim())) {
+                if rel.is_relative() && !files.contains(&rel) {
+                    files.push(rel);
+                }
+            }
+        }
+    }
+    if files.is_empty() {
+        return Ok(None);
+    }
+    let diagnostics = crate::cli::check::check_files(&root, &files)?;
+    Ok(block_reason_with(&diagnostics, POST_EDIT_INSTRUCTION)
+        .map(|reason| encode_post_edit(Agent::Antigravity, &reason)))
+}
+
+/// The conversation an Antigravity hook input belongs to, as a short hash
+/// (never the raw id in a file name).
+fn antigravity_conversation_key(input: &Value) -> String {
+    short_hash(
+        input
+            .get("conversationId")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown"),
+    )
+}
+
+/// The marker (relative to the site root) recording that the turn-end hook
+/// continued this Antigravity conversation.
+fn antigravity_continued_marker(input: &Value) -> PathBuf {
+    Path::new(ANTIGRAVITY_STATE_DIR)
+        .join(format!("{}-continued", antigravity_conversation_key(input)))
+}
+
+/// The first 16 hex digits of the SHA-256 of `text`.
+fn short_hash(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .take(8)
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Remove Antigravity state files older than a day (conversations that
+/// ended before their marker was taken). Best effort.
+fn prune_antigravity_state(root: &Path) {
+    let day = Duration::from_secs(24 * 60 * 60);
+    let Ok(entries) = std::fs::read_dir(root.join(ANTIGRAVITY_STATE_DIR)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stale = std::fs::symlink_metadata(entry.path())
+            .ok()
+            .filter(|m| m.is_file())
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > day);
+        if stale {
+            let _ = crate::safe_fs::remove(root, &entry.path());
+        }
+    }
+}
+
+/// Remove the state file `rel` under `root`; `true` when it was there.
+fn take_state(root: &Path, rel: &Path) -> bool {
+    let path = root.join(rel);
+    if std::fs::symlink_metadata(&path).is_err() {
+        return false;
+    }
+    let _ = crate::safe_fs::remove(root, &path);
+    true
 }
 
 /// Decide what the post-edit hook prints: errors in the edited file(s), or
@@ -732,38 +952,9 @@ fn evaluate_post_edit(agent: Agent, input: &Value, plugin: bool) -> anyhow::Resu
     if agent == Agent::Claude && runs_in_cursor(input) {
         return Ok(None);
     }
-    let base = input
-        .get("cwd")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_default();
-    let edited: Vec<PathBuf> = edited_paths(input)
-        .into_iter()
-        .map(|p| base.join(p))
-        .collect();
-    let Some(first) = edited.first() else {
+    let Some((root, files)) = edited_site_files(input) else {
         return Ok(None);
     };
-    let mut starts: Vec<PathBuf> = first.parent().map(Path::to_path_buf).into_iter().collect();
-    starts.extend(start_dirs(input));
-    let Some(root) = find_site_root(&starts) else {
-        return Ok(None);
-    };
-    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-    let files: Vec<PathBuf> = edited
-        .iter()
-        .filter_map(|p| {
-            let p = p.canonicalize().unwrap_or_else(|_| p.clone());
-            p.strip_prefix(&canonical_root)
-                .or_else(|_| p.strip_prefix(&root))
-                .ok()
-                .map(Path::to_path_buf)
-        })
-        .collect();
-    if files.is_empty() {
-        return Ok(None);
-    }
     if plugin {
         // Arm the plugin's turn-end check (best effort), then stand down
         // when the project runs its own after-edit hook.
@@ -777,12 +968,55 @@ fn evaluate_post_edit(agent: Agent, input: &Value, plugin: bool) -> anyhow::Resu
         .map(|reason| encode_post_edit(agent, &reason)))
 }
 
+/// The site the files named in a post-edit hook input belong to, and those
+/// files relative to its root (`None` when none is inside a site).
+fn edited_site_files(input: &Value) -> Option<(PathBuf, Vec<PathBuf>)> {
+    let base = input
+        .get("cwd")
+        .and_then(Value::as_str)
+        .or_else(|| workspace_paths(input).next())
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let edited: Vec<PathBuf> = edited_paths(input)
+        .into_iter()
+        .map(|p| base.join(p))
+        .collect();
+    let first = edited.first()?;
+    let mut starts: Vec<PathBuf> = first.parent().map(Path::to_path_buf).into_iter().collect();
+    starts.extend(start_dirs(input));
+    let root = find_site_root(&starts)?;
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let files: Vec<PathBuf> = edited
+        .iter()
+        .filter_map(|p| {
+            let p = p.canonicalize().unwrap_or_else(|_| p.clone());
+            p.strip_prefix(&canonical_root)
+                .or_else(|_| p.strip_prefix(&root))
+                .ok()
+                .map(Path::to_path_buf)
+        })
+        .collect();
+    (!files.is_empty()).then_some((root, files))
+}
+
+/// Antigravity's `workspacePaths` (the workspace roots), in order.
+fn workspace_paths(input: &Value) -> impl Iterator<Item = &str> {
+    input
+        .get("workspacePaths")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+}
+
 /// The file paths a post-edit hook input names, as given (absolute or
 /// relative to the session's `cwd`), deduplicated in order:
 ///
 /// - top-level `file_path` (Cursor `afterFileEdit`, seite's OpenCode plugin)
 /// - `tool_input.file_path` / `filePath` / `path` / `target_file` (Claude
-///   Write/Edit/MultiEdit, Gemini `write_file`/`replace`, Cursor `Write`)
+///   Write/Edit/MultiEdit, Gemini `write_file`/`replace`, Cursor `Write`),
+///   and Antigravity's `toolCall.args.Path` / `TargetFile`
 /// - `*** Add File:` / `*** Update File:` / `*** Move to:` headers of a
 ///   Codex `apply_patch` patch (`tool_input.command`, `tool_input.input`, or
 ///   `tool_input` itself as a string)
@@ -797,7 +1031,9 @@ pub fn edited_paths(input: &Value) -> Vec<String> {
     if let Some(p) = input.get("file_path").and_then(Value::as_str) {
         push(p);
     }
-    let tool_input = input.get("tool_input");
+    let tool_input = input
+        .get("tool_input")
+        .or_else(|| input.get("toolCall")?.get("args"));
     // Copilot types `tool_input` as `unknown`: also accept a JSON-encoded
     // object (https://docs.github.com/en/copilot/reference/hooks-configuration).
     let decoded: Option<Value> = tool_input
@@ -808,7 +1044,14 @@ pub fn edited_paths(input: &Value) -> Vec<String> {
         .and_then(Value::as_object)
         .or_else(|| decoded.as_ref().and_then(Value::as_object))
     {
-        for key in ["file_path", "filePath", "path", "target_file"] {
+        for key in [
+            "file_path",
+            "filePath",
+            "path",
+            "target_file",
+            "Path",
+            "TargetFile",
+        ] {
             if let Some(p) = obj.get(key).and_then(Value::as_str) {
                 push(p);
             }
@@ -847,6 +1090,9 @@ fn start_dirs(input: &Value) -> Vec<PathBuf> {
     if let Some(cwd) = input.get("cwd").and_then(Value::as_str) {
         dirs.push(PathBuf::from(cwd));
     }
+    // Antigravity runs hooks in the directory of `.agents/hooks.json` and
+    // names the workspace roots instead of a `cwd`.
+    dirs.extend(workspace_paths(input).map(PathBuf::from));
     if let Ok(cwd) = std::env::current_dir() {
         dirs.push(cwd);
     }
@@ -869,6 +1115,25 @@ pub fn find_site_root(starts: &[PathBuf]) -> Option<PathBuf> {
 pub fn should_skip(agent: Agent, input: &Value, root: &Path) -> bool {
     if input.get("stop_hook_active").and_then(Value::as_bool) == Some(true) {
         return true;
+    }
+    // Antigravity: only a turn that ended normally (`terminationReason`
+    // `NO_TOOL_CALL`, per agy 1.4.10's bundled hooks doc; `model_stop` in the
+    // web docs), without an error and with no background work still running
+    // (`fullyIdle: false`). Limits (`MAX_INVOCATIONS`, ...), `ERROR`,
+    // `USER_CANCELED` and the rest let the agent stop.
+    if agent == Agent::Antigravity {
+        let normal_end = input
+            .get("terminationReason")
+            .and_then(Value::as_str)
+            .is_none_or(|r| r.eq_ignore_ascii_case("NO_TOOL_CALL") || r == "model_stop");
+        let errored = input
+            .get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|e| !e.is_empty());
+        if !normal_end || errored || input.get("fullyIdle").and_then(Value::as_bool) == Some(false)
+        {
+            return true;
+        }
     }
     // Cursor runs its own `stop` hooks and also imports Claude Code's (from
     // `.claude/settings.json`), with Cursor's input either way.
@@ -994,6 +1259,9 @@ pub fn encode(agent: Agent, input: &Value, reason: &str) -> Value {
         // Gemini CLI `AfterAgent`: `deny` rejects the response and sends
         // `reason` back as a new prompt.
         Agent::Gemini => json!({ "decision": "deny", "reason": reason }),
+        // Antigravity `Stop`: `continue` keeps the agent running and injects
+        // `reason` as a system message.
+        Agent::Antigravity => json!({ "decision": "continue", "reason": reason }),
     }
 }
 
@@ -1011,6 +1279,9 @@ pub fn encode_post_edit(agent: Agent, reason: &str) -> Value {
         Agent::Opencode => json!({ "message": reason }),
         // Copilot `postToolUse` output: top-level `additionalContext`.
         Agent::Copilot => json!({ "additionalContext": reason }),
+        // Antigravity `PostInvocation`: a step injected before the next
+        // model call.
+        Agent::Antigravity => json!({ "injectSteps": [{ "ephemeralMessage": reason }] }),
     }
 }
 
@@ -1178,6 +1449,139 @@ mod tests {
         assert_eq!(edited_paths(&input), ["content/a.md"]);
         let encoded = json!({ "tool_name": "create", "tool_input": "{\"path\":\"content/b.md\"}" });
         assert_eq!(edited_paths(&encoded), ["content/b.md"]);
+    }
+
+    #[test]
+    fn antigravity_hooks_live_under_a_named_hook() {
+        let mut doc = Map::new();
+        assert_eq!(merge_hook(Agent::Antigravity, &mut doc), Ok(true));
+        // Top-level keys are hook names: no `hooks`/`version` keys.
+        assert_eq!(
+            doc.keys().map(String::as_str).collect::<Vec<_>>(),
+            [ANTIGRAVITY_HOOK_NAME]
+        );
+        let ours = &doc[ANTIGRAVITY_HOOK_NAME];
+        assert_eq!(
+            ours["Stop"],
+            json!([{
+                "type": "command",
+                "command": hook_command(Agent::Antigravity, HookKind::Stop),
+                "timeout": HOOK_TIMEOUT_SECS
+            }])
+        );
+        assert_eq!(ours["PostToolUse"][0]["matcher"], ANTIGRAVITY_EDIT_TOOLS);
+        assert_eq!(
+            ours["PostToolUse"][0]["hooks"][0]["command"],
+            hook_command(Agent::Antigravity, HookKind::PostEdit)
+        );
+        assert_eq!(
+            ours["PostInvocation"][0]["command"],
+            hook_command(Agent::Antigravity, HookKind::PostEdit)
+        );
+        assert_eq!(merge_hook(Agent::Antigravity, &mut doc), Ok(false));
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join(".agents")).unwrap();
+        let write = |doc: &Map<String, Value>| {
+            std::fs::write(
+                root.join(ANTIGRAVITY_HOOKS_PATH),
+                serde_json::to_string(doc).unwrap(),
+            )
+            .unwrap()
+        };
+        write(&doc);
+        assert_eq!(installed_hooks(root, Agent::Antigravity), (true, true));
+
+        // Removing the post-edit tier takes both of its events.
+        let mut partial = doc.clone();
+        assert!(remove_hook_kinds(&mut partial, &[HookKind::PostEdit]));
+        assert_eq!(
+            partial[ANTIGRAVITY_HOOK_NAME]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            ["Stop"]
+        );
+        write(&partial);
+        assert_eq!(installed_hooks(root, Agent::Antigravity), (true, false));
+
+        // Other hooks (and a user's handler next to ours) survive removal;
+        // the emptied `seite-check` hook goes.
+        doc.insert(
+            "lint".into(),
+            json!({ "PostToolUse": [{ "matcher": "", "hooks": [{ "command": "./lint.sh" }] }] }),
+        );
+        assert!(remove_hooks(&mut doc));
+        assert_eq!(doc.keys().map(String::as_str).collect::<Vec<_>>(), ["lint"]);
+        // A `seite-check` key that isn't an object can't be merged into.
+        let mut bad = Map::new();
+        bad.insert(ANTIGRAVITY_HOOK_NAME.into(), json!([]));
+        assert_eq!(merge_hook(Agent::Antigravity, &mut bad), Err(Unmergeable));
+    }
+
+    #[test]
+    fn antigravity_protocol() {
+        let input = json!({ "conversationId": "c1", "fullyIdle": true });
+        assert_eq!(
+            encode(Agent::Antigravity, &input, "r"),
+            json!({ "decision": "continue", "reason": "r" })
+        );
+        assert_eq!(
+            encode_post_edit(Agent::Antigravity, "r"),
+            json!({ "injectSteps": [{ "ephemeralMessage": "r" }] })
+        );
+        // `toolCall.args` as agy 1.4.10 sends them (`write_file`/`edit_file`:
+        // `Path`), and the IDE's `TargetFile`.
+        let write = json!({ "toolCall": { "name": "write_file", "args": { "Path": "/w/content/a.md", "Content": "x" } } });
+        assert_eq!(edited_paths(&write), ["/w/content/a.md"]);
+        let ide = json!({ "toolCall": { "name": "replace_file_content", "args": { "TargetFile": "content/b.md" } } });
+        assert_eq!(edited_paths(&ide), ["content/b.md"]);
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        let idle = |extra: Value| {
+            let mut v = json!({ "conversationId": "c1", "fullyIdle": true, "error": "", "terminationReason": "NO_TOOL_CALL" });
+            for (k, val) in extra.as_object().unwrap() {
+                v[k] = val.clone();
+            }
+            v
+        };
+        assert!(!should_skip(Agent::Antigravity, &idle(json!({})), root));
+        assert!(!should_skip(
+            Agent::Antigravity,
+            &json!({ "conversationId": "c1", "terminationReason": "model_stop" }),
+            root
+        ));
+        for extra in [
+            json!({ "fullyIdle": false }),
+            json!({ "error": "boom" }),
+            json!({ "terminationReason": "MAX_INVOCATIONS" }),
+            json!({ "terminationReason": "ERROR" }),
+            json!({ "terminationReason": "USER_CANCELED" }),
+        ] {
+            assert!(
+                should_skip(Agent::Antigravity, &idle(extra.clone()), root),
+                "{extra}"
+            );
+        }
+        // Workspace roots count as start directories (hooks run in
+        // `.agents/`).
+        let dirs = start_dirs(&json!({ "workspacePaths": ["/w/site"] }));
+        assert!(dirs.contains(&PathBuf::from("/w/site")));
+        // Conversation ids never appear raw in file names.
+        let marker = antigravity_continued_marker(&json!({ "conversationId": "../x" }));
+        assert!(marker.starts_with(ANTIGRAVITY_STATE_DIR));
+        let name = marker.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            name.ends_with("-continued") && !name.contains(".."),
+            "{name}"
+        );
+        assert_ne!(
+            antigravity_conversation_key(&json!({ "conversationId": "a" })),
+            antigravity_conversation_key(&json!({ "conversationId": "b" }))
+        );
     }
 
     #[test]
@@ -1563,7 +1967,8 @@ mod tests {
         assert!(paths.contains(&".cursor/hooks.json"));
         assert!(paths.contains(&OPENCODE_PLUGIN_PATH));
         assert!(paths.contains(&COPILOT_HOOKS_PATH));
-        assert_eq!(paths.len(), 6);
+        assert!(paths.contains(&ANTIGRAVITY_HOOKS_PATH));
+        assert_eq!(paths.len(), 7);
     }
 
     #[test]

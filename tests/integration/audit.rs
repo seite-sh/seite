@@ -518,3 +518,51 @@ fn test_audit_skips_static_copies_but_not_pages_under_static() {
         "pages under /static/ are still audited: {doc:#}"
     );
 }
+
+#[test]
+fn test_audit_fresh_roadmap_has_no_heading_skip() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Roadmap Site", "posts,roadmap");
+    let site = tmp.path().join("site");
+    let (_, doc) = run_json(&site, &["audit"]);
+    let all = findings(&doc);
+    assert!(
+        doc["data"]["summary"]["pages"].as_u64().unwrap() >= 4,
+        "{doc:#}"
+    );
+    assert!(find(&all, "seo-heading-skip").is_empty(), "{doc:#}");
+}
+
+#[test]
+fn test_build_empty_author_omits_json_ld_author() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Author", "posts");
+    let site = tmp.path().join("site");
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let post = site.join("dist/posts/hello-world.html");
+    let html = std::fs::read_to_string(&post).unwrap();
+    assert!(html.contains("\"@type\":\"BlogPosting\""), "{html}");
+    assert!(!html.contains("\"author\":"), "{html}");
+
+    // With an author, it is there.
+    let config = std::fs::read_to_string(site.join("seite.toml")).unwrap();
+    std::fs::write(
+        site.join("seite.toml"),
+        config.replacen("author = \"\"", "author = \"Ada\"", 1),
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let html = std::fs::read_to_string(&post).unwrap();
+    assert!(
+        html.contains("\"author\":{\"@type\":\"Person\",\"name\":\"Ada\"}"),
+        "{html}"
+    );
+}

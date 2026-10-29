@@ -113,7 +113,7 @@ The date is parsed from the filename (`YYYY-MM-DD-slug.md`) or from frontmatter.
 With `[build] schedule = true` (set by `seite init`), a post dated in the future is scheduled: it stays out of the build until its date, and `expires: YYYY-MM-DD` takes a post down after that day. The generated GitHub Actions workflow rebuilds daily so scheduled posts go live on their own. See [Scheduled publishing](/docs/configuration#scheduled-publishing).
 
 {{% callout(type="tip") %}}
-`seite serve` always includes draft posts, so you can preview them during development. Drafts are excluded from `seite build` unless you pass `--drafts`.
+`seite serve` includes draft posts in its builds (startup and live reload), so you can preview them during development. Drafts are excluded from `seite build`, and from the dev server's REPL `build` command, unless you pass `--drafts`.
 {{% end %}}
 
 ## Docs

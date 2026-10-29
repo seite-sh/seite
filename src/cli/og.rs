@@ -145,6 +145,19 @@ fn preview(args: &PreviewArgs, site_filter: Option<&str>) -> anyhow::Result<()> 
                     Some(a.canonicalize().ok()?.join(rest))
                 })
                 .unwrap_or(out);
+            let root = state
+                .cwd
+                .canonicalize()
+                .unwrap_or_else(|_| state.cwd.clone());
+            let escapes = out
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir));
+            if escapes || !out.starts_with(&root) || out == root {
+                return Err(anyhow::anyhow!(
+                    "--out must be a file inside the site ({})",
+                    root.display()
+                ));
+            }
             if let Some(parent) = out.parent() {
                 crate::safe_fs::create_dir_all(&state.cwd, parent)?;
             }

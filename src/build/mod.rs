@@ -461,11 +461,12 @@ fn build_site_with(
     // update the existing output in place. They never clean it, so a failure
     // there can leave a mix of old and freshly rendered pages but never wipes
     // the site; the next successful build brings it back in sync.
-    guard_sources(config, paths)?;
-    // Before anything reads a content file or template: symlinked sources
-    // (they could publish files from outside the project) and template
-    // include/extends/import cycles (rendering one never ends).
-    let mut refused = symlinked_source_diagnostics(paths);
+    // Before anything reads a content file or template: symlinked source
+    // directories and sources (they could publish files from outside the
+    // project) and template include/extends/import cycles (rendering one
+    // never ends).
+    let mut refused = guard_sources(config, paths);
+    refused.extend(symlinked_source_diagnostics(paths));
     refused.extend(templates::template_cycle_diagnostics(&paths.templates));
     if !refused.is_empty() {
         let mut refused = refused.relative_to(&paths.root);
@@ -788,7 +789,8 @@ pub(crate) fn symlinked_source_diagnostics(paths: &ResolvedPaths) -> Diagnostics
 /// The build copies and publishes what the source directories hold: refuse
 /// one inside the project that goes through a symlink (a committed
 /// `static -> ~/.ssh` would put private files into `dist/` and the deploy).
-fn guard_sources(config: &SiteConfig, paths: &crate::config::ResolvedPaths) -> Result<()> {
+fn guard_sources(config: &SiteConfig, paths: &crate::config::ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
     let collection_dirs: Vec<PathBuf> = config
         .collections
         .iter()
@@ -805,14 +807,51 @@ fn guard_sources(config: &SiteConfig, paths: &crate::config::ResolvedPaths) -> R
     .chain(collection_dirs.iter());
     for dir in dirs {
         if dir.starts_with(&paths.root) && fs::symlink_metadata(dir).is_ok() {
-            crate::safe_fs::guard(&paths.root, dir).map_err(|e| {
-                PageError::Build(format!(
-                    "source directory: {e:#}; copy the files into the project instead"
-                ))
-            })?;
+            if let Err(e) = crate::safe_fs::guard(&paths.root, dir) {
+                found.push(
+                    Diagnostic::error(
+                        "symlinked-source",
+                        format!(
+                            "source directory goes through a symlink ({e:#}): seite does not build from it (it could publish files from outside the project)"
+                        ),
+                    )
+                    .with_file(dir)
+                    .with_hint("replace the link with a real directory holding copies of the files"),
+                );
+            }
         }
     }
-    Ok(())
+    found
+}
+
+/// Symlinks under static/, public/ and data/: those walks take regular
+/// files only, so a link is left out of the build (and its target never
+/// published). One `symlinked-source` warning per link, so a page that
+/// later misses that asset or data file has an explanation.
+pub(crate) fn skipped_symlink_diagnostics(paths: &ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
+    for dir in [&paths.static_dir, &paths.public_dir, &paths.data_dir] {
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in WalkDir::new(dir)
+            .min_depth(1)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path_is_symlink())
+        {
+            found.push(
+                Diagnostic::warning(
+                    "symlinked-source",
+                    "this entry is a symlink: seite skips it (it does not copy or read files through symlinks), so it is not in the build",
+                )
+                .with_file(entry.path())
+                .with_hint("replace the link with a copy of the file to publish it"),
+            );
+        }
+    }
+    found
 }
 
 /// A full build empties its output directory (and replaces a symlinked one's
@@ -1284,6 +1323,8 @@ fn build_site_inner(
             diagnostics.push(d);
         }
     }
+    // Symlinks in static/, public/ and data/ are skipped (warnings).
+    diagnostics.extend(skipped_symlink_diagnostics(paths));
     // Stale `{{ page.url }}.md` alternate links in user templates (warnings).
     diagnostics.extend(templates::stale_markdown_link_diagnostics(&paths.templates));
     // A custom base.html without seite's SEO head partial (warning). Not

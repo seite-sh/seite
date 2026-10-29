@@ -1034,10 +1034,11 @@ pub struct GitPushResult {
 /// 3. Push to origin (with --set-upstream if no tracking branch)
 ///
 /// Returns `GitPushResult` with branch info and whether a commit was made.
-pub fn auto_commit_and_push(paths: &ResolvedPaths) -> Result<GitPushResult> {
-    let root = &paths.root;
-
-    // 1. Get current branch name
+/// The checked-out branch of the repository at `root` (read-only: nothing is
+/// committed or pushed), and whether it is `main`/`master`. `seite deploy`
+/// decides production vs preview (and the GitHub Pages refusal) from this
+/// before it commits or pushes anything.
+pub fn current_branch(root: &Path) -> Result<(String, bool)> {
     let branch_output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(root)
@@ -1054,6 +1055,14 @@ pub fn auto_commit_and_push(paths: &ResolvedPaths) -> Result<GitPushResult> {
         .trim()
         .to_string();
     let is_main = branch == "main" || branch == "master";
+    Ok((branch, is_main))
+}
+
+pub fn auto_commit_and_push(paths: &ResolvedPaths) -> Result<GitPushResult> {
+    let root = &paths.root;
+
+    // 1. Get current branch name
+    let (branch, is_main) = current_branch(root)?;
 
     // 2. Check for uncommitted changes
     let status_output = Command::new("git")
@@ -1730,6 +1739,7 @@ pub fn workflow_core(workflow: &str) -> String {
         .replace("\r\n", "\n")
         .replace(SCHEDULE_TRIGGER, "")
         .replace(TAILWIND_TRUST_ENV, "")
+        .replace(CLOUDFLARE_PROJECT_PLACEHOLDER_NOTE, "")
         .trim_end()
         .to_string()
 }
@@ -1798,6 +1808,11 @@ jobs:
     )
 }
 
+/// Above the Cloudflare deploy step when `[deploy] project` is not set.
+/// [`workflow_core`] drops it, so workflows generated before it existed still
+/// count as unedited.
+pub const CLOUDFLARE_PROJECT_PLACEHOLDER_NOTE: &str = "      # TODO: replace your-project-name with your Cloudflare Pages project name\n      # (or set `project` under [deploy] in seite.toml and run `seite deploy --setup`).\n";
+
 /// Generate a GitHub Actions workflow for Cloudflare Pages deployment.
 ///
 /// When the config has collections with `subdomain` + `deploy_project`, additional
@@ -1808,11 +1823,12 @@ pub fn generate_cloudflare_workflow(config: &SiteConfig) -> String {
 
 fn generate_cloudflare_workflow_base(config: &SiteConfig) -> String {
     let output_dir = &config.build.output_dir;
-    let project = config
-        .deploy
-        .project
-        .as_deref()
-        .unwrap_or("your-project-name");
+    // `seite init` and `seite deploy --setup` write `[deploy] project`; a
+    // config without it gets a placeholder the workflow points out.
+    let (project, placeholder_note) = match config.deploy.project.as_deref() {
+        Some(project) => (project, ""),
+        None => ("your-project-name", CLOUDFLARE_PROJECT_PLACEHOLDER_NOTE),
+    };
 
     let mut subdomain_steps = String::new();
     for col in config.subdomain_collections() {
@@ -1851,7 +1867,7 @@ jobs:
       - name: Build site
         run: seite build
 
-      - name: Deploy to Cloudflare Pages
+{placeholder_note}      - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{{{ secrets.CLOUDFLARE_API_TOKEN }}}}
@@ -4594,6 +4610,22 @@ target = "github-pages"
         // No project configured — should use default placeholder
         let workflow = generate_cloudflare_workflow(&config);
         assert!(workflow.contains("your-project-name"));
+        // ... with a comment saying what to put there.
+        assert!(workflow.contains(CLOUDFLARE_PROJECT_PLACEHOLDER_NOTE));
+        // A workflow generated before the note existed still counts as
+        // unedited (upgrade compares `workflow_core`).
+        let old = workflow.replace(CLOUDFLARE_PROJECT_PLACEHOLDER_NOTE, "");
+        assert_eq!(workflow_core(&old), workflow_core(&workflow));
+    }
+
+    #[test]
+    fn test_generate_cloudflare_workflow_configured_project() {
+        let mut config = test_config("https://example.com");
+        config.deploy.project = Some("my-site".into());
+        let workflow = generate_cloudflare_workflow(&config);
+        assert!(workflow.contains("--project-name my-site\n"), "{workflow}");
+        assert!(!workflow.contains("your-project-name"));
+        assert!(!workflow.contains("TODO"));
     }
 
     #[test]

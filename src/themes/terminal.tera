@@ -714,8 +714,8 @@
             border-color: var(--phosphor);
             box-shadow: 0 0 8px rgba(32,194,14,0.1);
         }
-        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
-        .roadmap-card h3::before { content: none; }
+        .roadmap-card h2, .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
+        .roadmap-card h2::before, .roadmap-card h3::before { content: none; }
         .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: var(--text); font-size: 0.85rem; }
         .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
         .roadmap-column-header {
@@ -749,8 +749,8 @@
             box-shadow: 0 0 6px rgba(32,194,14,0.3);
         }
         .roadmap-milestone-dot .roadmap-status { display: none; }
-        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
-        .roadmap-milestone-content h3::before { content: none; }
+        .roadmap-milestone-content h2, .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
+        .roadmap-milestone-content h2::before, .roadmap-milestone-content h3::before { content: none; }
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: var(--text); font-size: 0.85rem; }
         @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
 

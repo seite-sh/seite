@@ -110,8 +110,22 @@ try {
     Write-Info "Installed seite to $(Join-Path $InstallDir $Binary)"
 
     # --- Anonymous install telemetry (best-effort; never blocks or fails) ---
-    # Disable with $env:DO_NOT_TRACK or $env:SEITE_TELEMETRY=0.
-    if (-not $env:DO_NOT_TRACK -and ($env:SEITE_TELEMETRY -notin @('0','off','false','no'))) {
+    # The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
+    # (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
+    # and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any
+    # value) disables.
+    $TelemetryFlag = "$env:SEITE_TELEMETRY".Trim().ToLowerInvariant()
+    $SendTelemetry = $true
+    if ("$env:DO_NOT_TRACK".Trim()) {
+        $SendTelemetry = $false
+    } elseif ($TelemetryFlag -in @('0','off','false','no','disable','disabled')) {
+        $SendTelemetry = $false
+    } elseif ($TelemetryFlag -in @('1','on','true','yes','enable','enabled')) {
+        $SendTelemetry = $true
+    } elseif ("$env:CI".Trim()) {
+        $SendTelemetry = $false
+    }
+    if ($SendTelemetry) {
         $TelemetryEndpoint = if ($env:SEITE_TELEMETRY_ENDPOINT) { $env:SEITE_TELEMETRY_ENDPOINT } else { 'https://who.seite.sh/api/event' }
         $TelemetryArch = ($Target -split '-')[0]
         $TelemetryBody = @{

@@ -2,7 +2,7 @@
 title: "Trust Center for Compliance"
 description: "Build a compliance hub for your seite static site with built-in certifications, subprocessor tracking, security FAQs, and policy document management."
 slug: trust-center
-weight: 8
+weight: 13
 ---
 
 seite includes a trust center as a built-in [collection preset](/docs/collections), letting you ship a compliance hub directly from your static site generator with no external tools.
@@ -29,6 +29,7 @@ When `trust` is included, you'll be prompted to select:
 
 ```bash
 seite init mysite \
+  --deploy-target github-pages \
   --collections posts,pages,trust \
   --trust-company "Acme Corp" \
   --trust-frameworks soc2,iso27001 \
@@ -145,8 +146,12 @@ The trust center can be served from its own subdomain (e.g. `trust.example.com`)
 ```toml
 [[collections]]
 name = "trust"
+label = "Trust Center"
+directory = "trust"
 url_prefix = "/trust"
 default_template = "trust-item.html"
+nested = true
+listed = true
 subdomain = "trust"
 subdomain_base_url = "https://trust.example.com"
 ```

@@ -195,7 +195,7 @@
         .roadmap-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
         .roadmap-card { padding: 1.25rem; border-radius: 16px; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,0.08); transition: transform 0.15s, box-shadow 0.15s; }
         .roadmap-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
-        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+        .roadmap-card h2, .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 1rem; }
         .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: #6b7280; font-size: 0.9rem; }
         .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
         .roadmap-column-header { font-size: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
@@ -206,7 +206,7 @@
         .roadmap-milestone { position: relative; margin-bottom: 2rem; }
         .roadmap-milestone-dot { position: absolute; left: -1.75rem; top: 0.3rem; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #6366f1; background: #fff; }
         .roadmap-milestone-dot .roadmap-status { display: none; }
-        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; }
+        .roadmap-milestone-content h2, .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-size: 1.17em; }
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: #6b7280; font-size: 0.9rem; }
         @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
         table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; }

@@ -6,22 +6,23 @@ Things `cargo test` can't cover: real browsers, real agent CLIs, upgrade from a 
 
 ```sh
 export REPO=$PWD                         # the checkout under test
+cd $REPO && cargo build --release        # build first: rustup/cargo need your real HOME
+export REAL_HOME=$HOME                   # for any later cargo command
 export T=$(mktemp -d); export HOME=$T/home; mkdir -p $HOME $T/prefix/bin
 export SEITE_NO_UPDATE_CHECK=1           # no background update check
-cd $REPO && cargo build --release
-cp target/release/seite $T/prefix/bin/ && export PATH=$T/prefix/bin:$PATH
+cp $REPO/target/release/seite $T/prefix/bin/ && export PATH=$T/prefix/bin:$PATH
 hash -r; seite --version; which seite
 ```
 (`./local-install.sh` does the same with `INSTALL_DIR=$T/prefix/bin ./local-install.sh`.)
 expect: `seite 0.21.0`, path under `$T/prefix/bin`. Trust list, tailwind cache and config now live under the fake `$HOME`. Use the same shell for everything below (or re-export `T`, `HOME`, `PATH`). Real agent CLIs need your real logins: run section 2 in a second shell with your real `HOME` and just `export PATH=$T/prefix/bin:$PATH`.
 
-## 1. Fresh site, every starter, all six agents
+## 1. Fresh site, every starter, all seven agents
 
 ```sh
 cd $T
 for s in default docs landing blank; do
   seite init site-$s --title "Site $s" --deploy-target github-pages \
-    --collections posts,docs,pages --theme $s --agents claude,codex,opencode,cursor,gemini,copilot -y
+    --collections posts,docs,pages --theme $s --agents claude,codex,opencode,cursor,gemini,copilot,antigravity -y
   (cd site-$s && seite build && seite check --strict && seite audit)
 done
 ```
@@ -29,10 +30,10 @@ expect: four sites, no prompts; build, `check --strict` exit 0; audit prints a s
 
 ```sh
 cd $T/site-default
-ls -a . .claude .claude/skills .agents .cursor .gemini .github .opencode .seite
+ls -a . .claude .claude/skills .agents .agents/rules .cursor .gemini .github .opencode .seite
 wc -c AGENTS.md; seite hooks status; seite context | tail -15
 ```
-expect: AGENTS.md about 4 KB (six agents), CLAUDE.md/GEMINI.md `@AGENTS.md` shims, `.claude/{settings.json,launch.json,rules,skills/seite}`, `.cursor/{cli.json,rules/*.mdc}`, `opencode.json`, `.opencode/{commands,plugins}`, `.gemini/{settings.json,commands/seite.toml}`, `.github/{hooks/seite.json,instructions}`, `.agents/skills/seite`, `.seite/docs/` (gitignored). Hooks status shows both tiers for all six. `seite context` ends with `NAME: message` directives.
+expect: AGENTS.md about 4 KB (seven agents), CLAUDE.md/GEMINI.md `@AGENTS.md` shims, `.claude/{settings.json,launch.json,rules,skills/seite}`, `.cursor/{cli.json,rules/*.mdc}`, `opencode.json`, `.opencode/{commands,plugins}`, `.gemini/{settings.json,commands/seite.toml}`, `.github/{hooks/seite.json,instructions}`, `.agents/{skills/seite,rules,hooks.json}` (Antigravity CLI), `.seite/docs/` (gitignored). Hooks status shows both tiers for all seven. `seite context` ends with `NAME: message` directives.
 
 ### Dev server, live reload, overlay, console forwarding
 ```sh
@@ -75,6 +76,7 @@ Pass = finished without permission prompts for the pre-approved commands (`seite
 ```sh
 seite agent --with claude   "write a post about local-first software"    # Claude Code
 seite agent --with codex    "..."    # Codex
+seite agent --with antigravity "..."  # Antigravity CLI (agy; headless needs a user allow rule for `seite check`)
 seite agent --with gemini   "..."    # Gemini CLI (free tier)
 seite agent --with opencode "..."    # OpenCode with a free/local model
 seite agent --with cursor   "..."    # Cursor CLI
@@ -94,12 +96,12 @@ In Claude Code, from the same dir:
 /plugin marketplace add /absolute/path/to/this/checkout
 /plugin install seite@seite
 ```
-expect: plugin installs; `/seite check` works; hooks run only inside a site (silent in a non-site dir); with `.claude/settings.json` already holding seite hooks the plugin's hooks stand down. Check `git status` in `$REPO` is clean after `cargo run -- skill export . --format repo` (drift test) if you changed anything.
+expect: plugin installs; `/seite check` works; hooks run only inside a site (silent in a non-site dir); with `.claude/settings.json` already holding seite hooks the plugin's hooks stand down. Check `git status` in `$REPO` is clean after `HOME=$REAL_HOME cargo run -- skill export . --format repo` (drift test) if you changed anything.
 
 ## 3. Upgrade from 0.20.x
 
 ```sh
-cargo install seite --version 0.20.2 --locked --root $T/old     # or the released installer
+HOME=$REAL_HOME cargo install seite --version 0.20.2 --locked --root $T/old     # or the released installer
 cd $T && $T/old/bin/seite init old --title Old --deploy-target github-pages --collections posts,docs,pages -y
 cd old && $T/old/bin/seite build && git init -q && git add -A && git commit -qm old
 ls -a .claude/skills; wc -c AGENTS.md
@@ -111,13 +113,13 @@ seite upgrade -y
 git status --short; ls -a .claude/skills .claude/rules .agents 2>&1; wc -c AGENTS.md; seite hooks status
 seite check --strict && seite build
 ```
-expect: `--check` exits 1 (outdated); upgrade removes the unmodified legacy skills and design-prompts rule, prunes only the legacy AGENTS.md sections it owns (retired skills, serve REPL) when unedited — the 0.20 Commands / MCP Server sections stay, so AGENTS.md is still long (stale; `seite upgrade --agent` trims it) —, adds the `seite` skill + references, adds hooks for claude, codex, opencode, cursor and gemini (gemini's files are new; no copilot; one-time `copilot-agent` notice), writes `.seite/docs/` (gitignored), no MCP files added, no `[og]`/`search` added (one-time notices only). A second `seite upgrade -y` changes nothing.
+expect: `--check` exits 1 (outdated); upgrade removes the unmodified legacy skills and design-prompts rule, prunes only the legacy AGENTS.md sections it owns (retired skills, serve REPL) when unedited — the 0.20 Commands / MCP Server sections stay, so AGENTS.md is still long (stale; `seite upgrade --agent` trims it) —, adds the `seite` skill + references, keeps the stored 0.20 agent selection (claude, codex, opencode, cursor: no agents added, no gemini or copilot files; one-time notice with the `seite upgrade --agents` command) and adds their post-edit hooks next to the existing turn-end hooks, writes `.seite/docs/` (gitignored), no MCP files added, no `[og]`/`search` added (one-time notices only). A second `seite upgrade -y` changes nothing.
 
 ```sh
 # edited legacy files must survive
 git checkout -q . && git clean -fdq; echo "# my edit" >> .claude/skills/theme-builder/SKILL.md
 seite upgrade -y; ls .claude/skills/theme-builder     # expect: kept
-seite upgrade --agents claude,codex,opencode,cursor,gemini,copilot -y; ls .github/hooks .github/instructions
+seite upgrade --agents claude,codex,opencode,cursor,gemini,copilot,antigravity -y; ls .github/hooks .github/instructions .agents
 seite hooks off --tier post-edit; seite upgrade -y; seite hooks status   # expect: post-edit stays off
 seite hooks on
 seite upgrade --agent --json | head -c 600       # brief in data.brief; outside a TTY nothing is launched

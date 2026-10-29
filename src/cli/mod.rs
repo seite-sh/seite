@@ -41,10 +41,14 @@ pub mod workspace;
 
 use clap::{CommandFactory, Parser, Subcommand};
 
+/// One-line description: `seite --help` and the welcome screen.
+pub const TAGLINE: &str =
+    "The static site generator your coding agent can run end to end, for free.";
+
 #[derive(Parser)]
 #[command(
     name = "seite",
-    about = "A static site generator with LLM integration",
+    about = TAGLINE,
     version,
     propagate_version = true
 )]

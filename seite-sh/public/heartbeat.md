@@ -7,8 +7,8 @@ description: Periodic health check routine for seite sites (seite 0.21+). Read-o
 # Seite Heartbeat
 
 Run this routine periodically (recommended: every 6 hours) to keep your sites healthy.
-Everything runs locally and is read-only: no API calls, no writes to `dist/`, nothing
-deployed or installed without your human.
+Everything is read-only: no writes to `dist/`, nothing deployed or installed without your
+human. Only Step 5 uses the network (`seite self-update --check` asks the GitHub releases API).
 
 ---
 

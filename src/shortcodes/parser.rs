@@ -479,11 +479,23 @@ fn with_syntax_hint(mut d: Diagnostic, call: &str, kind: ShortcodeKind) -> Diagn
         ShortcodeKind::Body => ("{{%", "%}}"),
     };
     if let Some(name) = call.strip_prefix('/') {
+        let name = name.trim();
         d.message = format!("Hugo-style closing tag `{open} {call} {close}` is not supported",);
-        d.hint = Some(format!(
-            "close body shortcodes with `{{{{% end %}}}}`, e.g. `{{{{% {} (...) %}}}} ... {{{{% end %}}}}`",
-            name.trim()
-        ));
+        // Built-ins say which form they take; for any other name, the form
+        // the user wrote (`{{< /x >}}` is usually an inline shortcode).
+        let is_body = crate::shortcodes::builtins::all()
+            .iter()
+            .find(|b| b.name == name)
+            .map_or(matches!(kind, ShortcodeKind::Body), |b| b.is_body);
+        d.hint = Some(if is_body {
+            format!(
+                "close body shortcodes with `{{{{% end %}}}}`, e.g. `{{{{% {name}(...) %}}}} ... {{{{% end %}}}}`"
+            )
+        } else {
+            format!(
+                "inline shortcodes have no closing tag: write `{{{{< {name}(...) >}}}}` and delete `{open} {call} {close}`"
+            )
+        });
         return d;
     }
     if call.contains('(') {
@@ -1215,7 +1227,22 @@ mod tests {
         assert_eq!(err.line, Some(2));
         assert_eq!(err.column, Some(1));
         assert!(err.message.contains("Hugo-style closing tag"), "{err}");
-        assert!(err.hint.unwrap().contains("{{% end %}}"));
+        let hint = err.hint.unwrap();
+        assert!(
+            hint.contains("`{{% callout(...) %}} ... {{% end %}}`"),
+            "{hint}"
+        );
+    }
+
+    #[test]
+    fn test_hugo_closing_tag_hint_inline_builtin() {
+        let err =
+            parse_shortcodes_diagnostic("text\n{{< /youtube >}}\n", &test_path()).unwrap_err();
+        let hint = err.hint.unwrap();
+        // youtube is inline: no body form, no stray space.
+        assert!(hint.contains("`{{< youtube(...) >}}`"), "{hint}");
+        assert!(!hint.contains("{{% end %}}"), "{hint}");
+        assert!(!hint.contains("youtube ("), "{hint}");
     }
 
     #[test]

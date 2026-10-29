@@ -1,7 +1,7 @@
 ---
 title: "Shortcodes for Rich Content"
 description: "Embed YouTube videos, callouts, figures, GitHub Gists, contact forms, comments and newsletter forms in your seite site with built-in and custom shortcodes."
-weight: 6
+weight: 7
 ---
 
 Shortcodes are reusable content components you can use inside markdown files to embed rich content in your static site: videos, callout boxes, figures, and more, without writing raw HTML.
@@ -112,9 +112,9 @@ Be careful with this operation. It **cannot be undone**.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `type` | no | Box style: `info` (default), `warning`, `danger`, `tip` |
+| `type` | no | Box style: `info` (default), `note`, `warning`, `danger`, `tip` (`note` is styled in grey with the default "Info" title; pass `title="…"` for your own heading) |
 
-All bundled themes include styled callout boxes with appropriate colors for each type.
+Every bundled theme except `blank` includes styled callout boxes with appropriate colors for each type.
 
 ### contact_form
 
@@ -128,9 +128,9 @@ Embeds a free, GitHub-backed comment thread for the page: [giscus](https://giscu
 [comments]
 provider = "giscus"              # or "utterances"
 repo = "owner/repo"              # public repo with the giscus/utterances app installed
-repo_id = "R_kgDO…"              # giscus: copy the ids from https://giscus.app
+repo_id = "R_kgDOAbCdEf"              # giscus: copy the ids from https://giscus.app
 category = "Announcements"       # giscus: discussion category
-category_id = "DIC_kwDO…"        # giscus
+category_id = "DIC_kwDOAbCdEf4Cg1Hj"        # giscus
 # mapping = "pathname"           # giscus: pathname (default) | url | title | og:title
 # reactions = true               # giscus: reactions on the page's discussion
 # theme = "preferred_color_scheme"  # giscus theme name or https:// stylesheet; utterances: github-light, github-dark, preferred-color-scheme (default), …

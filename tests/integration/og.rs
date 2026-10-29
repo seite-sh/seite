@@ -400,6 +400,21 @@ fn test_og_preview_writes_png() {
     );
     assert!(!ok);
     assert!(!outside.exists());
+    // One clean message, no internal error chain.
+    let (ok, doc) = run_json(&site, &["og", "preview", "/", "--out", "../card.png"]);
+    assert!(!ok);
+    let err = doc["error"].to_string();
+    assert!(
+        err.contains("--out must be a file inside the site"),
+        "{err}"
+    );
+    assert!(!err.contains("prefix not found"), "{err}");
+    assert_eq!(
+        doc["error"]["chain"].as_array().map_or(0, |c| c.len()),
+        0,
+        "{err}"
+    );
+    assert!(!outside.exists());
     let out = site.join("card.png");
     for target in ["/posts/first", "content/posts/2025-01-01-first.md", "/"] {
         let (ok, doc) = run_json(

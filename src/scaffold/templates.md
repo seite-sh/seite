@@ -29,7 +29,7 @@ Available in all templates:
 | `lang_prefix` | string | URL prefix for current language (empty for default, `"/es"` for Spanish, etc.) |
 | `t` | object | UI translation strings (override via `data/i18n/{lang}.yaml`) |
 | `translations` | array | Translation links `[{lang, url}]` (empty if no translations) |
-| `data` | object | Data files — `data/nav.yaml` → `{{ data.nav }}` (see Data Files section) |
+| `data` | object | Data files — `data/nav.yaml` → `{{ data.nav }}` (see the data-files rule) |
 | `page.title` | string | Page title |
 | `page.content` | string | Rendered HTML (use `{{ page.content \| safe }}`) |
 | `page.date` | string? | Publish date (if set) |
@@ -59,7 +59,7 @@ Index template also gets:
 |----------|------|-------------|
 | `collections` | array | Listed collections `[{name, label, items}]` |
 | `page` | object? | Homepage content (if `content/pages/index.md` exists) |
-| `pagination` | object? | Pagination context (when collection has `paginate = N` — see Key Conventions) |
+| `pagination` | object? | Pagination context (when the collection sets `paginate = N` in `seite.toml`) |
 
 Link tags with `page.taxonomies.tags[].url` (it follows the tags `url_prefix`), not a hard-coded `/tags/` path.
 

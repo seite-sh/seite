@@ -21,6 +21,8 @@ pub(crate) const AGENT_SESSION_VARS: &[&str] = &[
     "OPENCODE",
     "CURSOR_AGENT",
     "CURSOR_PROJECT_DIR",
+    "ANTIGRAVITY_AGENT",
+    "ANTIGRAVITY_CONVERSATION_ID",
 ];
 
 pub(crate) fn page_cmd() -> Command {
@@ -559,4 +561,28 @@ pub(crate) fn remove_og_section(site_dir: &std::path::Path) {
     }
     assert_ne!(out, toml, "no [og] section to remove");
     fs::write(&path, out).unwrap();
+}
+
+/// Add site `name` to the workspace at `ws_root` the way seite 0.20.2's
+/// `seite workspace add <name> --collections posts` left it: a `seite.toml`
+/// and content directory only (no AGENTS.md/CLAUDE.md, no
+/// `.seite/config.json`, no agent files).
+pub(crate) fn add_020_workspace_site(ws_root: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let ws_config = ws_root.join("seite-workspace.toml");
+    let mut ws =
+        fs::read_to_string(&ws_config).unwrap_or_else(|_| "[workspace]\nname = \"demo\"\n".into());
+    ws.push_str(&format!(
+        "\n[[sites]]\nname = \"{name}\"\npath = \"sites/{name}\"\n"
+    ));
+    fs::write(&ws_config, ws).unwrap();
+    let site_dir = ws_root.join("sites").join(name);
+    fs::create_dir_all(site_dir.join("content/posts")).unwrap();
+    fs::create_dir_all(site_dir.join("templates")).unwrap();
+    fs::create_dir_all(site_dir.join("static")).unwrap();
+    fs::write(
+        site_dir.join("seite.toml"),
+        format!("[site]\ntitle = \"{name}\"\ndescription = \"\"\nbase_url = \"http://localhost:3000/{name}\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[build]\noutput_dir = \"dist\"\n\n[deploy]\ntarget = \"github-pages\"\n"),
+    )
+    .unwrap();
+    site_dir
 }

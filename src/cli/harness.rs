@@ -2,7 +2,8 @@
 //!
 //! A seite site can be set up for several coding agents at once: Claude Code,
 //! OpenAI Codex CLI, OpenCode, Cursor (editor + `cursor-agent`), Gemini
-//! CLI, and GitHub Copilot (CLI, cloud agent, VS Code). Each one reads project context from different places, so this module
+//! CLI, GitHub Copilot (CLI, cloud agent, VS Code), and Antigravity CLI
+//! (`agy`). Each one reads project context from different places, so this module
 //! declares every rules file, the `seite` skill (with its reference files),
 //! and the optional MCP server entry **once**, and every per-agent difference
 //! as a row of [`PROVIDERS`] (with the reason and source for each quirk), then
@@ -16,6 +17,7 @@
 //! | opencode | `opencode.json`         | (index in AGENTS.md)  | `.agents/skills/` | `.opencode/commands/seite.md` |
 //! | gemini   | `.gemini/settings.json` | (index in AGENTS.md)  | `.agents/skills/` | `.gemini/commands/seite.toml` |
 //! | copilot  | `.mcp.json`             | `.github/instructions/*.instructions.md` | `.agents/skills/` | skill |
+//! | antigravity | `.agents/mcp_config.json` | `.agents/rules/*.md` (`trigger: glob`) | `.agents/skills/` | skill |
 //!
 //! Coding agents use the `seite` CLI; the MCP server is only wired in with
 //! `seite init --mcp` / `seite upgrade --mcp` (it is aimed at chat apps
@@ -41,23 +43,26 @@ pub enum Agent {
     Cursor,
     Gemini,
     Copilot,
+    Antigravity,
 }
 
 impl Agent {
     /// Every supported agent, in canonical order.
-    pub const ALL: [Agent; 6] = [
+    pub const ALL: [Agent; 7] = [
         Agent::Claude,
         Agent::Codex,
         Agent::Opencode,
         Agent::Cursor,
         Agent::Gemini,
         Agent::Copilot,
+        Agent::Antigravity,
     ];
 
     /// What a project with no stored agent selection (from before the
     /// selection existed) is maintained for: the four agents seite 0.20 knew
     /// plus Gemini CLI (0.21's free path; its files only add hooks and a
-    /// `/seite` command). Copilot is opt-in there (`seite upgrade --agents`).
+    /// `/seite` command). Copilot and Antigravity are opt-in there (`seite
+    /// upgrade --agents`).
     pub const LEGACY_DEFAULT: [Agent; 5] = [
         Agent::Claude,
         Agent::Codex,
@@ -75,6 +80,7 @@ impl Agent {
             Agent::Cursor => &PROVIDERS[3],
             Agent::Gemini => &PROVIDERS[4],
             Agent::Copilot => &PROVIDERS[5],
+            Agent::Antigravity => &PROVIDERS[6],
         }
     }
 
@@ -93,7 +99,9 @@ impl Agent {
     }
 
     /// The agent's provider name in impeccable's installer (`--providers`),
-    /// which matches seite's id except for Copilot (`github`).
+    /// which matches seite's id except for Copilot (`github`). impeccable's
+    /// `antigravity` provider writes the legacy `.agent/skills/`, which
+    /// Antigravity still reads (<https://antigravity.google/docs/skills>).
     /// <https://github.com/pbakaus/impeccable/blob/main/scripts/lib/transformers/providers.js>
     pub fn impeccable_provider(self) -> &'static str {
         match self {
@@ -139,6 +147,9 @@ pub enum RulesFormat {
     CursorMdc,
     /// GitHub Copilot `*.instructions.md`: `applyTo` ([`copilot_rule`]).
     CopilotInstructions,
+    /// `.agents/rules/*.md`: Antigravity's `trigger: glob` + `globs` +
+    /// `description` ([`agents_rule`]).
+    AgentsGlob,
 }
 
 impl RulesFormat {
@@ -147,6 +158,7 @@ impl RulesFormat {
             RulesFormat::ClaudePaths => claude_rule(rule),
             RulesFormat::CursorMdc => cursor_rule(rule),
             RulesFormat::CopilotInstructions => copilot_rule(rule),
+            RulesFormat::AgentsGlob => agents_rule(rule),
         }
     }
 }
@@ -159,12 +171,16 @@ pub struct RulesDir {
     pub format: RulesFormat,
 }
 
-/// The neutral rules copy for sites with no agent that has native rules
-/// (Codex/OpenCode read these on demand via the AGENTS.md index).
+/// `.agents/rules/`: Antigravity's native workspace rules, and the neutral
+/// rules copy for sites with no other agent that has native rules
+/// (Codex/OpenCode/Gemini read these on demand via the AGENTS.md index).
+/// Antigravity silently discards a rule without a valid `trigger`, so every
+/// copy carries [`RulesFormat::AgentsGlob`] frontmatter (other agents only
+/// read the body). Until 0.21 this copy used the Claude rendering.
 pub const SHARED_RULES: RulesDir = RulesDir {
     dir: ".agents/rules",
     ext: "md",
-    format: RulesFormat::ClaudePaths,
+    format: RulesFormat::AgentsGlob,
 };
 
 /// Which SKILL.md frontmatter keys a skills directory may carry.
@@ -245,7 +261,7 @@ pub const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
 pub const SHARED_SKILLS_DIR: &str = ".agents/skills";
 
 /// The provider table, in [`Agent::ALL`] order.
-pub const PROVIDERS: [AgentSpec; 6] = [
+pub const PROVIDERS: [AgentSpec; 7] = [
     AgentSpec {
         agent: Agent::Claude,
         id: "claude",
@@ -478,6 +494,47 @@ pub const PROVIDERS: [AgentSpec; 6] = [
         // `$COPILOT_HOME`, default `~/.copilot`.
         // https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
         home_dirs: &[".copilot"],
+    },
+    AgentSpec {
+        agent: Agent::Antigravity,
+        id: "antigravity",
+        label: "Antigravity CLI",
+        config_display: "`.agents/hooks.json`",
+        // Workspace MCP servers: `.agents/mcp_config.json`, `mcpServers.<name>`
+        // with `command`/`args` (global: ~/.gemini/config/mcp_config.json).
+        // https://antigravity.google/docs/mcp
+        mcp_config: ".agents/mcp_config.json",
+        mcp_format: McpFormat::McpServersJson,
+        mcp_config_display: "`.agents/mcp_config.json`",
+        // Workspace rules: top-level `.agents/rules/*.md`, each with a
+        // `trigger` in its frontmatter (`glob` + `globs`), else discarded.
+        // https://antigravity.google/docs/rules
+        rules: Some(SHARED_RULES),
+        // Workspace skills: `.agents/skills/<name>/SKILL.md` (`description`
+        // required, `name` optional); the CLI turns each into `/<name>`.
+        // https://antigravity.google/docs/skills
+        skills_dir: SHARED_SKILLS_DIR,
+        skill_frontmatter: SkillFrontmatter::Portable,
+        // Permissions live only in the user's
+        // ~/.gemini/antigravity-cli/settings.json (`permissions.allow`,
+        // `command(...)` rules); there is no project settings file.
+        // https://antigravity.google/docs/settings
+        permissions_file: None,
+        // Skills are slash commands already.
+        command_files: None,
+        // Antigravity reads AGENTS.md (and GEMINI.md) itself.
+        // https://antigravity.google/docs/rules
+        instructions_shim: None,
+        // Workspace hooks (`.agents/hooks.json`) load without a trust step
+        // (agy 1.4.10, verified); headless `agy -p` auto-denies shell
+        // commands no user allow rule covers (`command(seite check)` works).
+        setup_step: "None; for `agy -p`, allow seite commands in your user settings (`command(seite check)`)",
+        mcp_step: "check the server with `/mcp`",
+        notes: &["Hook timeouts are seconds (default 30)."],
+        binaries: &["agy"],
+        // `~/.gemini` alone would also match Gemini CLI.
+        // https://antigravity.google/docs/settings
+        home_dirs: &[".gemini/antigravity-cli"],
     },
 ];
 
@@ -812,7 +869,7 @@ pub(crate) fn rules_file(paths: &[&str], content: &str) -> String {
     result
 }
 
-/// `.claude/rules/<name>.md` (also used for the neutral `.agents/rules/` copy).
+/// `.claude/rules/<name>.md` (`.agents/rules/` used it until 0.21).
 pub fn claude_rule(rule: &Rule) -> String {
     rules_file(rule.paths, rule.content)
 }
@@ -838,6 +895,21 @@ pub fn copilot_rule(rule: &Rule) -> String {
     let mut result = String::with_capacity(rule.content.len() + 128);
     result.push_str("---\n");
     result.push_str(&format!("applyTo: {}\n", yaml_quote(&rule.paths.join(","))));
+    result.push_str("---\n");
+    result.push_str(rule.content);
+    result
+}
+
+/// `.agents/rules/<name>.md`: Antigravity's rule frontmatter. `trigger:
+/// glob` attaches the rule when the agent works on files matching `globs`
+/// (one comma-separated string, quoted because globs contain `*`);
+/// `description` is recommended for every trigger.
+/// <https://antigravity.google/docs/rules>
+pub fn agents_rule(rule: &Rule) -> String {
+    let mut result = String::with_capacity(rule.content.len() + 256);
+    result.push_str("---\ntrigger: glob\n");
+    result.push_str(&format!("globs: {}\n", yaml_quote(&rule.paths.join(", "))));
+    result.push_str(&format!("description: {}\n", yaml_quote(rule.description)));
     result.push_str("---\n");
     result.push_str(rule.content);
     result
@@ -1709,9 +1781,13 @@ pub fn plan(agents: &[Agent], features: SiteFeatures, mcp: bool) -> Vec<PlannedF
     for (path, content) in command_files(agents, features) {
         files.push(file(path, content));
     }
-    if uses_shared_rules(agents) {
+    // The neutral copy, unless Antigravity already wrote it as its own.
+    if uses_shared_rules(agents) && !native_rules(agents).any(|(_, r)| r == SHARED_RULES) {
         for r in rules(features) {
-            files.push(file(format!(".agents/rules/{}.md", r.name), claude_rule(r)));
+            files.push(file(
+                format!("{}/{}.{}", SHARED_RULES.dir, r.name, SHARED_RULES.ext),
+                SHARED_RULES.format.render(r),
+            ));
         }
     }
     // Turn-end and post-edit `seite check` hooks (see `cli::harness_hooks`).
@@ -1921,6 +1997,57 @@ mod tests {
     }
 
     #[test]
+    fn agents_rule_carries_antigravity_trigger() {
+        let out = agents_rule(rule("i18n").unwrap());
+        assert!(
+            out.starts_with(
+                "---\ntrigger: glob\nglobs: \"content/**, templates/**, data/i18n/**\"\ndescription: \"Multi-language content, translations, and localized templates\"\n---\n## Multi-language"
+            ),
+            "{out}"
+        );
+        assert_eq!(SHARED_RULES.format.render(rule("i18n").unwrap()), out);
+        let files = plan(&[Agent::Antigravity], ALL_FEATURES, true);
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert!(paths.contains(&".agents/rules/i18n.md"));
+        assert!(paths.contains(&".agents/skills/seite/SKILL.md"));
+        assert!(paths.contains(&".agents/hooks.json"));
+        assert!(paths.contains(&".agents/mcp_config.json"));
+        assert!(!paths.contains(&"GEMINI.md"));
+        // Antigravity's native rules are the shared copy: written once.
+        for agents in [
+            &[Agent::Antigravity][..],
+            &[Agent::Codex, Agent::Antigravity],
+            &Agent::ALL,
+        ] {
+            let files = plan(agents, ALL_FEATURES, false);
+            assert_eq!(
+                files
+                    .iter()
+                    .filter(|f| f.path == ".agents/rules/i18n.md")
+                    .count(),
+                1
+            );
+        }
+        // Codex alone still gets the (Antigravity-valid) neutral copy.
+        let codex = plan(&[Agent::Codex], ALL_FEATURES, false);
+        let i18n = codex
+            .iter()
+            .find(|f| f.path == ".agents/rules/i18n.md")
+            .unwrap();
+        assert_eq!(i18n.content, out);
+        assert_eq!(Agent::Antigravity.impeccable_provider(), "antigravity");
+        let mcp: serde_json::Value = serde_json::from_str(
+            &files
+                .iter()
+                .find(|f| f.path == ".agents/mcp_config.json")
+                .unwrap()
+                .content,
+        )
+        .unwrap();
+        assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
+    }
+
+    #[test]
     fn claude_rule_keeps_paths_frontmatter() {
         let out = claude_rule(rule("data-files").unwrap());
         assert!(out.starts_with("---\npaths:\n  - \"data/**\"\n---\n## Data Files"));
@@ -2108,8 +2235,14 @@ mod tests {
     fn rules_index_groups_globs() {
         let idx = rules_index(ALL_FEATURES, &Agent::ALL);
         assert!(idx.contains("`.claude/rules/`"));
-        assert!(idx.contains("Claude Code, Cursor and GitHub Copilot load them automatically"));
-        assert!(idx.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`)"));
+        assert!(idx.contains(
+            "Claude Code, Cursor, GitHub Copilot and Antigravity CLI load them automatically"
+        ));
+        assert!(idx.contains("(Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`; Antigravity CLI: same guides as `.agents/rules/*.md`)"));
+        let agy = rules_index(ALL_FEATURES, &[Agent::Codex, Agent::Antigravity]);
+        assert!(agy.contains(
+            "Detailed guides live in `.agents/rules/`. Antigravity CLI loads them automatically"
+        ));
         let two = rules_index(ALL_FEATURES, &[Agent::Claude, Agent::Cursor]);
         assert!(two.contains("Claude Code and Cursor load them automatically"));
         assert!(idx.contains(
@@ -2251,9 +2384,18 @@ mod tests {
         let ids: Vec<_> = Agent::ALL.iter().map(|a| a.id()).collect();
         assert_eq!(
             ids,
-            ["claude", "codex", "opencode", "cursor", "gemini", "copilot"]
+            [
+                "claude",
+                "codex",
+                "opencode",
+                "cursor",
+                "gemini",
+                "copilot",
+                "antigravity"
+            ]
         );
         assert_eq!(Agent::from_id("gemini"), Some(Agent::Gemini));
+        assert_eq!(Agent::from_id("antigravity"), Some(Agent::Antigravity));
     }
 
     #[test]
@@ -2535,14 +2677,27 @@ mod tests {
         std::fs::create_dir_all(other.join("claude")).unwrap();
         let other_path = std::env::join_paths([&other]).unwrap();
         assert!(detect_installed_agents(Some(&other_path), None).is_empty());
+        // Antigravity: `agy`, or its CLI directory under ~/.gemini (which
+        // also counts as Gemini CLI's).
+        touch(&other.join("agy"));
+        assert_eq!(
+            detect_installed_agents(Some(&other_path), None),
+            vec![Agent::Antigravity]
+        );
+        let home2 = tmp.path().join("home2");
+        std::fs::create_dir_all(home2.join(".gemini/antigravity-cli")).unwrap();
+        assert_eq!(
+            detect_installed_agents(None, Some(&home2)),
+            vec![Agent::Gemini, Agent::Antigravity]
+        );
     }
 
     #[test]
     fn interactive_defaults_fall_back_to_all() {
-        assert_eq!(interactive_defaults(&[]), vec![true; 6]);
+        assert_eq!(interactive_defaults(&[]), vec![true; 7]);
         assert_eq!(
             interactive_defaults(&[Agent::Claude, Agent::Cursor]),
-            vec![true, false, false, true, false, false]
+            vec![true, false, false, true, false, false, false]
         );
     }
 }

@@ -22,6 +22,6 @@
 - **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`
 - **Clean URLs** — `/posts/hello-world` (no `.html` extension)
 - **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)
-- **Shortcodes** — Reusable content components in markdown. See Shortcodes section below.
+- **Shortcodes** — Reusable content components in markdown. See the shortcodes rule.
 - **Subdomain deploys** — Set `subdomain = "docs"` on a collection to deploy it to `docs.{base_domain}` with its own sitemap, RSS, robots.txt, and search index. Cross-subdomain links are auto-rewritten to absolute URLs. `seite deploy --setup` auto-creates Cloudflare/Netlify projects.
 

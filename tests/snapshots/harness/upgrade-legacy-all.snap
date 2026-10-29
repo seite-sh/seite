@@ -92,7 +92,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
-- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. Run seite commands from the site root (the directory with `seite.toml`): `check`, `build`, `new` and `serve` look only in the current directory (or take `--dir <root>`); `context`, `audit` and the lookups (`docs`, `search`, `stats`, `page`) also find it from a subdirectory. If there is no `seite.toml` here or in a parent, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
@@ -211,7 +211,7 @@ The homepage or a standalone landing page. It needs a `pages` collection (`seite
 # /seite preview
 
 1. `seite context` shows whether a dev server is already running, and its URL. If one is, use it. Never start a second server.
-2. Otherwise start one in the background: `seite serve --no-repl` (add `--build` when `dist/` is missing). The default URL is `http://localhost:3000`; seite picks another port if that one is taken, and prints it.
+2. Otherwise start one in the background: `seite serve --no-repl`. The default URL is `http://127.0.0.1:3000`; seite picks another port if that one is taken, and prints it.
 3. Open the preview once, after the first visible change (template, CSS, a new page), in your built-in browser when you have one:
    - Claude desktop app: open the `seite` server from `.claude/launch.json` in its preview pane (it starts the server itself, so skip step 2).
    - Cursor: open the URL in Cursor's browser.
@@ -444,7 +444,7 @@ Run `/seite <command> [args]` (Codex: `$seite <command> [args]`). Read the comma
 
 ## Principles
 
-- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. If no `seite.toml` exists in this directory or its parents, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
+- This skill drives the `seite` CLI, version 0.21 or newer. If `seite --version` fails, ask the user before installing it (`curl -fsSL https://seite.sh/install.sh | sh`; Windows: `irm https://seite.sh/install.ps1 | iex`); if it prints an older version, suggest `seite self-update`. Run seite commands from the site root (the directory with `seite.toml`): `check`, `build`, `new` and `serve` look only in the current directory (or take `--dir <root>`); `context`, `audit` and the lookups (`docs`, `search`, `stats`, `page`) also find it from a subdirectory. If there is no `seite.toml` here or in a parent, this is not a seite site: say so, and run `seite init` only if the user wants a new site.
 - Run `seite context` once at the start of a session. If it fails, read `seite.toml` and list `content/` instead.
 - Prefer seite commands to hand edits: `seite new`, `seite frontmatter set`, `seite theme apply`, `seite collection add`.
 - Edit sources only (`content/`, `templates/`, `data/`, `static/`, `public/`, `seite.toml`). Never edit `dist/`.
@@ -563,7 +563,7 @@ The homepage or a standalone landing page. It needs a `pages` collection (`seite
 # /seite preview
 
 1. `seite context` shows whether a dev server is already running, and its URL. If one is, use it. Never start a second server.
-2. Otherwise start one in the background: `seite serve --no-repl` (add `--build` when `dist/` is missing). The default URL is `http://localhost:3000`; seite picks another port if that one is taken, and prints it.
+2. Otherwise start one in the background: `seite serve --no-repl`. The default URL is `http://127.0.0.1:3000`; seite picks another port if that one is taken, and prints it.
 3. Open the preview once, after the first visible change (template, CSS, a new page), in your built-in browser when you have one:
    - Claude desktop app: open the `seite` server from `.claude/launch.json` in its preview pane (it starts the server itself, so skip step 2).
    - Cursor: open the URL in Cursor's browser.

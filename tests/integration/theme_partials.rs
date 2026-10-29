@@ -146,11 +146,18 @@ fn without_breadcrumbs(html: &str) -> String {
 /// one added line styling result snippets, highlights and the active result,
 /// plus the view-transition rule (and its comment line) every theme gained.
 /// The BreadcrumbList JSON-LD is left out: it now uses the collection's real
-/// URL (checked in `og::test_breadcrumb_urls_resolve_to_built_pages`).
+/// URL (checked in `og::test_breadcrumb_urls_resolve_to_built_pages`). An
+/// empty JSON-LD author (empty `[site] author`) is dropped from the old
+/// output, and the roadmap title CSS lines (h3 → h2) are left out.
 fn normalize(theme: &str, html: &str) -> String {
-    let html: String = without_search_script(&without_breadcrumbs(html))
+    // An empty `[site] author` no longer renders an empty JSON-LD author.
+    let html = html.replace(r#","author":{"@type":"Person","name":""}"#, "");
+    let html: String = without_search_script(&without_breadcrumbs(&html))
         .split_inclusive('\n')
         .filter(|l| !l.contains("#search-results .result-snippet"))
+        // Roadmap item titles are h2 now (no heading skip under the h1);
+        // the theme CSS styles both.
+        .filter(|l| !l.contains(".roadmap-card h") && !l.contains(".roadmap-milestone-content h"))
         .filter(|l| !l.contains("view-transition") && !l.contains("Cross-fade between pages"))
         .collect();
     let html = &html;

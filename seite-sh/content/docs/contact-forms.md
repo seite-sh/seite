@@ -1,7 +1,7 @@
 ---
 title: Contact Forms for Static Sites
 description: "Add contact forms to your seite static site with five built-in providers. Formspree, Web3Forms, Netlify Forms, HubSpot, and Typeform. No backend needed."
-weight: 15
+weight: 14
 ---
 
 Static site generators usually punt on contact forms. You end up wiring together third-party scripts yourself. seite handles this natively with a single [shortcode](/docs/shortcodes) that works across five providers. Pick one, add one line of config, drop the shortcode into any page, and you have a working form that matches your theme automatically.
@@ -160,6 +160,8 @@ seite contact setup --provider formspree --endpoint xpznqkdl  # Non-interactive
 seite contact status                                          # Show current config
 seite contact remove                                          # Remove config
 ```
+
+When the site has a `pages` collection and no `content/pages/contact.md` yet, `setup` also creates that page (title "Contact", body `{{< contact_form() >}}`). `remove` deletes only the `[contact]` section; the page stays.
 
 ## Theme Support
 

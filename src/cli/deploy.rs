@@ -99,14 +99,16 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         return run_setup(&target_str, &config, &paths, &config_path);
     }
 
-    if args.preview && target_str == "github-pages" {
-        return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
-    }
+    // Production vs preview (and the GitHub Pages refusal) is decided from
+    // the current branch before anything is committed, pushed or uploaded.
+    let plan = plan_deploy(args, &config, &paths.root);
 
     // --- Dry run ---
     if args.dry_run {
-        return run_dry_run(&target_str, &config, &paths, args);
+        return run_dry_run(&target_str, &config, &paths, args, &plan);
     }
+
+    plan.refuse_github_pages_preview(&target_str)?;
 
     // --- Pre-flight checks with interactive recovery ---
     if !args.skip_checks {
@@ -185,10 +187,21 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
+    // Pre-flight fixes can change the repository (e.g. `git init`) or the
+    // config: decide again, still before committing or pushing anything.
+    let plan = plan_deploy(args, &config, &paths.root);
+    plan.refuse_github_pages_preview(&target_str)?;
+    if plan.auto_preview {
+        if let Some(ref branch) = plan.branch {
+            human::info(&format!("On branch '{branch}' — deploying as preview"));
+        }
+    }
+    let preview = plan.preview;
+
     // --- Auto-commit and push ---
-    let mut preview = args.preview;
-    let should_auto_commit = config.deploy.auto_commit && !args.no_commit;
-    if should_auto_commit {
+    if let Some(ref reason) = plan.commit_skipped {
+        human::warning(&format!("Auto-commit skipped: {reason}"));
+    } else if plan.commit_and_push {
         match deploy::auto_commit_and_push(&paths) {
             Ok(result) => {
                 if result.committed {
@@ -199,25 +212,11 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         result.branch
                     ));
                 }
-                // Auto-enable preview when on a non-main branch
-                if !result.is_main && !preview {
-                    human::info(&format!(
-                        "On branch '{}' — deploying as preview",
-                        result.branch
-                    ));
-                    preview = true;
-                }
             }
             Err(e) => {
                 human::warning(&format!("Auto-commit skipped: {e}"));
             }
         }
-    }
-
-    // GitHub Pages has one site per repository: a "preview" would force-push
-    // the branch's build to the live gh-pages site.
-    if preview && target_str == "github-pages" {
-        return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
     }
 
     // --- Resolve base_url for this deploy ---
@@ -381,7 +380,11 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         "target": target_str,
         "url": deploy_url,
         "preview": preview,
+        "mode": if preview { "preview" } else { "production" },
         "dry_run": false,
+        "branch": plan.branch,
+        "auto_preview": plan.auto_preview,
+        "commit_and_push": plan.commit_and_push,
         "subdomain_failures": subdomain_failures,
     }));
     if !subdomain_failures.is_empty() {
@@ -517,7 +520,11 @@ fn run_setup(
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
             crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
-            let workflow = deploy::generate_cloudflare_workflow(config);
+            // The workflow deploys to the project just set up (written to
+            // seite.toml below), not to a placeholder.
+            let mut workflow_config = config.clone();
+            workflow_config.deploy.project = Some(project.clone());
+            let workflow = deploy::generate_cloudflare_workflow(&workflow_config);
             crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
 
@@ -537,17 +544,11 @@ fn run_setup(
                 &netlify_config,
             )?;
             human::success("Created netlify.toml");
-
-            // Also generate GitHub Actions workflow as an alternative
-            let workflow_dir = paths.root.join(".github/workflows");
-            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
-            let workflow = deploy::generate_netlify_workflow(config);
-            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
-            human::success("Created .github/workflows/deploy.yml");
-
-            human::info("Set these GitHub secrets for CI:");
-            human::info("  NETLIFY_AUTH_TOKEN — create at https://app.netlify.com/user/applications#personal-access-tokens");
-            human::info("  NETLIFY_SITE_ID    — found in your site settings");
+            // No GitHub Actions workflow: Netlify's git builds run
+            // netlify.toml, and a workflow as well would deploy twice.
+            human::info(
+                "Link the repository in Netlify to build netlify.toml on every push, or deploy from here with `seite deploy` (https://seite.sh/docs/deployment#netlify)",
+            );
         }
         other => {
             return Err(PageError::Deploy(format!(
@@ -690,6 +691,7 @@ fn run_dry_run(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
     args: &DeployArgs,
+    plan: &DeployPlan,
 ) -> anyhow::Result<()> {
     human::info(&format!("Dry run: would deploy to {target_str}"));
 
@@ -699,13 +701,41 @@ fn run_dry_run(
     crate::output::json::set_data(serde_json::json!({
         "target": target_str,
         "dry_run": true,
-        "preview": args.preview,
+        "preview": plan.preview,
+        "mode": if plan.preview { "preview" } else { "production" },
+        "branch": plan.branch,
+        "auto_preview": plan.auto_preview,
+        "commit_and_push": plan.commit_and_push,
         "output_dir": paths.output.display().to_string(),
         "checks": checks
             .iter()
             .map(|c| serde_json::json!({ "name": c.name, "passed": c.passed, "message": c.message }))
             .collect::<Vec<_>>(),
     }));
+
+    // The real deploy would refuse here, before committing or pushing.
+    plan.refuse_github_pages_preview(target_str)?;
+
+    if let Some(ref branch) = plan.branch {
+        human::info(&format!(
+            "  Source branch: {branch}{}",
+            if plan.auto_preview {
+                " (not main/master: deploys as a preview)"
+            } else {
+                ""
+            }
+        ));
+    }
+    if plan.commit_and_push {
+        human::info(&format!(
+            "  Git: would commit all changes and push {}",
+            plan.branch.as_deref().unwrap_or("the current branch")
+        ));
+    } else if let Some(ref reason) = plan.commit_skipped {
+        human::info(&format!("  Git: auto-commit would be skipped ({reason})"));
+    } else {
+        human::info("  Git: no commit or push (--no-commit or deploy.auto_commit = false)");
+    }
 
     match target_str {
         "github-pages" => {
@@ -716,7 +746,8 @@ fn run_dry_run(
                 .unwrap_or("(auto-detect from git remote)");
             human::info(&format!("  Repository: {repo_url}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            human::info("  Branch: gh-pages (force push)");
+            human::info("  Publish branch: gh-pages (force push)");
+            human::info("  Mode: production");
             human::info("  Files: .nojekyll (auto-generated)");
             if let Some(domain) = deploy::extract_custom_domain(&config.site.base_url) {
                 if !domain.ends_with(".github.io")
@@ -737,8 +768,10 @@ fn run_dry_run(
                 .unwrap_or("(not configured — set deploy.project in seite.toml)");
             human::info(&format!("  Project: {project}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            if args.preview {
+            if plan.preview {
                 human::info("  Mode: preview (non-production)");
+            } else {
+                human::info("  Mode: production");
             }
         }
         "netlify" => {
@@ -749,7 +782,7 @@ fn run_dry_run(
                 .unwrap_or("(auto-detect or set deploy.project in seite.toml)");
             human::info(&format!("  Site ID/name: {site_id}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            if args.preview {
+            if plan.preview {
                 human::info("  Mode: preview (draft deploy)");
             } else {
                 human::info("  Mode: production");
@@ -794,6 +827,66 @@ fn run_dry_run(
 
     human::success("Dry run complete (no changes made)");
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Deploy plan
+// ---------------------------------------------------------------------------
+
+/// What `seite deploy` will do, decided from the config, the flags and the
+/// current branch before anything is committed, pushed, built or uploaded.
+/// `--dry-run` reports the same plan.
+struct DeployPlan {
+    /// The checked-out branch (`None` outside a git repository).
+    branch: Option<String>,
+    /// Deploy as a preview (`--preview`, or a non-main branch with auto-commit).
+    preview: bool,
+    /// `preview` was turned on because the branch is not main/master.
+    auto_preview: bool,
+    /// Commit all changes and push the branch before deploying.
+    commit_and_push: bool,
+    /// Why auto-commit is on but cannot run (e.g. not a git repository).
+    commit_skipped: Option<String>,
+}
+
+impl DeployPlan {
+    /// GitHub Pages has one site per repository: a "preview" would
+    /// force-push the branch's build to the live gh-pages site.
+    fn refuse_github_pages_preview(&self, target: &str) -> anyhow::Result<()> {
+        if self.preview && target == "github-pages" {
+            return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
+        }
+        Ok(())
+    }
+}
+
+fn plan_deploy(args: &DeployArgs, config: &SiteConfig, root: &Path) -> DeployPlan {
+    let wants_commit = config.deploy.auto_commit && !args.no_commit;
+    let mut plan = DeployPlan {
+        branch: None,
+        preview: args.preview,
+        auto_preview: false,
+        commit_and_push: false,
+        commit_skipped: None,
+    };
+    match deploy::current_branch(root) {
+        Ok((branch, is_main)) => {
+            // Non-main branches deploy as previews when seite commits and
+            // pushes them (`--no-commit` deploys the working tree as asked).
+            if wants_commit && !is_main && !args.preview {
+                plan.preview = true;
+                plan.auto_preview = true;
+            }
+            plan.commit_and_push = wants_commit;
+            plan.branch = Some(branch);
+        }
+        Err(e) => {
+            if wants_commit {
+                plan.commit_skipped = Some(e.to_string());
+            }
+        }
+    }
+    plan
 }
 
 // ---------------------------------------------------------------------------

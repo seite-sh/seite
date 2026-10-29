@@ -344,7 +344,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
         <div class="roadmap-items">
             {% for item in in_progress %}
             <div class="roadmap-card">
-                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
                 {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
             </div>
             {% endfor %}
@@ -357,7 +357,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
         <div class="roadmap-items">
             {% for item in planned %}
             <div class="roadmap-card">
-                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
                 {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
             </div>
             {% endfor %}
@@ -370,7 +370,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
         <div class="roadmap-items">
             {% for item in done %}
             <div class="roadmap-card">
-                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
                 {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
             </div>
             {% endfor %}
@@ -383,7 +383,7 @@ pub const DEFAULT_ROADMAP_INDEX: &str = r#"{% extends "base.html" %}
         <div class="roadmap-items">
             {% for item in other %}
             <div class="roadmap-card">
-                <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
                 {% if item.tags | length > 0 %}<div class="roadmap-status-badges">{% for tag in item.tags %}<span class="roadmap-status roadmap-status--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}</div>{% endif %}
                 {% if item.description %}<p>{{ item.description }}</p>{% elif item.excerpt %}<div class="excerpt">{{ item.excerpt | safe }}</div>{% endif %}
             </div>
@@ -454,7 +454,7 @@ pub const DEFAULT_ROADMAP_TIMELINE: &str = r#"{% extends "base.html" %}
             <span class="roadmap-status roadmap-status--{{ status | slugify }}"></span>
         </div>
         <div class="roadmap-milestone-content">
-            <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+            <h2><a href="{{ item.url }}">{{ item.title }}</a></h2>
             {% if item.tags | length > 0 %}
             <div class="roadmap-status-badges">
                 {% for tag in item.tags %}<span class="roadmap-status roadmap-status--{{ tag | slugify }}">{{ tag }}</span>{% endfor %}

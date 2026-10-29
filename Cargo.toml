@@ -2,7 +2,7 @@
 name = "seite"
 version = "0.21.0"
 edition = "2021"
-description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
+description = "The static site generator your coding agent can run end to end, for free."
 license = "MIT"
 repository = "https://github.com/seite-sh/seite"
 homepage = "https://seite.sh"

@@ -42,7 +42,15 @@ fn test_hooks_status_reports_fresh_site_as_installed() {
     let ids: Vec<&str> = rows.iter().map(|r| r["agent"].as_str().unwrap()).collect();
     assert_eq!(
         ids,
-        ["claude", "codex", "opencode", "cursor", "gemini", "copilot"]
+        [
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "copilot",
+            "antigravity"
+        ]
     );
     for r in &rows {
         assert_eq!(r["stop"], true, "{r}");

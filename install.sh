@@ -144,10 +144,25 @@ resolve_version() {
 }
 
 # --- Anonymous install telemetry (best-effort; never blocks or fails) ---
-# Disable with DO_NOT_TRACK=1 or SEITE_TELEMETRY=0.
+# The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
+# (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
+# and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any value)
+# disables.
+telemetry_allowed() {
+  _dnt=$(printf '%s' "${DO_NOT_TRACK:-}" | tr -d '[:space:]')
+  [ -n "$_dnt" ] && return 1
+  _flag=$(printf '%s' "${SEITE_TELEMETRY:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  case "$_flag" in
+    0|off|false|no|disable|disabled) return 1 ;;
+    1|on|true|yes|enable|enabled) return 0 ;;
+  esac
+  _ci=$(printf '%s' "${CI:-}" | tr -d '[:space:]')
+  [ -n "$_ci" ] && return 1
+  return 0
+}
+
 send_telemetry() {
-  [ -n "${DO_NOT_TRACK:-}" ] && return 0
-  case "${SEITE_TELEMETRY:-}" in 0|off|false|no) return 0 ;; esac
+  telemetry_allowed || return 0
   _ep="${SEITE_TELEMETRY_ENDPOINT:-https://who.seite.sh/api/event}"
   _body="{\"name\":\"install\",\"domain\":\"cli.seite.sh\",\"url\":\"https://cli.seite.sh/install\",\"props\":{\"version\":\"${VERSION_TAG}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"source\":\"install.sh\"}}"
   if command -v curl >/dev/null 2>&1; then

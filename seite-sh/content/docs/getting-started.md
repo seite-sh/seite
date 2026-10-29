@@ -12,7 +12,7 @@ By the end of this guide you'll have a working site with a blog post, a docs pag
 
 No runtime dependencies are required. seite is a single binary that runs on macOS, Linux, and Windows. If you want to install from source rather than using the prebuilt binary, you'll need the [Rust toolchain](https://rustup.rs/).
 
-To let a coding agent run the site, install any of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex CLI, OpenCode, Cursor, Gemini CLI, or GitHub Copilot CLI. seite sets the site up for all of them and needs no API keys of its own; see [Coding Agents](/docs/agent).
+To let a coding agent run the site, install any of [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Codex CLI, OpenCode, Cursor, Antigravity CLI (or Gemini CLI), or GitHub Copilot CLI. seite sets the site up for all of them and needs no API keys of its own; see [Coding Agents](/docs/agent).
 
 ## Installation
 
@@ -103,11 +103,11 @@ mysite/
 ├── .gemini/       # Gemini CLI hooks and /seite command
 ├── .opencode/     # OpenCode /seite command and hook plugin
 ├── .github/       # GitHub Copilot hooks and instructions; deploy workflow (GitHub Pages)
-├── .agents/       # The /seite skill for Codex, Cursor, OpenCode, Gemini CLI, and Copilot
+├── .agents/       # /seite skill, rules and Antigravity hooks; the skill is shared by Codex, Cursor, OpenCode, Gemini CLI, and Copilot
 └── .seite/        # Project metadata and the docs for this seite version (.seite/docs/)
 ```
 
-Without `--agents`, `seite init` sets up all six agents (the interactive picker preselects the ones it finds on your machine). Pass `--agents claude,cursor` (any subset of `claude,codex,opencode,cursor,gemini,copilot`) to generate only the ones you use, and `--mcp` to also wire in the MCP server; see the [CLI reference](/docs/cli-reference#seite-init).
+Without `--agents`, `seite init` sets up all seven agents (the interactive picker preselects the ones it finds on your machine). Pass `--agents claude,cursor` (any subset of `claude,codex,opencode,cursor,gemini,copilot,antigravity`) to generate only the ones you use, and `--mcp` to also wire in the MCP server; see the [CLI reference](/docs/cli-reference#seite-init).
 
 The [`seite.toml`](/docs/configuration) file controls your site's title, description, base URL, and collections. The defaults work out of the box. You can tune settings later as needed.
 
@@ -132,7 +132,7 @@ The agent starts a session with `seite context`, which prints the config, collec
 
 `/seite check` runs `seite check`, fixes each error at its file and line, and checks once more. `/seite preview` opens the running dev server (in the built-in browser of Claude's desktop app and Cursor) or starts one. While `seite serve` runs, `seite preview` reports its URL, the last build's errors, and errors from the browser console, so the agent sees what you see.
 
-You can also start an agent from the terminal: `seite agent "write a post about our launch"` opens Claude Code (or `--with codex|opencode|cursor|gemini|copilot`) with that prompt. See [Coding Agents](/docs/agent) for everything the agent setup includes.
+You can also start an agent from the terminal: `seite agent "write a post about our launch"` opens Claude Code (or `--with codex|opencode|cursor|antigravity|gemini|copilot`) with that prompt. See [Coding Agents](/docs/agent) for everything the agent setup includes.
 
 The rest of this guide shows the same steps as commands you run yourself.
 
@@ -290,7 +290,7 @@ Then deploy:
 seite deploy
 ```
 
-This runs pre-flight checks, builds the site, and pushes it live. On Cloudflare Pages and Netlify, non-main branches automatically get preview deploys (GitHub Pages has none, so `seite deploy` refuses there). See the [Deployment docs](/docs/deployment) for full setup instructions for each target.
+This runs pre-flight checks, builds the site, and pushes it live. On Cloudflare Pages and Netlify, non-main branches automatically get preview deploys (GitHub Pages has none, so `seite deploy` refuses there before committing or pushing anything). See the [Deployment docs](/docs/deployment) for full setup instructions for each target.
 
 {{% callout(type="tip") %}}
 Run `seite deploy --dry-run` first to preview what will happen without actually deploying.
@@ -325,7 +325,7 @@ Now that your static site generator is up and running, explore these guides to g
 - [Shortcodes](/docs/shortcodes): embed YouTube, Vimeo, callouts, figures, contact forms, and custom components
 - [Contact Forms](/docs/contact-forms): add a contact form with Formspree, Web3Forms, Netlify Forms, HubSpot, or Typeform
 - [Workspaces](/docs/workspace): manage multiple sites in a single repository
-- [Coding Agents](/docs/agent): run the site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI, or GitHub Copilot
+- [Coding Agents](/docs/agent): run the site with Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, or GitHub Copilot
 - [Audit](/docs/audit): SEO, GEO, accessibility, and performance findings for the built site
 - [Import](/docs/import): move a WordPress, Ghost, Jekyll, or Hugo site into seite
 - [MCP Server](/docs/mcp-server): structured access for chat apps such as Claude Desktop

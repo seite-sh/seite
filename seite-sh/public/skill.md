@@ -8,16 +8,16 @@ metadata:
     emoji: "🏗️"
     category: web
     requires:
-      bins: [curl]
       anyBins: [curl, wget]
 ---
 
 # Seite
 
-Seite is a Rust-powered static site generator built for coding agents (Claude Code, Codex CLI, OpenCode,
-Cursor, Gemini CLI, GitHub Copilot). It's a local CLI tool — install
-the binary, scaffold a project, create content, and deploy. No accounts, no API keys, no SaaS.
-Everything runs on your machine.
+Seite is a Rust-powered static site generator built for coding agents (Claude Code, Codex, OpenCode,
+Cursor, Antigravity CLI, Gemini CLI, GitHub Copilot). It's a local CLI tool — install
+the binary, scaffold a project, create content, and deploy. seite itself needs no account, API key
+or SaaS; your deploy host (and any form, comment or newsletter provider) needs its own account.
+Building runs entirely on your machine.
 
 ## Companion Files
 
@@ -68,7 +68,7 @@ cd mysite
 ```
 
 Without a terminal, `--deploy-target` is required; the other flags have defaults (title from the
-directory name, collections `posts,pages`, all six agents for `--agents`; add `--mcp` to wire in the
+directory name, collections `posts,pages`, all seven agents for `--agents`; add `--mcp` to wire in the
 MCP server). Available collections: `posts`, `docs`, `pages`,
 `changelog`, `roadmap`, `trust`. Deploy targets: `github-pages`, `cloudflare`, `netlify`.
 
@@ -121,7 +121,7 @@ seite context                  # Agent orientation: site summary and directives
 
 # Deploy
 seite deploy                   # Build, commit, push, deploy
-seite deploy --dry-run         # Preview without deploying
+seite deploy --dry-run         # Print the deploy plan without deploying
 
 # Themes
 seite theme list               # List all available themes
@@ -130,13 +130,13 @@ seite theme new                # Blank starter for your own design
 seite theme create "coral brutalist with lime accents"  # Design one with your coding agent
 
 # Coding agent
-seite agent                    # Open Claude Code in the site (--with codex|opencode|cursor|gemini|copilot)
+seite agent                    # Open Claude Code in the site (--with codex|opencode|cursor|antigravity|gemini|copilot)
 seite agent "write a blog post about Rust"  # Pass a prompt through unchanged
 
 # Maintenance
 seite self-update              # Update to latest version
 seite upgrade                  # Upgrade project config to current binary
-seite completions bash         # Generate shell completions (bash/zsh/fish)
+seite completions bash         # Generate shell completions (bash/zsh/fish/powershell/elvish)
 ```
 
 ---
@@ -152,7 +152,7 @@ seite upgrade --mcp           # existing site
 ```
 
 This writes `.mcp.json` (Claude Code and GitHub Copilot), `.cursor/mcp.json`, `.codex/config.toml`,
-the `mcp` key of `opencode.json`, and `mcpServers` in `.gemini/settings.json`.
+the `mcp` key of `opencode.json`, `.agents/mcp_config.json` (Antigravity CLI) and `mcpServers` in `.gemini/settings.json`.
 
 ### Available MCP Tools (16)
 
@@ -244,4 +244,4 @@ for content marketing workflows.
 
 ---
 
-*Seite is a local CLI tool. No accounts, no API keys, no SaaS. Your machine, your sites.*
+*Seite is a local CLI tool: no seite account, API key or SaaS. Your deploy host has its own account. Your machine, your sites.*

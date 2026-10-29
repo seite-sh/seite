@@ -21,7 +21,15 @@
     "entry_point": "server/seite",
     "mcp_config": {
       "command": "${__dirname}/server/seite",
-      "args": ["mcp"]
+      "args": ["mcp", "--dir", "${user_config.site_dir}"]
+    }
+  },
+  "user_config": {
+    "site_dir": {
+      "type": "directory",
+      "title": "Site folder",
+      "description": "The folder of your seite site (the one that contains seite.toml).",
+      "required": true
     }
   },
   "tools": [
