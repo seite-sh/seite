@@ -1276,6 +1276,84 @@ fn test_check_reports_template_cycles() {
     }
 }
 
+/// A recursive macro that never stops (in a page template or a shortcode)
+/// is a render error, not a stack overflow that aborts the process; one
+/// that terminates still renders.
+#[test]
+fn test_check_reports_runaway_recursive_macros() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Macros", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "templates/m.html",
+        "{% macro f(n) %}{{ self::f(n=n+1) }}{% endmacro f %}\
+         {% macro t(n) %}{% if n > 0 %}<i>{{ self::t(n=n-1) }}</i>{% endif %}{% endmacro t %}",
+    );
+    let base = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    let with_tree = format!(
+        "{{% import \"m.html\" as m %}}{}",
+        base.replacen("</body>", "{{ m::t(n=12) }}</body>", 1)
+    );
+    fs::write(site.join("templates/base.html"), &with_tree).unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let index = fs::read_to_string(site.join("dist/index.html")).unwrap();
+    assert_eq!(index.matches("<i>").count(), 12, "{index}");
+
+    fs::write(
+        site.join("templates/base.html"),
+        with_tree.replace("m::t(n=12)", "m::f(n=0)"),
+    )
+    .unwrap();
+    for command in ["check", "build"] {
+        let output = page_cmd()
+            .args(["--json", command])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} must exit, not abort"
+        );
+        let doc = json_stdout(&output);
+        assert!(
+            doc["error"]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["code"] == "template-render"
+                    && d["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("macro `m.html::f` nests too deeply")),
+            "{command}: {doc}"
+        );
+    }
+
+    // The same in a shortcode template.
+    fs::write(site.join("templates/base.html"), &base).unwrap();
+    write_site_file(
+        &site,
+        "templates/shortcodes/deep.html",
+        "{% macro g(n) %}{{ self::g(n=n+1) }}{% endmacro g %}{{ self::g(n=0) }}",
+    );
+    write_site_file(
+        &site,
+        "content/posts/2026-01-02-deep.md",
+        "---\ntitle: Deep\ndate: 2026-01-02\n---\n\n{{< deep() >}}\n",
+    );
+    let output = page_cmd().arg("check").current_dir(&site).output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "check must exit, not abort");
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    assert!(text.contains("nests too deeply"), "{text}");
+}
+
 /// A PNG whose header claims `width`×`height` (signature, IHDR, an empty
 /// IDAT, IEND): a few dozen bytes on disk.
 fn png_header_only(width: u32, height: u32) -> Vec<u8> {

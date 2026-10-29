@@ -690,9 +690,9 @@ See [Templates → seite partials](/docs/templates#seite-partials).
 
 **What it means:** a template parsed but failed while rendering a page.
 
-**Common causes:** a variable that does not exist in that context (`page.titel`), a filter applied to the wrong type, a missing `{% extends "base.html" %}` block, an `include` of a file that does not exist.
+**Common causes:** a variable that does not exist in that context (`page.titel`), a filter applied to the wrong type, a missing `{% extends "base.html" %}` block, an `include` of a file that does not exist, a recursive macro that never reaches its base case ("nests too deeply").
 
-**How to fix:** the hint suggests the closest variable name. `seite templates` lists the variables available to each kind of template (page, collection index, homepage, tags, 404).
+**How to fix:** the hint suggests the closest variable name. For "nests too deeply", make every recursive call work on a smaller value (`self::tree(items=item.children)`) and stop when there is nothing left; legitimate recursion about 100 levels deep still renders. `seite templates` lists the variables available to each kind of template (page, collection index, homepage, tags, 404).
 
 ## url-collision
 

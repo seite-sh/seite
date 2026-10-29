@@ -292,10 +292,6 @@ pub fn builtin_keys() -> Vec<&'static str> {
     keys
 }
 
-pub fn is_builtin(name: &str) -> bool {
-    BUILTIN_KEYS.contains(&name) || builtin_keys().contains(&name)
-}
-
 /// Keys that live at the top level of a site's frontmatter: the built-ins
 /// plus site-defined top-level keys (`[[taxonomies]]` names such as
 /// `categories`). Schema fields with these names are validated at the top

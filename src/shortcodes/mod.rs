@@ -94,6 +94,7 @@ impl ShortcodeRegistry {
         if !refused.is_empty() {
             return Err(PageError::Diagnostics(refused));
         }
+        crate::templates::guard_macro_recursion(&mut tera);
 
         Ok(Self {
             tera,

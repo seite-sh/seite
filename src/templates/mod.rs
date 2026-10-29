@@ -646,6 +646,82 @@ pub fn json_script(value: &serde_json::Value) -> String {
         .replace('<', "\\u003c")
 }
 
+/// The function [`guard_macro_recursion`] calls first in every macro body.
+const MACRO_GUARD_FN: &str = "__seite_macro_guard";
+
+/// Stack that nested macro calls may use below the shallowest macro call
+/// seen on the thread. The smallest stack seite renders on is Windows'
+/// 1 MiB main thread (spawned threads get 2 MiB). One level of macro
+/// recursion takes about 4 KiB in release builds (25 KiB in debug), so this
+/// leaves room for legitimate recursion (menus, trees) about 100 levels
+/// deep and stops a runaway one well before the stack overflows.
+const MACRO_STACK_BUDGET: usize = 512 * 1024;
+
+thread_local! {
+    /// Highest stack address of a macro guard call on this thread (the
+    /// stack grows down on every platform seite ships for). Never reset:
+    /// renders start within a few KiB of each other on one thread, far less
+    /// than the budget.
+    static MACRO_STACK_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Make a recursive macro that never stops fail the render with an error
+/// instead of overflowing the stack, which aborts the whole process (`seite
+/// check`, the hooks, the dev server, the MCP server). Tera has no
+/// recursion limit, and whether a recursive macro terminates can't be
+/// decided statically, so every macro body starts with a call to a function
+/// that measures how deep the stack is. The call renders nothing, so output
+/// stays byte-identical. Call after every template is added.
+pub(crate) fn guard_macro_recursion(tera: &mut tera::Tera) {
+    use tera::ast::{Expr, ExprVal, FunctionCall, Node, WS};
+    tera.register_function(MACRO_GUARD_FN, macro_guard);
+    for template in tera.templates.values_mut() {
+        for (name, definition) in template.macros.iter_mut() {
+            let guarded = matches!(
+                definition.body.first(),
+                Some(Node::VariableBlock(_, Expr { val: ExprVal::FunctionCall(call), .. }))
+                    if call.name == MACRO_GUARD_FN
+            );
+            if guarded {
+                continue;
+            }
+            let args = HashMap::from([(
+                "name".to_string(),
+                Expr::new(ExprVal::String(format!("{}::{name}", template.name))),
+            )]);
+            let call = Expr::new(ExprVal::FunctionCall(FunctionCall {
+                name: MACRO_GUARD_FN.to_string(),
+                args,
+            }));
+            definition
+                .body
+                .insert(0, Node::VariableBlock(WS::default(), call));
+        }
+    }
+}
+
+fn macro_guard(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+    let marker = 0u8;
+    let here = std::hint::black_box(&marker) as *const u8 as usize;
+    let used = MACRO_STACK_TOP.with(|top| {
+        if here > top.get() {
+            top.set(here);
+        }
+        top.get() - here
+    });
+    if used > MACRO_STACK_BUDGET {
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("a macro");
+        return Err(tera::Error::msg(format!(
+            "macro `{name}` nests too deeply: a recursive macro that never reaches its base case? \
+             Make sure every recursive call works on a smaller value"
+        )));
+    }
+    Ok(tera::Value::String(String::new()))
+}
+
 /// Register the filters seite's partials use: `escape_attr` (HTML attribute
 /// values) and `json_script` (JSON inside `<script>`).
 pub fn register_filters(tera: &mut tera::Tera) {
@@ -826,6 +902,7 @@ pub fn load_templates_with_warnings(
         }
     }
 
+    guard_macro_recursion(&mut tera);
     Ok((tera, warnings))
 }
 
@@ -1901,5 +1978,95 @@ mod tests {
         let ld: serde_json::Value = serde_json::from_str(head[start..end].trim()).unwrap();
         assert_eq!(ld["headline"], "A \"quoted\" title");
         assert_eq!(ld["description"], "Ends </script><script>alert(1)</script>");
+    }
+
+    /// Tera with one template `t.html` importing `m.html`, optionally guarded.
+    fn macro_tera(macros: &str, call: &str, guard: bool) -> tera::Tera {
+        let mut tera = tera::Tera::default();
+        tera.add_raw_templates(vec![
+            ("m.html", macros.to_string()),
+            ("t.html", format!("{{% import \"m.html\" as m %}}{call}")),
+        ])
+        .unwrap();
+        if guard {
+            guard_macro_recursion(&mut tera);
+        }
+        tera
+    }
+
+    /// Run `f` on a thread with Windows' 1 MiB main-thread stack, the
+    /// smallest seite renders on.
+    fn on_small_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(f)
+            .unwrap()
+            .join()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_runaway_macro_recursion_is_an_error() {
+        let err = on_small_stack(|| {
+            let tera = macro_tera(
+                "{% macro f(n) %}{{ self::f(n=n+1) }}{% endmacro f %}",
+                "{{ m::f(n=0) }}",
+                true,
+            );
+            error_chain(&tera.render("t.html", &tera::Context::new()).unwrap_err())
+        });
+        assert!(err.contains("macro `m.html::f` nests too deeply"), "{err}");
+        // Mutual recursion through two macros is caught the same way.
+        let err = on_small_stack(|| {
+            let tera = macro_tera(
+                "{% macro a() %}{{ self::b() }}{% endmacro a %}{% macro b() %}{{ self::a() }}{% endmacro b %}",
+                "{{ m::a() }}",
+                true,
+            );
+            error_chain(&tera.render("t.html", &tera::Context::new()).unwrap_err())
+        });
+        assert!(err.contains("nests too deeply"), "{err}");
+    }
+
+    #[test]
+    fn test_terminating_macro_recursion_renders_unchanged() {
+        let macros =
+            "{% macro t(n) %}{% if n > 0 %}<i>{{ self::t(n=n-1) }}</i>{% endif %}{% endmacro t %}";
+        let (guarded, plain) = on_small_stack(move || {
+            let render = |guard| {
+                macro_tera(macros, " a {{ m::t(n=8) }} b ", guard)
+                    .render("t.html", &tera::Context::new())
+                    .unwrap()
+            };
+            (render(true), render(false))
+        });
+        assert_eq!(guarded, plain);
+        assert_eq!(guarded.matches("<i>").count(), 8);
+    }
+
+    #[test]
+    fn test_guard_macro_recursion_is_idempotent() {
+        let mut tera = macro_tera("{% macro f() %}x{% endmacro f %}", "{{ m::f() }}", true);
+        guard_macro_recursion(&mut tera);
+        let body = &tera.templates["m.html"].macros["f"].body;
+        assert_eq!(body.len(), 2, "{body:?}");
+        assert_eq!(tera.render("t.html", &tera::Context::new()).unwrap(), "x");
+    }
+
+    #[test]
+    fn test_load_templates_guards_user_macros() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("m.html"),
+            "{% macro f(n) %}{{ self::f(n=n+1) }}{% endmacro f %}",
+        )
+        .unwrap();
+        let (tera, _) = load_templates_with_warnings(tmp.path(), &[]).unwrap();
+        let body = &tera.templates["m.html"].macros["f"].body;
+        assert!(
+            matches!(&body[0], tera::ast::Node::VariableBlock(_, e)
+                if matches!(&e.val, tera::ast::ExprVal::FunctionCall(c) if c.name == MACRO_GUARD_FN)),
+            "{body:?}"
+        );
     }
 }
