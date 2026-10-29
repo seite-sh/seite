@@ -4,7 +4,7 @@
 #   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
-#   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
+#   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.21.0")
 #   $env:INSTALL_DIR    Override install location (default: ~\.local\bin)
 #   $env:DOWNLOAD_BASE  Override download base URL (default: https://seite.sh/download)
 
@@ -56,14 +56,14 @@ if ($env:VERSION) {
             $Version = $Release.tag_name
         } catch {
             Write-Err "Could not determine latest release version."
-            Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
+            Write-Host '  Try pinning a version: $env:VERSION = "v0.21.0"'
             exit 1
         }
     }
 
     if (-not $Version) {
         Write-Err "Could not determine latest release version."
-        Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
+        Write-Host '  Try pinning a version: $env:VERSION = "v0.21.0"'
         exit 1
     }
 }

@@ -475,7 +475,7 @@ Taxonomies and related pages also weigh into `page.related` (see [Related pages]
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
 | `domain` | string | none | Custom domain, written by `seite deploy --domain <domain>` |
-| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
+| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode (Cloudflare Pages, Netlify; GitHub Pages refuses the deploy) |
 | `markdown_negotiation` | bool | `false` | Cloudflare Pages only: generate a `_worker.js` that serves a page's markdown copy to requests with `Accept: text/markdown`. Every page request then counts as a Functions request (Workers Free: 100,000 a day). Sites with `[access]` get it without this switch. See [Markdown for agents](/docs/deployment#markdown-for-agents) |
 
 ## [languages.*]

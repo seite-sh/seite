@@ -465,7 +465,7 @@ seite deploy [options]
 |------|-------------|
 | `-t`, `--target` | Override deploy target (`github-pages`, `cloudflare`, `netlify`) |
 | `--dry-run` | Preview what would be deployed without deploying |
-| `--preview` | Deploy to a preview URL instead of production (automatic on a branch other than `main`/`master` when auto-commit is on) |
+| `--preview` | Deploy to a preview URL instead of production (Cloudflare Pages and Netlify; automatic on a branch other than `main`/`master` when auto-commit is on). GitHub Pages has no previews: `seite deploy` refuses `--preview` and non-main branches there |
 | `--verify` | Verify the deployment afterwards (production deploys are always verified) |
 | `--build` | Build before deploying (the default) |
 | `--domain` | Set up a custom domain (prints DNS records, updates config, attaches to platform) |
@@ -608,7 +608,7 @@ seite upgrade --agents claude,cursor   # Add Cursor files; stop maintaining Code
 
 `seite upgrade --agent` runs the normal upgrade, then builds a markdown brief for a coding agent: what the upgrade changed automatically, the release notes for every version after the one the project recorded (up to the installed `seite`), and instructions to apply any manual migration steps the notes describe, keep the site's customizations, run `seite check` and `seite build` until clean, and report what changed. If the project has no readable recorded version, it is treated as the oldest: all release notes are included (newest kept, capped at about 48 KB), and the brief says so. The brief is also saved to `.seite/upgrade-brief.md` (gitignored). If the project was already current and no release notes apply, nothing is printed or launched.
 
-- **Inside an agent session** (Claude Code, Codex, and the other supported agents): the brief is printed to stdout and nothing is launched; the running agent follows it. With `--json` it is in `data.brief` (`data.agent_delivery` is `printed`, or `none` when there was nothing to migrate).
+- **Inside an agent session** (Claude Code, Codex, Cursor, Gemini CLI or OpenCode; a GitHub Copilot session is not detected, see [Coding Agents](/docs/agent)): the brief is printed to stdout and nothing is launched; the running agent follows it. With `--json` it is in `data.brief` (`data.agent_delivery` is `printed`, or `none` when there was nothing to migrate).
 - **From a terminal**: the agent from `--with` (else `SEITE_AGENT`, else Claude Code) starts interactively with a one-line prompt telling it to read `.seite/upgrade-brief.md` (the brief is never passed on the command line). No auto-approve flag is ever added, not even with `--yes`. If that agent isn't installed, or fails to start, the brief file path and an install hint are printed instead.
 - **Without a terminal** (a script or CI), or with `--json`: the brief is printed.
 

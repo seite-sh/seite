@@ -4,7 +4,7 @@ description: "Deploy your seite static site to GitHub Pages, Cloudflare Pages, o
 weight: 8
 ---
 
-Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. Preview deploys happen automatically when you push from a branch, and custom domains are wired up interactively.
+Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. On Cloudflare Pages and Netlify, deploying from a branch other than `main` creates a preview deploy automatically, and custom domains are wired up interactively.
 
 ## Overview
 
@@ -45,7 +45,7 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 
 By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
-**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+**Branch-based preview (Cloudflare Pages and Netlify):** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually. GitHub Pages has no preview deploys (one live site per repository), so for `github-pages` `seite deploy` refuses to run from another branch or with `--preview` instead of overwriting the live site; merge to `main` and deploy from there, or preview locally with `seite serve`.
 
 To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 
@@ -63,7 +63,14 @@ seite deploy --no-commit
 
 ## GitHub Pages
 
-The default deployment target. When you run [`seite init`](/docs/getting-started) with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
+The default deployment target. There are two ways to publish, and each needs a different **Pages source** (repository **Settings → Pages → Build and deployment → Source**). Pick one:
+
+| Method | What it does | Pages source |
+|--------|--------------|--------------|
+| GitHub Actions workflow (recommended) | [`seite init`](/docs/getting-started) with `--deploy-target github-pages` writes `.github/workflows/deploy.yml`. On every push to `main` (plus a daily rebuild for scheduled posts, and manual runs) it installs seite, runs `seite build`, and publishes `dist/` with `actions/upload-pages-artifact` and `actions/deploy-pages`. | **GitHub Actions** (`seite deploy --setup` requests this through `gh` when it enables Pages) |
+| Manual `seite deploy` | Builds locally, commits `dist/` as a fresh `gh-pages` branch, and force-pushes it to the remote. | **Deploy from a branch**: `gh-pages`, `/ (root)` |
+
+The two don't combine: with the source set to GitHub Actions, GitHub ignores the `gh-pages` branch, so a manual `seite deploy` pushes a branch nobody serves; with the source set to the `gh-pages` branch, GitHub serves that branch, not the workflow's build. If you use the workflow, publish by pushing to `main` (`git push`) rather than running `seite deploy`. If you prefer manual deploys, switch the source to the `gh-pages` branch and delete `.github/workflows/deploy.yml`.
 
 ### Manual deployment
 
@@ -72,7 +79,7 @@ seite build
 seite deploy
 ```
 
-This pushes the `dist/` directory to the `gh-pages` branch.
+This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" and publishes nothing.
 
 ### Dry run
 
@@ -230,6 +237,18 @@ seite deploy
 
 The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. The Worker also answers `Accept: text/markdown` requests (see [Markdown for agents](#markdown-for-agents)). Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
 
+#### Set every protected project to Fail closed
+
+Every request to a password-enabled Pages project runs the Worker. On the Workers Free plan that uses up a [daily request allowance](https://developers.cloudflare.com/pages/functions/pricing/), and each Pages project has a **Fail open / Fail closed** setting that decides what happens once the allowance is exhausted. With **Fail open**, Cloudflare [serves static assets without running the Worker](https://developers.cloudflare.com/pages/functions/routing/). The protected pages, `.md` alternates, and `/private-assets/` files are static assets, so anyone could load them without a password until the allowance resets. Cloudflare's API defaults new projects to fail open.
+
+seite sets production and preview to **Fail closed** on every protected project (the main project when a main-site collection is private, and each private subdomain's project):
+
+- `seite access set-password` sets it after uploading the secrets, and exits with an error if it can't.
+- `seite deploy --setup` sets it after creating the projects, and exits with an error if it can't, because the GitHub Actions workflow it writes uploads with `wrangler` directly and skips seite's checks.
+- `seite deploy` runs a **Cloudflare fail closed** pre-flight check. It reads the setting through the Cloudflare API and offers to fix it. If the setting still fails open or can't be verified, the deploy stops unless you confirm interactively or pass `--skip-checks`. `--yes` applies the fix, but it never skips this check.
+
+The API calls use `CLOUDFLARE_API_TOKEN` (or your `wrangler login` session). Set `CLOUDFLARE_ACCOUNT_ID` if your login has access to more than one account, because seite won't guess which account holds the project. If you deploy another way, such as your own `wrangler pages deploy` workflow, check the setting once in the dashboard: **Workers & Pages → your project → Settings → Runtime → Fail open / closed → Fail closed**. Once the allowance runs out, a fail-closed project shows visitors a Cloudflare error page instead of your site. The Workers Paid plan removes the daily limit.
+
 ## Markdown for agents
 
 Every build writes a markdown copy of each page next to its HTML (`/posts/hello-world` → `/posts/hello-world.md`, a collection index → `/posts/index.md`, the homepage → `/index.md` when `content/pages/index.md` exists), linked from the page head with `<link rel="alternate" type="text/markdown">`. Each copy starts (right after its frontmatter) with one line pointing agents at the rest of the site:
@@ -313,18 +332,6 @@ With `[build] schedule = true`, posts with a future `date` are left out of the b
   A build hook needs the host to build the site itself (Netlify reads the generated `netlify.toml`; Cloudflare Pages needs a Git-connected project with `seite build` as its build command).
 
 Pick a cron hour after midnight in your `[site] timezone`, so posts dated today are published that morning.
-
-#### Set every protected project to Fail closed
-
-Every request to a password-enabled Pages project runs the Worker. On the Workers Free plan that uses up a [daily request allowance](https://developers.cloudflare.com/pages/functions/pricing/), and each Pages project has a **Fail open / Fail closed** setting that decides what happens once the allowance is exhausted. With **Fail open**, Cloudflare [serves static assets without running the Worker](https://developers.cloudflare.com/pages/functions/routing/). The protected pages, `.md` alternates, and `/private-assets/` files are static assets, so anyone could load them without a password until the allowance resets. Cloudflare's API defaults new projects to fail open.
-
-seite sets production and preview to **Fail closed** on every protected project (the main project when a main-site collection is private, and each private subdomain's project):
-
-- `seite access set-password` sets it after uploading the secrets, and exits with an error if it can't.
-- `seite deploy --setup` sets it after creating the projects, and exits with an error if it can't, because the GitHub Actions workflow it writes uploads with `wrangler` directly and skips seite's checks.
-- `seite deploy` runs a **Cloudflare fail closed** pre-flight check. It reads the setting through the Cloudflare API and offers to fix it. If the setting still fails open or can't be verified, the deploy stops unless you confirm interactively or pass `--skip-checks`. `--yes` applies the fix, but it never skips this check.
-
-The API calls use `CLOUDFLARE_API_TOKEN` (or your `wrangler login` session). Set `CLOUDFLARE_ACCOUNT_ID` if your login has access to more than one account, because seite won't guess which account holds the project. If you deploy another way, such as your own `wrangler pages deploy` workflow, check the setting once in the dashboard: **Workers & Pages → your project → Settings → Runtime → Fail open / closed → Fail closed**. Once the allowance runs out, a fail-closed project shows visitors a Cloudflare error page instead of your site. The Workers Paid plan removes the daily limit.
 
 ## Override Target
 

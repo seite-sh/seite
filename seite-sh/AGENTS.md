@@ -141,7 +141,7 @@ Instead of WordPress REST API, use:
 
 ### Site context
 - Read `seite.toml` for site configuration (title, collections, base_url, language)
-- Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
+- Read `data/brand.yaml` for brand identity (if created via `/seite brand`)
 - Read `AGENTS.md` for full site documentation
 
 <!-- seite-seomachine-end -->

@@ -226,7 +226,7 @@ The `--open` flag launches the site in your default browser automatically. The s
 
 ```
 seite> new post "Another Post"
-seite> theme apply dark
+seite> theme dark
 seite> build
 seite> status
 seite> stop
@@ -285,7 +285,7 @@ Then deploy:
 seite deploy
 ```
 
-This runs pre-flight checks, builds the site, and pushes it live. Non-main branches automatically get preview deploys. See the [Deployment docs](/docs/deployment) for full setup instructions for each target.
+This runs pre-flight checks, builds the site, and pushes it live. On Cloudflare Pages and Netlify, non-main branches automatically get preview deploys (GitHub Pages has none, so `seite deploy` refuses there). See the [Deployment docs](/docs/deployment) for full setup instructions for each target.
 
 {{% callout(type="tip") %}}
 Run `seite deploy --dry-run` first to preview what will happen without actually deploying.

@@ -597,7 +597,7 @@
             ['c', a.cmd],
             ['k', '> ' + a.skill + ' new post "v1.2 release"'],
             ['d', 'reads AGENTS.md, ' + a.files],
-            ['o', '✓ content/posts/v1-2-release.md'],
+            ['o', '✓ content/posts/2026-10-29-v1-2-release.md'],
             ['d', 'after-edit hook: seite check'],
             ['d', 'turn-end hook: seite check'],
             ['o', '✓ No problems found'],
@@ -612,10 +612,10 @@
     // A minute with seite
     var steps = [
         [['c', 'curl -fsSL https://seite.sh/install.sh | sh'], ['d', 'downloading seite for darwin-arm64'], ['o', '✓ Installed to ~/.local/bin']],
-        [['c', 'seite init mysite --title "My Site"'], ['o', '✓ Created mysite/ with posts, docs and pages'], ['d', 'AGENTS.md, /seite skill, check hooks …'], ['c', 'cd mysite']],
-        [['c', 'claude'], ['k', '> /seite new post "Launch"'], ['d', 'reads AGENTS.md and the /seite skill'], ['o', '✓ content/posts/launch.md'], ['d', 'review the diff, then keep it']],
+        [['c', 'seite init mysite --title "My Site" --collections posts,docs,pages --deploy-target cloudflare'], ['o', "✓ Created new site in 'mysite'"], ['d', 'AGENTS.md, /seite skill, check hooks …'], ['c', 'cd mysite']],
+        [['c', 'claude'], ['k', '> /seite new post "Launch"'], ['d', 'reads AGENTS.md and the /seite skill'], ['o', '✓ content/posts/2026-10-29-launch.md'], ['d', 'review the diff, then keep it']],
         [['c', 'seite check'], ['o', '✓ No problems found']],
-        [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 14 pages'], ['o', '✓ Deployed to Cloudflare Pages']]
+        [['c', 'seite deploy'], ['d', 'pre-flight OK, building'], ['o', '✓ Built 0 docs, 0 pages, 2 posts'], ['o', '✓ Deployed to Cloudflare Pages']]
     ];
     var walkPlay = player(document.getElementById('walk-term'));
     var currentStep = 0, started = false;

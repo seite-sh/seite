@@ -23,8 +23,12 @@ auto_commit = true
 seite deploy
 ```
 
-This builds the site, commits to the `gh-pages` branch, and pushes. GitHub Pages serves from
-that branch automatically. Non-main branches create preview deploys.
+This builds the site, commits it as the `gh-pages` branch, and force-pushes it. Set the Pages
+source to "Deploy from a branch: gh-pages" for this. Sites from `seite init` also get
+`.github/workflows/deploy.yml`, which builds and publishes on every push to `main` with
+`actions/deploy-pages` (Pages source: "GitHub Actions"); use one method or the other.
+GitHub Pages has no preview deploys: `seite deploy` refuses `--preview` and non-main branches
+for this target. Cloudflare Pages and Netlify deploy non-main branches as previews.
 
 ---
 

@@ -123,7 +123,7 @@ Here's what that means in practice:
 
 **Triple output.** Every build produces HTML (for browsers), markdown (for AI models), and `llms.txt` (for AI search engines). Your site is optimized for three audiences from a single command. No plugins. No configuration.
 
-**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
+**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. On Cloudflare Pages and Netlify, non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
 
 **Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. 11 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
 

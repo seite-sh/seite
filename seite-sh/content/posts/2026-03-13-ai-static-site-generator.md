@@ -49,7 +49,7 @@ Here's what's missing from traditional SSGs:
 
 **No project context for AI.** There's no file that tells an AI agent "this is a static site with these collections, these templates, and these commands." The agent has to explore the file tree and infer the structure. It usually gets something wrong.
 
-**No structured API for AI tools.** An MCP server gives AI tools typed, structured access to your content, config, and build pipeline. No traditional SSG offers this. The AI has to shell out to CLI commands and parse terminal output.
+**No interface built for AI tools.** Traditional SSG commands are written for humans: no command that summarizes the site for an agent, no check that reports problems by file and line in JSON, no optional MCP server for typed access. The agent guesses at commands and parses terminal output meant for people.
 
 **No AI-readable output.** Hugo produces HTML. That's it. There's no `llms.txt` file that tells AI search engines what your site is about. There's no raw markdown output alongside the HTML. There's no structured discovery file. Your content is locked inside HTML tags that AI models have to parse.
 
@@ -271,7 +271,7 @@ To [deploy](/docs/deployment):
 seite deploy  # GitHub Pages, Cloudflare, or Netlify
 ```
 
-One command. Auto-commit, push, build, and deploy. Non-main branches automatically use preview deployments. Migrating from WordPress? See the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide for the full comparison and migration path. See the [Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for a detailed walkthrough, the [static site generator for startups](/blog/static-site-generator-for-startups) guide if you need a complete site live in an afternoon, or the full [CLI reference](/docs/cli-reference) for all available commands.
+One command. Auto-commit, push, build, and deploy. On Cloudflare Pages and Netlify, non-main branches automatically use preview deployments. Migrating from WordPress? See the [WordPress alternative for developers](/blog/wordpress-alternative-for-developers) guide for the full comparison and migration path. See the [Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for a detailed walkthrough, the [static site generator for startups](/blog/static-site-generator-for-startups) guide if you need a complete site live in an afternoon, or the full [CLI reference](/docs/cli-reference) for all available commands.
 
 ## Frequently Asked Questions
 
@@ -301,7 +301,7 @@ Yes. seite is free, open source, and MIT licensed. No paid tiers, no API keys. T
 
 ### What deploy targets does seite support?
 
-seite has built-in [deployment](/docs/deployment) to GitHub Pages, Cloudflare Pages, and Netlify. One command (`seite deploy`) handles commit, push, build, and deploy. Non-main branches automatically get preview deployments.
+seite has built-in [deployment](/docs/deployment) to GitHub Pages, Cloudflare Pages, and Netlify. One command (`seite deploy`) handles commit, push, build, and deploy. On Cloudflare Pages and Netlify, non-main branches automatically get preview deployments (GitHub Pages has no previews).
 
 ## The Category Is New. The Need Isn't.
 

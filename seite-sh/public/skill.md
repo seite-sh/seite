@@ -221,7 +221,7 @@ seite skill update                # Update installed packs
 seite skill remove seomachine     # Remove a pack
 ```
 
-SEOMachine adds 11 agents, 22 commands (like `/research`, `/write`, `/optimize`), and 25 skills
+SEOMachine adds 11 agents, 24 commands (like `/research`, `/write`, `/optimize`, plus seite's `/publish-draft`), and 25 skills
 for content marketing workflows.
 
 ---

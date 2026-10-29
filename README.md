@@ -125,7 +125,7 @@ irm https://seite.sh/install.ps1 | iex
 cargo install seite
 ```
 
-Both installers put `seite` in `~/.local/bin` (override with `INSTALL_DIR`); the shell installer also checks the archive's SHA-256 against the release's checksum file. To pin a version:
+Both installers put `seite` in `~/.local/bin` (override with `INSTALL_DIR`) and check the archive's SHA-256 against the release's checksum file. To pin a version:
 
 ```bash
 curl -fsSL https://seite.sh/install.sh | VERSION=v0.21.0 sh

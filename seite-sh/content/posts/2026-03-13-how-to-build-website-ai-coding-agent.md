@@ -11,7 +11,7 @@ tags:
 extra:
   primary_keyword: "how to build a website with AI coding agent"
   meta_title: "How to Build a Website with an AI Coding Agent | seite"
-  meta_description: "Use Claude Code to build a complete website in under an hour. seite gives AI coding agents full site context via AGENTS.md and MCP server. Tutorial."
+  meta_description: "Use Claude Code to build a complete website in under an hour. seite gives AI coding agents full site context via AGENTS.md and a /seite skill. Tutorial."
   url_slug: "how-to-build-website-ai-coding-agent"
 ---
 
