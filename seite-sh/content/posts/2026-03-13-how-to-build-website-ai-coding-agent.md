@@ -78,7 +78,7 @@ seite init mysite --title "My Company" --collections posts,docs,pages
 cd mysite
 ```
 
-This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file plus the skill, rules, permissions and check hooks for each coding agent: Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot (pick with `seite init --agents`). Open the project directory in your agent and the context loads automatically.
+This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file plus the skill, rules, permissions and check hooks for each coding agent: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot (pick with `seite init --agents`). Open the project directory in your agent and the context loads automatically.
 
 ### Step 3: Run the Agent
 
@@ -205,7 +205,7 @@ For building a docs site specifically, see [how to build a docs site from the co
 
 ### What AI coding agent works best with seite?
 
-seite sets up six: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot. Each gets the same `AGENTS.md` (Claude Code and Gemini CLI through a one-line import), the `/seite` skill (`$seite` in Codex) and check hooks in its own format. The [`seite agent` command](/docs/agent) starts Claude Code by default; `--with` picks another. Use the one you already work in.
+seite sets up seven: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot. Each gets the same `AGENTS.md` (Claude Code and Gemini CLI through a one-line import), the `/seite` skill (`$seite` in Codex) and check hooks in its own format. The [`seite agent` command](/docs/agent) starts Claude Code by default; `--with` picks another. Use the one you already work in.
 
 ### Do I need an API key to use the AI agent features?
 
@@ -236,7 +236,7 @@ The missing ingredient in most guides on **how to build a website with an AI cod
 Three things to remember:
 
 1. **Context is the multiplier.** Agent output quality scales directly with the quality of project context available. AGENTS.md, the `/seite` skill and the check hooks provide that automatically.
-2. **`seite agent` is a shortcut, not a requirement.** Coding agents read `AGENTS.md` directly (Claude Code and Gemini CLI through a one-line import), and `/seite` works in any of the six. The structured context works regardless of how you invoke the agent.
+2. **`seite agent` is a shortcut, not a requirement.** Coding agents read `AGENTS.md` directly (Claude Code and Gemini CLI through a one-line import), and `/seite` works in any of the seven. The structured context works regardless of how you invoke the agent.
 3. **The workflow stays yours.** Git history, markdown files, CLI commands. AI works within your developer workflow, not as a replacement for it.
 
 Build your first AI-assisted site:

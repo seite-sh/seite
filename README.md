@@ -19,7 +19,7 @@ seite is a single-binary static site generator written in Rust. A new site comes
 
 ## Why switch to seite
 
-1. **Your coding agent runs the site, whichever one you use.** Typed frontmatter schemas, `seite check`, the check hooks, and `seite context` let an agent find and fix its own mistakes. Works with all six agents above, including OpenCode, which can run free and local models.
+1. **Your coding agent runs the site, whichever one you use.** Typed frontmatter schemas, `seite check`, the check hooks, and `seite context` let an agent find and fix its own mistakes. Works with all seven agents above, including OpenCode, which can run free and local models.
 2. **Zero subscriptions.** Full-text search, social cards, comments (giscus or utterances), newsletter and contact forms (providers with free tiers), a Git-based CMS (Pages CMS or Decap), scheduled publishing (a daily cron in the generated GitHub Actions workflow for GitHub Pages and Cloudflare), an SEO audit, and deploys to GitHub Pages, Cloudflare Pages, or Netlify.
 3. **One binary, everything included.** Image resizing and WebP, social cards, full-text search, RSS and Atom feeds, sitemaps, SEO and GEO metadata, i18n, and optional Tailwind CSS through its standalone CLI. No Node.js.
 4. **Visible to AI by default.** `llms.txt`, `llms-full.txt`, a `.md` copy of every page, `sitemap.md`, JSON-LD, Content Signals in `robots.txt`, and `Accept: text/markdown` negotiation (dev server, and Cloudflare Pages with `markdown_negotiation = true` or `[access]`).

@@ -774,3 +774,56 @@ fn test_workspace_add_writes_agent_files_like_init() {
         .assert()
         .success();
 }
+
+/// `workspace add --mcp` writes the MCP config like `seite init --mcp`, and
+/// the AGENTS.md setup table gets its MCP column.
+#[test]
+fn test_workspace_add_mcp_writes_mcp_config_and_column() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "blog",
+            "--collections",
+            "posts",
+            "--agents",
+            "claude",
+            "--mcp",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site_dir = tmp.path().join("sites/blog");
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite", "{mcp}");
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        agents_md.contains("| Agent | Config | MCP config | One-time step |"),
+        "{agents_md}"
+    );
+}
+
+#[test]
+fn test_workspace_deploy_refuses_github_pages_preview() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["blog"]);
+    let blog_toml = tmp.path().join("sites/blog/seite.toml");
+    let toml = fs::read_to_string(&blog_toml).unwrap();
+    assert!(toml.contains("github-pages"), "{toml}");
+
+    page_cmd()
+        .args(["deploy", "--preview", "--skip-checks", "--yes"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "GitHub Pages has no preview deploys",
+        ));
+}

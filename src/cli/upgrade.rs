@@ -379,7 +379,18 @@ fn and_list(items: &[&str]) -> String {
     }
 }
 
-fn copilot_notice(agents: &[Agent]) -> Option<Notice> {
+/// For sites whose agent selection predates 0.21 (Gemini CLI, Copilot and
+/// Antigravity were added then); a selection made by 0.21's `seite init` or
+/// `workspace add` is deliberate and gets no notice.
+fn copilot_notice(root: &Path, agents: &[Agent]) -> Option<Notice> {
+    let chosen_by_021 = meta::load(root).is_some_and(|m| {
+        m.agents.is_some()
+            && crate::cli::self_update::version_cmp(&m.version, "0.21.0")
+                != std::cmp::Ordering::Less
+    });
+    if chosen_by_021 {
+        return None;
+    }
     let missing: Vec<Agent> = [Agent::Gemini, Agent::Copilot, Agent::Antigravity]
         .into_iter()
         .filter(|a| !agents.contains(a))
@@ -1447,7 +1458,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     notices.extend(search_feature_notice(root));
     notices.extend(og_feature_notice(root));
     notices.extend(timezone_notice(root));
-    notices.extend(copilot_notice(&agents));
+    notices.extend(copilot_notice(root, &agents));
     notices.extend(access_fail_closed_notice(root));
     notices.extend(config_invalid_notice(root));
     let shown = meta::load(root)

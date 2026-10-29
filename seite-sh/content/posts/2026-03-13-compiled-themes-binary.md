@@ -168,7 +168,7 @@ seite theme export coral-wide --description "Coral with a wider content column"
 
 This copies `templates/base.html` to `templates/themes/coral-wide.tera` and adds a `{#- theme-description: ... -#}` comment at the top, which `seite theme list` shows next to the name. Put the file anywhere with a URL and others can `seite theme install` it.
 
-**Design one with your coding agent.** Describe the design and let an agent write it. In Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot, ask the `/seite` skill (`$seite` in Codex):
+**Design one with your coding agent.** Describe the design and let an agent write it. In Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot, ask the `/seite` skill (`$seite` in Codex):
 
 ```
 /seite theme editorial serif, warm cream background, single column, 620px max width
@@ -217,7 +217,7 @@ For us that trade is worth it. A theme you can't build without a network connect
 
 ## Why Coding Agents Benefit
 
-seite is built to be driven by coding agents: Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot, through the `/seite` skill or its optional [MCP server](/docs/mcp-server). When an agent changes your theme, a few things need to be true:
+seite is built to be driven by coding agents: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot, through the `/seite` skill or its optional [MCP server](/docs/mcp-server). When an agent changes your theme, a few things need to be true:
 
 - No network request, so the task doesn't depend on a third party being up
 - The same command gives the same result every time

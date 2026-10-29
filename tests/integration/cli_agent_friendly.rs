@@ -514,3 +514,52 @@ fn test_build_json_keeps_stderr_quiet() {
         .unwrap();
     assert!(!output.stderr.is_empty());
 }
+
+const TAGLINE: &str = "The static site generator your coding agent can run end to end, for free.";
+
+/// `seite` with no subcommand: the tagline, and a `seite new` line for the
+/// site's first collection (singular for presets, the name for custom ones,
+/// `<collection>` when seite.toml can't be read).
+#[test]
+fn test_welcome_names_first_collection_and_tagline() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Welcome", "docs,posts");
+    let site_dir = tmp.path().join("site");
+    let welcome = |dir: &std::path::Path| -> String {
+        let out = page_cmd().current_dir(dir).output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let out = welcome(&site_dir);
+    assert!(out.contains(TAGLINE), "{out}");
+    assert!(out.contains("seite new doc \"Title\""), "{out}");
+
+    let toml_path = site_dir.join("seite.toml");
+    let toml = fs::read_to_string(&toml_path).unwrap();
+    assert!(toml.contains("name = \"docs\""), "{toml}");
+    fs::write(
+        &toml_path,
+        toml.replace("name = \"docs\"", "name = \"guides\""),
+    )
+    .unwrap();
+    let out = welcome(&site_dir);
+    assert!(out.contains("seite new guides \"Title\""), "{out}");
+
+    fs::write(&toml_path, "not [valid toml").unwrap();
+    let out = welcome(&site_dir);
+    assert!(out.contains("seite new <collection> \"Title\""), "{out}");
+
+    // Outside a project: the tagline and the getting-started screen.
+    let out = welcome(tmp.path());
+    assert!(out.contains(TAGLINE), "{out}");
+    assert!(out.contains("seite init mysite"), "{out}");
+}
+
+#[test]
+fn test_help_shows_tagline() {
+    page_cmd()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(TAGLINE));
+}

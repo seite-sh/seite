@@ -103,7 +103,7 @@ mysite/
 ├── .gemini/       # Gemini CLI hooks and /seite command
 ├── .opencode/     # OpenCode /seite command and hook plugin
 ├── .github/       # GitHub Copilot hooks and instructions; deploy workflow (GitHub Pages)
-├── .agents/       # /seite skill, rules and Antigravity hooks; the skill is shared by Codex, Cursor, OpenCode, Gemini CLI, and Copilot
+├── .agents/       # /seite skill, rules and Antigravity hooks; the skill is shared by Codex, Cursor, OpenCode, Antigravity CLI, Gemini CLI, and Copilot
 └── .seite/        # Project metadata and the docs for this seite version (.seite/docs/)
 ```
 

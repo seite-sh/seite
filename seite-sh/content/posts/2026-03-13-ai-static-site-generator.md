@@ -105,7 +105,7 @@ MCP is opt-in: `seite init --mcp` registers the server for each agent you set up
 
 ### AI Agent Integration
 
-seite works with six coding agents: Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot. The context lives in the project, so you open your agent in the site directory and ask. `seite agent` is a thin launcher if you prefer starting from seite:
+seite works with seven coding agents: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot. The context lives in the project, so you open your agent in the site directory and ask. `seite agent` is a thin launcher if you prefer starting from seite:
 
 ```bash
 seite agent "create a blog post about Rust error handling"   # starts Claude Code with that prompt
@@ -224,7 +224,7 @@ Here's how the major static site generators compare on AI-related capabilities:
 | llms.txt output | No | No | No | Every build |
 | Markdown output per page | No | No | No | Every build |
 | AI theme generation | No | No | No | `/seite theme` |
-| AI agent integration | No | No | No | `/seite` skill + check hooks, 6 agents |
+| AI agent integration | No | No | No | `/seite` skill + check hooks, 7 agents |
 | Built-in deploy | `hugo deploy` (S3, GCS, Azure) | No | No | GitHub Pages, Cloudflare, Netlify |
 | Bundled themes | Community | Community | Community | 11 compiled into binary |
 | RSS feed | Built-in | Package (`@astrojs/rss`) | Built-in | Built-in |
@@ -281,7 +281,7 @@ An AI static site generator is a CLI tool that builds static websites while givi
 
 ### How is seite different from Hugo or Astro?
 
-Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds portable AI context files (`AGENTS.md` plus a `CLAUDE.md` compatibility import), a `/seite` skill and check hooks for six coding agents, an opt-in MCP server, and triple output (HTML + markdown + llms.txt). It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
+Hugo and Astro are excellent static site generators, but they produce HTML only. seite adds portable AI context files (`AGENTS.md` plus a `CLAUDE.md` compatibility import), a `/seite` skill and check hooks for seven coding agents, an opt-in MCP server, and triple output (HTML + markdown + llms.txt). It's also a single Rust binary with no runtime dependencies, similar to Hugo and Zola.
 
 ### Do I need Node.js to use seite?
 
@@ -297,7 +297,7 @@ AI website builders can generate a site from a prompt, but you get throwaway HTM
 
 ### Is seite free?
 
-Yes. seite is free, open source, and MIT licensed. No paid tiers, no API keys. The agent features use the coding agent you already run (Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot), and the static site generator itself is completely free.
+Yes. seite is free, open source, and MIT licensed. No paid tiers, no API keys. The agent features use the coding agent you already run (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot), and the static site generator itself is completely free.
 
 ### What deploy targets does seite support?
 

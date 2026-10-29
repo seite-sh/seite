@@ -1250,3 +1250,22 @@ fn test_mcp_read_trust_resource() {
     // Trust resource should include content_items from init scaffold
     assert!(trust.get("content_items").is_some());
 }
+
+/// The MCPB bundle manifest (`mcp/manifest.json`, packaged at release):
+/// Claude Desktop starts `seite mcp --dir <the folder the user picked>`.
+#[test]
+fn test_mcp_bundle_manifest_runs_seite_mcp_in_chosen_dir() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("mcp/manifest.json");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    let config = &manifest["server"]["mcp_config"];
+    assert_eq!(
+        config["args"],
+        serde_json::json!(["mcp", "--dir", "${user_config.site_dir}"]),
+        "{config}"
+    );
+    assert_eq!(config["command"], "${__dirname}/server/seite");
+    let site_dir = &manifest["user_config"]["site_dir"];
+    assert_eq!(site_dir["type"], "directory", "{site_dir}");
+    assert_eq!(site_dir["required"], true, "{site_dir}");
+}

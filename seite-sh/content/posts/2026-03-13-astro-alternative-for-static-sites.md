@@ -89,7 +89,7 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | Contact forms | Integration required | Built-in shortcode |
 | llms.txt output | No | Every build |
 | Markdown copies per page | No | Every build |
-| AI agent integration | No | `/seite` skill + check hooks, 6 agents |
+| AI agent integration | No | `/seite` skill + check hooks, 7 agents |
 | MCP server | No | Built-in (opt-in) |
 | AGENTS.md context | No | Auto-generated |
 | Bundled themes | Via Starlight / community | 11 compiled into binary |
@@ -121,7 +121,7 @@ As a Rust-based astro alternative, seite compiles to a single binary (about 24 M
 
 - Every page is markdown. Blog posts, docs pages, a landing page written as markdown. No interactive islands needed.
 - You want zero runtime dependencies. Single binary, curl install, no Node.js, no npm.
-- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the `/seite` skill and check hooks handle the integration for Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot; an MCP server is one flag away.
+- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the `/seite` skill and check hooks handle the integration for Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot; an MCP server is one flag away.
 - You want your site content to appear in AI search (ChatGPT, Perplexity, Claude's web browsing). llms.txt, markdown copies, and AI-aware robots.txt handle the GEO layer without configuration.
 - You are a startup that needs blog, docs, landing page, and changelog from one init command. Not four separate tools, not four deploys, not four billing accounts.
 - You want sub-second builds without a Node.js build pipeline.

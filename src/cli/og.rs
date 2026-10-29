@@ -158,6 +158,30 @@ fn preview(args: &PreviewArgs, site_filter: Option<&str>) -> anyhow::Result<()> 
                     root.display()
                 ));
             }
+            // A card is a `.png`, never in a dot directory (`.git/hooks`,
+            // `.claude/`, `.seite/`), and never replaces a file that isn't
+            // a PNG (seite.toml, a template, agent settings).
+            let rel = out.strip_prefix(&root).unwrap_or(&out);
+            let is_png = out
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("png"));
+            let dot_dir = rel
+                .parent()
+                .into_iter()
+                .flat_map(|p| p.components())
+                .any(|c| c.as_os_str().to_string_lossy().starts_with('.'));
+            let replaces_non_png = std::fs::symlink_metadata(&out).is_ok_and(|m| {
+                !m.is_file()
+                    || std::fs::read(&out)
+                        .map(|b| !b.starts_with(b"\x89PNG\r\n\x1a\n"))
+                        .unwrap_or(true)
+            });
+            if !is_png || dot_dir || replaces_non_png {
+                return Err(anyhow::anyhow!(
+                    "--out must be a new or existing .png file inside the site, outside dot directories (got {})",
+                    rel.display()
+                ));
+            }
             if let Some(parent) = out.parent() {
                 crate::safe_fs::create_dir_all(&state.cwd, parent)?;
             }

@@ -944,3 +944,217 @@ fn test_deploy_yes_never_creates_public_github_repo() {
     assert!(!calls.contains("repo create"), "gh called: {calls}\n{all}");
     assert!(all.contains("it would be public"), "{all}");
 }
+
+/// Without --yes, a run that can't ask (stdin not a terminal) never creates
+/// the public repository either.
+#[cfg(unix)]
+#[test]
+fn test_deploy_without_tty_never_creates_public_github_repo() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Repo", "posts");
+    let site_dir = tmp.path().join("site");
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let log = tmp.path().join("gh.log");
+    let gh = bin.join("gh");
+    fs::write(
+        &gh,
+        format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 0\n", log.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    git_repo_on_branch(&site_dir, "main");
+
+    let out = page_cmd()
+        .args(["deploy", "--target", "github-pages"])
+        .env("PATH", path)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let calls = fs::read_to_string(&log).unwrap_or_default();
+    assert!(!calls.contains("repo create"), "gh called: {calls}\n{all}");
+    assert!(all.contains("it would be public"), "{all}");
+}
+
+/// Outside a git repository the dry run says auto-commit would be skipped
+/// (and why), and `--json` reports no commit or push.
+#[test]
+fn test_deploy_dry_run_without_git_repo_skips_auto_commit() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Git", "posts");
+    let site_dir = tmp.path().join("site");
+    assert!(!site_dir.join(".git").exists());
+    page_cmd()
+        .args(["deploy", "--dry-run", "--target", "cloudflare"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("auto-commit would be skipped"));
+    let (ok, doc) = run_json(
+        &site_dir,
+        &["deploy", "--dry-run", "--target", "cloudflare"],
+    );
+    assert!(ok, "{doc}");
+    assert_eq!(doc["data"]["commit_and_push"], false, "{doc}");
+    assert_eq!(doc["data"]["dry_run"], true, "{doc}");
+}
+
+/// A directory holding fake CLIs (`name` → exit 0, args logged to
+/// `<bin>/<name>.log`), and a PATH with it first.
+#[cfg(unix)]
+fn fake_clis(tmp: &TempDir, names: &[&str]) -> (std::path::PathBuf, String) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    for name in names {
+        let exe = bin.join(name);
+        fs::write(
+            &exe,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> '{}'\nexit 0\n",
+                bin.join(format!("{name}.log")).display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    (bin, path)
+}
+
+/// Netlify builds netlify.toml from git: `--setup` writes no GitHub Actions
+/// workflow (it would deploy twice).
+#[cfg(unix)]
+#[test]
+fn test_deploy_setup_netlify_writes_no_github_workflow() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Netlify Setup", "posts");
+    let site_dir = tmp.path().join("site");
+    // `seite init` wrote a GitHub Pages workflow; setup must not write one.
+    let _ = fs::remove_file(site_dir.join(".github/workflows/deploy.yml"));
+    let (bin, path) = fake_clis(&tmp, &["netlify"]);
+    let out = page_cmd()
+        .args(["deploy", "--setup", "--target", "netlify"])
+        .env("PATH", path)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "{all}");
+    assert!(
+        fs::read_to_string(bin.join("netlify.log"))
+            .unwrap()
+            .contains("sites:create"),
+        "{all}"
+    );
+    assert!(site_dir.join("netlify.toml").is_file(), "{all}");
+    assert!(
+        !site_dir.join(".github/workflows/deploy.yml").exists(),
+        "{all}"
+    );
+}
+
+/// The Cloudflare workflow `--setup` writes deploys to the project it just
+/// set up, never to the `your-project-name` placeholder.
+#[cfg(unix)]
+#[test]
+fn test_deploy_setup_cloudflare_workflow_names_the_project() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "my-cf-site", "Cloudflare Setup", "posts");
+    let site_dir = tmp.path().join("my-cf-site");
+    let _ = fs::remove_file(site_dir.join(".github/workflows/deploy.yml"));
+    let (_bin, path) = fake_clis(&tmp, &["wrangler"]);
+    let out = page_cmd()
+        .args(["deploy", "--setup", "--target", "cloudflare"])
+        .env("PATH", path)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "{all}");
+    let workflow = fs::read_to_string(site_dir.join(".github/workflows/deploy.yml")).unwrap();
+    assert!(
+        workflow.contains("--project-name my-cf-site\n"),
+        "{workflow}"
+    );
+    assert!(!workflow.contains("your-project-name"), "{workflow}");
+    assert!(!workflow.contains("TODO"), "{workflow}");
+    let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(toml.contains("project = \"my-cf-site\""), "{toml}");
+
+    // A configured project wins over the directory name.
+    fs::write(
+        site_dir.join("seite.toml"),
+        toml.replace("project = \"my-cf-site\"", "project = \"other-project\""),
+    )
+    .unwrap();
+    let (_bin2, path2) = fake_clis(&tmp, &["wrangler"]);
+    let out = page_cmd()
+        .args(["deploy", "--setup", "--target", "cloudflare"])
+        .env("PATH", path2)
+        .env_remove("SEITE_YES")
+        .write_stdin("")
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let workflow = fs::read_to_string(site_dir.join(".github/workflows/deploy.yml")).unwrap();
+    assert!(
+        workflow.contains("--project-name other-project\n"),
+        "{workflow}"
+    );
+    let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(toml.contains("project = \"other-project\""), "{toml}");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_deploy_setup_github_pages_yes_never_creates_public_repo() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Setup No Repo", "posts");
+    let site_dir = tmp.path().join("site");
+    let (bin, path) = fake_clis(&tmp, &["gh"]);
+    let out = page_cmd()
+        .args(["deploy", "--setup", "--yes", "--target", "github-pages"])
+        .env("PATH", path)
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let calls = fs::read_to_string(bin.join("gh.log")).unwrap_or_default();
+    assert!(!calls.contains("repo create"), "gh called: {calls}\n{all}");
+    assert!(all.contains("it would be public"), "{all}");
+}

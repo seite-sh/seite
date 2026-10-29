@@ -799,6 +799,10 @@ fn test_upgrade_adds_harness_files_without_clobbering() {
     );
 }
 
+/// The one-time `copilot-agent` notice for a site maintained for
+/// `Agent::LEGACY_DEFAULT` (Copilot and Antigravity not selected).
+const COPILOT_ANTIGRAVITY_NOTICE: &str = "GitHub Copilot and Antigravity CLI are supported: `seite upgrade --agents claude,codex,opencode,cursor,gemini,copilot,antigravity` adds their hooks, `/seite` skill and context rules (GitHub Copilot: .github/hooks/seite.json and .github/instructions/; Antigravity CLI: .agents/hooks.json and .agents/rules/). See https://seite.sh/docs/agent";
+
 #[test]
 fn test_upgrade_is_idempotent_for_harness_files() {
     let tmp = TempDir::new().unwrap();
@@ -850,9 +854,7 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .assert()
         .success()
         .stdout(predicate::str::contains("per-agent setup table"))
-        .stdout(predicate::str::contains(
-            "--agents claude,codex,opencode,cursor,gemini,copilot",
-        ));
+        .stdout(predicate::str::contains(COPILOT_ANTIGRAVITY_NOTICE));
     assert_eq!(
         stored_agents(&site_dir),
         serde_json::json!(["claude", "codex", "opencode", "cursor", "gemini"])
@@ -876,7 +878,19 @@ fn test_upgrade_is_idempotent_for_harness_files() {
         .assert()
         .success()
         .stdout(predicate::str::contains("up to date"))
-        .stdout(predicate::str::contains("GitHub Copilot is supported").not());
+        .stdout(predicate::str::contains(COPILOT_ANTIGRAVITY_NOTICE).not())
+        .stdout(predicate::str::contains("are supported").not());
+    // Recorded in `notices_shown`: not repeated even while the stored
+    // selection still looks pre-0.21.
+    let mut meta = read_json_file(&meta_path);
+    meta["version"] = "0.20.0".into();
+    fs::write(&meta_path, meta.to_string()).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("are supported").not());
 
     // Deselecting keeps files but stops maintaining them.
     page_cmd()
@@ -2268,6 +2282,148 @@ fn test_upgrade_adds_antigravity_and_refreshes_shared_rules() {
         .stdout(predicate::str::contains("up to date"));
 }
 
+/// Where seite keeps Antigravity hook state for a test `HOME` (the env set
+/// by [`antigravity_hook`]).
+fn antigravity_state_root(home: &std::path::Path) -> std::path::PathBuf {
+    if cfg!(target_os = "macos") {
+        home.join("Library/Caches/seite/antigravity")
+    } else if cfg!(windows) {
+        home.join("AppData/Local/seite/antigravity")
+    } else {
+        home.join(".cache/seite/antigravity")
+    }
+}
+
+/// Run `seite check --hook antigravity <args>` as agy does (in `.agents/`),
+/// with the per-user cache under `home` (`None`: no cache directory at all).
+fn antigravity_hook(
+    site_dir: &std::path::Path,
+    home: Option<&std::path::Path>,
+    args: &[&str],
+    input: &serde_json::Value,
+) -> std::process::Output {
+    let mut cmd = page_cmd();
+    cmd.args(["check", "--hook", "antigravity"]).args(args);
+    match home {
+        Some(home) => {
+            cmd.env("HOME", home)
+                .env("XDG_CACHE_HOME", home.join(".cache"))
+                .env("LOCALAPPDATA", home.join("AppData/Local"));
+        }
+        None => {
+            cmd.env_remove("HOME")
+                .env_remove("XDG_CACHE_HOME")
+                .env_remove("LOCALAPPDATA");
+        }
+    }
+    let output = cmd
+        .current_dir(site_dir.join(".agents"))
+        .write_stdin(input.to_string())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    output
+}
+
+/// An Antigravity site with one broken post; returns (site dir, workspace
+/// path as agy reports it, the broken file's site-relative path).
+fn antigravity_broken_site(tmp: &TempDir) -> (std::path::PathBuf, String, &'static str) {
+    init_site_with_agents(tmp, "site", "antigravity");
+    let site_dir = tmp.path().join("site").canonicalize().unwrap();
+    let rel = "content/posts/2026-01-01-broken.md";
+    fs::write(site_dir.join(rel), "---\ntitle: Broken: yes\n---\nBody.\n").unwrap();
+    let ws = site_dir.display().to_string();
+    (site_dir, ws, rel)
+}
+
+fn antigravity_stop_input(ws: &str) -> serde_json::Value {
+    serde_json::json!({
+        "conversationId": "conv-1",
+        "executionNum": 0,
+        "fullyIdle": true,
+        "error": "",
+        "terminationReason": "NO_TOOL_CALL",
+        "workspacePaths": [ws],
+    })
+}
+
+/// Without a per-user cache directory there is no loop guard: the turn-end
+/// hook never continues (it would continue forever).
+#[test]
+fn test_check_hook_antigravity_without_cache_dir_never_continues() {
+    let tmp = TempDir::new().unwrap();
+    let (site_dir, ws, _) = antigravity_broken_site(&tmp);
+    let stop = antigravity_stop_input(&ws);
+    let out = antigravity_hook(&site_dir, None, &[], &stop);
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "");
+    // With a cache directory the same input continues (the site is broken).
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let out = antigravity_hook(&site_dir, Some(&home), &[], &stop);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("\"continue\""));
+}
+
+/// When the loop-guard marker can't be written, the turn-end hook lets the
+/// agent stop instead of continuing without a guard.
+#[cfg(unix)]
+#[test]
+fn test_check_hook_antigravity_marker_write_failure_stops() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().unwrap();
+    let (site_dir, ws, rel) = antigravity_broken_site(&tmp);
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    // A post-edit record creates the site's state directory.
+    let tool = serde_json::json!({
+        "conversationId": "conv-1",
+        "toolCall": { "name": "write_file", "args": { "Path": rel } },
+        "workspacePaths": [ws],
+    });
+    antigravity_hook(&site_dir, Some(&home), &["--post-edit"], &tool);
+    let dirs: Vec<_> = fs::read_dir(antigravity_state_root(&home))
+        .unwrap()
+        .flatten()
+        .map(|d| d.path())
+        .collect();
+    assert_eq!(dirs.len(), 1, "{dirs:?}");
+    let state = &dirs[0];
+    fs::set_permissions(state, fs::Permissions::from_mode(0o555)).unwrap();
+    let out = antigravity_hook(&site_dir, Some(&home), &[], &antigravity_stop_input(&ws));
+    fs::set_permissions(state, fs::Permissions::from_mode(0o755)).unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "", "{stderr}");
+    assert!(stderr.contains("could not write"), "{stderr}");
+}
+
+/// agy's file tools may name a path relative to the workspace (no `cwd` in
+/// the input; the hook runs in `.agents/`): it resolves against
+/// `workspacePaths`.
+#[test]
+fn test_check_hook_antigravity_relative_edit_path_uses_workspace_paths() {
+    let tmp = TempDir::new().unwrap();
+    let (site_dir, ws, rel) = antigravity_broken_site(&tmp);
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let tool = serde_json::json!({
+        "conversationId": "conv-1",
+        "toolCall": { "name": "write_file", "args": { "Path": rel, "Content": "x" } },
+        "workspacePaths": [ws],
+    });
+    let out = antigravity_hook(&site_dir, Some(&home), &["--post-edit"], &tool);
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "");
+    let invocation = serde_json::json!({
+        "conversationId": "conv-1",
+        "invocationNum": 0,
+        "workspacePaths": [ws],
+    });
+    let out = antigravity_hook(&site_dir, Some(&home), &["--post-edit"], &invocation);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let doc: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("{e}: {stdout}\n{}", String::from_utf8_lossy(&out.stderr)));
+    let message = doc["injectSteps"][0]["ephemeralMessage"].as_str().unwrap();
+    assert!(message.contains(&format!("{rel}:2")), "{message}");
+}
+
 /// `seite check --hook antigravity` end to end, with the hook input agy
 /// 1.4.10 sends.
 #[test]
@@ -2323,6 +2479,18 @@ fn test_check_hook_antigravity_protocol() {
         "workspacePaths": [ws],
     });
     assert_eq!(hook(&["--post-edit"], tool), "");
+    // The record lands in the per-user cache, never in the project (nor
+    // through the planted `.seite/cache` symlink).
+    let state = antigravity_state_root(&home);
+    let records: Vec<_> = fs::read_dir(&state)
+        .unwrap_or_else(|e| panic!("{}: {e}", state.display()))
+        .flatten()
+        .flat_map(|d| fs::read_dir(d.path()).unwrap().flatten())
+        .collect();
+    assert_eq!(records.len(), 1, "{records:?}");
+    assert!(!site_dir.join(".seite/antigravity").exists());
+    assert!(!site_dir.join(".seite/cache/antigravity").exists());
+    assert!(!tmp.path().join("antigravity").exists());
     let invocation = serde_json::json!({
         "conversationId": "conv-1",
         "invocationNum": 0,
@@ -2476,6 +2644,51 @@ fn test_upgrade_020_workspace_site_gets_agents_md_and_shims() {
     }
 }
 
+/// AGENTS.md written by upgrade for a site that has none names the trust
+/// center's company from `[trust] company` (not the site title).
+#[test]
+fn test_upgrade_agents_md_for_site_without_one_names_trust_company() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args([
+            "init",
+            "site",
+            "--title",
+            "Acme Site",
+            "--description",
+            "",
+            "--deploy-target",
+            "github-pages",
+            "--collections",
+            "posts,trust",
+            "--trust-company",
+            "Initech Security",
+            "--trust-frameworks",
+            "soc2",
+            "--agents",
+            "claude",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site_dir = tmp.path().join("site");
+    let toml = fs::read_to_string(site_dir.join("seite.toml")).unwrap();
+    assert!(toml.contains("company = \"Initech Security\""), "{toml}");
+    fs::remove_file(site_dir.join("AGENTS.md")).unwrap();
+    fs::remove_file(site_dir.join("CLAUDE.md")).unwrap();
+
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        agents_md.contains("Trust center for **Initech Security** at `/trust/`"),
+        "{agents_md}"
+    );
+}
+
 #[test]
 fn test_upgrade_keeps_existing_claude_md_without_writing_agents_md_over_it() {
     let tmp = TempDir::new().unwrap();
@@ -2557,4 +2770,18 @@ fn test_upgrade_refreshes_unedited_020_rules_and_keeps_edited_ones() {
         .assert()
         .success()
         .stdout(predicate::str::contains(notice).not());
+}
+
+#[test]
+fn test_upgrade_no_new_agents_notice_for_selection_made_by_021() {
+    let tmp = TempDir::new().unwrap();
+    init_site_with_agents(&tmp, "site", "codex");
+    let site_dir = tmp.path().join("site");
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("are supported").not())
+        .stdout(predicate::str::contains("is supported").not());
 }

@@ -102,7 +102,7 @@ If you've decided to replace WordPress with a static site generator, the next qu
 | Contact forms | No | No | No | No | [Built-in shortcode](/docs/contact-forms) |
 | llms.txt output | No | No | No | No | Every build |
 | Markdown copies | No | No | No | No | Every build |
-| AI agent | No | No | No | No | `/seite` skill, 6 agents |
+| AI agent | No | No | No | No | `/seite` skill, 7 agents |
 
 **For blogs:** If you need a WordPress alternative for your blog, any SSG handles date-ordered content and RSS. Hugo and seite are the fastest. For a detailed Hugo vs seite comparison, see the [Hugo alternative guide](/blog/hugo-alternative). If you are evaluating Astro as your WordPress replacement, the [Astro alternative for static sites](/blog/astro-alternative-for-static-sites) article covers the tradeoffs between Astro's component island model and a Node.js-free Rust binary. If you want the simplest blog setup, seite's [collections system](/docs/collections) gives you posts, docs, pages, changelog, and roadmap from a single config file.
 

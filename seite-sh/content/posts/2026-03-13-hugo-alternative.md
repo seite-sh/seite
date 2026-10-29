@@ -115,7 +115,7 @@ seite is a Rust static site generator shipped as a single binary. Like Hugo, lik
 
 Here's what that means in practice:
 
-**Built for coding agents.** `seite init` sets up Claude Code, Codex, OpenCode, Cursor, Gemini CLI and GitHub Copilot: an `AGENTS.md` describing your collections and conventions, a `/seite` skill (`/seite new post "v2.0 changelog"`), and check hooks that hand errors back to the agent. The agent doesn't explore your file tree guessing. It knows your site before it starts working. Read the [agent docs](/docs/agent) for the full capability list.
+**Built for coding agents.** `seite init` sets up Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot: an `AGENTS.md` describing your collections and conventions, a `/seite` skill (`/seite new post "v2.0 changelog"`), and check hooks that hand errors back to the agent. The agent doesn't explore your file tree guessing. It knows your site before it starts working. Read the [agent docs](/docs/agent) for the full capability list.
 
 **MCP server for AI tools.** Opt in with `seite init --mcp` and your agents connect to seite's [MCP server](/docs/mcp-server). AI tools get typed, structured access to your content and configuration, not raw files to parse.
 
@@ -150,7 +150,7 @@ Here's how this Hugo alternative compares feature by feature.
 | MCP server | No | Built-in (opt-in) |
 | llms.txt output | Custom output format setup | Every build |
 | Markdown output per page | Custom output format setup | Every build |
-| AI agent integration | No | `/seite` skill + check hooks, 6 agents |
+| AI agent integration | No | `/seite` skill + check hooks, 7 agents |
 | AI theme generation | No | `/seite theme` |
 | RSS feed | Built-in | Built-in |
 | Client-side search | Plugin | Built-in, full-text |
@@ -283,7 +283,7 @@ Both deliver sub-second builds for typical sites. Hugo has an edge on extremely 
 
 ### What static site generators work with AI?
 
-Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite builds AI support into the architecture: an AGENTS.md context file, a `/seite` skill and check hooks for six coding agents, an optional MCP server for structured AI access, and `llms.txt` output for AI search engines.
+Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite builds AI support into the architecture: an AGENTS.md context file, a `/seite` skill and check hooks for seven coding agents, an optional MCP server for structured AI access, and `llms.txt` output for AI search engines.
 
 ## Hugo Is Fast. The Web Moved Faster.
 

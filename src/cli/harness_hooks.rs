@@ -1609,6 +1609,27 @@ mod tests {
     }
 
     #[test]
+    fn prune_antigravity_state_removes_only_day_old_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let stale = tmp.path().join("abc-continued");
+        let fresh = tmp.path().join("def-continued");
+        std::fs::write(&stale, "").unwrap();
+        std::fs::write(&fresh, "").unwrap();
+        let two_days_ago = std::time::SystemTime::now() - Duration::from_secs(2 * 24 * 60 * 60);
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(two_days_ago)
+            .unwrap();
+        prune_antigravity_state(tmp.path());
+        assert!(!stale.exists(), "a day-old marker is pruned");
+        assert!(fresh.exists(), "a fresh marker is kept");
+        // A missing directory is fine.
+        prune_antigravity_state(&tmp.path().join("missing"));
+    }
+
+    #[test]
     fn encode_post_edit_per_protocol() {
         for agent in [Agent::Claude, Agent::Codex] {
             assert_eq!(

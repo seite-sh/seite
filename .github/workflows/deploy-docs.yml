@@ -36,11 +36,12 @@ jobs:
           # this workflow must not race it with the previous version.
           # Compare [package] version only (a dependency table's `version =`
           # line is not a release).
-          pkg_version() { git show "$1:Cargo.toml" 2>/dev/null | awk '/^\[/{p=($0=="[package]")} p&&/^version *=/{print; exit}'; }
+          # An unreadable side (e.g. `$BEFORE` not fetched after a
+          # force-push) is never a release (tests/pkg-version.sh).
+          pkg_version() { git show "$1:Cargo.toml" 2>/dev/null | bash scripts/pkg-version.sh; }
           IS_RELEASE=false
-          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
-            && [ "$(pkg_version "$BEFORE")" != "$(pkg_version "${{ github.sha }}")" ]; then
-            IS_RELEASE=true
+          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            IS_RELEASE=$(bash scripts/pkg-version.sh changed "$(pkg_version "$BEFORE")" "$(pkg_version "${{ github.sha }}")")
           fi
           echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
 

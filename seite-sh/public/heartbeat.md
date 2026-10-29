@@ -8,7 +8,7 @@ description: Periodic health check routine for seite sites (seite 0.21+). Read-o
 
 Run this routine periodically (recommended: every 6 hours) to keep your sites healthy.
 Everything is read-only: no writes to `dist/`, nothing deployed or installed without your
-human. Only Step 5 uses the network (`seite self-update --check` asks the GitHub releases API).
+human. Only Step 5 uses the network on purpose (`seite self-update --check` asks the GitHub releases API); `seite` commands may also send anonymous usage telemetry (opt out with `seite telemetry off` or `DO_NOT_TRACK=1`) and run a background update check (disable with `SEITE_NO_UPDATE_CHECK=1`).
 
 ---
 

@@ -4,7 +4,7 @@ description: "Give chat apps such as Claude Desktop structured access to your si
 weight: 11
 ---
 
-AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
+AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, GitHub Copilot) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
 
 ## Overview
 

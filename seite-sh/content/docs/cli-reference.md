@@ -441,7 +441,7 @@ seite og preview / --out card.png    # the site card (`/<lang>/` for a language'
 
 | Flag | Description |
 |------|-------------|
-| `--out <path>` | Where to write the PNG, inside the site (default: `.seite/cache/og-preview.png`); a path outside the site, or through a symlink, is refused |
+| `--out <path>` | Where to write the PNG, inside the site (default: `.seite/cache/og-preview.png`). It must end in `.png`, sit outside dot directories (`.git/`, `.claude/`, …) and not replace a file that isn't a PNG; a path outside the site, or through a symlink, is refused |
 | `--template <name>` | Try another layout without editing `seite.toml`: `default`, `minimal`, or `bold` |
 
 ## seite trust
@@ -611,7 +611,7 @@ seite upgrade --agents claude,cursor   # Add Cursor files; stop maintaining Code
 
 `seite upgrade --agent` runs the normal upgrade, then builds a markdown brief for a coding agent: what the upgrade changed automatically, the release notes for every version after the one the project recorded (up to the installed `seite`), and instructions to apply any manual migration steps the notes describe, keep the site's customizations, run `seite check` and `seite build` until clean, and report what changed. If the project has no readable recorded version, it is treated as the oldest: all release notes are included (newest kept, capped at about 48 KB), and the brief says so. The brief is also saved to `.seite/upgrade-brief.md` (gitignored). If the project was already current and no release notes apply, nothing is printed or launched.
 
-- **Inside an agent session** (Claude Code, Codex, Cursor, Gemini CLI or OpenCode; a GitHub Copilot session is not detected, see [Coding Agents](/docs/agent)): the brief is printed to stdout and nothing is launched; the running agent follows it. With `--json` it is in `data.brief` (`data.agent_delivery` is `printed`, or `none` when there was nothing to migrate).
+- **Inside an agent session** (Claude Code, Codex, Cursor, Antigravity CLI, Gemini CLI or OpenCode; a GitHub Copilot session is not detected, see [Coding Agents](/docs/agent)): the brief is printed to stdout and nothing is launched; the running agent follows it. With `--json` it is in `data.brief` (`data.agent_delivery` is `printed`, or `none` when there was nothing to migrate).
 - **From a terminal**: the agent from `--with` (else `SEITE_AGENT`, else Claude Code) starts interactively with a one-line prompt telling it to read `.seite/upgrade-brief.md` (the brief is never passed on the command line). No auto-approve flag is ever added, not even with `--yes`. If that agent isn't installed, or fails to start, the brief file path and an install hint are printed instead.
 - **Without a terminal** (a script or CI), or with `--json`: the brief is printed.
 

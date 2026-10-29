@@ -377,7 +377,7 @@ fn replace_binary(new_binary: &PathBuf, current_exe: &PathBuf) -> anyhow::Result
 }
 
 /// Simple semver comparison for version strings.
-fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+pub(crate) fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let parse = |s: &str| -> (u64, u64, u64) {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() >= 3 {

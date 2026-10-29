@@ -102,7 +102,7 @@ The generated theme goes directly into `templates/base.html`. Edit it like any o
 
 ### Step 4: Write Your Content with the AI Agent (20-40 Minutes)
 
-This is where most startup founders hit the wall. The blank page. seite sets up your coding agent (Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot) with context about your site: your title, your collections, your content format and your templates. `seite agent` starts it with a prompt; see the [agent docs](/docs/agent).
+This is where most startup founders hit the wall. The blank page. seite sets up your coding agent (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot) with context about your site: your title, your collections, your content format and your templates. `seite agent` starts it with a prompt; see the [agent docs](/docs/agent).
 
 ```bash
 seite agent "write the hero section for our landing page. We build developer tools for API testing. Target audience is backend engineers. Include a headline, subheadline, and two-sentence value proposition."

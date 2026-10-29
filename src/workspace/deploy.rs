@@ -33,6 +33,22 @@ pub fn deploy_workspace(
     // Cross-site domain conflict detection
     check_domain_conflicts(ws_config, ws_root, &sites);
 
+    // GitHub Pages has no previews: `--preview` would replace a live site.
+    // Refuse before deploying anything, like the standalone `seite deploy`.
+    if opts.preview {
+        for ws_site in &sites {
+            let (config, _) = load_site_in_workspace(ws_root, ws_site)?;
+            if matches!(config.deploy.target, DeployTarget::GithubPages) {
+                return Err(PageError::Deploy(format!(
+                    "site '{}': {}",
+                    ws_site.name,
+                    crate::cli::deploy::GITHUB_PAGES_NO_PREVIEW
+                ))
+                .into());
+            }
+        }
+    }
+
     let total = sites.len();
 
     for (i, ws_site) in sites.iter().enumerate() {

@@ -1393,7 +1393,13 @@ pub fn resolve_deploy_base_url(config: &SiteConfig, override_url: Option<&str>) 
 // Deploy init — guided setup (Feature 5)
 // ---------------------------------------------------------------------------
 
-pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
+/// `confirm_public_repo` is asked (with the repository name) before `gh`
+/// creates a repository, which is always public: the caller lets only a
+/// human answer say yes, never `--yes` or a non-TTY run.
+pub fn deploy_init_github_pages(
+    paths: &ResolvedPaths,
+    confirm_public_repo: &dyn Fn(&str) -> bool,
+) -> Result<String> {
     // Check if gh CLI is available for repo creation
     let has_gh = Command::new("gh")
         .args(["--version"])
@@ -1422,15 +1428,19 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
         .map(|o| o.status.success())
         .unwrap_or(false);
 
-    if !has_remote && has_gh {
+    let repo_name = paths
+        .root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("my-site");
+    if !has_remote && has_gh && !confirm_public_repo(repo_name) {
+        human::info(
+            "Not creating a GitHub repository (it would be public). To set up GitHub Pages:",
+        );
+        human::info("  1. Create a repo at https://github.com/new (or `gh repo create`)");
+        human::info("  2. git remote add origin <your-repo-url>");
+    } else if !has_remote && has_gh {
         human::info("Creating GitHub repository...");
-        // Get directory name for repo name
-        let repo_name = paths
-            .root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("my-site");
-
         let result = Command::new("gh")
             .args([
                 "repo", "create", repo_name, "--public", "--source", ".", "--push",
@@ -1476,7 +1486,10 @@ pub fn deploy_init_github_pages(paths: &ResolvedPaths) -> Result<String> {
     Ok("github-pages".to_string())
 }
 
-pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
+/// `configured` is `[deploy] project` (already validated); without it the
+/// project is detected like `seite deploy` does (wrangler.toml, then the
+/// directory name).
+pub fn deploy_init_cloudflare(paths: &ResolvedPaths, configured: Option<&str>) -> Result<String> {
     // Check wrangler
     let has_wrangler = npm_cmd("wrangler")
         .args(["--version"])
@@ -1512,12 +1525,15 @@ pub fn deploy_init_cloudflare(paths: &ResolvedPaths) -> Result<String> {
     }
 
     // Try to create the project
-    let project_name = paths
-        .root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("my-site")
-        .to_string();
+    let project_name = configured
+        .map(str::to_string)
+        .or_else(|| detect_cloudflare_project(paths))
+        .ok_or_else(|| {
+            PageError::Deploy(
+                "no valid Cloudflare Pages project name: set `project` under [deploy] in seite.toml"
+                    .into(),
+            )
+        })?;
 
     human::info(&format!(
         "Creating Cloudflare Pages project '{project_name}'..."

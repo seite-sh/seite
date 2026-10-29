@@ -54,7 +54,7 @@ pub struct DeployArgs {
     pub no_commit: bool,
 }
 
-const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve` (if your default branch is not main or master, deploy with --no-commit)";
+pub(crate) const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve` (if your default branch is not main or master, deploy with --no-commit)";
 
 pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
@@ -504,7 +504,20 @@ fn run_setup(
 
     match target_str {
         "github-pages" => {
-            deploy::deploy_init_github_pages(paths)?;
+            // `gh repo create` makes a public repository: only a human
+            // answer creates it, never --yes or a non-TTY run.
+            let confirm_public_repo = |name: &str| {
+                !prompt::assume_yes()
+                    && prompt::is_interactive()
+                    && prompt::confirm(
+                        &format!(
+                            "Create a PUBLIC GitHub repository '{name}' and push this site's source to it?"
+                        ),
+                        false,
+                    )
+                    .unwrap_or(false)
+            };
+            deploy::deploy_init_github_pages(paths, &confirm_public_repo)?;
 
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
@@ -514,7 +527,7 @@ fn run_setup(
             human::success("Created .github/workflows/deploy.yml");
         }
         "cloudflare" => {
-            let project = deploy::deploy_init_cloudflare(paths)?;
+            let project = deploy::deploy_init_cloudflare(paths, config.deploy.project.as_deref())?;
             config_updates.insert("project".to_string(), project.clone());
 
             // Generate workflow
@@ -893,6 +906,48 @@ fn plan_deploy(args: &DeployArgs, config: &SiteConfig, root: &Path) -> DeployPla
 // Interactive recovery
 // ---------------------------------------------------------------------------
 
+/// Why the "Git remote" auto-fix (`gh repo create`) must not run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RepoCreationBlocked {
+    /// `--yes` or a non-TTY run: nobody was asked.
+    NotAsked,
+    /// GitHub Pages from a branch other than main/master.
+    WrongBranch(String),
+}
+
+impl RepoCreationBlocked {
+    fn message(&self) -> String {
+        match self {
+            Self::NotAsked => "Not creating a GitHub repository without asking (it would be public): create it yourself, or run `seite deploy` without --yes".into(),
+            Self::WrongBranch(branch) => format!(
+                "Not creating a GitHub repository from branch '{branch}': GitHub Pages deploys only from main or master"
+            ),
+        }
+    }
+}
+
+/// Creating a public GitHub repository publishes the site's source: only a
+/// human answer does that, never `--yes` or a non-TTY run, and not from a
+/// branch GitHub Pages would refuse to deploy. `branch` yields the current
+/// branch and whether it is main/master (`None` outside a git repository);
+/// it is only consulted for GitHub Pages.
+fn repo_creation_blocked(
+    target: &str,
+    assume_yes: bool,
+    interactive: bool,
+    branch: impl FnOnce() -> Option<(String, bool)>,
+) -> Option<RepoCreationBlocked> {
+    if assume_yes || !interactive {
+        return Some(RepoCreationBlocked::NotAsked);
+    }
+    if target == "github-pages" {
+        if let Some((branch, false)) = branch() {
+            return Some(RepoCreationBlocked::WrongBranch(branch));
+        }
+    }
+    None
+}
+
 /// For each failed pre-flight check, offer the user an auto-fix or show manual instructions.
 /// Returns a list of check names that are still unresolved after the recovery loop.
 fn run_interactive_recovery(
@@ -910,26 +965,28 @@ fn run_interactive_recovery(
             continue;
         }
 
-        // Creating a public GitHub repository publishes the site's source:
-        // only a human answer does that, never `--yes` or a non-TTY run, and
-        // not from a branch GitHub Pages would refuse to deploy.
-        if check.name == "Git remote" && (prompt::assume_yes() || !prompt::is_interactive()) {
-            human::info(
-                "Not creating a GitHub repository without asking (it would be public): create it yourself, or run `seite deploy` without --yes",
-            );
-            if let Some(fix) = deploy::try_fix_check(check, paths, target) {
-                print_manual_instructions(&fix.manual_instructions);
-            }
-            unresolved.push(check.name.clone());
-            continue;
-        }
-        if check.name == "Git remote" && target == "github-pages" {
-            if let Ok((branch, false)) = deploy::current_branch(&paths.root) {
-                human::info(&format!(
-                    "Not creating a GitHub repository from branch '{branch}': GitHub Pages deploys only from main or master"
-                ));
-                unresolved.push(check.name.clone());
-                continue;
+        if check.name == "Git remote" {
+            let branch = || deploy::current_branch(&paths.root).ok();
+            match repo_creation_blocked(
+                target,
+                prompt::assume_yes(),
+                prompt::is_interactive(),
+                branch,
+            ) {
+                Some(blocked @ RepoCreationBlocked::NotAsked) => {
+                    human::info(&blocked.message());
+                    if let Some(fix) = deploy::try_fix_check(check, paths, target) {
+                        print_manual_instructions(&fix.manual_instructions);
+                    }
+                    unresolved.push(check.name.clone());
+                    continue;
+                }
+                Some(blocked @ RepoCreationBlocked::WrongBranch(_)) => {
+                    human::info(&blocked.message());
+                    unresolved.push(check.name.clone());
+                    continue;
+                }
+                None => {}
             }
         }
         let fix = deploy::try_fix_check(check, paths, target);
@@ -1048,5 +1105,63 @@ fn resolve_cloudflare_project(
             )
             .into()
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on(branch: &str, is_main: bool) -> impl FnOnce() -> Option<(String, bool)> {
+        let branch = branch.to_string();
+        move || Some((branch, is_main))
+    }
+
+    #[test]
+    fn repo_creation_needs_a_human_answer() {
+        for target in ["github-pages", "cloudflare", "netlify"] {
+            // --yes, or nobody to ask: never, whatever the branch.
+            for (yes, interactive) in [(true, true), (true, false), (false, false)] {
+                assert_eq!(
+                    repo_creation_blocked(target, yes, interactive, on("feature", false)),
+                    Some(RepoCreationBlocked::NotAsked),
+                    "{target} yes={yes} interactive={interactive}"
+                );
+            }
+        }
+        assert!(RepoCreationBlocked::NotAsked
+            .message()
+            .contains("it would be public"));
+    }
+
+    #[test]
+    fn repo_creation_for_github_pages_only_from_main() {
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, on("feature", false)),
+            Some(RepoCreationBlocked::WrongBranch("feature".into()))
+        );
+        assert_eq!(
+            RepoCreationBlocked::WrongBranch("feature".into()).message(),
+            "Not creating a GitHub repository from branch 'feature': GitHub Pages deploys only from main or master"
+        );
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, on("main", true)),
+            None
+        );
+        // Not a git repository (yet): the fix may run.
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, || None),
+            None
+        );
+        // Other targets deploy previews from any branch; the branch isn't
+        // even looked up.
+        for target in ["cloudflare", "netlify"] {
+            assert_eq!(
+                repo_creation_blocked(target, false, true, || -> Option<(String, bool)> {
+                    panic!("branch looked up for {target}")
+                }),
+                None
+            );
+        }
     }
 }

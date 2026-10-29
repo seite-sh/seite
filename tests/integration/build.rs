@@ -1763,6 +1763,8 @@ fn test_build_warns_about_skipped_symlinked_static_files() {
     fs::write(&outside, "PNG").unwrap();
     std::os::unix::fs::symlink(&outside, site_dir.join("static/logo.png")).unwrap();
     std::os::unix::fs::symlink(&outside, site_dir.join("data/team.yaml")).unwrap();
+    fs::create_dir_all(site_dir.join("public")).unwrap();
+    std::os::unix::fs::symlink(&outside, site_dir.join("public/robots-extra.txt")).unwrap();
 
     let out = page_cmd()
         .args(["check", "--json"])
@@ -1773,7 +1775,11 @@ fn test_build_warns_about_skipped_symlinked_static_files() {
     assert!(out.status.success(), "{stdout}");
     let doc: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let diags = doc["data"]["diagnostics"].as_array().expect("diagnostics");
-    for file in ["static/logo.png", "data/team.yaml"] {
+    for file in [
+        "static/logo.png",
+        "data/team.yaml",
+        "public/robots-extra.txt",
+    ] {
         assert!(
             diags.iter().any(|d| d["code"] == "symlinked-source"
                 && d["severity"] == "warning"
@@ -1798,4 +1804,5 @@ fn test_build_warns_about_skipped_symlinked_static_files() {
         "build prints the warning: {all}"
     );
     assert!(!site_dir.join("dist/static/logo.png").exists());
+    assert!(!site_dir.join("dist/robots-extra.txt").exists());
 }

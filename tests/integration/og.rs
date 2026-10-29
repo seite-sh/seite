@@ -415,6 +415,31 @@ fn test_og_preview_writes_png() {
         "{err}"
     );
     assert!(!outside.exists());
+    // Inside the site: only .png files, never in dot directories, never
+    // replacing a file that isn't a PNG.
+    fs::create_dir_all(site.join(".git/hooks")).unwrap();
+    let toml_before = fs::read(site.join("seite.toml")).unwrap();
+    for bad in [
+        ".git/hooks/pre-commit.png",
+        "card.txt",
+        "seite.toml",
+        ".claude/x.png",
+    ] {
+        let (ok, doc) = run_json(&site, &["og", "preview", "/", "--out", bad]);
+        assert!(!ok, "{bad}: {doc}");
+        assert!(
+            doc["error"]
+                .to_string()
+                .contains("--out must be a new or existing .png"),
+            "{bad}: {doc}"
+        );
+    }
+    fs::write(site.join("fake.png"), "not a png").unwrap();
+    let (ok, _) = run_json(&site, &["og", "preview", "/", "--out", "fake.png"]);
+    assert!(!ok);
+    assert_eq!(fs::read(site.join("fake.png")).unwrap(), b"not a png");
+    assert_eq!(fs::read(site.join("seite.toml")).unwrap(), toml_before);
+    assert!(!site.join(".git/hooks/pre-commit.png").exists());
     let out = site.join("card.png");
     for target in ["/posts/first", "content/posts/2025-01-01-first.md", "/"] {
         let (ok, doc) = run_json(
