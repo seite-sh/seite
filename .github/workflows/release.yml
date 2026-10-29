@@ -245,9 +245,10 @@ jobs:
             echo "Built ${BUNDLE}"
           done
 
-          # Windows x86_64
+          # Windows x86_64: the binary in the bundle is seite.exe
           WORKDIR=$(mktemp -d)
-          cp /tmp/manifest.json "$WORKDIR/manifest.json"
+          sed 's#server/seite"#server/seite.exe"#g' /tmp/manifest.json > "$WORKDIR/manifest.json"
+          grep -q 'server/seite.exe"' "$WORKDIR/manifest.json"
           mkdir -p "$WORKDIR/server"
           unzip -o "artifacts/seite-x86_64-pc-windows-msvc.zip" -d "$WORKDIR/server/"
           (cd "$WORKDIR" && zip -r /tmp/seite-windows-x64.mcpb manifest.json server/)

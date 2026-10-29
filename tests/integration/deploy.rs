@@ -336,12 +336,13 @@ fn test_deploy_dry_run_preview() {
         .assert()
         .success();
 
+    // GitHub Pages has no previews: a "preview" would replace the live site.
     page_cmd()
         .args(["deploy", "--dry-run", "--preview"])
         .current_dir(&site_dir)
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Dry run"));
+        .failure()
+        .stderr(predicate::str::contains("no preview deploys"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

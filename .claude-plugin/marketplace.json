@@ -9,7 +9,7 @@
     {
       "name": "seite",
       "source": "./plugins/seite",
-      "description": "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI (https://seite.sh).",
+      "description": "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI 0.21 or newer (https://seite.sh).",
       "category": "development",
       "homepage": "https://seite.sh"
     }

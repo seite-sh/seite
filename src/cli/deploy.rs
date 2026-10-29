@@ -54,6 +54,8 @@ pub struct DeployArgs {
     pub no_commit: bool,
 }
 
+const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve`";
+
 pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
 
@@ -95,6 +97,10 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     // --- Setup mode ---
     if args.setup {
         return run_setup(&target_str, &config, &paths, &config_path);
+    }
+
+    if args.preview && target_str == "github-pages" {
+        return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
     }
 
     // --- Dry run ---
@@ -206,6 +212,12 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 human::warning(&format!("Auto-commit skipped: {e}"));
             }
         }
+    }
+
+    // GitHub Pages has one site per repository: a "preview" would force-push
+    // the branch's build to the live gh-pages site.
+    if preview && target_str == "github-pages" {
+        return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
     }
 
     // --- Resolve base_url for this deploy ---

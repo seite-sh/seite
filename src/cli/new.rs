@@ -109,7 +109,7 @@ pub fn run(args: &NewArgs) -> anyhow::Result<()> {
         crate::human_println!("{d}");
     }
     crate::human_println!(
-        "  {} edit this file and the dev server will auto-reload",
+        "  {} edit this file (a running `seite serve` reloads on save)",
         console::style("→").dim()
     );
 

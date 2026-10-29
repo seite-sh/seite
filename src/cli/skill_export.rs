@@ -166,7 +166,7 @@ fn plugin_files(base: &str) -> Vec<(String, String)> {
     files
 }
 
-const PLUGIN_DESCRIPTION: &str = "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI (https://seite.sh).";
+const PLUGIN_DESCRIPTION: &str = "The /seite skill (write, check, audit, preview, build, deploy, theme) and automatic `seite check` hooks for seite static sites. Needs the seite CLI 0.21 or newer (https://seite.sh).";
 
 /// `.claude-plugin/plugin.json`. `version` is seite's: Claude Code offers an
 /// update when it changes.
