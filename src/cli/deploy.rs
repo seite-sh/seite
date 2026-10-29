@@ -910,6 +910,28 @@ fn run_interactive_recovery(
             continue;
         }
 
+        // Creating a public GitHub repository publishes the site's source:
+        // only a human answer does that, never `--yes` or a non-TTY run, and
+        // not from a branch GitHub Pages would refuse to deploy.
+        if check.name == "Git remote" && (prompt::assume_yes() || !prompt::is_interactive()) {
+            human::info(
+                "Not creating a GitHub repository without asking (it would be public): create it yourself, or run `seite deploy` without --yes",
+            );
+            if let Some(fix) = deploy::try_fix_check(check, paths, target) {
+                print_manual_instructions(&fix.manual_instructions);
+            }
+            unresolved.push(check.name.clone());
+            continue;
+        }
+        if check.name == "Git remote" && target == "github-pages" {
+            if let Ok((branch, false)) = deploy::current_branch(&paths.root) {
+                human::info(&format!(
+                    "Not creating a GitHub repository from branch '{branch}': GitHub Pages deploys only from main or master"
+                ));
+                unresolved.push(check.name.clone());
+                continue;
+            }
+        }
         let fix = deploy::try_fix_check(check, paths, target);
         match fix {
             Some(fix_action) if !fix_action.prompt.is_empty() => {

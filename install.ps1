@@ -113,7 +113,8 @@ try {
     # The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
     # (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
     # and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any
-    # value) disables.
+    # value) disables; otherwise a saved `seite telemetry off|on`
+    # (%USERPROFILE%\.seite\telemetry.json) decides.
     $TelemetryFlag = "$env:SEITE_TELEMETRY".Trim().ToLowerInvariant()
     $SendTelemetry = $true
     if ("$env:DO_NOT_TRACK".Trim()) {
@@ -124,6 +125,15 @@ try {
         $SendTelemetry = $true
     } elseif ("$env:CI".Trim()) {
         $SendTelemetry = $false
+    } elseif ($env:USERPROFILE) {
+        $TelemetryConfig = Join-Path $env:USERPROFILE '.seite\telemetry.json'
+        if (Test-Path -LiteralPath $TelemetryConfig -PathType Leaf) {
+            try {
+                if ((Get-Content -LiteralPath $TelemetryConfig -Raw | ConvertFrom-Json).enabled -eq $false) {
+                    $SendTelemetry = $false
+                }
+            } catch {}
+        }
     }
     if ($SendTelemetry) {
         $TelemetryEndpoint = if ($env:SEITE_TELEMETRY_ENDPOINT) { $env:SEITE_TELEMETRY_ENDPOINT } else { 'https://who.seite.sh/api/event' }

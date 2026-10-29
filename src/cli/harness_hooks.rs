@@ -30,7 +30,7 @@
 //! Antigravity's `PostToolUse` output is `{}` (no channel back to the
 //! model; stderr and exit codes aren't shown to it either, verified with agy
 //! 1.4.10), so its post-edit tier is two hooks: `PostToolUse` on the file
-//! tools records each edited site file under [`ANTIGRAVITY_STATE_DIR`], and
+//! tools records each edited site file in seite's per-user cache (`<cache>/antigravity/`), and
 //! `PostInvocation` (which fires once the invocation's tool calls have run)
 //! checks the recorded files and injects the errors as an
 //! `ephemeralMessage` step before the next model call.
@@ -134,7 +134,10 @@ pub const ANTIGRAVITY_HOOK_NAME: &str = "seite-check";
 /// Per-conversation hook state for Antigravity (edited files waiting for the
 /// post-invocation check, the turn-end continuation marker), gitignored with
 /// the rest of `.seite/cache/`.
-pub const ANTIGRAVITY_STATE_DIR: &str = ".seite/cache/antigravity";
+/// Antigravity hook state lives in the per-user cache
+/// (`<cache>/antigravity/<hash of the site root>/`), never in the project:
+/// a cloned repository can't plant records or symlink the directory away.
+const ANTIGRAVITY_STATE_SUBDIR: &str = "antigravity";
 
 /// Antigravity's file tools: the CLI's `write_file`/`edit_file` (agy 1.4.10,
 /// verified) and the names its docs use (`write_to_file`,
@@ -803,12 +806,19 @@ fn evaluate(
     // conversation makes every second turn end in a row stop. Taken before
     // `should_skip`, so a continued run that ends abnormally doesn't leave
     // the marker behind for the next normal turn end.
-    if agent == Agent::Antigravity {
-        prune_antigravity_state(&root);
-        if take_state(&root, &antigravity_continued_marker(input)) {
+    let antigravity_dir = if agent == Agent::Antigravity {
+        let Some(dir) = antigravity_state_dir(&root) else {
+            // No per-user cache: no loop guard, so never continue.
+            return Ok(None);
+        };
+        prune_antigravity_state(&dir);
+        if take_state(&dir, &antigravity_continued_marker(input)) {
             return Ok(None);
         }
-    }
+        Some(dir)
+    } else {
+        None
+    };
     if should_skip(agent, input, &root) {
         return Ok(None);
     }
@@ -816,17 +826,24 @@ fn evaluate(
     let Some(reason) = block_reason(&diagnostics) else {
         return Ok(None);
     };
-    if agent == Agent::Antigravity {
-        let marker = root.join(antigravity_continued_marker(input));
-        if crate::safe_fs::write(&root, &marker, "").is_err() {
+    if let Some(dir) = antigravity_dir {
+        let marker = dir.join(antigravity_continued_marker(input));
+        if std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&marker, ""))
+            .is_err()
+        {
             // Without the marker the next turn end would continue again.
+            eprintln!(
+                "seite: could not write {} — turn-end check skipped",
+                marker.display()
+            );
             return Ok(None);
         }
     }
     Ok(Some(encode(agent, input, &reason)))
 }
 
-/// Antigravity's post-edit tier ([`ANTIGRAVITY_STATE_DIR`], module docs):
+/// Antigravity's post-edit tier ([`antigravity_state_dir`], module docs):
 /// `PostToolUse` input (`toolCall`) records the edited site files and
 /// prints nothing; `PostInvocation` input (`invocationNum`) checks the
 /// files recorded for the conversation and hands errors back as an
@@ -841,8 +858,10 @@ fn antigravity_post_edit(input: &Value) -> anyhow::Result<Option<Value>> {
                     antigravity_conversation_key(input),
                     short_hash(&rel)
                 );
-                let path = root.join(ANTIGRAVITY_STATE_DIR).join(name);
-                crate::safe_fs::write(&root, &path, rel.as_bytes())?;
+                if let Some(dir) = antigravity_state_dir(&root) {
+                    std::fs::create_dir_all(&dir)?;
+                    std::fs::write(dir.join(name), rel.as_bytes())?;
+                }
             }
         }
         return Ok(None);
@@ -854,7 +873,9 @@ fn antigravity_post_edit(input: &Value) -> anyhow::Result<Option<Value>> {
         return Ok(None);
     };
     let prefix = format!("{}-edit-", antigravity_conversation_key(input));
-    let dir = root.join(ANTIGRAVITY_STATE_DIR);
+    let Some(dir) = antigravity_state_dir(&root) else {
+        return Ok(None);
+    };
     let mut files: Vec<PathBuf> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
         let mut entries: Vec<_> = entries.flatten().collect();
@@ -871,7 +892,7 @@ fn antigravity_post_edit(input: &Value) -> anyhow::Result<Option<Value>> {
                 .ok()
                 .filter(|m| m.is_file())
                 .and_then(|_| std::fs::read_to_string(&path).ok());
-            let _ = crate::safe_fs::remove(&root, &path);
+            let _ = std::fs::remove_file(&path);
             if let Some(rel) = text.map(|t| PathBuf::from(t.trim())) {
                 if rel.is_relative() && !files.contains(&rel) {
                     files.push(rel);
@@ -898,11 +919,20 @@ fn antigravity_conversation_key(input: &Value) -> String {
     )
 }
 
-/// The marker (relative to the site root) recording that the turn-end hook
-/// continued this Antigravity conversation.
-fn antigravity_continued_marker(input: &Value) -> PathBuf {
-    Path::new(ANTIGRAVITY_STATE_DIR)
-        .join(format!("{}-continued", antigravity_conversation_key(input)))
+/// The per-user state directory for the site at `root` (`None` without a
+/// cache directory: then the Antigravity hooks report nothing).
+fn antigravity_state_dir(root: &Path) -> Option<PathBuf> {
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    crate::platform::cache_dir().map(|dir| {
+        dir.join(ANTIGRAVITY_STATE_SUBDIR)
+            .join(short_hash(&root.to_string_lossy()))
+    })
+}
+
+/// The file name of the marker recording that the turn-end hook continued
+/// this Antigravity conversation.
+fn antigravity_continued_marker(input: &Value) -> String {
+    format!("{}-continued", antigravity_conversation_key(input))
 }
 
 /// The first 16 hex digits of the SHA-256 of `text`.
@@ -917,9 +947,9 @@ fn short_hash(text: &str) -> String {
 
 /// Remove Antigravity state files older than a day (conversations that
 /// ended before their marker was taken). Best effort.
-fn prune_antigravity_state(root: &Path) {
+fn prune_antigravity_state(dir: &Path) {
     let day = Duration::from_secs(24 * 60 * 60);
-    let Ok(entries) = std::fs::read_dir(root.join(ANTIGRAVITY_STATE_DIR)) else {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -930,19 +960,14 @@ fn prune_antigravity_state(root: &Path) {
             .and_then(|t| t.elapsed().ok())
             .is_some_and(|age| age > day);
         if stale {
-            let _ = crate::safe_fs::remove(root, &entry.path());
+            let _ = std::fs::remove_file(entry.path());
         }
     }
 }
 
-/// Remove the state file `rel` under `root`; `true` when it was there.
-fn take_state(root: &Path, rel: &Path) -> bool {
-    let path = root.join(rel);
-    if std::fs::symlink_metadata(&path).is_err() {
-        return false;
-    }
-    let _ = crate::safe_fs::remove(root, &path);
-    true
+/// Remove the state file `name` in `dir`; `true` when it was there.
+fn take_state(dir: &Path, name: &str) -> bool {
+    std::fs::remove_file(dir.join(name)).is_ok()
 }
 
 /// Decide what the post-edit hook prints: errors in the edited file(s), or
@@ -1572,8 +1597,7 @@ mod tests {
         assert!(dirs.contains(&PathBuf::from("/w/site")));
         // Conversation ids never appear raw in file names.
         let marker = antigravity_continued_marker(&json!({ "conversationId": "../x" }));
-        assert!(marker.starts_with(ANTIGRAVITY_STATE_DIR));
-        let name = marker.file_name().unwrap().to_string_lossy().into_owned();
+        let name = marker;
         assert!(
             name.ends_with("-continued") && !name.contains(".."),
             "{name}"

@@ -2277,11 +2277,22 @@ fn test_check_hook_antigravity_protocol() {
     let site_dir = tmp.path().join("site");
     let root = site_dir.canonicalize().unwrap();
     let ws = root.display().to_string();
+    // Hook state lives in the per-user cache: keep it in the temp dir.
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    // A planted symlink in the project no longer matters: state isn't there.
+    fs::create_dir_all(site_dir.join(".seite")).unwrap();
+    let _ = fs::remove_dir_all(site_dir.join(".seite/cache"));
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(tmp.path(), site_dir.join(".seite/cache")).unwrap();
     let hook = |args: &[&str], input: serde_json::Value| -> String {
         let mut full = vec!["check", "--hook", "antigravity"];
         full.extend_from_slice(args);
         let output = page_cmd()
             .args(&full)
+            .env("HOME", &home)
+            .env("XDG_CACHE_HOME", home.join(".cache"))
+            .env("LOCALAPPDATA", home.join("AppData/Local"))
             // Antigravity runs hooks in the directory of hooks.json.
             .current_dir(site_dir.join(".agents"))
             .write_stdin(input.to_string())

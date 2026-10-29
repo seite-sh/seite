@@ -147,17 +147,24 @@ resolve_version() {
 # The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
 # (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
 # and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any value)
-# disables.
+# disables; otherwise a saved `seite telemetry off|on` (~/.seite/telemetry.json)
+# decides.
 telemetry_allowed() {
   _dnt=$(printf '%s' "${DO_NOT_TRACK:-}" | tr -d '[:space:]')
   [ -n "$_dnt" ] && return 1
-  _flag=$(printf '%s' "${SEITE_TELEMETRY:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  # Trim only the ends, like the CLI (inner spaces make the value unknown).
+  _flag=$(printf '%s' "${SEITE_TELEMETRY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
   case "$_flag" in
     0|off|false|no|disable|disabled) return 1 ;;
     1|on|true|yes|enable|enabled) return 0 ;;
   esac
   _ci=$(printf '%s' "${CI:-}" | tr -d '[:space:]')
   [ -n "$_ci" ] && return 1
+  _cfg="${HOME:-}/.seite/telemetry.json"
+  if [ -n "${HOME:-}" ] && [ -f "$_cfg" ] \
+    && grep -Eq '"enabled"[[:space:]]*:[[:space:]]*false' "$_cfg" 2>/dev/null; then
+    return 1
+  fi
   return 0
 }
 

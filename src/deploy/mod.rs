@@ -619,7 +619,9 @@ pub fn try_fix_check(
                     .and_then(|n| n.to_str())
                     .unwrap_or("my-site");
                 Some(FixAction {
-                    prompt: format!("Create GitHub repository '{repo_name}' and push?"),
+                    prompt: format!(
+                        "Create a PUBLIC GitHub repository '{repo_name}' and push this site's source to it?"
+                    ),
                     manual_instructions: vec![
                         "Create a repo at https://github.com/new".into(),
                         "Then run: git remote add origin <your-repo-url>".into(),

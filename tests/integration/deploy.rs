@@ -904,3 +904,43 @@ fn test_deploy_github_pages_refuses_branch_before_committing() {
     // Refused before auto-commit: nothing committed (or pushed).
     assert_eq!(git_commit_count(&site_dir), "1");
 }
+
+#[cfg(unix)]
+#[test]
+fn test_deploy_yes_never_creates_public_github_repo() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "No Repo", "posts");
+    let site_dir = tmp.path().join("site");
+    // A fake `gh` that records every call.
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let log = tmp.path().join("gh.log");
+    let gh = bin.join("gh");
+    fs::write(
+        &gh,
+        format!("#!/bin/sh\necho \"$@\" >> '{}'\nexit 0\n", log.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let out = page_cmd()
+        .args(["deploy", "--yes", "--target", "github-pages"])
+        .env("PATH", path)
+        .current_dir(&site_dir)
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let calls = fs::read_to_string(&log).unwrap_or_default();
+    assert!(!calls.contains("repo create"), "gh called: {calls}\n{all}");
+    assert!(all.contains("it would be public"), "{all}");
+}

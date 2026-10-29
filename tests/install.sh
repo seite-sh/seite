@@ -134,7 +134,7 @@ echo "Telemetry opt-out:"
 check_telemetry() {
   # $1 = expected (send|skip), $2 = label, rest = VAR=value assignments
   _expected=$1; _label=$2; shift 2
-  if (unset DO_NOT_TRACK SEITE_TELEMETRY CI; for kv in "$@"; do export "${kv?}"; done; telemetry_allowed); then
+  if (unset DO_NOT_TRACK SEITE_TELEMETRY CI; HOME=/nonexistent; for kv in "$@"; do export "${kv?}"; done; telemetry_allowed); then
     _got=send
   else
     _got=skip
@@ -156,6 +156,18 @@ check_telemetry skip "SEITE_TELEMETRY=Disabled" SEITE_TELEMETRY=Disabled
 check_telemetry send "SEITE_TELEMETRY=on beats CI" SEITE_TELEMETRY=on CI=true
 check_telemetry skip "unknown SEITE_TELEMETRY falls through to CI" SEITE_TELEMETRY=maybe CI=1
 check_telemetry send "blank CI" "CI= "
+check_telemetry skip "SEITE_TELEMETRY=' off ' (ends trimmed)" "SEITE_TELEMETRY= off "
+check_telemetry send "SEITE_TELEMETRY='o n' is unknown, like the CLI" "SEITE_TELEMETRY=o n"
+
+# A saved `seite telemetry off` in ~/.seite/telemetry.json is honoured.
+_tel_home=$(mktemp -d)
+mkdir -p "$_tel_home/.seite"
+printf '{\n  "enabled": false,\n  "notice_shown": true\n}' > "$_tel_home/.seite/telemetry.json"
+check_telemetry skip "saved telemetry off" "HOME=$_tel_home"
+check_telemetry send "SEITE_TELEMETRY=on beats saved off" "HOME=$_tel_home" SEITE_TELEMETRY=on
+printf '{\n  "enabled": true,\n  "notice_shown": true\n}' > "$_tel_home/.seite/telemetry.json"
+check_telemetry send "saved telemetry on" "HOME=$_tel_home"
+rm -rf "$_tel_home"
 
 # send_telemetry must not call curl when opted out
 CURL_CALLED=0
