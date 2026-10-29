@@ -1371,18 +1371,23 @@ fn is_plain_identifier(value: &str) -> bool {
 
 /// Why a URL prefix (`/blog`, `/docs/v2`, or empty) could address files
 /// outside the output directory, or `None`: no `.`/`..`/empty segment, no
-/// backslash or NUL.
+/// backslash, NUL or `:` (a Windows drive prefix such as `C:`), and every
+/// path component a plain name on this platform.
 fn url_path_problem(value: &str) -> Option<&'static str> {
-    if value.contains(['\\', '\0']) {
-        return Some("must not contain backslashes");
+    if value.contains(['\\', '\0', ':']) {
+        return Some("must not contain backslashes or `:`");
     }
     let trimmed = value.trim_matches('/');
     if trimmed.is_empty() {
         return None;
     }
-    trimmed
+    let bad_segment = trimmed
         .split('/')
-        .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..");
+    let not_plain = Path::new(trimmed)
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)));
+    (bad_segment || not_plain)
         .then_some("must be a URL path like `/blog` (no `.`, `..` or empty segments)")
 }
 
@@ -1401,6 +1406,16 @@ fn dir_components(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn url_path_problem_rules() {
+        for ok in ["", "/", "/blog", "/docs/v2/", "blog"] {
+            assert_eq!(url_path_problem(ok), None, "{ok}");
+        }
+        for bad in ["/../x", "/a/./b", "/a//b", "/C:/x", "C:", "/a\\b", "/x\0"] {
+            assert!(url_path_problem(bad).is_some(), "{bad}");
+        }
+    }
 
     #[test]
     fn dir_outside_project_rules() {
