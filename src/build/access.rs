@@ -60,16 +60,36 @@ pub fn access_routes(config: &SiteConfig) -> Vec<AccessRoute> {
     routes
 }
 
-/// Rust mirror of the generated Worker's route matching, used both to keep the
-/// intended boundary explicit and to test the route contract independently.
-pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
-    let decoded_path = urlencoding::decode(path).ok()?;
+/// What the generated Worker does with a request path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessDecision<'a> {
+    /// Answered with 400 before any route check.
+    Refused,
+    /// No route matches: served without a password.
+    Public,
+    /// Protected by this password group.
+    Group(&'a str),
+}
+
+/// Rust mirror of the generated Worker's path decoding and route matching,
+/// used both to keep the intended boundary explicit and to test the route
+/// contract independently.
+pub fn access_decision<'a>(routes: &'a [AccessRoute], path: &str) -> AccessDecision<'a> {
+    // decodeURIComponent throws on a malformed escape; urlencoding doesn't.
+    if has_malformed_escape(path) {
+        return AccessDecision::Refused;
+    }
+    let Ok(decoded_path) = urlencoding::decode(path) else {
+        return AccessDecision::Refused;
+    };
     if decoded_path.contains('\\')
+        || decoded_path.contains("//")
+        || has_escape(&decoded_path)
         || decoded_path
             .split('/')
             .any(|segment| segment == "." || segment == "..")
     {
-        return None;
+        return AccessDecision::Refused;
     }
     routes
         .iter()
@@ -80,7 +100,34 @@ pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a s
                 || decoded_path == format!("{}.md", route.prefix)
                 || decoded_path == format!("{}.html", route.prefix)
         })
-        .map(|route| route.group.as_str())
+        .map_or(AccessDecision::Public, |route| {
+            AccessDecision::Group(route.group.as_str())
+        })
+}
+
+/// The protecting group of `path`, if any (refused paths count as `None`).
+pub fn matching_group<'a>(routes: &'a [AccessRoute], path: &str) -> Option<&'a str> {
+    match access_decision(routes, path) {
+        AccessDecision::Group(group) => Some(group),
+        AccessDecision::Refused | AccessDecision::Public => None,
+    }
+}
+
+/// `%` followed by two hex digits.
+fn has_escape(path: &str) -> bool {
+    path.as_bytes()
+        .windows(3)
+        .any(|w| w[0] == b'%' && w[1].is_ascii_hexdigit() && w[2].is_ascii_hexdigit())
+}
+
+/// A `%` not followed by two hex digits.
+fn has_malformed_escape(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.iter().enumerate().any(|(i, &b)| {
+        b == b'%'
+            && !(bytes.get(i + 1).is_some_and(u8::is_ascii_hexdigit)
+                && bytes.get(i + 2).is_some_and(u8::is_ascii_hexdigit))
+    })
 }
 
 /// Write the generated Cloudflare Pages advanced-mode Worker. Returns true
@@ -190,9 +237,13 @@ function routeFor(path) {
 }
 
 function decodePath(path) {
+  // Refuse paths the route check and the asset server could read
+  // differently: backslashes, empty (`//`) or dot segments, and any
+  // percent-escape still left after one decode (double or deeper encoding).
+  // A malformed escape makes decodeURIComponent throw, which is refused too.
   try {
     const decoded = decodeURIComponent(path);
-    if (decoded.includes("\\") || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
+    if (decoded.includes("\\") || decoded.includes("//") || /%[0-9a-f]{2}/i.test(decoded) || decoded.split("/").some((segment) => segment === "." || segment === "..")) return null;
     return decoded;
   } catch {
     return null;
@@ -249,7 +300,15 @@ async function passwordMatches(candidate, expected) {
 }
 
 function safeNext(value) {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+  // Only a same-origin path: browsers read `/\\evil.com` or a path with a tab
+  // or newline as another host, so those fall back to "/".
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(value)) return "/";
+  try {
+    const target = new URL(value, "https://seite.invalid");
+    return target.origin === "https://seite.invalid" ? target.pathname + target.search + target.hash : "/";
+  } catch {
+    return "/";
+  }
 }
 
 function escapeHtml(value) {
@@ -375,6 +434,53 @@ session_hours = 24
         assert_eq!(matching_group(&routes, "/members/profile"), Some("members"));
         assert_eq!(matching_group(&routes, "/members.md"), Some("members"));
         assert_eq!(matching_group(&routes, "/membership"), None);
+    }
+
+    #[test]
+    fn access_decision_refuses_empty_segments_and_leftover_escapes() {
+        let routes = vec![AccessRoute {
+            prefix: "/members".into(),
+            group: "members".into(),
+        }];
+
+        for path in [
+            "//members/secret.md",
+            "/members//secret",
+            "/members%252Fsecret",
+            "/x/%252e%252e/members/secret",
+            "/x/%252E%252E/members/secret",
+            "/members%255Csecret",
+            "/x/%25252e%25252e/members/secret",
+            "/%25252Fmembers/secret",
+            "/%256dembers/secret",
+            "/%256dembers/secret%25",
+            "/members%zz",
+            "/members%",
+        ] {
+            assert_eq!(
+                access_decision(&routes, path),
+                AccessDecision::Refused,
+                "{path}"
+            );
+        }
+        assert_eq!(
+            access_decision(&routes, "/members/secret"),
+            AccessDecision::Group("members")
+        );
+        assert_eq!(
+            access_decision(&routes, "/members/100%25"),
+            AccessDecision::Group("members")
+        );
+        assert_eq!(access_decision(&routes, "/a%25b"), AccessDecision::Public);
+        // Matching stays case-sensitive, like Cloudflare Pages' asset lookup.
+        assert_eq!(
+            access_decision(&routes, "/Members/x"),
+            AccessDecision::Public
+        );
+        let worker = generate_worker(&routes, 24);
+        assert!(worker.contains(r#"decoded.includes("//")"#));
+        assert!(worker.contains("/%[0-9a-f]{2}/i.test(decoded)"));
+        assert!(worker.contains(r#"target.origin === "https://seite.invalid""#));
     }
 
     #[test]
