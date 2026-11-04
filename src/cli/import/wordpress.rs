@@ -298,7 +298,7 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
         })?;
         match event {
             Event::Start(e) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 if name == "rss" {
                     saw_rss = true;
                 }
@@ -313,7 +313,7 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
                     });
                 }
                 if name == "category" && current.is_some() {
-                    let get = |key: &[u8]| {
+                    let get = |key: &str| {
                         e.attributes()
                             .flatten()
                             .find(|a| a.key.as_ref() == key)
@@ -324,7 +324,7 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
                             })
                             .unwrap_or_default()
                     };
-                    term_attrs = (get(b"domain"), get(b"nicename"));
+                    term_attrs = (get("domain"), get("nicename"));
                 }
                 if name == "content:encoded" {
                     if let Some(item) = current.as_mut() {
@@ -336,28 +336,21 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
             }
             Event::Empty(_) => {}
             Event::Text(t) => {
-                text_buf.push_str(
-                    &t.decode()
-                        .map_err(|e| anyhow::anyhow!("{display}:{}: {e}", line_at(pos)))?,
-                );
+                text_buf.push_str(&t.xml10_content());
             }
             Event::CData(t) => {
-                text_buf.push_str(
-                    &t.decode()
-                        .map_err(|e| anyhow::anyhow!("{display}:{}: {e}", line_at(pos)))?,
-                );
+                text_buf.push_str(&t.xml10_content());
             }
             Event::GeneralRef(r) => {
                 let resolved = if r.is_char_ref() {
                     r.resolve_char_ref().ok().flatten().map(String::from)
                 } else {
-                    let name: &[u8] = &r;
-                    match name {
-                        b"amp" => Some("&".into()),
-                        b"lt" => Some("<".into()),
-                        b"gt" => Some(">".into()),
-                        b"quot" => Some("\"".into()),
-                        b"apos" => Some("'".into()),
+                    match &*r {
+                        "amp" => Some("&".into()),
+                        "lt" => Some("<".into()),
+                        "gt" => Some(">".into()),
+                        "quot" => Some("\"".into()),
+                        "apos" => Some("'".into()),
                         _ => None,
                     }
                 };
@@ -366,13 +359,13 @@ fn read_wxr(text: &str, display: &str) -> anyhow::Result<Channel> {
                     // Not expanded: kept as written.
                     None => {
                         text_buf.push('&');
-                        text_buf.push_str(&String::from_utf8_lossy(r.as_ref()));
+                        text_buf.push_str(&r);
                         text_buf.push(';');
                     }
                 }
             }
             Event::End(e) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_owned();
                 let parent = stack
                     .len()
                     .checked_sub(2)
