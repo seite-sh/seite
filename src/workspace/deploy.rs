@@ -33,19 +33,24 @@ pub fn deploy_workspace(
     // Cross-site domain conflict detection
     check_domain_conflicts(ws_config, ws_root, &sites);
 
-    // GitHub Pages has no previews: `--preview` would replace a live site.
-    // Refuse before deploying anything, like the standalone `seite deploy`.
-    if opts.preview {
-        for ws_site in &sites {
-            let (config, _) = load_site_in_workspace(ws_root, ws_site)?;
-            if matches!(config.deploy.target, DeployTarget::GithubPages) {
-                return Err(PageError::Deploy(format!(
-                    "site '{}': {}",
-                    ws_site.name,
-                    crate::cli::deploy::GITHUB_PAGES_NO_PREVIEW
-                ))
-                .into());
-            }
+    // GitHub Pages has no previews: `--preview`, or a non-main branch with
+    // auto-commit (which the standalone `seite deploy` treats as a preview),
+    // would replace a live site. Refuse before deploying anything.
+    for ws_site in &sites {
+        let (config, paths) = load_site_in_workspace(ws_root, ws_site)?;
+        if !matches!(config.deploy.target, DeployTarget::GithubPages) {
+            continue;
+        }
+        let wants_commit = config.deploy.auto_commit && !opts.no_commit;
+        let feature_branch =
+            wants_commit && matches!(deploy::current_branch(&paths.root), Ok((_, false)));
+        if opts.preview || feature_branch {
+            return Err(PageError::Deploy(format!(
+                "site '{}': {}",
+                ws_site.name,
+                crate::cli::deploy::GITHUB_PAGES_NO_PREVIEW
+            ))
+            .into());
         }
     }
 

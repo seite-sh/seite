@@ -782,7 +782,7 @@ fn test_deploy_without_tty_refuses_localhost_base_url_before_side_effects() {
 }
 
 /// A git repository on `branch` with one commit (rev-parse fails before it).
-fn git_repo_on_branch(dir: &std::path::Path, branch: &str) {
+pub(crate) fn git_repo_on_branch(dir: &std::path::Path, branch: &str) {
     let git = |args: &[&str]| {
         let status = std::process::Command::new("git")
             .args([

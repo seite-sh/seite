@@ -827,3 +827,34 @@ fn test_workspace_deploy_refuses_github_pages_preview() {
             "GitHub Pages has no preview deploys",
         ));
 }
+
+/// Workspace deploy refuses a GitHub Pages site on a non-main branch when
+/// auto-commit is on, like the standalone `seite deploy` (it would replace
+/// the live site); `--no-commit` deploys the working tree as asked.
+#[test]
+fn test_workspace_deploy_refuses_github_pages_from_feature_branch() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["blog"]);
+    super::deploy::git_repo_on_branch(tmp.path(), "feature");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks", "--yes"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "GitHub Pages has no preview deploys",
+        ));
+    page_cmd()
+        .args([
+            "deploy",
+            "--dry-run",
+            "--no-commit",
+            "--skip-checks",
+            "--yes",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Would deploy to github-pages"));
+}
