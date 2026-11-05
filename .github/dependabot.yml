@@ -8,6 +8,11 @@ updates:
       rust-deps:
         patterns:
           - "*"
+    ignore:
+      # Tera 2 is a rewrite of the template API (templates/, shortcodes/, the
+      # macro recursion guard); migrate in its own change, not a group bump.
+      - dependency-name: "tera"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
@@ -21,3 +26,11 @@ updates:
           - "*"
     commit-message:
       prefix: "ci"
+
+  # Base images in Dockerfile are pinned by digest; this keeps them current.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
