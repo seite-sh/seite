@@ -244,6 +244,19 @@ title: "Rust: a tour"        # fixed
 tags: [rust, web]            # a list, not "rust, web"
 ```
 
+## frontmatter-slug-invalid
+
+**What it means:** a content file's `slug:` is not a plain URL path, so seite refuses to build the page. The build writes each page to a path made from its slug, and an unsafe slug could write outside the output directory.
+
+**Common causes:** a `..` or `.` segment (`slug: ../templates/base`), an empty segment (`slug: guides//setup`), an empty slug, a backslash, a `:` or a control character.
+
+**How to fix:** use `/`-separated segments of plain text, or remove `slug:` to use the file name. A content file you did not write that sets a slug like `../something` is an attempt to overwrite project files: don't merge it.
+
+```yaml
+slug: ../templates/base      # error: leaves the output directory
+slug: guides/setup           # fine: published at /<collection>/guides/setup
+```
+
 ## frontmatter-schema
 
 **What it means:** a content file's frontmatter breaks its collection's schema (`[collections.fields.<name>]` in `seite.toml`): a required field is missing or empty, a value has the wrong type, is not one of the allowed `enum` values, is too long/short or out of range (`min`/`max`), does not match `pattern`, or a custom field is set both at the top level and under `extra:`. The message names the field, what was expected and what was found; the hint repeats the field's `description` from the schema. The line is the offending key (or the `extra:` / opening `---` line for a missing field).
@@ -690,7 +703,7 @@ See [Templates → seite partials](/docs/templates#seite-partials).
 
 **What it means:** a template parsed but failed while rendering a page.
 
-**Common causes:** a variable that does not exist in that context (`page.titel`), a filter applied to the wrong type, a missing `{% extends "base.html" %}` block, an `include` of a file that does not exist, a recursive macro that never reaches its base case ("nests too deeply").
+**Common causes:** a variable that does not exist in that context (`page.titel`), a filter applied to the wrong type, a missing `{% extends "base.html" %}` block, an `include` of a file that does not exist, a recursive macro that never reaches its base case ("nests too deeply"), a call to `get_env()`, which seite disables because rendered pages are published and the build environment holds secrets (put the value in `seite.toml` or a `data/` file instead).
 
 **How to fix:** the hint suggests the closest variable name. For "nests too deeply", make every recursive call work on a smaller value (`self::tree(items=item.children)`) and stop when there is nothing left; legitimate recursion about 100 levels deep still renders. `seite templates` lists the variables available to each kind of template (page, collection index, homepage, tags, 404).
 

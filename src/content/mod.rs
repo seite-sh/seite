@@ -248,6 +248,23 @@ pub fn parse_content_diagnostic(
         }
         Box::new(d)
     })?;
+    if let Some(slug) = frontmatter.slug.as_deref().filter(|s| !is_safe_slug(s)) {
+        let line = fm_str
+            .lines()
+            .position(|l| l.starts_with("slug:"))
+            .map_or(fm_line, |i| fm_line + i);
+        return Err(Box::new(
+            Diagnostic::error(
+                "frontmatter-slug-invalid",
+                format!("`slug: {slug}` is not a safe URL path, so the page was not built"),
+            )
+            .with_file(path)
+            .with_line(line)
+            .with_hint(
+                "use `/`-separated segments of plain text (`my-page`, `guides/setup`): no `.` or `..` segment, empty segment, `\\`, `:` or control character",
+            ),
+        ));
+    }
     Ok(ParsedContent {
         frontmatter,
         body: body.to_string(),
@@ -255,6 +272,22 @@ pub fn parse_content_diagnostic(
         frontmatter_text: fm_str.to_string(),
         frontmatter_line: fm_line,
     })
+}
+
+/// Whether an explicit `slug:` can become an output path: `/`-separated
+/// segments (leading and trailing `/` ignored), none empty, `.` or `..`, and
+/// no backslash, `:` or control character. The build joins the slug under the
+/// output directory, so anything else could write outside it (a content file
+/// with `slug: ../templates/base` must never replace a template).
+pub fn is_safe_slug(slug: &str) -> bool {
+    let trimmed = slug.trim_matches('/');
+    !trimmed.is_empty()
+        && trimmed
+            .split('/')
+            .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+        && !trimmed
+            .chars()
+            .any(|c| c == '\\' || c == ':' || c.is_control())
 }
 
 /// serde_yaml/serde_json embed ` at line L column C` in their messages
@@ -719,6 +752,50 @@ mod tests {
 
         let d = parse_content_diagnostic(&tmp.path().join("gone.md")).unwrap_err();
         assert_eq!(d.code, "content-invalid");
+    }
+
+    #[test]
+    fn test_is_safe_slug() {
+        for ok in [
+            "about",
+            "guides/setup",
+            "/about/",
+            "my-page.v2",
+            "über",
+            "a..b",
+        ] {
+            assert!(is_safe_slug(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "/",
+            "..",
+            "../templates/base",
+            "guides/../../x",
+            "./x",
+            "a//b",
+            "a\\..\\b",
+            "C:/x",
+            "a\nb",
+            "a\0b",
+        ] {
+            assert!(!is_safe_slug(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn test_parse_content_diagnostic_refuses_unsafe_slug_at_its_line() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("evil.md");
+        std::fs::write(&path, "---\ntitle: T\nslug: ../templates/base\n---\n\nBody").unwrap();
+        let d = parse_content_diagnostic(&path).unwrap_err();
+        assert_eq!(d.code, "frontmatter-slug-invalid");
+        assert_eq!(d.line, Some(3), "{d}");
+        assert!(d.message.contains("../templates/base"), "{d}");
+
+        std::fs::write(&path, "---\ntitle: T\nslug: guides/setup\n---\n").unwrap();
+        let parsed = parse_content_diagnostic(&path).unwrap();
+        assert_eq!(parsed.frontmatter.slug.as_deref(), Some("guides/setup"));
     }
 
     #[test]

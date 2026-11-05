@@ -3542,8 +3542,11 @@ pub fn resolve_item_date(
 }
 
 fn resolve_slug(fm: &Frontmatter, rel_path: &Path, collection: &CollectionConfig) -> String {
-    if let Some(ref s) = fm.slug {
-        return s.clone();
+    // An unsafe `slug:` (`..`, a backslash, …) is never used: the build refuses the
+    // file (`frontmatter-slug-invalid`), and every other caller gets the
+    // filename slug, so no URL derived here can leave the output directory.
+    if let Some(s) = fm.slug.as_deref().filter(|s| content::is_safe_slug(s)) {
+        return s.to_string();
     }
 
     let stem = rel_path
@@ -4665,6 +4668,20 @@ mod tests {
         let coll = CollectionConfig::preset_posts();
         let slug = resolve_slug(&fm, Path::new("anything.md"), &coll);
         assert_eq!(slug, "custom-slug");
+    }
+
+    #[test]
+    fn test_resolve_slug_ignores_unsafe_frontmatter_slug() {
+        let coll = CollectionConfig::preset_pages();
+        for bad in ["../templates/base", "a/../../b", "..", "", "x\\y"] {
+            let mut fm = default_frontmatter();
+            fm.slug = Some(bad.into());
+            assert_eq!(
+                resolve_slug(&fm, Path::new("about.md"), &coll),
+                "about",
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]

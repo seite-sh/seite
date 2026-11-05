@@ -1806,3 +1806,81 @@ fn test_build_warns_about_skipped_symlinked_static_files() {
     assert!(!site_dir.join("dist/static/logo.png").exists());
     assert!(!site_dir.join("dist/robots-extra.txt").exists());
 }
+
+/// A content file whose `slug:` leaves the output directory is refused (it
+/// could overwrite templates), and neither templates nor shortcodes can read
+/// the build environment into published pages.
+#[test]
+fn test_build_refuses_traversal_slug_and_env_access() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Safe", "pages");
+    let site_dir = tmp.path().join("site");
+    let base = site_dir.join("templates/base.html");
+    let original = fs::read_to_string(&base).unwrap();
+
+    fs::write(
+        site_dir.join("content/pages/evil.md"),
+        "---\ntitle: Evil\nslug: ../templates/base\n---\n\nBody\n",
+    )
+    .unwrap();
+    for cmd in [&["build"][..], &["check"][..]] {
+        page_cmd()
+            .args(cmd)
+            .env("SEITE_SECRET", "LEAK-7f3a")
+            .current_dir(&site_dir)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "content/pages/evil.md:3: error[frontmatter-slug-invalid]",
+            ));
+    }
+    assert_eq!(fs::read_to_string(&base).unwrap(), original);
+    assert!(!site_dir.join("templates/base.md").exists());
+    fs::remove_file(site_dir.join("content/pages/evil.md")).unwrap();
+
+    // A template or user shortcode calling get_env() fails the render.
+    fs::write(
+        &base,
+        format!("{original}{{{{ get_env(name=\"SEITE_SECRET\") }}}}"),
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .env("SEITE_SECRET", "LEAK-7f3a")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("`get_env()` is disabled"));
+    fs::write(&base, &original).unwrap();
+    fs::create_dir_all(site_dir.join("templates/shortcodes")).unwrap();
+    fs::write(
+        site_dir.join("templates/shortcodes/secret.html"),
+        "{{ get_env(name=\"SEITE_SECRET\") }}",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/pages/sc.md"),
+        "---\ntitle: Sc\n---\n\n{{< secret() >}}\n",
+    )
+    .unwrap();
+    page_cmd()
+        .arg("build")
+        .env("SEITE_SECRET", "LEAK-7f3a")
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("`get_env()` is disabled"));
+    let dist = site_dir.join("dist");
+    if dist.exists() {
+        for entry in walkdir::WalkDir::new(&dist).into_iter().flatten() {
+            if entry.file_type().is_file() {
+                let text = fs::read(entry.path()).unwrap();
+                assert!(
+                    !String::from_utf8_lossy(&text).contains("LEAK-7f3a"),
+                    "{}",
+                    entry.path().display()
+                );
+            }
+        }
+    }
+}
