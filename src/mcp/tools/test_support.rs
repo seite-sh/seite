@@ -20,6 +20,7 @@ pub fn empty_state() -> ServerState {
         paths: None,
         cwd: std::path::PathBuf::new(),
         config_error: None,
+        dev: None,
     }
 }
 

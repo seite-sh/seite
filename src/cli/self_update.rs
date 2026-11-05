@@ -3,7 +3,8 @@
 //! Fetches the latest release version from seite.sh (falling back to the
 //! GitHub API), downloads the binary through seite.sh/download/ (which
 //! 302-redirects to GitHub Releases), verifies the checksum, and replaces
-//! the running binary.
+//! the running binary. Archives match `.github/workflows/release.yml`:
+//! `seite-<triple>.tar.gz` on Unix, `seite-<triple>.zip` on Windows.
 
 use std::env;
 use std::fs;
@@ -19,7 +20,7 @@ const DOWNLOAD_BASE: &str = "https://seite.sh/download";
 
 #[derive(Args)]
 pub struct SelfUpdateArgs {
-    /// Update to a specific version (e.g., "0.2.0" or "v0.2.0")
+    /// Update to a specific version (e.g., "0.21.0" or "v0.21.0")
     #[arg(long = "target-version")]
     pub target_version: Option<String>,
 
@@ -75,7 +76,8 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
 
     // 3. Detect platform
     let target_triple = detect_target_triple()?;
-    let archive_name = format!("seite-{target_triple}.tar.gz");
+    let asset = ReleaseAsset::for_triple(&target_triple);
+    let archive_name = asset.archive_name.clone();
     let download_url = format!("{DOWNLOAD_BASE}/{target_tag}/{archive_name}");
     let checksums_url = format!("{DOWNLOAD_BASE}/{target_tag}/checksums-sha256.txt");
 
@@ -94,8 +96,8 @@ pub fn run(args: &SelfUpdateArgs) -> anyhow::Result<()> {
     verify_checksum(&archive_path, &checksums_path, &archive_name)?;
     human::success("Checksum verified.");
 
-    // 6. Extract binary from tar.gz
-    let binary_path = extract_binary(&archive_path, tmp_dir.path())?;
+    // 6. Extract the binary (tar.gz on Unix, zip on Windows)
+    let binary_path = extract_binary(&archive_path, tmp_dir.path(), asset.binary_name)?;
 
     // 7. Replace the running binary
     let current_exe = env::current_exe()?;
@@ -149,10 +151,7 @@ fn detect_target_triple() -> anyhow::Result<String> {
     } else if cfg!(target_os = "linux") {
         "unknown-linux-gnu"
     } else if cfg!(target_os = "windows") {
-        anyhow::bail!(
-            "Self-update is not supported on Windows. Use the PowerShell installer:\n  \
-             irm https://seite.sh/install.ps1 | iex"
-        );
+        "pc-windows-msvc"
     } else {
         anyhow::bail!("Unsupported operating system. Install from source: cargo install seite");
     };
@@ -166,6 +165,57 @@ fn detect_target_triple() -> anyhow::Result<String> {
     };
 
     Ok(format!("{arch}-{os}"))
+}
+
+/// The release asset for one target triple, as `.github/workflows/release.yml`
+/// publishes it: `seite-<triple>.tar.gz` holding `seite` on Unix,
+/// `seite-<triple>.zip` (PowerShell `Compress-Archive`) holding `seite.exe`
+/// on Windows. Both sit flat at the archive root next to `LICENSE-Inter-OFL.txt`.
+#[derive(Debug, PartialEq, Eq)]
+struct ReleaseAsset {
+    archive_name: String,
+    binary_name: &'static str,
+}
+
+impl ReleaseAsset {
+    fn for_triple(triple: &str) -> Self {
+        if triple.contains("-windows-") {
+            Self {
+                archive_name: format!("seite-{triple}.zip"),
+                binary_name: "seite.exe",
+            }
+        } else {
+            Self {
+                archive_name: format!("seite-{triple}.tar.gz"),
+                binary_name: "seite",
+            }
+        }
+    }
+}
+
+/// The `tar` program used for extraction.
+///
+/// Unix: `tar` from PATH (unchanged behaviour). Windows: the bsdtar that ships
+/// with Windows 10 1803+ at `%SystemRoot%\System32\tar.exe` — an absolute path,
+/// never resolved through PATH or the current directory. bsdtar reads zip.
+fn tar_program() -> anyhow::Result<PathBuf> {
+    if cfg!(windows) {
+        let root = env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .ok_or_else(|| anyhow::anyhow!("%SystemRoot% is not set to an absolute path"))?;
+        let tar = root.join("System32").join("tar.exe");
+        if !tar.is_file() {
+            anyhow::bail!(
+                "{} not found (needs Windows 10 1803 or newer). Use the PowerShell installer:\n  \
+                 irm https://seite.sh/install.ps1 | iex",
+                tar.display()
+            );
+        }
+        Ok(tar)
+    } else {
+        Ok(PathBuf::from("tar"))
+    }
 }
 
 /// Download a URL to a local file using ureq.
@@ -252,10 +302,19 @@ impl Sha256 {
     }
 }
 
-/// Extract the `seite` binary from a tar.gz archive.
-fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Result<PathBuf> {
-    let status = std::process::Command::new("tar")
-        .args(["xzf"])
+/// Extract `binary_name` from a release archive (`.tar.gz` or `.zip`).
+fn extract_binary(
+    archive: &PathBuf,
+    dest_dir: &std::path::Path,
+    binary_name: &str,
+) -> anyhow::Result<PathBuf> {
+    let is_zip = archive
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+    // bsdtar detects the zip format itself; `z` would force gzip.
+    let mode = if is_zip { "-xf" } else { "xzf" };
+    let status = std::process::Command::new(tar_program()?)
+        .args([mode])
         .arg(archive)
         .arg("-C")
         .arg(dest_dir)
@@ -266,9 +325,9 @@ fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Resu
         anyhow::bail!("Failed to extract archive");
     }
 
-    let binary = dest_dir.join("seite");
-    if !binary.exists() {
-        anyhow::bail!("Binary 'seite' not found in archive");
+    let binary = dest_dir.join(binary_name);
+    if !binary.is_file() {
+        anyhow::bail!("Binary '{binary_name}' not found in archive");
     }
 
     Ok(binary)
@@ -278,6 +337,11 @@ fn extract_binary(archive: &PathBuf, dest_dir: &std::path::Path) -> anyhow::Resu
 ///
 /// On Unix, this does an atomic rename. The old binary is moved to a backup
 /// location first, and if anything fails, we try to restore it.
+///
+/// On Windows a running `.exe` cannot be overwritten or deleted, but it can be
+/// renamed: it moves aside to `seite.old`, the new binary is copied into place,
+/// and the backup removal fails silently while the old process still runs —
+/// the next update's rename replaces that leftover `seite.old`.
 fn replace_binary(new_binary: &PathBuf, current_exe: &PathBuf) -> anyhow::Result<()> {
     // Resolve symlinks to get the real path
     let real_path = fs::canonicalize(current_exe)?;
@@ -313,7 +377,7 @@ fn replace_binary(new_binary: &PathBuf, current_exe: &PathBuf) -> anyhow::Result
 }
 
 /// Simple semver comparison for version strings.
-fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+pub(crate) fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let parse = |s: &str| -> (u64, u64, u64) {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() >= 3 {
@@ -1111,7 +1175,7 @@ mod tests {
         // Extract and verify
         let extract_dir = tmp_dir.path().join("extract");
         fs::create_dir(&extract_dir).unwrap();
-        let result = extract_binary(&archive_path, &extract_dir);
+        let result = extract_binary(&archive_path, &extract_dir, "seite");
         assert!(result.is_ok(), "extract_binary failed: {:?}", result);
 
         let extracted = result.unwrap();
@@ -1142,7 +1206,7 @@ mod tests {
 
         let extract_dir = tmp_dir.path().join("extract");
         fs::create_dir(&extract_dir).unwrap();
-        let result = extract_binary(&archive_path, &extract_dir);
+        let result = extract_binary(&archive_path, &extract_dir, "seite");
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -1161,8 +1225,135 @@ mod tests {
 
         let extract_dir = tmp_dir.path().join("extract");
         fs::create_dir(&extract_dir).unwrap();
-        let result = extract_binary(&archive_path, &extract_dir);
+        let result = extract_binary(&archive_path, &extract_dir, "seite");
         assert!(result.is_err(), "should fail on invalid archive");
+    }
+
+    // ── release asset selection (release.yml naming) ───────────────────
+
+    #[test]
+    fn test_release_asset_for_every_published_triple() {
+        for (triple, archive, binary) in [
+            (
+                "x86_64-unknown-linux-gnu",
+                "seite-x86_64-unknown-linux-gnu.tar.gz",
+                "seite",
+            ),
+            (
+                "aarch64-unknown-linux-gnu",
+                "seite-aarch64-unknown-linux-gnu.tar.gz",
+                "seite",
+            ),
+            (
+                "x86_64-apple-darwin",
+                "seite-x86_64-apple-darwin.tar.gz",
+                "seite",
+            ),
+            (
+                "aarch64-apple-darwin",
+                "seite-aarch64-apple-darwin.tar.gz",
+                "seite",
+            ),
+            (
+                "x86_64-pc-windows-msvc",
+                "seite-x86_64-pc-windows-msvc.zip",
+                "seite.exe",
+            ),
+            (
+                "aarch64-pc-windows-msvc",
+                "seite-aarch64-pc-windows-msvc.zip",
+                "seite.exe",
+            ),
+        ] {
+            assert_eq!(
+                ReleaseAsset::for_triple(triple),
+                ReleaseAsset {
+                    archive_name: archive.to_string(),
+                    binary_name: binary,
+                },
+                "{triple}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_release_asset_for_this_platform() {
+        let asset = ReleaseAsset::for_triple(&detect_target_triple().unwrap());
+        if cfg!(windows) {
+            assert!(asset.archive_name.ends_with("-pc-windows-msvc.zip"));
+            assert_eq!(asset.binary_name, "seite.exe");
+        } else {
+            assert!(asset.archive_name.ends_with(".tar.gz"));
+            assert_eq!(asset.binary_name, "seite");
+        }
+    }
+
+    #[test]
+    fn test_verify_checksum_picks_windows_zip_line() {
+        // Same shape as release.yml: `sha256sum seite-*.tar.gz seite-*.zip`.
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let name = "seite-x86_64-pc-windows-msvc.zip";
+        let archive_path = tmp_dir.path().join(name);
+        fs::write(&archive_path, b"zip bytes").unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(b"zip bytes");
+        let hash = hasher.hex_digest();
+        let zero = "0".repeat(64);
+        let checksums_path = tmp_dir.path().join("checksums-sha256.txt");
+        fs::write(
+            &checksums_path,
+            format!(
+                "{zero}  seite-x86_64-unknown-linux-gnu.tar.gz\n\
+                 {zero}  seite-aarch64-pc-windows-msvc.zip\n\
+                 {hash}  {name}\n"
+            ),
+        )
+        .unwrap();
+        verify_checksum(&archive_path, &checksums_path, name).unwrap();
+    }
+
+    #[test]
+    fn test_tar_program_unix_is_plain_tar() {
+        if !cfg!(windows) {
+            assert_eq!(tar_program().unwrap(), PathBuf::from("tar"));
+        }
+    }
+
+    /// The zip path (`tar -xf x.zip`) needs a bsdtar; macOS's `tar` is one, the
+    /// same libarchive that ships as `System32\tar.exe` on Windows.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_extract_binary_windows_zip_layout() {
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let staging_dir = tmp_dir.path().join("staging");
+        fs::create_dir(&staging_dir).unwrap();
+        fs::write(staging_dir.join("seite.exe"), b"fake seite.exe").unwrap();
+        fs::write(staging_dir.join("LICENSE-Inter-OFL.txt"), b"OFL").unwrap();
+
+        // Flat layout, like Compress-Archive -Path <files>.
+        let archive_path = tmp_dir.path().join("seite-x86_64-pc-windows-msvc.zip");
+        let status = std::process::Command::new("tar")
+            .args(["-a", "-cf"])
+            .arg(&archive_path)
+            .arg("-C")
+            .arg(&staging_dir)
+            .args(["seite.exe", "LICENSE-Inter-OFL.txt"])
+            .status()
+            .unwrap();
+        assert!(status.success(), "failed to create test zip");
+        assert_eq!(&fs::read(&archive_path).unwrap()[..2], b"PK");
+
+        let extract_dir = tmp_dir.path().join("extract");
+        fs::create_dir(&extract_dir).unwrap();
+        let extracted = extract_binary(&archive_path, &extract_dir, "seite.exe").unwrap();
+        assert_eq!(extracted, extract_dir.join("seite.exe"));
+        assert_eq!(fs::read(&extracted).unwrap(), b"fake seite.exe");
+
+        // A zip without seite.exe is reported, not silently accepted.
+        let other = tmp_dir.path().join("extract-missing");
+        fs::create_dir(&other).unwrap();
+        let err = extract_binary(&archive_path, &other, "seite-missing.exe").unwrap_err();
+        assert!(err.to_string().contains("not found"), "{err}");
     }
 
     // ── Constants tests ────────────────────────────────────────────────

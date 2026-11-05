@@ -1,5 +1,8 @@
 pub mod defaults;
+pub mod embeds;
 pub mod unknown_keys;
+
+pub use embeds::{CommentsProvider, CommentsSection, NewsletterProvider, NewsletterSection};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,8 +29,54 @@ pub struct SiteConfig {
     pub trust: Option<TrustSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contact: Option<ContactSection>,
+    /// `[comments]`: giscus/utterances embed (`comments()` shortcode,
+    /// `seite/comments.html` partial). See `embeds`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments: Option<CommentsSection>,
+    /// `[newsletter]`: Buttondown/Kit subscribe form (`newsletter()`
+    /// shortcode, `seite/newsletter.html` partial). See `embeds`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newsletter: Option<NewsletterSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessSection>,
+    /// `[[taxonomies]]`: term groupings beyond the implicit `tags` (e.g.
+    /// categories). See `crate::build::taxonomy`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub taxonomies: Vec<TaxonomyConfig>,
+    /// `[check]`: options for `seite check` (external link checking).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<CheckSection>,
+    /// `[og]`: generated social preview cards (`og:image`), see
+    /// `crate::build::og`. Absent = off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub og: Option<OgSection>,
+}
+
+/// One `[[taxonomies]]` entry. Pages assign terms with a top-level frontmatter
+/// list named after the taxonomy (`categories: [rust, web]`). `tags` is always
+/// available without configuration; listing it here opts it into the same
+/// options (per-term feeds, pagination, template overrides).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TaxonomyConfig {
+    pub name: String,
+    /// Display name (default: the name, title-cased).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// URL prefix of the term index (default: `/<name>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_prefix: Option<String>,
+    /// Per-term RSS + Atom feeds (default: true for every configured taxonomy).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feed: Option<bool>,
+    /// Items per term page. None means one page per term.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paginate: Option<usize>,
+    /// Template for the term index (default: `taxonomy.html`; `tags.html` for tags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Template for each term page (default: `term.html`; `tag.html` for tags).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub term_template: Option<String>,
 }
 
 /// Per-language overrides for site metadata.
@@ -86,6 +135,17 @@ pub struct CollectionConfig {
     /// Only used when `subdomain` is set. Falls back to the global `deploy.project`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deploy_project: Option<String>,
+    /// Override `[build] related` for this collection (`0` disables `page.related`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<usize>,
+    /// Typed frontmatter schema (`[collections.fields.<name>]`), validated by
+    /// `seite build`/`check` (see `crate::content::schema`). Empty = no schema.
+    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    pub fields: indexmap::IndexMap<String, crate::content::schema::FieldSchema>,
+    /// Warn (`frontmatter-schema-unknown`) about frontmatter keys the schema
+    /// does not declare.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict_fields: bool,
 }
 
 impl CollectionConfig {
@@ -106,6 +166,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("posts"),
+            strict_fields: false,
         }
     }
 
@@ -126,6 +189,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("docs"),
+            strict_fields: false,
         }
     }
 
@@ -146,6 +212,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("pages"),
+            strict_fields: false,
         }
     }
 
@@ -166,6 +235,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("changelog"),
+            strict_fields: false,
         }
     }
 
@@ -186,6 +258,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("roadmap"),
+            strict_fields: false,
         }
     }
 
@@ -206,6 +281,9 @@ impl CollectionConfig {
             deploy_project: None,
             private: false,
             access_group: None,
+            related: None,
+            fields: crate::content::schema::preset_fields("trust"),
+            strict_fields: false,
         }
     }
 
@@ -267,6 +345,11 @@ pub struct SiteSection {
     pub language: String,
     #[serde(default)]
     pub author: String,
+    /// Time zone for scheduled publishing (`date` in the future, `expires`):
+    /// an IANA name (`Europe/Berlin`) or a fixed offset (`+02:00`). Unset: the
+    /// machine's local date (`seite init` writes the detected system zone).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,6 +378,130 @@ pub struct BuildSection {
     /// Render fenced ```mermaid blocks as client-side Mermaid diagrams. Default: false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mermaid: bool,
+    /// Maximum `page.related` items per page (default 3; `0` disables).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<usize>,
+    /// Build future-dated content (scheduled posts) too. Default: false
+    /// (`seite build --future` sets it for one build; `seite serve` always does).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub future: bool,
+    /// Scheduled publishing for dated collections: hide posts dated in the
+    /// future until their date, and `expires:` posts after theirs. Default:
+    /// false (`seite init` turns it on for new sites).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub schedule: bool,
+    /// Client-side search: `"full"` (full-text index under `search/` plus
+    /// `search-index.json`), `"basic"` (`search-index.json` only: titles,
+    /// descriptions, tags) or `false` (no index, no search box). Absent =
+    /// `"basic"`, so existing sites build unchanged; `seite init` writes
+    /// `"full"`. See `crate::build::search`.
+    #[serde(default, skip_serializing_if = "SearchMode::is_basic")]
+    pub search: SearchMode,
+    /// `[build.tailwind]`: compile a Tailwind CSS v4 entry file with the
+    /// standalone CLI. Absent = off. See `crate::build::tailwind`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tailwind: Option<TailwindSection>,
+}
+
+/// `[build.tailwind]`: Tailwind CSS v4 through the standalone CLI (no Node).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TailwindSection {
+    /// The CSS entry file (with `@import "tailwindcss";`), relative to the
+    /// site root. It is compiled instead of being copied raw.
+    #[serde(default = "defaults::tailwind_input")]
+    pub input: String,
+    /// Where the compiled CSS goes, relative to the output's `static/`
+    /// directory (default `css/tailwind.css` → `/static/css/tailwind.css`),
+    /// fingerprinted like every other static file.
+    #[serde(default = "defaults::tailwind_output")]
+    pub output: String,
+    /// Only accepted when it names the pinned version: seite.toml never
+    /// chooses which program seite runs (a cloned repo could otherwise make
+    /// `seite check` in an agent hook run anything). Read only to report a
+    /// located `config-invalid` pointing at `SEITE_TAILWIND_BIN`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Always rejected (`config-invalid`): use the `SEITE_TAILWIND_BIN`
+    /// environment variable instead. Read only to report it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
+    /// Runtime only: never run Tailwind at all and report nothing about it;
+    /// the input is copied as-is (`seite check`/`audit`, agent hooks, MCP
+    /// check/audit tools: everything but real builds).
+    #[serde(skip)]
+    pub never_run: bool,
+}
+
+impl Default for TailwindSection {
+    fn default() -> Self {
+        Self {
+            input: defaults::tailwind_input(),
+            output: defaults::tailwind_output(),
+            version: None,
+            binary: None,
+            never_run: false,
+        }
+    }
+}
+
+/// `[build] search`: which client-side search index the build writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchMode {
+    /// Full-text index (`search/meta.json`, term shards, page fragments)
+    /// plus the basic `search-index.json`.
+    Full,
+    /// `search-index.json` only (title, description, tags).
+    #[default]
+    Basic,
+    /// No search index and no search box.
+    Off,
+}
+
+impl SearchMode {
+    pub fn is_basic(&self) -> bool {
+        *self == SearchMode::Basic
+    }
+
+    /// The value templates see as `search_mode`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SearchMode::Full => "full",
+            SearchMode::Basic => "basic",
+            SearchMode::Off => "off",
+        }
+    }
+}
+
+impl Serialize for SearchMode {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            SearchMode::Off => s.serialize_bool(false),
+            other => s.serialize_str(other.as_str()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SearchMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Bool(bool),
+            Str(String),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Bool(true) => Ok(SearchMode::Full),
+            Raw::Bool(false) => Ok(SearchMode::Off),
+            Raw::Str(s) => match s.as_str() {
+                "full" => Ok(SearchMode::Full),
+                "basic" => Ok(SearchMode::Basic),
+                "off" => Ok(SearchMode::Off),
+                other => Err(serde::de::Error::custom(format!(
+                    "invalid search mode \"{other}\": expected \"full\", \"basic\" or false"
+                ))),
+            },
+        }
+    }
 }
 
 impl Default for BuildSection {
@@ -310,6 +517,11 @@ impl Default for BuildSection {
             fingerprint: false,
             math: false,
             mermaid: false,
+            related: None,
+            future: false,
+            schedule: false,
+            search: SearchMode::Basic,
+            tailwind: None,
         }
     }
 }
@@ -327,6 +539,12 @@ pub struct DeploySection {
     /// Auto-commit and push before deploying. Default: true.
     #[serde(default = "crate::config::defaults::bool_true")]
     pub auto_commit: bool,
+    /// Serve a page's markdown copy to requests whose `Accept` header prefers
+    /// `text/markdown` (Cloudflare Pages: a generated `_worker.js`, so every
+    /// request becomes a Functions invocation). Default: false. Sites with
+    /// `[access]` get negotiation without it (their Worker already runs).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub markdown_negotiation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -382,6 +600,7 @@ impl Default for DeploySection {
             project: None,
             domain: None,
             auto_commit: true,
+            markdown_negotiation: false,
         }
     }
 }
@@ -504,6 +723,85 @@ pub struct ContactSection {
     pub subject: Option<String>,
 }
 
+/// `[check]`: options for `seite check --external`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CheckSection {
+    /// Hosts never checked by `seite check --external` (a host also matches
+    /// its subdomains). Added to the built-in list of hosts that block bots
+    /// (linkedin.com, twitter.com, x.com, instagram.com, facebook.com).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external_skip: Vec<String>,
+    /// Per-request timeout in seconds for `seite check --external`. Default: 10.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_timeout: Option<u64>,
+}
+
+/// `[og]`: social preview cards generated at build time (`dist/og/*.png`).
+/// See `crate::build::og`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OgSection {
+    /// Generate cards. Default: true once `[og]` is present.
+    #[serde(default = "defaults::bool_true")]
+    pub generate: bool,
+    /// Card layout: `default`, `minimal` or `bold`.
+    #[serde(default)]
+    pub template: OgTemplate,
+    /// Card colors (`#rgb` / `#rrggbb`). Default: `data/brand.yaml`
+    /// `colors.background` / `colors.text` / `colors.primary`, else the theme's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    /// Logo drawn on every card (SVG or PNG), relative to the site root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
+    /// A `.ttf`/`.otf` font (relative to the site root) used instead of the
+    /// bundled Inter, e.g. one with CJK glyphs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    /// Runtime only: compute card URLs and validate, but write no PNGs
+    /// (`seite check`'s scratch build).
+    #[serde(skip)]
+    pub skip_render: bool,
+}
+
+impl Default for OgSection {
+    fn default() -> Self {
+        Self {
+            generate: true,
+            template: OgTemplate::default(),
+            background: None,
+            foreground: None,
+            accent: None,
+            logo: None,
+            font: None,
+            skip_render: false,
+        }
+    }
+}
+
+/// Built-in social card layouts (`[og] template`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OgTemplate {
+    #[default]
+    Default,
+    Minimal,
+    Bold,
+}
+
+impl OgTemplate {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OgTemplate::Default => "default",
+            OgTemplate::Minimal => "minimal",
+            OgTemplate::Bold => "bold",
+        }
+    }
+}
+
 /// Resolved absolute paths for the project directories.
 #[derive(Clone)]
 pub struct ResolvedPaths {
@@ -588,6 +886,7 @@ impl SiteConfig {
             })?;
         config.validate_subdomains()?;
         config.validate_access()?;
+        config.validate_content_model(None)?;
         Ok(config)
     }
 
@@ -620,8 +919,179 @@ impl SiteConfig {
         })?;
         config.validate_subdomains()?;
         config.validate_access()?;
-        let warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        config.validate_content_model(Some((&contents, file_name)))?;
+        let mut warnings = unknown_keys::unknown_key_diagnostics(&contents, file_name);
+        // Taxonomy URL collisions are errors (pages would overwrite each
+        // other); reserved taxonomy names are warnings.
+        let (errors, taxonomy_warnings): (Vec<_>, Vec<_>) =
+            crate::build::taxonomy::config_diagnostics(&config, Some(&contents))
+                .into_iter()
+                .partition(|d| d.severity == crate::diagnostics::Severity::Error);
+        if !errors.is_empty() {
+            let mut all = crate::diagnostics::Diagnostics::new();
+            all.extend(errors);
+            return Err(PageError::Diagnostics(all));
+        }
+        warnings.extend(taxonomy_warnings);
         Ok((config, warnings))
+    }
+
+    /// Frontmatter schemas (`[collections.fields.*]`) and `[site] timezone`.
+    /// With the config `source`, errors are located `config-invalid`
+    /// diagnostics; without it, plain `ConfigInvalid` errors.
+    fn validate_content_model(&self, source: Option<(&str, &Path)>) -> Result<()> {
+        let problem = crate::content::schedule::validate_timezone(self.site.timezone.as_deref())
+            .err()
+            .map(|message| (message, "timezone".to_string()))
+            .or_else(|| crate::content::schema::validate_config(self).err())
+            .or_else(|| crate::build::tailwind::validate_config(self).err())
+            .or_else(|| embeds::validate_config(self).err())
+            .or_else(|| self.validate_dirs().err());
+        let Some((message, key)) = problem else {
+            return Ok(());
+        };
+        match source {
+            None => Err(PageError::ConfigInvalid { message }),
+            Some((contents, file)) => {
+                let mut d = crate::diagnostics::Diagnostic::error(
+                    "config-invalid",
+                    format!("invalid config: {message}"),
+                )
+                .with_file(file);
+                if let Some(line) = crate::content::schema::config_line(contents, &key) {
+                    d = d.with_line(line);
+                }
+                Err(PageError::Diagnostics(d.into()))
+            }
+        }
+    }
+
+    /// Every directory setting stays inside the project, and the output
+    /// directory (emptied by every full build) holds no source directory, so a
+    /// cloned repository's `seite.toml` can neither delete nor publish files
+    /// outside it: `output_dir = "../x"` would empty `../x`, `public_dir = "/"`
+    /// would copy the disk into `dist/`.
+    fn validate_dirs(&self) -> std::result::Result<(), (String, String)> {
+        let b = &self.build;
+        let dirs = [
+            ("output_dir", &b.output_dir),
+            ("content_dir", &b.content_dir),
+            ("template_dir", &b.template_dir),
+            ("static_dir", &b.static_dir),
+            ("data_dir", &b.data_dir),
+            ("public_dir", &b.public_dir),
+        ];
+        for (name, value) in dirs {
+            if let Some(why) = dir_outside_project(value, false) {
+                return Err((
+                    format!("[build] {name} = \"{value}\" {why}"),
+                    format!("[build]{name}"),
+                ));
+            }
+        }
+        let out = dir_components(&b.output_dir);
+        if matches!(out.first().map(String::as_str), Some(".git" | ".seite")) {
+            return Err((
+                format!(
+                    "[build] output_dir = \"{}\" is inside {}, which every build would empty",
+                    b.output_dir, out[0]
+                ),
+                "[build]output_dir".into(),
+            ));
+        }
+        for (name, value) in &dirs[1..] {
+            // Output inside a source dir copies itself into the next build.
+            if out.starts_with(&dir_components(value)) {
+                return Err((
+                    format!(
+                        "[build] output_dir = \"{}\" is inside {name} = \"{value}\": the next build would copy the output into itself; pick a separate directory (e.g. \"dist\")",
+                        b.output_dir
+                    ),
+                    "[build]output_dir".into(),
+                ));
+            }
+            if dir_components(value).starts_with(&out) {
+                return Err((
+                    format!(
+                        "[build] output_dir = \"{}\" contains {name} = \"{value}\": every build empties the output directory, so pick a separate one (e.g. \"dist\")",
+                        b.output_dir
+                    ),
+                    "[build]output_dir".into(),
+                ));
+            }
+        }
+        for c in &self.collections {
+            if let Some(why) = dir_outside_project(&c.directory, true) {
+                return Err((
+                    format!(
+                        "collection '{}': directory = \"{}\" {why}",
+                        c.name, c.directory
+                    ),
+                    "directory".into(),
+                ));
+            }
+            // Names, URL prefixes and language codes become output paths
+            // (`dist-subdomains/<name>/`, `dist/<url_prefix>/`, `dist/<lang>/`).
+            if !is_plain_identifier(&c.name) {
+                return Err((
+                    format!("collection name \"{}\" {IDENTIFIER_RULE}", c.name),
+                    "name".into(),
+                ));
+            }
+            if let Some(why) = url_path_problem(&c.url_prefix) {
+                return Err((
+                    format!(
+                        "collection '{}': url_prefix = \"{}\" {why}",
+                        c.name, c.url_prefix
+                    ),
+                    "url_prefix".into(),
+                ));
+            }
+        }
+        let projects = std::iter::once(("[deploy]project", self.deploy.project.as_deref())).chain(
+            self.collections
+                .iter()
+                .map(|c| ("deploy_project", c.deploy_project.as_deref())),
+        );
+        for (key, project) in projects {
+            if let Some(p) = project.filter(|p| !is_project_name(p)) {
+                let name = key.trim_start_matches("[deploy]");
+                return Err((format!("{name} = \"{p}\" {PROJECT_RULE}"), key.to_string()));
+            }
+        }
+        if let Some(domain) = self.deploy.domain.as_deref().filter(|d| !is_domain_name(d)) {
+            return Err((
+                format!("[deploy] domain = \"{domain}\" must be a host name like `example.com` (letters, digits, `-`, `.`)"),
+                "[deploy]domain".into(),
+            ));
+        }
+        for t in &self.taxonomies {
+            if !is_plain_identifier(&t.name) {
+                return Err((
+                    format!("taxonomy name \"{}\" {IDENTIFIER_RULE}", t.name),
+                    "name".into(),
+                ));
+            }
+            if let Some(why) = t.url_prefix.as_deref().and_then(url_path_problem) {
+                return Err((
+                    format!(
+                        "taxonomy '{}': url_prefix = \"{}\" {why}",
+                        t.name,
+                        t.url_prefix.as_deref().unwrap_or_default()
+                    ),
+                    "url_prefix".into(),
+                ));
+            }
+        }
+        for code in self.languages.keys() {
+            if !is_plain_identifier(code) {
+                return Err((
+                    format!("language code \"{code}\" {IDENTIFIER_RULE}"),
+                    format!("[languages.{code}]"),
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn validate_access(&self) -> Result<()> {
@@ -851,6 +1321,12 @@ impl SiteConfig {
         map
     }
 
+    /// Whether social cards are generated (`[og]` present with `generate`
+    /// not set to false).
+    pub fn og_enabled(&self) -> bool {
+        self.og.as_ref().is_some_and(|og| og.generate)
+    }
+
     /// Extract the URL path prefix from `base_url`.
     ///
     /// For GitHub Pages project sites and other subpath deployments:
@@ -886,9 +1362,164 @@ impl SiteConfig {
     }
 }
 
+/// Why `value` (a directory relative to the project, or to the content
+/// directory) could point outside it, or `None` when it can't: it must be
+/// relative, without `..`, a drive prefix or backslashes, and (unless
+/// `allow_empty`) name a directory below the root.
+pub fn dir_outside_project(value: &str, allow_empty: bool) -> Option<&'static str> {
+    use std::path::Component;
+    if value.contains(['\\', '\0']) {
+        return Some("must not contain backslashes");
+    }
+    let mut named = false;
+    for part in Path::new(value).components() {
+        match part {
+            Component::Normal(_) => named = true,
+            Component::CurDir => {}
+            Component::ParentDir => return Some("must stay inside the project (no `..`)"),
+            Component::RootDir | Component::Prefix(_) => {
+                return Some("must be a path relative to the project")
+            }
+        }
+    }
+    (!named && !allow_empty).then_some("must name a directory inside the project")
+}
+
+/// A Cloudflare Pages project or Netlify site name/ID: lowercase letters,
+/// digits and `-`, 1–63 characters. These reach `wrangler`/`netlify`
+/// argument lists (on Windows through a `.cmd` shim) and API URLs.
+pub fn is_project_name(value: &str) -> bool {
+    (1..=63).contains(&value.len())
+        && value.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && value
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// A host name for `[deploy] domain` (passed to `netlify domains:add` and
+/// Cloudflare's API): dot-separated labels of letters, digits and `-`, no
+/// label starting or ending with `-`.
+pub fn is_domain_name(value: &str) -> bool {
+    value.len() <= 253
+        && value.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
+}
+
+const PROJECT_RULE: &str = "must be lowercase letters, digits or `-` (at most 63)";
+
+const IDENTIFIER_RULE: &str =
+    "must be letters, digits, `-` or `_` (it becomes part of output paths)";
+
+/// A collection/taxonomy name or language code: starts with a letter or
+/// digit, then letters, digits, `-`, `_`.
+fn is_plain_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Why a URL prefix (`/blog`, `/docs/v2`, or empty) could address files
+/// outside the output directory, or `None`: no `.`/`..`/empty segment, no
+/// backslash, NUL or `:` (a Windows drive prefix such as `C:`), and every
+/// path component a plain name on this platform.
+fn url_path_problem(value: &str) -> Option<&'static str> {
+    if value.contains(['\\', '\0', ':']) {
+        return Some("must not contain backslashes or `:`");
+    }
+    let trimmed = value.trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bad_segment = trimmed
+        .split('/')
+        .any(|seg| seg.is_empty() || seg == "." || seg == "..");
+    let not_plain = Path::new(trimmed)
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)));
+    (bad_segment || not_plain)
+        .then_some("must be a URL path like `/blog` (no `.`, `..` or empty segments)")
+}
+
+/// The named components of a relative directory, lowercased (macOS and
+/// Windows file systems are case-insensitive).
+fn dir_components(value: &str) -> Vec<String> {
+    Path::new(value)
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().to_lowercase()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_names_are_validated() {
+        for ok in ["my-site", "site2", "a"] {
+            assert!(is_project_name(ok), "{ok}");
+        }
+        for bad in [
+            "x&calc",
+            "My-Site",
+            "-x",
+            "",
+            "a b",
+            "x\"y",
+            &"a".repeat(64),
+        ] {
+            assert!(!is_project_name(bad), "{bad}");
+        }
+        let mut config = make_config("https://example.com", vec![]);
+        config.deploy.project = Some("x&calc".into());
+        assert!(config.validate_dirs().is_err());
+    }
+
+    #[test]
+    fn url_path_problem_rules() {
+        for ok in ["", "/", "/blog", "/docs/v2/", "blog"] {
+            assert_eq!(url_path_problem(ok), None, "{ok}");
+        }
+        for bad in ["/../x", "/a/./b", "/a//b", "/C:/x", "C:", "/a\\b", "/x\0"] {
+            assert!(url_path_problem(bad).is_some(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn dir_outside_project_rules() {
+        for ok in ["dist", "./dist", "out/site", "public"] {
+            assert_eq!(dir_outside_project(ok, false), None, "{ok}");
+        }
+        for bad in ["../dist", "/var/www", "a/../../b", "", ".", "a\\b"] {
+            assert!(dir_outside_project(bad, false).is_some(), "{bad}");
+        }
+        assert_eq!(dir_outside_project("", true), None);
+    }
+
+    #[test]
+    fn output_dir_must_not_hold_sources() {
+        let mut config = make_config("https://example.com", vec![]);
+        for (out, content) in [
+            ("content", "content"),
+            ("site", "site/content"),
+            ("Content", "content"),
+            (".git/x", "content"),
+            ("content/out", "content"),
+        ] {
+            config.build.output_dir = out.into();
+            config.build.content_dir = content.into();
+            assert!(config.validate_dirs().is_err(), "{out} / {content}");
+        }
+        config.build.output_dir = "dist".into();
+        config.build.content_dir = "content".into();
+        assert!(config.validate_dirs().is_ok());
+    }
 
     fn make_config(base_url: &str, collections: Vec<CollectionConfig>) -> SiteConfig {
         SiteConfig {
@@ -898,6 +1529,7 @@ mod tests {
                 base_url: base_url.into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections,
             build: BuildSection::default(),
@@ -907,7 +1539,12 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
+            taxonomies: Vec::new(),
+            check: None,
+            og: None,
         }
     }
 

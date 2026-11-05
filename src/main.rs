@@ -50,6 +50,12 @@ fn run(cli: &Cli) -> Result<()> {
         apply_config_flag(config)?;
     }
 
+    if cli.licenses {
+        use std::io::Write as _;
+        let mut out = std::io::stdout().lock();
+        out.write_all(seite::build::og::third_party_notices().as_bytes())?;
+        return Ok(());
+    }
     let Some(command) = cli.command.as_ref() else {
         if cli.json {
             anyhow::bail!("no command given (run `seite --help` to see commands)");
@@ -102,6 +108,11 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             if json_mode {
                 let doc = json::success_document(cmd_name, json::take_data(), json::warnings());
                 json::emit_document(&doc);
+            } else if cmd_name == "check" {
+                // `seite check` passed but may have printed warnings.
+                if let Some(code) = json::take_data().as_ref().and_then(first_diagnostic_code) {
+                    seite::human_println!("{}", explain_footer(&code));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -126,6 +137,11 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
                 for diagnostic in diagnostics.iter() {
                     eprintln!("{diagnostic}");
                 }
+                if cmd_name == "check" {
+                    if let Some(first) = diagnostics.iter().next() {
+                        eprintln!("{}", explain_footer(first.code));
+                    }
+                }
                 eprintln!();
             }
             eprintln!("Error: {message}");
@@ -138,6 +154,21 @@ fn finish(cmd_name: &str, result: Result<()>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The code of the first diagnostic in a `seite check` data document.
+fn first_diagnostic_code(data: &serde_json::Value) -> Option<String> {
+    data.get("diagnostics")?
+        .as_array()?
+        .first()?
+        .get("code")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// The closing line of `seite check` output when it reported diagnostics.
+fn explain_footer(example_code: &str) -> String {
+    format!("Run `seite explain <code>` for details (e.g. `seite explain {example_code}`).")
 }
 
 /// Commands that stream output or take over the terminal can't produce a
@@ -180,14 +211,19 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::New(args) => seite::cli::new::run(args),
         Command::Build(args) => seite::cli::build::run(args, site),
         Command::Check(args) => seite::cli::check::run(args, site),
+        Command::Audit(args) => seite::cli::audit::run(args, site),
         Command::Serve(args) => seite::cli::serve::run(args, site),
         Command::Deploy(args) => seite::cli::deploy::run(args, site),
         Command::Agent(args) => seite::cli::agent::run(args),
         Command::Collection(args) => seite::cli::collection::run(args),
+        Command::Import(args) => seite::cli::import::run(args),
         Command::Contact(args) => seite::cli::contact::run(args),
+        Command::Cms(args) => seite::cli::cms::run(args),
         Command::Access(args) => seite::cli::access::run(args),
         Command::Skill(args) => seite::cli::skill::run(args),
         Command::Theme(args) => seite::cli::theme::run(args),
+        Command::Hooks(args) => seite::cli::hooks::run(args),
+        Command::Trust(args) => seite::cli::trust::run(args),
         Command::Workspace(args) => seite::cli::workspace::run(args),
         Command::Upgrade(args) => seite::cli::upgrade::run_for_site(args, site),
         Command::SelfUpdate(args) => seite::cli::self_update::run(args),
@@ -195,6 +231,16 @@ fn dispatch(site: Option<&str>, command: &Command) -> anyhow::Result<()> {
         Command::Perf(args) => seite::cli::perf::run(args),
         Command::Completions(args) => seite::cli::completions::run(args),
         Command::Telemetry(args) => seite::cli::telemetry::run(args),
+        Command::Context(args) => seite::cli::context::run(args, site),
+        Command::Docs(args) => seite::cli::docs::run(args, site),
+        Command::Explain(args) => seite::cli::explain::run(args),
+        Command::Page(args) => seite::cli::page::run(args, site),
+        Command::Preview(args) => seite::cli::preview::run(args, site),
+        Command::Og(args) => seite::cli::og::run(args, site),
+        Command::Search(args) => seite::cli::search::run(args, site),
+        Command::Stats(args) => seite::cli::stats::run(args, site),
+        Command::Templates(args) => seite::cli::templates::run(args, site),
+        Command::Frontmatter(args) => seite::cli::frontmatter::run(args, site),
     }
 }
 
@@ -205,14 +251,19 @@ fn command_name(command: &Command) -> &'static str {
         Command::New(_) => "new",
         Command::Build(_) => "build",
         Command::Check(_) => "check",
+        Command::Audit(_) => "audit",
         Command::Serve(_) => "serve",
         Command::Deploy(_) => "deploy",
         Command::Agent(_) => "agent",
         Command::Collection(_) => "collection",
+        Command::Import(_) => "import",
         Command::Contact(_) => "contact",
+        Command::Cms(_) => "cms",
         Command::Access(_) => "access",
         Command::Skill(_) => "skill",
         Command::Theme(_) => "theme",
+        Command::Hooks(_) => "hooks",
+        Command::Trust(_) => "trust",
         Command::Workspace(_) => "workspace",
         Command::Upgrade(_) => "upgrade",
         Command::SelfUpdate(_) => "self-update",
@@ -220,6 +271,32 @@ fn command_name(command: &Command) -> &'static str {
         Command::Perf(_) => "perf",
         Command::Completions(_) => "completions",
         Command::Telemetry(_) => "telemetry",
+        Command::Context(_) => "context",
+        Command::Docs(_) => "docs",
+        Command::Explain(_) => "explain",
+        Command::Page(_) => "page",
+        Command::Preview(_) => "preview",
+        Command::Og(_) => "og",
+        Command::Search(_) => "search",
+        Command::Stats(_) => "stats",
+        Command::Templates(_) => "templates",
+        Command::Frontmatter(_) => "frontmatter",
+    }
+}
+
+/// The collection argument the welcome screen suggests for `seite new`: the
+/// site's first collection (singular where `seite new` accepts it), else a
+/// generic `<collection>`.
+fn welcome_collection() -> String {
+    let Ok(config) = seite::config::SiteConfig::load(std::path::Path::new("seite.toml")) else {
+        return "<collection>".into();
+    };
+    match config.collections.first().map(|c| c.name.as_str()) {
+        Some("posts") => "post".into(),
+        Some("docs") => "doc".into(),
+        Some("pages") => "page".into(),
+        Some(name) if !name.is_empty() && !name.contains(char::is_whitespace) => name.into(),
+        _ => "<collection>".into(),
     }
 }
 
@@ -236,16 +313,17 @@ fn print_welcome() {
         style("seite").bold().cyan(),
         style(format!("v{version}")).dim()
     );
-    println!("  {}", style("AI-native static site generator").dim());
+    println!("  {}", style(seite::cli::TAGLINE).dim());
     println!();
 
     if has_project {
         println!("  {}", style("Commands:").bold());
         println!("    seite build              Build the site");
         println!("    seite serve              Start dev server with live reload");
-        println!("    seite new post \"Title\"   Create a new post");
+        let new_cmd = format!("seite new {} \"Title\"", welcome_collection());
+        println!("    {new_cmd:<25}Create new content");
         println!("    seite deploy             Deploy to production");
-        println!("    seite agent \"prompt\"     AI assistant with full site context");
+        println!("    seite agent \"prompt\"     Open your coding agent with a prompt");
         println!("    seite --help             See all commands");
     } else {
         println!("  {}", style("Get started:").bold());

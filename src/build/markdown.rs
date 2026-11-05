@@ -60,6 +60,31 @@ fn slugify_heading(text: &str) -> String {
         .join("-")
 }
 
+/// Heading ids already used on a page, plus the next suffix to try per
+/// base id, so N repeats of one heading cost O(N), not O(N²).
+#[derive(Default)]
+struct HeadingIds {
+    used: std::collections::HashSet<String>,
+    next_suffix: std::collections::HashMap<String, usize>,
+}
+
+impl HeadingIds {
+    /// `id`, or `id-1`, `id-2`, … when it is already taken; records the result.
+    fn unique(&mut self, id: String) -> String {
+        if self.used.insert(id.clone()) {
+            return id;
+        }
+        let n = self.next_suffix.entry(id.clone()).or_insert(1);
+        loop {
+            let candidate = format!("{id}-{n}");
+            *n += 1;
+            if self.used.insert(candidate.clone()) {
+                return candidate;
+            }
+        }
+    }
+}
+
 pub fn markdown_to_html(markdown: &str) -> (String, Vec<TocEntry>) {
     markdown_to_html_with(markdown, false)
 }
@@ -89,6 +114,10 @@ pub fn markdown_to_html_with(markdown: &str, mermaid: bool) -> (String, Vec<TocE
     let mut in_heading = false;
     let mut heading_level: u8 = 0;
     let mut heading_text = String::new();
+    // Ids already given out in this document: a repeated heading ("Setup"
+    // under each provider) gets `-1`, `-2`, … like GitHub, so ids and ToC
+    // anchors stay unique.
+    let mut heading_ids = HeadingIds::default();
 
     // Collect events, intercepting headings (for ToC + id attributes) and
     // code blocks (for syntax highlighting). Everything else is passed through
@@ -120,7 +149,7 @@ pub fn markdown_to_html_with(markdown: &str, mermaid: bool) -> (String, Vec<TocE
             }
             Event::End(TagEnd::Heading(_)) => {
                 in_heading = false;
-                let id = slugify_heading(&heading_text);
+                let id = heading_ids.unique(slugify_heading(&heading_text));
                 toc.push(TocEntry {
                     level: heading_level,
                     text: heading_text.clone(),
@@ -525,6 +554,46 @@ mod tests {
         assert!(html.contains("id=\"introduction\""));
         assert!(html.contains("id=\"details\""));
         assert!(html.contains("id=\"conclusion\""));
+    }
+
+    #[test]
+    fn test_repeated_headings_get_unique_ids() {
+        let md =
+            "## Setup\n\n### Dry run\n\n## Setup\n\n### Dry run\n\n### Dry run 1\n\n### Dry run\n";
+        let (html, toc) = markdown_to_html(md);
+        let ids: Vec<&str> = toc.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "setup",
+                "dry-run",
+                "setup-1",
+                "dry-run-1",
+                "dry-run-1-1",
+                "dry-run-2"
+            ]
+        );
+        for id in ids {
+            assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1, "{html}");
+        }
+    }
+
+    #[test]
+    fn test_heading_ids_resume_suffix_per_base() {
+        let mut ids = HeadingIds::default();
+        // An explicit "a-2" heading is skipped, not reused.
+        let got: Vec<String> = ["a", "a-2", "a", "a", "a"]
+            .into_iter()
+            .map(|id| ids.unique(id.to_string()))
+            .collect();
+        assert_eq!(got, ["a", "a-2", "a-1", "a-3", "a-4"]);
+        // Each repeat continues from the last suffix instead of restarting.
+        assert_eq!(ids.next_suffix["a"], 5);
+        for _ in 0..2000 {
+            ids.unique("setup".to_string());
+        }
+        assert_eq!(ids.next_suffix["setup"], 2000);
+        assert!(ids.used.contains("setup-1999"));
     }
 
     #[test]

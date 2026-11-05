@@ -1,10 +1,10 @@
 ---
 title: "Deploying Your Static Site"
 description: "Deploy your seite static site to GitHub Pages, Cloudflare Pages, or Netlify with one command. Preview deploys, custom domains, and subdomain support built in."
-weight: 8
+weight: 9
 ---
 
-Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. Preview deploys happen automatically when you push from a branch, and custom domains are wired up interactively.
+Most static site generators leave deployment as an exercise for the reader. seite ships with first-class deploy support for three major platforms: one command handles the build, commit, push, and publish cycle. On Cloudflare Pages and Netlify, deploying from a branch other than `main` creates a preview deploy automatically, and custom domains are wired up interactively.
 
 ## Overview
 
@@ -45,7 +45,7 @@ Make sure `base_url` in `seite.toml` is set to your real domain before deploying
 
 By default, `seite deploy` automatically commits all changes and pushes to the remote before building and deploying. This makes deploy a true one-step workflow.
 
-**Branch-based preview:** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually.
+**Branch-based preview (Cloudflare Pages and Netlify):** when you deploy from a branch other than `main` or `master`, `seite` automatically deploys as a preview instead of production. No need to pass `--preview` manually. GitHub Pages has no preview deploys (one live site per repository), so for `github-pages` `seite deploy` refuses `--preview`, and refuses to run from another branch when it auto-commits, instead of overwriting the live site; merge to `main` and deploy from there, or preview locally with `seite serve`. The branch and production/preview decision is made before auto-commit, so a refused deploy commits, pushes and publishes nothing. `seite deploy --dry-run` prints the same plan: branch, production or preview, and whether it would commit and push.
 
 To disable auto-commit for a project, set `auto_commit = false` in `seite.toml`:
 
@@ -63,7 +63,14 @@ seite deploy --no-commit
 
 ## GitHub Pages
 
-The default deployment target. When you run [`seite init`](/docs/getting-started) with `--deploy-target github-pages`, a GitHub Actions workflow is generated at `.github/workflows/deploy.yml` that builds and deploys on every push to `main`.
+The default deployment target. There are two ways to publish, and each needs a different **Pages source** (repository **Settings → Pages → Build and deployment → Source**). Pick one:
+
+| Method | What it does | Pages source |
+|--------|--------------|--------------|
+| GitHub Actions workflow (recommended) | [`seite init`](/docs/getting-started) with `--deploy-target github-pages` writes `.github/workflows/deploy.yml`. On every push to `main` (plus a daily rebuild for scheduled posts, and manual runs) it installs seite, runs `seite build`, and publishes `dist/` with `actions/upload-pages-artifact` and `actions/deploy-pages`. | **GitHub Actions** (`seite deploy --setup` requests this through `gh` when it enables Pages) |
+| Manual `seite deploy` | Builds locally, commits `dist/` as a fresh `gh-pages` branch, and force-pushes it to the remote. | **Deploy from a branch**: `gh-pages`, `/ (root)` |
+
+The two don't combine: with the source set to GitHub Actions, GitHub ignores the `gh-pages` branch, so a manual `seite deploy` pushes a branch nobody serves; with the source set to the `gh-pages` branch, GitHub serves that branch, not the workflow's build. If you use the workflow, publish by pushing to `main` (`git push`) rather than running `seite deploy`. If you prefer manual deploys, switch the source to the `gh-pages` branch and delete `.github/workflows/deploy.yml`.
 
 ### Manual deployment
 
@@ -72,7 +79,7 @@ seite build
 seite deploy
 ```
 
-This pushes the `dist/` directory to the `gh-pages` branch.
+This force-pushes the `dist/` directory to the `gh-pages` branch, replacing the live site. GitHub Pages has no preview deploys: from a branch other than `main`/`master` (with auto-commit on) or with `--preview`, `seite deploy` stops with "GitHub Pages has no preview deploys" before auto-commit, so nothing is committed, pushed or published. If your repository's default branch has another name, deploy from it with `--no-commit`.
 
 ### Dry run
 
@@ -136,6 +143,8 @@ seite deploy --target cloudflare --dry-run
 target = "netlify"
 ```
 
+For Netlify, `seite init` writes a `netlify.toml` (build command and publish directory) and no GitHub Actions workflow: connect the repository in Netlify to have it build on every push, or deploy from your machine with `seite deploy`.
+
 ### Deploy
 
 ```bash
@@ -182,6 +191,9 @@ When `deploy.domain` is set, pre-flight checks will verify the domain is attache
 ```toml
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
+default_template = "doc.html"
 subdomain = "docs"           # → docs.example.com
 subdomain_base_url = "https://docs.example.com"  # optional: explicit URL override
 deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
@@ -189,7 +201,9 @@ deploy_project = "my-docs"   # Cloudflare/Netlify project for this subdomain
 
 `subdomain_base_url` overrides the auto-derived subdomain URL. This is useful when `base_url` contains `www` (e.g., `https://www.example.com` would otherwise produce `docs.www.example.com`).
 
-`deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to. If omitted, the global `deploy.project` is used as a fallback.
+`deploy_project` specifies which Cloudflare Pages or Netlify project to deploy the subdomain to (lowercase letters, digits and `-`, at most 63 characters). If omitted, the global `deploy.project` is used as a fallback.
+
+If a subdomain fails to deploy, has no build output, or has no project (Cloudflare Pages), `seite deploy` still deploys the rest, then exits with status 1 and names each failure (`--json`: `data.subdomain_failures`).
 
 `seite deploy --dry-run` shows the full subdomain deploy plan. In a workspace, cross-site domain conflicts are detected and warned about at deploy time.
 
@@ -212,6 +226,9 @@ session_hours = 168
 
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
+default_template = "doc.html"
 private = true
 access_group = "staff"
 subdomain = "docs"
@@ -228,7 +245,103 @@ seite deploy
 
 `set-password` stages the password and separate signing secrets for both production and preview. Deploy from the Pages project's configured production branch to activate production; projects created by seite use `main`. Use `seite deploy --preview` to activate preview. That deployment invalidates sessions signed with the environment's previous secret.
 
-The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
+The generated `_worker.js` and `_routes.json` use Cloudflare secret bindings and signed, secure session cookies. The Worker also answers `Accept: text/markdown` requests (see [Markdown for agents](#markdown-for-agents)). Custom versions of either file conflict with password access and fail the build. Deployment pre-flight rejects password-enabled sites on GitHub Pages or Netlify.
+
+#### Set every protected project to Fail closed
+
+Every request to a password-enabled Pages project runs the Worker. On the Workers Free plan that uses up a [daily request allowance](https://developers.cloudflare.com/pages/functions/pricing/), and each Pages project has a **Fail open / Fail closed** setting that decides what happens once the allowance is exhausted. With **Fail open**, Cloudflare [serves static assets without running the Worker](https://developers.cloudflare.com/pages/functions/routing/). The protected pages, `.md` alternates, and `/private-assets/` files are static assets, so anyone could load them without a password until the allowance resets. Cloudflare's API defaults new projects to fail open.
+
+seite sets production and preview to **Fail closed** on every protected project (the main project when a main-site collection is private, and each private subdomain's project):
+
+- `seite access set-password` sets it after uploading the secrets, and exits with an error if it can't.
+- `seite deploy --setup` sets it after creating the projects, and exits with an error if it can't, because the GitHub Actions workflow it writes uploads with `wrangler` directly and skips seite's checks.
+- `seite deploy` runs a **Cloudflare fail closed** pre-flight check. It reads the setting through the Cloudflare API and offers to fix it. If the setting still fails open or can't be verified, the deploy stops unless you confirm interactively or pass `--skip-checks`. `--yes` applies the fix, but it never skips this check.
+
+The API calls use `CLOUDFLARE_API_TOKEN` (or your `wrangler login` session). Set `CLOUDFLARE_ACCOUNT_ID` if your login has access to more than one account, because seite won't guess which account holds the project. If you deploy another way, such as your own `wrangler pages deploy` workflow, check the setting once in the dashboard: **Workers & Pages → your project → Settings → Runtime → Fail open / closed → Fail closed**. Once the allowance runs out, a fail-closed project shows visitors a Cloudflare error page instead of your site. The Workers Paid plan removes the daily limit.
+
+## Markdown for agents
+
+Every build writes a markdown copy of each page next to its HTML (`/posts/hello-world` → `/posts/hello-world.md`, a collection index → `/posts/index.md`, the homepage → `/index.md` when `content/pages/index.md` exists), linked from the page head with `<link rel="alternate" type="text/markdown">`. Each copy starts (right after its frontmatter) with one line pointing agents at the rest of the site:
+
+```markdown
+> Index of this site for agents: [llms.txt](https://example.com/llms.txt). Full text: [llms-full.txt](https://example.com/llms-full.txt). All pages: [sitemap.md](https://example.com/sitemap.md).
+```
+
+Pages in another language of a multilingual site point at that language's `/<lang>/llms.txt`. `/sitemap.md` lists every page with its markdown URL and description, per collection (and per language): the pages of `sitemap.xml`, without `noindex` pages and drafts. `llms.txt` links it.
+
+### `Accept: text/markdown`
+
+Agents that send `Accept: text/markdown` can also get the markdown at the page's normal URL. A request gets markdown when `text/markdown` has a higher quality than `text/html`, or the same quality and is named while HTML only matches a wildcard (`text/markdown, */*`). Browsers never ask for markdown, and `*/*` alone gets HTML. Negotiated HTML responses carry `Vary: Accept`, and a page without a markdown copy falls through to the normal response.
+
+| Where | Negotiation |
+|-------|-------------|
+| `seite serve` | Always on (`.md` URLs are served as `text/markdown; charset=utf-8`). |
+| Cloudflare Pages with `[access]` | Always on: the generated password Worker already runs on every request. A protected page's markdown is served only after the same password check. |
+| Cloudflare Pages without `[access]` | Opt-in: `[deploy] markdown_negotiation = true` generates `_worker.js` (Pages advanced mode) and a `_routes.json` that skips `/static/*`, `/og/*` and `/search/*`. |
+| Netlify | Not generated (see below). |
+| GitHub Pages | Not possible (no request-time code). Agents use the `.md` URLs, `sitemap.md` and `llms.txt`. |
+
+Cost on Cloudflare: static asset requests are free and unlimited, but with a Worker every page request is a Functions request, billed as a Workers request. The Workers Free plan allows 100,000 requests a day (shared with your other Workers, reset at midnight UTC). Past that, the project's *Settings → Runtime → Fail open / closed* setting decides whether Pages serves the static files (fail open) or an error page. That is why it is off by default; a site with `[access]` already pays this cost.
+
+Cloudflare also does not apply [`_headers`](https://developers.cloudflare.com/pages/configuration/headers/) or [`_redirects`](https://developers.cloudflare.com/pages/configuration/redirects/) rules to requests a Pages Function (including `_worker.js`) serves. With negotiation on, that is every page request outside `/static/`, `/og/` and `/search/`: custom headers from `public/_headers` and custom redirects are dropped there, and `seite build` warns when either file is present. `aliases:` keep working through the HTML redirect page seite writes at each old URL (a meta refresh instead of a 301).
+
+Only plain paths negotiate: a request path with `%` escapes, `//`, a backslash or a `.`/`..` segment always gets the normal response, and the Worker re-checks the exact `.md` path it fetches (for `[access]`, against the same password route). An extensionless path tries `<path>.md`, then `<path>/index.md`.
+
+Netlify: `_redirects` and `netlify.toml` redirect conditions only match `Country`, `Language`, `Role` and `Cookie`, not `Accept`, so negotiation needs an Edge Function. Edge Functions count against your plan's usage on every matching request, and they are deployed only when Netlify builds the site (the `netlify.toml` seite generates) or by `netlify deploy` run from the site root. seite does not generate one. If you want it anyway, a minimal version (untested example; HTML responses keep no `Vary` header):
+
+```js
+// netlify/edge-functions/markdown.js
+export default async (request) => {
+  const url = new URL(request.url);
+  const accept = request.headers.get("accept") || "";
+  const last = url.pathname.split("/").pop();
+  if (!/text\/markdown/i.test(accept) || /text\/html/i.test(accept) || last.includes(".")) return;
+  const md = url.pathname.endsWith("/") ? url.pathname + "index.md" : url.pathname + ".md";
+  const response = await fetch(new URL(md, url));
+  if (!response.ok) return;
+  return new Response(response.body, {
+    headers: { "Content-Type": "text/markdown; charset=utf-8", "Vary": "Accept" },
+  });
+};
+
+export const config = { path: "/*", excludedPath: ["/static/*", "/og/*", "/search/*"] };
+```
+
+## Scheduled publishing
+
+With `[build] schedule = true`, posts with a future `date` are left out of the build until their date, and `expires:` posts drop out after theirs (see [Scheduled publishing](/docs/configuration#scheduled-publishing)). A static site only changes when it is rebuilt, so something has to rebuild it daily. All options below are free.
+
+- **GitHub Pages:** the workflow `seite init` generates (`.github/workflows/deploy.yml`) has a daily trigger, so scheduled posts go live on free GitHub Actions minutes:
+
+  ```yaml
+  on:
+    push:
+      branches: [main]
+    workflow_dispatch:
+    schedule:
+      - cron: '17 5 * * *'   # daily, 05:17 UTC
+  ```
+
+  With `schedule = true`, `seite upgrade` adds it to a workflow that is still exactly as seite generated it; if you edited yours, it prints the lines to add instead.
+
+  GitHub disables scheduled workflows in public repositories after 60 days without repository activity (and emails you first). Re-enable it under *Actions → Deploy → Enable workflow* (or `gh workflow enable deploy.yml`), or push any commit before then; manual runs (`workflow_dispatch`) keep working meanwhile.
+- **Cloudflare Pages via GitHub Actions:** the generated workflow has the same daily trigger (the build runs in Actions, then deploys to the configured or detected Pages project with your `CLOUDFLARE_*` secrets).
+- **Netlify, or Cloudflare Pages with `seite deploy` from your machine:** for Cloudflare, commit the generated workflow (and its secrets) so GitHub Actions rebuilds daily; for either host, use its free **build hook**: Netlify (*Site configuration → Build & deploy → Build hooks*) and Cloudflare Pages Git-connected projects (*Settings → Builds → Deploy hooks*) give you a URL that starts a build when called. Call it daily from any free scheduler, for example a scheduled GitHub Actions workflow:
+
+  ```yaml
+  on:
+    schedule:
+      - cron: '17 5 * * *'
+  jobs:
+    rebuild:
+      runs-on: ubuntu-latest
+      steps:
+        - run: curl -fsS -X POST "${{ secrets.BUILD_HOOK_URL }}"
+  ```
+
+  A build hook needs the host to build the site itself (Netlify reads the generated `netlify.toml`; Cloudflare Pages needs a Git-connected project with `seite build` as its build command).
+
+Pick a cron hour after midnight in your `[site] timezone`, so posts dated today are published that morning.
 
 ## Override Target
 
@@ -246,13 +359,17 @@ After `seite build`, the `dist/` directory contains everything needed:
 ```
 dist/
 ├── index.html           # Homepage
-├── index.md             # Homepage markdown
+├── index.md             # Homepage markdown (only with content/pages/index.md)
 ├── feed.xml             # RSS feed
 ├── sitemap.xml          # XML sitemap
-├── robots.txt           # Robots directives
+├── sitemap.md           # Every page's markdown URL, for agents
+├── robots.txt           # Robots + AI crawler directives, Content Signals
 ├── llms.txt             # LLM summary
 ├── llms-full.txt        # Full LLM content
-├── search-index.json    # Client-side search data
+├── atom.xml             # Atom feed
+├── search-index.json    # Basic search data (titles, descriptions, tags)
+├── search/              # Full-text search index ([build] search = "full")
+├── og/                  # Generated social cards ([og])
 ├── 404.html             # Error page
 ├── posts/
 │   ├── hello-world.html

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} - {{ site.title }}{% endblock %}
+{% block content %}
+<article>
+    <h1>{{ page.title }}</h1>
+    {% if page.date %}<time>{{ page.date }}</time>{% endif %}
+    {% if page.reading_time %}<span class="reading-time">{{ page.reading_time }} {{ t.min_read }}</span>{% endif %}
+    {% if page.tags | length > 0 %}
+    <div class="tags">
+        {% for tag in page.tags %}<a href="{{ lang_prefix }}/tags/{{ tag | slugify }}/">{{ tag }}</a> {% endfor %}
+    </div>
+    {% endif %}
+    <div class="content">{{ page.content | safe }}</div>
+</article>
+{% if prev_post or next_post %}
+<nav class="article-nav">
+    {% if next_post %}<a href="{{ next_post.url }}">&larr; {{ next_post.title }}</a>{% endif %}
+    {% if prev_post %}<a href="{{ prev_post.url }}">{{ prev_post.title }} &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

@@ -5,15 +5,15 @@
 - **Multi-language** — Filename-based translations with per-language URLs, RSS, sitemap, and discovery files
 - **SEO+GEO optimized** — Every page gets canonical URL, Open Graph (with image absolutization, dimensions, `article:published_time`/`article:modified_time`), Twitter Card, JSON-LD structured data (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), and per-page robots meta. No plugins needed.
 - **LLM discoverability** — Generates `llms.txt` (summary) and `llms-full.txt` (full markdown with source URLs) for LLM consumption; `<link rel="alternate" type="text/markdown">` in every page's `<head>`
-- **AI crawler management** — `robots.txt` includes explicit directives: allows AI search crawlers (ChatGPT-User, OAI-SearchBot, PerplexityBot) and blocks AI training crawlers (GPTBot, Google-Extended, CCBot, Bytespider)
+- **AI crawler management** — `robots.txt` includes explicit directives: allows AI search and user-fetch crawlers (ChatGPT-User, OAI-SearchBot, PerplexityBot, Perplexity-User, Claude-SearchBot, Claude-User) and blocks AI training crawlers (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, meta-externalagent, CCBot, Bytespider); the `User-agent: *` group carries a Cloudflare [Content Signals](https://contentsignals.org) line `Content-Signal: search=yes, ai-input=yes, ai-train=no`
 - **RSS feed** — Auto-generated at `/feed.xml` (per-language feeds at `/{lang}/feed.xml`)
 - **Sitemap** — Auto-generated at `/sitemap.xml` with hreflang alternates; `lastmod` uses `updated` date (with `date` fallback)
-- **Search** — `dist/search-index.json` is auto-generated every build; the default theme includes a client-side search input that queries it. No config needed.
+- **Search** — `[build] search = "full"` (written by `seite init`) builds a full-text index of page text under `dist/search/` (sharded, loaded lazily, any static host); every bundled theme's search box (`seite/search.html` + `seite/scripts.html`) ranks results and shows highlighted snippets. Absent key = `"basic"` (`dist/search-index.json` only: titles, descriptions, tags; always written unless `search = false`). Drafts, scheduled, `noindex`, unlisted and private pages are never indexed.
 - **Math/LaTeX rendering** — Add `math = true` to `[build]` for server-side KaTeX rendering of `$inline$` and `$$display$$` math expressions. KaTeX CSS loaded automatically from CDN.
 - **Mermaid diagrams** — Add `mermaid = true` to `[build]` to render fenced ` ```mermaid ` code blocks as client-side diagrams.
-- **Password access** — Add `[access]` to `seite.toml` to password-protect any `private = true` collection via a generated Cloudflare Pages Worker. See Configuration section below.
-- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See Configuration section below.
-- **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See Configuration section below.
+- **Password access** — Add `[access]` to `seite.toml` to password-protect any `private = true` collection via a generated Cloudflare Pages Worker. See `config-reference.md`.
+- **Image processing** — Add `[images]` to `seite.toml` to auto-resize images, generate WebP and AVIF variants, inject `srcset`/`<picture>` elements, and add `loading="lazy"` (first image per page is skipped to optimize LCP). See `config-reference.md`.
+- **Analytics** — Add `[analytics]` to `seite.toml` for Google Analytics, GTM, Plausible, Fathom, or Umami. Optional cookie consent banner. See `config-reference.md`.
 - **Tag pages** — Auto-generated `/tags/` index and `/tags/{tag}/` archive pages, included in sitemap
 - **404 page** — Auto-generated `dist/404.html` using the `404.html` template. Customize by creating `templates/404.html`. Dev server serves it on 404 responses.
 - **Table of contents** — `{{ page.toc }}` is auto-generated from heading hierarchy; all headings get `id` anchors for deep linking
@@ -22,6 +22,6 @@
 - **Markdown output** — Every page gets a `.md` file alongside `.html` in `dist/`
 - **Clean URLs** — `/posts/hello-world` (no `.html` extension)
 - **Draft exclusion** — `draft: true` in frontmatter hides from builds (use `--drafts` to include)
-- **Shortcodes** — Reusable content components in markdown. See Shortcodes section below.
+- **Shortcodes** — Reusable content components in markdown. See the shortcodes rule.
 - **Subdomain deploys** — Set `subdomain = "docs"` on a collection to deploy it to `docs.{base_domain}` with its own sitemap, RSS, robots.txt, and search index. Cross-subdomain links are auto-rewritten to absolute URLs. `seite deploy --setup` auto-creates Cloudflare/Netlify projects.
 

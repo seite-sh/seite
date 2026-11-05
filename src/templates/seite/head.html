@@ -1,0 +1,36 @@
+{# seite partial: head — managed by seite, updated on upgrade. Override with templates/seite/head.html only if you accept losing automatic SEO/GEO updates. #}<meta name="description" content="{{ page.description | default(value=site.description) | escape_attr }}">
+    <link rel="canonical" href="{{ site.base_url | escape_attr }}{{ page.url | default(value='/') | escape_attr }}">
+    <meta property="og:type" content="{% if page.collection %}article{% else %}website{% endif %}">
+    <meta property="og:url" content="{{ site.base_url | escape_attr }}{{ page.url | default(value='/') | escape_attr }}">
+    <meta property="og:title" content="{{ page.title | default(value=site.title) | escape_attr }}">
+    <meta property="og:description" content="{{ page.description | default(value=site.description) | escape_attr }}">
+    {% if page.image %}{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}<meta property="og:image" content="{{ _abs_image | escape_attr }}">
+    <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% elif page.og_image or site.og_image %}{% set _abs_image = page.og_image | default(value=site.og_image) %}<meta property="og:image" content="{{ _abs_image | escape_attr }}">
+    <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="{% if page.og_image and page.title %}{{ page.title | escape_attr }}{% else %}{{ site.title | escape_attr }}{% endif %}">{% endif %}{# generated [og] cards: page.og_image (the page's own card), else site.og_image (the site card); never when page.image is set #}
+    <meta property="og:site_name" content="{{ site.title | escape_attr }}">
+    <meta property="og:locale" content="{{ lang | escape_attr }}">
+    {% if page.collection and page.date %}<meta property="article:published_time" content="{{ page.date | escape_attr }}">{% endif %}
+    {% if page.collection and page.updated %}<meta property="article:modified_time" content="{{ page.updated | escape_attr }}">{% endif %}
+    <meta name="twitter:card" content="{% if _abs_image %}summary_large_image{% else %}summary{% endif %}">
+    <meta name="twitter:title" content="{{ page.title | default(value=site.title) | escape_attr }}">
+    <meta name="twitter:description" content="{{ page.description | default(value=site.description) | escape_attr }}">
+    {% if _abs_image %}<meta name="twitter:image" content="{{ _abs_image | escape_attr }}">{% endif %}
+    {% if page.robots %}<meta name="robots" content="{{ page.robots | escape_attr }}">{% endif %}
+    <link rel="alternate" type="application/rss+xml" title="{{ site.title | escape_attr }}" href="{{ lang_prefix | escape_attr }}/feed.xml">
+    <link rel="alternate" type="application/atom+xml" title="{{ site.title | escape_attr }}" href="{{ lang_prefix | escape_attr }}/atom.xml">
+    <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix | escape_attr }}/llms.txt">
+    {% if page.markdown_url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url | escape_attr }}{{ page.markdown_url | escape_attr }}">{% endif %}
+    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang | escape_attr }}" href="{{ site.base_url | escape_attr }}{{ t.url | escape_attr }}">
+    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url | escape_attr }}{{ page.url | default(value='/') | escape_attr }}">
+    {% endif %}
+    <script type="application/ld+json">
+    {% set _ld_url = page.url | default(value='/') %}{% set _ld_href = site.base_url ~ _ld_url %}{% set _ld_title = page.title | default(value=site.title) %}{% set _ld_desc = page.description | default(value=site.description) %}
+    {% if page.collection == 'posts' %}{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ _ld_title | json_script }},"description":{{ _ld_desc | json_script }},"datePublished":{{ page.date | default(value='') | json_script }}{% if page.updated %},"dateModified":{{ page.updated | json_script }}{% endif %}{% if site.author %},"author":{"@type":"Person","name":{{ site.author | json_script }}}{% endif %},"publisher":{"@type":"Organization","name":{{ site.title | json_script }}},"url":{{ _ld_href | json_script }}}
+    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_script }},"description":{{ _ld_desc | json_script }}{% if page.updated %},"dateModified":{{ page.updated | json_script }}{% endif %}{% if site.author %},"author":{"@type":"Person","name":{{ site.author | json_script }}}{% endif %},"publisher":{"@type":"Organization","name":{{ site.title | json_script }}},"url":{{ _ld_href | json_script }}}
+    {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_script }},"description":{{ site.description | json_script }},"url":{{ site.base_url | json_script }}}
+    {% endif %}
+    </script>
+    {% set _bc_root = lang_prefix ~ "/" %}{% if page.collection and page.url != _bc_root %}{% set _bc_base = site.base_url | trim_end_matches(pat="/") %}{% set _bc_home = _bc_base ~ lang_prefix %}{% set _bc_self = _bc_base ~ page.url %}<script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_script }},"item":{{ _bc_home | json_script }}},{% if page.collection_url %}{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_script }},"item":{{ page.collection_url | json_script }}}{% if page.collection_url != _bc_self %},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_script }}}{% endif %}{% else %}{"@type":"ListItem","position":2,"name":{{ _ld_title | json_script }}}{% endif %}]}
+    </script>{% endif %}{# page.collection_url: the collection index under its url_prefix (unset for root-mounted collections, which get Home > page); no breadcrumb on the homepage #}{% if math_enabled %}
+    <link rel="stylesheet" href="{{ katex_css_url | escape_attr }}" crossorigin="anonymous">{% endif %}

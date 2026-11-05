@@ -5,40 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/favicon.ico">
     <title>{% block title %}{{ site.title }}{% endblock %}</title>
-    <meta name="description" content="{{ page.description | default(value=site.description) }}">
-    <link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
-    <meta property="og:type" content="{% if page.collection %}article{% else %}website{% endif %}">
-    <meta property="og:url" content="{{ site.base_url }}{{ page.url | default(value='/') }}">
-    <meta property="og:title" content="{{ page.title | default(value=site.title) }}">
-    <meta property="og:description" content="{{ page.description | default(value=site.description) }}">
-    {% if page.image %}{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}<meta property="og:image" content="{{ _abs_image }}">
-    <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">{% endif %}
-    <meta property="og:site_name" content="{{ site.title }}">
-    <meta property="og:locale" content="{{ lang }}">
-    {% if page.collection and page.date %}<meta property="article:published_time" content="{{ page.date }}">{% endif %}
-    {% if page.collection and page.updated %}<meta property="article:modified_time" content="{{ page.updated }}">{% endif %}
-    <meta name="twitter:card" content="{% if page.image %}summary_large_image{% else %}summary{% endif %}">
-    <meta name="twitter:title" content="{{ page.title | default(value=site.title) }}">
-    <meta name="twitter:description" content="{{ page.description | default(value=site.description) }}">
-    {% if page.image %}<meta name="twitter:image" content="{{ _abs_image }}">{% endif %}
-    {% if page.robots %}<meta name="robots" content="{{ page.robots }}">{% endif %}
-    <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="{{ lang_prefix }}/feed.xml">
-    <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ lang_prefix }}/atom.xml">
-    <link rel="alternate" type="text/plain" title="LLM Summary" href="{{ lang_prefix }}/llms.txt">
-    {% if page.url %}<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">{% endif %}
-    {% if translations %}{% for t in translations %}<link rel="alternate" hreflang="{{ t.lang }}" href="{{ site.base_url }}{{ t.url }}">
-    {% endfor %}<link rel="alternate" hreflang="x-default" href="{{ site.base_url }}{{ page.url | default(value='/') }}">
-    {% endif %}
-    <script type="application/ld+json">
-    {% set _ld_url = page.url | default(value='/') %}{% set _ld_href = site.base_url ~ _ld_url %}{% set _ld_title = page.title | default(value=site.title) %}{% set _ld_desc = page.description | default(value=site.description) %}
-    {% if page.collection == 'posts' %}{"@context":"https://schema.org","@type":"BlogPosting","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }},"datePublished":{{ page.date | default(value='') | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
-    {% elif page.collection %}{"@context":"https://schema.org","@type":"Article","headline":{{ _ld_title | json_encode() }},"description":{{ _ld_desc | json_encode() }}{% if page.updated %},"dateModified":{{ page.updated | json_encode() }}{% endif %},"author":{"@type":"Person","name":{{ site.author | json_encode() }}},"publisher":{"@type":"Organization","name":{{ site.title | json_encode() }}},"url":{{ _ld_href | json_encode() }}}
-    {% else %}{"@context":"https://schema.org","@type":"WebSite","name":{{ site.title | json_encode() }},"description":{{ site.description | json_encode() }},"url":{{ site.base_url | json_encode() }}}
-    {% endif %}
-    </script>
-    {% if page.collection %}{% set _bc_col_url = site.base_url ~ lang_prefix ~ "/" ~ page.collection %}<script type="application/ld+json">
-    {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":{{ site.title | json_encode() }},"item":{{ site.base_url | json_encode() }}},{"@type":"ListItem","position":2,"name":{{ page.collection | title | json_encode() }},"item":{{ _bc_col_url | json_encode() }}},{"@type":"ListItem","position":3,"name":{{ _ld_title | json_encode() }}}]}
-    </script>{% endif %}
+    {% include "seite/head.html" %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -227,6 +194,7 @@
         #search-results strong { color: var(--phosphor-bright); }
         #search-results .result-meta { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.1rem; }
         #search-results .no-results { padding: 0.4rem 0.6rem; color: var(--text-dim); font-size: 0.85rem; }
+        #search-results .result-snippet { display: block; font-size: 0.85em; opacity: 0.8; margin-top: 0.15rem; } #search-results mark { background: rgba(255, 196, 0, 0.35); color: inherit; padding: 0 0.1em; border-radius: 2px; } #search-results a.active { outline: 2px solid currentColor; outline-offset: -2px; }
 
         /* ==============================
            HOMEPAGE CONTENT
@@ -746,8 +714,8 @@
             border-color: var(--phosphor);
             box-shadow: 0 0 8px rgba(32,194,14,0.1);
         }
-        .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
-        .roadmap-card h3::before { content: none; }
+        .roadmap-card h2, .roadmap-card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
+        .roadmap-card h2::before, .roadmap-card h3::before { content: none; }
         .roadmap-card p, .roadmap-card .excerpt { margin: 0; color: var(--text); font-size: 0.85rem; }
         .roadmap-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
         .roadmap-column-header {
@@ -781,8 +749,8 @@
             box-shadow: 0 0 6px rgba(32,194,14,0.3);
         }
         .roadmap-milestone-dot .roadmap-status { display: none; }
-        .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
-        .roadmap-milestone-content h3::before { content: none; }
+        .roadmap-milestone-content h2, .roadmap-milestone-content h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--phosphor); }
+        .roadmap-milestone-content h2::before, .roadmap-milestone-content h3::before { content: none; }
         .roadmap-milestone-content p { margin: 0.25rem 0 0; color: var(--text); font-size: 0.85rem; }
         @media (max-width: 768px) { .roadmap-kanban { grid-template-columns: 1fr; } }
 
@@ -921,6 +889,8 @@
         .roadmap-milestone--left { border-left: 2px solid var(--phosphor); padding-left: 1rem; }
         .roadmap-milestone--right { border-left: 2px solid var(--border); padding-left: 1rem; }
         /* Reduced motion: disable scanlines, vignette, blink, and all glow transitions */
+        /* Cross-fade between pages (same-origin navigations; off for reduced motion). */
+        @media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;
@@ -946,15 +916,8 @@
             {% for item in data.nav %}{% if item.external %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>{% endif %}{% endfor %}
         </nav>
         {% endif %}
-        {% if translations | length > 1 %}
-        <nav class="lang-switcher">
-            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
-        </nav>
-        {% endif %}
-        <form class="search-form" role="search" aria-label="{{ t.search_label }}" onsubmit="return false">
-            <input type="search" id="search-input" placeholder="{{ t.search_placeholder }}" autocomplete="off" aria-label="{{ t.search_label }}">
-        </form>
-        <div id="search-results" aria-live="polite"></div>
+        {% include "seite/lang-switcher.html" %}
+        {% include "seite/search.html" %}
     {% endblock %}
     </header>
     <main id="main">
@@ -968,29 +931,7 @@
         {% endif %}{% endif %}
         <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
     </footer>
-    <script>
-    (function(){
-        var index = null;
-        var input = document.getElementById('search-input');
-        var results = document.getElementById('search-results');
-        var basePath = {{ site.base_path | json_encode() }};
-        var indexUrl = basePath + {% if lang != default_language %}('/' + {{ lang | json_encode() }} + '/search-index.json'){% else %}'/search-index.json'{% endif %};
-        function load(cb) { if (index) { cb(); return; } fetch(indexUrl).then(function(r){return r.json();}).then(function(d){index=d;cb();}).catch(function(){index=[];}); }
-        function search(q) {
-            q = q.toLowerCase().trim();
-            if (!q) { results.innerHTML = ''; return; }
-            var hits = index.filter(function(e){
-                return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){return t.toLowerCase().includes(q);});
-            }).slice(0, 8);
-            if (!hits.length) { results.innerHTML = '<div class="no-results">{{ t.no_results }}</div>'; return; }
-            results.innerHTML = hits.map(function(e){
-                var meta = [e.collection, e.date].filter(Boolean).join(' | ');
-                return '<a href="' + basePath + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
-            }).join('');
-        }
-        input.addEventListener('input', function(){ load(function(){ search(input.value); }); });
-    })();
-    </script>
+    {% include "seite/scripts.html" %}
     {% block footer %}{% endblock %}
     {% block extra_js %}{% endblock %}
 </body>

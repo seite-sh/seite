@@ -1,10 +1,10 @@
 ---
 title: "Templates and Themes"
-description: "Customize your seite static site with Tera templates, overridable blocks, 10 bundled themes, and data-driven navigation. No JavaScript framework needed."
+description: "Customize your seite site with Tera templates, overridable blocks, seite-managed SEO partials, bundled starter and gallery themes, and data-driven navigation."
 weight: 4
 ---
 
-seite uses Tera templates to give you full control over your site's HTML output. The static site generator ships 10 bundled themes and supports AI-generated custom themes, all as single self-contained files with no external dependencies.
+seite uses Tera templates to give you full control over your site's HTML output. Themes own layout and CSS; seite's partials own the SEO and GEO head, search and the language switcher, so those stay correct in every theme, including the ones you design.
 
 ## Template Engine
 
@@ -21,6 +21,7 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ site.base_url }}` | Base URL (e.g., `https://example.com`) |
 | `{{ site.language }}` | Default language code |
 | `{{ site.author }}` | Site author |
+| `{{ site.og_image }}` | Absolute URL of the language's generated site card (`[og]`), the `og:image` fallback; unset when cards are off |
 
 ### Page variables
 
@@ -32,16 +33,22 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ page.updated }}` | Last modified date |
 | `{{ page.description }}` | Page description |
 | `{{ page.image }}` | Social preview image URL |
+| `{{ page.collection_url }}` | Absolute URL of the page's collection index (with language prefix and `url_prefix`); unset for root-mounted collections such as `pages` |
+| `{{ page.og_image }}` | Absolute URL of the page's generated social card (`[og]`); unset when the page has `image:` or no card of its own |
 | `{{ page.slug }}` | URL slug |
 | `{{ page.tags }}` | List of tags |
 | `{{ page.url }}` | Page URL path |
+| `{{ page.markdown_url }}` | Path of the page's published markdown copy (e.g. `/posts/hello.md`, `/posts/index.md`); unset when no `.md` file is written (empty homepage, paginated pages after the first, tag pages, 404) |
 | `{{ page.collection }}` | Collection name |
 | `{{ page.robots }}` | Robots meta directive |
 | `{{ page.word_count }}` | Word count |
 | `{{ page.reading_time }}` | Reading time in minutes |
 | `{{ page.excerpt }}` | Auto-extracted excerpt (HTML) |
 | `{{ page.toc }}` | Table of contents entries |
-| `{{ page.extra }}` | Custom frontmatter data |
+| `{{ page.extra }}` | Custom frontmatter data (`extra:`). Custom schema fields appear here wherever they are written (top level or under `extra:`), e.g. `{{ page.extra.author }}` |
+| `{{ page.taxonomies }}` | Content pages: terms per taxonomy, tags first: `page.taxonomies.categories` is a list of `{name, slug, url}` |
+| `{{ page.related }}` | Content pages: related pages of the same collection and language, `[{title, url, date, description, score}]` (empty when none; see [Related pages](/docs/collections#related-pages)) |
+| `{{ page.series }}` | Content pages in a series: `{name, slug, url, parts: [{title, url, current}], index, total, prev, next}` (`index` is 1-based; `prev`/`next` are `{title, url}` or unset); unset otherwise |
 | `{{ prev_post }}` | Previous (older) post link: `.title`, `.url`, `.date`, `.description` |
 | `{{ next_post }}` | Next (newer) post link: `.title`, `.url`, `.date`, `.description` |
 
@@ -57,7 +64,34 @@ seite uses Tera templates to give you full control over your site's HTML output.
 | `{{ default_language }}` | Default language code (from `seite.toml`) |
 | `{{ lang_prefix }}` | URL prefix for current language (empty for default, `"/es"` for others) |
 | `{{ t }}` | UI translation strings object (override via `data/i18n/{lang}.yaml`) |
+| `{{ search_mode }}` | `[build] search`: `"full"`, `"basic"` or `"off"` |
 | `{{ pagination }}` | Pagination context |
+| `{{ taxonomy }}` | Taxonomy index and term pages: `{name, label, url}` |
+| `{{ terms }}` | Taxonomy index and term pages: every term `{name, slug, url, count, feed_url}` (`feed_url` only when the term has feeds) |
+| `{{ term }}` | Term pages: the listed term `{name, slug, url, count, feed_url}` |
+| `{{ series }}` | Series index pages (`series.html`): `{name, slug, url, parts, total}`; `items` lists the parts in order |
+
+Tag pages (`tags.html`, `tag.html`) also keep their original variables: `tags` (same as `terms`), `tag_name`, `tags_url`, and `items`.
+
+### Taxonomy, term and series templates
+
+| Template | Renders | Default |
+|----------|---------|---------|
+| `tags.html` / `tag.html` | `/tags/` and `/tags/<slug>/` | embedded |
+| `taxonomy.html` | Index of any other taxonomy (`/categories/`) | embedded; override per taxonomy with `template` |
+| `term.html` | Term pages (`/categories/rust/`, `/categories/rust/page/2/`) | embedded; override per taxonomy with `term_template` |
+| `series.html` | Series index pages (`/series/<slug>/`) | embedded |
+
+The default `post.html` renders categories (and any other taxonomy) next to the tags, a series box ("Part 2 of 5 · next/previous part") after the content, and a "Related" list after the post navigation. Tag links come from `page.taxonomies.tags[].url`, so they follow the tags taxonomy's `url_prefix`. Sites created with an earlier seite have their own copy of `templates/post.html`: `seite upgrade` replaces it with the new default when it is exactly a default seite wrote. To add the features to an edited copy, use for example:
+
+```html
+{% if page.series %}<nav class="article-nav series-nav" aria-label="{{ t.series }}">
+  <span>{{ t.series_part | replace(from="{n}", to=page.series.index ~ "") | replace(from="{total}", to=page.series.total ~ "") }} · <a href="{{ page.series.url }}">{{ page.series.name }}</a></span>
+</nav>{% endif %}
+{% if page.related %}<aside class="related"><h2>{{ t.related }}</h2><ul>
+  {% for r in page.related %}<li><a href="{{ r.url }}">{{ r.title }}</a></li>{% endfor %}
+</ul></aside>{% endif %}
+```
 
 ## Translatable UI Strings
 
@@ -74,22 +108,75 @@ All bundled themes and default templates use the `{{ t }}` object for UI text. T
 | `t.older` | Older |
 | `t.page_n_of_total` | Page {n} of {total} |
 | `t.search_label` | Search site content |
+| `t.search_results` | {n} results |
+| `t.search_result` | 1 result |
 | `t.min_read` | min read |
 | `t.contents` | Contents |
 | `t.tags` | Tags |
 | `t.all_tags` | All tags |
 | `t.tagged` | Tagged |
 | `t.changelog` | Changelog |
+| `t.all_releases` | All releases |
 | `t.roadmap` | Roadmap |
 | `t.not_found_title` | Page Not Found |
 | `t.not_found_message` | The page you requested could not be found. |
 | `t.go_home` | Go to the homepage |
-| `t.prev_post` | Previous |
-| `t.next_post` | Next |
 | `t.in_progress` | In Progress |
 | `t.planned` | Planned |
 | `t.done` | Done |
 | `t.other` | Other |
+| `t.trust_center` | Trust Center |
+| `t.trust_hero_subtitle` | Security, compliance, and data protection at {site}. |
+| `t.certifications_compliance` | Certifications & Compliance |
+| `t.active` | Active |
+| `t.learn_more` | Learn more |
+| `t.auditor` | Auditor |
+| `t.scope` | Scope |
+| `t.issued` | Issued |
+| `t.expires` | Expires |
+| `t.subprocessors` | Subprocessors |
+| `t.vendor` | Vendor |
+| `t.purpose` | Purpose |
+| `t.location` | Location |
+| `t.dpa` | DPA |
+| `t.yes` | Yes |
+| `t.no` | No |
+| `t.faq` | Frequently Asked Questions |
+| `t.resources` | Resources |
+| `t.previous` | Previous |
+| `t.next` | Next |
+| `t.prev_post` | Previous |
+| `t.next_post` | Next |
+| `t.on_this_page` | On this page |
+| `t.search_docs` | Search docs… |
+| `t.search_documentation` | Search documentation |
+| `t.toggle_theme` | Toggle light/dark mode |
+| `t.toggle_sidebar` | Toggle sidebar |
+| `t.built_with` | Built with |
+| `t.get_started` | Get started |
+| `t.view_on_github` | View on GitHub |
+| `t.rss` | RSS |
+| `t.changelog_subtitle` | All notable changes. Subscribe via |
+| `t.roadmap_subtitle` | What we're working on and what's coming next. |
+| `t.open_an_issue` | Open an issue |
+| `t.have_a_feature_request` | Have a feature request? |
+| `t.contact_name` | Name |
+| `t.contact_email` | Email |
+| `t.contact_message` | Message |
+| `t.contact_submit` | Send Message |
+| `t.newsletter_email` | Email address |
+| `t.newsletter_submit` | Subscribe |
+| `t.documentation` | Documentation |
+| `t.callout_info` | Info |
+| `t.callout_tip` | Tip |
+| `t.callout_warning` | Warning |
+| `t.callout_danger` | Danger |
+| `t.categories` | Categories |
+| `t.related` | Related |
+| `t.series` | Series |
+| `t.series_part` | Part {n} of {total} |
+
+A taxonomy without a configured `label` takes its display name from the UI string named after it (`t.tags`, `t.categories`, or a key you add in `data/i18n/{lang}.yaml`), so taxonomy labels translate like every other string.
 
 ### Overriding Strings
 
@@ -239,39 +326,72 @@ Use in templates:
 {% endif %}
 ```
 
-All 10 bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+All bundled themes render `data.nav` and `data.footer` automatically when present. See [Configuration](/docs/configuration#data-files) for supported formats and directory structure.
+
+## seite partials
+
+seite ships seven partials under the reserved `seite/` template namespace. Every bundled theme includes the first five, and so should yours; the last two are opt-in:
+
+| Partial | Include it | What it renders |
+|---------|------------|-----------------|
+| `seite/head.html` | inside `<head>`, right after `<title>` | description, canonical URL, Open Graph and Twitter tags (absolute `og:image`: `page.image`, else the generated card `page.og_image`, else the site card `site.og_image`), `article:*` times, JSON-LD (`BlogPosting`/`Article`/`WebSite` + `BreadcrumbList`), robots, RSS/Atom/`llms.txt` links, the markdown alternate (`page.markdown_url`), hreflang, the KaTeX stylesheet when `math` is on |
+| `seite/search.html` | where the search box goes | the `role="search"` form (labelled by `t.search_label`) and the `#search-results` live region |
+| `seite/scripts.html` | right before `</body>` | seite's end-of-body scripts (today: `seite/search-script.html`, the full-text search client; see [Search](#search)) |
+| `seite/search-script.html` | (via `seite/scripts.html`) | the search script on its own |
+| `seite/lang-switcher.html` | where the language links go | links to the page's translations; renders nothing on single-language pages |
+| `seite/comments.html` | optional, e.g. at the end of `post.html` | the `[comments]` embed (giscus/utterances, settings in `site.comments`); renders nothing without `[comments]`. Same output as `{{< comments() >}}` |
+| `seite/newsletter.html` | optional, anywhere | the `[newsletter]` subscribe form (settings in `site.newsletter`); renders nothing without `[newsletter]`. Same output as `{{< newsletter() >}}` |
+
+The partials escape what they print: attribute values go through the `escape_attr` filter (`"`, `<`, `>` and a bare `&` become entities) and JSON-LD values through `json_script` (JSON with every `<` written as `\u003c`). Both filters are available to your own templates.
+
+`<title>{% block title %}…{% endblock %}</title>` stays in the theme: Tera blocks cannot live in an included file, and collection templates override the title through that block.
+
+The partials are embedded in the binary and **updated with seite**: SEO, GEO and search fixes reach every site on the next build, without touching `templates/base.html`. `seite check` warns (`template-missing-seite-head`) when a custom `base.html` does not include `seite/head.html`, directly or through templates it includes or extends.
+
+**Overriding a partial.** A file at `templates/seite/<name>.html` replaces the embedded one, e.g. `templates/seite/search.html` for a different search box. An overridden partial is yours: it no longer receives seite's fixes, so override the smallest one that does what you need, and prefer CSS or the theme's own markup around the include.
+
+### Search
+
+The search script drives any page that has an `<input id="search-input">` and a `<div id="search-results">` (what `seite/search.html` renders); pages without them pay only for the inline script, which then does nothing. With `[build] search = "full"` it searches the full-text index under `search/`, otherwise (or when `search/` is missing) `search-index.json`; with `search = false` neither partial renders anything. Templates see the mode as `{{ search_mode }}` (`"full"`, `"basic"` or `"off"`). See [Configuration](/docs/configuration#search) for what is indexed and how results are ranked.
+
+Each result is built with DOM calls (never `innerHTML`):
+
+```html
+<a href="/docs/deploy" id="search-result-0">
+  <strong>Deploy <mark>Guide</mark></strong>
+  <div class="result-meta">docs · 2026-01-02</div>
+  <div class="result-snippet">… push to GitHub and the <mark>guide</mark> …</div>
+</a>
+<div class="no-results">No results</div>   <!-- when nothing matches -->
+```
+
+Style `#search-results a`, `.result-meta`, `.result-snippet`, `mark` and `a.active` (the result picked with the arrow keys; Enter opens it, Escape closes the list). The result count is announced through a visually hidden `role="status"` element the script adds after `#search-results`. The strings come from `t.no_results`, `t.search_result` ("1 result") and `t.search_results` ("{n} results"). To limit a box to some collections, set `search_collections` right before the include, e.g. `{% set search_collections = "docs" %}{% include "seite/search.html" %}` (comma-separated names); the partial renders it as `data-collections="docs"` on the input, which the script reads (in your own markup, write the attribute yourself). `search/meta.json` is fetched with `cache: "no-cache"` so a new deploy is picked up at once; shard and page files carry `?v=<hash>` and can be cached freely.
 
 ## Bundled Themes
 
-10 themes ship with the binary, no downloads needed:
+seite ships 11 themes inside the binary. They are examples and starting points; for your own look, see [Design your own theme](/docs/custom-themes).
 
-### default
-Clean baseline. 720px centered column, system-ui font, blue links. Good starting point.
+**Starters** (offered by `seite init`, which picks `docs` for a docs-only site and `default` otherwise; `--theme` chooses):
 
-### minimal
-Literary/essay feel. 600px column, Georgia serif, bottom-border-only search input. Typography carries all personality.
+- `default`: clean baseline. 720px column, system-ui font, blue links.
+- `docs`: documentation layout with a fixed sidebar and auto-generated navigation.
+- `landing`: marketing page with hero sections and calls to action.
+- `blank`: bare semantic layout with its CSS in `static/css/site.css`, made for designing your own (`seite theme new`).
 
-### dark
-True black (`#0a0a0a`) background, violet (`#8b5cf6`) accent. Styled focus rings, high-contrast text.
+**Gallery** (examples, applied with `seite theme apply <name>`): `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`.
 
-### docs
-Documentation layout. Fixed 260px sidebar with auto-generated navigation, GitHub-style colors. Best for technical documentation.
-
-### brutalist
-Neo-brutalist design. Cream background, 3px black borders, hard non-blurred shadows, yellow (`#ffe600`) accent. No border-radius.
-
-### bento
-Card grid layout. 1000px column, CSS grid with mixed card sizes, border-radius 20px, soft shadows. Dark/indigo accent cards.
+Every bundled theme cross-fades between pages with CSS view transitions (`@view-transition { navigation: auto; }`), only under `prefers-reduced-motion: no-preference`; see [Page transitions](/docs/custom-themes#page-transitions).
 
 ## Applying Themes
 
 ```bash
-seite theme list              # Show all bundled + installed themes
+seite theme list              # Starters, gallery, installed themes
 seite theme apply dark        # Apply a bundled theme
 seite theme apply my-custom   # Apply an installed theme
+seite theme new               # Start your own design from the blank starter
 ```
 
-See the [Theme Gallery](/docs/theme-gallery) for visual previews of all bundled themes.
+Applying writes `templates/base.html` (a customized one is backed up to `base.html.bak` first). `seite upgrade` replaces a bundled theme you never edited with its newest version. See the [Theme Gallery](/docs/theme-gallery) for previews.
 
 ## Installing & Sharing Themes
 
@@ -287,17 +407,12 @@ Installed themes are saved to `templates/themes/<name>.tera` and appear in `seit
 
 ## Custom Themes with AI
 
-Generate a completely custom theme:
-
 ```bash
-seite theme create "minimal serif with warm earth tones and generous whitespace"
+seite theme new                                             # blank starter
+seite theme create "minimal serif with warm earth tones"   # run your agent once
 ```
 
-This uses Claude Code to generate a `templates/base.html` with all required blocks, SEO tags, search, and accessibility features. Export AI-generated themes to share them:
-
-```bash
-seite theme export earth-tones --description "Warm serif theme with earth tones"
-```
+`seite theme create` runs your coding agent with `/seite theme <description>` (or points you to `/impeccable` when the impeccable design skill is installed). When the site is still on a bundled example it scaffolds `blank` first. The agent edits layout and CSS and keeps the `seite/*` includes. See [Design your own theme](/docs/custom-themes).
 
 ## Table of Contents
 
@@ -318,6 +433,6 @@ Docs and posts automatically get a table of contents. Headings receive `id` anch
 ## Next Steps
 
 - [Building Custom Themes](/docs/custom-themes): step-by-step guide to creating a theme from scratch
-- [Theme Gallery](/docs/theme-gallery): browse all 10 bundled themes with visual previews
+- [Theme Gallery](/docs/theme-gallery): the starters and the gallery of example themes
 - [Shortcodes](/docs/shortcodes): add videos, callouts, and figures to your content
 - [Configuration](/docs/configuration): data file setup and all `seite.toml` options

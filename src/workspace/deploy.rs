@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use crate::build::{self, BuildOptions};
@@ -33,6 +32,27 @@ pub fn deploy_workspace(
 
     // Cross-site domain conflict detection
     check_domain_conflicts(ws_config, ws_root, &sites);
+
+    // GitHub Pages has no previews: `--preview`, or a non-main branch with
+    // auto-commit (which the standalone `seite deploy` treats as a preview),
+    // would replace a live site. Refuse before deploying anything.
+    for ws_site in &sites {
+        let (config, paths) = load_site_in_workspace(ws_root, ws_site)?;
+        if !matches!(config.deploy.target, DeployTarget::GithubPages) {
+            continue;
+        }
+        let wants_commit = config.deploy.auto_commit && !opts.no_commit;
+        let feature_branch =
+            wants_commit && matches!(deploy::current_branch(&paths.root), Ok((_, false)));
+        if opts.preview || feature_branch {
+            return Err(PageError::Deploy(format!(
+                "site '{}': {}",
+                ws_site.name,
+                crate::cli::deploy::GITHUB_PAGES_NO_PREVIEW
+            ))
+            .into());
+        }
+    }
 
     let total = sites.len();
 
@@ -161,7 +181,8 @@ fn check_domain_conflicts(
     sites: &[&super::WorkspaceSite],
 ) {
     // Map: effective domain → vec of (site_name, description)
-    let mut domain_map: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let mut domain_map: std::collections::BTreeMap<String, Vec<(String, String)>> =
+        std::collections::BTreeMap::new();
 
     for ws_site in sites {
         let Ok((config, _paths)) = load_site_in_workspace(ws_root, ws_site) else {

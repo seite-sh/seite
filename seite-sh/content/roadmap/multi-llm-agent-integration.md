@@ -1,21 +1,20 @@
 ---
 title: Multi-LLM Agent Integration
-description: Support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends
+description: "Support Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, and GitHub Copilot as coding agents"
 tags:
-- planned
+- done
 weight: 1
 ---
 
-Support Claude Code, OpenCode, Codex CLI, and Gemini CLI as interchangeable agent backends. Currently `seite agent` only works with Claude Code.
+Shipped in v0.20.0 (Codex, OpenCode, Cursor) and v0.21.0 (Antigravity CLI, Gemini CLI, GitHub Copilot). Seven coding agents work with a seite site: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot.
 
-## Key Components
+## What shipped
 
-- **Provider abstraction**: `AgentProvider` trait with per-provider implementations for command construction, tool name mapping, streaming JSON parsing, and MCP config generation
-- **`[agent]` config section**: provider selection and optional model override in `seite.toml`
-- **`AGENTS.md` migration**: migrate from root `CLAUDE.md` to the cross-tool `AGENTS.md` standard
-- **MCP config generation**: write provider-specific MCP config for all detected tools
-- **CLI detection**: auto-detect installed agent tools during `seite init`
-- **`seite agent switch`**: change default provider
-- **`seite agent doctor`**: health check for agent configuration
-- **`seite agent --provider`**: one-off provider override
-- **Stream event parsers**: normalize provider-specific JSONL events to a common format
+- **`AGENTS.md`**: a compact, portable project context file every agent reads; Claude Code and Gemini CLI import it through a one-line `CLAUDE.md` / `GEMINI.md`
+- **Per-agent setup**: `seite init --agents claude,codex,opencode,cursor,gemini,copilot,antigravity` writes each agent's rules, skill and hook files; interactive init preselects the agents it finds installed, and `seite upgrade --agents …` adds more later
+- **One routed `/seite` skill** (`$seite` in Codex) for checking, writing, theming, auditing and deploying
+- **Check hooks**: after each edit and at the end of each turn, `seite check` hands errors back to the agent
+- **Optional MCP config** for every agent with `--mcp`
+- **`seite agent --with <agent>`** (or `SEITE_AGENT`): a thin launcher for any of the seven
+
+The provider abstraction with its own `[agent]` config section, `seite agent switch` and `seite agent doctor` were dropped in favor of each agent's own CLI and settings.

@@ -136,7 +136,7 @@ resolve_version() {
 
   if [ -z "$TAG" ]; then
     error "Could not determine latest release version."
-    echo "  Try pinning a version: VERSION=v0.1.0 curl -fsSL ... | sh"
+    echo "  Try pinning a version: curl -fsSL ... | VERSION=v0.21.0 sh"
     exit 1
   fi
 
@@ -144,10 +144,32 @@ resolve_version() {
 }
 
 # --- Anonymous install telemetry (best-effort; never blocks or fails) ---
-# Disable with DO_NOT_TRACK=1 or SEITE_TELEMETRY=0.
+# The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
+# (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
+# and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any value)
+# disables; otherwise a saved `seite telemetry off|on` (~/.seite/telemetry.json)
+# decides.
+telemetry_allowed() {
+  _dnt=$(printf '%s' "${DO_NOT_TRACK:-}" | tr -d '[:space:]')
+  [ -n "$_dnt" ] && return 1
+  # Trim only the ends, like the CLI (inner spaces make the value unknown).
+  _flag=$(printf '%s' "${SEITE_TELEMETRY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+  case "$_flag" in
+    0|off|false|no|disable|disabled) return 1 ;;
+    1|on|true|yes|enable|enabled) return 0 ;;
+  esac
+  _ci=$(printf '%s' "${CI:-}" | tr -d '[:space:]')
+  [ -n "$_ci" ] && return 1
+  _cfg="${HOME:-}/.seite/telemetry.json"
+  if [ -n "${HOME:-}" ] && [ -f "$_cfg" ] \
+    && grep -Eq '"enabled"[[:space:]]*:[[:space:]]*false' "$_cfg" 2>/dev/null; then
+    return 1
+  fi
+  return 0
+}
+
 send_telemetry() {
-  [ -n "${DO_NOT_TRACK:-}" ] && return 0
-  case "${SEITE_TELEMETRY:-}" in 0|off|false|no) return 0 ;; esac
+  telemetry_allowed || return 0
   _ep="${SEITE_TELEMETRY_ENDPOINT:-https://who.seite.sh/api/event}"
   _body="{\"name\":\"install\",\"domain\":\"cli.seite.sh\",\"url\":\"https://cli.seite.sh/install\",\"props\":{\"version\":\"${VERSION_TAG}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"source\":\"install.sh\"}}"
   if command -v curl >/dev/null 2>&1; then

@@ -16,7 +16,7 @@ Source of truth: `Cargo.toml` version (semver). Every code change must bump vers
 
 ## Release Flow
 1. `scripts/prepare-release.sh` → scaffold changelog entry
-2. Fill changelog → bump `Cargo.toml` version → commit → push
+2. Fill changelog → bump `Cargo.toml` version → `cargo run -- skill export . --format repo` (the checked-in Claude plugin's `plugin.json` carries the version; `tests/integration/skill_export.rs` fails until it is regenerated) → commit → push
 3. CI: auto-tag → matrix builds (macOS/Linux/Windows) → GitHub Release → crates.io → deploy seite.sh
 4. `build.rs` generates `releases.md` from changelog at compile time
 
@@ -24,6 +24,9 @@ Source of truth: `Cargo.toml` version (semver). Every code change must bump vers
 - `release-tag.yml`: detects version changes on main, creates `v{version}` tag. Blocks if changelog missing
 - `release.yml`: on `v*` tag — build, release, SLSA provenance, publish crate, deploy site
 - Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CARGO_REGISTRY_TOKEN`
+
+## Markdown negotiation by host
+`[deploy] markdown_negotiation` (default false) only acts on Cloudflare (`src/build/access.rs`, build Step 13): every request then invokes the Worker (Workers Free: 100k requests/day), so it stays opt-in; `[access]` Workers always negotiate. Netlify: not generated (redirect conditions can't match `Accept`; Edge Functions aren't deployed by the generated `nwtgck/actions-netlify` workflow); docs carry a manual Edge Function example. GitHub Pages: impossible, `.md` URLs + `sitemap.md` only.
 
 ## Installers
 - `install.sh`: `curl -fsSL https://seite.sh/install.sh | sh`

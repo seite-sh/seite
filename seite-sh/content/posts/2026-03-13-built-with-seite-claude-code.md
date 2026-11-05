@@ -1,6 +1,7 @@
 ---
-title: "We Built Our Website with Our Own Tool (and Claude Code)"
+title: "We Built Our Website with seite and Claude Code"
 date: 2026-03-13
+updated: 2026-10-29
 description: "A behind-the-scenes account of building seite.sh with seite and Claude Code: what the agent got right, what took longer, and what we'd do differently."
 tags:
  - ai
@@ -61,9 +62,9 @@ We did not write a single `<meta>` tag. We did not configure a sitemap. We did n
 
 For a site whose whole pitch is "SEO and AI discoverability, built in," the moment we realized we had not touched any of that infrastructure felt significant. The canonical URL, Open Graph tags, JSON-LD structured data, `llms.txt`, `llms-full.txt`, markdown output alongside every HTML page: all of it was just there. We checked the build output because we didn't trust it, and it was correct.
 
-Deploy was equally hands-off. `seite deploy` commits the build output, pushes to the configured remote and triggers a [Cloudflare Pages](https://developers.cloudflare.com/pages/) build. End-to-end, from `seite build` to the live site updating, takes about 45 seconds. We ran it dozens of times during the build. It never failed.
+Deploy was equally hands-off. `seite deploy` commits and pushes the source, builds, and uploads the output to [Cloudflare Pages](https://developers.cloudflare.com/pages/). End-to-end, from running `seite deploy` to the live site updating, took about 35 seconds. We ran it dozens of times during the build. It never failed.
 
-The search index was auto-generated every build. The asset fingerprinting was configured with two lines in `seite.toml`. We did not think about any of this during the content push.
+The search index was auto-generated every build. Minification was one line in `seite.toml`. We did not think about any of this during the content push.
 
 If you want to understand what the build pipeline actually does, the [getting started guide](/docs/getting-started) walks through the full flow step by step.
 
@@ -75,7 +76,7 @@ Four things were harder than we expected. All of them are worth knowing before y
 
 **Theme iteration took longer than expected.** `seite theme create` is useful, but "useful" and "done" are different. Getting from "a minimal dark developer tool aesthetic" to the actual seite.sh design required six Claude Code sessions, not the three we budgeted. Each session produces a new `base.html` that's 70% right and 30% in need of hand-editing. The hand-editing is not difficult, but it's not instant either. Budget more time than you think for this step.
 
-**MCP context lag.** The MCP server's `seite://content` resource reflects the last build, not the current file system state. When we added new content without running `seite build` first, the agent would reference pages that didn't exist yet in the index, or miss pages that did exist but hadn't been indexed. The fix is obvious in retrospect: always run `seite build` before starting an agent session. We now do this automatically. But we wasted time on two occasions before the pattern was clear. The [MCP server docs](/docs/mcp-server) explain the resource model in detail, and this timing relationship is documented there.
+**MCP context lag.** At the time, the MCP server's `seite://content` resource reflected the last build, not the current file system state. When we added new content without running `seite build` first, the agent would reference pages that didn't exist yet in the index, or miss pages that did exist but hadn't been indexed. We wasted time on two occasions before the pattern was clear. Current versions read the content directory directly, and coding agents now call the `seite` CLI (`seite context`, `seite check`), with the [MCP server](/docs/mcp-server) optional.
 
 **Over-reliance creep.** At one point mid-build, we had the agent write three blog posts back-to-back without reading them carefully. The structure was correct. The frontmatter was right. The voice was slightly off, more explanatory than direct, more hedged than the brand calls for. We caught it in edit, but the lesson was: agent output needs a human read before it goes anywhere near a commit. We built a two-step habit: agent writes, we read and edit, then we commit. Not complicated, but it requires discipline when you're moving fast.
 
@@ -112,7 +113,7 @@ Real numbers are more useful than vague impressions, so here's the actual timeli
 
 **Total: approximately 11 hours across two days.**
 
-Content volume: 15 documentation pages, 10 blog post first drafts, one homepage, one about page, one changelog. Agent-assisted words: roughly 65% of the total. Agent-assisted first drafts: 100%.
+Content volume: 15 documentation pages, five blog post first drafts, one homepage, one about page, one changelog. Agent-assisted words: roughly 65% of the total. Agent-assisted first drafts: 100%.
 
 Build performance: average build time was 0.3 seconds for 40 pages. Deploy time from push to live was about 35 seconds via Cloudflare Pages.
 
@@ -120,7 +121,7 @@ The honest summary: two full days, one developer, one Claude Code session runnin
 
 ## What This Tells You
 
-seite is good enough to run seite.sh. That's not a small claim. The site has 40+ pages, an active changelog, a full documentation section, and SEO infrastructure that we did not configure by hand. It builds in 0.3 seconds and deploys in under a minute.
+seite is good enough to run seite.sh. That's not a small claim. At launch the site had 40+ pages, a changelog, a full documentation section, and SEO infrastructure that we did not configure by hand. It built in 0.3 seconds and deployed in under a minute.
 
 The workflow is real: agent for first drafts, human for voice and judgment, seite for all the infrastructure in between. The friction points are real too, but they're solvable. Most of them come down to better upfront context setup, which costs an hour and saves many more.
 

@@ -1,8 +1,8 @@
 ---
 title: "How to Build a Website with an AI Coding Agent"
 date: 2026-03-13
-updated: 2026-09-28
-description: "Use Claude Code to build a complete website in under an hour. seite's AGENTS.md and MCP server give AI coding agents full site context from day one."
+updated: 2026-10-29
+description: "Use Claude Code or another coding agent to build a complete website in under an hour. seite's AGENTS.md, /seite skill and check hooks give it site context."
 tags:
   - ai
   - static-site-generator
@@ -11,15 +11,13 @@ tags:
 extra:
   primary_keyword: "how to build a website with AI coding agent"
   meta_title: "How to Build a Website with an AI Coding Agent | seite"
-  meta_description: "Use Claude Code to build a complete website in under an hour. seite gives AI coding agents full site context via AGENTS.md and MCP server. Tutorial."
+  meta_description: "Use Claude Code to build a complete website in under an hour. seite gives AI coding agents full site context via AGENTS.md and a /seite skill. Tutorial."
   url_slug: "how-to-build-website-ai-coding-agent"
 ---
 
-# How to Build a Website with an AI Coding Agent
-
 Your AI coding agent already knows how to build websites. The problem is your static site generator doesn't tell it anything.
 
-Claude Code, Cursor, GitHub Copilot — [82% of developers now use or plan to use AI coding tools](https://survey.stackoverflow.co/2024/ai/) — these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
+Claude Code, Cursor, GitHub Copilot — [76% of developers use or plan to use AI tools in their development process](https://survey.stackoverflow.co/2024/ai/), per Stack Overflow's 2024 survey — these tools are genuinely capable. They write clean code, follow patterns, understand context. But drop one into a folder with a [Hugo](/blog/hugo-alternative) or Eleventy project and the first five messages are the agent asking questions: where do posts go? What's the frontmatter format? How do I run the build? What's the deploy command? Every session starts with the same orientation, and the agent retains none of it.
 
 Learning how to build a website with an AI coding agent requires two things most tutorials miss: a site generator that gives the agent structured context, and a workflow where the agent can take meaningful action instead of answering questions. This tutorial covers both. You'll build a complete site with landing page, blog, documentation and deploy using seite and Claude Code. The whole thing takes under an hour. The agent does most of the work.
 
@@ -37,15 +35,17 @@ The solution is not a better prompt. It's a site generator built for this workfl
 
 When you run `seite init`, the tool does something most static site generators don't: it generates a root `AGENTS.md` file that describes your entire site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The canonical file includes:
 
+- What the site is and how it's laid out
 - Your collections with directory paths, URL patterns and date conventions
-- The complete frontmatter schema for each content type
-- Every available CLI command with flags and examples
-- Your configured templates and their available variables
-- Build output structure
+- The content format and frontmatter conventions
+- Hard rules the agent must follow
+- The workflow: run `seite context` once per session, then use the `/seite` skill
 
 The agent reads this file once and understands your project. No orientation questions. No guessing.
 
-seite also registers an [MCP server](/docs/mcp-server) for Claude Code (in `.mcp.json`), Codex, OpenCode and Cursor, and the agent starts it when it opens your project. Claude Code may ask you to approve it once. The MCP server uses the [Model Context Protocol](https://modelcontextprotocol.io/) to give the agent real-time, typed access to your content, config and build pipeline. Instead of asking "what's the build command?", the agent calls `seite_build` and gets back structured results including page count, build time and any errors.
+`seite init` also writes a routed `/seite` skill (`$seite` in Codex): `/seite new`, `/seite check`, `/seite theme`, `/seite audit`, `/seite deploy` and more, each with its own reference file. And it installs check hooks: after each edit the agent's hook runs `seite check` on that file, and at the end of a turn the full check runs, so errors go straight back to the agent before it says it's done.
+
+If you want an [MCP server](/docs/mcp-server) as well, `seite init --mcp` registers one for each agent. It uses the [Model Context Protocol](https://modelcontextprotocol.io/) to give the agent typed access to your content, config and build pipeline. It's optional: every MCP tool has a CLI equivalent with `--json`.
 
 [Get started with seite](/docs/getting-started) and see the difference in the first session.
 
@@ -78,25 +78,25 @@ seite init mysite --title "My Company" --collections posts,docs,pages
 cd mysite
 ```
 
-This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file, `CLAUDE.md` compatibility import, and MCP server config for each coding agent (`.mcp.json` for Claude Code, plus Codex, OpenCode and Cursor configs; pick with `seite init --agents`). Open the project directory in your agent and the context loads automatically.
+This creates your `seite.toml` config, content directories, Tera templates, and critically, the root `AGENTS.md` context file plus the skill, rules, permissions and check hooks for each coding agent: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot (pick with `seite init --agents`). Open the project directory in your agent and the context loads automatically.
 
 ### Step 3: Run the Agent
 
-The **seite agent command** spawns [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) with your full site context as the system prompt. See the [agent docs](/docs/agent) for all available flags and options:
+Open your coding agent in the project directory, for example [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview):
 
 ```bash
-seite agent
+claude
 ```
 
-Or give it a specific task directly:
+Or let seite launch it with a task. The **seite agent command** passes your prompt to the agent as-is; `--with` picks another agent. See the [agent docs](/docs/agent) for all flags:
 
 ```bash
 seite agent "create a landing page with hero section, feature list and pricing table"
-seite agent "write three blog posts about our CLI tool's best features"
-seite agent "build a documentation section covering installation, configuration and deployment"
+seite agent --with codex "write three blog posts about our CLI tool's best features"
+seite agent --with gemini "build a documentation section covering installation, configuration and deployment"
 ```
 
-The agent knows your content model, templates and CLI commands. It creates files in the correct directories with the right frontmatter, then runs `seite build` to verify the output.
+The agent knows your content model, templates and CLI commands from `AGENTS.md` and the `/seite` skill. It creates files in the correct directories with the right frontmatter, and the check hooks report any errors before it finishes.
 
 ### Step 4: Preview and Iterate
 
@@ -175,15 +175,15 @@ The difference was not the agent's capability. It was the information available 
 | Agent orientation per session | 10-20 minutes | 0, reads AGENTS.md once |
 | Content file creation | Often wrong directory or format | Correct by default |
 | Template editing | Risky without full variable context | Agent knows all template variables |
-| Build verification | Manual | Agent calls `seite_check` and `seite_build` via MCP; a stop hook runs `seite check` before it finishes |
+| Build verification | Manual | Hooks run `seite check` after each edit and before the agent finishes |
 | Deploy | Requires manual CI/CD setup | `seite deploy` one command |
 | Session continuity | Agent forgets project structure | AGENTS.md is always present |
 
 ## The MCP Server: Structured Access for Any AI Tool
 
-Beyond `seite agent`, the [MCP server](/docs/mcp-server) makes seite's content and build pipeline accessible to any MCP-compatible tool.
+The optional [MCP server](/docs/mcp-server) makes seite's content and build pipeline accessible to any MCP-compatible tool, including Claude Desktop.
 
-When the MCP server is running (your coding agent starts it when it opens the project), AI tools can call `seite_check` to validate the whole site with file-and-line diagnostics, `seite_build` to trigger a build and get structured results, `seite_create_content` to create a properly formatted content file, `seite_search` to find existing content by title or tag, and read `seite://config` for your site configuration as typed JSON.
+When the MCP server is running (enable it with `seite init --mcp` or `seite upgrade --mcp`, and your coding agent starts it when it opens the project), AI tools can call `seite_check` to validate the whole site with file-and-line diagnostics, `seite_build` to trigger a build and get structured results, `seite_create_content` to create a properly formatted content file, `seite_search` to find existing content by title or tag, and read `seite://config` for your site configuration as typed JSON.
 
 This means your AI assistant works with site concepts, collections, content items, themes; instead of parsing raw files. The result is fewer errors and faster iteration.
 
@@ -191,11 +191,11 @@ Read the [full MCP server documentation](/docs/mcp-server) for all available too
 
 ## What to Expect: A Realistic Session Timeline
 
-**0-5 minutes:** Install seite, run `seite init`, open Claude Code in the project directory.
+**0-5 minutes:** Install seite, run `seite init`, open your coding agent in the project directory.
 
-**5-35 minutes:** Run `seite agent` with your site description. Agent creates landing page content, two or three docs pages, initial blog post. For a simple content site, this is mostly done.
+**5-35 minutes:** Give the agent your site description. Agent creates landing page content, two or three docs pages, initial blog post. For a simple content site, this is mostly done.
 
-**35-50 minutes:** Review with `seite serve`, iterate with REPL or `seite agent` for revisions. Apply a theme: `seite theme apply dark` or describe one with `seite theme create "minimal sans-serif with warm gray tones"`.
+**35-50 minutes:** Review with `seite serve`, iterate in the same agent session. Apply a theme: `seite theme apply dark` or describe one with `/seite theme minimal sans-serif with warm gray tones`.
 
 **50-60 minutes:** Run `seite deploy`. Site is live.
 
@@ -205,11 +205,11 @@ For building a docs site specifically, see [how to build a docs site from the co
 
 ### What AI coding agent works best with seite?
 
-seite is optimized for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview). The auto-generated `AGENTS.md` is the portable source of project context, while a one-line `CLAUDE.md` imports it for Claude Code. The MCP server uses the Model Context Protocol that Claude Code supports natively. The [`seite agent` command](/docs/agent) explicitly spawns Claude Code as a subprocess with full site context injected. Other compatible coding agents can read `AGENTS.md` directly.
+seite sets up seven: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot. Each gets the same `AGENTS.md` (Claude Code and Gemini CLI through a one-line import), the `/seite` skill (`$seite` in Codex) and check hooks in its own format. The [`seite agent` command](/docs/agent) starts Claude Code by default; `--with` picks another. Use the one you already work in.
 
 ### Do I need an API key to use the AI agent features?
 
-`seite agent` uses your existing Claude Code subscription. No separate API key is needed. The MCP server similarly uses Claude Code's built-in authentication. seite itself is free and open source.
+No. seite uses the coding agent you already run, with its own sign-in or subscription, and needs no API key or paid service of its own. seite itself is free and open source.
 
 ### How is this different from AI website builders like Relume?
 
@@ -217,26 +217,26 @@ AI website builders generate a finished site from a prompt. You get HTML files, 
 
 ### Can the agent work with a site that already exists?
 
-Yes. Run `seite agent` in an existing seite project and the agent reads the current content inventory via the MCP server. It knows what already exists and can add to, edit or reorganize it. For migrating content from another SSG, `seite agent "migrate my existing markdown content and preserve frontmatter fields"` is a reliable starting point.
+Yes. Open your agent in an existing seite project; `seite context` gives it the current collections and content counts, and `seite search` finds existing pages. It knows what already exists and can add to, edit or reorganize it. For migrating from another platform, `seite import wordpress|ghost|jekyll|hugo` converts the content and keeps old URLs working, and writes a report your agent can work through.
 
 ### What is the real experience like: what does the agent actually get right and wrong?
 
-For an honest behind-the-scenes account of using seite and Claude Code to build a complete website — including what the agent produced well, what took longer than expected, and what we'd do differently — see [We Built Our Website with Our Own Tool (and Claude Code)](/blog/built-with-seite-claude-code).
+For an honest behind-the-scenes account of using seite and Claude Code to build a complete website — including what the agent produced well, what took longer than expected, and what we'd do differently — see [We Built Our Website with seite and Claude Code](/blog/built-with-seite-claude-code).
 
 ### What's in the AGENTS.md file and can I edit it?
 
-`seite init` generates root `AGENTS.md` with your site's structure, commands and conventions, plus a root `CLAUDE.md` that imports it. Edit `AGENTS.md` to add project-specific context, team conventions or content guidelines. `seite upgrade` adds new sections non-destructively when seite adds new features. You can also add [path-scoped rules files](/docs/agent) in `.claude/rules/` for context that only loads when working with specific file types.
+`seite init` generates a compact root `AGENTS.md`: the workflow (run `seite context`, use the `/seite` skill, verify with `seite check`), the project layout, your collections, the content format and a few rules, plus `CLAUDE.md` and `GEMINI.md` files that import it. Commands live in the `/seite` skill rather than in `AGENTS.md`. Edit `AGENTS.md` to add project-specific context, team conventions or content guidelines; `seite upgrade` refreshes only its own marked blocks and keeps your edits. Path-scoped [rules files](/docs/agent) (`.claude/rules/` for Claude Code, `.cursor/rules/` for Cursor, `.github/instructions/` for Copilot) add context that only loads when working with matching files.
 
 ## Give Your Agent a Site It Can Work With
 
 The missing ingredient in most guides on **how to build a website with an AI coding agent** is structured project context. The agent is not the bottleneck. The project is.
 
-`seite init` gives the agent an AGENTS.md it can read, an MCP server it can query and a CLI it can call. The agent stops asking questions and starts building.
+`seite init` gives the agent an AGENTS.md it can read, a `/seite` skill it can follow, hooks that check its work and a CLI it can call. The agent stops asking questions and starts building.
 
 Three things to remember:
 
-1. **Context is the multiplier.** Agent output quality scales directly with the quality of project context available. AGENTS.md and the MCP server provide that automatically.
-2. **`seite agent` is a shortcut, not a requirement.** Compatible coding agents read `AGENTS.md` directly, while Claude Code loads it through the root `CLAUDE.md` import. The structured context works regardless of how you invoke the agent.
+1. **Context is the multiplier.** Agent output quality scales directly with the quality of project context available. AGENTS.md, the `/seite` skill and the check hooks provide that automatically.
+2. **`seite agent` is a shortcut, not a requirement.** Coding agents read `AGENTS.md` directly (Claude Code and Gemini CLI through a one-line import), and `/seite` works in any of the seven. The structured context works regardless of how you invoke the agent.
 3. **The workflow stays yours.** Git history, markdown files, CLI commands. AI works within your developer workflow, not as a replacement for it.
 
 Build your first AI-assisted site:

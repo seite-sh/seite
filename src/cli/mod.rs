@@ -1,33 +1,54 @@
 pub mod access;
 pub mod agent;
 mod agent_instructions;
+pub mod audit;
 pub mod build;
 pub mod check;
+pub mod cms;
 pub mod collection;
 pub mod completions;
 pub mod contact;
+pub mod context;
 pub mod deploy;
+pub mod docs;
+pub mod explain;
+pub mod frontmatter;
 pub mod harness;
 pub mod harness_hooks;
+pub mod hooks;
+pub mod import;
 pub mod init;
 pub mod mcp;
 pub mod new;
+pub mod og;
+pub mod page;
 pub mod perf;
+pub mod preview;
 pub mod prompt;
+pub mod search;
 pub mod self_update;
 pub mod serve;
+pub(crate) mod site_tools;
 pub mod skill;
+pub mod skill_export;
+pub mod stats;
 pub mod telemetry;
+pub mod templates;
 pub mod theme;
+pub mod trust;
 pub mod upgrade;
 pub mod workspace;
 
 use clap::{CommandFactory, Parser, Subcommand};
 
+/// One-line description: `seite --help` and the welcome screen.
+pub const TAGLINE: &str =
+    "The static site generator your coding agent can run end to end, for free.";
+
 #[derive(Parser)]
 #[command(
     name = "seite",
-    about = "A static site generator with LLM integration",
+    about = TAGLINE,
     version,
     propagate_version = true
 )]
@@ -38,6 +59,10 @@ pub struct Cli {
     /// Verbose output (debug logging, per-step build timings)
     #[arg(short, long, global = true)]
     pub verbose: bool,
+
+    /// Print the licences of bundled third-party assets (the social-card font)
+    #[arg(long, hide = true)]
+    pub licenses: bool,
 
     /// Machine-readable output: print exactly one JSON document on stdout
     /// ({"ok":true,"command":..,"data":..} or {"ok":false,..,"error":{"message":..,"chain":[..]}}),
@@ -81,29 +106,47 @@ pub enum Command {
     /// (renders into a temporary directory; exit code 1 when problems are found)
     Check(check::CheckArgs),
 
+    /// Free SEO, GEO (AI visibility), accessibility, content and performance
+    /// audit of the built site (offline; scratch build, `dist/` untouched)
+    Audit(audit::AuditArgs),
+
     /// Start a local development server
     Serve(serve::ServeArgs),
 
     /// Deploy the site to a hosting provider
     Deploy(deploy::DeployArgs),
 
-    /// Start an AI agent session with full site context
+    /// Open a coding agent (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, Copilot) in the site
     Agent(agent::AgentArgs),
 
     /// Manage collections
     Collection(collection::CollectionArgs),
 
+    /// Import content from WordPress (WXR), Ghost (JSON), Jekyll or Hugo,
+    /// with images, old-URL redirects and a report of what to finish by hand
+    Import(import::ImportArgs),
+
     /// Manage contact form configuration
     Contact(contact::ContactArgs),
+
+    /// Set up a free Git-based CMS (Pages CMS or Decap CMS)
+    Cms(cms::CmsArgs),
 
     /// Manage private password access on Cloudflare Pages
     Access(access::AccessArgs),
 
-    /// Manage Claude Code skills and skill packs
+    /// Manage coding-agent skills and skill packs
     Skill(skill::SkillArgs),
 
     /// Manage themes
     Theme(theme::ThemeArgs),
+
+    /// Turn the coding-agent `seite check` hooks on or off, or show their status
+    Hooks(hooks::HooksArgs),
+
+    /// Trust this project to run its own code at build time (Tailwind CSS
+    /// plugins run project JavaScript); --revoke, --list
+    Trust(trust::TrustArgs),
 
     /// Manage multi-site workspaces
     Workspace(workspace::WorkspaceArgs),
@@ -125,6 +168,38 @@ pub enum Command {
 
     /// Manage anonymous usage telemetry
     Telemetry(telemetry::TelemetryArgs),
+
+    /// Orientation for coding agents: site summary, collections, theme, dev
+    /// server, and DIRECTIVES to act on (run once per session)
+    Context(context::ContextArgs),
+
+    /// List, read, or search the embedded seite documentation
+    Docs(docs::DocsArgs),
+
+    /// Explain a diagnostic code from `seite check`/`seite build`
+    Explain(explain::ExplainArgs),
+
+    /// Show one content file as the build sees it (by source path or URL)
+    Page(page::PageArgs),
+
+    /// The running dev server: URL, last build outcome, and browser errors
+    /// from open preview pages
+    Preview(preview::PreviewArgs),
+
+    /// Social preview cards ([og]): render one to a PNG
+    Og(og::OgArgs),
+
+    /// Search site content (drafts included) by keyword
+    Search(search::SearchArgs),
+
+    /// Content health per collection: counts, drafts, missing descriptions/tags
+    Stats(stats::StatsArgs),
+
+    /// Template overrides, blocks, context variables, shortcodes and data keys
+    Templates(templates::TemplatesArgs),
+
+    /// Set or unset frontmatter keys of a content file (body untouched)
+    Frontmatter(frontmatter::FrontmatterArgs),
 }
 
 /// Build the clap Command (used by shell completion generation).
@@ -149,8 +224,22 @@ mod tests {
         assert!(subcommands.contains(&"init"));
         assert!(subcommands.contains(&"build"));
         assert!(subcommands.contains(&"check"));
+        assert!(subcommands.contains(&"audit"));
         assert!(subcommands.contains(&"serve"));
         assert!(subcommands.contains(&"completions"));
         assert!(subcommands.contains(&"access"));
+        assert!(subcommands.contains(&"import"));
+        for agent_facing in [
+            "context",
+            "docs",
+            "explain",
+            "page",
+            "search",
+            "stats",
+            "templates",
+            "frontmatter",
+        ] {
+            assert!(subcommands.contains(&agent_facing), "{agent_facing}");
+        }
     }
 }

@@ -6,8 +6,50 @@ pub(crate) use assert_cmd::Command;
 pub(crate) use predicates::prelude::*;
 pub(crate) use tempfile::TempDir;
 
+/// Variables that mark a coding agent's session (see
+/// `cli::agent::AGENT_SESSION_MARKERS`). Tests run outside any agent unless
+/// they set one explicitly, even when `cargo test` itself runs inside one.
+pub(crate) const AGENT_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_PROJECT_DIR",
+    "CODEX_THREAD_ID",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "GEMINI_CLI",
+    "GEMINI_PROJECT_DIR",
+    "OPENCODE",
+    "CURSOR_AGENT",
+    "CURSOR_PROJECT_DIR",
+    "ANTIGRAVITY_AGENT",
+    "ANTIGRAVITY_CONVERSATION_ID",
+];
+
 pub(crate) fn page_cmd() -> Command {
-    assert_cmd::cargo::cargo_bin_cmd!("seite")
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("seite");
+    for var in AGENT_SESSION_VARS {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
+/// Run `seite --json <args>` in `dir`; return whether it succeeded and the
+/// parsed JSON document from stdout.
+pub(crate) fn run_json(dir: &std::path::Path, args: &[&str]) -> (bool, serde_json::Value) {
+    let output = page_cmd()
+        .arg("--json")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    let doc = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+        panic!(
+            "stdout is not one JSON document ({e}):\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    (output.status.success(), doc)
 }
 
 /// Helper to init a site with given collections
@@ -209,6 +251,10 @@ pub(crate) fn harness_snapshot(site_dir: &std::path::Path) -> Vec<(String, Strin
         ".codex",
         ".agents",
         ".opencode",
+        ".gemini",
+        ".github/hooks",
+        ".github/instructions",
+        "GEMINI.md",
         ".mcp.json",
         "opencode.json",
         "AGENTS.md",
@@ -494,4 +540,49 @@ pub(crate) fn dir_snapshot(dir: &std::path::Path) -> Vec<(String, u64)> {
         .collect();
     entries.sort();
     entries
+}
+
+/// Drop the `[og]` section `seite init` writes, for tests that compare output
+/// with sites from before generated social cards.
+pub(crate) fn remove_og_section(site_dir: &std::path::Path) {
+    let path = site_dir.join("seite.toml");
+    let toml = fs::read_to_string(&path).unwrap();
+    let mut out = String::new();
+    let mut in_og = false;
+    for line in toml.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_og = t == "[og]";
+        }
+        if !in_og {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    assert_ne!(out, toml, "no [og] section to remove");
+    fs::write(&path, out).unwrap();
+}
+
+/// Add site `name` to the workspace at `ws_root` the way seite 0.20.2's
+/// `seite workspace add <name> --collections posts` left it: a `seite.toml`
+/// and content directory only (no AGENTS.md/CLAUDE.md, no
+/// `.seite/config.json`, no agent files).
+pub(crate) fn add_020_workspace_site(ws_root: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let ws_config = ws_root.join("seite-workspace.toml");
+    let mut ws =
+        fs::read_to_string(&ws_config).unwrap_or_else(|_| "[workspace]\nname = \"demo\"\n".into());
+    ws.push_str(&format!(
+        "\n[[sites]]\nname = \"{name}\"\npath = \"sites/{name}\"\n"
+    ));
+    fs::write(&ws_config, ws).unwrap();
+    let site_dir = ws_root.join("sites").join(name);
+    fs::create_dir_all(site_dir.join("content/posts")).unwrap();
+    fs::create_dir_all(site_dir.join("templates")).unwrap();
+    fs::create_dir_all(site_dir.join("static")).unwrap();
+    fs::write(
+        site_dir.join("seite.toml"),
+        format!("[site]\ntitle = \"{name}\"\ndescription = \"\"\nbase_url = \"http://localhost:3000/{name}\"\nlanguage = \"en\"\nauthor = \"\"\n\n[[collections]]\nname = \"posts\"\nlabel = \"Posts\"\ndirectory = \"posts\"\nhas_date = true\nhas_rss = true\nlisted = true\nnested = false\nurl_prefix = \"/posts\"\ndefault_template = \"post.html\"\n\n[build]\noutput_dir = \"dist\"\n\n[deploy]\ntarget = \"github-pages\"\n"),
+    )
+    .unwrap();
+    site_dir
 }

@@ -31,10 +31,23 @@ jobs:
             fi
           fi
           echo "needs_build=$NEEDS_BUILD" >> "$GITHUB_OUTPUT"
+          # A version bump in Cargo.toml is a release: release.yml deploys
+          # the site after the release exists (version.txt points at it), so
+          # this workflow must not race it with the previous version.
+          # Compare [package] version only (a dependency table's `version =`
+          # line is not a release).
+          # An unreadable side (e.g. `$BEFORE` not fetched after a
+          # force-push) is never a release (tests/pkg-version.sh).
+          pkg_version() { git show "$1:Cargo.toml" 2>/dev/null | bash scripts/pkg-version.sh; }
+          IS_RELEASE=false
+          if [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            IS_RELEASE=$(bash scripts/pkg-version.sh changed "$(pkg_version "$BEFORE")" "$(pkg_version "${{ github.sha }}")")
+          fi
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
 
       # Fast path: only docs changed, download latest release binary
       - name: Download latest seite release
-        if: steps.detect.outputs.needs_build == 'false'
+        if: steps.detect.outputs.needs_build == 'false' && steps.detect.outputs.is_release != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -47,20 +60,28 @@ jobs:
 
       # Slow path: source changed (e.g. themes), build from source
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: steps.detect.outputs.needs_build == 'true'
+        if: steps.detect.outputs.needs_build == 'true' && steps.detect.outputs.is_release != 'true'
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
-        if: steps.detect.outputs.needs_build == 'true'
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+        if: steps.detect.outputs.needs_build == 'true' && steps.detect.outputs.is_release != 'true'
 
       - name: Build seite from source
-        if: steps.detect.outputs.needs_build == 'true'
+        if: steps.detect.outputs.needs_build == 'true' && steps.detect.outputs.is_release != 'true'
         run: cargo install --path .
 
+      # releases.md is gitignored: generate it, like release.yml does, or the
+      # site would lose /docs/releases until the next release deploy.
+      - name: Generate releases.md from changelog entries
+        if: steps.detect.outputs.is_release != 'true'
+        run: bash scripts/generate-release-docs.sh
+
       - name: Build docs site
+        if: steps.detect.outputs.is_release != 'true'
         working-directory: seite-sh
         run: seite build
 
       - name: Generate routing and download files
+        if: steps.detect.outputs.is_release != 'true'
         working-directory: seite-sh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,6 +98,7 @@ jobs:
           printf '/download/* https://github.com/seite-sh/seite/releases/download/:splat 302\n' >> dist/_redirects
 
       - name: Deploy to Cloudflare Pages
+        if: steps.detect.outputs.is_release != 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

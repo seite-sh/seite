@@ -1,9 +1,9 @@
 ---
 title: Related Posts
-description: Auto-suggest related content based on shared tags and keywords
+description: "Auto-suggest related content based on shared tags and taxonomy terms"
 tags:
-- planned
+- done
 weight: 6
 ---
 
-Auto-suggest related content based on shared tags and keywords, available as `{{ page.related }}` in templates. Use tag overlap and TF-IDF on titles/descriptions to rank similarity. Show top 3-5 related items per page.
+Shipped in v0.21.0. `page.related` lists up to 3 pages from the same collection and language that share tags or [taxonomy](/docs/collections) terms; a shared category counts twice a shared tag, and ties go to the closest date. `[build] related = N` sets the size, and `0` (site-wide or per collection) turns it off. The default `post.html` shows a "Related" list, styled by every bundled theme.

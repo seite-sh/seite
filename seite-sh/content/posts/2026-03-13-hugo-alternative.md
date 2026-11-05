@@ -1,7 +1,7 @@
 ---
-title: "Hugo Alternative: When You Want Speed, Simplicity, and AI"
+title: "Hugo Alternative: Speed, Simplicity, and AI"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Looking for a Hugo alternative? seite is a single Rust binary with sub-second builds, Jinja2 templates, AI agent integration, and one-command deploy."
 tags:
  - hugo
@@ -56,26 +56,24 @@ Hugo uses Go's `text/template` and `html/template` packages for its templating s
 Go templates fail silently. A typo in a variable name doesn't throw an error. It renders nothing. You stare at a blank page and start guessing. The syntax is unintuitive for anyone coming from Jinja2, Liquid, or Handlebars. Conditionals, range loops, and partial includes all use a syntax that feels foreign even to experienced developers in other languages.
 
 ```go
-{{ range where.Site.RegularPages "Section" "posts" }}
- {{.Title }}
+{{ range where .Site.RegularPages "Section" "posts" }}
+  {{ .Title }}
 {{ end }}
 ```
 
 Compare that to Tera or Jinja2:
 
 ```jinja2
-{% for page in collections.posts %}
- {{ page.title }}
+{% for item in collection.items %}
+  {{ item.title }}
 {% endfor %}
 ```
 
 The cognitive overhead isn't just about learning a syntax. It's about debugging when something goes wrong. Go template errors often point to the wrong line or give messages that don't describe the actual problem. For a static site generator, where the template is the most-touched part of the codebase, this friction adds up fast.
 
-### No Built-In Deploy, No AI Awareness
+### Deploy Stops at Cloud Storage, No AI Awareness
 
-Hugo builds your site. Then it stops. Getting that site online is your problem.
-
-You need a separate deploy pipeline: a GitHub Actions workflow, a Netlify config file, a Vercel project. For many developers, wiring this up takes longer than building the site itself.
+Hugo has a [`hugo deploy`](https://gohugo.io/host-and-deploy/deploy-with-hugo-deploy/) command, but it uploads to cloud storage buckets (Amazon S3, Google Cloud Storage, Azure). For GitHub Pages, Cloudflare Pages or Netlify you still wire up a GitHub Actions workflow or a host config file yourself. For many developers, that takes longer than building the site itself.
 
 And Hugo has no awareness that AI agents exist. There's no AGENTS.md context file for coding agents. No [MCP server](/docs/mcp-server) for structured access. No [`llms.txt`](/blog/what-is-llms-txt) output for AI search engines. No markdown file alongside each HTML page. In 2026, this matters. A growing share of how people discover content is through AI-generated answers in ChatGPT, Perplexity, and Claude. Hugo sites are invisible to this audience unless you build the infrastructure yourself. For the full picture of what website AI discoverability requires and the architecture behind triple output, see [why your website needs to speak AI](/blog/website-ai-discoverability).
 
@@ -117,15 +115,15 @@ seite is a Rust static site generator shipped as a single binary. Like Hugo, lik
 
 Here's what that means in practice:
 
-**Built-in AI agent.** `seite agent "write a changelog entry for v2.0"` spawns Claude Code with your full site context: collections, content inventory, templates, CLI commands. The agent doesn't explore your file tree guessing. It knows your site before it starts working. Read the [agent docs](/docs/agent) for the full capability list.
+**Built for coding agents.** `seite init` sets up Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot: an `AGENTS.md` describing your collections and conventions, a `/seite` skill (`/seite new post "v2.0 changelog"`), and check hooks that hand errors back to the agent. The agent doesn't explore your file tree guessing. It knows your site before it starts working. Read the [agent docs](/docs/agent) for the full capability list.
 
-**MCP server for AI tools.** Claude Code connects to seite's [MCP server](/docs/mcp-server) automatically. AI tools get typed, structured access to your content and configuration, not raw files to parse.
+**MCP server for AI tools.** Opt in with `seite init --mcp` and your agents connect to seite's [MCP server](/docs/mcp-server). AI tools get typed, structured access to your content and configuration, not raw files to parse.
 
 **Triple output.** Every build produces HTML (for browsers), markdown (for AI models), and `llms.txt` (for AI search engines). Your site is optimized for three audiences from a single command. No plugins. No configuration.
 
-**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. Non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
+**Built-in deploy.** `seite deploy` handles GitHub Pages, Cloudflare Pages, and Netlify. One command: commit, push, build, deploy. On Cloudflare Pages and Netlify, non-main branches automatically get preview deployments. See the [step-by-step Cloudflare Pages deploy guide](/blog/deploy-static-site-cloudflare-pages) for the full workflow, or the [deployment docs](/docs/deployment) for all targets.
 
-**Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. 10 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
+**Simpler templates.** seite uses [Tera](/docs/templates), which is Jinja2-compatible. If you've used Jinja2, Nunjucks, or Django templates, you already know the syntax. No silent failures. Clear error messages. 11 [bundled themes](/docs/theme-gallery) compiled into the binary, no downloads needed.
 
 **AI-generated themes.** Describe a theme in English and get a production-ready template:
 
@@ -133,7 +131,7 @@ Here's what that means in practice:
 seite theme create "dark mode with violet accents and glassmorphism cards"
 ```
 
-Claude Code writes a complete `base.html` with SEO tags, JSON-LD, accessibility features, and responsive design. Try doing that with Hugo's Go templates.
+This runs the `/seite theme` skill in your coding agent (you can also type `/seite theme …` in an open session). The agent writes a complete `base.html` with SEO tags, JSON-LD, accessibility features, and responsive design. Try doing that with Hugo's Go templates.
 
 ## Hugo vs seite: Side-by-Side Comparison
 
@@ -146,20 +144,20 @@ Here's how this Hugo alternative compares feature by feature.
 | Sub-second builds | Yes | Yes |
 | Template language | Go `text/template` | Tera (Jinja2-compatible) |
 | Template debugging | Silent failures | Clear error messages |
-| Built-in deploy | No | GitHub Pages, Cloudflare, Netlify |
-| Bundled themes | Community (download) | 10 compiled into binary |
+| Built-in deploy | `hugo deploy` (S3, GCS, Azure) | GitHub Pages, Cloudflare, Netlify |
+| Bundled themes | Community (download) | 11 compiled into binary |
 | AI context file | No | Auto-generated AGENTS.md |
-| MCP server | No | Built-in |
-| llms.txt output | No | Every build |
-| Markdown output per page | No | Every build |
-| AI agent integration | No | `seite agent` |
-| AI theme generation | No | `seite theme create` |
+| MCP server | No | Built-in (opt-in) |
+| llms.txt output | Custom output format setup | Every build |
+| Markdown output per page | Custom output format setup | Every build |
+| AI agent integration | No | `/seite` skill + check hooks, 7 agents |
+| AI theme generation | No | `/seite theme` |
 | RSS feed | Built-in | Built-in |
-| Client-side search | Plugin | Built-in |
+| Client-side search | Plugin | Built-in, full-text |
 | Sitemap | Built-in | Built-in with hreflang |
 | Contact forms | Plugin | [Built-in shortcode](/docs/contact-forms) |
-| Plugin system | No | Skill packs |
-| Breaking changes | Frequent | Semver, backward compatible |
+| Plugin system | No (Hugo Modules for content and themes) | No |
+| Breaking changes | Frequent | Pre-1.0: minor releases can break; `seite upgrade` migrates the project |
 
 The left column is a powerful tool built for 2015. The right column is a tool built for 2026. They share the same DNA: compiled binary, markdown content, fast builds. The difference is everything around the compiler.
 
@@ -187,9 +185,9 @@ If you're ready to switch from Hugo, here's what should drive the decision. The 
 
 **You're tired of debugging Go templates.** If template errors cost you hours, Tera's clear error messages and Jinja2-compatible syntax will feel like a relief. This alone is reason enough for many developers.
 
-**You want AI agent integration.** If you use Claude Code, Cursor, or any coding agent daily, having your static site generator understand AI tools is a multiplier. `seite agent` with full site context changes how you create content.
+**You want AI agent integration.** If you use Claude Code, Cursor, or any coding agent daily, having your static site generator understand AI tools is a multiplier. An agent that knows your site and gets its errors back from `seite check` changes how you create content.
 
-**You need built-in deploy.** If wiring up GitHub Actions or Netlify config files for a static site feels like overhead, `seite deploy` does it in one command.
+**You need built-in deploy to Pages hosts.** If wiring up GitHub Actions or Netlify config files for a static site feels like overhead, `seite deploy` publishes to GitHub Pages, Cloudflare Pages or Netlify in one command (using the host's own CLI for Cloudflare and Netlify).
 
 **You want AI discoverability.** If your content should appear in ChatGPT and Perplexity answers, you need llms.txt, markdown output, and AI-aware robots.txt. seite builds these automatically. Hugo doesn't. See the [generative engine optimization guide](/blog/generative-engine-optimization) for the full implementation strategy. To see exactly what SEO and GEO features Hugo lacks and seite ships automatically, see the [static site generator SEO checklist](/blog/static-site-generator-built-in-seo).
 
@@ -214,11 +212,20 @@ seite init mysite --title "My Site" --collections posts,docs,pages
 cd mysite
 ```
 
-This creates `seite.toml`, your content directories, templates, AI context files, and MCP server configuration. Everything Hugo makes you set up manually, seite scaffolds in one command.
+This creates `seite.toml`, your content directories, templates, and AI context files for your coding agents. Everything Hugo makes you set up manually, seite scaffolds in one command.
 
 ### Step 3: Move your content
 
-Copy your markdown files from Hugo's `content/` directory to seite's `content/{collection}/` directories. Hugo-style frontmatter is compatible:
+Let seite do it:
+
+```bash
+seite import hugo ../my-hugo-site --dry-run   # see what would be written
+seite import hugo ../my-hugo-site
+```
+
+The importer maps frontmatter, converts the `youtube`, `vimeo`, `gist`, `figure`, `highlight` and `ref` shortcodes, copies images, and turns `url`, `[permalinks]` and `aliases` into `aliases:` so old URLs keep working. Anything it can't convert is listed in `.seite/cache/import-report.md`, a checklist you can hand to your agent. See the [import docs](/docs/import).
+
+Prefer to move files by hand? Copy your markdown files from Hugo's `content/` directory to seite's `content/{collection}/` directories. Hugo-style frontmatter is compatible:
 
 ```yaml
 ---
@@ -237,7 +244,7 @@ This works in both Hugo and seite. The main difference: Hugo uses `content/posts
 ### Step 4: Pick a theme or generate one
 
 ```bash
-seite theme list # see the 10 bundled themes
+seite theme list # see the 11 bundled themes
 seite theme apply dark # apply one
 seite theme create "your description" # or generate a custom one with AI
 ```
@@ -252,7 +259,7 @@ seite serve # preview at localhost:3000
 seite deploy # push to GitHub Pages, Cloudflare, or Netlify
 ```
 
-Your site now has everything Hugo gave you (fast builds, markdown content, static output) plus AI context, MCP server, triple output, built-in search, and one-command deploy.
+Your site now has everything Hugo gave you (fast builds, markdown content, static output) plus AI context, triple output, built-in full-text search, and one-command deploy.
 
 Check the full [CLI reference](/docs/cli-reference) for all available commands and the [configuration docs](/docs/configuration) for the complete `seite.toml` reference.
 
@@ -260,11 +267,11 @@ Check the full [CLI reference](/docs/cli-reference) for all available commands a
 
 ### What is the best Hugo alternative?
 
-It depends on what drove you away. If you want to stay in the JavaScript ecosystem, [Astro](https://astro.build/) is strong. If you want another single-binary SSG without the Go templates, [Zola](https://www.getzola.org/) is the closest match. If you want a Hugo alternative with AI agent integration, built-in deploy, and llms.txt output, seite is the only option that combines Hugo's speed with AI-native architecture.
+It depends on what drove you away. If you want to stay in the JavaScript ecosystem, [Astro](https://astro.build/) is strong. If you want another single-binary SSG without the Go templates, [Zola](https://www.getzola.org/) is the closest match. If you want a Hugo alternative with AI agent integration, built-in deploy, and llms.txt output, seite combines Hugo's speed with an AI-native architecture.
 
 ### Is Hugo still worth using in 2026?
 
-Hugo is still a capable static site generator with sub-second builds and a large community. It's worth using if your team knows Go templates, you have an existing Hugo site you're happy with, and you don't need AI tool integration. But if you're starting a new project, Hugo's breaking changes, lack of built-in deploy, and absence of AI awareness make newer tools worth evaluating.
+Hugo is still a capable static site generator with sub-second builds and a large community. It's worth using if your team knows Go templates, you have an existing Hugo site you're happy with, and you don't need AI tool integration. But if you're starting a new project, Hugo's breaking changes, deploy that stops at cloud storage buckets, and absence of AI awareness make newer tools worth evaluating.
 
 ### Can I migrate from Hugo without losing content?
 
@@ -272,11 +279,11 @@ Yes. Both Hugo and seite use markdown files with YAML frontmatter. Your content 
 
 ### Is seite faster than Hugo?
 
-Both deliver sub-second builds for typical sites. Hugo has an edge on extremely large sites (10,000+ pages) due to Go's concurrency model. For most projects under a few thousand pages, the build speed difference is negligible. The real difference isn't speed; it's what happens after the build: seite produces HTML, markdown, and llms.txt. Hugo produces HTML only.
+Both deliver sub-second builds for typical sites. Hugo has an edge on extremely large sites (10,000+ pages) due to Go's concurrency model. For most projects under a few thousand pages, the build speed difference is negligible. The real difference isn't speed; it's what happens after the build: seite produces HTML, markdown, and llms.txt on every build. Hugo produces HTML unless you configure extra output formats.
 
 ### What static site generators work with AI?
 
-Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite is the first static site generator with AI built into the architecture: an MCP server for structured AI access, an AGENTS.md context file for coding agents, `seite agent` for AI-powered content creation, and `llms.txt` output for AI search engines.
+Most traditional static site generators (Hugo, Astro, Eleventy, Zola, Jekyll) have no AI integration. seite builds AI support into the architecture: an AGENTS.md context file, a `/seite` skill and check hooks for seven coding agents, an optional MCP server for structured AI access, and `llms.txt` output for AI search engines.
 
 ## Hugo Is Fast. The Web Moved Faster.
 
@@ -290,7 +297,7 @@ Three things to take away from this Hugo alternative comparison:
 
 1. **Hugo's strengths are real but no longer unique.** Single binary, sub-second builds, zero dependencies: seite matches all of these in Rust.
 2. **The template tax is avoidable.** Tera gives you Jinja2 syntax with clear error messages. You shouldn't need Go knowledge to build a website.
-3. **AI integration isn't optional anymore.** llms.txt, AGENTS.md, MCP server, agent integration: these aren't nice-to-haves. They're how your site stays visible as search evolves.
+3. **AI integration isn't optional anymore.** llms.txt, AGENTS.md, agent skills and hooks: these aren't nice-to-haves. They're how your site stays visible as search evolves.
 
 Install seite and see what a Hugo alternative looks like in 2026:
 

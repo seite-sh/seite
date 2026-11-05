@@ -1,44 +1,48 @@
 ---
 paths:
   - "src/themes/**"
+  - "src/themes.rs"
   - "src/templates/**"
 ---
 # Templates & Themes
 
 ## Tera Templates
 - Jinja2-compatible, all extend `base.html`
-- Page variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
+- Page variables: `{{ site.title }}`, `{{ page.title }}`, `{{ page.content | safe }}`, `{{ page.description }}`, `{{ page.date }}`, `{{ page.updated }}`, `{{ page.image }}`, `{{ page.slug }}`, `{{ page.tags }}`, `{{ page.url }}`, `{{ page.markdown_url }}` (published `.md` path, unset when none), `{{ page.collection }}`, `{{ page.robots }}`, `{{ page.word_count }}`, `{{ page.reading_time }}`, `{{ page.excerpt }}`, `{{ page.toc }}`, `{{ page.extra }}`
 - Adjacent posts: `{{ prev_post }}` (older), `{{ next_post }}` (newer) — each has `.title`, `.url`, `.date`, `.description`
+- Content pages also get `{{ page.taxonomies }}` (`{tags: [{name, slug, url}], categories: [...]}`), `{{ page.related }}` (`[{title, url, date, description, score}]`), `{{ page.series }}` (`{name, slug, url, parts, index, total, prev, next}` or null)
+- Listing templates: `tags.html`/`taxonomy.html` (`taxonomy`, `terms`), `tag.html`/`term.html` (`taxonomy`, `term`, `terms`, `items`, `pagination`; tag pages keep `tags`, `tag_name`, `tags_url`), `series.html` (`series`, `items`)
+- Post-page markup for categories/series/related lives in `DEFAULT_POST` and reuses the themes' `.tags` and `.article-nav` classes (no theme CSS needed)
 - Global: `{{ collections }}`, `{{ lang }}`, `{{ default_language }}`, `{{ lang_prefix }}`, `{{ t }}`, `{{ translations }}`, `{{ nav }}`, `{{ data }}`
-- Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`
+- Blocks: `{% block title %}`, `{% block content %}`, `{% block head %}`, `{% block extra_css %}`, `{% block extra_js %}`, `{% block header %}`, `{% block footer %}`, optional `{% block site_title %}` (blank's header site name; `DEFAULT_INDEX` overrides it with an `<h1>`)
 - User `templates/` overrides embedded defaults
 
-## 10 Bundled Themes (`.tera` files in `src/themes/`)
-- `default` — 720px column, system-ui, blue links
-- `minimal` — 600px column, Georgia serif, literary feel
-- `dark` — True black, violet accent
-- `docs` — Fixed 260px sidebar with auto-scrolling nav
-- `brutalist` — Cream, 3px borders, hard shadows, yellow accent
-- `bento` — CSS grid, article cards with border-radius 20px
-- `landing` — Marketing landing page with hero section
-- `terminal` — Monospace hacker aesthetic, green-on-black
-- `magazine` — Multi-column editorial layout
-- `academic` — Clean scholarly style with serif typography
+## seite partials (`src/templates/seite/*.html`, `SEITE_PARTIALS` in `src/templates/mod.rs`)
+seite owns correctness, themes own layout + CSS. Registered under the reserved `seite/` namespace unless the site has `templates/seite/<name>` (override = no more automatic fixes). Each starts with `{# seite partial: <name> — managed by seite, updated on upgrade … #}` (comment and content on one line: Tera's `-#}` does not trim, and the partials are byte-tuned so themes render identically).
+- `seite/head.html` — everything SEO/GEO after `<title>`: description, canonical, OG/Twitter, JSON-LD, BreadcrumbList, robots, RSS/Atom/llms.txt, markdown alternate, hreflang, KaTeX css. Generated OG cards: `page.og_image` / `site.og_image` branch next to the `og:image` block.
+- `seite/search.html` (form + `#search-results`), `seite/search-script.html` (search JS), `seite/scripts.html` (end-of-body aggregator: add new seite-owned scripts as one more include), `seite/lang-switcher.html`
+- Opt-in (no bundled theme includes them): `seite/comments.html` (`site.comments`: giscus/utterances `<script>` embed) and `seite/newsletter.html` (`site.newsletter`: plain POST form, `contact-form` classes). The same files are the `comments`/`newsletter` built-in shortcode templates (`src/shortcodes/builtins.rs` include_str!s them); shortcode context gets `lang` from `page.lang`. Values go through Tera's `escape` (the shortcode Tera has no `escape_attr`) and are validated in `src/config/embeds.rs`
+- Search partials render nothing when `search_mode` (from `insert_build_flags`) is `"off"`. The script (~6 KB minified, DOM-only: createElement/textContent/`<mark>`, never innerHTML) loads `search/meta.json` on focus (`cache: 'no-cache'`; shards/pages use `?v=hash`), shards per term (last word: `prefix_candidates` = stem + up to 3 letters trimmed, English; a trailing stopword is dropped and an unmatched last prefix never empties the other words' results), `pages/<id>.json` for the top 8; falls back to `search-index.json`. Result markup: `a#search-result-N > strong + .result-meta + .result-snippet`, `a.active` for arrow-key selection, a hidden `role=status` count; strings `t.no_results`/`t.search_result`/`t.search_results`; `data-collections` on the input filters (`seite/search.html` renders it from `{% set search_collections = "docs" %}` before the include). Themes style `.result-snippet`, `mark`, `a.active` in one CSS line next to `.no-results`
+- `<title>{% block title %}` stays in the theme: Tera blocks cannot live in includes
+- First line has no indent and the file has no trailing newline: the include site supplies both
+- `template-missing-seite-head` warning (`templates::seite_head_diagnostics`) when a user `base.html` lacks the head include; "legacy theme" when it has its own `og:title`/JSON-LD
 
-Each compiled via `include_str!` and registers as `base.html` when applied. Edit the `.tera` files directly.
+## Bundled themes (`src/themes/*.tera`, `src/themes.rs`)
+- Starters (`ThemeKind::Starter`, offered by `seite init --theme`): `default`, `docs`, `landing`, `blank` (semantic skeleton, CSS in `src/themes/blank.css` → `static/css/site.css`, written by apply/init/`theme new` only when missing)
+- Gallery (`ThemeKind::Gallery`, `seite theme apply`): `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`
+- Every theme includes the four partials exactly once and contains no `og:title`/JSON-LD/canonical/search-index of its own (unit test)
+- **Editing a theme changes its hash: append it to `LEGACY_THEME_HASHES` in `src/cli/upgrade.rs`** (test `current_bundled_themes_are_in_legacy_table` prints it). `seite upgrade` replaces an unedited copy of any historical version with the current theme
+- `tests/fixtures/themes-pre-partials/` holds the 0.20.x themes; `tests/integration/theme_partials.rs` asserts rendered output stayed equivalent (normalization documented there)
 
-## Theme Gallery
-- `seite theme install <url>` → `templates/themes/<name>.tera`
-- `seite theme export <name>` packages current theme
+## Theme Gallery / custom themes
+- `seite theme install <url>` → `templates/themes/<name>.tera`; `seite theme export <name>` packages current theme
 - Metadata: `{#- theme-description: ... -#}` Tera comment in first 10 lines
-- `seite theme create "<description>"` spawns Claude to write `templates/base.html`
+- `seite theme new [name] [--force]` scaffolds `blank` (refuses a customized base.html without `--force`; backs up); with impeccable installed also writes `.impeccable/live/config.json` add-only
+- `seite theme create "<description>"` scaffolds `blank` first when the active theme is a bundled example, then runs `/seite theme` (or points to `/impeccable`)
 
-## All themes include
-- hreflang tags + language switcher when `translations` non-empty
-- canonical URL, Open Graph, Twitter Card, JSON-LD, `<meta name="robots">`, markdown alternate, llms.txt link
-- Accessibility: skip-to-main, `role="search"`, `aria-label`, `aria-live="polite"`, `prefers-reduced-motion`
-- CSS for `.video-embed`, `.callout-*`, `figure`/`figcaption`, `.contact-form`
-- CSS for changelog badges, roadmap layouts (grouped/kanban/timeline), trust center
+## Themes still carry (layout/CSS)
+- Skip link to `#main`, `<html lang="{{ lang }}">`, blocks `title head extra_css header content footer extra_js`
+- CSS for `.video-embed`, `.callout-*`, `figure`/`figcaption`, `.contact-form`, changelog/roadmap/trust classes, `prefers-reduced-motion`
 
 ## Frontmatter Serialization
 - `serde_yaml_ng` for YAML parsing

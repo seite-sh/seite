@@ -28,7 +28,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub deploy_target: Option<String>,
 
-    /// Collections to include (comma-separated: posts,docs,pages,trust)
+    /// Collections to include (comma-separated: posts,docs,pages,changelog,roadmap,trust)
     #[arg(long)]
     pub collections: Option<String>,
 
@@ -52,10 +52,21 @@ pub struct InitArgs {
     #[arg(long)]
     pub contact_endpoint: Option<String>,
 
-    /// Coding agents to set the site up for (comma-separated: claude,codex,opencode,cursor, or all).
-    /// Default: all
+    /// Coding agents to set the site up for (comma-separated:
+    /// claude,codex,opencode,cursor,gemini,copilot,antigravity, or all). Default: all
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
+
+    /// Starter theme: default, docs, landing, or blank (for designing your
+    /// own). Default: docs for a docs-only site, else default. The gallery
+    /// themes are examples: `seite theme apply <name>` later
+    #[arg(long, value_name = "STARTER")]
+    pub theme: Option<String>,
+
+    /// Also wire the seite MCP server into each agent's config (coding agents
+    /// use the `seite` CLI; MCP is meant for chat apps without a shell)
+    #[arg(long)]
+    pub mcp: bool,
 }
 
 pub fn run(args: &InitArgs) -> anyhow::Result<()> {
@@ -128,6 +139,8 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         anyhow::bail!("at least one collection is required");
     }
 
+    let starter = resolve_starter(args, &collections)?;
+
     // Coding agents to generate config for (AGENTS.md is always written).
     let agents = harness::resolve_init_agents(args.agents.as_deref())?;
 
@@ -147,7 +160,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     fs::create_dir_all(root.join(".seite"))?;
 
     // Write .gitignore
-    fs::write(root.join(".gitignore"), "/dist\n/dist-subdomains\n")?;
+    fs::write(root.join(".gitignore"), harness::GITIGNORE)?;
 
     // Generate seite.toml
     let target = match deploy_target.as_str() {
@@ -162,25 +175,41 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             base_url: "http://localhost:3000".into(),
             language: "en".into(),
             author: String::new(),
+            timezone: None,
         },
         collections: collections.clone(),
         build: crate::config::BuildSection {
             minify: true,
+            schedule: true,
+            search: crate::config::SearchMode::Full,
             ..Default::default()
         },
         deploy: crate::config::DeploySection {
             target: target.clone(),
             repo: None,
-            project: None,
+            // Cloudflare: the project `seite deploy` would detect from the
+            // directory name, written down so the generated CI workflow
+            // deploys to it (instead of a placeholder).
+            project: if matches!(target, DeployTarget::Cloudflare) {
+                crate::deploy::project_name_from_dir(&root)
+            } else {
+                None
+            },
             domain: None,
             auto_commit: true,
+            markdown_negotiation: false,
         },
         languages: Default::default(),
         images: Some(crate::config::ImageSection::default()),
         analytics: None,
         trust: None,
         contact: None,
+        comments: None,
+        newsletter: None,
         access: None,
+        taxonomies: Vec::new(),
+        check: None,
+        og: Some(crate::build::og::init_section()),
     };
 
     // If trust collection is included, run trust center scaffolding
@@ -228,11 +257,26 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         }
     }
 
-    let toml_str = toml::to_string_pretty(&config)?;
+    let toml_str = toml::to_string_pretty(&config)?.replacen(
+        "\nschedule = true\n",
+        "\n# Hide posts dated in the future until their date (and `expires:` posts after it).\n# The generated deploy workflow rebuilds daily so they go live on their own.\nschedule = true\n",
+        1,
+    )
+    .replacen(
+        "\nsearch = \"full\"\n",
+        "\n# Full-text search over page text (dist/search/), loaded lazily by the theme.\n# \"basic\" searches titles, descriptions and tags only; false turns search off.\nsearch = \"full\"\n",
+        1,
+    );
+    let timezone = content::schedule::detect_system_timezone();
+    let toml_str = with_site_timezone(&toml_str, timezone.as_deref());
+    config.site.timezone = timezone;
     fs::write(root.join("seite.toml"), toml_str)?;
 
     // Write default templates
-    fs::write(root.join("templates/base.html"), templates::default_base())?;
+    fs::write(root.join("templates/base.html"), starter.base_html)?;
+    if let Some((rel, css)) = starter.stylesheet {
+        crate::safe_fs::write(&root, &root.join("static").join(rel), css)?;
+    }
     fs::write(root.join("templates/index.html"), templates::DEFAULT_INDEX)?;
     for c in &collections {
         let tmpl_name = &c.default_template;
@@ -257,19 +301,20 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 
     // Create sample hello-world post if posts collection is included
     if collections.iter().any(|c| c.name == "posts") {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_date = content::schedule::today(&config);
+        let today = today_date.format("%Y-%m-%d").to_string();
         let fm = content::Frontmatter {
             title: "Hello World".into(),
-            date: Some(chrono::Local::now().date_naive()),
-            description: Some("Welcome to your new site!".into()),
+            date: Some(today_date),
+            description: Some(
+                "Welcome to your new site: how posts work and what to do next with seite.".into(),
+            ),
             tags: vec!["intro".into()],
             draft: false,
             ..Default::default()
         };
         let frontmatter_str = content::generate_frontmatter(&fm);
-        let post_content = format!(
-            "{frontmatter_str}\n\nWelcome to your new site built with **seite**.\n\nEdit this post or create new ones with `seite new post \"My Post\"`.\n"
-        );
+        let post_content = format!("{frontmatter_str}\n\n{STARTER_POST_BODY}");
         fs::write(
             root.join(format!("content/posts/{today}-hello-world.md")),
             post_content,
@@ -278,11 +323,14 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
 
     // Create sample changelog entry if changelog collection is included
     if collections.iter().any(|c| c.name == "changelog") {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_date = content::schedule::today(&config);
+        let today = today_date.format("%Y-%m-%d").to_string();
         let fm = content::Frontmatter {
             title: "v0.1.0".into(),
-            date: Some(chrono::Local::now().date_naive()),
-            description: Some("Initial release".into()),
+            date: Some(today_date),
+            description: Some(
+                "Initial release: the first version of the project and its feature set.".into(),
+            ),
             tags: vec!["new".into()],
             draft: false,
             ..Default::default()
@@ -304,7 +352,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Dark Mode",
                 "planned",
                 1,
-                "Add dark mode support to the application.",
+                "Add a dark color scheme that follows the reader's system setting.",
             ),
             (
                 "API v2",
@@ -316,7 +364,7 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
                 "Initial Release",
                 "done",
                 3,
-                "Ship the first public version.",
+                "Ship the first public version with the core features and documentation.",
             ),
         ];
         for (title, status, weight, description) in &items {
@@ -353,14 +401,10 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             fs::write(workflow_dir.join("deploy.yml"), workflow)?;
         }
         DeployTarget::Netlify => {
-            // Generate netlify.toml
+            // netlify.toml only: Netlify's own git builds run it. A GitHub
+            // Actions workflow as well would deploy every push twice.
             let netlify_config = crate::deploy::generate_netlify_config(&config);
             fs::write(root.join("netlify.toml"), &netlify_config)?;
-            // Also generate GitHub Actions workflow as alternative
-            let workflow_dir = root.join(".github/workflows");
-            fs::create_dir_all(&workflow_dir)?;
-            let workflow = crate::deploy::generate_netlify_workflow(&config);
-            fs::write(workflow_dir.join("deploy.yml"), workflow)?;
         }
     }
 
@@ -387,15 +431,19 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         &root,
         &meta::PageMeta {
             agents: Some(harness::to_ids(&agents)),
-            hooks_installed: Some(harness::to_ids(&agents)),
+            hooks_installed: Some(crate::cli::harness_hooks::all_tier_ids(&agents)),
             ..meta::PageMeta::current()
         },
     )?;
 
-    // Per-agent harness files: MCP server config, permissions, path-scoped
-    // rules, and skills (plus the CLAUDE.md `@AGENTS.md` shim for Claude Code).
+    // Per-agent harness files: permissions, hooks, path-scoped rules, the
+    // `seite` skill (plus the CLAUDE.md/GEMINI.md `@AGENTS.md` shims), and
+    // with --mcp the MCP server config.
     let features = SiteFeatures::from_config(&config);
-    harness::write_plan(&root, &agents, features)?;
+    harness::write_plan(&root, &agents, features, args.mcp)?;
+
+    // Version-matched docs the agent reads locally (.seite/docs/).
+    harness::write_local_docs(&root)?;
 
     // Cross-agent project instructions, read by every supported agent.
     fs::write(
@@ -405,8 +453,9 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
             &title,
             &description,
             &collections,
-            trust_opts.as_ref(),
+            trust_opts.as_ref().map(|o| o.company.as_str()),
             &agents,
+            args.mcp,
         ),
     )?;
 
@@ -419,6 +468,18 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
     }
 
     crate::human_println!();
+    human::info(&if starter.name == crate::themes::BLANK {
+        "Theme: blank, ready for your own design: `/seite theme <description>` in your agent (or `/impeccable` with `seite skill install impeccable`)".to_string()
+    } else {
+        format!(
+            "Theme: {} (a starting point; for your own design run `seite theme new`, examples: `seite theme list`)",
+            starter.name
+        )
+    });
+    if matches!(target, DeployTarget::Netlify) {
+        human::info("Deploy: netlify.toml is set up for Netlify's git builds (no GitHub Actions workflow; see https://seite.sh/docs/deployment#netlify)");
+    }
+    crate::human_println!();
     human::info("Next steps:");
     crate::human_println!("  cd {name}");
     crate::human_println!(
@@ -426,12 +487,12 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         console::style("←").dim()
     );
     crate::human_println!(
-        "  seite agent             {} write content & themes with Claude Code",
+        "  seite agent             {} open your coding agent in the site (then /seite)",
         console::style("←").dim()
     );
     crate::human_println!();
     human::info(&format!(
-        "Set up for {} — see AGENTS.md → MCP Server for each agent's one-time approval step.",
+        "Set up for {} — see AGENTS.md → Agent setup for each agent's one-time step.",
         agents
             .iter()
             .map(|a| a.label())
@@ -448,12 +509,103 @@ pub fn run(args: &InitArgs) -> anyhow::Result<()> {
         "title": title,
         "collections": collections.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
         "deploy_target": deploy_target,
+        "theme": starter.name,
         "contact": config.contact.is_some(),
         "agents": harness::to_ids(&agents),
+        "mcp": args.mcp,
     }));
 
     Ok(())
 }
+
+/// The starter theme for a new site: `--theme`, else a pick in the
+/// interactive flow, else docs for a docs-only site and default otherwise.
+fn resolve_starter(
+    args: &InitArgs,
+    collections: &[CollectionConfig],
+) -> anyhow::Result<crate::themes::Theme> {
+    let starters = crate::themes::of_kind(crate::themes::ThemeKind::Starter);
+    let names: Vec<&str> = starters.iter().map(|t| t.name).collect();
+    let fallback = starter_for(collections);
+    let name = match &args.theme {
+        Some(name) => {
+            if !names.contains(&name.as_str()) {
+                let gallery = if crate::themes::by_name(name).is_some() {
+                    format!(" '{name}' is a gallery example: apply it after init with `seite theme apply {name}`.")
+                } else {
+                    String::new()
+                };
+                anyhow::bail!(
+                    "unknown starter '{name}'. Starters: {}.{gallery}",
+                    names.join(", ")
+                );
+            }
+            name.clone()
+        }
+        None if args.name.is_none() => {
+            let labels: Vec<String> = starters
+                .iter()
+                .map(|t| format!("{} — {}", t.name, t.description))
+                .collect();
+            let items: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let default = names.iter().position(|n| *n == fallback);
+            names[prompt::select("Starter theme", &items, default, "--theme", &names)?].to_string()
+        }
+        None => fallback.to_string(),
+    };
+    Ok(crate::themes::by_name(&name).expect("starter names are bundled themes"))
+}
+
+/// The starter that fits the collections: `docs` for a docs-only site,
+/// `default` otherwise. `landing` and `blank` are only chosen explicitly.
+pub fn starter_for(collections: &[CollectionConfig]) -> &'static str {
+    let docs_only = !collections.is_empty() && collections.iter().all(|c| c.name == "docs");
+    if docs_only {
+        "docs"
+    } else {
+        "default"
+    }
+}
+
+/// `seite.toml` text with a commented `timezone` line appended to the
+/// `[site]` table: the detected zone, or a commented-out example when there
+/// is none.
+pub(crate) fn with_site_timezone(toml_str: &str, timezone: Option<&str>) -> String {
+    let comment = "# Time zone for \"today\" (scheduled posts, dates of new content). Set, it keeps\n# \"today\" identical on every machine and in CI; unset, each machine uses its own clock.\n";
+    let line = match timezone {
+        Some(tz) => format!("{comment}timezone = \"{tz}\"\n"),
+        None => format!("{comment}# timezone = \"Europe/Berlin\"\n"),
+    };
+    let Some(site) = toml_str.find("[site]\n") else {
+        return toml_str.to_string();
+    };
+    let end = toml_str[site..]
+        .find("\n\n")
+        .map_or(toml_str.len(), |i| site + i + 1);
+    format!("{}{line}{}", &toml_str[..end], &toml_str[end..])
+}
+
+/// Body of the starter post: real guidance, long enough that a fresh site's
+/// `seite audit` doesn't flag its only post as thin content.
+const STARTER_POST_BODY: &str =
+    "Welcome to your new site built with **seite**. This post is a starting point: \
+edit it, replace it, or delete it once you have published something of your own.
+
+## How posts work
+
+Every post is a Markdown file in `content/posts/`. The block between the `---` lines at the top \
+is the frontmatter: the title, the publication date, a short description that search engines and \
+link previews show, and tags that group related posts on their own pages. Everything below it is \
+the post itself, written in plain Markdown with headings, lists, links and images.
+
+## What to do next
+
+1. Create a post with `seite new post \"My Post\"`, or ask your coding agent to write one.
+2. Preview the site while you edit with `seite serve`; the browser reloads on every save.
+3. Run `seite check` to catch broken links and frontmatter mistakes before you publish.
+4. Run `seite audit` for a free SEO, AI-visibility and accessibility report with fixes.
+5. Publish with `seite deploy` when everything looks right.
+";
 
 /// Lines of the "what was created" tree shown after `seite init`.
 fn project_tree_lines(name: &str, collections: &[CollectionConfig]) -> Vec<String> {
@@ -703,7 +855,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Security overview
     if opts.sections.iter().any(|s| s == "overview") {
         let overview = format!(
-            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
+            "---\ntitle: \"Security Overview\"\ndescription: \"How {company} protects your data: infrastructure, application security, encryption and access control\"\nweight: 1\nextra:\n  type: overview\n---\n\n\
             ## Our Commitment to Security\n\n\
             At {company}, security is foundational to everything we build. We maintain industry-standard certifications and follow security best practices across our entire platform.\n\n\
             ## Infrastructure Security\n\n\
@@ -713,7 +865,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             ## Data Protection\n\n\
             All customer data is encrypted at rest (AES-256) and in transit (TLS 1.2+). Encryption keys are managed through a dedicated key management service.\n\n\
             ## Access Management\n\n\
-            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n",
+            We enforce the principle of least privilege across all systems. Employee access requires SSO with MFA, and all access is logged and audited.\n\n\
+            ## Incident Response\n\n\
+            We maintain a documented incident response plan with clear roles and escalation paths. Security events are triaged around the clock, and affected customers are notified promptly with what happened, what data was involved, and what we are doing about it.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/security-overview.md"), overview)?;
@@ -737,7 +891,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - We will keep you informed of our progress\n\
             - We will not take legal action against good-faith researchers\n\n\
             ## Scope\n\n\
-            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n",
+            All production services and applications are in scope. Please do not test against other customers' data or accounts.\n\n\
+            ## Safe Harbor\n\n\
+            Research carried out in good faith under this policy is authorized. Avoid privacy violations, data destruction and service disruption, give us reasonable time to fix an issue before you disclose it, and we will work with you to understand and resolve it quickly.\n",
             company = opts.company,
         );
         fs::write(
@@ -749,7 +905,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     // Data Processing Agreement
     if opts.sections.iter().any(|s| s == "dpa") {
         let dpa = format!(
-            "---\ntitle: \"Data Processing\"\ndescription: \"Data processing practices at {company}\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
+            "---\ntitle: \"Data Processing\"\ndescription: \"How {company} processes, protects and retains customer data, and how to request a DPA\"\nweight: 6\nextra:\n  type: policy\n---\n\n\
             ## Data Processing Overview\n\n\
             {company} processes customer data in accordance with applicable data protection regulations.\n\n\
             ## Data Processing Agreement\n\n\
@@ -760,7 +916,9 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
             - Usage data (application logs, analytics)\n\
             - Customer-provided content\n\n\
             ## Data Retention\n\n\
-            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n",
+            Customer data is retained for the duration of the service agreement. Upon termination, data is deleted within 30 days unless a longer retention period is required by law.\n\n\
+            ## Subprocessors\n\n\
+            We use a small number of subprocessors to deliver the service. Each one is bound by a written agreement with data protection terms at least as strict as ours, and the current list is published on this trust center.\n",
             company = opts.company,
         );
         fs::write(root.join("content/trust/data-processing.md"), dpa)?;
@@ -781,7 +939,7 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 _ => format!("{} has {name} certification on its roadmap.", opts.company),
             };
             let cert_page = format!(
-                "---\ntitle: \"{name}\"\ndescription: \"{desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
+                "---\ntitle: \"{name}\"\ndescription: \"{company}'s {name} status: {desc}\"\nweight: 2\nextra:\n  type: certification\n  framework: \"{slug}\"\n---\n\n\
                 ## {name}\n\n\
                 {status_text}\n\n\
                 {desc}.\n\n\
@@ -789,7 +947,12 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
                 <!-- Describe the scope of your certification here -->\n\n\
                 ## Resources\n\n\
                 <!-- Link to reports, certificates, or contact information -->\n\
-                For access to our {name} report, contact security@yourcompany.com.\n",
+                For access to our {name} report, contact security@yourcompany.com.\n\n\
+                ## How We Maintain It\n\n\
+                Compliance is an ongoing program, not a one-time project. We review our controls on a regular schedule, track every finding to resolution, train our team on the policies that apply to their work, and monitor the systems in scope continuously. When our practices change, we update this page and the related documents so customers always see the current state.\n\n\
+                ## Questions\n\n\
+                Security and procurement teams can ask us about this framework at any time. We answer questionnaires, share evidence under NDA where appropriate, and walk through how our controls apply to your use of the service.\n",
+                company = opts.company,
             );
             fs::write(
                 root.join(format!("content/trust/certifications/{slug}.md")),
@@ -807,304 +970,166 @@ fn scaffold_trust_center(root: &std::path::Path, opts: &TrustOptions) -> anyhow:
     Ok(())
 }
 
-/// Generate an AGENTS.md tailored to the site's collections and structure.
+/// Generate a compact AGENTS.md for the site: what it is, the layout, the
+/// collections, the content format, the hard rules, and the workflow. Details
+/// live in the `seite` skill, the context rules, and `.seite/docs/`, so
+/// nothing here is repeated there.
+/// AGENTS.md for an existing site, from its `seite.toml`: what `seite init`
+/// writes, for sites that never got one (`seite upgrade` on a 0.20
+/// `workspace add` or hand-made site, and `seite workspace add`).
+pub(crate) fn agents_md_for(config: &SiteConfig, agents: &[Agent], mcp: bool) -> String {
+    let trust_company = config
+        .collections
+        .iter()
+        .any(|c| c.name == "trust")
+        .then(|| {
+            config
+                .trust
+                .as_ref()
+                .and_then(|t| t.company.as_deref())
+                .unwrap_or(&config.site.title)
+        });
+    generate_agents_md(
+        config,
+        &config.site.title,
+        &config.site.description,
+        &config.collections,
+        trust_company,
+        agents,
+        mcp,
+    )
+}
+
 fn generate_agents_md(
     config: &SiteConfig,
     title: &str,
     description: &str,
     collections: &[CollectionConfig],
-    trust_opts: Option<&TrustOptions>,
+    trust_company: Option<&str>,
     agents: &[Agent],
+    mcp: bool,
 ) -> String {
-    let mut md = String::with_capacity(8192);
+    let mut md = String::with_capacity(4096);
     let features = SiteFeatures::from_config(config);
-    let (rules_dir, rules_ext) = harness::rules_location(agents);
 
-    // Header (dynamic)
     md.push_str(&format!("# {title}\n\n"));
     if !description.is_empty() {
         md.push_str(&format!("{description}\n\n"));
     }
-    md.push_str("This is a static site built with the `seite` CLI tool.\n\n");
-    md.push_str("Workflow shortcut: `/seite <command>` (`check`, `new`, `preview`, `build`, `deploy`, `theme`, `collection`; `$seite` in Codex) runs the bundled `seite` skill, which picks the right commands below.\n\n");
+    md.push_str("A static site built with [seite](https://seite.sh): markdown in, HTML + markdown + `llms.txt` out.\n\n");
 
-    // Commands (dynamic — iterates collections)
-    md.push_str("## Commands\n\n");
-    md.push_str("```bash\n");
-    md.push_str("seite build                              # Build the site\n");
-    md.push_str("seite build --drafts                     # Build including draft content\n");
-    md.push_str("seite serve                              # Dev server with live reload + REPL\n");
-    md.push_str("seite serve --open                       # Dev server + open browser\n");
-    md.push_str("seite serve --port 8080                  # Use a specific port\n");
-    for c in collections {
-        let singular = singularize(&c.name);
-        md.push_str(&format!(
-            "seite new {singular} \"Title\"                  # Create new {singular}\n",
-        ));
-    }
-    md.push_str("seite new post \"Title\" --tags rust,web   # Create with tags\n");
-    md.push_str("seite new post \"Title\" --draft           # Create as draft\n");
-    md.push_str("seite new post \"Title\" --lang es         # Create translation (needs [languages.es] in config)\n");
-    md.push_str("seite collection list                    # List site collections\n");
-    md.push_str("seite collection add <preset>            # Add a preset collection (posts, docs, pages, changelog, roadmap, trust)\n");
-    md.push_str("seite theme list                         # List available themes\n");
-    md.push_str("seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic)\n");
-    md.push_str("seite theme create \"coral brutalist\"     # Generate a custom theme with AI (requires Claude Code)\n");
-    md.push_str("seite theme install <url>                # Install theme from URL\n");
-    md.push_str("seite theme export <name>                # Export current theme for sharing\n");
-    md.push_str("seite agent                              # Interactive AI agent session\n");
-    md.push_str("seite agent \"write about Rust\"           # One-shot AI agent prompt\n");
-    md.push_str("seite deploy                             # Commit, push, build, and deploy\n");
-    md.push_str("seite deploy --no-commit                 # Deploy without auto-commit/push\n");
-    md.push_str("seite skill install seomachine           # Install a skill pack\n");
+    md.push_str("## Workflow\n\n");
+    md.push_str("1. Run `seite context` once per session: config, collections, theme, dev server, pending upgrades.\n");
+    md.push_str("2. Work through the `seite` skill: `/seite <command>` (Codex: `$seite <command>`), e.g. `check`, `new`, `preview`, `theme`, `deploy`.\n");
     md.push_str(
-        "seite workspace list                     # List sites in a multi-site workspace\n",
+        "3. Reference: `.seite/docs/` (docs for this seite version, written by seite and gitignored) or `seite docs <query>`.\n\n",
     );
-    md.push_str(
-        "seite access groups                      # List private-collection password groups\n",
-    );
-    md.push_str("seite upgrade                            # Upgrade project config after a seite version bump\n");
-    md.push_str("seite self-update                        # Update the seite binary itself\n");
-    md.push_str(
-        "seite perf                                # Audit performance via PageSpeed Insights\n",
-    );
-    md.push_str(
-        "seite mcp                                # Start the MCP server (usually auto-started)\n",
-    );
-    md.push_str("seite completions bash                   # Generate shell completions\n");
+
+    md.push_str("## Layout\n\n```\n");
+    md.push_str("content/<collection>/  markdown + YAML frontmatter\n");
+    md.push_str("templates/             Tera templates; base.html is the theme\n");
+    md.push_str("data/                  YAML/JSON/TOML -> {{ data.<file> }}\n");
+    md.push_str("static/                copied to dist/static/\n");
+    md.push_str("public/                copied to the dist/ root (favicon.ico)\n");
+    md.push_str("seite.toml             site config\n");
+    md.push_str("dist/                  build output (generated)\n");
     md.push_str("```\n\n");
 
-    // Dev server REPL (static)
-    md.push_str(include_str!("../scaffold/repl.md"));
-
-    // Project structure (dynamic — iterates collections)
-    md.push_str("## Project Structure\n\n");
-    md.push_str("```\n");
-    for c in collections {
-        md.push_str(&format!(
-            "content/{}/    # {} content (markdown + YAML frontmatter)\n",
-            c.directory, c.label
-        ));
-    }
-    md.push_str("templates/       # Tera (Jinja2-compatible) HTML templates\n");
-    md.push_str("static/          # Static assets (copied as-is to dist/)\n");
-    md.push_str(
-        "data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates\n",
-    );
-    md.push_str("dist/            # Build output (generated, do not edit)\n");
-    if config.has_subdomains() {
-        md.push_str("dist-subdomains/ # Subdomain collection output (one dir per subdomain)\n");
-    }
-    md.push_str("seite.toml        # Site configuration\n");
-    md.push_str("```\n\n");
-
-    // Collections (dynamic — iterates collections with conditional sections)
     md.push_str("## Collections\n\n");
+    md.push_str("| Collection | Files | URL | Template |\n|---|---|---|---|\n");
     for c in collections {
-        md.push_str(&format!("### {}\n", c.label));
-        md.push_str(&format!("- Directory: `content/{}/`\n", c.directory));
-        md.push_str(&format!(
-            "- URL prefix: `{}`\n",
-            if c.url_prefix.is_empty() {
-                "(root)"
-            } else {
-                &c.url_prefix
-            }
-        ));
-        md.push_str(&format!("- Template: `{}`\n", c.default_template));
-        if c.has_date {
-            md.push_str("- Date-based: yes (filename format: `YYYY-MM-DD-slug.md`)\n");
+        let file = if c.has_date {
+            "YYYY-MM-DD-slug.md"
         } else {
-            md.push_str("- Date-based: no (filename format: `slug.md`)\n");
-        }
-        if c.nested {
-            md.push_str(
-                "- Supports nested directories (e.g., `section/slug.md` → `/docs/section/slug`)\n",
-            );
-        }
-        if c.has_rss {
-            md.push_str("- Included in RSS feed (`/feed.xml`) and Atom feed (`/atom.xml`)\n");
+            "slug.md"
+        };
+        let prefix = if c.url_prefix.is_empty() {
+            String::new()
+        } else {
+            c.url_prefix.clone()
+        };
+        md.push_str(&format!(
+            "| {} (`seite new {}`) | `content/{}/{file}` | `{prefix}/<slug>` | `{}` |\n",
+            c.label,
+            singularize(&c.name),
+            c.directory,
+            c.default_template
+        ));
+    }
+    for c in collections {
+        match c.name.as_str() {
+            "changelog" => md.push_str(
+                "\nChangelog tags: `new`, `fix`, `breaking`, `improvement`, `deprecated`.",
+            ),
+            "roadmap" => md.push_str(
+                "\nRoadmap status tags: `planned`, `in-progress`, `done`, `cancelled`; `weight:` orders items.",
+            ),
+            _ => {}
         }
         if let Some(ref subdomain) = c.subdomain {
-            let sub_url = config.subdomain_base_url(c);
-            md.push_str(&format!("- **Subdomain**: `{subdomain}` → `{sub_url}`\n"));
-            md.push_str("- Built to `dist-subdomains/` with own sitemap, RSS, Atom, robots.txt\n");
-            md.push_str("- Cross-subdomain links are auto-rewritten to absolute URLs\n");
-            md.push_str(&format!("- Dev server preview: `/{subdomain}-preview/`\n"));
-            if let Some(ref dp) = c.deploy_project {
-                md.push_str(&format!("- Deploy project: `{dp}`\n"));
-            }
+            md.push_str(&format!(
+                "\n{} deploys to the `{subdomain}` subdomain (`{}`).",
+                c.label,
+                config.subdomain_base_url(c)
+            ));
         }
-        if c.name == "changelog" {
-            md.push_str("- Tag conventions: `new` (features), `fix` (bug fixes), `breaking` (breaking changes), `improvement` (enhancements), `deprecated` (deprecations)\n");
-            md.push_str("- Tags render as colored badges in the changelog template\n");
-            md.push_str(
-                "- Create entries: `seite new changelog \"v1.0.0\" --tags new,improvement`\n",
-            );
-        }
-        if c.name == "roadmap" {
-            md.push_str("- Status tags: `planned`, `in-progress`, `done`, `cancelled`\n");
-            md.push_str(
-                "- Use `weight:` in frontmatter to control ordering (lower = higher priority)\n",
-            );
-            md.push_str("- Default index groups items by status tag\n");
-            md.push_str("- Alternative layouts: copy `roadmap-kanban.html` or `roadmap-timeline.html` to `templates/roadmap-index.html`\n");
-            md.push_str("- Create items: `seite new roadmap \"Feature Name\" --tags planned`\n");
-        }
+    }
+    if collections
+        .iter()
+        .any(|c| c.name == "changelog" || c.name == "roadmap" || c.subdomain.is_some())
+    {
         md.push('\n');
     }
-
-    // Content format (dynamic — conditional date field)
-    md.push_str("## Content Format\n\n");
-    md.push_str("Content files are markdown with YAML frontmatter:\n\n");
-    md.push_str("```yaml\n");
-    md.push_str("---\n");
-    md.push_str("title: \"Post Title\"\n");
-    if collections.iter().any(|c| c.has_date) {
-        md.push_str("date: 2025-01-15        # required for dated collections\n");
-    }
-    md.push_str(
-        "description: \"Optional\"  # page description — used in meta/OG/Twitter/JSON-LD\n",
-    );
-    md.push_str(
-        "image: /static/og.png    # optional social-preview image (og:image / twitter:image)\n",
-    );
-    md.push_str("updated: 2025-06-01      # optional last-modified date → JSON-LD dateModified\n");
-    md.push_str("tags:                     # optional\n");
-    md.push_str("  - tag1\n");
-    md.push_str("  - tag2\n");
-    md.push_str("draft: true              # optional, hides from default build\n");
-    md.push_str("slug: custom-slug        # optional, overrides auto-generated slug\n");
-    md.push_str("template: custom.html    # optional, overrides collection default template\n");
-    md.push_str("robots: noindex          # optional, per-page <meta name=\"robots\">\n");
-    md.push_str(
-        "weight: 1                # optional, sort order for non-date collections (lower first)\n",
-    );
-    md.push_str("aliases:                 # optional, old URLs that redirect to this page\n");
-    md.push_str("  - /old-url\n");
-    md.push_str("extra:                   # optional, arbitrary data → {{ page.extra.field }}\n");
-    md.push_str("  key: value\n");
-    md.push_str("---\n\n");
-    md.push_str("Markdown content here.\n");
-    md.push_str("```\n\n");
-    md.push_str("Use `<!-- more -->` in content to mark the excerpt boundary. Without it, the first paragraph is used as the excerpt.\n\n");
-
-    // Homepage (dynamic — conditional on pages collection)
-    if collections.iter().any(|c| c.name == "pages") {
-        md.push_str("### Homepage\n\n");
-        md.push_str("To add custom content to the homepage, create `content/pages/index.md`. ");
-        md.push_str(
-            "Its rendered content will appear above the collection listings on the index page. ",
-        );
-        md.push_str("The homepage is injected as `{{ page.content }}` in the index template.\n\n");
-
-        // Landing page builder skill (static)
-        md.push_str(include_str!("../scaffold/landing-page-builder.md"));
-    }
-
-    // MCP Server (per-agent config table is a marker block `seite upgrade` refreshes)
-    md.push_str(
-        &include_str!("../scaffold/mcp.md")
-            .replace(
-                "{mcp_setup}",
-                &harness::wrap_block(harness::MCP_SETUP_BLOCK, &harness::mcp_setup_table(agents)),
-            )
-            .replace(
-                "{trust_resource}",
-                if trust_opts.is_some() {
-                    ", `seite://trust` (trust center data)"
-                } else {
-                    ""
-                },
-            ),
-    );
-
-    // Trust Center (brief — details in .claude/rules/trust-center.md)
-    if let Some(opts) = trust_opts {
-        md.push_str("## Trust Center\n\n");
+    if let Some(company) = trust_company {
         md.push_str(&format!(
-            "This site includes a compliance trust center at `/trust/`. Company: **{}**.\n",
-            opts.company
+            "\nTrust center for **{company}** at `/trust/` (data in `data/trust/`).\n"
         ));
-        if !opts.frameworks.is_empty() {
-            for (slug, status) in &opts.framework_statuses {
-                let fw = framework_by_slug(slug);
-                let name = fw.map(|f| f.name).unwrap_or(slug.as_str());
-                let badge = match status.as_str() {
-                    "active" => "Active",
-                    "in_progress" => "In Progress",
-                    _ => "Planned",
-                };
-                md.push_str(&format!("- **{name}** — {badge}\n"));
-            }
-        }
-        md.push_str(&format!("\nSee `{rules_dir}/trust-center.{rules_ext}` for data file formats, management workflows, and MCP integration.\n\n"));
     }
+    md.push('\n');
 
-    // Contact forms (brief — details in .claude/rules/contact-form.md)
-    md.push_str("## Contact Forms\n\n");
-    md.push_str("Contact forms are available via the `{{< contact_form() >}}` shortcode.\n");
+    md.push_str("## Content format\n\n```yaml\n---\n");
+    md.push_str("title: \"Title\"           # required\n");
+    if collections.iter().any(|c| c.has_date) {
+        md.push_str("date: 2026-01-15         # required in dated collections\n");
+    }
+    md.push_str("description: \"...\"       # meta, Open Graph, JSON-LD\n");
+    md.push_str("image: /static/og.png    # social preview\n");
+    md.push_str("updated: 2026-02-01      # last modified\n");
+    md.push_str("tags: [a, b]             # tag pages and feeds\n");
+    md.push_str("draft: true              # left out of builds\n");
+    md.push_str("weight: 1                # order in undated collections\n");
+    md.push_str("extra: {key: value}      # -> {{ page.extra.key }}\n");
+    md.push_str("---\n```\n\n");
+
+    md.push_str("## Rules\n\n");
+    md.push_str("- Link between content files with relative `.md` paths (`[intro](../docs/intro.md)`); the build turns them into URLs.\n");
+    md.push_str("- Never edit `dist/`.\n");
     md.push_str(
-        "Run `seite contact setup` to configure a provider (Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform).\n\n",
+        "- Templates extend `base.html`; render content with `{{ page.content | safe }}`.\n",
     );
+    md.push_str("- Themes: keep the `{% include \"seite/…\" %}` partials; seite updates them.\n");
+    md.push_str("- Shortcodes: `{{< name(arg=\"v\") >}}`, or `{{% name() %}}…{{% end %}}` with a body. No `{{< /name >}}`.\n\n");
 
-    // Theme builder skill (static)
-    md.push_str(include_str!("../scaffold/theme-builder.md"));
+    md.push_str("## Verify\n\n");
+    md.push_str("Run `seite check` after changes. Fix every error at its `file:line`, run `seite check` once more, then stop and report what is left.");
+    if !agents.is_empty() {
+        md.push(' ');
+        md.push_str(&crate::cli::harness_hooks::verify_note(agents));
+    }
+    md.push_str("\n\n");
 
-    // Brand identity skill (static)
-    md.push_str(include_str!("../scaffold/brand-identity.md"));
+    md.push_str("## Agent setup\n\n");
+    md.push_str(&harness::wrap_block(
+        harness::MCP_SETUP_BLOCK,
+        &harness::mcp_setup_table(agents, mcp),
+    ));
+    md.push('\n');
 
-    // Verify Your Change (short, static — how an agent should check its work)
-    md.push_str("## Verify Your Change\n\n");
-    md.push_str(
-        "After editing content, templates, or config, check the whole site in one pass:\n\n",
-    );
-    md.push_str("```bash\n");
-    md.push_str("seite check            # every problem, compiler-style: file:line:col: error[code]: message; exit 0 = no errors\n");
-    md.push_str("seite check --strict   # also fail on warnings (broken links, missing assets, unknown config keys)\n");
-    md.push_str("seite build --json     # one JSON document on stdout: {\"ok\",\"data\":{\"broken_links\",\"missing_assets\",\"diagnostics\"}}\n");
-    md.push_str("```\n\n");
-    md.push_str("`seite check` never touches `dist/`, and a failed `seite build` leaves the previous `dist/` in place. Diagnostics point at the source file and line (the `.md`, template, or `seite.toml`), not the generated HTML. Link between content files with relative `.md` paths (`[intro](../docs/intro.md)`) — the build rewrites them to page URLs and reports ones that don't resolve.\n\n");
-    md.push_str(&crate::cli::harness_hooks::verify_note(agents));
-    md.push_str("For a background preview while you keep editing, `seite serve --no-repl &` runs the dev server (with live reload) without an interactive prompt.\n\n");
-    md.push_str("**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.\n\n");
-
-    // Key conventions (short, mixed static/dynamic — keep inline)
-    md.push_str("## Key Conventions\n\n");
-    md.push_str("- Run `seite build` after creating or editing content to regenerate the site\n");
-    md.push_str("- URLs are clean (no extension): `/{collection-url-prefix}/hello-world` on disk is `dist/{collection-url-prefix}/hello-world.html` (e.g. `/blog/hello-world`)\n");
-    md.push_str("- Templates use Tera syntax and extend `base.html`\n");
-    md.push_str("- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)\n");
-    md.push_str("- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate\n");
-    md.push_str("- The `static/` directory is copied as-is to `dist/static/` during build\n");
-    md.push_str("- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate paginated index pages (e.g. `/blog/`, `/blog/page/2/`, etc.)\n");
-    md.push_str("  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`\n");
-    md.push_str("- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.\n");
-    md.push_str("- Custom theme: `seite theme create \"your design description\"` generates `templates/base.html` with Claude (requires Claude Code)\n");
-    md.push_str("- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag\n\n");
-
-    // Context rules index (generated from the same rule list as the rules files)
     md.push_str("## Context Rules\n\n");
     md.push_str(&harness::wrap_block(
         harness::RULES_INDEX_BLOCK,
         &harness::rules_index(features, agents),
     ));
-    md.push('\n');
-
-    // Documentation links
-    md.push_str("## Documentation\n\n");
-    md.push_str("Full documentation: <https://seite.sh/docs/getting-started>\n\n");
-    md.push_str("- [Getting Started](https://seite.sh/docs/getting-started) — install and create your first site\n");
-    md.push_str(
-        "- [Configuration](https://seite.sh/docs/configuration) — full `seite.toml` reference\n",
-    );
-    md.push_str("- [Templates & Themes](https://seite.sh/docs/templates) — customize templates and themes\n");
-    md.push_str("- [Shortcodes](https://seite.sh/docs/shortcodes) — reusable content components\n");
-    md.push_str(
-        "- [CLI Reference](https://seite.sh/docs/cli-reference) — all commands and flags\n",
-    );
-    md.push_str("- [AI Agent](https://seite.sh/docs/agent) — using the AI assistant\n");
-
     md
 }
 
@@ -1116,5 +1141,30 @@ fn singularize(name: &str) -> &str {
         "pages" => "page",
         "trust" => "trust",
         _ => name,
+    }
+}
+
+#[cfg(test)]
+mod timezone_tests {
+    use super::with_site_timezone;
+
+    #[test]
+    fn test_with_site_timezone_appends_to_site_table() {
+        let toml = "[site]\ntitle = \"T\"\nauthor = \"\"\n\n[build]\nminify = true\n";
+        let out = with_site_timezone(toml, Some("Asia/Tokyo"));
+        assert!(out.contains("author = \"\"\n# Time zone"), "{out}");
+        assert!(
+            out.contains("timezone = \"Asia/Tokyo\"\n\n[build]"),
+            "{out}"
+        );
+        let parsed: toml::Table = toml::from_str(&out).unwrap();
+        assert_eq!(parsed["site"]["timezone"].as_str(), Some("Asia/Tokyo"));
+
+        let out = with_site_timezone(toml, None);
+        assert!(
+            out.contains("# timezone = \"Europe/Berlin\"\n\n[build]"),
+            "{out}"
+        );
+        assert!(!out.contains("\ntimezone ="), "{out}");
     }
 }

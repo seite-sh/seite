@@ -13,12 +13,27 @@ use std::process::Command;
 /// call `Command::new("git")` directly.
 pub fn npm_cmd(name: &str) -> Command {
     if cfg!(windows) {
+        // Run the shim itself when it is on PATH: Rust escapes arguments for
+        // `.cmd`/`.bat` programs (and refuses ones it can't), whereas
+        // `cmd /C name args` hands `&`, `|` or `"` in an argument (a project
+        // name from seite.toml, a branch name) to cmd unquoted.
+        if let Some(program) = find_on_path(&[format!("{name}.cmd"), format!("{name}.exe")]) {
+            return Command::new(program);
+        }
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", name]);
         cmd
     } else {
         Command::new(name)
     }
+}
+
+/// The first of `names` found in a `PATH` directory.
+fn find_on_path(names: &[String]) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .flat_map(|dir| names.iter().map(move |n| dir.join(n)))
+        .find(|p| p.is_file())
 }
 
 /// Resolve the user's home directory in a cross-platform way.
@@ -39,6 +54,60 @@ pub fn home_dir() -> Option<PathBuf> {
 /// Resolve a path relative to the user's home directory.
 pub fn home_path(relative: &str) -> Option<PathBuf> {
     home_dir().map(|home| home.join(relative))
+}
+
+/// The per-user cache directory for seite (downloaded tools such as the
+/// Tailwind CLI):
+///
+/// - macOS: `~/Library/Caches/seite`
+/// - Windows: `%LOCALAPPDATA%\seite`
+/// - Linux/other: `$XDG_CACHE_HOME/seite`, else `~/.cache/seite`
+pub fn cache_dir() -> Option<PathBuf> {
+    let non_empty = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+    #[cfg(target_os = "macos")]
+    {
+        let _ = non_empty;
+        home_path("Library/Caches/seite")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        non_empty("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("seite"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        non_empty("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .map(|dir| dir.join("seite"))
+            .or_else(|| home_path(".cache/seite"))
+    }
+}
+
+/// The per-user configuration directory for seite (user decisions such as
+/// trusted projects, never stored in a repository):
+///
+/// - macOS: `~/Library/Application Support/seite`
+/// - Windows: `%APPDATA%\seite`
+/// - Linux/other: `$XDG_CONFIG_HOME/seite`, else `~/.config/seite`
+pub fn config_dir() -> Option<PathBuf> {
+    let non_empty = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
+    #[cfg(target_os = "macos")]
+    {
+        let _ = non_empty;
+        home_path("Library/Application Support/seite")
+    }
+    #[cfg(target_os = "windows")]
+    {
+        non_empty("APPDATA").map(|dir| PathBuf::from(dir).join("seite"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        non_empty("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .map(|dir| dir.join("seite"))
+            .or_else(|| home_path(".config/seite"))
+    }
 }
 
 /// Resolve the wrangler CLI config file path.

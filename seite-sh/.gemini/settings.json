@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "seite-check",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook gemini || true",
+            "timeout": 120000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "seite-check-file",
+            "command": "command -v seite >/dev/null 2>&1 && seite check --hook gemini --post-edit || true",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}

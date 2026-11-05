@@ -1,17 +1,19 @@
 ---
 title: Search Improvements
-description: "Collection filtering, faceted search, and i18n-aware search with optional Pagefind integration"
+description: "Full-text, per-language search on any static host, with collection filtering and no external service"
 tags:
-- planned
+- done
 weight: 8
 ---
 
-Enhance the existing client-side search beyond basic JSON index filtering. Pagefind has raised the bar for SSG search.
+Shipped in v0.21.0. With `[build] search = "full"` (the default for new sites) the build writes a sharded full-text index, and the bundled search box downloads only the shards for the typed words. No service, API key or Node.
 
-### Improvements
+## Improvements
 
-- **Collection filtering**: filter results by collection type (posts, docs, pages)
-- **Tag faceting**: narrow results by tag
-- **i18n-aware search**: search within the active language only
-- **Pagefind integration**: optional Pagefind as an alternative to the built-in JSON search for sites that need full-text indexing, fuzzy matching, and sub-100ms results on large sites
-- **Search analytics**: track popular queries (privacy-preserving, client-side only)
+- **Full-text search**: page bodies are indexed, not just titles and descriptions; a query on a 1,000-page site downloads well under 100 KB
+- **Ranking**: all words must match, the last as a prefix while typing; titles rank above headings, tags and descriptions, those above body text
+- **i18n-aware search**: one index per language; English matches word forms, CJK is matched by character pairs
+- **Collection filtering**: `{% set search_collections = "docs" %}` limits a search box to some collections
+- **Accessible results**: highlighted snippets, keyboard navigation, result count announced to screen readers
+
+Not planned for now: tag facets, Pagefind integration and search analytics.

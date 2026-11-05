@@ -1,0 +1,5 @@
+{# seite partial: lang-switcher — managed by seite, updated on upgrade. Renders only when the page has translations. #}{% if translations | length > 1 %}
+        <nav class="lang-switcher">
+            {% for t in translations %}{% if t.lang == lang %}<strong>{{ t.lang | upper }}</strong>{% else %}<a href="{{ t.url | escape_attr }}">{{ t.lang | upper }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}

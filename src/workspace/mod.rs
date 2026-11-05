@@ -102,6 +102,69 @@ impl WorkspaceConfig {
             }
         }
 
+        // A site's output directory is emptied by every build: it must stay
+        // inside the workspace and hold no site (a cloned workspace could
+        // otherwise empty any directory).
+        let components = |value: &str| -> Vec<String> {
+            Path::new(value)
+                .components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(part) => {
+                        Some(part.to_string_lossy().to_lowercase())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let shared = [
+            ("shared_data", &self.workspace.shared_data),
+            ("shared_static", &self.workspace.shared_static),
+            ("shared_templates", &self.workspace.shared_templates),
+        ];
+        for (name, value) in shared {
+            if let Some(why) = value
+                .as_deref()
+                .and_then(|v| crate::config::dir_outside_project(v, false))
+            {
+                return Err(PageError::Workspace(format!(
+                    "[workspace] {name} = \"{}\" {why}",
+                    value.as_deref().unwrap_or_default()
+                )));
+            }
+        }
+        for site in &self.sites {
+            if let Some(why) = crate::config::dir_outside_project(&site.path, true) {
+                return Err(PageError::Workspace(format!(
+                    "site '{}': path = \"{}\" {why}",
+                    site.name, site.path
+                )));
+            }
+        }
+        for site in &self.sites {
+            let Some(output_dir) = &site.output_dir else {
+                continue;
+            };
+            let out = components(output_dir);
+            let problem = crate::config::dir_outside_project(output_dir, false)
+                .map(str::to_string)
+                .or_else(|| {
+                    matches!(out.first().map(String::as_str), Some(".git" | ".seite"))
+                        .then(|| format!("is inside {}", out[0]))
+                })
+                .or_else(|| {
+                    self.sites
+                        .iter()
+                        .find(|other| components(&other.path).starts_with(&out))
+                        .map(|other| format!("contains site '{}' ({})", other.name, other.path))
+                });
+            if let Some(why) = problem {
+                return Err(PageError::Workspace(format!(
+                    "site '{}': output_dir = \"{output_dir}\" {why}; every build empties it",
+                    site.name
+                )));
+            }
+        }
+
         // Check that each site directory has a seite.toml
         for site in &self.sites {
             let site_toml = ws_root.join(&site.path).join("seite.toml");
@@ -191,7 +254,21 @@ pub fn load_site_in_workspace(
 ) -> Result<(SiteConfig, ResolvedPaths)> {
     let site_root = ws_root.join(&ws_site.path);
     let config = SiteConfig::load(&site_root.join("seite.toml"))?;
-    Ok(apply_site_overrides(ws_root, ws_site, config))
+    let (config, paths) = apply_site_overrides(ws_root, ws_site, config);
+    guard_ws_output(ws_root, ws_site, &paths)?;
+    Ok((config, paths))
+}
+
+/// A workspace site's `output_dir` is emptied by every build: refuse one
+/// that goes through a symlink to anything but an earlier build (see
+/// `build::guard_output`).
+fn guard_ws_output(ws_root: &Path, ws_site: &WorkspaceSite, paths: &ResolvedPaths) -> Result<()> {
+    if ws_site.output_dir.is_some() {
+        crate::build::guard_output(ws_root, &paths.output).map_err(|e| {
+            PageError::Workspace(format!("site '{}' output_dir: {e}", ws_site.name))
+        })?;
+    }
+    Ok(())
 }
 
 /// Like [`load_site_in_workspace`], but loads the config with
@@ -210,6 +287,7 @@ pub fn load_site_in_workspace_with_diagnostics(
     let site_root = ws_root.join(&ws_site.path);
     let (config, warnings) = SiteConfig::load_with_diagnostics(&site_root.join("seite.toml"))?;
     let (config, paths) = apply_site_overrides(ws_root, ws_site, config);
+    guard_ws_output(ws_root, ws_site, &paths)?;
     Ok((config, paths, warnings))
 }
 
@@ -259,6 +337,28 @@ mod tests {
             path: path.into(),
             base_url: None,
             output_dir: None,
+        }
+    }
+
+    #[test]
+    fn test_validate_refuses_dirs_outside_the_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        for (output_dir, shared_static) in [
+            (Some("../victim"), None),
+            (Some("/tmp/victim"), None),
+            (Some("sites"), None),
+            (Some(".git/out"), None),
+            (None, Some("../../etc")),
+        ] {
+            let mut site = make_site("blog", "sites/blog");
+            site.output_dir = output_dir.map(Into::into);
+            let mut config = make_workspace_config(vec![site]);
+            config.workspace.shared_static = shared_static.map(Into::into);
+            let err = config.validate(tmp.path()).unwrap_err().to_string();
+            assert!(
+                err.contains("output_dir") || err.contains("shared_static"),
+                "{output_dir:?} {shared_static:?}: {err}"
+            );
         }
     }
 

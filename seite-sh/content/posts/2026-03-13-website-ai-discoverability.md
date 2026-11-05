@@ -1,7 +1,8 @@
 ---
-title: "Website AI Discoverability: The Third Audience Your Site Is Missing"
+title: "Website AI Discoverability: Your Third Audience"
 date: 2026-03-13
-description: "Website AI discoverability is no longer optional. Your site has three audiences now — humans, search engines, and AI models. Here's the architecture that reaches all three."
+updated: 2026-10-29
+description: "Your site has three audiences now: humans, search engines, and AI models. Here's the architecture for website AI discoverability that reaches all three."
 tags:
  - ai
  - seo
@@ -13,8 +14,6 @@ extra:
  meta_description: "Your website has always had two audiences. It now has three. Most developers are optimizing for one. Here's what the third audience needs and how to reach it."
  url_slug: "website-ai-discoverability"
 ---
-
-# Website AI Discoverability: The Third Audience Your Site Is Missing
 
 Your website has always had two audiences. It now has three. Most developers are optimizing for one.
 
@@ -28,7 +27,7 @@ Improving **website AI discoverability** starts with understanding what the thir
 
 The scale matters because it determines whether you should care now or later.
 
-Perplexity reported surpassing [100 million monthly active users](https://techcrunch.com/2025/11/20/perplexity-passes-100-million-monthly-users/) in late 2025. [ChatGPT's Search feature](https://openai.com/blog/chatgpt-search), launched in late 2024, processes hundreds of millions of queries per month. [Google AI Overviews](https://blog.google/products/search/ai-overviews-2024/) appear on a growing share of all searches, particularly for informational queries where developers look for "best static site generator" or "how to implement llms.txt." [BrightEdge research](https://www.brightedge.com/resources/research-reports/ai-search-visibility-report) estimated AI Overviews appeared on roughly 15% of all Google searches by early 2026, with higher rates for technical topics.
+Perplexity answers questions with cited sources. ChatGPT added web search in late 2024. Google [rolled AI Overviews out in Search](https://blog.google/products/search/generative-ai-google-search-may-2024/) in May 2024, and they show up most on informational queries, the kind developers type when they look for "best static site generator" or "how to implement llms.txt."
 
 More directly relevant: developers using AI assistants like GitHub Copilot, Claude, and Cursor regularly paste in web content and ask the AI to summarize or act on it. When those developers ask their AI coding assistant "what's the best way to deploy a static site?", the answer draws from whatever content those AI systems have indexed or can fetch. Sites with clean, machine-readable content appear. Sites locked inside JavaScript bundles or missing structured metadata do not.
 

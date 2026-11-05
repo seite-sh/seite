@@ -1,0 +1,209 @@
+==> AGENTS.md <==
+# Fixture Site
+
+This is a static site built with the `seite` CLI tool.
+
+Workflow shortcut: `/seite <command>` (`check`, `new`, `preview`, `build`, `deploy`, `theme`, `collection`; `$seite` in Codex) runs the bundled `seite` skill, which picks the right commands below.
+
+## Commands
+
+```bash
+seite build                              # Build the site
+seite build --drafts                     # Build including draft content
+seite serve                              # Dev server with live reload + REPL
+seite serve --open                       # Dev server + open browser
+seite serve --port 8080                  # Use a specific port
+seite new post "Title"                  # Create new post
+seite new doc "Title"                  # Create new doc
+seite new page "Title"                  # Create new page
+seite new post "Title" --tags rust,web   # Create with tags
+seite new post "Title" --draft           # Create as draft
+seite new post "Title" --lang es         # Create translation (needs [languages.es] in config)
+seite collection list                    # List site collections
+seite collection add <preset>            # Add a preset collection (posts, docs, pages, changelog, roadmap, trust)
+seite theme list                         # List available themes
+seite theme apply <name>                 # Apply a bundled theme (default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine, academic)
+seite theme create "coral brutalist"     # Generate a custom theme with AI (requires Claude Code)
+seite theme install <url>                # Install theme from URL
+seite theme export <name>                # Export current theme for sharing
+seite agent                              # Interactive AI agent session
+seite agent "write about Rust"           # One-shot AI agent prompt
+seite deploy                             # Commit, push, build, and deploy
+seite deploy --no-commit                 # Deploy without auto-commit/push
+seite skill install seomachine           # Install a skill pack
+seite workspace list                     # List sites in a multi-site workspace
+seite access groups                      # List private-collection password groups
+seite upgrade                            # Upgrade project config after a seite version bump
+seite self-update                        # Update the seite binary itself
+seite perf                                # Audit performance via PageSpeed Insights
+seite mcp                                # Start the MCP server (usually auto-started)
+seite completions bash                   # Generate shell completions
+```
+
+## Project Structure
+
+```
+content/posts/    # Posts content (markdown + YAML frontmatter)
+content/docs/    # Documentation content (markdown + YAML frontmatter)
+content/pages/    # Pages content (markdown + YAML frontmatter)
+templates/       # Tera (Jinja2-compatible) HTML templates
+static/          # Static assets (copied as-is to dist/)
+data/            # Data files (YAML/JSON/TOML) → {{ data.filename }} in templates
+dist/            # Build output (generated, do not edit)
+seite.toml        # Site configuration
+```
+
+## Collections
+
+### Posts
+- Directory: `content/posts/`
+- URL prefix: `/posts`
+- Template: `post.html`
+- Date-based: yes (filename format: `YYYY-MM-DD-slug.md`)
+- Included in RSS feed (`/feed.xml`) and Atom feed (`/atom.xml`)
+
+### Documentation
+- Directory: `content/docs/`
+- URL prefix: `/docs`
+- Template: `doc.html`
+- Date-based: no (filename format: `slug.md`)
+- Supports nested directories (e.g., `section/slug.md` → `/docs/section/slug`)
+
+### Pages
+- Directory: `content/pages/`
+- URL prefix: `(root)`
+- Template: `page.html`
+- Date-based: no (filename format: `slug.md`)
+
+## Content Format
+
+Content files are markdown with YAML frontmatter:
+
+```yaml
+---
+title: "Post Title"
+date: 2025-01-15        # required for dated collections
+description: "Optional"  # page description — used in meta/OG/Twitter/JSON-LD
+image: /static/og.png    # optional social-preview image (og:image / twitter:image)
+updated: 2025-06-01      # optional last-modified date → JSON-LD dateModified
+tags:                     # optional
+  - tag1
+  - tag2
+draft: true              # optional, hides from default build
+slug: custom-slug        # optional, overrides auto-generated slug
+template: custom.html    # optional, overrides collection default template
+robots: noindex          # optional, per-page <meta name="robots">
+weight: 1                # optional, sort order for non-date collections (lower first)
+aliases:                 # optional, old URLs that redirect to this page
+  - /old-url
+extra:                   # optional, arbitrary data → {{ page.extra.field }}
+  key: value
+---
+
+Markdown content here.
+```
+
+Use `<!-- more -->` in content to mark the excerpt boundary. Without it, the first paragraph is used as the excerpt.
+
+### Homepage
+
+To add custom content to the homepage, create `content/pages/index.md`. Its rendered content will appear above the collection listings on the index page. The homepage is injected as `{{ page.content }}` in the index template.
+
+Design workflows: `/seite theme`, `/seite brand`, `/seite landing` (Codex: `$seite theme|brand|landing`) replace the old `/theme-builder`, `/brand-identity`, and `/landing-page` skills.
+
+## MCP Server
+
+This project includes a built-in MCP (Model Context Protocol) server (`seite mcp`) — no API keys required. Each coding agent reads it from its own project config and may need a one-time approval:
+
+<!-- seite:agent-setup -->
+| Agent | Config | One-time step |
+|---|---|---|
+| Claude Code | `.claude/settings.json`, `.claude/launch.json` | Accept the workspace trust prompt once (until then Claude Code ignores `.claude/settings.json`) |
+| Codex CLI | `.codex/hooks.json` | Trust the project when Codex asks, then approve the hooks once in `/hooks` |
+| OpenCode | `opencode.json`, `.opencode/plugins/seite-check.js` | None |
+| Cursor | `.cursor/cli.json`, `.cursor/hooks.json` | Trust the workspace (`cursor-agent --trust` or answer the prompt) |
+| Gemini CLI | `.gemini/settings.json` | Trust the folder (`gemini trust` or the prompt) and approve the project hooks when asked |
+| GitHub Copilot | `.github/hooks/seite.json` | Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders) |
+| Antigravity CLI | `.agents/hooks.json` | None; for `agy -p`, allow seite commands in your user settings (`command(seite check)`) |
+<!-- /seite:agent-setup -->
+
+Use this file for commands, config options, template syntax, and patterns. Use the MCP server to check **current site state** before creating or modifying content:
+
+- `seite://content/{collection}` — what content exists, with each item's source `path` and real `url` (avoid duplicates)
+- `seite://config` — current `seite.toml` (may differ from defaults documented here)
+- `seite://themes` — active theme and available options
+- `seite_check` — every problem in the site (config, frontmatter, shortcodes, templates, links, assets) with file and line; run after changes
+- `seite_search` — find content by title, description, tags, or body text (ranked)
+- `seite_content_stats` — drafts, missing descriptions/tags/translations, future-dated posts
+- `seite_get_page` — one page as the build sees it (resolved frontmatter, URL, rendered HTML)
+- `seite_create_content` — create content with valid frontmatter (refuses to overwrite)
+- `seite_update_frontmatter` — change a page's frontmatter without touching its body
+- `seite_list_templates` — template overrides, base blocks, context variables, shortcodes, data keys (call before editing templates)
+- `seite_build` — build the site and get warnings, broken links, and missing assets back as data
+- `seite_apply_theme` — apply a theme (backs up a customized `base.html`)
+- `seite_create_collection` — add a preset collection
+- `seite_lookup_docs` — search seite's embedded documentation for edge cases not covered here
+
+Additional resources: `seite://docs/*` (full seite documentation), `seite://mcp-config` (MCP settings)
+
+## Contact Forms
+
+Contact forms are available via the `{{< contact_form() >}}` shortcode.
+Run `seite contact setup` to configure a provider (Formspree, Web3Forms, Netlify Forms, HubSpot, Typeform).
+
+## Verify Your Change
+
+After editing content, templates, or config, check the whole site in one pass:
+
+```bash
+seite check            # every problem, compiler-style: file:line:col: error[code]: message; exit 0 = no errors
+seite check --strict   # also fail on warnings (broken links, missing assets, unknown config keys)
+seite build --json     # one JSON document on stdout: {"ok","data":{"broken_links","missing_assets","diagnostics"}}
+```
+
+`seite check` never touches `dist/`, and a failed `seite build` leaves the previous `dist/` in place. Diagnostics point at the source file and line (the `.md`, template, or `seite.toml`), not the generated HTML. Link between content files with relative `.md` paths (`[intro](../docs/intro.md)`) — the build rewrites them to page URLs and reports ones that don't resolve.
+
+When you finish a turn, a stop hook runs `seite check --hook <agent>` and hands any errors back to you (warnings never block): Claude Code `.claude/settings.json` (`hooks.Stop`), Codex CLI `.codex/hooks.json` (approve it once in `/hooks`), OpenCode `.opencode/plugins/seite-check.js`, Cursor `.cursor/hooks.json`. Everyone working on the site needs seite 0.20 or newer on `PATH` (older versions don't have `seite check` and the hook will fail). Delete the hook to opt out; `seite upgrade` won't re-add it.
+
+For a background preview while you keep editing, `seite serve --no-repl &` runs the dev server (with live reload) without an interactive prompt.
+
+**Shortcode syntax:** inline shortcodes self-close — `{{< name(args) >}}` — while body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag.
+
+## Key Conventions
+
+- Run `seite build` after creating or editing content to regenerate the site
+- URLs are clean (no extension): `/{collection-url-prefix}/hello-world` on disk is `dist/{collection-url-prefix}/hello-world.html` (e.g. `/blog/hello-world`)
+- Templates use Tera syntax and extend `base.html`
+- Use `{{ page.content | safe }}` to render HTML content (the `safe` filter is required)
+- Themes only replace `base.html` — collection templates (`post.html`, `doc.html`, `page.html`) are separate
+- The `static/` directory is copied as-is to `dist/static/` during build
+- Pagination: add `paginate = 10` to a `[[collections]]` block in `seite.toml` to generate paginated index pages (e.g. `/blog/`, `/blog/page/2/`, etc.)
+  Use `{% if pagination %}<nav>...</nav>{% endif %}` in templates; variables: `pagination.current_page`, `pagination.total_pages`, `pagination.prev_url`, `pagination.next_url`
+- Search is always enabled: `dist/search-index.json` is generated every build. All bundled themes include a search box wired to it. No config needed.
+- Custom theme: `seite theme create "your design description"` generates `templates/base.html` with Claude (requires Claude Code)
+- Deploy auto-commits and pushes before deploying. On non-main branches, it auto-uses preview mode. Disable with `auto_commit = false` in `[deploy]` or `--no-commit` flag
+
+## Context Rules
+
+<!-- seite:context-rules -->
+Detailed guides live in `.claude/rules/` (Cursor: same guides as `.cursor/rules/*.mdc`; GitHub Copilot: same guides as `.github/instructions/*.instructions.md`; Antigravity CLI: same guides as `.agents/rules/*.md`). Claude Code, Cursor, GitHub Copilot and Antigravity CLI load them automatically for matching files; other agents should read the matching guides before editing:
+
+- `templates/**`: `seo-requirements.md`, `templates.md`, `i18n.md`, `features.md`
+- `content/**`: `i18n.md`, `shortcodes.md`, `features.md`, `private-collections.md`
+- `data/i18n/**`: `i18n.md`
+- `data/**`: `data-files.md`
+- `templates/shortcodes/**`: `shortcodes.md`
+- `seite.toml`: `config-reference.md`, `private-collections.md`
+<!-- /seite:context-rules -->
+
+## Documentation
+
+Full documentation: <https://seite.sh/docs/getting-started>
+
+- [Getting Started](https://seite.sh/docs/getting-started) — install and create your first site
+- [Configuration](https://seite.sh/docs/configuration) — full `seite.toml` reference
+- [Templates & Themes](https://seite.sh/docs/templates) — customize templates and themes
+- [Shortcodes](https://seite.sh/docs/shortcodes) — reusable content components
+- [CLI Reference](https://seite.sh/docs/cli-reference) — all commands and flags
+- [AI Agent](https://seite.sh/docs/agent) — using the AI assistant
+

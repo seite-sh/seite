@@ -15,7 +15,7 @@ url_prefix = "/docs"
 default_template = "doc.html"
 ```
 
-Its pages are excluded from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds, and tag pages. Every page also gets `noindex, nofollow` unless it supplies its own `robots` frontmatter. Without `[access]`, this remains discovery-only and does not authenticate requests.
+Its pages are excluded from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, the full-text index under `search/`, RSS/Atom feeds, and tag pages. Every page also gets `noindex, nofollow` unless it supplies its own `robots` frontmatter. Without `[access]`, this remains discovery-only and does not authenticate requests.
 
 ### Enable password access on Cloudflare Pages
 

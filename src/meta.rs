@@ -38,6 +38,10 @@ pub struct PageMeta {
     /// projects from before hooks existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hooks_installed: Option<Vec<String>>,
+    /// One-time `seite upgrade` notices already shown (e.g. edited legacy
+    /// skills kept), so they aren't repeated on every upgrade.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notices_shown: Option<Vec<String>>,
 }
 
 impl PageMeta {
@@ -48,6 +52,7 @@ impl PageMeta {
             initialized_at: Some(chrono::Utc::now().to_rfc3339()),
             agents: None,
             hooks_installed: None,
+            notices_shown: None,
         }
     }
 
@@ -60,6 +65,7 @@ impl PageMeta {
             initialized_at: existing.and_then(|m| m.initialized_at.clone()),
             agents: existing.and_then(|m| m.agents.clone()),
             hooks_installed: existing.and_then(|m| m.hooks_installed.clone()),
+            notices_shown: existing.and_then(|m| m.notices_shown.clone()),
         }
     }
 }
@@ -85,11 +91,10 @@ pub fn load(project_root: &Path) -> Option<PageMeta> {
 
 /// Write project metadata to `.seite/config.json`.
 pub fn write(project_root: &Path, meta: &PageMeta) -> std::io::Result<()> {
-    let dir = meta_dir(project_root);
-    fs::create_dir_all(&dir)?;
     let json = serde_json::to_string_pretty(meta)?;
-    fs::write(meta_path(project_root), json)?;
-    Ok(())
+    // Guarded: a symlinked `.seite/` in a cloned project can't redirect it.
+    crate::safe_fs::write(project_root, &meta_path(project_root), json)
+        .map_err(|e| std::io::Error::other(format!("{e:#}")))
 }
 
 /// Parse the project version, returning `(0, 0, 0)` for pre-metadata projects.

@@ -1,7 +1,8 @@
 ---
-title: "What Is llms.txt? A Developer's Guide to AI Discoverability"
+title: "What Is llms.txt? A Developer's Guide"
 date: 2026-03-13
-description: "What is llms.txt? A markdown file that tells AI what your site is about. Learn the format, what the data says, and how to generate it automatically on every build."
+updated: 2026-10-29
+description: "What is llms.txt? A markdown file that tells AI what your site is about. Learn the format, what the data says, and how to generate it on every build."
 tags:
  - llms-txt
  - ai
@@ -256,7 +257,7 @@ Every time your site content changes meaningfully. If you add a new documentatio
 
 ## The Standard Is Young. The Direction Is Clear.
 
-llms.txt was proposed 18 months ago. robots.txt was proposed in 1994 and didn't become an [official internet standard until 2022](https://searchengineland.com/llms-txt-proposed-standard-453676), 28 years later. Standards take time.
+llms.txt was proposed in September 2024. robots.txt was proposed in 1994 and wasn't published as an IETF standard ([RFC 9309](https://www.rfc-editor.org/rfc/rfc9309)) until 2022, 28 years later. Standards take time.
 
 The data today says llms.txt doesn't affect AI citations. The trajectory says AI search is growing, AI systems are getting better at using structured content, and the websites that provide clean, AI-readable formats will have an advantage when that shift reaches critical mass.
 

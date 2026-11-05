@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::config::SiteConfig;
 use crate::content::ContentItem;
+use crate::diagnostics::Diagnostic;
 use crate::error::Result;
 
 /// A single redirect mapping from an alias path to a canonical URL.
@@ -21,27 +22,55 @@ pub fn generate_redirects(
     items: &[&ContentItem],
     output_dir: &Path,
 ) -> Result<usize> {
-    let base = config.site.base_url.trim_end_matches('/');
+    generate_redirects_with_diagnostics(config, items, output_dir).map(|(n, _)| n)
+}
 
-    let redirects: Vec<Redirect> = items
-        .iter()
-        .flat_map(|item| {
-            item.frontmatter.aliases.iter().filter_map(move |alias| {
-                let clean = alias.trim_matches('/');
-                // Skip empty aliases (root path) and path traversal attempts
-                if clean.is_empty() || clean.contains("..") {
-                    return None;
+/// [`generate_redirects`], also returning an `alias-collision` warning for
+/// every alias whose redirect page would replace a file the build already
+/// wrote (a page, a feed, …): that alias is skipped, never written over it.
+pub fn generate_redirects_with_diagnostics(
+    config: &SiteConfig,
+    items: &[&ContentItem],
+    output_dir: &Path,
+) -> Result<(usize, Vec<Diagnostic>)> {
+    let base = config.site.base_url.trim_end_matches('/');
+    let mut diagnostics = Vec::new();
+
+    let mut redirects: Vec<Redirect> = Vec::new();
+    for item in items {
+        for alias in &item.frontmatter.aliases {
+            let clean = alias.trim_matches('/');
+            // Skip empty aliases (root path) and path traversal attempts
+            if clean.is_empty() || clean.contains("..") {
+                continue;
+            }
+            let output_path = output_dir.join(format!("{clean}.html"));
+            if output_path.exists() {
+                let mut d = Diagnostic::warning(
+                    "alias-collision",
+                    format!(
+                        "alias '{alias}' of {} would replace {}/{clean}.html, which the build already wrote; the alias was skipped",
+                        item.url,
+                        output_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+                    ),
+                )
+                .with_file(item.source_path.clone())
+                .with_hint("remove the alias, or change the page that owns that URL");
+                if let Some(line) = alias_line(&item.source_path, alias) {
+                    d = d.with_line(line);
                 }
-                Some(Redirect {
-                    from: alias.clone(),
-                    to: item.url.clone(),
-                })
-            })
-        })
-        .collect();
+                diagnostics.push(d);
+                continue;
+            }
+            redirects.push(Redirect {
+                from: alias.clone(),
+                to: item.url.clone(),
+            });
+        }
+    }
 
     if redirects.is_empty() {
-        return Ok(0);
+        return Ok((0, diagnostics));
     }
 
     // Generate HTML redirect files
@@ -71,7 +100,13 @@ pub fn generate_redirects(
     redirects_content.push('\n');
     fs::write(output_dir.join("_redirects"), redirects_content)?;
 
-    Ok(redirects.len())
+    Ok((redirects.len(), diagnostics))
+}
+
+/// 1-based line of `alias` in the source file's frontmatter, if found.
+fn alias_line(source: &Path, alias: &str) -> Option<usize> {
+    let text = fs::read_to_string(source).ok()?;
+    text.lines().position(|l| l.contains(alias)).map(|i| i + 1)
 }
 
 /// Generate a minimal HTML page that redirects to the canonical URL.
@@ -117,6 +152,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "".into(),
+                timezone: None,
             },
             collections: vec![],
             build: Default::default(),
@@ -126,7 +162,12 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
+            taxonomies: Vec::new(),
+            check: None,
+            og: None,
         }
     }
 

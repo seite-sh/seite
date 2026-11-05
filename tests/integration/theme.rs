@@ -16,7 +16,7 @@ fn test_theme_create_json_keeps_child_stdout_off_stdout() {
     let fake = bin.join("claude");
     fs::write(
         &fake,
-        "#!/bin/sh\necho \"noise from child stdout\"\necho '<html></html>' > templates/base.html\n",
+        "#!/bin/sh\n[ \"$1\" = \"--version\" ] && exit 0\necho \"noise from child stdout\"\necho '<html></html>' > templates/base.html\n",
     )
     .unwrap();
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
@@ -752,4 +752,29 @@ fn test_theme_apply_never_overwrites_an_earlier_backup() {
         fs::read_to_string(templates.join("base.html.bak")).unwrap(),
         "<html>first custom</html>"
     );
+}
+
+/// Agents may run `seite theme apply` without asking: it must not write
+/// through a symlinked base.html (a cloned repository could link it to a
+/// file outside the project).
+#[cfg(unix)]
+#[test]
+fn test_theme_apply_refuses_symlinked_base_html() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Link", "posts");
+    let site_dir = tmp.path().join("site");
+    let victim = tmp.path().join("victim.txt");
+    fs::write(&victim, "keep me").unwrap();
+    let base = site_dir.join("templates/base.html");
+    let _ = fs::remove_file(&base);
+    std::os::unix::fs::symlink(&victim, &base).unwrap();
+
+    page_cmd()
+        .args(["theme", "apply", "dark"])
+        .current_dir(&site_dir)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("symlink"));
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+    assert!(!site_dir.join("templates/base.html.bak").exists());
 }

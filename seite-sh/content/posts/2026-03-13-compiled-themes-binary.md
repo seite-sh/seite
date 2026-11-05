@@ -1,8 +1,8 @@
 ---
-title: "Static Site Generator with Built-In Themes: 10 Compiled In"
+title: "Static Site Generator with 11 Built-In Themes"
 date: 2026-03-13
-updated: 2026-09-28
-description: "seite is a static site generator with built-in themes: 10 of them compiled into one binary. No npm, no gems, no git submodules. How it works and what it costs."
+updated: 2026-10-29
+description: "seite is a static site generator with built-in themes: 11 of them compiled into one binary. No npm, no gems, no git submodules. How it works and what it costs."
 tags:
  - rust
  - static-site-generator
@@ -14,9 +14,9 @@ extra:
 
 You're on a flight with no wifi. You run `seite theme apply terminal` and your site has a new look. Nothing was fetched. The theme was already inside the `seite` binary on your laptop, compiled in when the release was built.
 
-That's what we mean by a static site generator with built-in themes. Every seite release embeds 10 complete themes using Rust's `include_str!` macro: default, minimal, dark, docs, brutalist, bento, landing, terminal, magazine and academic. Install the binary and you have all of them. Applying one needs no package manager and no network.
+That's what we mean by a static site generator with built-in themes. Every seite release embeds 11 complete themes using Rust's `include_str!` macro: four starters (default, docs, landing and blank) and a seven-theme gallery (minimal, dark, brutalist, bento, terminal, magazine and academic). Install the binary and you have all of them. Applying one needs no package manager and no network.
 
-When this post first went up in March 2026, seite shipped six themes. Four more have landed since, and the theme commands have grown: you can now install a theme from a URL, export your own and apply either kind by name. This update covers how the embedding works, what `seite theme apply` does to your files, the four newer themes and the tradeoffs we accepted. If you've ever lost a CI run to a missing git submodule or a Gemfile that wouldn't resolve, some of this will sound familiar.
+When this post first went up in March 2026, seite shipped six themes. Five more have landed since, and the theme commands have grown: you can now install a theme from a URL, export your own and apply either kind by name. v0.21.0 split the set into starters and a gallery and added `blank`, a bare layout for designing your own. This update covers how the embedding works, what `seite theme apply` does to your files, the four newer themes and the tradeoffs we accepted. If you've ever lost a CI run to a missing git submodule or a Gemfile that wouldn't resolve, some of this will sound familiar.
 
 ## The Problem with Downloaded Themes
 
@@ -57,8 +57,9 @@ pub fn terminal() -> Theme {
 
 pub fn all() -> Vec<Theme> {
     vec![
-        default(), minimal(), dark(), docs(), brutalist(),
-        bento(), landing(), terminal(), magazine(), academic(),
+        default(), docs(), landing(), blank(),      // starters
+        minimal(), dark(), brutalist(), bento(),    // gallery
+        terminal(), magazine(), academic(),
     ]
 }
 ```
@@ -69,9 +70,9 @@ The rest of the [template set](/docs/templates) works the same way. Page templat
 
 Every bundled theme carries the same SEO and GEO head block: a canonical URL, Open Graph and Twitter Card tags, JSON-LD structured data, a link to your [llms.txt file](/blog/what-is-llms-txt) and a markdown alternate link for each page. Switching themes changes the design, not your metadata.
 
-### What 10 Themes Cost in Bytes
+### What the Themes Cost in Bytes
 
-An earlier version of this post put six themes at roughly 80 KB. With 10 themes that number no longer holds, so here are measured ones for v0.20.0:
+An earlier version of this post put six themes at roughly 80 KB. With 10 themes that number no longer held, so here are measured ones for v0.20.0 (v0.21.0 adds the small `blank` starter):
 
 - The 10 `.tera` files add up to 349 KB of template text (5,527 lines). `include_str!` stores that text as-is, so that's what the themes add to the binary.
 - Compressed with gzip on their own, the same files come to about 42 KB.
@@ -79,35 +80,41 @@ An earlier version of this post put six themes at roughly 80 KB. With 10 themes 
 
 So the themes are roughly half a percent of the smallest download. That's small, but it isn't zero, and every user pays it whether they use one theme or all 10.
 
-## The 10 Built-In Themes
+## The 11 Built-In Themes
 
 Here's what `seite theme list` prints. It works anywhere, even outside a seite project, because the list comes from the binary:
 
 ```bash
 $ seite theme list
-Bundled themes
+Starters
   default    Clean, readable theme with system fonts
+  docs       Documentation-focused theme with sidebar layout
+  landing    Marketing and landing page theme with hero sections and CTAs
+  blank      Bare semantic layout with its CSS in static/css/site.css, made for designing your own theme
+
+Gallery (examples: seite theme apply <name>)
   minimal    Ultra-minimal, typography-first theme
   dark       Dark mode theme, easy on the eyes
-  docs       Documentation-focused theme with sidebar layout
   brutalist  Neo-brutalist theme with thick borders and hard shadows
   bento      Card grid layout inspired by bento box design
-  landing    Marketing and landing page theme with hero sections and CTAs
   terminal   Monospace hacker theme with green-on-black terminal aesthetic
   magazine   Multi-column editorial layout with featured articles
   academic   Scholarly serif theme for research and long-form writing
 
+  Bundled themes are examples and starting points. For your own design: seite theme new
   Preview all: https://seite.sh/docs/theme-gallery
 ```
 
-The first six are the ones this post originally covered. The four newer ones fill gaps those left:
+Six of these are the ones this post originally covered (default, minimal, dark, docs, brutalist, bento). Four of the newer ones fill gaps those left:
 
 - **landing** is for marketing pages: hero sections and calls to action, for a product homepage or a launch page.
 - **terminal** is monospace, green on black. It suits developer blogs and CLI tool sites that want to look like a shell.
 - **magazine** is a multi-column editorial layout with featured articles, for sites with a lot of posts to surface.
 - **academic** uses serif typography built for research notes and long-form writing.
 
-The [theme gallery](/docs/theme-gallery) has visual previews of the original six, plus the install and export workflow. The quickest way to judge the newer four is to apply them to your own site and run `seite serve`. Add `--json` to `seite theme list` and you get the same list, plus any installed themes, as structured data.
+The fifth, **blank** (v0.21.0), isn't a finished design. It's semantic markup with its CSS in `static/css/site.css`, the starting point `seite theme new` gives you for a design of your own.
+
+The [theme gallery](/docs/theme-gallery) has a visual preview of every bundled theme, plus the install and export workflow. The quickest way to judge one on your content is to apply it to your own site and run `seite serve`. Add `--json` to `seite theme list` and you get the same list, plus any installed themes, as structured data.
 
 ## What `seite theme apply` Does to Your Files
 
@@ -161,15 +168,15 @@ seite theme export coral-wide --description "Coral with a wider content column"
 
 This copies `templates/base.html` to `templates/themes/coral-wide.tera` and adds a `{#- theme-description: ... -#}` comment at the top, which `seite theme list` shows next to the name. Put the file anywhere with a URL and others can `seite theme install` it.
 
-**Generate one with Claude Code.** Describe the design and let an agent write it:
+**Design one with your coding agent.** Describe the design and let an agent write it. In Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot, ask the `/seite` skill (`$seite` in Codex):
 
-```bash
-seite theme create "editorial serif, warm cream background, single column, 620px max width"
+```
+/seite theme editorial serif, warm cream background, single column, 620px max width
 ```
 
-This runs Claude Code with the Read, Write and Edit tools and a prompt that spells out the required Tera blocks, the template variables and the patterns for search, pagination and language switching. Claude writes `templates/base.html` directly.
+From a plain terminal, `seite theme create "<description>"` starts your agent with that same request (Claude Code by default, or the agent in `SEITE_AGENT`). The skill spells out the `base.html` contract: the required Tera blocks, the template variables and the `seite/` head partials that carry the SEO, search and language-switching markup. The agent writes `templates/base.html` directly. If the site still uses a bundled theme other than `blank`, `create` starts from the `blank` starter so the design isn't painted over someone else's. With the [impeccable](https://github.com/pbakaus/impeccable) design skill installed (`seite skill install impeccable`), seite points you to `/impeccable` instead.
 
-Two caveats. It needs Claude Code installed. And it doesn't go through the backup step that `apply` does, so commit your current template first. Compare the generated `<head>` with a bundled theme's before you ship: the prompt doesn't spell out the full SEO block the bundled themes carry.
+One caveat: it doesn't go through the backup step that `apply` does, so commit your current template first.
 
 To build or adjust a theme by hand, the [custom themes guide](/docs/custom-themes) walks through the required blocks, the SEO and JSON-LD tags to include, search, pagination, accessibility and starting from a copy of a bundled theme.
 
@@ -185,7 +192,7 @@ Compiling themes in buys a lot. It also costs some things. Here's the accounting
 | Theme version tied to tool version | Yes | Separate version to pin |
 | Dependency surface to audit | None | Package, gem or repo |
 | Size cost | ~42 KB compressed, for everyone | Only for themes you install |
-| Choice | 10 bundled + install/export/generate | Whole marketplace |
+| Choice | 11 bundled + install/export/generate | Whole marketplace |
 | Theme fixes ship | With the next seite release | On the theme's own schedule |
 
 ### What You Gain
@@ -200,17 +207,17 @@ Compiling themes in buys a lot. It also costs some things. Here's the accounting
 
 **Binary size.** Measured above: 349 KB of template text in the binary, about 42 KB compressed, paid by everyone.
 
-**A curated set instead of a marketplace.** You get 10 themes plus whatever you install, export or generate. There's no catalog to browse yet.
+**A curated set instead of a marketplace.** You get 11 themes plus whatever you install, export or generate. There's no catalog to browse yet.
 
 **Theme updates follow seite releases.** A fix to a bundled theme ships with the next seite version, not on its own schedule.
 
-**Your `base.html` is a copy.** Upgrading seite doesn't rewrite `templates/base.html`. To pick up improvements to a bundled theme, re-apply it. If you'd customized it, your version lands in `base.html.bak` and you merge your changes back by hand. That's the price of owning the file.
+**Your `base.html` is a copy.** Upgrading seite doesn't rewrite `templates/base.html`. To pick up improvements to a bundled theme, re-apply it. If you'd customized it, your version is saved as `base.html.bak` (or `base.html.bak.1`, `.2`, … when that exists) and you merge your changes back by hand. That's the price of owning the file.
 
 For us that trade is worth it. A theme you can't build without a network connection is a theme that will eventually fail a build for reasons unrelated to your site.
 
 ## Why Coding Agents Benefit
 
-seite is built to be driven by coding agents. Claude Code, Codex, OpenCode and Cursor can all load its [MCP server](/docs/mcp-server). When an agent changes your theme, a few things need to be true:
+seite is built to be driven by coding agents: Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot, through the `/seite` skill or its optional [MCP server](/docs/mcp-server). When an agent changes your theme, a few things need to be true:
 
 - No network request, so the task doesn't depend on a third party being up
 - The same command gives the same result every time
@@ -224,9 +231,9 @@ Compare an agent adding a Hugo theme as a submodule. It now depends on GitHub be
 
 The short version:
 
-- seite compiles 10 themes into its binary with `include_str!`. Applying one never touches the network.
+- seite compiles 11 themes into its binary with `include_str!`. Applying one never touches the network.
 - `seite theme apply` backs up a customized `base.html` and rejects unsafe names.
-- Need something else? `install` from a URL, `export` your own or `create` one with Claude Code.
+- Need something else? `install` from a URL, `export` your own or design one with `/seite theme` in your coding agent.
 - The cost is 349 KB of template text in the binary, a curated set and theme updates tied to seite releases.
 
 If you already have seite, run `seite theme list` and try a couple of themes against your own content. They're already on your machine. Browse the theme gallery linked above for previews, or read the [getting started guide](/docs/getting-started) if you're new to seite.

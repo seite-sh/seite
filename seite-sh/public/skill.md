@@ -1,22 +1,23 @@
 ---
 name: seite
-version: 1.0.0
-description: AI-native static site generator. Install, scaffold, and deploy sites from the command line.
+version: 0.21.0
+description: The static site generator your coding agent can run end to end, for free. Install, scaffold, check, and deploy sites from the command line.
 homepage: https://seite.sh
 metadata:
   seite:
     emoji: "🏗️"
     category: web
     requires:
-      bins: [curl]
       anyBins: [curl, wget]
 ---
 
 # Seite
 
-Seite is a Rust-powered static site generator built for AI agents. It's a local CLI tool — install
-the binary, scaffold a project, create content, and deploy. No accounts, no API keys, no SaaS.
-Everything runs on your machine.
+Seite is a Rust-powered static site generator built for coding agents (Claude Code, Codex, OpenCode,
+Cursor, Antigravity CLI, Gemini CLI, GitHub Copilot). It's a local CLI tool — install
+the binary, scaffold a project, create content, and deploy. seite itself needs no account, API key
+or SaaS; your deploy host (and any form, comment or newsletter provider) needs its own account.
+Building runs entirely on your machine.
 
 ## Companion Files
 
@@ -66,7 +67,9 @@ seite init mysite \
 cd mysite
 ```
 
-All flags are required for non-interactive mode. Available collections: `posts`, `docs`, `pages`,
+Without a terminal, `--deploy-target` is required; the other flags have defaults (title from the
+directory name, collections `posts,pages`, all seven agents for `--agents`; add `--mcp` to wire in the
+MCP server). Available collections: `posts`, `docs`, `pages`,
 `changelog`, `roadmap`, `trust`. Deploy targets: `github-pages`, `cloudflare`, `netlify`.
 
 ---
@@ -79,14 +82,19 @@ After `seite init`, your project includes:
 - `content/` — markdown content directories per collection
 - `templates/` — Tera (Jinja2-compatible) HTML templates
 - `static/` — static assets (copied as-is to output)
-- `AGENTS.md` — canonical project documentation for AI agents
-- `CLAUDE.md` — compatibility import of `AGENTS.md` for Claude Code
-- `.claude/settings.json` — MCP server config + tool permissions (auto-loaded by Claude Code)
-- `.claude/rules/` — path-scoped context files (SEO, templates, i18n, etc.)
-- `.claude/skills/` — bundled skills (theme-builder, brand-identity, landing-page)
+- `AGENTS.md` — compact project guide every agent reads (about 4 KB); `CLAUDE.md` and `GEMINI.md`
+  import it, Codex, OpenCode, Cursor and GitHub Copilot read it directly
+- The `/seite` skill (`$seite` in Codex), version 7: `.claude/skills/seite/` for Claude Code,
+  `.agents/skills/seite/` for the others. Commands: `check`, `audit`, `new`, `preview`, `build`,
+  `deploy`, `theme`, `brand`, `landing`, `collection`, `upgrade`, `hooks`
+- Path-scoped context rules (`.claude/rules/`, `.cursor/rules/`, `.github/instructions/`)
+- Permissions (`.claude/settings.json`, `.cursor/cli.json`, `opencode.json`) for the site's
+  read-only and editing `seite` commands; `seite deploy`, `seite agent` and `seite theme create` still ask
+- Check hooks per agent: `seite check` on each edited file and on the whole site at the end of a turn
+- `.seite/docs/` — the docs for the installed seite version (gitignored)
 
-The `.claude/` directory means Claude Code is immediately productive — MCP connects automatically
-and rules load contextually. `AGENTS.md` provides the shared project guidance.
+The agent starts each session with `seite context` and works through `/seite <command>`. No MCP
+server is configured unless you pass `--mcp`.
 
 ---
 
@@ -104,55 +112,55 @@ seite build                    # Build site to dist/
 seite build --drafts           # Include draft content
 seite serve                    # Dev server with live reload + REPL
 seite serve --open             # Dev server + open browser
+seite preview                  # Running dev server: URL, last build, browser errors
+
+# Check
+seite check                    # Config, frontmatter, templates, links (never writes dist/)
+seite audit                    # SEO, GEO, accessibility, content, performance findings + score
+seite context                  # Agent orientation: site summary and directives
 
 # Deploy
 seite deploy                   # Build, commit, push, deploy
-seite deploy --dry-run         # Preview without deploying
+seite deploy --dry-run         # Print the deploy plan without deploying
 
 # Themes
 seite theme list               # List all available themes
 seite theme apply dark         # Apply a bundled theme
-seite theme create "coral brutalist with lime accents"  # AI-generated theme (requires Claude Code)
+seite theme new                # Blank starter for your own design
+seite theme create "coral brutalist with lime accents"  # Design one with your coding agent
 
-# AI Agent
-seite agent                    # Interactive Claude Code session with full site context
-seite agent "write a blog post about Rust"  # One-shot agent prompt
-
-# Visual Editor
-seite edit                     # Browser-based content editor
-seite edit --open              # Editor + open browser
+# Coding agent
+seite agent                    # Open Claude Code in the site (--with codex|opencode|cursor|antigravity|gemini|copilot)
+seite agent "write a blog post about Rust"  # Pass a prompt through unchanged
 
 # Maintenance
 seite self-update              # Update to latest version
 seite upgrade                  # Upgrade project config to current binary
-seite completions bash         # Generate shell completions (bash/zsh/fish)
+seite completions bash         # Generate shell completions (bash/zsh/fish/powershell/elvish)
 ```
 
 ---
 
 ## MCP Integration
 
-Seite includes a local MCP server that runs over stdio. It's auto-configured by `seite init` —
-no setup needed. Claude Code connects to it automatically when you open the project.
+Seite includes a local MCP server that runs over stdio (`seite mcp`). Coding agents use the CLI by
+default; the MCP server is opt-in:
 
-The MCP server is configured in `.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "seite": {
-      "command": "seite",
-      "args": ["mcp"]
-    }
-  }
-}
+```bash
+seite init mysite --mcp       # new site
+seite upgrade --mcp           # existing site
 ```
 
-### Available MCP Tools
+This writes `.mcp.json` (Claude Code and GitHub Copilot), `.cursor/mcp.json`, `.codex/config.toml`,
+the `mcp` key of `opencode.json`, `.agents/mcp_config.json` (Antigravity CLI) and `mcpServers` in `.gemini/settings.json`.
+
+### Available MCP Tools (16)
 
 | Tool | Description |
 |------|-------------|
 | `seite_build` | Run the build pipeline, returns build stats |
+| `seite_check` | Validate config, content, templates and links without writing the output |
+| `seite_audit` | SEO, GEO, accessibility, content and performance findings with a score |
 | `seite_create_content` | Scaffold new content with proper frontmatter |
 | `seite_get_page` | One page as the build sees it: resolved frontmatter, URL, body, rendered HTML |
 | `seite_update_frontmatter` | Edit a page's frontmatter without touching its body |
@@ -162,6 +170,10 @@ The MCP server is configured in `.claude/settings.json`:
 | `seite_apply_theme` | Apply a bundled or installed theme |
 | `seite_create_collection` | Add a preset collection (posts, docs, pages, changelog, roadmap, trust) |
 | `seite_lookup_docs` | Search seite's embedded documentation |
+| `seite_get_errors` | Running dev server: last build and browser errors |
+| `seite_get_preview_url` | Running dev server: preview URL for a content file or path |
+| `seite_list_routes` | Every built HTML page as a URL |
+| `seite_reload` | Rebuild through the running dev server and reload open pages |
 
 ### Available MCP Resources
 
@@ -171,6 +183,7 @@ The MCP server is configured in `.claude/settings.json`:
 | `seite://config` | Current site configuration |
 | `seite://content` | Content inventory by collection |
 | `seite://themes` | Available themes |
+| `seite://trust` | Trust center data (when the site has one) |
 
 No authentication. No remote server. Runs locally as a subprocess.
 
@@ -208,7 +221,7 @@ seite skill update                # Update installed packs
 seite skill remove seomachine     # Remove a pack
 ```
 
-SEOMachine adds 11 agents, 22 commands (like `/research`, `/write`, `/optimize`), and 25 skills
+SEOMachine adds 11 agents, 24 commands (like `/research`, `/write`, `/optimize`, plus seite's `/publish-draft`), and 25 skills
 for content marketing workflows.
 
 ---
@@ -223,10 +236,12 @@ for content marketing workflows.
 | Build | `seite build` |
 | Preview | `seite serve --open` |
 | Deploy | `seite deploy` |
-| AI session | `seite agent` |
+| Check | `seite check` |
+| Audit | `seite audit` |
+| Coding agent | `seite agent` |
 | Apply theme | `seite theme apply dark` |
 | Update seite | `seite self-update` |
 
 ---
 
-*Seite is a local CLI tool. No accounts, no API keys, no SaaS. Your machine, your sites.*
+*Seite is a local CLI tool: no seite account, API key or SaaS. Your deploy host has its own account. Your machine, your sites.*

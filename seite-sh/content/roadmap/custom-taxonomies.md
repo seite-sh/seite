@@ -1,9 +1,11 @@
 ---
 title: Custom Taxonomies
-description: "User-defined taxonomies beyond tags: categories, series, authors, and arbitrary groupings with auto-generated listing pages"
+description: "User-defined taxonomies beyond tags, such as categories, plus series, with auto-generated listing pages and feeds"
 tags:
-- planned
+- done
 weight: 8
 ---
 
-User-defined taxonomies beyond the built-in `tags` system. Define arbitrary groupings like `categories`, `series`, or `authors` in `seite.toml`, each with its own auto-generated index and archive pages. Modeled after Hugo's taxonomy system but keeping seite's zero-config ergonomics: tags continue to work out of the box, custom taxonomies are opt-in via config.
+Shipped in v0.21.0. `[[taxonomies]]` in `seite.toml` adds groupings beyond the built-in `tags`, such as `categories`. Pages assign terms with a top-level frontmatter key (`categories: [Rust, Web]`). Each taxonomy gets a term index (`/categories/`), a page per term (optionally paginated), per-term RSS and Atom feeds, per-language versions and sitemap entries, rendered with the `taxonomy.html` and `term.html` templates. Tags keep working out of the box; custom taxonomies are opt-in.
+
+Series shipped alongside: `series: "Rust from scratch"` with `series_order` fills `page.series` (parts, previous, next) and adds `/series/<slug>/`. Author archive pages are tracked separately under [multi-author support](/roadmap/multi-author).

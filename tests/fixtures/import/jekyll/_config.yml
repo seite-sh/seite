@@ -1,0 +1,6 @@
+title: Old Jekyll Blog
+url: "https://jekyll.example.com"
+baseurl: ""
+permalink: /:categories/:year/:month/:day/:title.html
+exclude:
+  - README.md

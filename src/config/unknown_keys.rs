@@ -17,9 +17,11 @@ use serde::de::{self, DeserializeOwned, Visitor};
 use toml::de::{DeTable, DeValue};
 
 use super::{
-    AccessSection, AnalyticsSection, BuildSection, CollectionConfig, ContactSection, DeploySection,
-    ImageSection, LanguageConfig, SiteConfig, SiteSection, TrustSection,
+    AccessSection, AnalyticsSection, BuildSection, CheckSection, CollectionConfig, CommentsSection,
+    ContactSection, DeploySection, ImageSection, LanguageConfig, NewsletterSection, OgSection,
+    SiteConfig, SiteSection, TailwindSection, TaxonomyConfig, TrustSection,
 };
+use crate::content::schema::FieldSchema;
 use crate::diagnostics::{did_you_mean, line_col_at, Diagnostic};
 
 /// Expected shape of a TOML value in the config schema.
@@ -38,15 +40,30 @@ enum Schema {
 fn schema_for_root() -> Schema {
     Schema::Struct(fields_of::<SiteConfig>(), |key| match key {
         "site" => Schema::Struct(fields_of::<SiteSection>(), |_| Schema::Any),
-        "build" => Schema::Struct(fields_of::<BuildSection>(), |_| Schema::Any),
+        "build" => Schema::Struct(fields_of::<BuildSection>(), |key| match key {
+            "tailwind" => Schema::Struct(fields_of::<TailwindSection>(), |_| Schema::Any),
+            _ => Schema::Any,
+        }),
         "deploy" => Schema::Struct(fields_of::<DeploySection>(), |_| Schema::Any),
         "images" => Schema::Struct(fields_of::<ImageSection>(), |_| Schema::Any),
         "analytics" => Schema::Struct(fields_of::<AnalyticsSection>(), |_| Schema::Any),
         "trust" => Schema::Struct(fields_of::<TrustSection>(), |_| Schema::Any),
         "contact" => Schema::Struct(fields_of::<ContactSection>(), |_| Schema::Any),
+        "comments" => Schema::Struct(fields_of::<CommentsSection>(), |_| Schema::Any),
+        "newsletter" => Schema::Struct(fields_of::<NewsletterSection>(), |_| Schema::Any),
         "access" => Schema::Struct(fields_of::<AccessSection>(), |_| Schema::Any),
-        "collections" => {
-            Schema::ArrayOf(|| Schema::Struct(fields_of::<CollectionConfig>(), |_| Schema::Any))
+        "check" => Schema::Struct(fields_of::<CheckSection>(), |_| Schema::Any),
+        "og" => Schema::Struct(fields_of::<OgSection>(), |_| Schema::Any),
+        "collections" => Schema::ArrayOf(|| {
+            Schema::Struct(fields_of::<CollectionConfig>(), |key| match key {
+                "fields" => {
+                    Schema::MapOf(|| Schema::Struct(fields_of::<FieldSchema>(), |_| Schema::Any))
+                }
+                _ => Schema::Any,
+            })
+        }),
+        "taxonomies" => {
+            Schema::ArrayOf(|| Schema::Struct(fields_of::<TaxonomyConfig>(), |_| Schema::Any))
         }
         "languages" => {
             Schema::MapOf(|| Schema::Struct(fields_of::<LanguageConfig>(), |_| Schema::Any))
@@ -167,7 +184,7 @@ fn join(section: &str, key: &str) -> String {
 /// The field names a struct's `Deserialize` impl accepts, captured by feeding
 /// it a deserializer that records the `fields` argument of
 /// `deserialize_struct` and then bails out.
-fn fields_of<T: DeserializeOwned>() -> &'static [&'static str] {
+pub(crate) fn fields_of<T: DeserializeOwned>() -> &'static [&'static str] {
     let mut fields: &'static [&'static str] = &[];
     let _ = T::deserialize(FieldProbe(&mut fields));
     fields

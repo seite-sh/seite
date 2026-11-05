@@ -30,26 +30,60 @@ impl fmt::Display for Severity {
 }
 
 /// One problem found while checking or building a site.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+///
+/// Serializes every field below (`file`, `line`, `column` and `hint` only
+/// when set) plus a computed `docs_url` pointing at the code's section of the
+/// error reference (see [`docs_url`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     pub severity: Severity,
     /// Stable kebab-case identifier, e.g. `frontmatter-parse`,
     /// `config-unknown-key`, `broken-link`. Agents and tests match on this,
-    /// so never rename an existing code.
+    /// so never rename an existing code. Every code has a `## <code>` section
+    /// in `seite-sh/content/docs/errors.md` (enforced by a test).
     pub code: &'static str,
     pub message: String,
     /// Source file, relative to the site root when possible.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<PathBuf>,
     /// 1-based line number in `file`.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<usize>,
     /// 1-based column number in `file`.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub column: Option<usize>,
     /// Actionable suggestion, e.g. "did you mean `minify`?".
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+}
+
+/// Base URL of the published error reference (`seite-sh/content/docs/errors.md`,
+/// also embedded in the binary and printed by `seite explain <code>`).
+pub const ERRORS_DOCS_URL: &str = "https://seite.sh/docs/errors";
+
+/// Where the explanation of a diagnostic `code` is published.
+pub fn docs_url(code: &str) -> String {
+    format!("{ERRORS_DOCS_URL}#{code}")
+}
+
+impl Serialize for Diagnostic {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("severity", &self.severity)?;
+        map.serialize_entry("code", self.code)?;
+        map.serialize_entry("message", &self.message)?;
+        if let Some(file) = &self.file {
+            map.serialize_entry("file", file)?;
+        }
+        if let Some(line) = self.line {
+            map.serialize_entry("line", &line)?;
+        }
+        if let Some(column) = self.column {
+            map.serialize_entry("column", &column)?;
+        }
+        if let Some(hint) = &self.hint {
+            map.serialize_entry("hint", hint)?;
+        }
+        map.serialize_entry("docs_url", &docs_url(self.code))?;
+        map.end()
+    }
 }
 
 impl Diagnostic {
@@ -309,6 +343,28 @@ mod tests {
             .with_file(abs.clone())
             .under(Path::new("s"));
         assert_eq!(d.file, Some(abs));
+    }
+
+    #[test]
+    fn test_serialize_keeps_fields_and_adds_docs_url() {
+        let d = Diagnostic::warning("broken-link", "x")
+            .with_file("content/a.md")
+            .with_line(3);
+        assert_eq!(
+            serde_json::to_value(&d).unwrap(),
+            serde_json::json!({
+                "severity": "warning",
+                "code": "broken-link",
+                "message": "x",
+                "file": "content/a.md",
+                "line": 3,
+                "docs_url": "https://seite.sh/docs/errors#broken-link"
+            })
+        );
+        // Unset optional fields stay absent.
+        let v = serde_json::to_value(Diagnostic::error("config-invalid", "y")).unwrap();
+        assert!(v.get("file").is_none() && v.get("hint").is_none());
+        assert!(v.get("column").is_none() && v.get("line").is_none());
     }
 
     #[test]

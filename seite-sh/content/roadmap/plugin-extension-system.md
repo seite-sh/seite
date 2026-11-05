@@ -8,7 +8,7 @@ weight: 6
 
 A formal plugin system that lets users extend the build pipeline without forking. Hugo's and Zola's #1 perennial community request. Users who hit a wall in a non-extensible SSG leave and don't return.
 
-### Possible approach
+## Possible approach
 
 - **Lifecycle hooks**: `before_build`, `after_markdown`, `after_render`, `after_build` events
 - **Hook-based shortcode registration**: plugins can register custom shortcodes with processing logic beyond template rendering

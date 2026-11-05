@@ -750,6 +750,10 @@ fn test_build_into_symlinked_output_dir_replaces_contents_in_place() {
     fs::create_dir_all(real.join("old-dir")).unwrap();
     fs::write(real.join("stale.html"), "stale").unwrap();
     fs::write(real.join("old-dir/x.txt"), "x").unwrap();
+    // An earlier build's output (seite only empties a linked directory that
+    // is empty or holds a build).
+    fs::write(real.join("index.html"), "old").unwrap();
+    fs::write(real.join("sitemap.xml"), "old").unwrap();
     std::os::unix::fs::symlink(&real, site.join("dist")).unwrap();
 
     page_cmd()

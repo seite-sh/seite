@@ -17,21 +17,40 @@ description = "A personal blog and documentation"
 base_url = "https://example.com"
 language = "en"
 author = "Jane Doe"
+timezone = "Europe/Berlin"
 
 [[collections]]
 name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+has_rss = true
+listed = true
+url_prefix = "/posts"
+default_template = "post.html"
 paginate = 10
 
 [[collections]]
 name = "docs"
+label = "Documentation"
+directory = "docs"
+listed = true
+url_prefix = "/docs"
+nested = true
+default_template = "doc.html"
 
 [[collections]]
 name = "pages"
+label = "Pages"
+directory = "pages"
+default_template = "page.html"
 
 [build]
 output_dir = "dist"
 minify = true
 fingerprint = true
+schedule = true
+search = "full"
 
 [deploy]
 target = "github-pages"
@@ -51,6 +70,9 @@ lazy_loading = true
 provider = "google"
 id = "G-XXXXXXXXXX"
 cookie_consent = true
+
+[og]
+generate = true
 ```
 
 ## [site]
@@ -62,6 +84,7 @@ cookie_consent = true
 | `base_url` | string | `"http://localhost:3000"` | Full base URL for canonical links, sitemap, RSS |
 | `language` | string | `"en"` | Default language code |
 | `author` | string | `""` | Author name for JSON-LD and RSS |
+| `timezone` | string | local time | Time zone that decides "today" for scheduled publishing and for dating new files: an IANA name (`"Europe/Berlin"`) or a fixed offset (`"+02:00"`, `"UTC"`). Unset: the machine's local date (CI runners use UTC, so set it when the cron build must agree with your local date). `seite init` writes the detected system zone; `seite upgrade` never adds it (it recommends it once when `schedule = true`), and `seite context` reports `TIMEZONE_UNSET` |
 
 {{% callout(type="warning") %}}
 Set `base_url` to your real domain before deploying. Leaving it as `localhost` will trigger a pre-flight warning and produce incorrect canonical URLs, sitemaps, and RSS feeds.
@@ -69,7 +92,7 @@ Set `base_url` to your real domain before deploying. Leaving it as `localhost` w
 
 ## [[collections]]
 
-Each `[[collections]]` entry defines a content collection. See [Collections](/docs/collections) for full details.
+Each `[[collections]]` entry defines a content collection. `name`, `label`, `directory` and `default_template` are required; the booleans default to `false` and `url_prefix` to `""` (`seite init` and `seite collection add` write a preset's full table). See [Collections](/docs/collections) for full details.
 
 ```toml
 [[collections]]
@@ -88,9 +111,58 @@ paginate = 10
 subdomain = "blog"          # optional: deploy to blog.example.com
 subdomain_base_url = "https://blog.example.com"  # optional: explicit URL override
 deploy_project = "my-blog"  # optional: Cloudflare/Netlify project for subdomain
+related = 5                 # optional: page.related size for this collection (overrides [build] related)
+strict_fields = false       # optional: warn about frontmatter keys the schema does not declare
 ```
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), its own base URL (`https://{subdomain}.{base_domain}`), and its own sitemap, RSS, robots.txt, llms.txt, and search index. The collection is excluded from the main site build. The subdomain **root page** renders with the collection's own index template (e.g. `trust-index.html`) and context — exactly like that collection's index page on the main domain. Use `subdomain_base_url` to override the auto-derived URL (useful when `base_url` contains `www`). See [Collections](/docs/collections) for details.
+
+### Frontmatter schemas
+
+A collection can declare typed frontmatter fields. `seite build` and `seite check` then validate every page of the collection and report each violation as a `frontmatter-schema` error at the exact `file:line`, with the field's `description` as the hint. `seite new` and the MCP create tool write defaults from the schema.
+
+```toml
+[[collections]]
+name = "posts"
+# label, directory, default_template, … as before
+strict_fields = true            # optional: warn about keys the schema does not declare
+
+[collections.fields.description]
+type = "string"
+required = true
+max = 160
+description = "Summary for search results and social cards"
+
+[collections.fields.author]
+type = "string"
+default = "Jane Doe"
+
+[collections.fields.status]
+type = "enum"
+enum = ["draft", "review", "published"]
+
+[collections.fields.rating]
+type = "integer"
+min = 1
+max = 5
+```
+
+| Key | Description |
+|-----|-------------|
+| `type` | `string`, `text`, `number`, `integer`, `bool`, `date` (YYYY-MM-DD), `datetime` (YYYY-MM-DDTHH:MM:SS, optional offset), `url` (http(s) URL or a path starting with `/`), `image` (path or URL), `enum`, `list`, `object` |
+| `required` | The field must be present and non-empty |
+| `enum` / `values` | Allowed values of an `enum`, or of each item of a `list` with `items = "enum"` |
+| `items` | Type of each `list` element (a scalar type) |
+| `min` / `max` | Bounds of a number, or the length of a string (characters) or list (items) |
+| `pattern` | Regular expression a string (or each string item) must contain; unanchored — write `^…$` to match the whole value |
+| `default` | Written by `seite new` and MCP `seite_create_content` when the field is not given; never injected at build time |
+| `description` | What the field is for; shown in errors, `seite templates` and `seite context` |
+
+**Where fields live.** Fields named like built-in keys (`title`, `date`, `description`, `image`, `tags`, `draft`, `slug`, `template`, `robots`, `weight`, `updated`, `aliases`, `expires`, `series`, `series_order`) and `[[taxonomies]]` names (such as `categories`) are validated at the top level, so a schema can tighten them (for example `description` required with `max = 160`). Every other field is a custom field: write it at the top level (`author: Jane`) or under `extra:` (`extra:` / `  author: Jane`), not both — it is validated wherever it appears, and a field in both places is a `frontmatter-schema` error naming both lines. Templates read either spelling as `{{ page.extra.author }}`, and published `.md` copies include declared custom fields where they were written (undeclared top-level keys stay out of them).
+
+**Required fields in new files.** `seite new` writes each default; a required field without a default is written empty (`''`, `[]`, `false` or `null`) and listed as "fill in", and `seite check` points at it until it has a value. MCP `seite_create_content` refuses (writes nothing) when a value it was given breaks the schema or a required field it could have passed is missing; `seite_update_frontmatter` (and `seite frontmatter set`) refuses changes that break the schema; a custom field already in the file is edited where it is, and a new one (`author`, or `extra.author`) is stored under `extra:`.
+
+Drafts are validated with `--drafts` (and always by `seite check --file` and the after-edit hook). Scheduled (future-dated) pages are always validated. `seite init` writes small presets (types and descriptions only: no length bounds); nothing is required unless you add `required = true`, and `seite upgrade` never adds schemas to existing sites.
 
 ### Private collections
 
@@ -99,6 +171,8 @@ Set `private = true` to keep a collection **out of every public discovery surfac
 ```toml
 [[collections]]
 name = "docs"
+label = "Docs"
+directory = "docs"
 private = true
 access_group = "staff"
 url_prefix = "/docs"
@@ -108,7 +182,7 @@ default_template = "doc.html"
 When `private = true`:
 
 - **The collection builds fully** — every item page *and* its auto-generated hub/index page render (with the collection's index template and `data.*` context), for the default language and every `/{lang}/` variant. Unlike `listed = false`, the hub is **not** suppressed.
-- **Its pages are excluded** from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, RSS/Atom feeds, and tag pages.
+- **Its pages are excluded** from the homepage listing, `sitemap.xml`, `llms.txt`, `llms-full.txt`, `search-index.json`, the full-text index under `search/`, RSS/Atom feeds, and tag pages.
 - **Every page is stamped** `<meta name="robots" content="noindex, nofollow">` unless it sets its own `robots` frontmatter.
 - **Internal links still resolve** and the `.md` alternates keep generating (they live under the gated path).
 
@@ -132,6 +206,8 @@ session_hours = 168
 | `session_hours` | integer | `168` | How long an authenticated browser session remains valid (1–8760) |
 
 Password access currently supports **Cloudflare Pages only**. During `seite build`, seite generates an advanced-mode `_worker.js` that checks the password before serving protected files. Missing secrets fail closed with a service-unavailable response.
+
+**Protected Pages projects must be set to Fail closed.** The protected files are still deployed as static assets, and only the Worker keeps them private. On the Workers Free plan, a project set to *Fail open* serves static assets without running the Worker once the daily Workers request allowance is exhausted. That serves protected content without a password. Cloudflare's API defaults new projects to fail open. `seite access set-password` and `seite deploy --setup` switch every protected project to *Fail closed*, and `seite deploy` checks it before uploading. If you deploy another way, set it in the dashboard under **Workers & Pages → project → Settings → Runtime**. See [Password-protecting paths and subdomains](/docs/deployment#set-every-protected-project-to-fail-closed).
 
 The protected scope comes from the collection:
 
@@ -160,18 +236,122 @@ Password access owns the generated Cloudflare `_worker.js` and `_routes.json`. R
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `output_dir` | string | `"dist"` | Build output directory |
+| `content_dir` | string | `"content"` | Directory of the content collections |
+| `template_dir` | string | `"templates"` | Directory of the Tera templates |
+| `static_dir` | string | `"static"` | Directory of static assets (copied to `static/` in the output) |
 | `data_dir` | string | `"data"` | Directory for data files (YAML/JSON/TOML) |
 | `public_dir` | string | `"public"` | Directory for root-level files copied to output without prefix (favicon.ico, .well-known/, _redirects, etc.) |
 | `minify` | bool | `false` | Strip CSS/JS comments and collapse whitespace |
 | `fingerprint` | bool | `false` | Add content hash to asset filenames for cache busting |
 | `math` | bool | `false` | Enable math/LaTeX rendering (`$inline$` and `$$display$$` blocks via KaTeX) |
 | `mermaid` | bool | `false` | Render fenced ` ```mermaid ` blocks as [Mermaid](https://mermaid.js.org/) diagrams (client-side) |
+| `related` | int | `3` | Maximum `page.related` entries per page; `0` disables related pages. A collection's own `related` overrides it |
+| `schedule` | bool | `false` | Scheduled publishing for dated collections: hide posts dated in the future until their date, and `expires:` posts after it. `seite init` sets it for new sites; existing sites build as before until you add it |
+| `future` | bool | `false` | With `schedule`: build future-dated content too. `seite build --future` does the same for one build; `seite serve` always previews it |
+| `tailwind` | table | absent | Compile a Tailwind CSS v4 stylesheet with the standalone CLI (see [Tailwind CSS](#tailwind-css)) |
+| `search` | `"full"` \| `"basic"` \| `false` | `"basic"` | Client-side search. `"full"`: full-text index of page text under `search/` (see [Search](#search)); `"basic"`: `search-index.json` only (titles, descriptions, tags); `false`: no index and no search box. `seite init` writes `"full"`; existing sites keep `"basic"` until they add it |
+
+Directory settings (`output_dir`, `content_dir`, `template_dir`, `static_dir`, `data_dir`, `public_dir`, a collection's `directory`, and in `seite-workspace.toml` a site's `output_dir` and `shared_data`/`shared_static`/`shared_templates`) must be relative paths that name a directory inside the project: no `..`, no absolute path, no backslashes. Every full build empties `output_dir`, so it may not be, contain or lie inside a source directory (`output_dir = "public"`, a Hugo habit, is refused because it is the `public_dir`; so is `static/out`) and may not lie inside `.git` or `.seite`. A workspace site's `path` must be relative and inside the workspace.
+
+Other values that become output paths, command arguments or URLs follow fixed rules too:
+
+- Collection and taxonomy names and language codes (`[languages.<code>]`): letters, digits, `-` or `_`.
+- URL prefixes (a collection's or taxonomy's `url_prefix`): a URL path like `/blog`, with no `.`, `..` or empty segments, no `:` and no backslashes (`url_prefix = "https://example.com/posts"` is an error; use `subdomain` for another host).
+- Deploy project names (`[deploy] project`, a collection's `deploy_project`, and a `name` read from `wrangler.toml`): lowercase letters, digits or `-`, at most 63 characters. (A `wrangler.toml` name that breaks the rule is ignored.)
+- The custom domain (`[deploy] domain`, also set by `seite deploy --domain`): a bare host name such as `www.example.com` — dot-separated labels of letters, digits and `-` (1–63 characters each, none starting or ending with `-`), at most 253 characters, with no scheme, port, path or trailing dot.
+
+A setting that breaks these rules is a `config-invalid` error at its line in the config file.
+
+Symlinks never let a cloned site publish files from elsewhere on your machine. A source directory (content, templates, static, data, public, or a collection's `directory`) reached through a symlink, and any symlink inside `content/` or `templates/`, is a `symlinked-source` error. A symlinked file inside `static/`, `data/` or `public/` is skipped (not copied or loaded) with a warning naming it. Replace a link with a copy of the file.
 
 {{% callout(type="tip") %}}
 Enable `minify` for production builds. It strips CSS/JS comments and collapses whitespace for smaller files. Enable `fingerprint` when your CDN caches aggressively: content hashes in filenames ensure browsers always fetch the latest version.
 {{% end %}}
 
 When `fingerprint = true`, static files get hashed names (e.g., `style.a1b2c3d4.css`) and an `asset-manifest.json` is written to the output directory.
+
+With `minify = true`, a stylesheet's local imports are bundled into it: the `@import "base.css";` / `@import url(parts/grid.css);` statements at the top of the file (before any other rule) are replaced by the imported files' contents when every one of them lives under `static/` and has no relative `url(...)` (it would point at the wrong directory once moved). Otherwise the stylesheet is left as written: imports of URLs (`https://…`, `//…`, `/…`), imports with a media query, `layer()` or `supports()`, missing files and import cycles. A file is included once, bundling stops at 2 MB, and the imported files are still copied on their own.
+
+### Tailwind CSS
+
+`[build.tailwind]` compiles a [Tailwind CSS](https://tailwindcss.com) v4 stylesheet during the build with Tailwind's standalone CLI. No Node, no npm, no service: seite downloads one pinned release of the CLI (v4.3.3) the first time it needs it, checks it against the SHA-256 built into seite before running it, and caches it per user (`~/Library/Caches/seite/tailwind/` on macOS, `$XDG_CACHE_HOME/seite/tailwind/` or `~/.cache/seite/tailwind/` on Linux, `%LOCALAPPDATA%\seite\tailwind\` on Windows). Nothing is downloaded unless the table is present.
+
+```toml
+[build.tailwind]
+input = "static/css/tailwind.css"   # the entry CSS (default)
+output = "css/tailwind.css"          # inside the output's static/ dir → /static/css/tailwind.css (default)
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `input` | `"static/css/tailwind.css"` | Entry CSS, relative to the site root. It is compiled, never copied as-is |
+| `output` | `"css/tailwind.css"` | Where the compiled CSS goes, relative to the output's `static/` directory. It is minified by Tailwind and fingerprinted like any other static file |
+
+{{% callout(type="warning") %}}
+**Tailwind runs the project's code.** A stylesheet can load Tailwind plugins (`@plugin "./x.js"`, `@config`), which are JavaScript files from the project, and can import any CSS file it can reach. Compiling a project's Tailwind CSS is like running its npm build scripts. So seite only runs Tailwind for projects you trust: run `seite trust` once in the site root (`seite trust --revoke` undoes it, `seite trust --list` shows them). The list is stored per user, outside the repository. `seite theme new --tailwind` trusts the project only when you run it yourself at a terminal (not inside a coding agent) and it created both the table and the entry file; otherwise it tells you to run `seite trust`. Building an untrusted project with `[build.tailwind]` fails with [`tailwind-untrusted`](/docs/errors#tailwind-untrusted).
+{{% end %}}
+
+Only real builds run Tailwind: `seite build`, `seite serve` (on every rebuild, so a class added to a template or a markdown file shows up on the next reload) and the MCP `seite_build` tool. `seite check`, `seite audit`, coding-agent check hooks and the other MCP tools never run it; they treat the entry CSS as a plain stylesheet. A Tailwind error stops the build with [`tailwind-failed`](/docs/errors#tailwind-failed); a failed download is [`tailwind-download-failed`](/docs/errors#tailwind-download-failed).
+
+**CI and hosted builds.** A CI runner has no trust list, so off-machine builds trust the project for one run through the environment: `SEITE_TRUST_PROJECT=1`. It is read from the process environment only, never from `seite.toml` or `.env` files, so a repository cannot set it for a local `seite build`. The deploy workflows seite generates (GitHub Pages and Cloudflare Pages via GitHub Actions) set it on the build step when the site has `[build.tailwind]`, and the generated `netlify.toml` prefixes its build command with it. `seite theme new --tailwind` and `seite upgrade` add it to a workflow or `netlify.toml` that is still exactly as seite generated it, and otherwise print what to add. If Cloudflare Pages or Netlify build the site from git with settings seite did not generate, add `SEITE_TRUST_PROJECT=1` as a build environment variable there.
+
+**Your own Tailwind binary.** Offline machines, other Tailwind versions and platforms without a prebuilt CLI can use their own executable through the environment (an absolute path), never through `seite.toml`:
+
+```bash
+export SEITE_TAILWIND_BIN=/usr/local/bin/tailwindcss
+```
+
+`seite.toml` cannot name a program for seite to run: a `binary` key, or a `version` other than the pinned one, in `[build.tailwind]` is a `config-invalid` error. The CLI is only ever run from the per-user cache (or `SEITE_TAILWIND_BIN`), never from inside a project; it runs from an empty temporary directory with `--cwd <site root>`, a minimal environment (`PATH`, `HOME`, temp directories) and a two-minute timeout. The `input` must be a real file inside the site (no symlinks).
+
+`seite theme new --tailwind` sets it up: it adds the table, writes the entry file, and links the compiled stylesheet from `templates/base.html`:
+
+```html
+<link rel="stylesheet" href="/static/css/tailwind.css">
+```
+
+The entry file it writes lists where class names come from explicitly:
+
+```css
+@import "tailwindcss" source(none);
+@source "../../templates";
+@source "../../content";
+@source "../../data";
+```
+
+Paths are relative to the CSS file. A plain `@import "tailwindcss";` uses Tailwind's automatic source detection from the site root instead, which can pick up class names from build output and caches. For an entry file you write by hand, prefer `source(none)` plus `@source` lines; if you keep automatic detection, exclude generated directories:
+
+```css
+@import "tailwindcss";
+@source not "../../dist";
+@source not "../../.seite";
+```
+
+### Search
+
+Every bundled theme has a search box. What it searches depends on `search`:
+
+```toml
+[build]
+search = "full"   # or "basic", or false
+```
+
+- **`"full"`** (new sites): the build writes a full-text index next to the pages, so search works on any static host with no service or API key. It indexes the text of each page (the rendered content, not the theme's navigation or footer) plus its title, headings, tags and description. The browser downloads only what a query needs: a small `search/meta.json` on first focus, then the index shard that holds each search term and one small file per result shown. On a 1,000-page site a typical query downloads well under 100 KB.
+- **`"basic"`** (the default when the key is absent, so existing sites build exactly as before): only `search-index.json`, matching titles, descriptions and tags.
+- **`false`**: no index and no search box.
+
+Results are ranked by where the words occur (title, then headings, then tags and description, then body text). All words must match; the last word also matches as a prefix while you type ("deplo" finds "deploy", and on English sites "buildin" finds "building"). A last word that matches nothing yet (or is a word like "the") does not empty the results of the words before it. Matching ignores case and accents ("cafe" finds "Café"). English sites (`language = "en"`, or an `en` translation) also match word forms ("posts" finds "post", "running" finds "run") and skip words like "the" and "of"; other languages match whole words. Chinese, Japanese and Korean text is matched by pairs of characters. Each result shows a snippet with the matching words highlighted. Use the arrow keys to move through results, Enter to open one, Escape to close them.
+
+Drafts, scheduled posts, pages with `robots: noindex`, unlisted collections and private collections are never indexed. Multilingual sites get one index per language (`search/` for the default language, `<lang>/search/` for the others), and the search box on a page searches that page's language.
+
+Index layout (for custom scripts; `search-index.json` keeps its format in every mode):
+
+| File | Contents |
+|------|----------|
+| `search/meta.json` | Format version, language, whether English stemming is on, page count, a content hash (`hash`, added to the other URLs as `?v=`), collection names, each page's collection, and the first term of each shard |
+| `search/terms/<n>.json` | `{"term": [page id delta, weight, …]}` for a sorted range of terms, about 8 KB per file |
+| `search/pages/<id>.json` | One page: title, URL, collection, date, description and the first 3,000 characters of its text |
+
+`seite build --verbose` prints the index size, and `seite build --json` reports it as `data.search_index` (`pages`, `terms`, `files`, `bytes`, `shards`, `largest_shard_bytes`, `meta_bytes`, `largest_page_bytes`). To limit a search box to some collections, put `{% set search_collections = "docs,posts" %}` right before its include; see [Templates](/docs/templates#search) for the markup and result styling.
 
 ### Mermaid diagrams
 
@@ -192,15 +372,15 @@ When `mermaid = false` (the default), a ` ```mermaid ` block is treated like any
 
 ### CSS processing
 
-seite does not include a Sass/SCSS/PostCSS preprocessor. This is a deliberate design choice: all theme CSS lives inline in the Tera template file, making themes completely self-contained single files with no external dependencies. This means:
+seite does not include a Sass/SCSS/PostCSS preprocessor. The bundled themes keep their CSS inline in the Tera template, so each is one self-contained file. Other options:
 
-- No build toolchain beyond the `seite` binary itself
-- Themes are portable: install from a URL, no asset pipeline setup
-- AI-generated themes (`seite theme create`) produce one complete file
+- The `blank` starter (and `seite theme new`) links a plain stylesheet, `static/css/site.css`, which you edit directly.
+- `[build.tailwind]` compiles a Tailwind CSS v4 stylesheet with the pinned standalone CLI, no Node needed (see [Tailwind CSS](#tailwind-css)).
+- `seite theme create "<description>"` starts your coding agent with `/seite theme`, which writes the design into `templates/base.html`.
 
 Modern CSS natively supports features that previously required preprocessors: custom properties (variables), nesting, `calc()`, `color-mix()`, `clamp()`. For projects that need Sass, compile externally (`sass style.scss static/style.css`) and reference the output in your template: seite copies everything in `static/` to the output directory.
 
-See [Building Custom Themes](/docs/custom-themes#css-approach-why-inline-styles) for more detail on this approach.
+See [Building Custom Themes](/docs/custom-themes#css) for more detail on this approach.
 
 ## Data Files
 
@@ -267,6 +447,39 @@ purpose:
 
 Plain values are unchanged; only maps whose keys are *all* configured language codes are resolved. See [Per-Language Data Values](/docs/i18n#per-language-data-values).
 
+## [[taxonomies]]
+
+Group content by terms beyond tags, for example categories. Each entry adds a term index, a page per term and, by default, per-term RSS and Atom feeds, in every language:
+
+```toml
+[[taxonomies]]
+name = "categories"      # frontmatter key: categories: [rust, web]
+# label = "Categories"   # display name (default: t.categories, else the title-cased name)
+# url_prefix = "/topics" # default "/<name>"
+# feed = true            # per-term feed.xml + atom.xml (default true)
+# paginate = 10          # items per term page (default: one page per term)
+# template = "taxonomy.html"     # term index template
+# term_template = "term.html"    # term page template
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Taxonomy name and frontmatter key |
+| `label` | string | `t.<name>` or title-cased name | Display name |
+| `url_prefix` | string | `/<name>` | URL prefix of the index and term pages |
+| `feed` | bool | `true` | Write `<term>/feed.xml` and `<term>/atom.xml` (items of collections with `has_rss`) and link them from the term page |
+| `paginate` | int | none | Items per term page; later pages are at `<term>/page/N/` |
+| `template` | string | `taxonomy.html` | Template of the term index |
+| `term_template` | string | `term.html` | Template of each term page |
+
+Output for `name = "categories"`: `/categories/` (all terms with counts), `/categories/<slug>/` (pages with that term, newest first), `/categories/<slug>/feed.xml` and `atom.xml`, and the same under `/es/categories/...` for each extra language. All of them are in the sitemap. Terms group case-insensitively by slug (`Web Dev` and `web dev` are one term); the most common spelling is displayed.
+
+Each taxonomy needs its own URL prefix: one that equals a collection's `url_prefix`, another taxonomy's (including `/tags`), `/series`, or a language code stops the build with [`taxonomy-url-collision`](/docs/errors#taxonomy-url-collision). Don't name a taxonomy after a built-in frontmatter field (`extra`, `series`, `draft`, …): [`taxonomy-reserved-name`](/docs/errors#taxonomy-reserved-name).
+
+`tags` needs no entry: `/tags/` and `/tags/<slug>/` are always generated, with no per-tag feeds. Add `[[taxonomies]] name = "tags"` to give tags the same options, for example per-tag feeds (on by default once configured) or pagination; tags keep their `tags.html`/`tag.html` templates and URLs.
+
+Taxonomies and related pages also weigh into `page.related` (see [Related pages](/docs/collections#related-pages)).
+
 ## [deploy]
 
 | Field | Type | Default | Description |
@@ -274,7 +487,9 @@ Plain values are unchanged; only maps whose keys are *all* configured language c
 | `target` | string | `"github-pages"` | Deploy target: `github-pages`, `cloudflare`, `netlify` |
 | `repo` | string | auto-detected | Git repository URL (GitHub Pages) |
 | `project` | string | auto-detected | Project name (Cloudflare Pages) |
-| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode |
+| `domain` | string | none | Custom domain, written by `seite deploy --domain <domain>` |
+| `auto_commit` | bool | `true` | Auto-commit and push before deploying. On non-main branches, auto-uses preview mode (Cloudflare Pages, Netlify; GitHub Pages refuses the deploy) |
+| `markdown_negotiation` | bool | `false` | Cloudflare Pages only: generate a `_worker.js` that serves a page's markdown copy to requests with `Accept: text/markdown`. Every page request then counts as a Functions request (Workers Free: 100,000 a day). Sites with `[access]` get it without this switch. See [Markdown for agents](/docs/deployment#markdown-for-agents) |
 
 ## [languages.*]
 
@@ -283,7 +498,7 @@ Optional. Add language sections to enable multi-language support:
 ```toml
 [languages.es]
 title = "Mi Sitio"
-description = "Un blog personal y documentaci&oacute;n"
+description = "Un blog personal y documentación"
 
 [languages.fr]
 title = "Mon Site"
@@ -305,6 +520,8 @@ Optional. When this section is present, `seite` automatically processes images i
 | `lazy_loading` | bool | `true` | Add `loading="lazy"` to `<img>` tags |
 
 When configured, images in `static/` are resized to each width, optionally converted to WebP and/or AVIF, and `<img>` tags in HTML are rewritten with `srcset` and `<picture>` elements. AVIF sources appear first in the `<picture>` element so browsers that support AVIF use it (best compression), falling back to WebP, then the original format. To disable image processing, remove the `[images]` section entirely.
+
+Images larger than 40 megapixels (width × height, read from the file header) are not decoded: they are published as they are, without resized copies, variants or `srcset`, and reported as an [`image-too-large`](/docs/errors#image-too-large) warning. Up to 4 images are decoded at a time.
 
 ## [analytics]
 
@@ -410,6 +627,133 @@ Analytics injection happens as a post-processing step after the main build. Ever
 
 To remove analytics, delete the `[analytics]` section from `seite.toml`.
 
+## [comments]
+
+Comment threads for the `comments()` shortcode and the `seite/comments.html` partial: giscus (GitHub Discussions) or utterances (GitHub Issues), both free.
+
+```toml
+[comments]
+provider = "giscus"
+repo = "owner/repo"
+repo_id = "R_kgDOAbCdEf"
+category = "Announcements"
+category_id = "DIC_kwDOAbCdEf4Cg1Hj"
+```
+
+| Field | Provider | Default | Description |
+|-------|----------|---------|-------------|
+| `provider` | both | — | `giscus` or `utterances` |
+| `repo` | both | — | GitHub repository, `owner/name` |
+| `repo_id`, `category`, `category_id` | giscus | — | From [giscus.app](https://giscus.app) (required) |
+| `mapping` | giscus | `pathname` | `pathname`, `url`, `title` or `og:title` |
+| `reactions` | giscus | `true` | Reactions on the page's discussion |
+| `theme` | both | `preferred_color_scheme` (giscus), `preferred-color-scheme` (utterances) | Widget theme |
+| `lang` | giscus | page language | UI language |
+| `loading` | giscus | `lazy` | `lazy` or `eager` |
+| `issue_term` | utterances | `pathname` | `pathname`, `url`, `title` or `og:title` |
+| `label` | utterances | — | Label for created issues |
+
+See [Shortcodes](/docs/shortcodes#comments).
+
+## [newsletter]
+
+A subscribe form for the `newsletter()` shortcode and the `seite/newsletter.html` partial.
+
+```toml
+[newsletter]
+provider = "buttondown"    # or "kit"
+username = "my-newsletter" # buttondown
+# form_id = "1234567"      # kit
+# action = "https://app.kit.com/forms/1234567/subscriptions"  # kit: optional override
+```
+
+For Kit, seite posts to `https://app.kit.com/forms/<form_id>/subscriptions` (field `email_address`). That URL is unverified — Kit documents no spec — so if the action URL in your form's HTML embed code differs, set `action` to it (an `https://` URL on `kit.com` or `convertkit.com`; `form_id` is then optional).
+
+See [Shortcodes](/docs/shortcodes#newsletter). Values are validated at load (`config-invalid` at the line) and escaped in the HTML.
+
+## [trust]
+
+Written by `seite init` when the site has the `trust` collection; it configures the [trust center](/docs/trust-center).
+
+```toml
+[trust]
+company = "Acme Corp"
+frameworks = ["soc2", "iso27001"]
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `company` | string | `site.title` | Company name shown on the trust center |
+| `frameworks` | list | `[]` | Active compliance frameworks (`soc2`, `iso27001`, `gdpr`, `hipaa`, `pci-dss`, `ccpa`, `soc3`) |
+
+## [contact]
+
+The provider behind the `contact_form()` shortcode; `seite contact setup` writes it. See [Contact Forms](/docs/contact-forms).
+
+```toml
+[contact]
+provider = "formspree"   # formspree | web3forms | netlify | hubspot | typeform
+endpoint = "xpznqkdl"
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | string | required | `formspree`, `web3forms`, `netlify`, `hubspot`, or `typeform` |
+| `endpoint` | string | required | Form ID, access key, form name or portal/form ID, depending on the provider |
+| `region` | string | none | HubSpot only: `na1` or `eu1` |
+| `redirect` | string | none | URL to send visitors to after they submit |
+| `subject` | string | none | Email subject prefix |
+
+## [check]
+
+Options for `seite check --external`, which checks external links over the network (never run by default):
+
+```toml
+[check]
+external_skip = ["example.com", "intranet.local"]  # hosts never requested (subdomains included)
+external_timeout = 10                               # seconds per request
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `external_skip` | list | `[]` | Hosts never requested, in addition to the built-in list of hosts that block bots (`linkedin.com`, `twitter.com`, `x.com`, `instagram.com`, `facebook.com`) |
+| `external_timeout` | integer | `10` | Seconds per request |
+
+## [og]
+
+### Social cards
+
+Every page gets a social preview card: a 1200x630 PNG generated at build time (offline, free, the same bytes on every run) and set as its `og:image` and `twitter:image`. New sites have it on; for existing sites add the section:
+
+```toml
+[og]
+generate = true
+template = "default"          # default | minimal | bold
+# background = "#ffffff"      # colors: #rgb or #rrggbb
+# foreground = "#1a1a1a"
+# accent = "#0057b7"
+# logo = "static/logo.svg"    # SVG or PNG, drawn on every card
+# font = "static/fonts/NotoSansJP-Bold.ttf"  # replaces the bundled Inter
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `generate` | bool | `true` | Generate cards (absent `[og]` = off) |
+| `template` | string | `"default"` | Layout: `default` (accent bar, site name on top), `minimal` (title first, quiet footer), `bold` (full accent background) |
+| `background` / `foreground` / `accent` | string | brand, else theme | Card colors. Default: `colors.background` / `colors.text` / `colors.primary` from `data/brand.yaml`, else the active theme's palette |
+| `logo` | string | none | SVG or PNG inside the site (no symlinks), at most 1 MB and 4096 px per side; an SVG logo can embed images only as `data:` URIs |
+| `font` | string | bundled Inter | A `.ttf`/`.otf`, relative to the site root, for titles in scripts Inter lacks |
+
+**Which pages.** Each public, non-draft content page without `image:` in its frontmatter gets `og/<url>.png` (`/posts/hello-world` → `/og/posts/hello-world.png`, translations under `og/<lang>/`). Each language's homepage gets the *site card*, `og/index.png` (site name and description), which every other page uses: collection indexes, tag pages, 404, drafts and private pages. Private collections never get cards of their own: they would publish their titles. A page with `image:` keeps its image.
+
+**What a card shows.** Site name (or host), the page title (wrapped to three lines, shrunk and finally cut with an ellipsis), and the collection, date and reading time; plus the logo.
+
+**Fonts.** Cards use a bundled subset of [Inter](https://rsms.me/inter/) (SIL Open Font License; `seite --licenses` prints it) with Latin, Greek and Cyrillic, and never system fonts, so output does not depend on the machine. The "min read" label comes from the site's UI strings (`min_read` in `data/i18n/<lang>.yaml`); untranslated languages show just "N min". A title with characters the font lacks (Chinese, Japanese, Korean, emoji) gets no card of its own rather than empty boxes, and the build warns once (`og-missing-glyphs`); set `font` to a font that has them.
+
+**Cache.** Cards are cached in `.seite/cache/og/` (gitignored, one directory per output, so the main site and each subdomain), keyed by everything that affects them (text, colors, layout, font and logo bytes, seite version), so rebuilds only render changed cards. Each full build deletes the entries it no longer uses. `seite serve` generates them too; a content edit re-renders only that page's card. `seite check` validates `[og]` (bad colors, missing logo or font: `og-config-invalid`) but renders nothing. Delete the cache directory any time.
+
+**Try it.** `seite og preview /posts/hello-world` writes `.seite/cache/og-preview.png` (`--out card.png`, `--template bold` to compare layouts without editing the config; `/` is the site card).
+
 ## Frontmatter
 
 Content files use YAML frontmatter between `---` delimiters:
@@ -443,10 +787,31 @@ extra:
 | `image` | string | No | Social preview image |
 | `slug` | string | No | Override auto-generated slug |
 | `tags` | list | No | Content tags |
+| `categories` (or any `[[taxonomies]]` name) | list or string | No | Terms of that taxonomy |
+| `series` | string | No | Series this page belongs to (`page.series`, `/series/<slug>/`) |
+| `series_order` | int | No | Position in the series (lower first) |
 | `draft` | bool | No | Exclude from build unless `--drafts` |
 | `template` | string | No | Override default template |
 | `robots` | string | No | Per-page robots directive |
+| `weight` | int | No | Ordering in non-dated collections (lower first) |
+| `aliases` | list | No | Old URL paths; each gets an HTML redirect page and a `_redirects` entry |
+| `expires` | date | No | Last day the page is published; later builds leave it out (dated collections, with `[build] schedule = true`) |
 | `extra` | map | No | Arbitrary data for templates |
+
+### Scheduled publishing
+
+Scheduled publishing is on when `[build] schedule = true` (new sites get it from `seite init`; existing sites keep building every page until you add it — `seite upgrade` only tells you about it) and applies to collections with `has_date = true`:
+
+```toml
+[build]
+schedule = true
+```
+
+A post whose `date` (or `YYYY-MM-DD-` filename prefix) is after today is scheduled: like a draft, it is left out of the build — HTML, `.md`, feeds, sitemap, search index, `llms.txt`/`llms-full.txt`, tag pages and listings — until the first build on or after its date. `expires: 2026-12-31` keeps a post up through that day and removes it from builds from the next day on. "Today" is the date in `[site] timezone`, or the machine's local date when it is unset — the same date `seite new` and `seite init` put on new posts, so a post written today is never hidden. `seite build --future` or `[build] future = true` includes scheduled posts, and `seite serve` always shows them; expired posts are never built.
+
+`seite build` and `seite serve` print one line when scheduling hides posts (`2 scheduled posts hidden; next goes live 2026-11-01 (Launch)`), and so does `seite check` (an info note, not a diagnostic). `seite check` resolves links exactly like the build — a link from a published page to a hidden one is a `link-to-scheduled` warning with the go-live date (`--strict` fails on it; `seite check --future` treats scheduled posts as published) — and still renders scheduled posts, so a post that will publish on its own is validated today. `seite stats` lists future-dated and expired posts and the next scheduled one, and `seite context` prints `next scheduled: <date> (<title>)`.
+
+Because a static site only changes when it is rebuilt, the GitHub Actions workflow `seite init` generates rebuilds daily (`schedule: - cron: '17 5 * * *'`). See [Deployment](/docs/deployment#scheduled-publishing) for each host.
 
 ## seite-workspace.toml
 
@@ -455,9 +820,7 @@ For multi-site setups, a `seite-workspace.toml` at the workspace root configures
 ```toml
 [workspace]
 name = "my-workspace"
-shared_data = "data"           # Shared data directory (optional)
-shared_static = "static"       # Shared static assets (optional)
-shared_templates = "templates" # Shared templates (optional)
+# shared_data / shared_static / shared_templates: reserved, not read by builds yet
 
 [[sites]]
 name = "blog"
@@ -469,13 +832,9 @@ path = "sites/blog"
 name = "docs"
 path = "sites/docs"
 
-[cross_site]
-unified_sitemap = false    # Combine all sites into one sitemap
-cross_site_links = false   # Validate links across sites
-unified_search = false     # Combined search index
 ```
 
-See [Workspaces](/docs/workspace) for the full guide.
+`shared_data`, `shared_static`, `shared_templates` and the `[cross_site]` table (`unified_sitemap`, `cross_site_links`, `unified_search`) are accepted but not implemented: each site builds only from its own directories, with its own sitemap and search index. See [Workspaces](/docs/workspace) for the full guide.
 
 ## Next Steps
 

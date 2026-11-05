@@ -1,7 +1,6 @@
-use std::fs;
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,30 +12,25 @@ use crate::build::{self, BuildOptions};
 use crate::error::{PageError, Result};
 use crate::output::human;
 use crate::output::CommandOutput;
+use crate::server::dev::{self, inject_livereload, BuildOutcome, DevState, SiteScope};
 
 use super::{load_site_in_workspace, WorkspaceConfig};
-
-const LIVERELOAD_SCRIPT: &str = r#"<script>
-(function(){
-  var v = "0";
-  setInterval(function(){
-    fetch("/__livereload").then(function(r){ return r.text(); }).then(function(t){
-      if (v !== "0" && t !== v) location.reload();
-      v = t;
-    }).catch(function(){});
-  }, 1000);
-})();
-</script>"#;
 
 /// Handle to a running workspace dev server.
 pub struct WorkspaceServerHandle {
     stop: Arc<AtomicBool>,
     port: u16,
+    dev: Arc<DevState>,
 }
 
 impl WorkspaceServerHandle {
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// The server's runtime state (build outcomes, browser errors).
+    pub fn dev(&self) -> &Arc<DevState> {
+        &self.dev
     }
 
     pub fn stop(&self) {
@@ -52,6 +46,7 @@ impl Drop for WorkspaceServerHandle {
 
 struct SiteServerInfo {
     name: String,
+    root: PathBuf,
     output_dir: PathBuf,
     watch_dirs: Vec<PathBuf>,
 }
@@ -90,6 +85,7 @@ pub fn start(
         ];
         sites.push(SiteServerInfo {
             name: ws_site.name.clone(),
+            root: paths.root.clone(),
             output_dir: paths.output.clone(),
             watch_dirs,
         });
@@ -120,11 +116,23 @@ pub fn start(
     }
 
     let stop = Arc::new(AtomicBool::new(false));
-    let build_version = Arc::new(AtomicU64::new(1));
+    // No MCP endpoint here (several sites): `seite serve --site <name>` has one.
+    let dev = DevState::new(dev::DevOptions {
+        port: actual_port,
+        bind_host: host.to_string(),
+        root: ws_root.to_path_buf(),
+        sites: sites
+            .iter()
+            .map(|s| (s.name.clone(), s.root.clone()))
+            .collect(),
+        stop: stop.clone(),
+        rebuild: None,
+        mcp: false,
+    });
 
     // Spawn file watcher thread
     let watcher_stop = stop.clone();
-    let watcher_version = build_version.clone();
+    let watcher_dev = dev.clone();
     let watcher_ws_config = ws_config.clone();
     let watcher_ws_root = ws_root.to_path_buf();
     let watcher_sites: Vec<(String, Vec<PathBuf>)> = sites
@@ -137,7 +145,7 @@ pub fn start(
             &watcher_ws_root,
             &watcher_sites,
             &watcher_stop,
-            &watcher_version,
+            &watcher_dev,
         );
     });
 
@@ -147,20 +155,22 @@ pub fn start(
         .iter()
         .map(|s| (s.name.clone(), s.output_dir.clone()))
         .collect();
+    let server_dev = dev.clone();
     std::thread::spawn(move || {
-        run_serve_loop(server, &server_sites, &build_version, &server_stop);
+        run_serve_loop(server, &server_sites, &server_dev, &server_stop);
     });
 
     Ok(WorkspaceServerHandle {
         stop,
         port: actual_port,
+        dev,
     })
 }
 
 fn run_serve_loop(
     server: Server,
     sites: &[(String, PathBuf)],
-    build_version: &AtomicU64,
+    dev: &Arc<DevState>,
     stop: &AtomicBool,
 ) {
     loop {
@@ -169,32 +179,16 @@ fn run_serve_loop(
         }
         match server.recv_timeout(Duration::from_secs(1)) {
             Ok(Some(request)) => {
-                let url_path = request.url().to_string();
-
-                // Live reload polling endpoint
-                if url_path == "/__livereload" {
-                    let version = build_version.load(Ordering::Relaxed).to_string();
-                    let header =
-                        Header::from_bytes("Content-Type", "text/plain").expect("valid header");
-                    let _ = request.respond(Response::from_string(version).with_header(header));
+                // Dev endpoints, shared with the single-site server.
+                let Some(request) = dev::handle_request(dev, None, request) else {
                     continue;
-                }
+                };
+                let url_path = request.url().to_string();
 
                 // Route by path prefix: /blog/... -> sites/blog/dist/...
                 if let Some((file_path, _site_name)) = route_request(&url_path, sites) {
                     if file_path.exists() && file_path.is_file() {
-                        let content = fs::read(&file_path).unwrap_or_default();
-                        let mime = guess_mime(&file_path);
-
-                        let content = if mime == "text/html; charset=utf-8" {
-                            inject_livereload(&content)
-                        } else {
-                            content
-                        };
-
-                        let header =
-                            Header::from_bytes("Content-Type", mime).expect("valid header");
-                        let _ = request.respond(Response::from_data(content).with_header(header));
+                        dev::respond_file(request, &file_path, guess_mime(&file_path));
                         continue;
                     }
                 }
@@ -238,45 +232,7 @@ fn route_request<'a>(url_path: &str, sites: &'a [(String, PathBuf)]) -> Option<(
 }
 
 fn resolve_file_path(output_dir: &Path, url_path: &str) -> Option<PathBuf> {
-    let clean = url_path.trim_start_matches('/');
-    if clean.is_empty() {
-        return Some(output_dir.join("index.html"));
-    }
-
-    // Exact file match
-    let candidate = output_dir.join(clean);
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-
-    // Clean URL -> .html file
-    let html_candidate = output_dir.join(format!("{clean}.html"));
-    if html_candidate.is_file() {
-        return Some(html_candidate);
-    }
-
-    // Directory with index.html
-    let index = candidate.join("index.html");
-    if index.is_file() {
-        return Some(index);
-    }
-
-    None
-}
-
-fn inject_livereload(html_bytes: &[u8]) -> Vec<u8> {
-    let html = String::from_utf8_lossy(html_bytes);
-    if let Some(pos) = html.rfind("</body>") {
-        let mut result = String::with_capacity(html.len() + LIVERELOAD_SCRIPT.len() + 1);
-        result.push_str(&html[..pos]);
-        result.push('\n');
-        result.push_str(LIVERELOAD_SCRIPT);
-        result.push('\n');
-        result.push_str(&html[pos..]);
-        result.into_bytes()
-    } else {
-        html_bytes.to_vec()
-    }
+    crate::server::dev::resolve_output_file(output_dir, url_path)
 }
 
 fn generate_workspace_index(sites: &[(String, PathBuf)]) -> String {
@@ -317,7 +273,7 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("ico") => "image/x-icon",
         Some("woff") => "font/woff",
         Some("woff2") => "font/woff2",
-        Some("md") => "text/plain; charset=utf-8",
+        Some("md") => dev::MARKDOWN_CONTENT_TYPE,
         Some("txt") => "text/plain; charset=utf-8",
         Some("webp") => "image/webp",
         _ => "application/octet-stream",
@@ -329,7 +285,7 @@ fn watch_and_rebuild_workspace(
     ws_root: &Path,
     sites: &[(String, Vec<PathBuf>)],
     stop: &AtomicBool,
-    build_version: &AtomicU64,
+    dev: &DevState,
 ) {
     let (tx, rx) = mpsc::channel();
 
@@ -378,53 +334,27 @@ fn watch_and_rebuild_workspace(
                         .find(|(_, dirs)| dirs.iter().any(|d| p.starts_with(d)))
                 });
 
-                if let Some((site_name, _)) = affected_site {
-                    // Rebuild only the affected site
-                    human::info(&format!("Changes detected in '{site_name}', rebuilding..."));
-                    if let Some(ws_site) = ws_config.find_site(site_name) {
-                        if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
-                            let opts = BuildOptions {
-                                include_drafts: true,
-                                incremental: true,
-                            };
-                            match build::build_site(&config, &paths, &opts) {
-                                Ok(result) => {
-                                    build_version.fetch_add(1, Ordering::Relaxed);
-                                    human::success(&result.stats.human_display());
-                                }
-                                Err(e) => {
-                                    human::error(&format!("Rebuild of '{site_name}' failed: {e}"));
-                                }
-                            }
-                        }
+                let targets: Vec<&super::WorkspaceSite> = match affected_site {
+                    Some((site_name, _)) => {
+                        human::info(&format!("Changes detected in '{site_name}', rebuilding..."));
+                        ws_config.find_site(site_name).into_iter().collect()
                     }
-                } else {
-                    // Could not determine site — rebuild all
-                    human::info("Changes detected, rebuilding all sites...");
-                    for ws_site in &ws_config.sites {
-                        if let Ok((config, paths)) = load_site_in_workspace(ws_root, ws_site) {
-                            let opts = BuildOptions {
-                                include_drafts: true,
-                                incremental: true,
-                            };
-                            match build::build_site(&config, &paths, &opts) {
-                                Ok(result) => {
-                                    human::success(&format!(
-                                        "[{}] {}",
-                                        ws_site.name,
-                                        result.stats.human_display()
-                                    ));
-                                }
-                                Err(e) => {
-                                    human::error(&format!(
-                                        "Rebuild of '{}' failed: {e}",
-                                        ws_site.name
-                                    ));
-                                }
-                            }
-                        }
+                    None => {
+                        human::info("Changes detected, rebuilding all sites...");
+                        ws_config.sites.iter().collect()
                     }
-                    build_version.fetch_add(1, Ordering::Relaxed);
+                };
+                {
+                    let _guard = dev.build_guard();
+                    let mut outcomes = Vec::new();
+                    let mut changed = false;
+                    for ws_site in targets {
+                        let (outcome, site_changed) = rebuild_site(ws_root, ws_site);
+                        changed |= site_changed;
+                        outcomes.push((ws_site.name.clone(), outcome));
+                    }
+                    // One merged outcome per batch: pages reload once.
+                    dev.record_site_builds(outcomes, changed);
                 }
 
                 // Drain events that accumulated during the build so they don't
@@ -438,6 +368,32 @@ fn watch_and_rebuild_workspace(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+}
+
+/// Rebuild one workspace site the way the dev server does; print and return
+/// its outcome (diagnostic paths prefixed with the site's path).
+fn rebuild_site(ws_root: &Path, ws_site: &super::WorkspaceSite) -> (BuildOutcome, bool) {
+    let scope = SiteScope {
+        name: ws_site.name.clone(),
+        root: ws_root.join(&ws_site.path),
+        prefix: Some(PathBuf::from(&ws_site.path)),
+    };
+    let started = std::time::Instant::now();
+    let result = load_site_in_workspace(ws_root, ws_site).and_then(|(mut config, paths)| {
+        // The dev server previews scheduled content, like drafts.
+        config.build.future = true;
+        let opts = BuildOptions {
+            include_drafts: true,
+            incremental: true,
+        };
+        build::build_site(&config, &paths, &opts)
+    });
+    let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match &result {
+        Ok(r) => human::success(&format!("[{}] {}", ws_site.name, r.stats.human_display())),
+        Err(e) => human::error(&format!("Rebuild of '{}' failed: {e}", ws_site.name)),
+    }
+    BuildOutcome::from_result(&result, &scope, ms)
 }
 
 fn port_is_available(host: &str, port: u16) -> bool {

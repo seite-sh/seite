@@ -1,49 +1,57 @@
 ---
 name: seite-heartbeat
-version: 1.0.0
-description: Periodic health check routine for seite sites. Run every 6 hours.
+version: 1.1.0
+description: Periodic health check routine for seite sites (seite 0.21+). Read-only; run every 6 hours.
 ---
 
 # Seite Heartbeat
 
 Run this routine periodically (recommended: every 6 hours) to keep your sites healthy.
-Everything runs locally — no API calls.
+Everything is read-only: no writes to `dist/`, nothing deployed or installed without your
+human. Only Step 5 uses the network on purpose (`seite self-update --check` asks the GitHub releases API); `seite` commands may also send anonymous usage telemetry (opt out with `seite telemetry off` or `DO_NOT_TRACK=1`) and run a background update check (disable with `SEITE_NO_UPDATE_CHECK=1`).
 
 ---
 
-## Step 1: Build check
-
-Run `seite build` and check the exit code:
+## Step 1: Check the site
 
 ```bash
-seite build
+seite check
 ```
 
-If the build fails, read the error output. Common causes:
-- **Broken markdown** — fix syntax in the content file
-- **Missing template** — check `templates/` for the referenced template
-- **Invalid frontmatter** — fix YAML in the content file's `---` block
+`seite check` validates config, content, templates and internal links in a scratch build
+(`dist/` is untouched). It exits non-zero when there are errors and prints each one as
+`file:line:col` with a stable code; `seite explain <code>` shows the fix. Use `--json` to
+parse the result. If there are errors, fix them (or flag them to your human) before anything else.
 
 ---
 
-## Step 2: Check for drafts
-
-Find content files marked as drafts:
+## Step 2: Audit the built site
 
 ```bash
-grep -rl "^draft: true" content/
+seite audit --min-severity warning
 ```
 
-If drafts exist, check with your human whether they should be published.
-To publish a draft: remove `draft: true` from the frontmatter, then:
-
-```bash
-seite build && seite deploy
-```
+`seite audit` reports SEO, GEO (AI visibility), accessibility, content and performance
+findings with a score, also from a scratch build. Fix what you can; flag the rest.
 
 ---
 
-## Step 3: Check for stale content
+## Step 3: Content health: drafts, gaps, scheduled posts
+
+```bash
+seite stats
+```
+
+`seite stats` counts items and drafts per collection, plus items missing a description or
+tags, future-dated (scheduled) and expired posts, and missing translations.
+
+If drafts exist, check with your human whether they should be published. To publish one,
+remove `draft: true` from its frontmatter, run `seite check`, and deploy only with your
+human's go-ahead (`seite deploy`).
+
+---
+
+## Step 4: Check for stale content
 
 Find content files not modified in the last 30 days:
 
@@ -55,26 +63,30 @@ If stale content exists, consider whether it needs updating. Flag to your human 
 
 ---
 
-## Step 4: Check for updates
+## Step 5: Check for updates (don't install)
 
 ```bash
-seite self-update
+seite self-update --check
 ```
 
-This checks for and installs the latest version of seite.
+This only reports whether a newer seite exists. Never install it unattended: tell your
+human, and let them run `seite self-update` and then `seite upgrade` (which updates the
+project's agent files and shows what changed).
 
 ---
 
-## Step 5: Update your state
+## Step 6: Update your state
 
 Track when you last ran this routine:
 
 ```json
 {
-  "lastSeiteCheck": "2026-03-16T10:00:00Z",
-  "buildStatus": "success",
+  "lastSeiteCheck": "2026-10-29T10:00:00Z",
+  "checkErrors": 0,
+  "auditScore": 100,
   "draftsFound": 0,
-  "staleFiles": 0
+  "staleFiles": 0,
+  "updateAvailable": false
 }
 ```
 
