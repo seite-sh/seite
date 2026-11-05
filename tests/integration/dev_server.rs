@@ -314,6 +314,74 @@ fn test_serve_markdown_content_negotiation() {
     assert!(!head.contains("vary"), "{head}");
 }
 
+/// Nothing under `.seite/` (or elsewhere in the project) is ever reachable by
+/// URL: the build never writes `.seite` into `dist/`, and the dev server
+/// refuses every way of walking out of the output dir.
+#[test]
+fn test_serve_never_exposes_seite_dir() {
+    let s = Served::start();
+    const CANARY: &str = "seite-leak-canary-7f3a";
+    fs::write(s.dir.join(".seite/canary.txt"), CANARY).unwrap();
+    fs::write(s.dir.join("canary.txt"), CANARY).unwrap();
+
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir).unwrap().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(&s.dir.join("dist"), &mut files);
+    assert!(!files.is_empty());
+    for file in &files {
+        let rel = file.strip_prefix(s.dir.join("dist")).unwrap();
+        assert!(
+            !rel.to_string_lossy().contains(".seite"),
+            "{} in dist/",
+            rel.display()
+        );
+        if let Ok(text) = fs::read_to_string(file) {
+            assert!(
+                !text.contains(".seite/"),
+                "{} mentions .seite/",
+                rel.display()
+            );
+        }
+    }
+
+    for path in [
+        "/.seite/canary.txt",
+        "/.seite/config.json",
+        "/.seite/dev.json",
+        "/.seite/docs/errors.md",
+        "/../.seite/canary.txt",
+        "/../canary.txt",
+        "/%2e%2e/.seite/canary.txt",
+        "/%2E%2E%2F.seite%2Fcanary.txt",
+        "/..%2f.seite/canary.txt",
+        "/..%5c.seite%5ccanary.txt",
+        "/static/../../.seite/canary.txt",
+        "/posts/../../.seite/canary.txt",
+        "/og/../../canary.txt",
+        "/%2e%2e%2f%2e%2e%2fcanary.txt",
+        "//.seite/canary.txt",
+        "/seite.toml",
+        "/.git/config",
+    ] {
+        let (code, body) = s.get(path);
+        assert_eq!(code, 404, "{path} must not be served");
+        assert!(!body.contains(CANARY), "{path} leaked the canary");
+        assert!(
+            !body.contains("\"initialized_at\""),
+            "{path} leaked .seite/config.json"
+        );
+    }
+}
+
 #[test]
 fn test_serve_status_reports_server_and_build() {
     let served = Served::start();
