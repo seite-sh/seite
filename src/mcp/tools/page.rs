@@ -9,7 +9,7 @@ use super::{
 };
 use crate::build;
 use crate::config::{CollectionConfig, ResolvedPaths, SiteConfig};
-use crate::content::{self, Frontmatter};
+use crate::content::{self, schema, Frontmatter};
 use crate::mcp::content_index;
 
 // ---------------------------------------------------------------------------
@@ -295,7 +295,7 @@ fn render_body(
         path: &file.abs,
         body,
         body_line,
-        page: &build::shortcode_page_context(fm, slug, &file.collection.name),
+        page: &build::shortcode_page_context(fm, slug, &file.collection.name, lang),
     };
     build::render_item_body(
         config,
@@ -344,8 +344,17 @@ pub fn call_get_page(state: &ServerState, arguments: &serde_json::Value) -> Tool
     let date = build::resolve_item_date(&fm, &file.abs, file.collection);
     let mut resolved = fm.clone();
     resolved.date = date;
-    let frontmatter = serde_json::to_value(&resolved)
+    let mut frontmatter = serde_json::to_value(&resolved)
         .map_err(|e| ToolError::new(format!("seite_get_page: {e}")))?;
+    // Unknown top-level keys (taxonomy terms such as `categories`, custom
+    // keys) are not serialized with the struct; show them as written.
+    if let Some(obj) = frontmatter.as_object_mut() {
+        for (key, value) in &resolved.other {
+            if let Ok(v) = serde_json::to_value(value) {
+                obj.entry(key.clone()).or_insert(v);
+            }
+        }
+    }
 
     let (html, render_error) = match render_body(
         config, paths, &file, &fm, &body, body_line, &loc.slug, &loc.lang,
@@ -667,8 +676,16 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
         ))
     })?;
 
-    let mut map = original.clone();
     let mut notes = Vec::new();
+    // Custom schema fields may live at the top level or under `extra:`: a
+    // key already at the top level stays there; otherwise route
+    // `set.author` / `set["extra.author"]` / `unset: ["author"]` into the
+    // `extra` mapping.
+    let (set, unset, touched) =
+        route_extra_keys(config, file.collection, &original, set, unset, &mut notes)
+            .map_err(|e| ToolError::new(format!("{TOOL}: {e}")))?;
+
+    let mut map = original.clone();
     for key in &unset {
         if map.shift_remove(yaml_key(key)).is_none() {
             notes.push(format!("'{key}' was not set"));
@@ -698,6 +715,36 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
             "{TOOL}: '{}' is a dated collection: keep a `date` (YYYY-MM-DD) or use a YYYY-MM-DD- filename prefix",
             file.collection.name
         )));
+    }
+
+    // The collection's frontmatter schema: problems with the keys this call
+    // touches refuse the update; problems elsewhere in the file are notes.
+    let new_text = serde_yaml_ng::to_string(&map).unwrap_or_default();
+    let problems = schema::Schema::for_site(config, file.collection).check_text(
+        &new_text,
+        2,
+        Path::new(&file.rel),
+    );
+    let (blocking, other): (Vec<_>, Vec<_>) = problems
+        .into_iter()
+        .filter(|p| p.kind != schema::ProblemKind::Unknown || touched.contains(&p.field))
+        .partition(|p| touched.contains(&p.field) && p.kind != schema::ProblemKind::Unknown);
+    if !blocking.is_empty() {
+        let lines: Vec<String> = blocking
+            .iter()
+            .map(|p| schema_line(&p.diagnostic))
+            .collect();
+        return Err(ToolError::new(format!(
+            "{TOOL}: the update breaks the '{}' frontmatter schema, nothing was written:\n- {}",
+            file.collection.name,
+            lines.join("\n- ")
+        )));
+    }
+    for p in &other {
+        notes.push(format!(
+            "schema (not changed by this call): {}",
+            schema_line(&p.diagnostic)
+        ));
     }
 
     let changed = map != original;
@@ -759,6 +806,108 @@ pub fn call_update_frontmatter(state: &ServerState, arguments: &serde_json::Valu
         response["notes"] = serde_json::json!(notes);
     }
     Ok(response)
+}
+
+/// A schema diagnostic as one line for a tool message.
+fn schema_line(d: &crate::diagnostics::Diagnostic) -> String {
+    match &d.hint {
+        Some(h) => format!("{} (hint: {h})", d.message),
+        None => d.message.clone(),
+    }
+}
+
+type RoutedKeys = (
+    serde_json::Map<String, serde_json::Value>,
+    Vec<String>,
+    std::collections::HashSet<String>,
+);
+
+/// Move custom schema fields (non-built-in names declared in the
+/// collection's schema, unless the file already has them at the top level,
+/// and any `extra.<name>` key) from `set`/`unset` into a replacement `extra`
+/// mapping. Returns the new `set`, `unset`, and the
+/// names of every field the call touches (for schema checks).
+fn route_extra_keys(
+    config: &SiteConfig,
+    collection: &CollectionConfig,
+    original: &serde_yaml_ng::Mapping,
+    set: serde_json::Map<String, serde_json::Value>,
+    unset: Vec<String>,
+    notes: &mut Vec<String>,
+) -> Result<RoutedKeys, String> {
+    let is_custom = |k: &str| {
+        k.strip_prefix("extra.")
+            .is_some_and(|rest| !rest.is_empty())
+            || (!schema::is_top_level(config, k)
+                && collection.fields.contains_key(k)
+                // Already written at the top level: edit it in place.
+                && !original.contains_key(k))
+    };
+    let field_name = |k: &str| k.strip_prefix("extra.").unwrap_or(k).to_string();
+    let mut touched: std::collections::HashSet<String> = set
+        .keys()
+        .chain(unset.iter())
+        .map(|k| field_name(k))
+        .collect();
+    if !set.keys().any(|k| is_custom(k)) && !unset.iter().any(|k| is_custom(k)) {
+        if let Some(serde_json::Value::Object(extra)) = set.get("extra") {
+            touched.extend(extra.keys().cloned());
+        }
+        return Ok((set, unset, touched));
+    }
+    if set.contains_key("extra") || unset.iter().any(|k| k == "extra") {
+        return Err("pass custom fields either as `extra` (the whole mapping) or one by one (`author` / `extra.author`), not both".into());
+    }
+    // Never start from an empty `extra` when the existing one can't be read:
+    // writing it back would drop the user's data.
+    let mut extra = match original.get("extra") {
+        None | Some(serde_yaml_ng::Value::Null) => serde_json::Map::new(),
+        Some(serde_yaml_ng::Value::Mapping(m)) => m
+            .keys()
+            .all(serde_yaml_ng::Value::is_string)
+            .then(|| serde_json::to_value(m).ok())
+            .flatten()
+            .and_then(|v| v.as_object().cloned())
+            .ok_or_else(|| {
+                "the existing `extra:` mapping cannot be edited key by key (it has non-string keys or values JSON cannot hold); nothing was written — edit the file directly".to_string()
+            })?,
+        Some(_) => {
+            return Err("the existing `extra:` is not a mapping; nothing was written — fix it in the file (extra:\n  key: value) first".into())
+        }
+    };
+    let mut new_set = serde_json::Map::new();
+    for (k, v) in set {
+        if is_custom(&k) {
+            let name = field_name(&k);
+            if !k.starts_with("extra.") {
+                notes.push(format!(
+                    "`{name}` is a custom field of the {} schema: stored as `extra.{name}`",
+                    collection.name
+                ));
+            }
+            extra.insert(name, v);
+        } else {
+            new_set.insert(k, v);
+        }
+    }
+    let mut new_unset = Vec::new();
+    for k in unset {
+        if is_custom(&k) {
+            if extra.remove(&field_name(&k)).is_none() {
+                notes.push(format!("'extra.{}' was not set", field_name(&k)));
+            }
+        } else {
+            new_unset.push(k);
+        }
+    }
+    if extra.is_empty() {
+        if original.contains_key("extra") {
+            new_unset.push("extra".into());
+        }
+    } else {
+        new_set.insert("extra".into(), serde_json::Value::Object(extra));
+    }
+    Ok((new_set, new_unset, touched))
 }
 
 #[cfg(test)]

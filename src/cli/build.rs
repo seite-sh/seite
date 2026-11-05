@@ -19,6 +19,10 @@ pub struct BuildArgs {
     /// Treat broken internal links and missing assets as build errors
     #[arg(long)]
     pub strict: bool,
+
+    /// Include future-dated (scheduled) content, like `[build] future = true`
+    #[arg(long)]
+    pub future: bool,
 }
 
 pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
@@ -45,6 +49,7 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             include_drafts: args.drafts,
             strict: args.strict,
             site_filter: site_filter.map(String::from),
+            future: args.future,
         };
 
         let ws_result = workspace::build::build_workspace(&ws_config, &ws_root, &opts)?;
@@ -64,11 +69,19 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         human::warning("--site flag ignored (not in a workspace)");
     }
 
-    let (config, config_diagnostics) =
+    let (mut config, config_diagnostics) =
         SiteConfig::load_with_diagnostics(&PathBuf::from("seite.toml"))?;
+    config.build.future |= args.future;
     // Unknown keys (typos such as `minfy`) are warnings: the build goes on.
     for d in &config_diagnostics {
         human::warning(&d.to_string());
+    }
+    if config.deploy.markdown_negotiation
+        && config.deploy.target != crate::config::DeployTarget::Cloudflare
+    {
+        human::warning(
+            "[deploy] markdown_negotiation only applies to Cloudflare Pages; it is ignored for this deploy target (see /docs/deployment#markdown-for-agents)",
+        );
     }
     let paths = config.resolve_paths(&cwd);
 
@@ -78,18 +91,30 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
 
     let result = build::build_site(&config, &paths, &opts)?;
-    // Point at the exact template file/line behind a template fallback warning.
-    for d in result
-        .diagnostics
-        .iter()
-        .filter(|d| d.code == "template-parse")
-    {
+    // Point at the exact template file/line behind a template fallback
+    // warning, and at stale `{{ page.url }}.md` links in user templates.
+    for d in result.diagnostics.iter().filter(|d| {
+        matches!(
+            d.code,
+            "template-parse"
+                | "template-markdown-link"
+                | "template-missing-seite-head"
+                | "series-url-collision"
+                | "frontmatter-schema-unknown"
+                | "comments-not-configured"
+                | "newsletter-not-configured"
+                | "symlinked-source"
+        )
+    }) {
         human::warning(&d.to_string());
     }
     human::success(&result.stats.human_display());
     if output::is_verbose() {
         if let Some(timings) = result.stats.timings_display() {
             crate::human_println!("{timings}");
+        }
+        if let Some(search) = result.stats.search_display() {
+            crate::human_println!("{search}");
         }
     }
 
@@ -106,14 +131,33 @@ pub fn run(args: &BuildArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
+    // Pages hidden by scheduling, and links to them (`link-to-scheduled`).
+    let hidden = crate::content::schedule::hidden_pages(&config, &paths);
+    if let Some(line) = crate::content::schedule::hidden_summary(&hidden) {
+        human::info(&line);
+    }
+
     // Link validation results from the post-process pass (no extra file walk)
     let problems = print_link_report(&result.link_check, args.strict, None);
     if args.strict && problems > 0 {
-        return Err(strict_link_failure(&result.link_check));
+        return Err(strict_failure(
+            format!("Build failed: {}", problem_summary(&result.link_check)),
+            Diagnostics::from(crate::content::schedule::link_diagnostics(
+                &result.link_check,
+                &hidden,
+                true,
+                &cwd,
+            )),
+        ));
     }
 
     let mut diagnostics = Diagnostics::from(config_diagnostics);
     diagnostics.extend(result.diagnostics.iter().cloned());
+    diagnostics.extend(
+        crate::content::schedule::link_diagnostics(&result.link_check, &hidden, false, &cwd)
+            .into_iter()
+            .filter(|d| d.code == "link-to-scheduled"),
+    );
     let mut data = build_data(&result, Some(&paths.output));
     data["diagnostics"] = serde_json::to_value(&diagnostics).unwrap_or_default();
     json_out::set_data(data);
@@ -174,12 +218,15 @@ fn build_data(result: &BuildResult, output_dir: Option<&Path>) -> Value {
         "static_files_copied": stats.static_files_copied,
         "public_files_copied": stats.public_files_copied,
         "data_files_loaded": stats.data_files_loaded,
+        "og_cards": stats.og_cards,
         "duration_ms": stats.duration_ms,
         "timings_ms": timings,
         "links_checked": result.link_check.total_links_checked,
         "broken_links": broken_links,
         "missing_assets": missing_assets,
         "subdomains": subdomains,
+        // Full-text search index sizes (`[build] search = "full"`), else null.
+        "search_index": stats.search_index,
         "warnings": json_out::warnings(),
         "diagnostics": result.diagnostics,
     })

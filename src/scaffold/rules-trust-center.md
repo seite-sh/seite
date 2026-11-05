@@ -28,8 +28,8 @@ Status values: `active` (green badge), `in_progress` (yellow), `planned` (gray).
 
 To add a new certification:
 1. Add entry to `data/trust/certifications.yaml`
-2. Create `content/trust/certifications/{slug}.md` with framework details
-3. Run `seite build`
+2. Create `content/trust/certifications/{slug}.md` with framework details (write it there directly: `seite new trust` puts files at `content/trust/{slug}.md`)
+3. Run `seite check`
 
 ### Managing Subprocessors
 
@@ -74,10 +74,9 @@ Use `extra.type:` to categorize: `overview`, `certification`, `policy`, `changel
 ### Common Trust Center Tasks
 
 ```bash
-seite new trust "PCI DSS"                    # Add a new certification page
-seite new trust "Q1 2026 Security Update"    # Add a changelog entry
-seite new trust "Security Overview" --lang es # Create a translation
-seite build                                   # Rebuild after editing data files
+seite new trust "Q1 2026 Security Update"    # Add a page → content/trust/q1-2026-security-update.md
+seite new trust "Security Overview" --lang es # Translation (needs [languages.es] in seite.toml)
+seite check                                   # Validate after editing content or data files
 ```
 
 ### Multi-language Trust Center

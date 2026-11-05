@@ -98,15 +98,15 @@ fn assert_snapshot(case: &str, files: Vec<(String, String)>) {
 
 /// Everything `seite init` generates for `agents` besides the site itself:
 /// the planned harness files plus the two AGENTS.md blocks.
-fn init_files(agents: &[Agent]) -> Vec<(String, String)> {
+fn init_files(agents: &[Agent], mcp: bool) -> Vec<(String, String)> {
     let features = SiteFeatures::default();
-    let mut files: Vec<(String, String)> = harness::plan(agents, features)
+    let mut files: Vec<(String, String)> = harness::plan(agents, features, mcp)
         .into_iter()
         .map(|f| (f.path, f.content))
         .collect();
     files.push((
         "AGENTS.md#agent-setup".into(),
-        harness::mcp_setup_table(agents),
+        harness::mcp_setup_table(agents, mcp),
     ));
     files.push((
         "AGENTS.md#context-rules".into(),
@@ -117,13 +117,18 @@ fn init_files(agents: &[Agent]) -> Vec<(String, String)> {
 
 #[test]
 fn test_harness_snapshot_init_all_agents() {
-    assert_snapshot("init-all", init_files(&Agent::ALL));
+    assert_snapshot("init-all", init_files(&Agent::ALL, false));
+}
+
+#[test]
+fn test_harness_snapshot_init_all_agents_with_mcp() {
+    assert_snapshot("init-all-mcp", init_files(&Agent::ALL, true));
 }
 
 #[test]
 fn test_harness_snapshot_init_each_agent_alone() {
     for agent in Agent::ALL {
-        assert_snapshot(&format!("init-{}", agent.id()), init_files(&[agent]));
+        assert_snapshot(&format!("init-{}", agent.id()), init_files(&[agent], false));
     }
 }
 
@@ -187,5 +192,38 @@ fn test_harness_snapshot_upgrade_legacy_claude_site() {
     assert_snapshot(
         "upgrade-legacy-claude",
         upgrade_files(&["--agents", "claude"]),
+    );
+}
+
+/// A real AGENTS.md from `seite init` 0.20.1 (tests/fixtures/agents-md-0.20.1.md)
+/// after `seite upgrade`: the sections for retired features are gone.
+#[test]
+fn test_harness_snapshot_upgrade_020_agents_md() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Fixture Site", "posts,docs,pages");
+    let site_dir = tmp.path().join("site");
+    let legacy = include_str!("../fixtures/agents-md-0.20.1.md");
+    fs::write(site_dir.join("AGENTS.md"), legacy).unwrap();
+    page_cmd()
+        .args(["upgrade", "--force"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+    let upgraded = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    for gone in [
+        "### Theme Builder Skill",
+        "### Brand Identity Builder Skill",
+        "### Landing Page Builder Skill",
+        "### Dev Server REPL",
+        "Run `/theme-builder`",
+    ] {
+        assert!(!upgraded.contains(gone), "{gone} still in:\n{upgraded}");
+    }
+    assert_eq!(upgraded.matches("/seite brand").count(), 1, "{upgraded}");
+    assert!(upgraded.contains("## Contact Forms"));
+    assert!(upgraded.contains("## Verify Your Change"));
+    assert_snapshot(
+        "upgrade-020-agents-md",
+        vec![("AGENTS.md".to_string(), upgraded)],
     );
 }

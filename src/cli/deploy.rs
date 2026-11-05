@@ -54,6 +54,8 @@ pub struct DeployArgs {
     pub no_commit: bool,
 }
 
+pub(crate) const GITHUB_PAGES_NO_PREVIEW: &str = "GitHub Pages has no preview deploys: publishing from this branch (or with --preview) would replace the live site. Merge to main and deploy from there, or preview with `seite serve` (if your default branch is not main or master, deploy with --no-commit)";
+
 pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
 
@@ -97,10 +99,16 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         return run_setup(&target_str, &config, &paths, &config_path);
     }
 
+    // Production vs preview (and the GitHub Pages refusal) is decided from
+    // the current branch before anything is committed, pushed or uploaded.
+    let plan = plan_deploy(args, &config, &paths.root);
+
     // --- Dry run ---
     if args.dry_run {
-        return run_dry_run(&target_str, &config, &paths, args);
+        return run_dry_run(&target_str, &config, &paths, args, &plan);
     }
+
+    plan.refuse_github_pages_preview(&target_str)?;
 
     // --- Pre-flight checks with interactive recovery ---
     if !args.skip_checks {
@@ -142,6 +150,18 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         for name in &unresolved {
                             human::info(&format!("  - {name}"));
                         }
+                        // --yes applies fixes but must not upload protected
+                        // files to a project that can fail open; only a human
+                        // answer or --skip-checks may accept that risk.
+                        if prompt::assume_yes()
+                            && unresolved.iter().any(|n| n == deploy::FAIL_CLOSED_CHECK)
+                        {
+                            return Err(PageError::Deploy(format!(
+                                "'{}' is unresolved — --yes never deploys protected content to a project that may fail open. Fix it above, or pass --skip-checks to override",
+                                deploy::FAIL_CLOSED_CHECK
+                            ))
+                            .into());
+                        }
                         // Must be decided before auto-commit/push, build and upload.
                         let cont = prompt::confirm_or_fail(
                             "Continue deploying anyway?",
@@ -167,10 +187,21 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
     }
 
+    // Pre-flight fixes can change the repository (e.g. `git init`) or the
+    // config: decide again, still before committing or pushing anything.
+    let plan = plan_deploy(args, &config, &paths.root);
+    plan.refuse_github_pages_preview(&target_str)?;
+    if plan.auto_preview {
+        if let Some(ref branch) = plan.branch {
+            human::info(&format!("On branch '{branch}' — deploying as preview"));
+        }
+    }
+    let preview = plan.preview;
+
     // --- Auto-commit and push ---
-    let mut preview = args.preview;
-    let should_auto_commit = config.deploy.auto_commit && !args.no_commit;
-    if should_auto_commit {
+    if let Some(ref reason) = plan.commit_skipped {
+        human::warning(&format!("Auto-commit skipped: {reason}"));
+    } else if plan.commit_and_push {
         match deploy::auto_commit_and_push(&paths) {
             Ok(result) => {
                 if result.committed {
@@ -180,14 +211,6 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         "No uncommitted changes, pushed to {}",
                         result.branch
                     ));
-                }
-                // Auto-enable preview when on a non-main branch
-                if !result.is_main && !preview {
-                    human::info(&format!(
-                        "On branch '{}' — deploying as preview",
-                        result.branch
-                    ));
-                    preview = true;
                 }
             }
             Err(e) => {
@@ -265,6 +288,9 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     // --- Deploy subdomain collections ---
+    // A subdomain that didn't deploy fails the command (after the rest ran):
+    // it may hold password-protected content that is now out of date.
+    let mut subdomain_failures: Vec<String> = Vec::new();
     for collection in config.subdomain_collections() {
         let subdomain = collection.subdomain.as_ref().unwrap();
         let subdomain_output = paths.subdomain_output(&collection.name);
@@ -274,6 +300,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 "Subdomain output for '{subdomain}' not found at {} — skipping",
                 subdomain_output.display()
             ));
+            subdomain_failures.push(format!("{subdomain}: no build output"));
             continue;
         }
 
@@ -300,7 +327,8 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
                         Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
                         Err(e) => {
-                            human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                            human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"));
+                            subdomain_failures.push(format!("{subdomain}: {e}"));
                         }
                     }
                 } else {
@@ -308,6 +336,7 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                         "No deploy_project for subdomain '{subdomain}'. \
                          Set deploy_project on the collection or deploy.project globally."
                     ));
+                    subdomain_failures.push(format!("{subdomain}: no deploy_project"));
                 }
             }
             "netlify" => {
@@ -319,7 +348,8 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                     Ok(Some(url)) => human::success(&format!("  Subdomain deployed: {url}")),
                     Ok(None) => human::success(&format!("  Subdomain '{subdomain}' deployed")),
                     Err(e) => {
-                        human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"))
+                        human::error(&format!("  Subdomain '{subdomain}' deploy failed: {e}"));
+                        subdomain_failures.push(format!("{subdomain}: {e}"));
                     }
                 }
             }
@@ -350,8 +380,21 @@ pub fn run(args: &DeployArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         "target": target_str,
         "url": deploy_url,
         "preview": preview,
+        "mode": if preview { "preview" } else { "production" },
         "dry_run": false,
+        "branch": plan.branch,
+        "auto_preview": plan.auto_preview,
+        "commit_and_push": plan.commit_and_push,
+        "subdomain_failures": subdomain_failures,
     }));
+    if !subdomain_failures.is_empty() {
+        return Err(PageError::Deploy(format!(
+            "{} subdomain deploy(s) failed: {}",
+            subdomain_failures.len(),
+            subdomain_failures.join("; ")
+        ))
+        .into());
+    }
     Ok(())
 }
 
@@ -461,24 +504,41 @@ fn run_setup(
 
     match target_str {
         "github-pages" => {
-            deploy::deploy_init_github_pages(paths)?;
+            // `gh repo create` makes a public repository: only a human
+            // answer creates it, never --yes or a non-TTY run.
+            let confirm_public_repo = |name: &str| {
+                !prompt::assume_yes()
+                    && prompt::is_interactive()
+                    && prompt::confirm(
+                        &format!(
+                            "Create a PUBLIC GitHub repository '{name}' and push this site's source to it?"
+                        ),
+                        false,
+                    )
+                    .unwrap_or(false)
+            };
+            deploy::deploy_init_github_pages(paths, &confirm_public_repo)?;
 
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
+            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
             let workflow = deploy::generate_github_actions_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
+            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
         }
         "cloudflare" => {
-            let project = deploy::deploy_init_cloudflare(paths)?;
+            let project = deploy::deploy_init_cloudflare(paths, config.deploy.project.as_deref())?;
             config_updates.insert("project".to_string(), project.clone());
 
             // Generate workflow
             let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
-            let workflow = deploy::generate_cloudflare_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
+            crate::safe_fs::create_dir_all(&paths.root, &workflow_dir)?;
+            // The workflow deploys to the project just set up (written to
+            // seite.toml below), not to a placeholder.
+            let mut workflow_config = config.clone();
+            workflow_config.deploy.project = Some(project.clone());
+            let workflow = deploy::generate_cloudflare_workflow(&workflow_config);
+            crate::safe_fs::write(&paths.root, &workflow_dir.join("deploy.yml"), &workflow)?;
             human::success("Created .github/workflows/deploy.yml");
 
             human::info("Set these GitHub secrets for CI:");
@@ -491,19 +551,17 @@ fn run_setup(
 
             // Generate netlify.toml
             let netlify_config = deploy::generate_netlify_config(config);
-            std::fs::write(paths.root.join("netlify.toml"), &netlify_config)?;
+            crate::safe_fs::write(
+                &paths.root,
+                &paths.root.join("netlify.toml"),
+                &netlify_config,
+            )?;
             human::success("Created netlify.toml");
-
-            // Also generate GitHub Actions workflow as an alternative
-            let workflow_dir = paths.root.join(".github/workflows");
-            std::fs::create_dir_all(&workflow_dir)?;
-            let workflow = deploy::generate_netlify_workflow(config);
-            std::fs::write(workflow_dir.join("deploy.yml"), &workflow)?;
-            human::success("Created .github/workflows/deploy.yml");
-
-            human::info("Set these GitHub secrets for CI:");
-            human::info("  NETLIFY_AUTH_TOKEN — create at https://app.netlify.com/user/applications#personal-access-tokens");
-            human::info("  NETLIFY_SITE_ID    — found in your site settings");
+            // No GitHub Actions workflow: Netlify's git builds run
+            // netlify.toml, and a workflow as well would deploy twice.
+            human::info(
+                "Link the repository in Netlify to build netlify.toml on every push, or deploy from here with `seite deploy` (https://seite.sh/docs/deployment#netlify)",
+            );
         }
         other => {
             return Err(PageError::Deploy(format!(
@@ -576,6 +634,33 @@ fn run_setup(
         }
     }
 
+    // Password-protected projects must fail closed, or Cloudflare serves the
+    // protected static files without the Worker once the free Workers request
+    // quota runs out.
+    if target_str == "cloudflare" && !config.password_access_groups().is_empty() {
+        crate::human_println!();
+        human::header("Securing password-protected projects");
+        let updated = SiteConfig::load(config_path).unwrap_or_else(|_| config.clone());
+        let projects = deploy::protected_cloudflare_projects(&updated, paths);
+        if projects.is_empty() {
+            human::warning(
+                "Could not determine which Cloudflare Pages projects hold protected content.",
+            );
+            for line in deploy::fail_closed_manual_instructions(&projects) {
+                human::info(&format!("  {line}"));
+            }
+        }
+        // Setup files written above (such as a GitHub Actions workflow) upload
+        // with wrangler directly and never run the pre-flight check, so a
+        // project that may fail open must fail setup, not just warn.
+        if projects.is_empty() || !deploy::ensure_fail_closed(&projects) {
+            return Err(PageError::Deploy(
+                "password-protected Cloudflare Pages projects are not confirmed to fail closed. Files created above (such as .github/workflows/deploy.yml) would upload protected content to a project that may fail open. Set Fail closed as shown above, then re-run `seite deploy --setup`".into(),
+            )
+            .into());
+        }
+    }
+
     // Offer contact form setup if not already configured
     if config.contact.is_none() {
         crate::human_println!();
@@ -600,7 +685,8 @@ fn run_setup(
             let contact_value = toml::Value::try_from(&contact)?;
             doc.insert("contact".to_string(), contact_value);
             let new_contents = toml::to_string_pretty(&doc)?;
-            std::fs::write(config_path, new_contents)?;
+            let site_root = config_path.parent().unwrap_or(Path::new("."));
+            crate::safe_fs::write(site_root, config_path, new_contents)?;
             human::success("Added [contact] section to seite.toml");
         }
     }
@@ -618,6 +704,7 @@ fn run_dry_run(
     config: &SiteConfig,
     paths: &crate::config::ResolvedPaths,
     args: &DeployArgs,
+    plan: &DeployPlan,
 ) -> anyhow::Result<()> {
     human::info(&format!("Dry run: would deploy to {target_str}"));
 
@@ -627,13 +714,41 @@ fn run_dry_run(
     crate::output::json::set_data(serde_json::json!({
         "target": target_str,
         "dry_run": true,
-        "preview": args.preview,
+        "preview": plan.preview,
+        "mode": if plan.preview { "preview" } else { "production" },
+        "branch": plan.branch,
+        "auto_preview": plan.auto_preview,
+        "commit_and_push": plan.commit_and_push,
         "output_dir": paths.output.display().to_string(),
         "checks": checks
             .iter()
             .map(|c| serde_json::json!({ "name": c.name, "passed": c.passed, "message": c.message }))
             .collect::<Vec<_>>(),
     }));
+
+    // The real deploy would refuse here, before committing or pushing.
+    plan.refuse_github_pages_preview(target_str)?;
+
+    if let Some(ref branch) = plan.branch {
+        human::info(&format!(
+            "  Source branch: {branch}{}",
+            if plan.auto_preview {
+                " (not main/master: deploys as a preview)"
+            } else {
+                ""
+            }
+        ));
+    }
+    if plan.commit_and_push {
+        human::info(&format!(
+            "  Git: would commit all changes and push {}",
+            plan.branch.as_deref().unwrap_or("the current branch")
+        ));
+    } else if let Some(ref reason) = plan.commit_skipped {
+        human::info(&format!("  Git: auto-commit would be skipped ({reason})"));
+    } else {
+        human::info("  Git: no commit or push (--no-commit or deploy.auto_commit = false)");
+    }
 
     match target_str {
         "github-pages" => {
@@ -644,7 +759,8 @@ fn run_dry_run(
                 .unwrap_or("(auto-detect from git remote)");
             human::info(&format!("  Repository: {repo_url}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            human::info("  Branch: gh-pages (force push)");
+            human::info("  Publish branch: gh-pages (force push)");
+            human::info("  Mode: production");
             human::info("  Files: .nojekyll (auto-generated)");
             if let Some(domain) = deploy::extract_custom_domain(&config.site.base_url) {
                 if !domain.ends_with(".github.io")
@@ -665,8 +781,10 @@ fn run_dry_run(
                 .unwrap_or("(not configured — set deploy.project in seite.toml)");
             human::info(&format!("  Project: {project}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            if args.preview {
+            if plan.preview {
                 human::info("  Mode: preview (non-production)");
+            } else {
+                human::info("  Mode: production");
             }
         }
         "netlify" => {
@@ -677,7 +795,7 @@ fn run_dry_run(
                 .unwrap_or("(auto-detect or set deploy.project in seite.toml)");
             human::info(&format!("  Site ID/name: {site_id}"));
             human::info(&format!("  Output dir: {}", paths.output.display()));
-            if args.preview {
+            if plan.preview {
                 human::info("  Mode: preview (draft deploy)");
             } else {
                 human::info("  Mode: production");
@@ -725,8 +843,110 @@ fn run_dry_run(
 }
 
 // ---------------------------------------------------------------------------
+// Deploy plan
+// ---------------------------------------------------------------------------
+
+/// What `seite deploy` will do, decided from the config, the flags and the
+/// current branch before anything is committed, pushed, built or uploaded.
+/// `--dry-run` reports the same plan.
+struct DeployPlan {
+    /// The checked-out branch (`None` outside a git repository).
+    branch: Option<String>,
+    /// Deploy as a preview (`--preview`, or a non-main branch with auto-commit).
+    preview: bool,
+    /// `preview` was turned on because the branch is not main/master.
+    auto_preview: bool,
+    /// Commit all changes and push the branch before deploying.
+    commit_and_push: bool,
+    /// Why auto-commit is on but cannot run (e.g. not a git repository).
+    commit_skipped: Option<String>,
+}
+
+impl DeployPlan {
+    /// GitHub Pages has one site per repository: a "preview" would
+    /// force-push the branch's build to the live gh-pages site.
+    fn refuse_github_pages_preview(&self, target: &str) -> anyhow::Result<()> {
+        if self.preview && target == "github-pages" {
+            return Err(PageError::Deploy(GITHUB_PAGES_NO_PREVIEW.into()).into());
+        }
+        Ok(())
+    }
+}
+
+fn plan_deploy(args: &DeployArgs, config: &SiteConfig, root: &Path) -> DeployPlan {
+    let wants_commit = config.deploy.auto_commit && !args.no_commit;
+    let mut plan = DeployPlan {
+        branch: None,
+        preview: args.preview,
+        auto_preview: false,
+        commit_and_push: false,
+        commit_skipped: None,
+    };
+    match deploy::current_branch(root) {
+        Ok((branch, is_main)) => {
+            // Non-main branches deploy as previews when seite commits and
+            // pushes them (`--no-commit` deploys the working tree as asked).
+            if wants_commit && !is_main && !args.preview {
+                plan.preview = true;
+                plan.auto_preview = true;
+            }
+            plan.commit_and_push = wants_commit;
+            plan.branch = Some(branch);
+        }
+        Err(e) => {
+            if wants_commit {
+                plan.commit_skipped = Some(e.to_string());
+            }
+        }
+    }
+    plan
+}
+
+// ---------------------------------------------------------------------------
 // Interactive recovery
 // ---------------------------------------------------------------------------
+
+/// Why the "Git remote" auto-fix (`gh repo create`) must not run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RepoCreationBlocked {
+    /// `--yes` or a non-TTY run: nobody was asked.
+    NotAsked,
+    /// GitHub Pages from a branch other than main/master.
+    WrongBranch(String),
+}
+
+impl RepoCreationBlocked {
+    fn message(&self) -> String {
+        match self {
+            Self::NotAsked => "Not creating a GitHub repository without asking (it would be public): create it yourself, or run `seite deploy` without --yes".into(),
+            Self::WrongBranch(branch) => format!(
+                "Not creating a GitHub repository from branch '{branch}': GitHub Pages deploys only from main or master"
+            ),
+        }
+    }
+}
+
+/// Creating a public GitHub repository publishes the site's source: only a
+/// human answer does that, never `--yes` or a non-TTY run, and not from a
+/// branch GitHub Pages would refuse to deploy. `branch` yields the current
+/// branch and whether it is main/master (`None` outside a git repository);
+/// it is only consulted for GitHub Pages.
+fn repo_creation_blocked(
+    target: &str,
+    assume_yes: bool,
+    interactive: bool,
+    branch: impl FnOnce() -> Option<(String, bool)>,
+) -> Option<RepoCreationBlocked> {
+    if assume_yes || !interactive {
+        return Some(RepoCreationBlocked::NotAsked);
+    }
+    if target == "github-pages" {
+        if let Some((branch, false)) = branch() {
+            return Some(RepoCreationBlocked::WrongBranch(branch));
+        }
+    }
+    None
+}
 
 /// For each failed pre-flight check, offer the user an auto-fix or show manual instructions.
 /// Returns a list of check names that are still unresolved after the recovery loop.
@@ -745,6 +965,30 @@ fn run_interactive_recovery(
             continue;
         }
 
+        if check.name == "Git remote" {
+            let branch = || deploy::current_branch(&paths.root).ok();
+            match repo_creation_blocked(
+                target,
+                prompt::assume_yes(),
+                prompt::is_interactive(),
+                branch,
+            ) {
+                Some(blocked @ RepoCreationBlocked::NotAsked) => {
+                    human::info(&blocked.message());
+                    if let Some(fix) = deploy::try_fix_check(check, paths, target) {
+                        print_manual_instructions(&fix.manual_instructions);
+                    }
+                    unresolved.push(check.name.clone());
+                    continue;
+                }
+                Some(blocked @ RepoCreationBlocked::WrongBranch(_)) => {
+                    human::info(&blocked.message());
+                    unresolved.push(check.name.clone());
+                    continue;
+                }
+                None => {}
+            }
+        }
         let fix = deploy::try_fix_check(check, paths, target);
         match fix {
             Some(fix_action) if !fix_action.prompt.is_empty() => {
@@ -861,5 +1105,63 @@ fn resolve_cloudflare_project(
             )
             .into()
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on(branch: &str, is_main: bool) -> impl FnOnce() -> Option<(String, bool)> {
+        let branch = branch.to_string();
+        move || Some((branch, is_main))
+    }
+
+    #[test]
+    fn repo_creation_needs_a_human_answer() {
+        for target in ["github-pages", "cloudflare", "netlify"] {
+            // --yes, or nobody to ask: never, whatever the branch.
+            for (yes, interactive) in [(true, true), (true, false), (false, false)] {
+                assert_eq!(
+                    repo_creation_blocked(target, yes, interactive, on("feature", false)),
+                    Some(RepoCreationBlocked::NotAsked),
+                    "{target} yes={yes} interactive={interactive}"
+                );
+            }
+        }
+        assert!(RepoCreationBlocked::NotAsked
+            .message()
+            .contains("it would be public"));
+    }
+
+    #[test]
+    fn repo_creation_for_github_pages_only_from_main() {
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, on("feature", false)),
+            Some(RepoCreationBlocked::WrongBranch("feature".into()))
+        );
+        assert_eq!(
+            RepoCreationBlocked::WrongBranch("feature".into()).message(),
+            "Not creating a GitHub repository from branch 'feature': GitHub Pages deploys only from main or master"
+        );
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, on("main", true)),
+            None
+        );
+        // Not a git repository (yet): the fix may run.
+        assert_eq!(
+            repo_creation_blocked("github-pages", false, true, || None),
+            None
+        );
+        // Other targets deploy previews from any branch; the branch isn't
+        // even looked up.
+        for target in ["cloudflare", "netlify"] {
+            assert_eq!(
+                repo_creation_blocked(target, false, true, || -> Option<(String, bool)> {
+                    panic!("branch looked up for {target}")
+                }),
+                None
+            );
+        }
     }
 }

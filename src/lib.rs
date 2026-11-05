@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 
+pub mod audit;
 pub mod build;
 pub mod cli;
 pub mod config;
@@ -15,10 +16,12 @@ pub mod meta;
 pub mod output;
 pub mod platform;
 pub mod progress;
+pub mod safe_fs;
 pub mod server;
 pub mod shortcodes;
 pub mod telemetry;
 pub mod templates;
 pub mod themes;
+pub mod trust;
 pub mod update_check;
 pub mod workspace;

@@ -10,3 +10,7 @@ credentials/
 .claude/.seite-skill-packs.json
 
 /dist-subdomains
+/.seite/docs/
+/.seite/dev.json
+/.seite/cache/
+/.seite/upgrade-brief.md

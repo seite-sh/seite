@@ -1,7 +1,7 @@
 ---
-title: "Static Site Generator for Startups: Ship Your Website in an Afternoon"
+title: "Static Site Generator for Startups: Ship in Hours"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Ship your startup website in an afternoon: landing page, docs, blog, changelog, and contact form from one CLI tool. Free Cloudflare hosting. One deploy command."
 tags:
  - static-site-generator
@@ -62,38 +62,22 @@ Here is the step-by-step path from nothing to a live site with all five sections
 curl -fsSL https://seite.sh/install.sh | sh
 ```
 
-One command. One 15 MB Rust binary. No Node.js, no Python, no package managers to configure. If you have a shell, you can install seite.
+One command. One Rust binary (about 24 MB, an ~8 MB download). No Node.js, no Python, no package managers to configure. If you have a shell, you can install seite.
 
 ### Step 2: Initialize with All Five Sections (2 Minutes)
 
 ```bash
 seite init mysite \
- --title "Acme" \
- --collections posts,docs,pages,changelog
+  --title "Acme" \
+  --collections posts,docs,pages,changelog \
+  --deploy-target cloudflare
 ```
 
-This scaffolds your entire project: directory structure, `seite.toml` config, placeholder templates and starter content for every collection. The project is ready to build immediately.
+This scaffolds your project: directory structure, a `seite.toml` with every collection spelled out, templates, a starter blog post and a first changelog entry (`v0.1.0`). The docs and pages folders start empty. The project builds immediately.
 
-Your `seite.toml` will have all five sections configured:
+The contact form is one more command. `seite contact setup` asks for a provider (Formspree, Web3Forms, Netlify Forms, HubSpot or Typeform) and your form ID, writes the `[contact]` section and creates a contact page:
 
 ```toml
-[site]
-title = "Acme"
-base_url = "https://acme.com"
-language = "en"
-
-[[collections]]
-name = "posts"
-
-[[collections]]
-name = "docs"
-
-[[collections]]
-name = "pages"
-
-[[collections]]
-name = "changelog"
-
 [contact]
 provider = "formspree"
 endpoint = "your-form-id"
@@ -108,7 +92,7 @@ seite theme list
 seite theme apply bento
 ```
 
-Ten bundled themes ship with seite, including `default`, `docs`, `landing` for a marketing homepage, and `bento`. Browse all of them in the [theme gallery](/docs/theme-gallery). Apply one in under a minute. Or describe the design you want and let the AI generate it:
+Eleven bundled themes ship with seite: starters like `default`, `docs` and `landing` for a marketing homepage, plus gallery themes like `bento`. Browse all of them in the [theme gallery](/docs/theme-gallery). Apply one in under a minute. Or describe the design you want and let your coding agent build it (this runs `/seite theme` in your agent):
 
 ```bash
 seite theme create "clean SaaS landing page, dark navy background, green accent, geometric sans-serif"
@@ -118,7 +102,7 @@ The generated theme goes directly into `templates/base.html`. Edit it like any o
 
 ### Step 4: Write Your Content with the AI Agent (20-40 Minutes)
 
-This is where most startup founders hit the wall. The blank page. seite ships with a built-in [AI agent](/docs/agent) that has full context about your site: your title, your collections, your existing content and your templates.
+This is where most startup founders hit the wall. The blank page. seite sets up your coding agent (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI or GitHub Copilot) with context about your site: your title, your collections, your content format and your templates. `seite agent` starts it with a prompt; see the [agent docs](/docs/agent).
 
 ```bash
 seite agent "write the hero section for our landing page. We build developer tools for API testing. Target audience is backend engineers. Include a headline, subheadline, and two-sentence value proposition."
@@ -150,13 +134,13 @@ For the detailed walkthrough, see [deploy to Cloudflare Pages in one command](/b
 
 **Total time: 45-55 minutes.** That is the honest number. Install and init are fast. The content window depends on how much you write and how much you let the agent draft. But the site structure, the theme, the deploy pipeline: those are done in under 15 minutes.
 
-> **Ready to start?** Follow the [getting started guide](/docs/getting-started) for the full setup walkthrough with screenshots and config examples.
+> **Ready to start?** Follow the [getting started guide](/docs/getting-started) for the full setup walkthrough with config examples.
 
 ## What You Actually Get at the End
 
 After `seite deploy`, here is what is live at your domain:
 
-**Landing page** at `/` with your hero, value proposition and contact form shortcode (`{{< contact_form() >}}`). No Typeform account. No form backend to maintain. seite handles the form submission routing through your configured provider.
+**Landing page** at `/` with your hero, value proposition and contact form shortcode (`{{< contact_form() >}}`). No form backend to maintain: the form posts to your provider (a free Formspree or Web3Forms account, or Netlify Forms when you host on Netlify), and seite renders the markup for it.
 
 **Docs site** at `/docs` with sidebar navigation automatically generated from your docs files. Group docs by directory; the sidebar reflects the structure. The `docs` theme gives you the sidebar layout if you prefer it.
 
@@ -186,14 +170,14 @@ Here is the honest breakdown. Prices are from published pricing pages as of Marc
 | **Docs** | Yes | No | No | No |
 | **Blog** | Yes | No | Yes | Yes |
 | **Changelog** | Yes | No | No | No |
-| **Contact form** | Yes (built in) | No (add Typeform) | No | No (plugin) |
+| **Contact form** | Yes (shortcode + free form provider) | Yes (native forms) | No | No (plugin) |
 | **Deploy automation** | Yes (one command) | Manual | Manual | Manual |
 | **AI agent** | Yes (built in) | No | No | No |
-| **Hosting cost** | $0 (Cloudflare Pages) | Included | $9+/mo | Included |
+| **Hosting cost** | $0 (Cloudflare Pages) | Included | Included | Included |
 
-Webflow Starter covers landing pages but not docs, changelog or contact forms. [Ghost Creator](https://ghost.org/pricing/) covers the blog, requires Node.js hosting and nothing else. WordPress.com Pro covers most sections but at $300/year, requires plugins for forms and has no CLI workflow.
+Webflow Starter covers landing pages and simple forms but not docs or a changelog. [Ghost Creator](https://ghost.org/pricing/) is hosted and covers the blog and newsletter, and little else. WordPress.com Pro covers most sections but at $300/year, requires plugins for forms and has no CLI workflow.
 
-The typical startup stack (Webflow + Ghost + Typeform) runs $576/year and still misses docs and the changelog. seite is $0 and ships everything.
+The typical startup stack (Webflow + Ghost + Typeform) runs $576/year and still misses docs and the changelog. seite is $0 for the tool and the hosting; the form provider and your domain are the only accounts you add.
 
 For a deeper look at [why static sites cost less than WordPress](/blog/wordpress-alternative-for-developers), that post covers the hosting and maintenance cost gap in detail.
 
@@ -201,7 +185,7 @@ For a deeper look at [why static sites cost less than WordPress](/blog/wordpress
 
 Most startup founders are not writers. The blank page is the real bottleneck, not the technical setup.
 
-`seite agent` solves the blank page problem. It knows your site: your title, your collections and your existing content. You give it a direction; it gives you a draft.
+Your coding agent solves the blank page problem. Through seite's `AGENTS.md` and `/seite` skill it knows your site: your title, your collections and your existing content. You give it a direction; it gives you a draft.
 
 ```bash
 # One-shot prompts
@@ -214,11 +198,11 @@ seite agent "write a Getting Started doc for an API testing tool. Cover: install
 seite agent "write the first changelog entry for v0.1.0. We shipped: authentication, basic test runner, CLI install."
 ```
 
-For longer sessions, run `seite agent` without arguments to enter interactive mode. You can iterate on sections, ask for rewrites, and request specific edits in a single session with full context throughout.
+For longer sessions, open your agent in the project directory, or run `seite agent` without arguments. You can iterate on sections, ask for rewrites, and request specific edits in a single session with full context throughout.
 
 The agent writes drafts. You edit. The goal is not to remove yourself from the writing process; it is to remove the worst part of it: the blank page and the initial structure. Most founders find they can get through the full landing page draft, three docs pages and a first post in 30-40 minutes with the agent.
 
-> **See the full agent reference.** The [AI agent docs](/docs/agent) cover one-shot prompts, interactive mode, site context access and skill packs for specialized tasks.
+> **See the full agent reference.** The [AI agent docs](/docs/agent) cover one-shot prompts, interactive mode, choosing an agent and skill packs for specialized tasks.
 
 ## Three Founders Who Shipped in an Afternoon
 
@@ -249,7 +233,7 @@ seite is built for technical founders and developer-founders who are comfortable
 Install: 30 seconds. Init: 2 minutes. Theme: 5 minutes. Content with the agent: 20-40 minutes depending on how much you write. Deploy: 5 minutes. Total: 45-55 minutes for a complete five-section site, honestly.
 
 **What if I want a custom design?**
-Run `seite theme create "your design description"` to generate a custom `base.html` from a description. Or apply a bundled theme and edit `templates/base.html` directly. Templates use standard Tera (Jinja2-compatible) syntax.
+Ask your agent for `/seite theme your design description`, or run `seite theme create "your design description"`, to generate a custom `base.html` from a description. Or apply a bundled theme and edit `templates/base.html` directly. Templates use standard Tera (Jinja2-compatible) syntax.
 
 **Which deploy platform should I use?**
 [Cloudflare Pages](https://developers.cloudflare.com/pages/) is the best default choice: unlimited bandwidth, 500 builds per month, 100 custom domains, free. GitHub Pages is a good second option if your code is already on GitHub. Both work with one line in `seite.toml`.

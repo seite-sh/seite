@@ -4,7 +4,7 @@
 #   irm https://seite.sh/install.ps1 | iex
 #
 # Options (via environment variables):
-#   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.1.0")
+#   $env:VERSION        Pin to a specific release (e.g., $env:VERSION = "v0.21.0")
 #   $env:INSTALL_DIR    Override install location (default: ~\.local\bin)
 #   $env:DOWNLOAD_BASE  Override download base URL (default: https://seite.sh/download)
 
@@ -56,14 +56,14 @@ if ($env:VERSION) {
             $Version = $Release.tag_name
         } catch {
             Write-Err "Could not determine latest release version."
-            Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
+            Write-Host '  Try pinning a version: $env:VERSION = "v0.21.0"'
             exit 1
         }
     }
 
     if (-not $Version) {
         Write-Err "Could not determine latest release version."
-        Write-Host '  Try pinning a version: $env:VERSION = "v0.1.0"'
+        Write-Host '  Try pinning a version: $env:VERSION = "v0.21.0"'
         exit 1
     }
 }
@@ -110,8 +110,32 @@ try {
     Write-Info "Installed seite to $(Join-Path $InstallDir $Binary)"
 
     # --- Anonymous install telemetry (best-effort; never blocks or fails) ---
-    # Disable with $env:DO_NOT_TRACK or $env:SEITE_TELEMETRY=0.
-    if (-not $env:DO_NOT_TRACK -and ($env:SEITE_TELEMETRY -notin @('0','off','false','no'))) {
+    # The CLI's opt-out rules (src/telemetry.rs), in its order: DO_NOT_TRACK
+    # (any value) disables; SEITE_TELEMETRY=0/off/false/no/disable(d) disables
+    # and 1/on/true/yes/enable(d) enables, even in CI; otherwise CI (any
+    # value) disables; otherwise a saved `seite telemetry off|on`
+    # (%USERPROFILE%\.seite\telemetry.json) decides.
+    $TelemetryFlag = "$env:SEITE_TELEMETRY".Trim().ToLowerInvariant()
+    $SendTelemetry = $true
+    if ("$env:DO_NOT_TRACK".Trim()) {
+        $SendTelemetry = $false
+    } elseif ($TelemetryFlag -in @('0','off','false','no','disable','disabled')) {
+        $SendTelemetry = $false
+    } elseif ($TelemetryFlag -in @('1','on','true','yes','enable','enabled')) {
+        $SendTelemetry = $true
+    } elseif ("$env:CI".Trim()) {
+        $SendTelemetry = $false
+    } elseif ($env:USERPROFILE) {
+        $TelemetryConfig = Join-Path $env:USERPROFILE '.seite\telemetry.json'
+        if (Test-Path -LiteralPath $TelemetryConfig -PathType Leaf) {
+            try {
+                if ((Get-Content -LiteralPath $TelemetryConfig -Raw | ConvertFrom-Json).enabled -eq $false) {
+                    $SendTelemetry = $false
+                }
+            } catch {}
+        }
+    }
+    if ($SendTelemetry) {
         $TelemetryEndpoint = if ($env:SEITE_TELEMETRY_ENDPOINT) { $env:SEITE_TELEMETRY_ENDPOINT } else { 'https://who.seite.sh/api/event' }
         $TelemetryArch = ($Target -split '-')[0]
         $TelemetryBody = @{

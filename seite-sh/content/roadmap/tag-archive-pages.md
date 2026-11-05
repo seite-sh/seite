@@ -6,4 +6,4 @@ tags:
 weight: 16
 ---
 
-Tags in frontmatter automatically generate a `tags/index.html` listing page and individual `tags/{tag}/index.html` archive pages. Tag pages are included in the sitemap. Requires `tags.html` and `tag.html` templates (provided by all bundled themes). Custom taxonomies beyond tags (categories, series, authors) are tracked separately as a planned feature.
+Tags in frontmatter automatically generate a `tags/index.html` listing page and individual `tags/{tag}/index.html` archive pages. Tag pages are included in the sitemap. Requires `tags.html` and `tag.html` templates (provided by all bundled themes). Custom taxonomies beyond tags, such as categories, shipped in v0.21.0 (see [Custom Taxonomies](/roadmap/custom-taxonomies)).

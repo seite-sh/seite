@@ -1,8 +1,8 @@
 [package]
 name = "seite"
-version = "0.20.2"
+version = "0.21.0"
 edition = "2021"
-description = "AI-native static site generator — every page ships as HTML, markdown, and structured data"
+description = "The static site generator your coding agent can run end to end, for free."
 license = "MIT"
 repository = "https://github.com/seite-sh/seite"
 homepage = "https://seite.sh"
@@ -16,6 +16,7 @@ include = [
     "seite-sh/content/docs/**/*.md",
     "seite-sh/content/changelog/**/*.md",
     "tests/**/*",
+    "assets/fonts/*",
     "LICENSE",
     "README.md",
 ]
@@ -40,9 +41,15 @@ serde_json = { version = "1", features = ["preserve_order"] }
 toml = { version = "1.1", features = ["preserve_order"] }
 toml_edit = "0.25"  # comment-preserving edits (e.g. .codex/config.toml in `seite upgrade`)
 serde_yaml_ng = "0.10"
+# Ordered maps for `[collections.fields.*]` (already compiled in through toml)
+indexmap = { version = "2", features = ["serde"] }
+# Frontmatter schema `pattern` checks (already compiled in through tera)
+regex = "1"
 
 # Content processing
 pulldown-cmark = "0.13"
+# Search tokenizer: diacritic folding (already in Cargo.lock through katex-rs)
+unicode-normalization = "0.1"
 syntect = "5"
 katex-rs = { version = "0.3", optional = true }
 
@@ -54,6 +61,10 @@ tiny_http = "0.12"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+# IANA time zones for `[site] timezone` (already compiled in through tera)
+chrono-tz = "0.9"
+# System time zone for `seite init` (already compiled in through chrono)
+iana-time-zone = "0.1"
 
 # Parallelism
 rayon = "1.12"
@@ -72,7 +83,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # RSS / Sitemap generation
-quick-xml = { version = "0.41", features = ["serialize"] }
+quick-xml = { version = "0.42", features = ["serialize"] }
 
 # Slug generation
 slug = "0.1"
@@ -93,10 +104,25 @@ tempfile = "3"
 # SHA-256 (in-process checksum verification for self-update)
 sha2 = "0.11"
 getrandom = "0.4"
+# Social cards (`[og]`): SVG -> PNG with bundled fonts only (no system fonts).
+resvg = { version = "0.49", default-features = false, features = ["text"] }
+# Glyph coverage and advance widths for card text layout (already compiled in through resvg)
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
+# `seite import`: WordPress/Ghost HTML bodies → Markdown (Apache-2.0; html5ever
+# parser, maintained, turndown.js rules incl. tables and fenced code)
+htmd = "0.5"
+# `seite import`: resolve/compare export URLs (already compiled in through ureq)
+url = "2"
+# `seite import`: the parsed DOM (html5ever, via htmd) that kept HTML is
+# rebuilt from through an allow-list (MIT/Apache-2.0; already compiled in
+# through htmd. ammonia would need MPL-2.0 cssparser, not in deny.toml)
+markup5ever_rcdom = "0.38"
 
 # Safe stdout redirection for `--json` mode (keeps stdout pure JSON)
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["stdio", "process"] }
+# Remove .seite/dev.json on SIGINT/SIGTERM/SIGHUP
+signal-hook = "0.3"
 
 [features]
 default = ["math"]
@@ -106,7 +132,9 @@ math = ["dep:katex-rs"]
 assert_cmd = "2"
 predicates = "3"
 # Validates MCP tool outputs against their declared outputSchema in tests.
-jsonschema = { version = "0.57", default-features = false }
+jsonschema = { version = "0.60", default-features = false }
+# Local HTTP server for `seite check --external` tests (no real network).
+tiny_http = "0.12"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }

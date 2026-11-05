@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 
 use crate::cli::harness::{self, Agent, SiteFeatures};
+use crate::docs::ReleaseNote;
 use crate::meta;
 use crate::output::human;
 
@@ -27,10 +28,28 @@ pub struct UpgradeArgs {
     pub check: bool,
 
     /// Change which coding agents the project is set up for (comma-separated:
-    /// claude,codex,opencode,cursor, or all). Adds files for newly selected
-    /// agents; files of deselected agents are left in place but no longer maintained.
+    /// claude,codex,opencode,cursor,gemini,copilot,antigravity, or all). Adds files for newly
+    /// selected agents; files of deselected agents are left in place but no longer maintained.
     #[arg(long, value_name = "LIST")]
     pub agents: Option<String>,
+
+    /// Also add the seite MCP server to the selected agents' configs. Without
+    /// it, existing MCP config is left exactly as it is.
+    #[arg(long)]
+    pub mcp: bool,
+
+    /// After upgrading, hand the migration to a coding agent: collect the
+    /// release notes since the project's recorded version into a brief.
+    /// Inside an agent session the brief is printed (and put in `data.brief`
+    /// with --json); from a terminal the agent is started with it. Cannot be
+    /// combined with --check.
+    #[arg(long)]
+    pub agent: bool,
+
+    /// With --agent: the coding-agent harness to start (claude, codex,
+    /// opencode, cursor, gemini, copilot, antigravity). Defaults to `SEITE_AGENT`, else claude.
+    #[arg(long, value_name = "HARNESS", requires = "agent")]
+    pub with: Option<String>,
 }
 
 /// A single upgrade action to present and optionally apply.
@@ -80,31 +99,47 @@ enum UpgradeAction {
         root: PathBuf,
         description: String,
     },
+    /// Delete a seite-owned file or directory that is still exactly as seite
+    /// wrote it (e.g. a skill folded into `/seite`).
+    Remove {
+        path: PathBuf,
+        description: String,
+    },
+    /// Remove 0.20's generated AGENTS.md sections for retired features
+    /// (recomputed when applied, after earlier AGENTS.md edits).
+    PruneLegacySections {
+        root: PathBuf,
+        description: String,
+    },
+    /// Write several files at once (the version-matched `.seite/docs/`).
+    WriteFiles {
+        files: Vec<(PathBuf, String)>,
+        description: String,
+    },
 }
 
 impl UpgradeAction {
+    /// One line per change, with its verb: the `--check` list and the
+    /// migration brief, where an agent must tell a deletion from a creation.
     fn describe(&self) -> Vec<String> {
         match self {
-            UpgradeAction::Create { description, .. } => {
-                vec![description.clone()]
-            }
+            UpgradeAction::Create { description, .. } => vec![format!("Write {description}")],
             UpgradeAction::MergeJson { additions, .. } => additions.clone(),
             UpgradeAction::Update { description, .. }
-            | UpgradeAction::SyncInstructionsBlock { description, .. } => {
-                vec![description.clone()]
+            | UpgradeAction::SyncInstructionsBlock { description, .. }
+            | UpgradeAction::InjectToml { description, .. } => {
+                vec![format!("Update {description}")]
             }
-            UpgradeAction::InjectToml { description, .. } => {
-                vec![description.clone()]
-            }
-            UpgradeAction::Append { description, .. } => {
-                vec![description.clone()]
-            }
-            UpgradeAction::StampProjectVersion { description } => {
-                vec![description.clone()]
-            }
+            UpgradeAction::Append { description, .. } => vec![format!("Append to {description}")],
+            UpgradeAction::StampProjectVersion { description } => vec![description.clone()],
             UpgradeAction::MigrateAgentInstructions { description, .. } => {
-                vec![description.clone()]
+                vec![format!("Migrate to {description}")]
             }
+            UpgradeAction::PruneLegacySections { description, .. } => {
+                vec![format!("Prune {description}")]
+            }
+            UpgradeAction::Remove { description, .. } => vec![format!("Remove {description}")],
+            UpgradeAction::WriteFiles { description, .. } => vec![format!("Write {description}")],
         }
     }
 
@@ -115,9 +150,12 @@ impl UpgradeAction {
             | UpgradeAction::Update { path, .. }
             | UpgradeAction::Append { path, .. }
             | UpgradeAction::InjectToml { path, .. } => path == target,
+            UpgradeAction::Remove { path, .. } => path == target,
             UpgradeAction::StampProjectVersion { .. }
             | UpgradeAction::MigrateAgentInstructions { .. }
-            | UpgradeAction::SyncInstructionsBlock { .. } => false,
+            | UpgradeAction::SyncInstructionsBlock { .. }
+            | UpgradeAction::PruneLegacySections { .. }
+            | UpgradeAction::WriteFiles { .. } => false,
         }
     }
 
@@ -168,21 +206,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             check: check_page_meta,
         },
         UpgradeStep {
-            introduced_in: (0, 1, 0),
-            label: "Project instructions MCP documentation",
-            check: check_claude_md_mcp,
-        },
-        UpgradeStep {
-            introduced_in: (0, 1, 4),
-            label: "Landing page builder skill (/landing-page)",
-            check: check_landing_page_skill,
-        },
-        UpgradeStep {
-            introduced_in: (0, 1, 5),
-            label: "Theme builder skill (/theme-builder)",
-            check: check_theme_builder_skill,
-        },
-        UpgradeStep {
             introduced_in: (0, 1, 6),
             label: "Fix deploy workflows (use shell installer instead of cargo install)",
             check: check_deploy_workflows,
@@ -201,11 +224,6 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             introduced_in: (0, 2, 1),
             label: "Public directory for root-level files",
             check: check_public_dir,
-        },
-        UpgradeStep {
-            introduced_in: (0, 2, 4),
-            label: "Brand identity builder skill (/brand-identity)",
-            check: check_brand_identity_skill,
         },
         UpgradeStep {
             introduced_in: (0, 4, 0),
@@ -252,15 +270,369 @@ const fn upgrade_steps() -> &'static [UpgradeStep] {
             label: "Private collections + password access guidance (.claude/rules)",
             check: check_private_collections_rule,
         },
-        UpgradeStep {
-            // Replaces the original (0.1.0) step that wrote `mcpServers` into
-            // .claude/settings.json, which Claude Code never reads. The check
-            // is idempotent, so it is safe for every older project.
-            introduced_in: (0, 20, 0),
-            label: "MCP server for AI tools (.mcp.json + settings migration)",
-            check: check_mcp_server,
-        },
     ]
+}
+
+/// What the deploy workflow needs for scheduled publishing.
+enum WorkflowSchedule {
+    /// Nothing to do: no workflow, or it already has a `schedule:` trigger.
+    Done,
+    /// Still exactly as seite generated it (without the cron): replace it.
+    Generated(String),
+    /// Edited by hand: tell the user how to add the cron.
+    Modified,
+}
+
+fn workflow_schedule(root: &Path) -> WorkflowSchedule {
+    let path = root.join(".github/workflows/deploy.yml");
+    let Ok(existing) = fs::read_to_string(&path) else {
+        return WorkflowSchedule::Done;
+    };
+    if existing.contains("schedule:") {
+        return WorkflowSchedule::Done;
+    }
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return WorkflowSchedule::Done;
+    };
+    // The daily rebuild only matters when scheduled publishing is on.
+    if !config.build.schedule {
+        return WorkflowSchedule::Done;
+    }
+    let current = crate::deploy::generate_workflow(&config);
+    // Generated, give or take the config-dependent parts (cron, Tailwind
+    // CI trust).
+    if crate::deploy::workflow_core(&existing) == crate::deploy::workflow_core(&current) {
+        WorkflowSchedule::Generated(current)
+    } else {
+        WorkflowSchedule::Modified
+    }
+}
+
+/// Add the daily cron to a deploy workflow still exactly as seite generated
+/// it, when `[build] schedule = true` (an edited workflow gets
+/// [`workflow_schedule_notice`] instead). Not version-gated: idempotent, and
+/// it applies whenever a site turns scheduling on.
+fn check_workflow_schedule(root: &Path) -> Vec<UpgradeAction> {
+    match workflow_schedule(root) {
+        WorkflowSchedule::Generated(content) => vec![UpgradeAction::Update {
+            path: root.join(".github/workflows/deploy.yml"),
+            content,
+            description: ".github/workflows/deploy.yml (daily cron rebuild for scheduled posts)"
+                .into(),
+        }],
+        WorkflowSchedule::Done | WorkflowSchedule::Modified => vec![],
+    }
+}
+
+/// One-time notice about scheduled publishing for sites with a dated
+/// collection that have not set `[build] schedule` (upgrade never turns it
+/// on: it would hide existing future-dated posts).
+fn schedule_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    let has_dated = config.collections.iter().any(|c| c.has_date);
+    let mentioned = text.lines().any(|l| {
+        l.trim_start().starts_with("schedule ") || l.trim_start().starts_with("schedule=")
+    });
+    (has_dated && !mentioned).then(|| Notice {
+        key: "schedule-feature".into(),
+        text: format!("Scheduled publishing is available: add `schedule = true` under [build] in seite.toml to keep posts dated in the future out of the build until their date (and `expires:` posts after it). It is off for existing sites; `seite upgrade` then also adds a daily rebuild to an unedited deploy workflow. {TIMEZONE_ADVICE} See https://seite.sh/docs/configuration#scheduled-publishing"),
+    })
+}
+
+/// One-time notice about full-text search for sites that have not set
+/// `[build] search` (absent = "basic"; upgrade never switches it, so the
+/// output of existing sites stays unchanged until they opt in).
+fn search_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let mentioned = text.lines().any(|l| {
+        let l = l.trim_start();
+        l.starts_with("search ") || l.starts_with("search=")
+    });
+    (!mentioned).then(|| Notice {
+        key: "search-feature".into(),
+        text: "Full-text search is available: add `search = \"full\"` under [build] in seite.toml to index page text (not just titles, descriptions and tags) into a sharded index under dist/search/ that the bundled themes load lazily; any static host serves it. Without the key, sites keep the basic search-index.json. See https://seite.sh/docs/configuration#search".into(),
+    })
+}
+
+/// One-time notice about generated social cards for sites without an `[og]`
+/// section (upgrade never adds it: it changes every page's `og:image`).
+fn og_feature_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    config.og.is_none().then(|| Notice {
+        key: "og-feature".into(),
+        text: "Social preview cards are available: add `[og]` with `generate = true` to seite.toml and every page without an `image:` gets a generated 1200x630 card (`dist/og/*.png`, set as og:image and twitter:image), in your brand colors from data/brand.yaml. Try one first with `seite og preview /`. See https://seite.sh/docs/configuration#social-cards".into(),
+    })
+}
+
+/// One-time notice that Gemini CLI, GitHub Copilot and Antigravity CLI can be
+/// set up, for
+/// projects not maintained for them (upgrade never adds an agent on its own;
+/// every 0.20 project stores its agents, so 0.21's new ones are opt-in).
+/// "A", "A and B", "A, B and C".
+fn and_list(items: &[&str]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.to_string(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// For sites whose agent selection predates 0.21 (Gemini CLI, Copilot and
+/// Antigravity were added then); a selection made by 0.21's `seite init` or
+/// `workspace add` is deliberate and gets no notice.
+fn copilot_notice(root: &Path, agents: &[Agent]) -> Option<Notice> {
+    let chosen_by_021 = meta::load(root).is_some_and(|m| {
+        m.agents.is_some()
+            && crate::cli::self_update::version_cmp(&m.version, "0.21.0")
+                != std::cmp::Ordering::Less
+    });
+    if chosen_by_021 {
+        return None;
+    }
+    let missing: Vec<Agent> = [Agent::Gemini, Agent::Copilot, Agent::Antigravity]
+        .into_iter()
+        .filter(|a| !agents.contains(a))
+        .collect();
+    (!missing.is_empty()).then(|| {
+        let mut ids: Vec<&str> = agents.iter().map(|a| a.id()).collect();
+        ids.extend(missing.iter().map(|a| a.id()));
+        let labels: Vec<&str> = missing.iter().map(|a| a.label()).collect();
+        let files: Vec<&str> = missing
+            .iter()
+            .map(|a| match a {
+                Agent::Gemini => "Gemini CLI: GEMINI.md and .gemini/",
+                Agent::Copilot => {
+                    "GitHub Copilot: .github/hooks/seite.json and .github/instructions/"
+                }
+                _ => "Antigravity CLI: .agents/hooks.json and .agents/rules/",
+            })
+            .collect();
+        Notice {
+            key: "copilot-agent".into(),
+            text: format!(
+                "{} {} supported: `seite upgrade --agents {}` adds {} hooks, `/seite` skill and context rules ({}). See https://seite.sh/docs/agent",
+                and_list(&labels),
+                if missing.len() == 1 { "is" } else { "are" },
+                ids.join(","),
+                if missing.len() == 1 { "its" } else { "their" },
+                files.join("; "),
+            ),
+        }
+    })
+}
+
+/// One-time notice for password-protected sites: 0.21 checks that each
+/// Cloudflare Pages project fails closed, but only when deploying.
+fn access_fail_closed_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    config.access.is_some().then(|| Notice {
+        key: "access-fail-closed".into(),
+        text: "Password access: on Workers Free, a Cloudflare Pages project set to fail open serves protected files without the password Worker once the daily request allowance runs out. Your next `seite deploy` checks every protected project and offers to set it to Fail closed (or set Workers & Pages → project → Settings → Runtime yourself). See https://seite.sh/docs/deployment#set-every-protected-project-to-fail-closed".into(),
+    })
+}
+
+/// seite.toml that 0.20 accepted but 0.21's stricter checks refuse (e.g.
+/// `output_dir = "public"`, a dotted collection name): the upgrade itself
+/// succeeds, the next build would not. Keyed by the message, so a different
+/// problem shows again.
+fn config_invalid_notice(root: &Path) -> Option<Notice> {
+    let path = root.join("seite.toml");
+    let err = crate::config::SiteConfig::load_with_diagnostics(&path).err()?;
+    let message = match &err {
+        crate::error::PageError::Diagnostics(d) => d
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("; "),
+        other => other.to_string(),
+    };
+    let hash: String = {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(message.as_bytes())
+            .iter()
+            .take(6)
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    Some(Notice {
+        key: format!("config-invalid-{hash}"),
+        text: format!("seite.toml needs a change before it builds with 0.21: {message} (see `seite explain config-invalid`)"),
+    })
+}
+
+/// Shared by the schedule notices and the `TIMEZONE_UNSET` directive.
+const TIMEZONE_ADVICE: &str = "Also set `timezone = \"<IANA name>\"` (e.g. \"Europe/Berlin\") under [site], so \"today\" is the same on every machine and in CI.";
+
+/// One-time notice for sites that already use scheduled publishing
+/// (`[build] schedule = true`) without a `[site] timezone` (upgrade never
+/// adds one: the right zone is the author's call).
+fn timezone_notice(root: &Path) -> Option<Notice> {
+    let text = fs::read_to_string(root.join("seite.toml")).ok()?;
+    let config: crate::config::SiteConfig = toml::from_str(&text).ok()?;
+    (config.build.schedule && config.site.timezone.is_none()).then(|| Notice {
+        key: "timezone-unset".into(),
+        text: format!("Scheduled publishing decides what is live by \"today\", which without [site] timezone is each machine's own clock (CI often runs in UTC). {TIMEZONE_ADVICE}"),
+    })
+}
+
+/// What a Tailwind site's CI config needs so off-machine builds (GitHub
+/// Actions, Netlify's git builds) may run Tailwind: they have no per-user
+/// trust list, so the build sets `SEITE_TRUST_PROJECT=1`.
+pub enum CiTrust {
+    /// Still as seite generated it: the new content.
+    Update {
+        path: PathBuf,
+        content: String,
+        description: String,
+    },
+    /// Edited by hand: what to add.
+    Edited { path: PathBuf, advice: String },
+}
+
+/// [`CiTrust`] for the deploy workflow and `netlify.toml` (nothing when the
+/// site has no `[build.tailwind]` or they already set the variable).
+pub fn ci_tailwind_trust_plan(root: &Path, config: &crate::config::SiteConfig) -> Vec<CiTrust> {
+    let mut plan = Vec::new();
+    if config.build.tailwind.is_none() {
+        return plan;
+    }
+    let env = crate::deploy::TRUST_PROJECT_ENV;
+    let workflow = root.join(".github/workflows/deploy.yml");
+    if let Ok(existing) = fs::read_to_string(&workflow) {
+        if !existing.contains(env) {
+            let generated = crate::deploy::workflow_core(&existing)
+                == crate::deploy::workflow_core(&crate::deploy::generate_workflow(config));
+            let run = crate::deploy::WORKFLOW_BUILD_RUN;
+            if generated && existing.contains(run) {
+                plan.push(CiTrust::Update {
+                    path: workflow,
+                    content: existing.replacen(
+                        run,
+                        &format!("{run}{}", crate::deploy::TAILWIND_TRUST_ENV),
+                        1,
+                    ),
+                    description: format!(
+                        ".github/workflows/deploy.yml ({env} for Tailwind builds in CI)"
+                    ),
+                });
+            } else {
+                plan.push(CiTrust::Edited {
+                    path: workflow,
+                    advice: format!(
+                        "add to the step that runs `seite build`:\n        env:\n          {env}: \"1\""
+                    ),
+                });
+            }
+        }
+    }
+    let netlify = root.join("netlify.toml");
+    if let Ok(existing) = fs::read_to_string(&netlify) {
+        if !existing.contains(env) {
+            let mut plain = config.clone();
+            plain.build.tailwind = None;
+            let normalize = |s: &str| s.replace("\r\n", "\n").trim_end().to_string();
+            if normalize(&existing) == normalize(&crate::deploy::generate_netlify_config(&plain)) {
+                plan.push(CiTrust::Update {
+                    path: netlify,
+                    content: crate::deploy::generate_netlify_config(config),
+                    description: format!("netlify.toml ({env}=1 for Tailwind builds on Netlify)"),
+                });
+            } else {
+                plan.push(CiTrust::Edited {
+                    path: netlify,
+                    advice: format!("prefix the build command's `seite build` with `{env}=1 `"),
+                });
+            }
+        }
+    }
+    plan
+}
+
+/// `seite theme new --tailwind`: apply [`ci_tailwind_trust_plan`] now and
+/// return what to tell the user.
+pub fn apply_ci_tailwind_trust(
+    root: &Path,
+    config: &crate::config::SiteConfig,
+) -> anyhow::Result<Vec<String>> {
+    let mut notes = Vec::new();
+    for step in ci_tailwind_trust_plan(root, config) {
+        match step {
+            CiTrust::Update {
+                path,
+                content,
+                description,
+            } => {
+                crate::safe_fs::write(root, &path, content)?;
+                notes.push(format!(
+                    "Updated {description}: CI has no `seite trust` list."
+                ));
+            }
+            CiTrust::Edited { path, advice } => notes.push(format!(
+                "{} was edited, so seite left it alone. For Tailwind builds in CI, {advice}",
+                path.strip_prefix(root).unwrap_or(&path).display()
+            )),
+        }
+    }
+    Ok(notes)
+}
+
+/// Upgrade actions for unedited CI configs of a Tailwind site.
+fn check_ci_tailwind_trust(root: &Path) -> Vec<UpgradeAction> {
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return vec![];
+    };
+    ci_tailwind_trust_plan(root, &config)
+        .into_iter()
+        .filter_map(|step| match step {
+            CiTrust::Update {
+                path,
+                content,
+                description,
+            } => Some(UpgradeAction::Update {
+                path,
+                content,
+                description,
+            }),
+            CiTrust::Edited { .. } => None,
+        })
+        .collect()
+}
+
+/// One-time notice for edited CI configs of a Tailwind site.
+fn ci_tailwind_trust_notice(root: &Path) -> Option<Notice> {
+    let config = crate::config::SiteConfig::load(&root.join("seite.toml")).ok()?;
+    let advice: Vec<String> = ci_tailwind_trust_plan(root, &config)
+        .into_iter()
+        .filter_map(|step| match step {
+            CiTrust::Edited { path, advice } => Some(format!(
+                "{}: {advice}",
+                path.strip_prefix(root).unwrap_or(&path).display()
+            )),
+            CiTrust::Update { .. } => None,
+        })
+        .collect();
+    (!advice.is_empty()).then(|| Notice {
+        key: "tailwind-ci-trust".into(),
+        text: format!(
+            "Tailwind runs only for trusted projects, and CI has no `seite trust` list. These files were edited, so seite left them alone:\n{}",
+            advice.join("\n")
+        ),
+    })
+}
+
+/// One-time notice for an edited deploy workflow without a `schedule:`.
+fn workflow_schedule_notice(root: &Path) -> Option<Notice> {
+    matches!(workflow_schedule(root), WorkflowSchedule::Modified).then(|| Notice {
+        key: "workflow-schedule".into(),
+        text: format!(
+            "Scheduled publishing: .github/workflows/deploy.yml was edited, so seite left it alone. \
+             To publish future-dated posts on their date, add a daily trigger under `on:`:\n{}",
+            crate::deploy::SCHEDULE_TRIGGER.trim_end()
+        ),
+    })
 }
 
 /// Return the canonical project instructions file, falling back to the legacy
@@ -289,6 +661,57 @@ pub fn run(args: &UpgradeArgs) -> anyhow::Result<()> {
 /// <name>` (or running from the workspace root, which has no `seite.toml`)
 /// upgrades the workspace's sites instead, behind a single confirmation.
 pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
+    if !args.agent {
+        return upgrade_sites(args, site_filter).map(|_| ());
+    }
+    if args.check {
+        anyhow::bail!(
+            "--agent can't be combined with --check: --check changes nothing, so there is nothing to migrate. Run `seite upgrade --agent` to upgrade and get the migration brief."
+        );
+    }
+    // Fail on a bad harness name (--with or SEITE_AGENT) before anything is
+    // changed, whenever an agent could be launched.
+    let harness = if args.with.is_some() || will_launch() {
+        Some(crate::cli::agent::resolve_harness(args.with.as_deref())?)
+    } else {
+        None
+    };
+    let outcome = upgrade_sites(args, site_filter)?;
+    if !outcome.applied {
+        attach_brief_to_json(None, "cancelled");
+        return Ok(());
+    }
+    deliver_brief(&outcome, harness)
+}
+
+/// What an upgrade run did, for building the `--agent` migration brief.
+struct Outcome {
+    /// False when the user declined the confirmation.
+    applied: bool,
+    sites: Vec<SiteOutcome>,
+}
+
+struct SiteOutcome {
+    /// Workspace site name (None for a standalone project).
+    name: Option<String>,
+    /// Version recorded before the upgrade ((0, 0, 0) = unknown).
+    from: (u64, u64, u64),
+    changes: Vec<String>,
+    notices: Vec<String>,
+}
+
+impl SiteOutcome {
+    fn new(name: Option<String>, plan: &UpgradePlan) -> Self {
+        SiteOutcome {
+            name,
+            from: plan.project_ver,
+            changes: plan.changes.clone(),
+            notices: plan.notices.iter().map(|n| n.text.clone()).collect(),
+        }
+    }
+}
+
+fn upgrade_sites(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Result<Outcome> {
     let cwd = std::env::current_dir()?;
     if let Some(ws_root) = crate::workspace::find_workspace_root(&cwd) {
         if site_filter.is_some() || !cwd.join("seite.toml").exists() {
@@ -326,7 +749,10 @@ pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Re
             meta::format_version(binary_ver)
         ));
         crate::output::json::set_data(plan.data(false));
-        return Ok(());
+        return Ok(Outcome {
+            applied: true,
+            sites: vec![SiteOutcome::new(None, &plan)],
+        });
     }
 
     // Show what will change
@@ -354,10 +780,14 @@ pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Re
         if !proceed {
             human::info("Upgrade cancelled.");
             crate::output::json::set_data(plan.data(false));
-            return Ok(());
+            return Ok(Outcome {
+                applied: false,
+                sites: Vec::new(),
+            });
         }
     }
 
+    let site = SiteOutcome::new(None, &plan);
     plan.apply()?;
     crate::output::json::set_data(plan.data(true));
 
@@ -367,7 +797,10 @@ pub fn run_for_site(args: &UpgradeArgs, site_filter: Option<&str>) -> anyhow::Re
         meta::format_version(binary_ver)
     ));
     hint_trim_instructions(&plan.root);
-    Ok(())
+    Ok(Outcome {
+        applied: true,
+        sites: vec![site],
+    })
 }
 
 /// Upgrade every (or the `site_filter`) site of a workspace: plan them all,
@@ -377,7 +810,7 @@ fn run_workspace(
     ws_config: &crate::workspace::WorkspaceConfig,
     ws_root: &Path,
     site_filter: Option<&str>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Outcome> {
     let binary_ver = meta::binary_version();
     let mut plans = Vec::new();
     for ws_site in ws_config.sites_to_operate(site_filter)? {
@@ -412,6 +845,13 @@ fn run_workspace(
         })
     };
     let pending: usize = plans.iter().map(|(_, p)| p.changes.len()).sum();
+    let outcome = |applied: bool, plans: &[(String, UpgradePlan)]| Outcome {
+        applied,
+        sites: plans
+            .iter()
+            .map(|(name, plan)| SiteOutcome::new(Some(name.clone()), plan))
+            .collect(),
+    };
 
     if pending == 0 {
         for (_, plan) in &plans {
@@ -427,7 +867,7 @@ fn run_workspace(
             meta::format_version(binary_ver)
         ));
         crate::output::json::set_data(workspace_data(&plans, true, false));
-        return Ok(());
+        return Ok(outcome(true, &plans));
     }
 
     human::header(&format!(
@@ -460,10 +900,11 @@ fn run_workspace(
         if !proceed {
             human::info("Upgrade cancelled.");
             crate::output::json::set_data(workspace_data(&plans, false, false));
-            return Ok(());
+            return Ok(outcome(false, &[]));
         }
     }
 
+    let outcome = outcome(true, &plans);
     for (name, plan) in &mut plans {
         if plan.actions.is_empty() {
             plan.finish_without_changes()?;
@@ -482,7 +923,304 @@ fn run_workspace(
     for (_, plan) in &plans {
         hint_trim_instructions(&plan.root);
     }
+    Ok(outcome)
+}
+
+// ---------------------------------------------------------------------------
+// `seite upgrade --agent`: migration brief
+// ---------------------------------------------------------------------------
+
+/// Release notes that apply to an upgrade from `from` to `to`, oldest first.
+/// A `from` of `(0, 0, 0)` means the project's version is unknown (missing or
+/// unparseable): like the upgrade itself, it is treated as the oldest
+/// possible, so every entry up to `to` is returned and the flag says so.
+fn select_notes(
+    entries: &[ReleaseNote],
+    from: (u64, u64, u64),
+    to: (u64, u64, u64),
+) -> (Vec<&ReleaseNote>, bool) {
+    let mut in_range: Vec<&ReleaseNote> = entries.iter().filter(|n| n.version <= to).collect();
+    in_range.sort_by_key(|n| n.version);
+    if from == (0, 0, 0) {
+        return (in_range, true);
+    }
+    in_range.retain(|n| n.version > from);
+    (in_range, false)
+}
+
+/// Most release-note text (bytes) included for a project of unknown version.
+const UNKNOWN_NOTES_CAP: usize = 48 * 1024;
+
+/// What the launched agent is told; the brief itself lives in a file, since
+/// argv is a poor place for tens of KB of markdown (length limits, `cmd /C`
+/// quoting on Windows).
+const LAUNCH_PROMPT: &str = "Read .seite/upgrade-brief.md and follow it (seite upgrade migration).";
+
+/// Where the brief is written, relative to the directory `seite` ran in.
+const BRIEF_FILE: &str = ".seite/upgrade-brief.md";
+
+/// Push markdown headings in `body` down by `by` levels (outside code
+/// fences) so an entry's own `##` sections nest under the brief's headings.
+fn demote_headings(body: &str, by: usize) -> String {
+    let mut in_fence = false;
+    let mut out = Vec::new();
+    for line in body.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+        }
+        let hashes = line.chars().take_while(|c| *c == '#').count();
+        if !in_fence && (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') {
+            // Markdown has six heading levels.
+            out.push(format!(
+                "{}{}",
+                "#".repeat((hashes + by).min(6)),
+                &line[hashes..]
+            ));
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    out.join("\n")
+}
+
+/// One site's part of the brief; `h` is the heading prefix for its sections
+/// (`##`, or `###` under a workspace site heading).
+fn render_site_brief(
+    site: &SiteOutcome,
+    entries: &[ReleaseNote],
+    to: (u64, u64, u64),
+    h: &str,
+) -> String {
+    let (notes, unknown) = select_notes(entries, site.from, to);
+    let from_label = if unknown {
+        "an unknown version".to_string()
+    } else {
+        format!("v{}", meta::format_version(site.from))
+    };
+    let mut out = format!(
+        "seite upgraded this project from {from_label} to v{}.\n\n",
+        meta::format_version(to)
+    );
+
+    out.push_str(&format!("{h} Applied automatically\n\n"));
+    if site.changes.is_empty() {
+        out.push_str("Nothing: the project files were already current.\n");
+    } else {
+        for change in &site.changes {
+            out.push_str(&format!("- {change}\n"));
+        }
+    }
+
+    if !site.notices.is_empty() {
+        out.push_str(&format!("\n{h} Notices from the upgrade\n\n"));
+        for notice in &site.notices {
+            out.push_str(&format!("- {}\n", notice.trim()));
+        }
+    }
+
+    out.push_str(&format!("\n{h} Release notes\n\n"));
+    if notes.is_empty() {
+        out.push_str("No release notes apply: this binary has none newer than the project.\n");
+    } else {
+        let mut notes = notes;
+        if unknown {
+            // Keep the newest entries that fit the size cap.
+            let mut size = 0;
+            let mut keep_from = notes.len();
+            for (i, note) in notes.iter().enumerate().rev() {
+                size += note.body.len();
+                if size > UNKNOWN_NOTES_CAP && keep_from < notes.len() {
+                    break;
+                }
+                keep_from = i;
+            }
+            let omitted = keep_from > 0;
+            notes.drain(..keep_from);
+            out.push_str(
+                "The project's recorded seite version is missing or unreadable, so every release note is included",
+            );
+            out.push_str(if omitted {
+                ", except older ones omitted for size (see `seite docs --topic releases`).\n\n"
+            } else {
+                ".\n\n"
+            });
+        }
+        // Oldest first, so the agent reads them in the order they happened.
+        for note in notes {
+            out.push_str(&format!("{h}# {}\n\n", note.title));
+            out.push_str(&demote_headings(&note.body, h.len()));
+            out.push_str("\n\n");
+        }
+    }
+    out.trim_end().to_string() + "\n"
+}
+
+/// The migration brief for an upgrade, or `None` when nothing changed and no
+/// release notes apply (already up to date).
+fn build_brief(
+    sites: &[SiteOutcome],
+    entries: &[ReleaseNote],
+    to: (u64, u64, u64),
+) -> Option<String> {
+    let nothing_to_do = sites
+        .iter()
+        .all(|s| s.changes.is_empty() && select_notes(entries, s.from, to).0.is_empty());
+    if sites.is_empty() || nothing_to_do {
+        return None;
+    }
+
+    let mut brief = String::from("# seite upgrade: migration brief\n\n");
+    if sites.len() == 1 && sites[0].name.is_none() {
+        brief.push_str(&render_site_brief(&sites[0], entries, to, "##"));
+    } else {
+        for site in sites {
+            let name = site.name.as_deref().unwrap_or("site");
+            brief.push_str(&format!("## Site `{name}`\n\n"));
+            brief.push_str(&render_site_brief(site, entries, to, "###"));
+            brief.push('\n');
+        }
+    }
+    brief.push_str(
+        "\n## What to do\n\n\
+         1. Read the release notes above. For every breaking change and required migration step they describe, apply it to this site's content, templates, and config. Skip steps that don't apply to this site.\n\
+         2. Do not turn on optional features (\"opt-ins\", e.g. full-text search, social cards, scheduled publishing, more agents) and do not deploy or publish (`seite deploy` pushes to production): list those for the user to decide.\n\
+         3. Keep the site's own customizations: edit, don't overwrite, files the site has changed (templates, `seite.toml`, content).\n\
+         4. Run `seite check` and then `seite build`. Fix what they report (`seite explain <code>` describes a code) and re-run until both are clean.\n\
+         5. Report what you changed, and anything you left for the user to decide.\n",
+    );
+    if sites.len() > 1 {
+        brief.push_str(
+            "\nThis is a workspace: apply each step to the site it belongs to, and run the checks per site with `--site <name>`.\n",
+        );
+    }
+    Some(brief)
+}
+
+/// How the brief reaches the agent.
+#[derive(Debug, PartialEq, Eq)]
+enum Delivery {
+    /// Print it (for the agent already running this command, or a script).
+    Print,
+    /// Start a coding agent seeded with it.
+    Launch,
+}
+
+/// Inside an agent session, in `--json` mode, or without a terminal, the
+/// brief is printed; only an interactive terminal outside any agent session
+/// gets a launched agent.
+fn choose_delivery(in_session: bool, json: bool, interactive: bool) -> Delivery {
+    if in_session || json || !interactive {
+        Delivery::Print
+    } else {
+        Delivery::Launch
+    }
+}
+
+/// Record the brief (or its absence) in the command's `--json` payload.
+fn attach_brief_to_json(brief: Option<&str>, delivery: &str) {
+    let mut data = crate::output::json::take_data().unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert("brief".into(), serde_json::json!(brief));
+        obj.insert("agent_delivery".into(), serde_json::json!(delivery));
+    }
+    crate::output::json::set_data(data);
+}
+
+fn print_brief(brief: &str) {
+    crate::human_println!();
+    crate::human_println!("{}", brief.trim_end());
+}
+
+/// Hand the finished upgrade's migration brief to the agent.
+fn deliver_brief(
+    outcome: &Outcome,
+    harness: Option<crate::cli::agent::Harness>,
+) -> anyhow::Result<()> {
+    let entries = crate::docs::release_notes();
+    let Some(brief) = build_brief(&outcome.sites, &entries, meta::binary_version()) else {
+        human::success(
+            "Nothing to migrate: the project was already up to date and no release notes apply.",
+        );
+        attach_brief_to_json(None, "none");
+        return Ok(());
+    };
+
+    let brief_path = write_brief_file(&brief);
+    if !will_launch() {
+        attach_brief_to_json(Some(&brief), "printed");
+        if let Some(path) = &brief_path {
+            if let Some(obj) = crate::output::json::take_data().map(|mut d| {
+                d["brief_file"] = serde_json::json!(path);
+                d
+            }) {
+                crate::output::json::set_data(obj);
+            }
+        }
+        print_brief(&brief);
+        if let Some(path) = &brief_path {
+            human::info(&format!("The same brief is saved in {path}."));
+        }
+        return Ok(());
+    }
+
+    // Launch with the same resolution and argv shape as `seite agent` (never
+    // an auto-approve flag, not even with --yes).
+    let harness = match harness {
+        Some(h) => h,
+        None => crate::cli::agent::resolve_harness(None)?,
+    };
+    let Some(path) = brief_path else {
+        human::warning("Could not save the brief to .seite/upgrade-brief.md; printing it instead.");
+        print_brief(&brief);
+        return Ok(());
+    };
+    let problem = match crate::cli::agent::install_hint_if_missing(harness) {
+        Some(problem) => Some(problem),
+        None => crate::cli::agent::launch_interactive(harness, LAUNCH_PROMPT)
+            .err()
+            .map(|e| format!("{e:#}")),
+    };
+    if let Some(problem) = problem {
+        human::warning(&problem);
+        human::info(&format!(
+            "The migration brief is saved in {path}. Give it to your coding agent: \"{LAUNCH_PROMPT}\""
+        ));
+    }
     Ok(())
+}
+
+/// Whether an interactive agent would be started: only from a terminal,
+/// outside an agent session, and not in `--json` mode.
+fn will_launch() -> bool {
+    use std::io::IsTerminal;
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    choose_delivery(
+        crate::cli::agent::in_agent_session(),
+        crate::output::is_json(),
+        interactive,
+    ) == Delivery::Launch
+}
+
+/// Save the brief to `.seite/upgrade-brief.md` in the current directory
+/// (gitignored). Returns the relative path, or `None` if it can't be written.
+fn write_brief_file(brief: &str) -> Option<String> {
+    let root = std::env::current_dir().ok()?;
+    crate::safe_fs::write(&root, &root.join(BRIEF_FILE), brief).ok()?;
+    ignore_brief_file(&root);
+    Some(BRIEF_FILE.to_string())
+}
+
+/// A site's `.gitignore` lists the brief, but a workspace root has no
+/// seite-written `.gitignore`: there, add `.seite/.gitignore` (only if
+/// missing) so the brief and the dev-server lock never show up in git.
+fn ignore_brief_file(root: &Path) {
+    let listed = std::fs::read_to_string(root.join(".gitignore"))
+        .map(|s| s.lines().any(|l| l.trim() == "/.seite/upgrade-brief.md"))
+        .unwrap_or(false);
+    let nested = root.join(".seite").join(".gitignore");
+    if !listed && !nested.exists() {
+        let _ = crate::safe_fs::write(root, &nested, "upgrade-brief.md\ndev.json\n");
+    }
 }
 
 /// The `--check` failure: the number of pending changes (and outdated sites).
@@ -509,6 +1247,9 @@ struct UpgradePlan {
     hooks_installed: Vec<String>,
     /// The agent or hook selection differs from what `.seite/config.json` records.
     record_selection: bool,
+    /// One-time notices not shown yet (printed when applying, never with
+    /// `--check`).
+    notices: Vec<Notice>,
 }
 
 impl UpgradePlan {
@@ -553,13 +1294,29 @@ impl UpgradePlan {
         let mut new_meta = meta::PageMeta::stamp_current_version(existing.as_ref());
         new_meta.agents = Some(harness::to_ids(&self.agents));
         new_meta.hooks_installed = Some(self.hooks_installed.clone());
+        if !self.notices.is_empty() {
+            let mut shown = new_meta.notices_shown.take().unwrap_or_default();
+            shown.extend(self.notices.iter().map(|n| n.key.clone()));
+            new_meta.notices_shown = Some(shown);
+        }
         meta::write(&self.root, &new_meta)?;
         Ok(())
     }
 
-    /// With no file changes, still stamp a stale version or a new selection.
+    fn show_notices(&self) {
+        for notice in &self.notices {
+            human::info(&notice.text);
+        }
+    }
+
+    /// With no file changes, still stamp a stale version or a new selection
+    /// (and show + record any one-time notices).
     fn finish_without_changes(&self) -> anyhow::Result<()> {
-        if self.project_ver < meta::binary_version() || self.record_selection {
+        self.show_notices();
+        if self.project_ver < meta::binary_version()
+            || self.record_selection
+            || !self.notices.is_empty()
+        {
             self.write_meta()?;
         }
         Ok(())
@@ -568,9 +1325,10 @@ impl UpgradePlan {
     /// Apply every action, then stamp the new version and selection.
     fn apply(&mut self) -> anyhow::Result<()> {
         for action in std::mem::take(&mut self.actions) {
-            apply_action(action)?;
+            apply_action(&self.root, action)?;
         }
         report_deselected(&self.deselected);
+        self.show_notices();
         self.write_meta()
     }
 }
@@ -585,16 +1343,18 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     let project_ver = meta::project_version(root);
 
     // Which coding agents to maintain: --agents, else the stored selection,
-    // else (projects from before the selection existed) every agent.
+    // else (projects from before the selection existed) the 0.20 set.
     let stored_agents = meta::load(root)
         .and_then(|m| m.agents)
         .map(|ids| harness::from_ids(&ids));
     let agents = match &args.agents {
         Some(list) => harness::parse_agent_list(list)?,
-        None => stored_agents.clone().unwrap_or_else(|| Agent::ALL.to_vec()),
+        None => stored_agents
+            .clone()
+            .unwrap_or_else(|| Agent::LEGACY_DEFAULT.to_vec()),
     };
     let record_agents = stored_agents.as_ref() != Some(&agents);
-    let previously = stored_agents.unwrap_or_else(|| Agent::ALL.to_vec());
+    let previously = stored_agents.unwrap_or_else(|| Agent::LEGACY_DEFAULT.to_vec());
     let deselected: Vec<Agent> = previously
         .iter()
         .copied()
@@ -633,9 +1393,34 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
         }
     }
 
+    // Daily cron for scheduled publishing (only with `[build] schedule`).
+    extend_dedup(&mut actions, check_workflow_schedule(root));
+    // CI opt-in for Tailwind builds (only with `[build.tailwind]`). After
+    // the cron step: its regenerated workflow already carries it.
+    extend_dedup(&mut actions, check_ci_tailwind_trust(root));
+
+    // Sites that never had project instructions (0.20's `seite workspace
+    // add`, hand-made sites) get the AGENTS.md `seite init` writes. Its setup
+    // table shows MCP exactly as `check_instructions_blocks` will, so the
+    // next run finds nothing to change.
+    let agents_md_path = root.join("AGENTS.md");
+    let show_mcp = args.mcp || harness::mcp_configured(root, &agents);
+    let missing_instructions = check_missing_instructions(root, &agents, show_mcp, &actions);
+    extend_dedup(&mut actions, missing_instructions);
+
     // Per-agent harness files. Not version-gated: the checks are idempotent
     // and depend on the agent selection, which can change at any version.
-    extend_dedup(&mut actions, check_agent_harness(root, &agents));
+    // A pre-0.19 project gets AGENTS.md from the migration step above, a
+    // site without instructions from the step just before; plan the shims
+    // that import it in the same run.
+    let agents_md_planned = actions.iter().any(|a| {
+        matches!(a, UpgradeAction::MigrateAgentInstructions { .. })
+            || a.targets_path(&agents_md_path)
+    });
+    extend_dedup(
+        &mut actions,
+        check_agent_harness(root, &agents, args.mcp, agents_md_planned),
+    );
     // Turn-end `seite check` hooks, once per agent: merged into (or next to)
     // the actions above, and skipped for agents recorded as done so a hook
     // the user deleted stays deleted.
@@ -648,6 +1433,39 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
     );
     let record_hooks = stored_hooks.as_ref() != Some(&hooks_installed);
 
+    // Retired 0.20 skills and AGENTS.md sections: removed when untouched,
+    // otherwise kept with a notice shown once.
+    let (legacy_actions, mut notices) = check_legacy_skills(root);
+    actions.extend(legacy_actions);
+    let (section_actions, section_notices) = check_legacy_sections(root);
+    actions.extend(section_actions);
+    notices.extend(section_notices);
+    // Default templates `seite init` copied: refreshed when untouched.
+    let (template_actions, template_notices) = check_default_templates(root);
+    actions.extend(template_actions);
+    notices.extend(template_notices);
+    // Rules files seite wrote: refreshed when untouched.
+    let (rule_actions, rule_notices) = check_rules_refresh(root, &agents);
+    extend_dedup(&mut actions, rule_actions);
+    notices.extend(rule_notices);
+    // Bundled themes from before the seite/* partials: replaced when untouched.
+    let (theme_actions, theme_notices) = check_bundled_theme_base(root);
+    extend_dedup(&mut actions, theme_actions);
+    notices.extend(theme_notices);
+    notices.extend(workflow_schedule_notice(root));
+    notices.extend(ci_tailwind_trust_notice(root));
+    notices.extend(schedule_feature_notice(root));
+    notices.extend(search_feature_notice(root));
+    notices.extend(og_feature_notice(root));
+    notices.extend(timezone_notice(root));
+    notices.extend(copilot_notice(root, &agents));
+    notices.extend(access_fail_closed_notice(root));
+    notices.extend(config_invalid_notice(root));
+    let shown = meta::load(root)
+        .and_then(|m| m.notices_shown)
+        .unwrap_or_default();
+    notices.retain(|n| !shown.contains(&n.key));
+
     let changes = actions.iter().flat_map(|a| a.describe()).collect();
     Ok(UpgradePlan {
         root: root.to_path_buf(),
@@ -658,6 +1476,7 @@ fn plan_upgrade(root: &Path, args: &UpgradeArgs) -> anyhow::Result<UpgradePlan> 
         deselected,
         hooks_installed,
         record_selection: record_agents || record_hooks,
+        notices,
     })
 }
 
@@ -681,18 +1500,18 @@ fn hint_trim_instructions(root: &Path) {
     }
 }
 
-/// Apply one upgrade action.
-fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
+/// Apply one upgrade action. Every write and delete goes through
+/// [`crate::safe_fs`], so a symlink committed into the project can't redirect
+/// it outside `root`.
+fn apply_action(root: &Path, action: UpgradeAction) -> anyhow::Result<()> {
+    use crate::safe_fs;
     match action {
         UpgradeAction::Create {
             path,
             content,
             description,
         } => {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&path, &content)?;
+            safe_fs::write(root, &path, &content)?;
             human::success(&format!("Created {description}"));
         }
         UpgradeAction::MergeJson {
@@ -701,7 +1520,7 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             additions,
         } => {
             let json = serde_json::to_string_pretty(&merged)?;
-            fs::write(&path, format!("{json}\n"))?;
+            safe_fs::write(root, &path, format!("{json}\n"))?;
             for desc in &additions {
                 human::success(desc);
             }
@@ -711,15 +1530,16 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             content,
             description,
         } => {
-            fs::write(&path, &content)?;
+            safe_fs::write(root, &path, &content)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::SyncInstructionsBlock {
-            root,
+            root: site_root,
             block,
             description,
         } => {
-            let path = project_instructions_path(&root);
+            let path = project_instructions_path(&site_root);
+            safe_fs::guard(root, &path)?;
             if let Ok(existing) = fs::read_to_string(&path) {
                 if let Some(updated) = block.apply(&existing) {
                     crate::cli::agent_instructions::write_atomic(&path, &updated)?;
@@ -732,9 +1552,10 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             content,
             description,
         } => {
+            safe_fs::guard(root, &path)?;
             let mut existing = fs::read_to_string(&path).unwrap_or_default();
             existing.push_str(&content);
-            fs::write(&path, existing)?;
+            safe_fs::write(root, &path, existing)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::InjectToml {
@@ -744,6 +1565,7 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
             value,
             description,
         } => {
+            safe_fs::guard(root, &path)?;
             let existing = fs::read_to_string(&path).unwrap_or_default();
             let key_prefix = format!("{key} =");
             let patched = if existing.contains(&key_prefix) {
@@ -757,17 +1579,45 @@ fn apply_action(action: UpgradeAction) -> anyhow::Result<()> {
                     1,
                 )
             };
-            fs::write(&path, patched)?;
+            safe_fs::write(root, &path, patched)?;
             human::success(&format!("Updated {description}"));
         }
         UpgradeAction::StampProjectVersion { .. } => {
             // The version marker is the upgrade's commit point and is
             // written only after every file migration succeeds.
         }
-        UpgradeAction::MigrateAgentInstructions { root, description } => {
-            if crate::cli::agent_instructions::migrate(&root)? {
+        UpgradeAction::MigrateAgentInstructions {
+            root: site_root,
+            description,
+        } => {
+            safe_fs::guard(root, &site_root.join("AGENTS.md"))?;
+            safe_fs::guard(root, &site_root.join("CLAUDE.md"))?;
+            if crate::cli::agent_instructions::migrate(&site_root)? {
                 human::success(&format!("Updated {description}"));
             }
+        }
+        UpgradeAction::PruneLegacySections {
+            root: site_root,
+            description,
+        } => {
+            let path = project_instructions_path(&site_root);
+            safe_fs::guard(root, &path)?;
+            if let Ok(existing) = fs::read_to_string(&path) {
+                if let (Some(updated), _) = prune_legacy_sections(&existing) {
+                    crate::cli::agent_instructions::write_atomic(&path, &updated)?;
+                    human::success(&format!("Updated {description}"));
+                }
+            }
+        }
+        UpgradeAction::Remove { path, description } => {
+            safe_fs::remove(root, &path)?;
+            human::success(&format!("Removed {description}"));
+        }
+        UpgradeAction::WriteFiles { files, description } => {
+            for (path, content) in files {
+                safe_fs::write(root, &path, content)?;
+            }
+            human::success(&format!("Updated {description}"));
         }
     }
     Ok(())
@@ -806,21 +1656,26 @@ fn pretty_json(value: &serde_json::Value) -> String {
     )
 }
 
-/// Configure the seite MCP server the way Claude Code actually loads it.
+/// Keep `.claude/settings.json` (and, with `mcp`, `.mcp.json`) current.
 ///
-/// Claude Code only reads project MCP servers from `.mcp.json`; the
-/// `mcpServers` block older versions wrote into `.claude/settings.json` was
-/// never loaded. This step:
-/// - creates `.mcp.json`, or merges the `seite` server into an existing one
-///   (other servers are preserved);
-/// - moves any legacy `mcpServers` from settings.json into `.mcp.json`
-///   (only when `.mcp.json` can hold them, so nothing is lost);
-/// - pre-approves the server via `enabledMcpjsonServers` and adds the newer
-///   permission rules (`mcp__seite`, `Edit(static/**)`, `Edit(seite.toml)`).
+/// Always: create the settings file when missing, and add the allow rules
+/// introduced after the original template ([`CLAUDE_ALLOWED_TOOLS_UPGRADE`]).
+///
+/// With `mcp` (`seite upgrade --mcp`), also configure the seite MCP server
+/// the way Claude Code loads it: create `.mcp.json` or merge the `seite`
+/// server into it (other servers are kept), move any legacy `mcpServers`
+/// from settings.json into `.mcp.json` (only when `.mcp.json` can hold them),
+/// pre-approve it via `enabledMcpjsonServers`, and allow `mcp__seite`.
+/// Without `mcp`, existing MCP config — including a legacy `mcpServers`
+/// block — is left exactly as it is.
 ///
 /// Malformed JSON files are left untouched. Running it again is a no-op.
-fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
-    use crate::cli::harness::{claude_settings, mcp_server_block, CLAUDE_ALLOWED_TOOLS_UPGRADE};
+///
+/// [`CLAUDE_ALLOWED_TOOLS_UPGRADE`]: harness::CLAUDE_ALLOWED_TOOLS_UPGRADE
+fn check_claude_config(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
+    use crate::cli::harness::{
+        claude_settings, mcp_server_block, CLAUDE_ALLOWED_TOOLS_UPGRADE, CLAUDE_MCP_ALLOW,
+    };
 
     let settings_path = root.join(".claude/settings.json");
     let mcp_path = root.join(".mcp.json");
@@ -842,7 +1697,9 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
 
     // --- .mcp.json (first, so legacy servers land there before settings.json
     // drops them) ---
-    let mcp_holds_servers = if !mcp_path.exists() {
+    let mcp_holds_servers = if !mcp {
+        false
+    } else if !mcp_path.exists() {
         let mut servers = legacy_servers.clone();
         servers
             .entry("seite".to_string())
@@ -853,8 +1710,8 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
             description: ".mcp.json (seite MCP server for Claude Code)".into(),
         });
         true
-    } else if let Some(mut mcp) = read_json_object(&mcp_path) {
-        let servers = mcp
+    } else if let Some(mut mcp_json) = read_json_object(&mcp_path) {
+        let servers = mcp_json
             .entry("mcpServers".to_string())
             .or_insert_with(|| serde_json::json!({}));
         match servers.as_object_mut() {
@@ -875,7 +1732,7 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
                 if !additions.is_empty() {
                     actions.push(UpgradeAction::MergeJson {
                         path: mcp_path,
-                        merged: serde_json::Value::Object(mcp),
+                        merged: serde_json::Value::Object(mcp_json),
                         additions,
                     });
                 }
@@ -891,29 +1748,30 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     if !settings_path.exists() {
         actions.push(UpgradeAction::Create {
             path: settings_path,
-            content: pretty_json(&claude_settings()),
-            description: ".claude/settings.json (permissions + MCP server approval)".into(),
+            content: pretty_json(&claude_settings(mcp)),
+            description: ".claude/settings.json (permissions for Claude Code)".into(),
         });
     } else if let Some(mut settings) = settings {
         let mut additions = Vec::new();
 
-        if mcp_holds_servers && settings.remove("mcpServers").is_some() {
-            additions.push(
-                "Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)"
-                    .to_string(),
-            );
-        }
-
-        let enabled = settings
-            .entry("enabledMcpjsonServers".to_string())
-            .or_insert_with(|| serde_json::json!([]));
-        if let Some(list) = enabled.as_array_mut() {
-            if !list.iter().any(|v| v == "seite") {
-                list.push(serde_json::json!("seite"));
+        if mcp {
+            if mcp_holds_servers && settings.remove("mcpServers").is_some() {
                 additions.push(
-                    "Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json"
+                    "Removed mcpServers from .claude/settings.json (Claude Code only loads project MCP servers from .mcp.json)"
                         .to_string(),
                 );
+            }
+            let enabled = settings
+                .entry("enabledMcpjsonServers".to_string())
+                .or_insert_with(|| serde_json::json!([]));
+            if let Some(list) = enabled.as_array_mut() {
+                if !list.iter().any(|v| v == "seite") {
+                    list.push(serde_json::json!("seite"));
+                    additions.push(
+                        "Pre-approved the seite MCP server (enabledMcpjsonServers) in .claude/settings.json"
+                            .to_string(),
+                    );
+                }
             }
         }
 
@@ -925,7 +1783,18 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
                 .entry("allow".to_string())
                 .or_insert_with(|| serde_json::json!([]));
             if let Some(allow) = allow.as_array_mut() {
-                for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE {
+                if replace_rule(
+                    allow,
+                    harness::CLAUDE_LEGACY_THEME_ALLOW,
+                    harness::CLAUDE_THEME_ALLOW,
+                ) {
+                    additions.push(format!(
+                        "Narrowed {} to `seite theme apply|list` in .claude/settings.json",
+                        harness::CLAUDE_LEGACY_THEME_ALLOW
+                    ));
+                }
+                let mcp_rule = mcp.then_some(CLAUDE_MCP_ALLOW);
+                for rule in CLAUDE_ALLOWED_TOOLS_UPGRADE.iter().copied().chain(mcp_rule) {
                     if !allow.iter().any(|v| v == rule) {
                         allow.push(serde_json::json!(rule));
                         additions.push(format!("Allowed {rule} in .claude/settings.json"));
@@ -946,21 +1815,67 @@ fn check_mcp_server(root: &Path) -> Vec<UpgradeAction> {
     actions
 }
 
-/// Create or refresh `<dir>/<name>/SKILL.md` for a bundled skill.
+/// Create `.claude/launch.json` (Claude desktop app preview server), or add
+/// the `seite` configuration to an existing one.
+fn check_launch_json(root: &Path) -> Vec<UpgradeAction> {
+    let rel = harness::LAUNCH_JSON_PATH;
+    let path = root.join(rel);
+    if !path.exists() {
+        return vec![UpgradeAction::Create {
+            path,
+            content: pretty_json(&harness::launch_json()),
+            description: format!("{rel} (dev server for the Claude desktop app's preview)"),
+        }];
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        human::warning(&format!(
+            "{rel} is not a JSON object; add the seite dev server to it manually"
+        ));
+        return vec![];
+    };
+    match harness::merge_launch_json(&mut doc) {
+        Ok(true) => vec![UpgradeAction::MergeJson {
+            path,
+            merged: serde_json::Value::Object(doc),
+            additions: vec![format!("Added the seite dev server to {rel}")],
+        }],
+        _ => vec![],
+    }
+}
+
+/// Create or refresh a bundled skill in skills directory `dir`: SKILL.md and
+/// its `reference/*.md` files.
 ///
-/// Skills embed a `# seite-skill-version: N` comment in their YAML frontmatter.
-/// If the existing file has a lower version (or none), the upgrade replaces it
-/// with the bundled version. This lets us ship improved prompts in new releases
-/// without requiring the user to manually diff skill files. A file at the same
-/// or a higher version is left alone.
-fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Option<UpgradeAction> {
-    let content = skill.render(harness::skill_frontmatter_for(dir));
-    check_versioned_file(
-        root,
-        format!("{dir}/{}/SKILL.md", skill.name),
-        content,
-        &format!("/{} command", skill.name),
-    )
+/// SKILL.md embeds a `# seite-skill-version: N` comment in its YAML
+/// frontmatter. If the existing file has a lower version (or none), the
+/// upgrade replaces it — and every reference file — with the bundled version.
+/// This lets us ship improved prompts in new releases without requiring the
+/// user to manually diff skill files. A SKILL.md at the same or a higher
+/// version is left alone; only missing reference files are added then.
+fn check_skill(root: &Path, dir: &str, skill: &harness::Skill) -> Vec<UpgradeAction> {
+    let mut files = harness::skill_files(dir, skill).into_iter();
+    let Some((skill_md, content)) = files.next() else {
+        return vec![];
+    };
+    let main = check_versioned_file(root, skill_md, content, &format!("/{} skill", skill.name));
+    let replace_all = main.is_some();
+    let mut actions: Vec<UpgradeAction> = main.into_iter().collect();
+    let references: Vec<(PathBuf, String)> = files
+        .map(|(rel, content)| (root.join(rel), content))
+        .filter(|(path, _)| replace_all || !path.exists())
+        .collect();
+    if !references.is_empty() {
+        actions.push(UpgradeAction::WriteFiles {
+            description: format!(
+                "{dir}/{}/reference/ ({} file{})",
+                skill.name,
+                references.len(),
+                if references.len() == 1 { "" } else { "s" }
+            ),
+            files: references,
+        });
+    }
+    actions
 }
 
 /// Create `rel`, or replace it when its `# seite-skill-version` is older than
@@ -994,8 +1909,9 @@ fn check_versioned_file(
     })
 }
 
-/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`) for the
-/// selected agents, created or refreshed by version like skills.
+/// Slash-command wrappers (OpenCode's `.opencode/commands/seite.md`, Gemini
+/// CLI's `.gemini/commands/seite.toml`) for the selected agents, created or
+/// refreshed by version like skills.
 fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
     harness::command_files(agents, SiteFeatures::detect(root))
         .into_iter()
@@ -1005,53 +1921,1069 @@ fn check_command_files(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
         .collect()
 }
 
-/// A bundled Claude Code skill by name, as an upgrade action.
-fn check_claude_skill(root: &Path, name: &str) -> Vec<UpgradeAction> {
-    harness::skill(name)
-        .and_then(|skill| check_skill(root, harness::CLAUDE_SKILLS_DIR, skill))
-        .into_iter()
+// ---------------------------------------------------------------------------
+// Skills and rules folded into `/seite` (0.21)
+// ---------------------------------------------------------------------------
+
+/// SHA-256 of the body (everything after the YAML frontmatter, CRLF→LF,
+/// trimmed) of every version seite ever bundled of the skills and the rule
+/// that 0.21 folded into the `seite` skill. Comparing bodies rather than
+/// whole files makes one hash cover every agent's rendering (Claude and
+/// portable skill frontmatter, Claude `paths:` and Cursor MDC rule
+/// frontmatter). Edge case: a copy whose user only edited the frontmatter
+/// counts as unmodified.
+///
+/// Recompute from history with `git log --follow -- src/scaffold/<file>` and
+/// `git show <commit>:src/scaffold/<file>` (files removed in 0.21):
+const LEGACY_BODY_HASHES: &[(&str, &[&str])] = &[
+    (
+        // skill-theme-builder.md @ 253aba7, b5e3876, 80f0df5
+        "theme-builder",
+        &[
+            "4c3f8ce70b70ed1b95b7767d379135babe3ba259cc5f23ac5cca8314c38d070d",
+            "d2ece8146129ded7b44f71629a9739f3a508c7479642b18c88d1349641e8b16b",
+            "9a36807cc0ea01fa6fc59d6383cc826e78e407e80ee2af132f7a4ec7c4c0f88d",
+        ],
+    ),
+    (
+        // skill-brand-identity.md @ 3baa808
+        "brand-identity",
+        &["e6675d9e01b2af4742b08182fed94309f0d9e9506685a5d627a92a195578ffbe"],
+    ),
+    (
+        // skill-landing-page.md @ b40e871, b5e3876, 257718f
+        "landing-page",
+        &[
+            "fc9960ae709c23e531e3eb158cd88bdfeeb783f2f72cd8f35914c067cfa6c062",
+            "979779305a30c237b0d76afb7a2ba8ed9812fa2f31b01dbd36d0b8b18229275d",
+            "464be45ca2bffbce98929b8e1339bd76fb1c38fe262d5f0903154f396e086cf0",
+        ],
+    ),
+    (
+        // design-prompts.md @ bf32552, f2235fa
+        "design-prompts",
+        &[
+            "9db95f6ed5675195fff0dd93477aa466b22f886fa38f84a60558a86b389f7463",
+            "3a2197dc5d93ef2e89bb90a2c8f0e12269810c3c6f8aff35f256de91dd30ccb7",
+        ],
+    ),
+];
+
+/// Hex SHA-256 of `content`'s body (see [`LEGACY_BODY_HASHES`]).
+fn legacy_body_hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let text = content.replace("\r\n", "\n");
+    let body = text
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.find("\n---\n").map(|i| &rest[i + 5..]))
+        .unwrap_or(&text);
+    Sha256::digest(body.trim().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
         .collect()
 }
 
-/// Ensure `.claude/skills/landing-page/SKILL.md` exists and is up-to-date when
-/// the project has a pages collection.
-///
-/// Also handles migration from the old `homepage` skill name to `landing-page`.
-fn check_landing_page_skill(root: &Path) -> Vec<UpgradeAction> {
-    // Only relevant if the project has a pages collection
-    if !SiteFeatures::detect(root).pages {
-        return vec![];
-    }
+/// Whether `content` is an unmodified bundled version of `name`.
+fn is_unmodified_legacy(name: &str, content: &str) -> bool {
+    let hash = legacy_body_hash(content);
+    LEGACY_BODY_HASHES
+        .iter()
+        .filter(|(n, _)| *n == name)
+        .any(|(_, hashes)| hashes.contains(&hash.as_str()))
+}
 
-    // An old homepage skill at the current version stands in for landing-page.
-    let skill_path = root.join(".claude/skills/landing-page/SKILL.md");
-    let old_skill_path = root.join(".claude/skills/homepage/SKILL.md");
-    if !skill_path.exists() && old_skill_path.exists() {
-        let bundled_version =
-            extract_skill_version(harness::skill("landing-page").map_or("", |s| s.content));
-        let existing = fs::read_to_string(&old_skill_path).unwrap_or_default();
-        if extract_skill_version(&existing) >= bundled_version {
-            return vec![];
+/// Remove the `theme-builder`, `brand-identity`, and `landing-page` skills
+/// and the `design-prompts` rule seite wrote before 0.21 — only copies still
+/// exactly as seite shipped them. Modified copies stay, with a notice that
+/// `/seite` now covers them.
+fn check_legacy_skills(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let mut actions = Vec::new();
+    let mut kept = Vec::new();
+    for dir in [harness::CLAUDE_SKILLS_DIR, harness::SHARED_SKILLS_DIR] {
+        for name in ["theme-builder", "brand-identity", "landing-page"] {
+            let rel = format!("{dir}/{name}");
+            let skill_dir = root.join(&rel);
+            let Ok(content) = fs::read_to_string(skill_dir.join("SKILL.md")) else {
+                continue;
+            };
+            let only_skill_md = fs::read_dir(&skill_dir)
+                .map(|entries| entries.count() == 1)
+                .unwrap_or(false);
+            if only_skill_md && is_unmodified_legacy(name, &content) {
+                actions.push(UpgradeAction::Remove {
+                    path: skill_dir,
+                    description: format!("{rel}/ (now part of /seite)"),
+                });
+            } else {
+                kept.push(rel);
+            }
         }
     }
-
-    check_claude_skill(root, "landing-page")
+    for (dir, ext) in [
+        (".claude/rules", "md"),
+        (".cursor/rules", "mdc"),
+        (".agents/rules", "md"),
+    ] {
+        let rel = format!("{dir}/design-prompts.{ext}");
+        let path = root.join(&rel);
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if is_unmodified_legacy("design-prompts", &content) {
+            actions.push(UpgradeAction::Remove {
+                path,
+                description: format!("{rel} (replaced by /seite theme)"),
+            });
+        } else {
+            kept.push(rel);
+        }
+    }
+    let notices = kept
+        .iter()
+        .map(|rel| Notice {
+            key: format!("kept-legacy:{rel}"),
+            text: format!(
+                "Kept {rel} (edited since seite wrote it); `/seite theme`, `/seite brand`, and `/seite landing` now cover it, so delete it when you no longer need it."
+            ),
+        })
+        .collect();
+    (actions, notices)
 }
 
-/// Ensure `.claude/skills/theme-builder/SKILL.md` exists and is up-to-date.
-///
-/// Unlike the landing-page skill, the theme builder is unconditional — every
-/// site benefits from interactive theme creation.
-fn check_theme_builder_skill(root: &Path) -> Vec<UpgradeAction> {
-    check_claude_skill(root, "theme-builder")
+// ---------------------------------------------------------------------------
+// Default templates copied by `seite init`
+// ---------------------------------------------------------------------------
+
+/// One template `seite init` copies into `templates/` whose default has
+/// changed since it was first shipped.
+struct DefaultTemplate {
+    /// File name under the template dir.
+    file: &'static str,
+    /// The current default, written over an untouched older copy.
+    current: &'static str,
+    /// SHA-256 (as [`template_hash`]) of every version `seite init` has
+    /// written, oldest first; the **last entry is the current default**.
+    hashes: &'static [&'static str],
+    /// What the refresh brings, for the upgrade plan.
+    what: &'static str,
+    /// Present in an edited copy that already has the change (no notice).
+    has_change: &'static [&'static str],
+    /// Notice for an edited copy without the change.
+    edited: &'static str,
 }
 
-/// Ensure `.claude/skills/brand-identity/SKILL.md` exists and is up-to-date.
+/// Defaults `seite init` copies whose content changed after release. Hashes
+/// are recomputed from the history of `src/templates/mod.rs` (`log -S "pub
+/// const DEFAULT_X"`, then `show <commit>:src/templates/mod.rs`, hash the raw
+/// string body). **Editing one of these defaults? Append its new hash** (the
+/// test `current_default_templates_are_in_hash_table` prints it), so sites
+/// with the previous version keep upgrading.
+const DEFAULT_TEMPLATES: &[DefaultTemplate] = &[
+    DefaultTemplate {
+        file: "post.html",
+        current: crate::templates::DEFAULT_POST,
+        // 60e1456, 89da9cd, 42dbe4f, f7a5557..0dc5dbc (0.20.x), current.
+        hashes: &[
+            "c6600c4e5b34ff95d5733b948b25f083e2a899a5aa61bd85e5c00d1a0cd3aee3",
+            "14b31eb7e680a51665780ceb8b3541bf441d086b414e84c27722c8685eb02485",
+            "ca09ea84916e726a2fbad0d31204b2cca79d3ecf87e20ca6be1875f8e6bd6469",
+            "63ee8cde622a4ae2494533cf5c4df2ea48994297538c8d71a8b65aa34d2029ca",
+            "bc879538cd2597b916d7f1a38117c8febb1ad1a52583ff2b0857cbceeaf83da6",
+        ],
+        what: "categories, series box, related posts",
+        has_change: &["page.related", "page.series"],
+        edited: "To show categories, series and related posts, add the snippet from the Templates docs (`seite docs templates`, section \"Taxonomy, term and series templates\").",
+    },
+    DefaultTemplate {
+        file: "index.html",
+        current: crate::templates::DEFAULT_INDEX,
+        // a92563e, 6928a7d, d308b69, 4ab86e8, a58a8d9, 375fe9d,
+        // df8b337..0.20.x, 0af5137 (unreleased), current.
+        hashes: &[
+            "202ef49b4d78e6427110c35e0e7e73188416f2d21a8743204ff8a3cd69a1ae63",
+            "910b2a35769987f35ca153c1163f992028b26b20a9280b0926c40f501a2107b6",
+            "cd737feb740999e01ff56113e5f196169503b10b5cb69eaa7e10584e235b94c3",
+            "bff860a2901a162b2d85cc40af59075e610316051b131bd758f5491ca60b241d",
+            "8c2604f638f0b32d85070fbfa6b70b4a2fc76611e676e8affe8fd2b4c9db97b2",
+            "641003bf73cefda9ed490a1056ca71d9bf61bb579573a9c146fe674d4e4dfaa9",
+            "c9071fb9307f0daa1e3619889c819d4ad1d008edc9e8877ea8a373018b661c87",
+            "921c4be7b2f134740dbde81fa556555fe84a95878014d8a876b08bbcdabde1de",
+            "45978b6a0bf926a3f5162b77ef54e9b2cf347f8c274f71823341ebbb03753efa",
+        ],
+        what: "distinct titles for collection index pages, an <h1> with the blank starter",
+        has_change: &["_home_url"],
+        edited: "Collection index pages it renders all get the site title; to give each its own, add `{% elif page and page.collection and page.title and page.url != lang_prefix ~ \"/\" %}{{ page.title }} — {{ site.title }}` before the `{% else %}` of its `{% block title %}`.",
+    },
+    DefaultTemplate {
+        file: "trust-index.html",
+        current: crate::templates::DEFAULT_TRUST_INDEX,
+        // 7dc79bd, 097fe4b, be1a2d1..0.20.x, current.
+        hashes: &[
+            "b23eae820d06f2aa30a9a7b4f0ff9f3d073c41789dde5ab8208520f8cf4be7fe",
+            "12cf04e61e8a6100d429864eef6a84f92575b073fb8833f344ce3ed19864e9e4",
+            "c0a2ce48051ba3ad59d1714d9b72434f959f7dbaa5a94ff0e3dc6859d5222952",
+            "e31e5656f1777750dbbb6fd0750875a3a387ef72c4b15f543ee761655fa51724",
+        ],
+        what: "descriptive \"Learn more\" link names",
+        has_change: &["cert-card__link\" aria-label"],
+        edited: "Its \"Learn more\" links all have the same name; add `aria-label=\"{{ t.learn_more | escape_attr }}: {{ cert.name | i18n(lang=lang) | escape_attr }}\"` to the `cert-card__link` anchor.",
+    },
+];
+
+fn template_hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(content.replace("\r\n", "\n").trim().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Replace each template in [`DEFAULT_TEMPLATES`] with the current default
+/// when it is exactly a default an older `seite init` wrote. An edited copy
+/// without the change is kept, with a one-time notice saying what to add.
+fn check_default_templates(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let mut actions = Vec::new();
+    let mut notices = Vec::new();
+    for t in DEFAULT_TEMPLATES {
+        let rel = format!("{template_dir}/{}", t.file);
+        let path = root.join(&rel);
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let hash = template_hash(&content);
+        if hash == template_hash(t.current) {
+            continue;
+        }
+        if t.hashes.contains(&hash.as_str()) {
+            actions.push(UpgradeAction::Update {
+                path,
+                content: t.current.to_string(),
+                description: format!("{rel} ({})", t.what),
+            });
+        } else if !t.has_change.iter().any(|m| content.contains(m)) {
+            notices.push(Notice {
+                key: format!("default-template:{rel}"),
+                text: format!("Kept {rel} (edited since seite wrote it). {}", t.edited),
+            });
+        }
+    }
+    (actions, notices)
+}
+
+// ---------------------------------------------------------------------------
+// Rules files (`.claude/rules/`, `.cursor/rules/`, `.github/instructions/`,
+// `.agents/rules/`)
+// ---------------------------------------------------------------------------
+
+/// SHA-256 (as [`template_hash`]) of every rendering seite has released of
+/// one rules file, per format, oldest first; the **last entry of each list is
+/// the current rendering**. `.agents/rules/` used the Claude rendering
+/// before 0.21, so its history is `claude` followed by `agents`.
+struct RuleHashes {
+    name: &'static str,
+    claude: &'static [&'static str],
+    cursor: &'static [&'static str],
+    copilot: &'static [&'static str],
+    /// `.agents/rules/` with Antigravity's frontmatter (0.21.0 on).
+    agents: &'static [&'static str],
+}
+
+/// Every released rendering of each rule in [`harness::RULES`]. Recomputed
+/// from the release tags v0.5.0..v0.20.2: before 0.20 `seite init`/`upgrade`
+/// wrapped `src/scaffold/<rule>.md` with `rules_file(paths, ..)` (the same
+/// bytes as today's `claude_rule`); 0.20.x rendered `harness::RULES` with
+/// `claude_rule`/`cursor_rule` (`git show <tag>:src/cli/harness.rs`,
+/// `git show <tag>:src/scaffold/<file>`). Cursor rules exist since 0.20.0,
+/// Copilot instructions and the `.agents/rules/` frontmatter since 0.21.0.
+/// **Editing a rule (its content, paths
+/// or description)? Append the new hashes** (the test
+/// `current_rules_are_in_hash_table` prints them), so sites with the
+/// previous version keep upgrading.
+const RULE_HASHES: &[RuleHashes] = &[
+    RuleHashes {
+        name: "seo-requirements",
+        // Claude: v0.5.0..v0.20.2, current. Cursor: v0.20.x, current.
+        claude: &[
+            "77198dd7896c45bb85b1b72eb687985d5799703cfd248b7227119fce91090958",
+            "167cf143329888518acff003165df3c06ae0967158a949333ecff771fad422ae",
+        ],
+        cursor: &[
+            "f777b65abb2f142b34f6b86a735da83fdd242409e0a08a00cc9aee8d6a4bfba6",
+            "f48fc7ebc43d26c66a4d878f3b773ca058fe31b6f4c2c6dd62160051da9bf2ae",
+        ],
+        copilot: &["04235a73351f0c05bc4d2ef8eeb2929bcb62b4365de856c7858558231d670792"],
+        agents: &["f43ad6d41ec29277d93e7f0dacdce047c44512b42e2ae0e9b5dbb958574678e9"],
+    },
+    RuleHashes {
+        name: "templates",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "a08c345fc625f0b64616e8e6cfac2ccb32a7cb3de0ef32b7dcdaaebfc342af27",
+            "2a70722278a17f283718d1b0c65f9368033c1f94589883e03e7dde4fff1f6867",
+            "f84a734586f6fd6f0d7c4683c7b392a022013c1ed271945e6daa52f60b91db16",
+            "bf71a4fdd11bd5aebfc1c5e9965c3202209d8dc8a2c50133dbe1df93d332f66c",
+        ],
+        cursor: &[
+            "7b400d1aa3782b278463e17fe253ef7930ceb2b4cde479a38153c0b6f9467c79",
+            "649e36fd741cd5c1ca01ac2ee10ace20da95d53e09e910b54c6d09796caf5880",
+            "3506cbaac45d9d070dd569ef8579c617969010f145c88a11d809cc11c35f91a3",
+        ],
+        copilot: &[
+            "d848127ad653998cafa97c8361b6636c31120ce4a23f1a92629fa98b543afd8a",
+            "804c4893e2dc1577c4cd51ceba2bd71559e77cd6daeb6e99b27782641dc5e32d",
+        ],
+        agents: &["327f5dfb4dc30f452a6f14d033a48aa16b011e8242febf05ca9e93503276e4c5"],
+    },
+    RuleHashes {
+        name: "i18n",
+        // Claude: v0.5.0..v0.13.0, v0.14.0..current. Cursor: v0.20.0..current.
+        claude: &[
+            "f7c021936c29fe0bf012b5c05d29426e6da0aee298c732d47bfea15efdbeab12",
+            "4f1e0952abeb3211df37fd7a1d50637ff94877bc3cab269deb2a13a3d284d7cd",
+        ],
+        cursor: &["b7dddf3eac3e372ea80006acadfb5e670318201aacce31a65677ee7daef3c4a1"],
+        copilot: &["79982e1a9d9ee27244a0610ae08b680dce909ba1cd30e9f4cb500857b8878390"],
+        agents: &["19f1aab4f77d0bb6f5127afe5716dc754ff7a4426d56e63c111eaa0e09058637"],
+    },
+    RuleHashes {
+        name: "data-files",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "095703b611609b30ace7dc6b8a83ab1912c3977b7b0e2a50d967dbee338612df",
+            "50416c7648ad484e614294a10f299e8cca6357a91469aa1fb4ba59c098ae93bd",
+            "faa38caabd796c6db9ebd16c8dffa575f148cb1c0498652a43cfcf299aa225a9",
+        ],
+        cursor: &[
+            "9b4bcb0e8f0df8f96a41832d4cf99c974ba7b98a044d1353a61744fa4766d8da",
+            "ea1f34f45773ef218de1ae8e069bc4a94ebddbd7c8e6ab57c3fb0c3e773532a2",
+        ],
+        copilot: &["e450fdc0de471b14cf0d51b2ddcce3c499f6f14de3378db2d65454c8f6e667de"],
+        agents: &["cf23812a09d15aa09b58d9217cc44a3112ef813023caa1671e8047357a2f3376"],
+    },
+    RuleHashes {
+        name: "shortcodes",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "0a900db2caf0eacfd35dcf8a75c24cc8794f37fae5d7fe0149ed2fce2663cd88",
+            "461693487812c44990f0660d1e8a8e3d9cfe01088c856b8c3211bb2a7e1ee087",
+            "c3a19b7f56979115d0f66e04ff6a1c1cfea1216b90fa366c748bc930dd2034e3",
+        ],
+        cursor: &[
+            "8b8a13217286b68f48d58700c9a332c6fbbb219b1a4bfaf8092c12ceb0683fcd",
+            "0fd38967a0cdf4d17cd43b78c9b70b3746e7ce5732e7ec36e41115cdf38ab8fb",
+        ],
+        copilot: &["80dfd02c16dc2062434fd325d5526ba8a49d58181392b4d6676abaeeea3dcbb7"],
+        agents: &["ac20851c0aa8883adcc512e1218062d79ece7af0adfd1a3769436c7770b627e1"],
+    },
+    RuleHashes {
+        name: "config-reference",
+        // Claude: v0.5.0..v0.6.0, v0.7.0..v0.10.0, v0.10.1..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "f8340537bd23279f40ac02da541af83adf415c4bc02105932ddb828817b605eb",
+            "f32482fe3c355e1661130aba9a246a968ecfa8b57d513297cc8f1ccbe5fa202b",
+            "43d66d0638f0dba7ff2cb71b58eef143dddefaa4435f05c329cceb3a65a02112",
+            "cfab9a1fa714848092d2ddfd6956d937bc3874bb67b851adb00ea0aa5aef61df",
+            "4a123d1a8303de22d921d875ccd2c6b2c6d0f80372d06fe885ec70d188935976",
+            "39d8831f0f2356762e7d32a740012543459831d9f2327ad17cb43fad1624bfd3",
+        ],
+        cursor: &[
+            "edb020964aaf2a414fcae77567e7c178225c95394133c2054cdcd2bbb9021d47",
+            "61a7fb096cb0992f2e7dc6b0003f359b27df73230dfe9f597a3f4614779999f2",
+            "0fe6682a911ef1d4ee9c2e9e23ec9adbad867db881074d745a40f1ae2ca7ffa5",
+        ],
+        copilot: &[
+            "c7341c42a74582ef5b6e5de0f19294be68b7c18cbfc58d403d30da60c4ffa38e",
+            "66b92eae3a85c618f4f2f7e38426bfc5df4bf15865c5c1688016a28d7b5b894d",
+        ],
+        agents: &["9709e3bbd37f17c78cd918163f0b72e08089eb8d1247e5866aa121ba85dbcb45"],
+    },
+    RuleHashes {
+        name: "features",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "ef249e7a97828e2931b2900f7857c0f7ff9b10e441a1958e691322d711e26549",
+            "c00cee2995167a4eff6e2b7b4e14ec0d2fc6047c1641749aa4e450519b7d443b",
+            "50d52f68f852c12be44d0b59f891c8e6110680cd9a24f5bccf1313f66ccbf398",
+            "792ef605fbd98dd7337e49c6b996e836cd5b164bba866e4602ab06f7c3d0768a",
+        ],
+        cursor: &[
+            "623686aaaa2764b4593bd2ea9e487e404a8ede7f24335221635eb4bf04ea6f85",
+            "61c2a3ff1bccd32d6a063c339388aa3e0ae66d11b24b1e30423bfbbe853f046a",
+            "89a432c83bbc0fdc73b2bcb4526efd09ac80ded88b24b75a5819ee016db77edb",
+        ],
+        copilot: &[
+            "755a2129d2260ffa4b7bbc9a313a4a6076044197aaaa4eb2e0cca1e81fe27da0",
+            "b141ab52120a54ad2e7a6eef0d4f6a3f882ca03116ccc3249988b0925cc55aff",
+        ],
+        agents: &["ccf8cb295c76716edef1780a360b6fd0f21429bd7a31b20ea830d4bf788ce712"],
+    },
+    RuleHashes {
+        name: "private-collections",
+        // Claude: v0.16.0..v0.17.1, v0.18.0, v0.18.1, v0.18.2..v0.20.2, current. Cursor: v0.20.x, current.
+        claude: &[
+            "06dbebaca17a5602cd55108a99a93031a6258249ad0706c6c870daeaed6c8022",
+            "941072456e9199bea9f3de00cda0a935aecdc8829f74cee9f4fddc1f3c09594c",
+            "d3a17d339c5d5c19b2248a2bd3688404f34c70866fc787754547e8484913a328",
+            "fa3cea063e6ef2bc5d2813e681472f2493e62442c7df282c209513be2997c8ad",
+            "8deada85b36bfc82fd45c0a50b8fc3102c13f8f4a5db131f93f05f95117e4514",
+        ],
+        cursor: &[
+            "1ad3a477a31fcf853db1332b278f537a9ad11087b4fc51331f3e190b35c15e4f",
+            "25b31bb470a4eb5d8593767c16711a4bdcd8cfa66d4d4e374e2b8128ab4b50fc",
+        ],
+        copilot: &["f529c48f6921320a1887b89544250f44ffb1152a681b51088816b800d50017c0"],
+        agents: &["d47442db04c749daf66e3564b7059804589bd06682bf811ebebb6a398faaf5d8"],
+    },
+    RuleHashes {
+        name: "contact-form",
+        // Claude: v0.5.0..v0.19.0, v0.20.x, current. Cursor: v0.20.x, current.
+        claude: &[
+            "5596aa9a28816e674d841aca371d2ae19b71dc203c862f34672cde146238e518",
+            "f7ef44932dd7e660b3b6054a9451645c07555d03cfed636e009d7354b6b1b522",
+            "cb57bed082e2f94db42c10610f61f006c5d7c6a10d3c04148ee86df8146ae8c5",
+        ],
+        cursor: &[
+            "58fe4f8a5e70c37ea32844e03bfa08b5a0f5a8d670e4eae562eb13df2bad2bcc",
+            "2d441ade6287163d2b732bd6914770cdd49abdcd1a440f5fd1a0442ef1c751e3",
+        ],
+        copilot: &["264181f972082340a5a62f010cda2e8c614515520894b3f6d10fc715fef97a5a"],
+        agents: &["d3866f9ef854320d1d5b070b27f69b18294e8cf05f55c5be57e9e9340f4a7f36"],
+    },
+    RuleHashes {
+        name: "trust-center",
+        // Claude: v0.5.0..current. Cursor: v0.20.0..current.
+        claude: &[
+            "65d016b34548a70a4a7f20b6742545a9f6a24d492e72b9dce458a4736795353f",
+            "5d8e0b072e64f719ad9e7d1025cf43d28e8f4ba8da0bfb396f19d56bb31ae599",
+        ],
+        cursor: &[
+            "3eca4dddb3ddc271162acf8d4ebe8eeb7fc347f981c366dc0897e64075de2615",
+            "a4ec1a6c62d3ba77626f42394219ba8f00843362a21a269f94152357150bda56",
+        ],
+        copilot: &[
+            "b060253d1d99a75decf0c3e78091b00bbcd39db5b7cf2f07dabf16545f15f354",
+            "3a9ba4078b26f76bdc63da61224712aee907f26e393cd6c40d09c919b0a0cc35",
+        ],
+        agents: &["fefbfffd6929a8074a1babf7bb66fb6d060a154c5d4a6012bba40b7651f89a5e"],
+    },
+];
+
+/// The released renderings of rule `name` in `format`, oldest first.
+fn rule_hashes(name: &str, format: harness::RulesFormat) -> Vec<&'static str> {
+    let Some(entry) = RULE_HASHES.iter().find(|e| e.name == name) else {
+        return Vec::new();
+    };
+    match format {
+        harness::RulesFormat::ClaudePaths => entry.claude.to_vec(),
+        harness::RulesFormat::CursorMdc => entry.cursor.to_vec(),
+        harness::RulesFormat::CopilotInstructions => entry.copilot.to_vec(),
+        harness::RulesFormat::AgentsGlob => {
+            entry.claude.iter().chain(entry.agents).copied().collect()
+        }
+    }
+}
+
+/// The rules directories seite maintains for `agents`: each agent's native
+/// one, plus the shared `.agents/rules/` copy when that is the index target.
+fn maintained_rules_dirs(agents: &[Agent]) -> Vec<harness::RulesDir> {
+    let mut dirs: Vec<harness::RulesDir> = Vec::new();
+    let native = agents.iter().filter_map(|a| a.spec().rules);
+    let shared = harness::uses_shared_rules(agents).then_some(harness::SHARED_RULES);
+    for dir in native.chain(shared) {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    dirs
+}
+
+/// Refresh each rules file of the selected agents that is still exactly as
+/// an earlier seite wrote it ([`RULE_HASHES`]), so sites stop carrying
+/// guidance that is now wrong (0.20's "search is always basic"). An edited
+/// copy is kept, with a one-time notice. Missing files are created by
+/// [`missing_rules`].
+fn check_rules_refresh(root: &Path, agents: &[Agent]) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let mut actions = Vec::new();
+    let mut notices = Vec::new();
+    for dir in maintained_rules_dirs(agents) {
+        for rule in harness::RULES {
+            let rel = format!("{}/{}.{}", dir.dir, rule.name, dir.ext);
+            let path = root.join(&rel);
+            // Regular files only: never follow a symlink out of the project.
+            if !fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let current = dir.format.render(rule);
+            let hash = template_hash(&content);
+            if hash == template_hash(&current) {
+                continue;
+            }
+            if rule_hashes(rule.name, dir.format).contains(&hash.as_str()) {
+                actions.push(UpgradeAction::Update {
+                    path,
+                    content: current,
+                    description: format!("{rel} (guidance for this seite version)"),
+                });
+            } else {
+                notices.push(Notice {
+                    key: format!("edited-rule:{rel}"),
+                    text: format!(
+                        "Kept {rel} (edited since seite wrote it), so it may describe an older seite. For the current version, move your changes elsewhere, delete the file, and run `seite upgrade`."
+                    ),
+                });
+            }
+        }
+    }
+    (actions, notices)
+}
+
+// ---------------------------------------------------------------------------
+// Bundled themes written to templates/base.html
+// ---------------------------------------------------------------------------
+
+/// SHA-256 (CRLF→LF, trimmed, as [`template_hash`]) of every `base.html` a
+/// bundled theme has ever had, per theme: every commit of
+/// `src/themes/<name>.tera`, plus the inline `base_html: r#"..."#` strings in
+/// `src/themes.rs` from before the `.tera` files existed. `seite init` and
+/// `seite theme apply` write the theme verbatim, so an untouched copy hashes
+/// to one of these. The last entry of each list is the current theme.
 ///
-/// Like the theme builder, this is unconditional — every site benefits from
-/// brand identity creation (logo, color palette, favicon).
-fn check_brand_identity_skill(root: &Path) -> Vec<UpgradeAction> {
-    check_claude_skill(root, "brand-identity")
+/// **Editing a bundled theme? Append its new hash to its list** (the test
+/// `current_bundled_themes_are_in_legacy_table` prints it), so sites with the
+/// previous version keep upgrading.
+const LEGACY_THEME_HASHES: &[(&str, &[&str])] = &[
+    (
+        "default",
+        &[
+            "a90a8c533823dc9acffa73663a9e98fcf627c7fffd3686cbf42cc1908bb065a0",
+            "220f6e5221148bdedf1987d1ff6adce279008811f1c03255610fcd9fb0e8c50b",
+            "2ee2d6673a834af54151fcb500bb83917c21e743c762c40a29180d5f3e7b864d",
+            "2981d61dd79e933c240c0495e70a74c7fc595b40c73ed9047682095b1a7e4d88",
+            "5f2ed3af520097ad4b301af8849703adc10f1523eea94bd91d7e7059c1035f13",
+            "a0ed7ddffab746c691d2fcb05e71c66bfcc192cfea45a2c2dd3e4d252e9a0810",
+            "d4d473cc4d000d80751423331a6676d6c5274317794a38e4f611287e19474f11",
+            "24f9f79fa8bfd4a488ff340509e2fd53dae7f036d63ad6aaed5bcd9d4726b785",
+            "68532be5fbde48c04fc6ef870dbf75d18504524b9e0f3e1acabcfd25e85d093f",
+            "4e26f9701dc7298c9281ace7d42b03ba8781b048bfc3fed7b748dea57d96732d",
+            "0ce2c0bc85779d80943c552561c14337200b89cdefeacb165e2aae718540633e",
+            "dd7f96210e92499a5cfd792a4f28afb9e9583dbcc16426d3b9f1b13cd94de4c2",
+            "08668162d70762021941c19af606d446726016f358fb95e917c1095d42b39bd8",
+            "ac8f801fb34a1306ff3818ce97e2abf54e39f743611ea339783a9919bb0d9ff8",
+            "a7d37ccc2130902d6134f23dfca95af2ee6612cc40704746362d0423ba6951cd",
+            "21593a5af2f1417dca44de174dce511c51b17b4ef027bf4d7b2922304fa1701b",
+            "45482b37d30a18b2f58a7a3b4572d601ee5f2575999d9d880f55f9bdede90193",
+            "f3e634c4ca05485ce7248172b53ff0e8069bd84f890419d4b31ab74a00a6f4e5",
+            "9e6f8804c0d69f928c3855087aa7d9c930efda4fdd78516feabcb0af2bb7160f",
+            "50dd3c9ec6045d35486fa87eae57d44aeda24d8ac8c2714c858ff0ffc97fe328",
+            "77249a03e2ddecabff6182e8c6a8e6e66d99cf984800c92b997c1ad0948116eb",
+            "5a40e887bc7e83c6cf3fa36e86e9714ba0ff7afc2926b8a0daad159f8afae1b8",
+            "7698e00076d18442fb0d7b6177900cfdd2f3f4acf30c1867b2b07c3ee314e7f9",
+            "d564410184a4ebd56c3569782c343c91d5ee36497a2b829821572d1705eef4c4",
+            "06de5f742f090647bb3b072a3ae1b29bd8543ba57edc39a9150b71e340f2bd28",
+            "50d702148735f7b8946e79b9631dc4a8b72e152274d12c220dd509c1ca42a7c5",
+            "dd2ec66f4f544217097508197ef07840d4e080726b9ae094b34e7d4c2de5ad24",
+            "8f53eea39d36f27d80588b2d13be68aa659b5c0e44d160369a241d7413fdf83d",
+            "acd43b28a899405f5c4dcf2aa4a48ea6de241e014519cd683c96f2accb0172e3",
+            "ecb9e4d06093182b194ed1cd18fd3d08b79af57e8d56672fbce916f139e7d76e",
+        ],
+    ),
+    (
+        "docs",
+        &[
+            "d41e1df30d1ca84c8a498a23f0d5cd05db949cd09ffb335cfacca7ab6073012b",
+            "2bb170623b03bf1bc56c03b219b743477ccbf54b20ed08157a02387fc3dc8cc6",
+            "95756f966f43e9eb6903364247e318f74543a950814954bcb06428f1d247e501",
+            "9d1d5377bd5d259a26f13af98f2e6baabcbb64c0dc2d7cc210651f7bc961877f",
+            "2a1ae04c67ee06344b2caa29cbca47c38efc3c84c76e44d7cc68ebde1a58e790",
+            "de6bc882e812792775c134202c210de492525262fb4b5ee668e02d6566bcd1d6",
+            "4293fd38cb9f5d7ee3f6f01efed45d397d275f173ca3c7afac25feb3ef040d09",
+            "5e0e6566fca6227d364dd0d27c42bac5856003a9539b9d691d834e83dff4a75c",
+            "0c38ddd8e2f75a2a178d5ad3a6d79fb926abb7fe0e8b94a3fb5b49586b0709a2",
+            "44982601ac62da39b0885be3844438bdf8c2ab84e66e3232b48c816e1cb6003f",
+            "27aa68a0befb1bd9adbd2333cac682a7aed9951c754cff70b679158fa62ff211",
+            "303cdeb2a16fd93dd2f1dac938f3f70a855c7b52641f01c88c7f90614b5bd098",
+            "b294702ecf16dd848d0456d22b483bdad922680c184bcc76b28a245fdad7be60",
+            "9aa6082367f31856f2aa0db0fd4aa8b600cc352010eb724598ab6ea95c4fab70",
+            "b1d3db5fe1f268c18c23c5f2155899e5d18ec68049d2fb0993b71acce41df579",
+            "a6e2157301e9fc1367c053437ebe76052a16fbf4acd5ff3cc2b0c24c7db083b2",
+            "bcd90c27069901f39c2865ed5c2e713195bb6a5abba051bc005f0c0650a90d8e",
+            "319f27442a4881e6615452e11ffb7748e95638d3cbafff569c18b67fdc6e9757",
+            "ec6567fc2f864a43eedac2709c7fdbba0150bf21a8fbab55bc54cfc1c848b8e1",
+            "ad70b101d9ad99796cc7e481ca60cc87e78ad7e31ab00f25ec05f3d8901d9f53",
+            "63cb5cf07db152d6dbcc839f811c9813e6c3ae3e24a7d887d79c15579cb2732e",
+            "67d2ab2e5cd888eaa9e7a3406046fb5ffd3e7002d062c815a5e5db9e60d15758",
+            "13d21288125b4ce74dc2a8a1664b62f9a9ef38d04d995c815bbce851ce671cab",
+            "aed48911c56bea2f750cf880427a442ebadd48bc7422aa34f95a12eed9b9e419",
+            "b9d7d6b516236214d3dd5c5a95f85fa1e84d771ae13f5144e14d1fbd8efc09ef",
+            "67d4c8039ed0538ca34020304249019e16fc1ce2d3a62719404814443afb4140",
+            "23e5570a2dc970bc9fa7f9e96b132b20d3867156e66051a90074cc9e157d5ad9",
+            "e9ec1aeb94ffb008f68ded0eb02a12f55ab495e78aed05cb768f27d01dacfb0d",
+            "bac947d8408c456c35c5244c9c23d352ac9e195a074a3797de85acec0de22b9a",
+            "e91dcbcff4b136c55dad30739ed65fa87514043ebc45ce760638b2b3a8520171",
+            "e581bbf21320bb4f9fd05b219b3df5b71cd29a9ee250a4900bf63aac5b4b1b1d",
+        ],
+    ),
+    (
+        "landing",
+        &[
+            "3ade55868c66e2adb90f5957de48509047a316397f0387e5e68605167376d12e",
+            "7f1dbb2fb2ef9dc4f208a60a4ea5da379373c505f1ceb53dfc16a54908d29290",
+            "948f00f969f826470594b937a8118391ee4ce506084569d6250d15cc4f79a07a",
+            "61b494102d94e5264f483212ca045dbdd4dab48eaa471882fbb87f7fece1803a",
+            "e78187030059098ced2093081419f1340cb2b5aa2738f99545e9b2148159b43d",
+            "fdf3edd9113b2c9df03e456191241876f89669011890ca8ecee1d6d07f8772be",
+            "f34d4793be84e9aa96e6256c012bd83161029980cb9365ac7e46d0ca1151aab9",
+            "3db0dd68e0a361ea2c8a93c2bf70d61de0ab91a4ed36b1361ad295a24d18dd3f",
+            "a36a3db5d1bf019978162a524d8c571f4e6365b683b5b72a62617454ffc69e30",
+        ],
+    ),
+    (
+        "blank",
+        &[
+            "5fba48b8862df4b95f7cfc2474192feae35e145591ef68ef1e6b7b1aee7c0ea3",
+            "0e4ee7b20d4d052c0e347895da73ae4e1d3806678c84f828f554c5ea4459cfdf",
+        ],
+    ),
+    (
+        "minimal",
+        &[
+            "f771f18184b99ea5aed2a17ab7ae501e97384bb58bdc5da74915fa86b8a7d55f",
+            "fad41995a6ca6904a802a824f755f2c3747e58ef0ddf6d6ffeabca33c89d94d4",
+            "e7e42cb2e59ce07508bd545017c76bd6977facec3a8c1fd7bd6b6689087efce9",
+            "5c3f4e92ae58630c0ccdf6ad49d11563371e0ff509eb5c437a28adbf3172e220",
+            "4f743c9fb341375a4209230d1ccbd8fb3ca28e58f7e913ab71c482689c66fade",
+            "187509fb298ff02b70187eb5d8362e032af5391a7d174652b5251016aea3b945",
+            "d15624c062580064ad855a699a4b4252f3e0784ee46d1eb7cd02dc4b21d21f87",
+            "adaf12de14f513f82424ab8b6bf04e57819c950c68e46c36c84fc1a2cdeb32b7",
+            "2866ce3bb60a0b1da72369ae12d8e82aac54247acfb1266a4dd9abab450bfb8a",
+            "6a84188c99cedbe50a11a76cd2d5ee4b612f00a958c7f2b38a116e49e962de33",
+            "c97008ad96aa12b846e734c689b0cc1570adb427d6fc4c9eecfca670f53fdfc4",
+            "9a44ffc8f3b56b3c475bacc63113ce8041459f71621f4a5a3f3e5e207bba4020",
+            "f126d181320e89f3743409ccf96e0d82abe077a9ec766563554913c4a93835c4",
+            "bf00b213729ff824f366658bdad8943f37391e176ce0d8a70896a9be5147d6c5",
+            "adb1236fec8af037f1c4be6a6a1252f4fb27077725013ba946fb0a26947952d8",
+            "672419d484d9f4de01c2bc03b5eafd00b929994aab649d567fbfc65c1a487670",
+            "233b13882910785de60bab14d9345f18efbb419458b9769eae49f9f1a9b52847",
+            "955b45edb57936443b084ab421d0cabcd08efb4f8e026106b6d1d1f2e9af6b59",
+            "8b261156686bfa5b8e47e98d6cdd06fbb5ae5de42c3b444b60ec31e1d3e7058f",
+            "4c8119305369be1cf6cf070e158c09333946a2297af1d62eb71ed802d1112acd",
+            "07d614b221b52913f62951d803480810d258a18301c8033e97a5b723c067f29f",
+            "07cde97fac333a3671d18e7ec8430600f839f91513f131a2fad730330a482f88",
+            "a937357cef63fbbd3b41ab1e4a552242e117afe825c6ae3f417b74902231fa33",
+            "a51d7dd48f7cd7730e40aa426616a9942bca36b09a6810ad765f72ddea03b128",
+            "dfb02d635bbe791c96d1fa7e7a9b731a6462515daa177675f0fa88d69c816b5a",
+            "b0e2eb4b08dccd20b979be4bc729163e22efd995253cb37d9523af14b0b04aed",
+            "d64bb60b1c7e2cdc544ca5833072f6891e39625e2631352bd5eea8c1d76fc427",
+            "3ab28d59da8c926b74d62ae5a27947df00d0346cb51cd3d2bb31784c03bfdff6",
+            "f311e00564e5da14d74d262df84faa2609ab5795b4ed24614171263c539b5729",
+            "f685a8fc79837a510ba6419d7cb68f64558eed6d81dff87d2b8efc6d6cc15c71",
+        ],
+    ),
+    (
+        "dark",
+        &[
+            "655f71f67ca3bb13d5b7d6942cc284dc2a966c27f934248a5c7a1b00c052e056",
+            "0fa0300e04dfb721f9e8809edd095bab6534ded3754d300912873b4bbd1483bd",
+            "1b7da9bce81b6fc827e3a48f032f0bb00bde6fbd3cefd3c0711b5485ab55dc0d",
+            "9f173c4a3b71cd5000c7c212545aa1407231741129dc6ee456bcb8ae8c5e3b9d",
+            "47bab6964eb828411cd91433b8e08ed16162d4f5777888e790d6be3f5fc44da5",
+            "f670640d210e30c5c48242bdef2749aeb1e8f03c0dc2dc61e48b4ea2a28c7626",
+            "1baa8dff66ed7f594d4b533b48ea68a78bff438560bb994a71e280a1d9a49620",
+            "56dbb0ae5de4e12fb6e546828d542a50070542e8a3025aa734d719b61522fff6",
+            "2ee3bd487b48c5a05ca6070ad4f23b966df234c23f085a5e617b3da60e6d6a64",
+            "df530cfc93795c5f6da0f2907efeb90ac85414d8debf282badb27dd04bafb959",
+            "a54905607456dc88af9bf4570160b54e736666db02f68a2723550188bc6b83ac",
+            "f295c93cbad1d94cd098f9f7dde27c57b124099e892999e333eb0e8a3e88d723",
+            "509789404ff3008cdd3707ba9cf9870f5b67ce2d5860b3f5443d60c32fd5afb1",
+            "eebaae38759f40c164010d1132e21bdaedc6d12c96542c339a73d985a8304f11",
+            "0ef9e71026651c06343d5e3bacd609087c84a0a948b340c1ef5257cf28a13be1",
+            "d99b83f67c7ef21647a42ebaa4c60a7d8a83d8f972232129c99ea62f6dc687ae",
+            "ed71e4973f74b68280a6065e084cd05a40e4d49cfa43b7789c1c42599b729331",
+            "7f6081e501c669dd52fe61689b02b308db2e4f9253491634538862917c19d688",
+            "a66c7a083a59e0cfe2eb361d7202876304eaaa921f8072d6699cd10abde56e56",
+            "293acf6a31800771b8565aaf7bf361f1ad2d71b8903a6b51bd5b0b82080ad0ab",
+            "a41d09bfc2d93da3c749776d2be65959930c09604b167a7462309f47918c5162",
+            "e6bcfe0c91dad307fc2d3f75c21f0a776e3d381ee2bab6a7a075401d7c238c2c",
+            "96f8ef92ab2dfc6dc70b29f6dfcacb12e484371a8ce605ebc38e6c30d58f6b3d",
+            "9f7be6f321ebdc0bdcc2abea56264ae8f16ca78780b4835e0a3b3397392ca4fd",
+            "ae097eabe405888b84265a523b63d306932657ed8b048f7f0a893d728e43e976",
+            "520251acfb14348f471ec93d7cd1aa78cd64c841e341fd151cc1cd29a450e85d",
+            "724794a6a2e401271dc7787fec722239be103c0bbc2acc82d11900b7fcd79471",
+            "7b4e157e98a3d7b19721f88ac26792fdd2fa6e94490e18b73e1ea200ba3a8ea7",
+            "429842578289b1b6792c4a69b093b544815df6dd4eb90da49c23b1d251c02984",
+            "a73c7e4d96a216b0f389029b952f97b46a607747640acf20c0b90555a84fdab4",
+        ],
+    ),
+    (
+        "brutalist",
+        &[
+            "b62dd29a08e0865cf9cafc777589f1c3bc9eed1d09189f3e540e4611022641ff",
+            "24230b0eb0e120eba25acffa96f4152a4ac8de626b51c79cca2597184bd8c7a9",
+            "f156f357a672f384bcdfc75a364bd8b105801d443e0d23f1bdf191b6a450a267",
+            "fe6dda96ca93e8c102de130c61cb95c58ea03abafc6c9b014bb60540c535b526",
+            "4057962628763effaa059c379b6aca103e5fc9938c7073a891a80efd82c747b4",
+            "a45900ffbb3f3cf8665c264834980b8020466b5e710c80e44c5442503ad88cd9",
+            "cac41c78eeff66612a4595a525c5cc2febfb21dd15ed1d38086880557b66f8be",
+            "e599d5a1b386b9acb53b56189d5caf4aa7fbd8ae9cfd50ee67f3130327aba941",
+            "94d35e66e3e940e07180aba391cfe7eba8689cc2fe5c57f8ab5149a7346921b8",
+            "739ff4d16c34783c002346bed659eaf1bf4d781ab7d2f0452268cf152a48316a",
+            "53f5d69ecc71c098f7bf6427ee1ddb5efd3708d6723023495738d6f2da9d470c",
+            "bbd33b9507f7c8e14a4dc239b2a5771c2f7b47961a6c164a4da4f3ce4add12f5",
+            "89345a741013c466baebaa323b0535eb8feb0a5b3225eadaa6a9901fe638238e",
+            "42d1e8a8155706426c40352899770af8431aa697bd3c22c77e75f642891893c7",
+            "3791545b88c4aab1cec1c345e56b4777fefd1c1b4b2ff954f4f4cca107802932",
+            "3c66e983ea90d1a0213fa3b45d1da37980ad801733c23eb6b06a3a7310cb3a7c",
+            "9d48ecd6eeba015bbf9318776118461b8d237020cb5256016cc46dd87a5db93a",
+            "610ce5a424388f176538fac1843280e2892de86ff198e6432166e90ad572a920",
+            "9cbf90264e4f24676c77c84aabc5fb995dc5b359468de6e948f54ede7fff1a8f",
+            "52c292e91c215eb66859a42e5cacbe1b0b0bfb8dbbf2f28441d0f486049ce659",
+            "ffd435c6a19d9385d1af3bbc836ccb02357f76288e548e9d5fe9a31ffda1b394",
+            "21475e7cf8badae085c279989e6d42061c53181c2db9e800c8901af508771869",
+            "6661e028e79eba4a480239fc11566aedf485b42fb21291da801d85b1a84f09b9",
+            "8467f522983a8eed778887a737688cb258bfbdbfc173d5a54995d51b4903abb7",
+            "63fa19e04d563818fe23726d67498e19147b1f28d39531f19723cfc6bf0bd44a",
+            "32ac5aa459691e572d4ba20bee595aff2580f6b6e47091a640d790a82ab2c79a",
+            "962e9c2a9ad09e1059626af8daa9b2578ec1d5a76365f8b3b6da23bae2433cc0",
+            "b6c20399440268fb086264e448ec7e94113607b10d7f9aaa5df558309bcfd4c9",
+        ],
+    ),
+    (
+        "bento",
+        &[
+            "73042f8b7b7c052a589778f3d319ce2a224b98369ea7b6e1e4e1911e5c67ba25",
+            "34117f6ed4efd0394b74dbdf4c12757b8edb2f94506591cae7529567d300b6eb",
+            "d13fe9ed5a17b1a9341606e2b31f91d74f0f228041883d9871e2cd299094a561",
+            "4426796a9744171fa20585aa4fdcadea984466d9fc5bbfba90e1b095b388e5df",
+            "59fc7c2058dee677de487c566ecac4639bddeb94e4100d3865af1ad24741fdf9",
+            "525f1f725db0155e8d395bf738d6cafed37a0de2b05edc5dfaf3cc08b9c160ef",
+            "279935aecee7fd38bc7cca2ff2b2e389fd9e2f5f521617f857dae9abd3ca66ed",
+            "8e786a837252267bad9867e8f188a42c229b2a273478ad9cc7248fe996d62a4f",
+            "7fde4e0ba35b413767d045c2aab4cceb64e14f617aed9e05e5e5324792770591",
+            "9eacbfc016582de7d40deaf20a03fb8f8c69909f05c14114b636da49dc67424f",
+            "3d31b6259be8c7e153c14a41a6842f892711bf39339903080ac495b1fb53d963",
+            "5db3d082634b68ad7d96917e9120724d88ee03529359938cfa36832f5c11bd56",
+            "692999f613d73fa2a41e451b11f0ea47d61c8cd05a19d468e78061428154e835",
+            "f0e7105d19f993829355c75887e226f2834d58c3314614af1df467a843223999",
+            "06948ddb4d6eeb200a8f625bd2c24a2a9b1dbc59a92f570bdc73407f8ce6436f",
+            "fa7aefc16ad95209a7b4a0171c04135312ce65b96c9fe6bca197f785033b5476",
+            "e22c4f5a2d11660a7a9b8cfba37f941c698f25e33e042d999b0b57fe224cb25f",
+            "c94d01e9e5b361b0459c69688247e17f313c82cea3a02af33f014382190cd152",
+            "bd26a28c7dacf2cca52c58982c30c24ee76b4da7a574b57d61e8479c0e54dc8e",
+            "49026a33710bcc6b4e718ea18c4e5b63b2b37166f5e8c50434a025d9650bc582",
+            "4cb57a028c7a5681d1e4b88fb9b2c05cf296a16c6a8f57014e309b3f4ba2785f",
+            "62f5defd8e549909f4f1a503fd4919b589ab0ee01dd863df76cda57abcc3b888",
+            "ea4a43ed2f011b1ac4f1e79e89d0cee9a034fad492c9bf46d6d2586e3782168c",
+            "18da3adfc0983acaa1de7e7951f990926aae2bce424c63e8384263d955468312",
+            "22f6e094348547ef0e71c718d49fcc87a8ea96c8222aeb59ad1f6fd4924e55ec",
+            "3aba02ba86b0e79f7d8de9f1af74763e2fa15e871471ed241ed62692d76fafe3",
+            "4227e18cd7ffde7ea1974dd96044dfc137c5bcc71dc16070cd29fcbba5bdc806",
+            "52a4922d36150059d1bf0f127f3df7f45a9d2ce3764970bbfa0b5f7eb2fbe20c",
+        ],
+    ),
+    (
+        "terminal",
+        &[
+            "cb21b14af919c7311d6049d9ab4d04449059b9bfaa010326b0120effa32f56e0",
+            "d229ebbf585b2d98c94aae22fff256412d7d1b96e433f4424d0021215b993c88",
+            "27fd3ac2dac8d76a3b5ee1457e23b5ffcbb27592ecf5133bcddf889559e1c923",
+            "2177b18b92f4b4b385f84148765e35367e1b141fcd42aef5bd70453f2f91fc06",
+            "297cde2ed99d71a88a17486541cd6f6bb9e2f44ca7fc7c138fede60ddc61ebf2",
+            "b1d9cbc5ffcfc5d219b8fd863ef18c9fe1b8204568be69a5feca4929ebd970b7",
+            "20f690a9805b2a6e990fc666217ec32bb14d0e9d6595de8d2e4721681684f243",
+            "d12d23dc3f0a2da4f85b679552915a6457144b7d9b1f9d1e1c1e7895dd78c5d7",
+            "47ce3dfa522970dfa2717a994d45f2bd5f354a54e0440fd67713a675511f5230",
+        ],
+    ),
+    (
+        "magazine",
+        &[
+            "3573e9fbf51525608af6edb78f0458b069df8218917227d09bdb0fc6619d10f7",
+            "8189b0593ee79613a05ca0cd4f1e172086a867860366e5015fe4bce7e2edd2f1",
+            "ba02fe464a5ab7581f03cd50dce483be6dadba86c908e33c0d490c66c5760282",
+            "83eb867c64c4809ef7c8c6a9e8f46baa15af19f7146fe8a67bfb71be72e9c7b9",
+            "8b15b677c3d364dca85703408aa2d6ce4d0fcfdb51af82cd5e001008ca03ed17",
+            "95eec46b34053a662e6a06d16d29f17b1abbb2cd7b0fa9ffc2480468abf718bb",
+            "c10197ce9620c1a3004799517287ec618422c6c431d4fde972e33f472b3be1ba",
+            "3b20c6ff0e0620b18f72c0f4f5c19ffd45da4606df4b9c75c1316355f927fcf0",
+            "69fa0bd43fea1c045d30dfc906e79802a203f47ef31b806bb8f4a991a0ff3989",
+            "926a9b011e55aace96f34ad8e940bff605def4d54dcf57d46dc89f5b37417c7b",
+        ],
+    ),
+    (
+        "academic",
+        &[
+            "c3870c4852c60003415be20a9b0a1dfad5bf20655906c00c81562dfbe2544559",
+            "52786ced85652ddb4c1da123a1f2de721991a3e1c92da37fb940cc49acce2a81",
+            "730ac39afa2004f01036987b72ec43927280cb1d52df2b07eeba9b69d18c2e5c",
+            "b1a8c13ba9c5cb984a86da0e3078013a61513a5be0927a015f3cb45fadb353c2",
+            "99e4bf5611d3f8209642bcdf4eae519e5a7929f881d22560b7eb8e08d588cb65",
+            "9a692e0451c2e271b0578d210f5876673b73c68d9efd775410275cb3d2b7ef57",
+            "04aed39b34e7f8c24a251bd3de9fa7312b969182a91770da0ce2c7f6885d5d31",
+            "1138b0e7b7053dc1dc763647224755138f2fc73787269c5908eb2df8eb84d515",
+            "fe3c3185eaac2f6baa13ee8a4e56cf14a79c24a7c847033f102a67474608bd8e",
+        ],
+    ),
+];
+
+/// The bundled theme `content` (a `base.html`) is an unedited copy of, in
+/// any released version.
+pub(crate) fn legacy_bundled_theme(content: &str) -> Option<&'static str> {
+    bundled_theme_for_hash(&template_hash(content))
+}
+
+/// The bundled theme a `base.html` is an unedited copy of (any version).
+fn bundled_theme_for_hash(hash: &str) -> Option<&'static str> {
+    LEGACY_THEME_HASHES
+        .iter()
+        .find(|(_, hashes)| hashes.contains(&hash))
+        .map(|(name, _)| *name)
+}
+
+/// Replace `templates/base.html` with the current version of its bundled
+/// theme when it is an unedited copy of any earlier version, so the site
+/// moves to the theme that includes seite's partials (`seite/head.html`,
+/// ...) and gets SEO/GEO fixes automatically from then on. An edited copy
+/// that does not include the partials is kept, with a one-time notice
+/// showing how to adopt them.
+fn check_bundled_theme_base(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let rel = format!("{template_dir}/base.html");
+    let path = root.join(&rel);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let hash = template_hash(&content);
+    let current = crate::themes::all()
+        .into_iter()
+        .find(|t| template_hash(t.base_html) == hash);
+    if current.is_some() {
+        return (Vec::new(), Vec::new());
+    }
+    if let Some(theme) = bundled_theme_for_hash(&hash).and_then(crate::themes::by_name) {
+        return (
+            vec![UpgradeAction::Update {
+                path,
+                content: theme.base_html.to_string(),
+                description: format!(
+                    "{rel} ({} theme, now with seite's SEO/search partials)",
+                    theme.name
+                ),
+            }],
+            Vec::new(),
+        );
+    }
+    if content.contains("seite/head.html") {
+        return (Vec::new(), Vec::new());
+    }
+    (
+        Vec::new(),
+        vec![Notice {
+            key: format!("theme-partials:{rel}"),
+            text: format!(
+                "Kept {rel} (edited since seite wrote it). It has its own copy of the SEO head, so it gets no automatic SEO/GEO updates. To adopt seite's partials, replace the SEO tags after <title>, the search box and the search script with:\n{}\nSee `seite docs templates` (section \"seite partials\").",
+                crate::templates::SEITE_PARTIALS_SNIPPET
+            ),
+        }],
+    )
+}
+
+/// A message `seite upgrade` shows once per project (recorded in
+/// `.seite/config.json` `notices_shown`), never under `--check`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Notice {
+    key: String,
+    text: String,
+}
+
+/// AGENTS.md sections seite 0.20 generated for features 0.21 removed (the
+/// `/theme-builder`, `/brand-identity` and `/landing-page` skills, the dev
+/// server REPL), exactly as 0.20.x wrote them (`src/scaffold/legacy/`), with
+/// whether each is a skill section (replaced by the `/seite` pointer).
+const LEGACY_SECTIONS: &[(&str, bool)] = &[
+    (include_str!("../scaffold/legacy/repl.md"), false),
+    (
+        include_str!("../scaffold/legacy/landing-page-builder.md"),
+        true,
+    ),
+    (include_str!("../scaffold/legacy/theme-builder.md"), true),
+    (include_str!("../scaffold/legacy/brand-identity.md"), true),
+];
+
+/// The line that replaces the removed skill sections.
+const SEITE_DESIGN_POINTER: &str = "Design workflows: `/seite theme`, `/seite brand`, `/seite landing` (Codex: `$seite theme|brand|landing`) replace the old `/theme-builder`, `/brand-identity`, and `/landing-page` skills.";
+
+fn normalize_ws(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The line range `[start, end)` of the section headed by `heading` (a
+/// markdown heading line): up to the next heading of the same or a higher
+/// level, outside code fences.
+fn section_range(lines: &[&str], heading: &str) -> Option<(usize, usize)> {
+    let level = heading.chars().take_while(|c| *c == '#').count();
+    let start = lines.iter().position(|l| l.trim_end() == heading)?;
+    let mut in_fence = false;
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        let hashes = line.chars().take_while(|c| *c == '#').count();
+        if !in_fence && hashes > 0 && hashes <= level && line[hashes..].starts_with(' ') {
+            return Some((start, i));
+        }
+    }
+    Some((start, lines.len()))
+}
+
+/// Remove [`LEGACY_SECTIONS`] still exactly as seite wrote them (whitespace
+/// aside) from project instructions, putting [`SEITE_DESIGN_POINTER`] where
+/// the first skill section was (unless `/seite brand` is already mentioned).
+/// Returns the new content (`None` when nothing is removed) and the headings
+/// of legacy sections the user edited (kept).
+fn prune_legacy_sections(content: &str) -> (Option<String>, Vec<String>) {
+    let mut text = content.to_string();
+    let mut edited = Vec::new();
+    let mut changed = false;
+    let mut pointer_needed = !content.contains("/seite brand");
+    for (legacy, is_skill) in LEGACY_SECTIONS {
+        let heading = legacy.lines().next().unwrap_or_default().trim_end();
+        let lines: Vec<&str> = text.lines().collect();
+        let Some((start, end)) = section_range(&lines, heading) else {
+            continue;
+        };
+        if normalize_ws(&lines[start..end].join("\n")) != normalize_ws(legacy) {
+            edited.push(heading.trim_start_matches('#').trim().to_string());
+            continue;
+        }
+        let mut out: Vec<&str> = lines[..start].to_vec();
+        if *is_skill && pointer_needed {
+            out.push(SEITE_DESIGN_POINTER);
+            out.push("");
+            pointer_needed = false;
+        }
+        out.extend_from_slice(&lines[end..]);
+        let trailing_newline = text.ends_with('\n');
+        text = out.join("\n");
+        if trailing_newline {
+            text.push('\n');
+        }
+        changed = true;
+    }
+    (changed.then_some(text), edited)
+}
+
+/// Remove 0.20's legacy AGENTS.md sections (see [`prune_legacy_sections`]);
+/// edited ones are kept with a one-time notice.
+fn check_legacy_sections(root: &Path) -> (Vec<UpgradeAction>, Vec<Notice>) {
+    let path = project_instructions_path(root);
+    let Ok(content) = fs::read_to_string(&path) else {
+        return (vec![], vec![]);
+    };
+    let (pruned, edited) = prune_legacy_sections(&content);
+    let notices = edited
+        .into_iter()
+        .map(|heading| Notice {
+            key: format!("kept-legacy-section:{heading}"),
+            text: format!(
+                "Kept the \"{heading}\" section in AGENTS.md (edited since seite wrote it); it describes a feature seite no longer ships (`/seite` covers it), so remove it when you no longer need it."
+            ),
+        })
+        .collect();
+    let actions = match pruned {
+        Some(_) => vec![UpgradeAction::PruneLegacySections {
+            root: root.to_path_buf(),
+            description: "Project instructions (removed sections for the retired /theme-builder, /brand-identity, /landing-page skills and the serve REPL)".into(),
+        }],
+        None => vec![],
+    };
+    (actions, notices)
+}
+
+/// Bring `.seite/docs/` up to date (see [`harness::local_docs_plan`]): write
+/// missing and (for another seite version's docs) changed pages, delete
+/// pages this version doesn't ship.
+fn check_local_docs(root: &Path) -> Vec<UpgradeAction> {
+    let (files, removes) = harness::local_docs_plan(root);
+    let mut actions: Vec<UpgradeAction> = removes
+        .into_iter()
+        .map(|path| {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            UpgradeAction::Remove {
+                path,
+                description: format!("{rel} (no longer part of seite's docs)"),
+            }
+        })
+        .collect();
+    let pages = files
+        .iter()
+        .filter(|(p, _)| p.extension().is_some_and(|e| e == "md"))
+        .count();
+    if !files.is_empty() {
+        let version = meta::format_version(meta::binary_version());
+        let description = if pages == 0 {
+            format!(
+                "{}/ (version stamp for seite {version})",
+                harness::LOCAL_DOCS_DIR
+            )
+        } else {
+            format!(
+                "{}/ ({} doc page{} for seite {version})",
+                harness::LOCAL_DOCS_DIR,
+                pages,
+                if pages == 1 { "" } else { "s" },
+            )
+        };
+        actions.push(UpgradeAction::WriteFiles { description, files });
+    }
+    actions
+}
+
+/// Add seite's machine-local paths (`.seite/docs/`, `.seite/dev.json`) to
+/// `.gitignore` when missing (add-only; created if there is none).
+fn check_gitignore_local_state(root: &Path) -> Vec<UpgradeAction> {
+    let path = root.join(".gitignore");
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let present = |entry: &str| {
+        let bare = entry.trim_start_matches('/').trim_end_matches('/');
+        existing.lines().any(|l| {
+            let l = l.trim();
+            l.trim_start_matches('/').trim_end_matches('/') == bare
+        })
+    };
+    let missing: Vec<&str> = harness::GITIGNORE_LOCAL_STATE
+        .iter()
+        .copied()
+        .filter(|e| !present(e))
+        .collect();
+    if missing.is_empty() {
+        return vec![];
+    }
+    let mut content = String::new();
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        content.push('\n');
+    }
+    for entry in &missing {
+        content.push_str(entry);
+        content.push('\n');
+    }
+    vec![UpgradeAction::Append {
+        path,
+        content,
+        description: format!(".gitignore ({})", missing.join(", ")),
+    }]
 }
 
 /// Extract the `# seite-skill-version: N` value from a SKILL.md file.
@@ -1122,56 +3054,6 @@ fn check_deploy_workflows(root: &Path) -> Vec<UpgradeAction> {
 /// via version.txt). Kept as a no-op to avoid breaking the upgrade step chain.
 fn check_deploy_version_pinning(_root: &Path) -> Vec<UpgradeAction> {
     vec![]
-}
-
-/// Ensure the project instructions have an MCP server section.
-fn check_claude_md_mcp(root: &Path) -> Vec<UpgradeAction> {
-    let path = project_instructions_path(root);
-    if !path.exists() {
-        return vec![];
-    }
-
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    // Already has MCP section — nothing to do
-    if content.contains("## MCP Server") {
-        return vec![];
-    }
-
-    let section = r#"
-
-## MCP Server
-
-This project includes an MCP server that AI tools can connect to for structured
-access to site content, documentation, themes, and build tools.
-
-The server is declared in `.mcp.json` (and pre-approved in
-`.claude/settings.json`). Claude Code starts it when it opens this project;
-the first time, it may ask you to approve the project's MCP server.
-No API keys required.
-
-**Available tools:** `seite_build`, `seite_create_content`, `seite_get_page`,
-`seite_update_frontmatter`, `seite_search`, `seite_content_stats`,
-`seite_list_templates`, `seite_apply_theme`, `seite_create_collection`,
-`seite_lookup_docs`
-
-**Available resources:** `seite://docs/*` (seite documentation),
-`seite://content/*` (site content), `seite://themes` (themes),
-`seite://config` (site configuration), `seite://mcp-config` (MCP settings)
-
-The MCP server provides typed, structured access to your site — AI tools work
-with seite concepts (collections, content items, themes) rather than parsing
-raw files.
-"#;
-
-    vec![UpgradeAction::Append {
-        path,
-        content: section.to_string(),
-        description: "Project instructions (added MCP Server section)".into(),
-    }]
 }
 
 /// Ensure `public/` directory exists for root-level files.
@@ -1300,8 +3182,8 @@ fn check_gitignore_dist_subdomains(root: &Path) -> Vec<UpgradeAction> {
 
 /// A `Create` action for a rules file that is missing from `dir`.
 ///
-/// Rules files are created only when missing — never overwritten — so user
-/// edits survive upgrades.
+/// Existing rules files are refreshed only when still exactly as seite wrote
+/// them ([`check_rules_refresh`]), so user edits survive upgrades.
 fn missing_rule(
     root: &Path,
     dir: &str,
@@ -1388,7 +3270,10 @@ aliases:
 /// Bundled themes are auto-upgraded, but custom `templates/base.html` files need
 /// the user to add the Atom link manually.
 fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
-    let base_html = root.join("templates/base.html");
+    let template_dir = crate::config::SiteConfig::load(&root.join("seite.toml"))
+        .map(|c| c.build.template_dir)
+        .unwrap_or_else(|_| "templates".to_string());
+    let base_html = root.join(template_dir).join("base.html");
     if !base_html.exists() {
         return vec![]; // Using bundled theme — auto-upgraded
     }
@@ -1398,8 +3283,13 @@ fn check_atom_autodiscovery_template(root: &Path) -> Vec<UpgradeAction> {
         Err(_) => return vec![],
     };
 
-    // Skip if already has Atom autodiscovery
-    if content.contains("application/atom+xml") {
+    // Skip if already has Atom autodiscovery (directly or via seite's head
+    // partial), or is an unedited bundled theme that `check_bundled_theme_base`
+    // replaces with the current, partial-based version.
+    if content.contains("application/atom+xml")
+        || content.contains("seite/head.html")
+        || legacy_bundled_theme(&content).is_some()
+    {
         return vec![];
     }
 
@@ -1630,9 +3520,9 @@ impl InstructionsBlock {
     }
 }
 
-/// Keep AGENTS.md's per-agent MCP table and rules index in sync with the
-/// agent selection.
-fn check_instructions_blocks(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+/// Keep AGENTS.md's per-agent setup table and rules index in sync with the
+/// agent selection (the table shows MCP config when `mcp`).
+fn check_instructions_blocks(root: &Path, agents: &[Agent], mcp: bool) -> Vec<UpgradeAction> {
     let path = project_instructions_path(root);
     let Ok(content) = fs::read_to_string(&path) else {
         return vec![];
@@ -1642,11 +3532,11 @@ fn check_instructions_blocks(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction
         (
             InstructionsBlock {
                 id: harness::MCP_SETUP_BLOCK,
-                body: harness::mcp_setup_table(agents),
-                heading: "## MCP Setup per Agent",
+                body: harness::mcp_setup_table(agents, mcp),
+                heading: "## Agent setup",
                 skip_if_contains: None,
             },
-            "Project instructions (per-agent MCP setup table)",
+            "Project instructions (per-agent setup table)",
         ),
         (
             InstructionsBlock {
@@ -1706,15 +3596,33 @@ fn check_mcp_servers_json(root: &Path, rel: &str, agent: &str) -> Vec<UpgradeAct
     }]
 }
 
+/// Replace `old` in an allow list (only an exact match, i.e. the rule seite
+/// generated) with `new` at the same position, skipping rules already there.
+/// `true` when `old` was found.
+fn replace_rule(allow: &mut Vec<serde_json::Value>, old: &str, new: &[&str]) -> bool {
+    let Some(pos) = allow.iter().position(|v| v == old) else {
+        return false;
+    };
+    allow.remove(pos);
+    let mut at = pos;
+    for rule in new {
+        if !allow.iter().any(|v| v == rule) {
+            allow.insert(at, serde_json::json!(rule));
+            at += 1;
+        }
+    }
+    true
+}
+
 /// Create `.cursor/cli.json`, or add seite's allow rules to an existing one
-/// (other rules, and any deny list, are kept).
-fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
+/// (other rules, and any deny list, are kept). `Mcp(seite:*)` only with `mcp`.
+fn check_cursor_cli_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
     let rel = ".cursor/cli.json";
     let path = root.join(rel);
     if !path.exists() {
         return vec![UpgradeAction::Create {
             path,
-            content: harness::pretty_json(&harness::cursor_cli_json()),
+            content: harness::pretty_json(&harness::cursor_cli_json(mcp)),
             description: format!("{rel} (Cursor CLI permissions for seite)"),
         }];
     }
@@ -1737,10 +3645,19 @@ fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
         return vec![];
     };
     let mut additions = Vec::new();
-    for rule in harness::CURSOR_ALLOW {
-        if !allow.iter().any(|v| v == rule) {
-            allow.push(serde_json::json!(rule));
+    let narrow = harness::cursor_shell_allow();
+    let narrow_refs: Vec<&str> = narrow.iter().map(String::as_str).collect();
+    if replace_rule(allow, harness::CURSOR_LEGACY_SHELL_ALLOW, &narrow_refs) {
+        additions.push(format!(
+            "Narrowed {} to the allowed seite subcommands in {rel}",
+            harness::CURSOR_LEGACY_SHELL_ALLOW
+        ));
+    }
+    let mcp_rule = mcp.then(|| harness::CURSOR_MCP_ALLOW.to_string());
+    for rule in mcp_rule.into_iter().chain(harness::cursor_allow()) {
+        if !allow.iter().any(|v| *v == rule) {
             additions.push(format!("Added {rule} to {rel}"));
+            allow.push(serde_json::json!(rule));
         }
     }
     if additions.is_empty() {
@@ -1753,46 +3670,72 @@ fn check_cursor_cli_json(root: &Path) -> Vec<UpgradeAction> {
     }]
 }
 
-/// Create `opencode.json`, or merge into an existing one: add `mcp.seite` if
-/// missing, and the permission block only when there's no `permission` key.
-/// Every other key is kept.
-fn check_opencode_json(root: &Path) -> Vec<UpgradeAction> {
+/// Create `opencode.json`, or merge into an existing one: the permission
+/// block only when there's no `permission` key, and (with `mcp`) `mcp.seite`
+/// if missing. Every other key is kept.
+fn check_opencode_json(root: &Path, mcp: bool) -> Vec<UpgradeAction> {
     let path = root.join("opencode.json");
     if !path.exists() {
         if root.join("opencode.jsonc").exists() {
             human::warning(
-                "opencode.jsonc exists; add the seite MCP server to it manually (see seite.sh/docs/mcp)",
+                "opencode.jsonc exists; add seite's permissions to it manually (see seite.sh/docs/agent)",
             );
             return vec![];
         }
         return vec![UpgradeAction::Create {
             path,
-            content: harness::pretty_json(&harness::opencode_json()),
-            description: "opencode.json (seite MCP server + permissions for OpenCode)".into(),
+            content: harness::pretty_json(&harness::opencode_json(mcp)),
+            description: "opencode.json (permissions for OpenCode)".into(),
         }];
     }
     let Some(mut json) = read_json_object(&path) else {
         human::warning(
-            "opencode.json isn't plain JSON (comments?); add the seite MCP server to it manually",
+            "opencode.json isn't plain JSON (comments?); add seite's permissions to it manually",
         );
         return vec![];
     };
     let mut additions = Vec::new();
-    let mcp = json
-        .entry("mcp".to_string())
-        .or_insert_with(|| serde_json::json!({}));
-    if let Some(mcp) = mcp.as_object_mut() {
-        if !mcp.contains_key(harness::MCP_SERVER) {
-            mcp.insert(
-                harness::MCP_SERVER.to_string(),
-                harness::opencode_mcp_entry(),
-            );
-            additions.push("Added mcp.seite to opencode.json".to_string());
+    if mcp {
+        let mcp_block = json
+            .entry("mcp".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(mcp_block) = mcp_block.as_object_mut() {
+            if !mcp_block.contains_key(harness::MCP_SERVER) {
+                mcp_block.insert(
+                    harness::MCP_SERVER.to_string(),
+                    harness::opencode_mcp_entry(),
+                );
+                additions.push("Added mcp.seite to opencode.json".to_string());
+            }
         }
     }
     if !json.contains_key("permission") {
         json.insert("permission".to_string(), harness::opencode_permission());
         additions.push("Added seite permission defaults to opencode.json".to_string());
+    } else if let Some(bash) = json
+        .get_mut("permission")
+        .and_then(|p| p.get_mut("bash"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        // seite 0.20's `"seite theme*": "allow"` also allowed `theme create`
+        // (a nested agent session): swap it, if untouched, for the narrow rules.
+        if bash.get(harness::OPENCODE_LEGACY_THEME_RULE) == Some(&serde_json::json!("allow")) {
+            let entries: Vec<(String, serde_json::Value)> =
+                std::mem::take(bash).into_iter().collect();
+            for (key, value) in entries {
+                if key == harness::OPENCODE_LEGACY_THEME_RULE {
+                    for rule in harness::OPENCODE_THEME_RULES {
+                        bash.insert((*rule).to_string(), serde_json::json!("allow"));
+                    }
+                } else {
+                    bash.insert(key, value);
+                }
+            }
+            additions.push(format!(
+                "Narrowed \"{}\" to `seite theme apply|list` in opencode.json",
+                harness::OPENCODE_LEGACY_THEME_RULE
+            ));
+        }
     }
     if additions.is_empty() {
         return vec![];
@@ -1805,7 +3748,7 @@ fn check_opencode_json(root: &Path) -> Vec<UpgradeAction> {
 }
 
 /// Create `.codex/config.toml`, or add `[mcp_servers.seite]` to an existing
-/// one with a comment-preserving edit.
+/// one with a comment-preserving edit (only with `--mcp`).
 fn check_codex_config(root: &Path) -> Vec<UpgradeAction> {
     let rel = ".codex/config.toml";
     let path = root.join(rel);
@@ -1835,37 +3778,84 @@ fn check_codex_config(root: &Path) -> Vec<UpgradeAction> {
     }
 }
 
-/// Create the CLAUDE.md `@AGENTS.md` shim when Claude Code is selected for a
-/// project that doesn't have one.
-fn check_claude_shim(root: &Path) -> Vec<UpgradeAction> {
-    let claude = root.join("CLAUDE.md");
-    if claude.exists() || !root.join("AGENTS.md").exists() {
+/// Create an instructions shim (`CLAUDE.md`, `GEMINI.md`) that imports
+/// AGENTS.md, for an agent that needs one, when the project has none.
+/// `agents_md_planned`: an earlier action of this run creates AGENTS.md.
+fn check_instructions_shim(
+    root: &Path,
+    agent: Agent,
+    agents_md_planned: bool,
+) -> Vec<UpgradeAction> {
+    let Some(name) = agent.spec().instructions_shim else {
+        return vec![];
+    };
+    let shim = root.join(name);
+    if shim.exists() || !(agents_md_planned || root.join("AGENTS.md").exists()) {
         return vec![];
     }
     vec![UpgradeAction::Create {
-        path: claude,
+        path: shim,
         content: crate::cli::agent_instructions::CLAUDE_SHIM.to_string(),
-        description: "CLAUDE.md (@AGENTS.md import for Claude Code)".into(),
+        description: format!("{name} (@AGENTS.md import for {})", agent.label()),
+    }]
+}
+
+/// Create AGENTS.md (as `seite init` writes it) for a site with neither
+/// AGENTS.md nor CLAUDE.md: 0.20's `seite workspace add` wrote none, and
+/// hand-made sites may have none. A CLAUDE.md, existing or written by an
+/// earlier action (`planned`), is left to the migration; a `seite.toml` that
+/// doesn't load, to the `config-invalid` notice.
+fn check_missing_instructions(
+    root: &Path,
+    agents: &[Agent],
+    mcp: bool,
+    planned: &[UpgradeAction],
+) -> Vec<UpgradeAction> {
+    let exists = |name: &str| fs::symlink_metadata(root.join(name)).is_ok();
+    let claude_md = root.join("CLAUDE.md");
+    let migrating = planned.iter().any(|a| {
+        matches!(a, UpgradeAction::MigrateAgentInstructions { .. }) || a.targets_path(&claude_md)
+    });
+    if exists("AGENTS.md") || exists("CLAUDE.md") || migrating {
+        return vec![];
+    }
+    let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) else {
+        return vec![];
+    };
+    vec![UpgradeAction::Create {
+        path: root.join("AGENTS.md"),
+        content: crate::cli::init::agents_md_for(&config, agents, mcp),
+        description: "AGENTS.md (project instructions for every coding agent)".into(),
     }]
 }
 
 /// Every harness file the selected agents need, merged into what exists.
-fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
+/// MCP config is only added or changed with `mcp`.
+fn check_agent_harness(
+    root: &Path,
+    agents: &[Agent],
+    mcp: bool,
+    agents_md_planned: bool,
+) -> Vec<UpgradeAction> {
     let features = SiteFeatures::detect(root);
     let mut actions = Vec::new();
 
+    for &agent in agents {
+        actions.extend(check_instructions_shim(root, agent, agents_md_planned));
+    }
     if agents.contains(&Agent::Claude) {
-        actions.extend(check_mcp_server(root));
+        actions.extend(check_claude_config(root, mcp));
         actions.extend(check_claude_rules(root));
-        actions.extend(check_landing_page_skill(root));
-        actions.extend(check_theme_builder_skill(root));
-        actions.extend(check_brand_identity_skill(root));
-        actions.extend(check_claude_skill(root, "seite"));
-        actions.extend(check_claude_shim(root));
+        actions.extend(check_launch_json(root));
+        for skill in harness::skills(features) {
+            actions.extend(check_skill(root, harness::CLAUDE_SKILLS_DIR, skill));
+        }
     }
     if agents.contains(&Agent::Cursor) {
-        actions.extend(check_mcp_servers_json(root, ".cursor/mcp.json", "Cursor"));
-        actions.extend(check_cursor_cli_json(root));
+        if mcp {
+            actions.extend(check_mcp_servers_json(root, ".cursor/mcp.json", "Cursor"));
+        }
+        actions.extend(check_cursor_cli_json(root, mcp));
         actions.extend(missing_rules(
             root,
             ".cursor/rules",
@@ -1873,68 +3863,191 @@ fn check_agent_harness(root: &Path, agents: &[Agent]) -> Vec<UpgradeAction> {
             harness::cursor_rule,
         ));
     }
-    if agents.contains(&Agent::Codex) {
+    if agents.contains(&Agent::Codex) && mcp {
         actions.extend(check_codex_config(root));
     }
     if agents.contains(&Agent::Opencode) {
-        actions.extend(check_opencode_json(root));
+        actions.extend(check_opencode_json(root, mcp));
+    }
+    if agents.contains(&Agent::Gemini) && mcp {
+        actions.extend(check_mcp_servers_json(
+            root,
+            ".gemini/settings.json",
+            "Gemini CLI",
+        ));
+    }
+    if agents.contains(&Agent::Antigravity) && mcp {
+        actions.extend(check_mcp_servers_json(
+            root,
+            ".agents/mcp_config.json",
+            "Antigravity CLI",
+        ));
+    }
+    if agents.contains(&Agent::Copilot) {
+        // Copilot reads Claude Code's `.mcp.json`; with Claude selected it is
+        // already handled (with the legacy settings.json migration) above.
+        if mcp && !agents.contains(&Agent::Claude) {
+            actions.extend(check_mcp_servers_json(root, ".mcp.json", "GitHub Copilot"));
+        }
+        actions.extend(missing_rules(
+            root,
+            ".github/instructions",
+            "instructions.md",
+            harness::copilot_rule,
+        ));
     }
     actions.extend(check_command_files(root, agents));
     if harness::uses_shared_skills(agents) {
-        actions.extend(
-            harness::skills(features)
-                .filter_map(|skill| check_skill(root, harness::SHARED_SKILLS_DIR, skill)),
-        );
+        for skill in harness::skills(features) {
+            actions.extend(check_skill(root, harness::SHARED_SKILLS_DIR, skill));
+        }
     }
-    if harness::uses_shared_rules(agents) {
+    if harness::uses_shared_rules(agents) || agents.contains(&Agent::Antigravity) {
         actions.extend(missing_rules(
             root,
-            ".agents/rules",
-            "md",
-            harness::claude_rule,
+            harness::SHARED_RULES.dir,
+            harness::SHARED_RULES.ext,
+            harness::agents_rule,
         ));
     }
-    actions.extend(check_instructions_blocks(root, agents));
+    actions.extend(check_local_docs(root));
+    actions.extend(check_gitignore_local_state(root));
+    let show_mcp = mcp || harness::mcp_configured(root, agents);
+    actions.extend(check_instructions_blocks(root, agents, show_mcp));
     actions
 }
 
-/// Add the turn-end `seite check` hook for each selected agent that isn't in
-/// `installed` (the ids recorded in `.seite/config.json`). Returns the new
-/// record: `installed` plus every agent whose hook is now in place (added
-/// here or already present). Agents whose config can't be merged are left
-/// out so a later upgrade retries them.
+/// Hooks for each selected agent, tier by tier. A tier not recorded in
+/// `installed` (`.seite/config.json` `hooks_installed`: `<agent>` = turn-end,
+/// `<agent>:post-edit` = after-edit) is added and recorded; a recorded tier is
+/// never re-added, so a hook the user deleted (or turned off) stays deleted.
+/// Recorded tiers still in place get refreshed (the missing-binary wrapper).
+/// Projects from seite 0.20 record only the turn-end tier: they get the
+/// after-edit tier only while their turn-end hook is still in place.
+/// Returns the new record. Tiers whose config can't be merged are left
+/// unrecorded so a later upgrade retries them.
 fn add_stop_hooks(
     root: &Path,
     agents: &[Agent],
     installed: &[String],
     actions: &mut Vec<UpgradeAction>,
 ) -> Vec<String> {
+    use crate::cli::harness_hooks::{installed_hooks, record_tier, tier_recorded, HookKind};
+
     let mut record = installed.to_vec();
     for &agent in agents {
-        if installed.iter().any(|id| id == agent.id()) {
+        let stop_recorded = tier_recorded(installed, agent, HookKind::Stop);
+        let mut kinds: Vec<HookKind> = Vec::new();
+        if !stop_recorded {
+            kinds.push(HookKind::Stop);
+        }
+        if !tier_recorded(installed, agent, HookKind::PostEdit)
+            && (!stop_recorded || installed_hooks(root, agent).0)
+        {
+            kinds.push(HookKind::PostEdit);
+        }
+        if stop_recorded {
+            refresh_hooks(root, agent, actions);
+        }
+        if kinds.is_empty() {
             continue;
         }
-        if add_stop_hook(root, agent, actions) {
-            record.push(agent.id().to_string());
+        if add_hook_tiers(root, agent, &kinds, actions) {
+            for kind in kinds {
+                record_tier(&mut record, agent, kind);
+            }
         }
     }
     record
 }
 
-/// Queue `agent`'s stop hook: merged into a pending action on the same file
-/// (e.g. the `.claude/settings.json` the MCP step creates), else created or
-/// merged on disk. `false` when the file can't be merged safely.
-fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) -> bool {
-    use crate::cli::harness_hooks::{hook_path, merge_hook, new_hook_file};
+/// Rewrite 0.20's bare hook commands of a recorded agent to the wrapped form.
+fn refresh_hooks(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) {
+    use crate::cli::harness_hooks::{hook_path, merge_hook_kinds};
+    if agent == Agent::Opencode {
+        return;
+    }
+    let path = root.join(hook_path(agent));
+    // Merging tiers that are already present only rewrites bare commands.
+    let (stop, post_edit) = crate::cli::harness_hooks::installed_hooks(root, agent);
+    let present: Vec<_> = [
+        (stop, crate::cli::harness_hooks::HookKind::Stop),
+        (post_edit, crate::cli::harness_hooks::HookKind::PostEdit),
+    ]
+    .into_iter()
+    .filter_map(|(on, kind)| on.then_some(kind))
+    .collect();
+    let updated = format!("Updated the seite check hooks in {}", hook_path(agent));
+    // Another step already rewrites this file (Claude's settings.json gets
+    // its permissions narrowed): refresh the hooks in that pending copy.
+    if let Some(action) = actions
+        .iter_mut()
+        .find(|a| a.replaced_path() == Some(path.as_path()))
+    {
+        match action {
+            UpgradeAction::Create {
+                content,
+                description,
+                ..
+            } => {
+                if let Ok(serde_json::Value::Object(mut doc)) = serde_json::from_str(content) {
+                    if let Ok(true) = merge_hook_kinds(agent, &mut doc, &present) {
+                        *content = pretty_json(&serde_json::Value::Object(doc));
+                        description.push_str(" + updated seite check hooks");
+                    }
+                }
+            }
+            UpgradeAction::MergeJson {
+                merged, additions, ..
+            } => {
+                if let Some(Ok(true)) = merged
+                    .as_object_mut()
+                    .map(|doc| merge_hook_kinds(agent, doc, &present))
+                {
+                    additions.push(updated);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+    let Some(mut doc) = read_json_object(&path) else {
+        return;
+    };
+    if let Ok(true) = merge_hook_kinds(agent, &mut doc, &present) {
+        actions.push(UpgradeAction::MergeJson {
+            path,
+            merged: serde_json::Value::Object(doc),
+            additions: vec![updated],
+        });
+    }
+}
+
+/// Queue `agent`'s `kinds` hooks: merged into a pending action on the same
+/// file (e.g. the `.claude/settings.json` the settings step creates), else
+/// created or merged on disk. `false` when the file can't be merged safely.
+fn add_hook_tiers(
+    root: &Path,
+    agent: Agent,
+    kinds: &[crate::cli::harness_hooks::HookKind],
+    actions: &mut Vec<UpgradeAction>,
+) -> bool {
+    use crate::cli::harness_hooks::{
+        hook_command, hook_path, is_outdated_opencode_plugin, merge_hook_kinds, opencode_plugin,
+        HookKind,
+    };
+    let merge_hook = |agent, doc: &mut serde_json::Map<String, serde_json::Value>| {
+        merge_hook_kinds(agent, doc, kinds)
+    };
 
     let rel = hook_path(agent);
     let path = root.join(rel);
-    let added = format!("Added the seite check stop hook to {rel}");
+    let added = format!("Added the seite check hooks to {rel}");
     let unmergeable = || {
         human::warning(&format!(
-            "{rel} can't be merged automatically; add a {} stop hook running `{}` by hand",
+            "{rel} can't be merged automatically; add a {} hook running `{}` by hand",
             agent.label(),
-            crate::cli::harness_hooks::hook_command(agent)
+            hook_command(agent, HookKind::Stop)
         ));
         false
     };
@@ -1956,7 +4069,7 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
                     Ok(changed) => {
                         if changed {
                             *content = pretty_json(&serde_json::Value::Object(doc));
-                            description.push_str(" + seite check stop hook");
+                            description.push_str(" + seite check hooks");
                         }
                         true
                     }
@@ -1978,16 +4091,35 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
         };
     }
 
-    if !path.exists() {
-        actions.push(UpgradeAction::Create {
-            path,
-            content: new_hook_file(agent),
-            description: format!("{rel} (seite check stop hook for {})", agent.label()),
-        });
+    if agent == Agent::Opencode {
+        // One plugin file holds both tiers.
+        let existing = fs::read_to_string(&path).ok();
+        if existing.is_none() && fs::symlink_metadata(&path).is_err() {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: opencode_plugin().to_string(),
+                description: format!("{rel} (seite check hooks for {})", agent.label()),
+            });
+        } else if kinds.contains(&HookKind::PostEdit)
+            && existing.is_some_and(|t| is_outdated_opencode_plugin(&t))
+        {
+            actions.push(UpgradeAction::Create {
+                path,
+                content: opencode_plugin().to_string(),
+                description: format!("{rel} (adds the after-edit check)"),
+            });
+        }
+        // Otherwise a plugin file already sits at our path; leave it alone.
         return true;
     }
-    if agent == Agent::Opencode {
-        // A plugin file already sits at our path; leave it alone.
+    if !path.exists() {
+        let mut doc = serde_json::Map::new();
+        let _ = merge_hook(agent, &mut doc);
+        actions.push(UpgradeAction::Create {
+            path,
+            content: pretty_json(&serde_json::Value::Object(doc)),
+            description: format!("{rel} (seite check hooks for {})", agent.label()),
+        });
         return true;
     }
     let Some(mut doc) = read_json_object(&path) else {
@@ -2006,9 +4138,263 @@ fn add_stop_hook(root: &Path, agent: Agent, actions: &mut Vec<UpgradeAction>) ->
         Err(_) => unmergeable(),
     }
 }
+#[cfg(test)]
+mod ci_trust_tests {
+    use super::*;
+
+    fn tailwind_site(target: &str) -> (tempfile::TempDir, crate::config::SiteConfig) {
+        let tmp = tempfile::tempdir().unwrap();
+        let toml = format!(
+            "collections = []\n[site]\ntitle = \"T\"\n[deploy]\ntarget = \"{target}\"\n[build.tailwind]\n"
+        );
+        fs::write(tmp.path().join("seite.toml"), &toml).unwrap();
+        let config: crate::config::SiteConfig = toml::from_str(&toml).unwrap();
+        (tmp, config)
+    }
+
+    #[test]
+    fn test_generated_workflows_carry_trust_env_only_with_tailwind() {
+        let (_tmp, config) = tailwind_site("github-pages");
+        for target in ["github-pages", "cloudflare", "netlify"] {
+            let mut config = config.clone();
+            config.deploy.target = toml::from_str::<toml::Value>(&format!("t = \"{target}\""))
+                .unwrap()["t"]
+                .clone()
+                .try_into()
+                .unwrap();
+            let with = crate::deploy::generate_workflow(&config);
+            assert!(with.contains(crate::deploy::TAILWIND_TRUST_ENV), "{with}");
+            config.build.tailwind = None;
+            let without = crate::deploy::generate_workflow(&config);
+            assert!(!without.contains("SEITE_TRUST_PROJECT"));
+            assert_eq!(
+                crate::deploy::workflow_core(&with),
+                crate::deploy::workflow_core(&without)
+            );
+        }
+        assert!(crate::deploy::generate_netlify_config(&config)
+            .contains("&& SEITE_TRUST_PROJECT=1 seite build"));
+    }
+
+    #[test]
+    fn test_ci_trust_updates_generated_and_advises_edited() {
+        let (tmp, config) = tailwind_site("netlify");
+        let root = tmp.path();
+        let mut plain = config.clone();
+        plain.build.tailwind = None;
+        fs::create_dir_all(root.join(".github/workflows")).unwrap();
+        // Generated before Tailwind, without the cron: still "generated".
+        let old =
+            crate::deploy::generate_workflow(&plain).replace(crate::deploy::SCHEDULE_TRIGGER, "");
+        fs::write(root.join(".github/workflows/deploy.yml"), &old).unwrap();
+        fs::write(
+            root.join("netlify.toml"),
+            crate::deploy::generate_netlify_config(&plain),
+        )
+        .unwrap();
+        let plan = ci_tailwind_trust_plan(root, &config);
+        assert_eq!(plan.len(), 2);
+        for step in &plan {
+            let CiTrust::Update { content, .. } = step else {
+                panic!("expected updates");
+            };
+            assert!(content.contains("SEITE_TRUST_PROJECT"), "{content}");
+        }
+        // The cron stays as the user had it (absent).
+        let notes = apply_ci_tailwind_trust(root, &config).unwrap();
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        let wf = fs::read_to_string(root.join(".github/workflows/deploy.yml")).unwrap();
+        assert!(!wf.contains("schedule:") && wf.contains("SEITE_TRUST_PROJECT"));
+        assert!(ci_tailwind_trust_plan(root, &config).is_empty());
+
+        // Edited files: advice, no changes.
+        fs::write(
+            root.join(".github/workflows/deploy.yml"),
+            format!("# mine\n{old}"),
+        )
+        .unwrap();
+        fs::write(root.join("netlify.toml"), "[build]\ncommand = \"make\"\n").unwrap();
+        let plan = ci_tailwind_trust_plan(root, &config);
+        assert!(plan.iter().all(|s| matches!(s, CiTrust::Edited { .. })));
+        assert!(check_ci_tailwind_trust(root).is_empty());
+        let notice = ci_tailwind_trust_notice(root).unwrap();
+        assert!(
+            notice.text.contains("SEITE_TRUST_PROJECT"),
+            "{}",
+            notice.text
+        );
+        // No Tailwind: nothing.
+        assert!(ci_tailwind_trust_plan(root, &plain).is_empty());
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    fn note(v: (u64, u64, u64), body: &str) -> ReleaseNote {
+        ReleaseNote {
+            version: v,
+            title: format!("v{}", meta::format_version(v)),
+            body: body.to_string(),
+        }
+    }
+
+    fn entries() -> Vec<ReleaseNote> {
+        // Newest first, like the embedded changelog.
+        vec![
+            note((0, 22, 0), "## Breaking\n\nRename `x` to `y`."),
+            note((0, 21, 1), "fix"),
+            note((0, 21, 0), "feature"),
+            note((0, 20, 0), "old"),
+        ]
+    }
+
+    fn site(from: (u64, u64, u64), changes: &[&str]) -> SiteOutcome {
+        SiteOutcome {
+            name: None,
+            from,
+            changes: changes.iter().map(|c| c.to_string()).collect(),
+            notices: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_select_notes_range_is_exclusive_of_from_and_inclusive_of_to() {
+        let all = entries();
+        let (notes, unknown) = select_notes(&all, (0, 20, 0), (0, 21, 1));
+        let versions: Vec<_> = notes.iter().map(|n| n.version).collect();
+        assert_eq!(versions, vec![(0, 21, 0), (0, 21, 1)]);
+        assert!(!unknown);
+    }
+
+    #[test]
+    fn test_select_notes_up_to_date_is_empty() {
+        let all = entries();
+        assert!(select_notes(&all, (0, 22, 0), (0, 22, 0)).0.is_empty());
+        assert!(select_notes(&all, (0, 23, 0), (0, 22, 0)).0.is_empty());
+    }
+
+    #[test]
+    fn test_select_notes_unknown_version_gives_everything_up_to_binary() {
+        let all = entries();
+        let (notes, unknown) = select_notes(&all, (0, 0, 0), (0, 21, 1));
+        assert!(unknown);
+        let versions: Vec<_> = notes.iter().map(|n| n.version).collect();
+        assert_eq!(versions, vec![(0, 20, 0), (0, 21, 0), (0, 21, 1)]);
+    }
+
+    #[test]
+    fn test_unknown_version_notes_are_capped_keeping_newest() {
+        let big = "x".repeat(20 * 1024);
+        let all = vec![
+            note((0, 22, 0), &big),
+            note((0, 21, 0), &big),
+            note((0, 20, 0), &big),
+        ];
+        let brief = build_brief(&[site((0, 0, 0), &[])], &all, (0, 22, 0)).unwrap();
+        assert!(brief.contains("### v0.22.0"));
+        assert!(brief.contains("### v0.21.0"));
+        assert!(
+            !brief.contains("### v0.20.0"),
+            "oldest dropped over the cap"
+        );
+        assert!(brief.contains("omitted for size"));
+    }
+
+    #[test]
+    fn test_launch_argv_is_short_and_never_auto_approves() {
+        use crate::cli::agent::Harness;
+        let brief = "SECRET BRIEF TEXT | & > \"quoted\"\nline two";
+        assert!(!LAUNCH_PROMPT.contains('\n'));
+        assert!(LAUNCH_PROMPT.len() < 120);
+        for h in [
+            Harness::Claude,
+            Harness::Codex,
+            Harness::Opencode,
+            Harness::Cursor,
+            Harness::Gemini,
+        ] {
+            let args = h.interactive_args(Some(LAUNCH_PROMPT));
+            assert!(args.iter().any(|a| a == LAUNCH_PROMPT), "{}", h.name());
+            for a in &args {
+                assert!(!a.contains(brief) && !a.contains("SECRET"));
+                for bad in ["--auto", "--force", "yolo", "dangerously", "--approve-mcps"] {
+                    assert!(!a.contains(bad), "{}: {a}", h.name());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_demote_headings_caps_at_six_levels() {
+        assert_eq!(demote_headings("##### deep", 3), "###### deep");
+    }
+
+    #[test]
+    fn test_demote_headings_skips_code_fences() {
+        let out = demote_headings("## A\n```\n# not a heading\n```\ntext", 2);
+        assert_eq!(out, "#### A\n```\n# not a heading\n```\ntext");
+    }
+
+    #[test]
+    fn test_build_brief_lists_changes_notes_and_instructions() {
+        let brief = build_brief(
+            &[site((0, 20, 0), &["Update skill"])],
+            &entries(),
+            (0, 22, 0),
+        )
+        .unwrap();
+        assert!(brief.contains("from v0.20.0 to v0.22.0"));
+        assert!(brief.contains("- Update skill"));
+        assert!(brief.contains("### v0.21.0"));
+        assert!(brief.contains("### v0.22.0"));
+        assert!(brief.contains("#### Breaking"));
+        assert!(!brief.contains("### v0.20.0"));
+        assert!(
+            brief.find("### v0.21.0").unwrap() < brief.find("### v0.22.0").unwrap(),
+            "oldest first"
+        );
+        assert!(brief.contains("`seite check`") && brief.contains("`seite build`"));
+        assert!(brief.contains("Keep the site's own customizations"));
+    }
+
+    #[test]
+    fn test_build_brief_unknown_version_says_so() {
+        let brief = build_brief(&[site((0, 0, 0), &[])], &entries(), (0, 22, 0)).unwrap();
+        assert!(brief.contains("an unknown version"));
+        assert!(brief.contains("every release note is included"));
+        assert!(brief.contains("### v0.22.0"));
+        assert!(brief.contains("### v0.21.1"));
+        assert!(brief.contains("### v0.20.0"));
+    }
+
+    #[test]
+    fn test_build_brief_none_when_nothing_changed_and_no_notes() {
+        assert!(build_brief(&[site((0, 22, 0), &[])], &entries(), (0, 22, 0)).is_none());
+        assert!(build_brief(&[], &entries(), (0, 22, 0)).is_none());
+        // Changes alone are enough.
+        assert!(build_brief(&[site((0, 22, 0), &["x"])], &entries(), (0, 22, 0)).is_some());
+    }
+
+    #[test]
+    fn test_build_brief_workspace_sections_per_site() {
+        let mut a = site((0, 21, 0), &["a change"]);
+        a.name = Some("blog".into());
+        let mut b = site((0, 20, 0), &[]);
+        b.name = Some("docs".into());
+        let brief = build_brief(&[a, b], &entries(), (0, 22, 0)).unwrap();
+        assert!(brief.contains("## Site `blog`"));
+        assert!(brief.contains("## Site `docs`"));
+        assert!(brief.contains("workspace"));
+    }
+
+    #[test]
+    fn test_choose_delivery() {
+        assert_eq!(choose_delivery(true, false, true), Delivery::Print);
+        assert_eq!(choose_delivery(false, true, true), Delivery::Print);
+        assert_eq!(choose_delivery(false, false, false), Delivery::Print);
+        assert_eq!(choose_delivery(false, false, true), Delivery::Launch);
+    }
+
     use super::*;
 
     #[test]
@@ -2042,7 +4428,7 @@ mod tests {
             content: "content".into(),
             description: "test file".into(),
         };
-        assert_eq!(action.describe(), vec!["test file"]);
+        assert_eq!(action.describe(), vec!["Write test file"]);
     }
 
     #[test]
@@ -2062,7 +4448,10 @@ mod tests {
             content: "new section".into(),
             description: "README.md (added section)".into(),
         };
-        assert_eq!(action.describe(), vec!["README.md (added section)"]);
+        assert_eq!(
+            action.describe(),
+            vec!["Append to README.md (added section)"]
+        );
     }
 
     #[test]
@@ -2086,44 +4475,6 @@ mod tests {
                 assert!(description.contains("config.json"));
             }
             _ => panic!("expected deferred version stamp action"),
-        }
-    }
-
-    #[test]
-    fn test_check_claude_md_mcp_no_file() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_claude_md_mcp_already_has_section() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join("CLAUDE.md"),
-            "# Project\n\n## MCP Server\nExists",
-        )
-        .unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_claude_md_mcp_needs_section() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(tmp.path().join("CLAUDE.md"), "# Project\nSome content").unwrap();
-        let actions = check_claude_md_mcp(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Append {
-                description,
-                content,
-                ..
-            } => {
-                assert!(description.contains("MCP Server"));
-                assert!(content.contains("MCP Server"));
-            }
-            _ => panic!("expected Append action"),
         }
     }
 
@@ -2187,9 +4538,9 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_no_claude_dir() {
+    fn test_check_claude_config_mcp_no_claude_dir() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         assert_eq!(actions.len(), 2);
         match (&actions[0], &actions[1]) {
             (
@@ -2247,7 +4598,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_migrates_legacy_settings() {
+    fn test_check_claude_config_mcp_migrates_legacy_settings() {
         let tmp = tempfile::TempDir::new().unwrap();
         write_settings(
             tmp.path(),
@@ -2259,7 +4610,7 @@ mod tests {
                 }
             }),
         );
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         let descriptions: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
         assert!(descriptions.iter().any(|d| d.contains(".mcp.json")));
         assert!(descriptions
@@ -2295,11 +4646,11 @@ mod tests {
         assert_eq!(settings["permissions"]["deny"][0], "Read(.env)");
 
         // Idempotent: a second run has nothing to do.
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_merges_into_existing_mcp_json() {
+    fn test_check_claude_config_mcp_merges_into_existing_mcp_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
@@ -2310,22 +4661,22 @@ mod tests {
             tmp.path(),
             serde_json::json!({ "permissions": { "allow": ["Read"] } }),
         );
-        apply_json_actions(check_mcp_server(tmp.path()));
+        apply_json_actions(check_claude_config(tmp.path(), true));
         let mcp = read_json(&tmp.path().join(".mcp.json"));
         assert_eq!(mcp["mcpServers"]["mine"]["command"], "mine");
         assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite");
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_keeps_legacy_servers_if_mcp_json_malformed() {
+    fn test_check_claude_config_mcp_keeps_legacy_servers_if_mcp_json_malformed() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join(".mcp.json"), "not json").unwrap();
         write_settings(
             tmp.path(),
             serde_json::json!({ "mcpServers": { "other": { "command": "other" } } }),
         );
-        apply_json_actions(check_mcp_server(tmp.path()));
+        apply_json_actions(check_claude_config(tmp.path(), true));
         assert_eq!(
             fs::read_to_string(tmp.path().join(".mcp.json")).unwrap(),
             "not json"
@@ -2335,19 +4686,19 @@ mod tests {
     }
 
     #[test]
-    fn test_check_mcp_server_fresh_init_is_noop() {
+    fn test_check_claude_config_mcp_fresh_init_is_noop() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
             serde_json::to_string_pretty(&crate::cli::harness::mcp_json()).unwrap(),
         )
         .unwrap();
-        write_settings(tmp.path(), crate::cli::harness::claude_settings());
-        assert!(check_mcp_server(tmp.path()).is_empty());
+        write_settings(tmp.path(), crate::cli::harness::claude_settings(true));
+        assert!(check_claude_config(tmp.path(), true).is_empty());
     }
 
     #[test]
-    fn test_check_mcp_server_malformed_json() {
+    fn test_check_claude_config_mcp_malformed_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(
             tmp.path().join(".mcp.json"),
@@ -2357,108 +4708,8 @@ mod tests {
         let claude_dir = tmp.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(claude_dir.join("settings.json"), "not json").unwrap();
-        let actions = check_mcp_server(tmp.path());
+        let actions = check_claude_config(tmp.path(), true);
         assert!(actions.is_empty()); // malformed JSON, don't touch
-    }
-
-    #[test]
-    fn test_check_landing_page_skill_no_pages_collection() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        // seite.toml without pages collection
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[site]\ntitle = \"Test\"\ndescription = \"\"\nbase_url = \"http://localhost\"\nlanguage = \"en\"\n\n[[collections]]\nname = \"posts\"\n",
-        )
-        .unwrap();
-        let actions = check_landing_page_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_landing_page_skill_with_pages() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join("seite.toml"),
-            "[site]\ntitle = \"Test\"\n\n[[collections]]\nname = \"pages\"\n",
-        )
-        .unwrap();
-        let actions = check_landing_page_skill(tmp.path());
-        assert!(!actions.is_empty());
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("landing-page"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_theme_builder_skill_missing() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_theme_builder_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("theme-builder"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_theme_builder_skill_up_to_date() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/theme-builder");
-        fs::create_dir_all(&skill_dir).unwrap();
-        // Write the bundled version so it's considered up-to-date
-        let bundled = include_str!("../scaffold/skill-theme-builder.md");
-        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
-        let actions = check_theme_builder_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_missing() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("brand-identity"));
-            }
-            _ => panic!("expected Create action"),
-        }
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_up_to_date() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir).unwrap();
-        let bundled = include_str!("../scaffold/skill-brand-identity.md");
-        fs::write(skill_dir.join("SKILL.md"), bundled).unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert!(actions.is_empty());
-    }
-
-    #[test]
-    fn test_check_brand_identity_skill_outdated() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skill_dir = tmp.path().join(".claude/skills/brand-identity");
-        fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\n# seite-skill-version: 0\n---\nOld content",
-        )
-        .unwrap();
-        let actions = check_brand_identity_skill(tmp.path());
-        assert_eq!(actions.len(), 1);
-        match &actions[0] {
-            UpgradeAction::Create { description, .. } => {
-                assert!(description.contains("updated v0"));
-            }
-            _ => panic!("expected Create action"),
-        }
     }
 
     #[test]
@@ -2943,24 +5194,24 @@ mod tests {
             "{\n  // comment\n  \"model\": \"x\"\n}\n",
         )
         .unwrap();
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
 
         // opencode.jsonc is never shadowed by a new opencode.json
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("opencode.jsonc"), "{}").unwrap();
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
     }
 
     #[test]
     fn test_check_opencode_json_merges_and_is_idempotent() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("opencode.json"), r#"{"theme":"dark"}"#).unwrap();
-        apply_json_actions(check_opencode_json(tmp.path()));
+        apply_json_actions(check_opencode_json(tmp.path(), true));
         let json = read_json(&tmp.path().join("opencode.json"));
         assert_eq!(json["theme"], "dark");
         assert_eq!(json["mcp"]["seite"]["type"], "local");
         assert_eq!(json["permission"]["bash"]["*"], "ask");
-        assert!(check_opencode_json(tmp.path()).is_empty());
+        assert!(check_opencode_json(tmp.path(), true).is_empty());
     }
 
     #[test]
@@ -2980,20 +5231,20 @@ mod tests {
             r#"{"permissions":{"allow":["Shell(git)"],"deny":["Shell(rm)"]},"editor":{"vimMode":true}}"#,
         )
         .unwrap();
-        apply_json_actions(check_cursor_cli_json(tmp.path()));
+        apply_json_actions(check_cursor_cli_json(tmp.path(), true));
         let json = read_json(&tmp.path().join(".cursor/cli.json"));
         let allow = json["permissions"]["allow"].as_array().unwrap();
         assert_eq!(allow[0], "Shell(git)");
         assert!(allow.iter().any(|v| v == "Mcp(seite:*)"));
         assert_eq!(json["permissions"]["deny"][0], "Shell(rm)");
         assert_eq!(json["editor"]["vimMode"], true);
-        assert!(check_cursor_cli_json(tmp.path()).is_empty());
+        assert!(check_cursor_cli_json(tmp.path(), true).is_empty());
     }
 
     #[test]
     fn test_check_cursor_cli_json_creates_missing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let actions = check_cursor_cli_json(tmp.path());
+        let actions = check_cursor_cli_json(tmp.path(), true);
         assert!(matches!(actions.as_slice(), [UpgradeAction::Create { .. }]));
     }
 
@@ -3043,15 +5294,21 @@ mod tests {
             tmp.path(),
             serde_json::json!({ "permissions": { "allow": ["Read"] } }),
         );
-        let mut actions = check_mcp_server(tmp.path());
+        let mut actions = check_claude_config(tmp.path(), true);
         let before = actions.len();
         let record = add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
-        assert_eq!(record, vec!["claude".to_string()]);
+        assert_eq!(record, ["claude", "claude:post-edit"]);
         // Merged into the MCP step's pending settings.json action, not a second one.
         assert_eq!(actions.len(), before);
         apply_json_actions(actions);
         let settings = read_json(&tmp.path().join(".claude/settings.json"));
-        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        assert_eq!(
+            stop_command(&settings),
+            crate::cli::harness_hooks::hook_command(
+                Agent::Claude,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
+        );
         let allow = settings["permissions"]["allow"].as_array().unwrap();
         assert!(allow.iter().any(|v| v == "mcp__seite"), "{settings}");
         assert_eq!(
@@ -3063,18 +5320,22 @@ mod tests {
     #[test]
     fn test_add_stop_hooks_merges_into_pending_settings_create() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let mut actions = check_mcp_server(tmp.path());
+        let mut actions = check_claude_config(tmp.path(), true);
         add_stop_hooks(tmp.path(), &[Agent::Claude], &[], &mut actions);
         let described: Vec<String> = actions.iter().flat_map(|a| a.describe()).collect();
         assert!(
-            described
-                .iter()
-                .any(|d| d.contains("seite check stop hook")),
+            described.iter().any(|d| d.contains("seite check hooks")),
             "{described:?}"
         );
         apply_json_actions(actions);
         let settings = read_json(&tmp.path().join(".claude/settings.json"));
-        assert_eq!(stop_command(&settings), "seite check --hook claude");
+        assert_eq!(
+            stop_command(&settings),
+            crate::cli::harness_hooks::hook_command(
+                Agent::Claude,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
+        );
         assert!(settings["enabledMcpjsonServers"].is_array());
     }
 
@@ -3102,19 +5363,462 @@ mod tests {
         )
         .unwrap();
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
-        assert_eq!(record, vec!["cursor".to_string()]);
+        assert_eq!(record, ["cursor", "cursor:post-edit"]);
         apply_json_actions(actions);
         let hooks = read_json(&root.join(".cursor/hooks.json"));
         assert_eq!(hooks["hooks"]["afterFileEdit"][0]["command"], "fmt");
         assert_eq!(
             hooks["hooks"]["stop"][0]["command"],
-            "seite check --hook cursor"
+            crate::cli::harness_hooks::hook_command(
+                Agent::Cursor,
+                crate::cli::harness_hooks::HookKind::Stop
+            )
         );
 
         // Already present: recorded without a change.
         let mut actions = Vec::new();
         let record = add_stop_hooks(root, &[Agent::Cursor], &[], &mut actions);
         assert!(actions.is_empty());
-        assert_eq!(record, vec!["cursor".to_string()]);
+        assert_eq!(record, ["cursor", "cursor:post-edit"]);
+    }
+
+    #[test]
+    fn test_check_default_templates_refreshes_untouched_post_template() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("templates")).unwrap();
+        // DEFAULT_POST as v0.20.x shipped it (f7a5557..0dc5dbc).
+        let legacy = include_str!("../../tests/fixtures/legacy-post-0.20.html");
+        assert!(DEFAULT_TEMPLATES[0]
+            .hashes
+            .contains(&template_hash(legacy).as_str()));
+        fs::write(
+            root.join("templates/post.html"),
+            legacy.replace('\n', "\r\n"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(notices.is_empty());
+        match actions.as_slice() {
+            [UpgradeAction::Update { content, .. }] => {
+                assert_eq!(content, crate::templates::DEFAULT_POST)
+            }
+            other => panic!("expected one update, got {}", other.len()),
+        }
+
+        // Current default: nothing to do.
+        fs::write(
+            root.join("templates/post.html"),
+            crate::templates::DEFAULT_POST,
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // Edited copy: kept, with a notice.
+        fs::write(
+            root.join("templates/post.html"),
+            format!("{legacy}<!-- mine -->"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 1);
+        assert!(notices[0].text.contains("templates/post.html"));
+    }
+
+    #[test]
+    fn current_default_templates_are_in_hash_table() {
+        for t in DEFAULT_TEMPLATES {
+            let hash = template_hash(t.current);
+            assert_eq!(
+                t.hashes.last(),
+                Some(&hash.as_str()),
+                "templates/{} changed: append \"{hash}\" to its DEFAULT_TEMPLATES hashes",
+                t.file
+            );
+            assert!(t.hashes.iter().all(|h| h.len() == 64));
+            // An edited copy of the current default needs no notice.
+            assert!(
+                t.has_change.iter().any(|m| t.current.contains(m)),
+                "{}",
+                t.file
+            );
+        }
+        let files: Vec<&str> = DEFAULT_TEMPLATES.iter().map(|t| t.file).collect();
+        assert_eq!(files, ["post.html", "index.html", "trust-index.html"]);
+    }
+
+    #[test]
+    fn current_rules_are_in_hash_table() {
+        use harness::RulesFormat;
+        let mut missing = Vec::new();
+        for rule in harness::RULES {
+            for format in [
+                RulesFormat::ClaudePaths,
+                RulesFormat::CursorMdc,
+                RulesFormat::CopilotInstructions,
+                RulesFormat::AgentsGlob,
+            ] {
+                let hash = template_hash(&format.render(rule));
+                let hashes = rule_hashes(rule.name, format);
+                if hashes.last() != Some(&hash.as_str()) {
+                    missing.push(format!("{} {format:?}: append \"{hash}\"", rule.name));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "rules changed; update RULE_HASHES:\n{}",
+            missing.join("\n")
+        );
+        for e in RULE_HASHES {
+            for h in e
+                .claude
+                .iter()
+                .chain(e.cursor)
+                .chain(e.copilot)
+                .chain(e.agents)
+            {
+                assert!(
+                    h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()),
+                    "{}",
+                    e.name
+                );
+            }
+        }
+        let names: Vec<&str> = RULE_HASHES.iter().map(|e| e.name).collect();
+        let rules: Vec<&str> = harness::RULES.iter().map(|r| r.name).collect();
+        assert_eq!(names, rules);
+    }
+
+    #[test]
+    fn test_check_rules_refresh_updates_unedited_and_keeps_edited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/rules")).unwrap();
+        fs::create_dir_all(root.join(".cursor/rules")).unwrap();
+        // features.md / features.mdc as `seite init` 0.20.2 wrote them.
+        let claude = include_str!("../../tests/fixtures/rules-0.20.2/features.md");
+        let cursor = include_str!("../../tests/fixtures/rules-0.20.2/features.mdc");
+        fs::write(root.join(".claude/rules/features.md"), claude).unwrap();
+        fs::write(root.join(".cursor/rules/features.mdc"), cursor).unwrap();
+        // An edited copy, and a current one.
+        let templates = harness::rule("templates").unwrap();
+        fs::write(
+            root.join(".claude/rules/templates.md"),
+            format!("{}\nMy own note.\n", harness::claude_rule(templates)),
+        )
+        .unwrap();
+        fs::write(
+            root.join(".claude/rules/i18n.md"),
+            harness::claude_rule(harness::rule("i18n").unwrap()),
+        )
+        .unwrap();
+
+        let (actions, notices) = check_rules_refresh(root, &[Agent::Claude, Agent::Cursor]);
+        let updated: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                UpgradeAction::Update { path, .. } => {
+                    Some(path.strip_prefix(root).unwrap().display().to_string())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            updated,
+            [".claude/rules/features.md", ".cursor/rules/features.mdc"]
+        );
+        let keys: Vec<&str> = notices.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["edited-rule:.claude/rules/templates.md"]);
+
+        // Deselected agents' rules are left alone.
+        let (actions, notices) = check_rules_refresh(root, &[Agent::Codex]);
+        assert!(actions.is_empty() && notices.is_empty());
+    }
+
+    #[test]
+    fn test_check_default_templates_refreshes_untouched_index_templates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("templates")).unwrap();
+        // DEFAULT_INDEX / DEFAULT_TRUST_INDEX as v0.20.x shipped them.
+        let index = include_str!("../../tests/fixtures/legacy-index-0.20.html");
+        let trust = include_str!("../../tests/fixtures/legacy-trust-index-0.20.html");
+        fs::write(root.join("templates/index.html"), index).unwrap();
+        fs::write(root.join("templates/trust-index.html"), trust).unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(notices.is_empty());
+        let updated: Vec<(String, &str)> = actions
+            .iter()
+            .map(|a| match a {
+                UpgradeAction::Update { path, content, .. } => (
+                    path.file_name().unwrap().to_string_lossy().into_owned(),
+                    content.as_str(),
+                ),
+                _ => panic!("expected updates"),
+            })
+            .collect();
+        assert_eq!(
+            updated,
+            [
+                ("index.html".to_string(), crate::templates::DEFAULT_INDEX),
+                (
+                    "trust-index.html".to_string(),
+                    crate::templates::DEFAULT_TRUST_INDEX
+                ),
+            ]
+        );
+
+        // Edited copies: kept, one notice each.
+        fs::write(
+            root.join("templates/index.html"),
+            format!("{index}<!-- mine -->"),
+        )
+        .unwrap();
+        fs::write(
+            root.join("templates/trust-index.html"),
+            format!("{trust}<!-- mine -->"),
+        )
+        .unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 2);
+        assert!(notices[0].text.contains("templates/index.html"));
+        assert!(notices[1].text.contains("templates/trust-index.html"));
+
+        // Edited copies that already carry the change: silent.
+        fs::write(
+            root.join("templates/index.html"),
+            format!("{}<!-- mine -->", crate::templates::DEFAULT_INDEX),
+        )
+        .unwrap();
+        fs::remove_file(root.join("templates/trust-index.html")).unwrap();
+        let (actions, notices) = check_default_templates(root);
+        assert!(actions.is_empty() && notices.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_body_hash_matches_every_rendering() {
+        let theme_builder = include_str!("../../tests/fixtures/legacy-skills/theme-builder-v2.md");
+        let design = include_str!("../../tests/fixtures/legacy-skills/design-prompts.md");
+        assert!(is_unmodified_legacy("theme-builder", theme_builder));
+        // Portable vs Claude frontmatter, CRLF line endings: same body.
+        let body = theme_builder.split_once("\n---\n").unwrap().1;
+        let other_fm = format!("---\nname: theme-builder\ndescription: x\n---\n{body}");
+        assert!(is_unmodified_legacy("theme-builder", &other_fm));
+        assert!(is_unmodified_legacy(
+            "theme-builder",
+            &theme_builder.replace('\n', "\r\n")
+        ));
+        // Rules: Claude `paths:` and Cursor MDC frontmatter.
+        assert!(is_unmodified_legacy(
+            "design-prompts",
+            &format!("---\npaths:\n  - \"templates/**\"\n---\n{design}")
+        ));
+        assert!(is_unmodified_legacy(
+            "design-prompts",
+            &format!("---\ndescription: \"d\"\nglobs: \"templates/**\"\nalwaysApply: false\n---\n{design}")
+        ));
+        // Edited, or the wrong name: not ours to delete.
+        assert!(!is_unmodified_legacy(
+            "theme-builder",
+            &theme_builder.replace("Phase 1", "Step 1")
+        ));
+        assert!(!is_unmodified_legacy("brand-identity", theme_builder));
+        for (_, hashes) in LEGACY_BODY_HASHES {
+            assert!(hashes.iter().all(|h| h.len() == 64));
+        }
+    }
+
+    #[test]
+    fn test_check_claude_config_without_mcp_leaves_mcp_alone() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_settings(
+            tmp.path(),
+            serde_json::json!({
+                "permissions": { "allow": ["Read"] },
+                "mcpServers": { "seite": { "command": "seite", "args": ["mcp"] } }
+            }),
+        );
+        let actions = check_claude_config(tmp.path(), false);
+        assert!(actions
+            .iter()
+            .all(|a| a.replaced_path() != Some(tmp.path().join(".mcp.json").as_path())));
+        apply_json_actions(actions);
+        let settings = read_json(&tmp.path().join(".claude/settings.json"));
+        assert!(settings.get("mcpServers").is_some(), "legacy block kept");
+        assert!(settings.get("enabledMcpjsonServers").is_none());
+        let allow = settings["permissions"]["allow"].as_array().unwrap();
+        assert!(!allow.iter().any(|v| v == "mcp__seite"));
+        assert!(allow.iter().any(|v| v == "Bash(seite context)"));
+        assert!(!tmp.path().join(".mcp.json").exists());
+    }
+
+    // --- bundled themes → seite partials ---
+
+    #[test]
+    fn current_bundled_themes_are_in_legacy_table() {
+        for theme in crate::themes::all() {
+            let hash = template_hash(theme.base_html);
+            let listed = LEGACY_THEME_HASHES
+                .iter()
+                .find(|(name, _)| *name == theme.name)
+                .map(|(_, hashes)| hashes.contains(&hash.as_str()))
+                .unwrap_or(false);
+            assert!(
+                listed,
+                "src/themes/{name}.tera changed: append \"{hash}\" to the \"{name}\" list in \
+                 LEGACY_THEME_HASHES (src/cli/upgrade.rs), so sites with the previous version \
+                 keep upgrading",
+                name = theme.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_legacy_theme_hashes_are_unique_across_themes() {
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0;
+        for (name, hashes) in LEGACY_THEME_HASHES {
+            assert!(crate::themes::by_name(name).is_some(), "{name}");
+            for hash in *hashes {
+                assert_eq!(hash.len(), 64, "{name}: {hash}");
+                assert!(seen.insert(*hash), "{hash} listed twice");
+                count += 1;
+            }
+        }
+        // Every version of every bundled theme since the first release.
+        assert!(count >= 185, "{count}");
+    }
+
+    fn write_base(root: &Path, content: &str) {
+        fs::create_dir_all(root.join("templates")).unwrap();
+        fs::write(root.join("templates/base.html"), content).unwrap();
+    }
+
+    #[test]
+    fn test_check_bundled_theme_base_replaces_every_unedited_version() {
+        // The 0.20.x themes (pre-partials) and dark as 0.2.4 shipped it.
+        let mut cases: Vec<(&str, &str)> = vec![(
+            "dark",
+            include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera"),
+        )];
+        for name in [
+            "default",
+            "minimal",
+            "dark",
+            "docs",
+            "brutalist",
+            "bento",
+            "landing",
+            "terminal",
+            "magazine",
+            "academic",
+        ] {
+            let path = format!(
+                "{}/tests/fixtures/themes-pre-partials/{name}.tera",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            let content: &'static str =
+                Box::leak(fs::read_to_string(path).unwrap().into_boxed_str());
+            cases.push((name, content));
+        }
+        for (name, legacy) in cases {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            // CRLF checkouts hash the same.
+            write_base(root, &legacy.replace('\n', "\r\n"));
+            let (actions, notices) = check_bundled_theme_base(root);
+            assert!(notices.is_empty(), "{name}");
+            match actions.as_slice() {
+                [UpgradeAction::Update {
+                    content,
+                    description,
+                    ..
+                }] => {
+                    assert_eq!(content, crate::themes::by_name(name).unwrap().base_html);
+                    assert!(content.contains(r#"{% include "seite/head.html" %}"#));
+                    assert!(description.contains(name), "{description}");
+                }
+                other => panic!("{name}: expected one update, got {}", other.len()),
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_bundled_theme_base_keeps_current_and_edited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // No base.html: nothing to do.
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // Current themes (blank included): nothing to do.
+        for theme in crate::themes::all() {
+            write_base(root, theme.base_html);
+            let (actions, notices) = check_bundled_theme_base(root);
+            assert!(actions.is_empty() && notices.is_empty(), "{}", theme.name);
+        }
+
+        // A custom design that includes the partials: nothing to do.
+        write_base(
+            root,
+            "<html><head>{% include \"seite/head.html\" %}</head><body></body></html>",
+        );
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty() && notices.is_empty());
+
+        // An edited legacy theme: kept, with the adoption snippet.
+        let legacy = include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera");
+        write_base(root, &format!("{legacy}<!-- mine -->"));
+        let (actions, notices) = check_bundled_theme_base(root);
+        assert!(actions.is_empty());
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].key, "theme-partials:templates/base.html");
+        assert!(notices[0].text.contains("Kept templates/base.html"));
+        assert!(notices[0]
+            .text
+            .contains(r#"{% include "seite/head.html" %}"#));
+        assert!(notices[0]
+            .text
+            .contains(r#"{% include "seite/scripts.html" %}"#));
+    }
+
+    #[test]
+    fn test_atom_hint_skips_partial_based_base() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_base(tmp.path(), crate::themes::default().base_html);
+        assert!(check_atom_autodiscovery_template(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn test_atom_hint_skips_unedited_bundled_theme_and_uses_template_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("CLAUDE.md"), "# Project").unwrap();
+        // dark as 0.2.4 shipped it has RSS but no Atom link; upgrade replaces
+        // it, so no hint about adding Atom by hand.
+        let legacy = include_str!("../../tests/fixtures/legacy-themes/dark-0ef6f5f.tera");
+        assert!(!legacy.contains("atom"));
+        write_base(root, legacy);
+        assert!(check_atom_autodiscovery_template(root).is_empty());
+
+        // The configured template_dir is the one checked.
+        fs::write(
+            root.join("seite.toml"),
+            "collections = []\n[site]\ntitle = \"T\"\n\n[build]\ntemplate_dir = \"layouts\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("layouts")).unwrap();
+        fs::write(
+            root.join("layouts/base.html"),
+            r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml">"#,
+        )
+        .unwrap();
+        assert_eq!(check_atom_autodiscovery_template(root).len(), 1);
+        fs::remove_file(root.join("layouts/base.html")).unwrap();
+        assert!(check_atom_autodiscovery_template(root).is_empty());
     }
 }

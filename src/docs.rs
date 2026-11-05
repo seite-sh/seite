@@ -25,12 +25,16 @@ pub fn all() -> Vec<DocPage> {
         i18n(),
         trust_center(),
         contact_forms(),
+        cms(),
         deployment(),
         agent(),
         workspace(),
         mcp_server(),
         theme_gallery(),
         cli_reference(),
+        audit(),
+        import(),
+        errors(),
         releases(),
     ];
     pages.sort_by_key(|p| p.weight);
@@ -148,6 +152,16 @@ fn contact_forms() -> DocPage {
     }
 }
 
+fn cms() -> DocPage {
+    DocPage {
+        slug: "cms",
+        title: "Git-based CMS",
+        description: "Set up Pages CMS or Decap CMS for your collections with `seite cms setup`.",
+        weight: 16,
+        raw_content: include_str!("../seite-sh/content/docs/cms.md"),
+    }
+}
+
 fn deployment() -> DocPage {
     DocPage {
         slug: "deployment",
@@ -161,8 +175,8 @@ fn deployment() -> DocPage {
 fn agent() -> DocPage {
     DocPage {
         slug: "agent",
-        title: "AI Agent",
-        description: "Use Claude Code as an AI assistant with full site context.",
+        title: "Coding Agents",
+        description: "Set up and run the site with Claude Code, Codex, OpenCode, Cursor, Gemini CLI or GitHub Copilot.",
         weight: 9,
         raw_content: include_str!("../seite-sh/content/docs/agent.md"),
     }
@@ -208,6 +222,114 @@ fn cli_reference() -> DocPage {
     }
 }
 
+fn audit() -> DocPage {
+    DocPage {
+        slug: "audit",
+        title: "Audit",
+        description: "seite audit: a free, offline SEO, AI-visibility (GEO), accessibility, content and performance audit of your built site, with the source file to fix for every finding.",
+        weight: 11,
+        raw_content: include_str!("../seite-sh/content/docs/audit.md"),
+    }
+}
+
+fn import() -> DocPage {
+    DocPage {
+        slug: "import",
+        title: "Import",
+        description: "seite import: move a WordPress, Ghost, Jekyll or Hugo site into seite in one command, with images, old-URL redirects and a report your coding agent can finish.",
+        weight: 12,
+        raw_content: include_str!("../seite-sh/content/docs/import.md"),
+    }
+}
+
+fn errors() -> DocPage {
+    DocPage {
+        slug: "errors",
+        title: "Error Reference",
+        description: "Every diagnostic code reported by seite check and seite build, and every seite audit finding: what it means, common causes, and how to fix it.",
+        weight: 12,
+        raw_content: include_str!("../seite-sh/content/docs/errors.md"),
+    }
+}
+
+/// The `## <code>` sections of the error reference, in document order, as
+/// `(code, body)` pairs (body without the heading). Backs `seite explain`.
+pub fn error_sections() -> Vec<(&'static str, &'static str)> {
+    let body = strip_frontmatter(errors().raw_content);
+    let mut sections: Vec<(&'static str, &'static str)> = Vec::new();
+    let mut current: Option<(&'static str, usize)> = None;
+    let mut offset = 0;
+    for line in body.split_inclusive('\n') {
+        if let Some(heading) = line.strip_prefix("## ") {
+            if let Some((code, start)) = current.take() {
+                sections.push((code, &body[start..offset]));
+            }
+            current = Some((heading.trim(), offset + line.len()));
+        }
+        offset += line.len();
+    }
+    if let Some((code, start)) = current {
+        sections.push((code, &body[start..]));
+    }
+    sections
+}
+
+/// One release's notes, from the changelog entries compiled into the binary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseNote {
+    pub version: (u64, u64, u64),
+    /// The entry's heading, e.g. `v0.21.0`.
+    pub title: String,
+    /// The entry's body (its own `##` headings included), trimmed.
+    pub body: String,
+}
+
+/// Every release note embedded in this binary, newest first (the changelog
+/// order).
+pub fn release_notes() -> Vec<ReleaseNote> {
+    parse_release_notes(strip_frontmatter(releases().raw_content))
+}
+
+/// Split the generated `releases.md` body into entries. An entry starts at a
+/// `## v<major>.<minor>.<patch>` line; other `##` lines belong to the body.
+pub fn parse_release_notes(text: &str) -> Vec<ReleaseNote> {
+    fn heading_version(line: &str) -> Option<(u64, u64, u64)> {
+        let word = line.strip_prefix("## ")?.split_whitespace().next()?;
+        let mut parts = word.trim_start_matches('v').split('.');
+        let v = (
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+            parts.next()?.parse().ok()?,
+        );
+        parts.next().is_none().then_some(v)
+    }
+
+    let mut notes: Vec<ReleaseNote> = Vec::new();
+    let mut in_fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+        }
+        match heading_version(line).filter(|_| !in_fence) {
+            Some(version) => notes.push(ReleaseNote {
+                version,
+                title: line.trim_start_matches("## ").trim().to_string(),
+                body: String::new(),
+            }),
+            None => {
+                if let Some(last) = notes.last_mut() {
+                    last.body.push_str(line);
+                    last.body.push('\n');
+                }
+            }
+        }
+    }
+    for note in &mut notes {
+        note.body = note.body.trim().to_string();
+    }
+    notes
+}
+
 fn releases() -> DocPage {
     DocPage {
         slug: "releases",
@@ -226,8 +348,8 @@ mod tests {
     fn test_all_returns_all_docs() {
         let docs = all();
         assert!(
-            docs.len() >= 15,
-            "Expected at least 15 docs, got {}",
+            docs.len() >= 18,
+            "Expected at least 18 docs, got {}",
             docs.len()
         );
     }
@@ -252,6 +374,23 @@ mod tests {
         assert!(by_slug("configuration").is_some());
         assert!(by_slug("getting-started").is_some());
         assert!(by_slug("cli-reference").is_some());
+        assert!(by_slug("audit").is_some());
+    }
+
+    #[test]
+    fn test_error_sections_parse_codes_and_bodies() {
+        let sections = error_sections();
+        assert!(sections.len() >= 18, "{}", sections.len());
+        for (code, body) in &sections {
+            assert!(
+                code.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "heading `{code}` is not a diagnostic code"
+            );
+            assert!(!body.contains("\n## "), "{code} swallowed the next section");
+            assert!(body.trim().len() > 40, "{code} has no explanation");
+        }
+        assert!(sections.iter().any(|(c, _)| *c == "broken-link"));
     }
 
     #[test]
@@ -296,5 +435,24 @@ mod tests {
         slugs.sort();
         slugs.dedup();
         assert_eq!(slugs.len(), docs.len(), "Duplicate slugs found");
+    }
+
+    #[test]
+    fn test_parse_release_notes_splits_on_version_headings_only() {
+        let text = "\n\n## v0.2.0\nbody two\n\n## A sub heading\nmore\n```\n## v9.9.9\n```\n\n## v0.1.0\nbody one\n";
+        let notes = parse_release_notes(text);
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].version, (0, 2, 0));
+        assert_eq!(notes[0].title, "v0.2.0");
+        assert!(notes[0].body.contains("## A sub heading"));
+        assert!(notes[0].body.contains("## v9.9.9"));
+        assert_eq!(notes[1].body, "body one");
+    }
+
+    #[test]
+    fn test_release_notes_embedded() {
+        let notes = release_notes();
+        assert!(!notes.is_empty());
+        assert!(notes.iter().any(|n| n.version == (0, 20, 2)));
     }
 }

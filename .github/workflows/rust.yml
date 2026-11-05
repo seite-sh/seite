@@ -31,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
@@ -40,18 +40,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - name: Test
         run: cargo test
+
+  # Windows-only code (cfg(windows)) never compiles on the Linux jobs; the
+  # release builds a Windows binary, so check it here, before a merge tags.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
+      - name: Check
+        run: cargo check --all-targets
 
   shellcheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: ShellCheck
-        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh scripts/generate-release-docs.sh scripts/prepare-release.sh
+        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh scripts/generate-release-docs.sh scripts/prepare-release.sh scripts/pkg-version.sh tests/pkg-version.sh
       - name: Test install.sh
         run: bash tests/install.sh
+      - name: Test pkg-version.sh
+        run: bash tests/pkg-version.sh
 
   deny:
     runs-on: ubuntu-latest
@@ -66,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - name: Check documentation
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -87,6 +100,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # master
         with:
           toolchain: "1.88"
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - name: Check MSRV
         run: cargo check

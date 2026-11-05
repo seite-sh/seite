@@ -3,6 +3,33 @@ use super::common::*;
 // --- workspace CLI ---
 
 #[test]
+fn test_workspace_add_writes_detected_timezone() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .env("TZ", "Asia/Tokyo")
+        .args(["workspace", "add", "blog", "--collections", "posts"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let toml = fs::read_to_string(tmp.path().join("sites/blog/seite.toml")).unwrap();
+    let site_table = toml.split("[[collections]]").next().unwrap();
+    assert!(
+        site_table.contains("\ntimezone = \"Asia/Tokyo\"\n"),
+        "{toml}"
+    );
+    page_cmd()
+        .args(["check", "--site", "blog"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+}
+
+#[test]
 fn test_workspace_init() {
     let tmp = TempDir::new().unwrap();
 
@@ -539,7 +566,7 @@ fn test_workspace_add_checks_real_sites_not_config_text() {
 
 // --- workspace upgrade ---
 
-/// A workspace with two sites added by `seite workspace add` (no
+/// A workspace with two sites as 0.20's `seite workspace add` left them (no
 /// `.seite/config.json`, so both start out pre-tracking).
 fn workspace_with_two_sites(tmp: &TempDir) {
     page_cmd()
@@ -548,11 +575,7 @@ fn workspace_with_two_sites(tmp: &TempDir) {
         .assert()
         .success();
     for site in ["blog", "docs"] {
-        page_cmd()
-            .args(["workspace", "add", site])
-            .current_dir(tmp.path())
-            .assert()
-            .success();
+        add_020_workspace_site(tmp.path(), site);
     }
 }
 
@@ -576,7 +599,10 @@ fn test_upgrade_from_workspace_root_upgrades_every_site() {
     for site in ["blog", "docs"] {
         let site_dir = tmp.path().join("sites").join(site);
         assert!(site_dir.join(".seite/config.json").exists(), "{site}");
-        assert!(site_dir.join(".mcp.json").exists(), "{site}");
+        assert!(
+            site_dir.join(".claude/skills/seite/SKILL.md").exists(),
+            "{site}"
+        );
     }
 
     page_cmd()
@@ -628,8 +654,14 @@ fn test_upgrade_workspace_site_filter() {
     assert_eq!(sites[0]["site"], "blog");
     assert_eq!(doc["data"]["applied"], true);
 
-    assert!(tmp.path().join("sites/blog/.mcp.json").exists());
-    assert!(!tmp.path().join("sites/docs/.mcp.json").exists());
+    assert!(tmp
+        .path()
+        .join("sites/blog/.claude/skills/seite/SKILL.md")
+        .exists());
+    assert!(!tmp
+        .path()
+        .join("sites/docs/.claude/skills/seite/SKILL.md")
+        .exists());
 }
 
 #[test]
@@ -643,6 +675,186 @@ fn test_upgrade_inside_workspace_site_upgrades_only_that_site() {
         .assert()
         .success();
 
-    assert!(tmp.path().join("sites/docs/.mcp.json").exists());
-    assert!(!tmp.path().join("sites/blog/.mcp.json").exists());
+    assert!(tmp
+        .path()
+        .join("sites/docs/.claude/skills/seite/SKILL.md")
+        .exists());
+    assert!(!tmp
+        .path()
+        .join("sites/blog/.claude/skills/seite/SKILL.md")
+        .exists());
+}
+
+#[test]
+fn test_agent_commands_at_workspace_root_ask_for_site() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_sites(&tmp);
+    for args in [
+        &["stats"][..],
+        &["templates"][..],
+        &["search", "hello"][..],
+        &["page", "content/posts/x.md"][..],
+    ] {
+        page_cmd()
+            .args(args)
+            .current_dir(tmp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "this is a workspace: pass --site <name>",
+            ))
+            .stderr(predicate::str::contains("blog, docs"));
+    }
+    page_cmd()
+        .arg("context")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("this is a workspace"));
+
+    // With --site, the commands work on that site.
+    for args in [&["stats"][..], &["templates"][..], &["context"][..]] {
+        page_cmd()
+            .args(["--site", "blog"])
+            .args(args)
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+    }
+    let (ok, doc) = run_json(tmp.path(), &["--site", "blog", "context"]);
+    assert!(ok);
+    assert!(doc["data"]["root"]
+        .as_str()
+        .unwrap()
+        .ends_with("sites/blog"));
+}
+
+#[test]
+fn test_workspace_add_writes_agent_files_like_init() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "blog",
+            "--collections",
+            "posts",
+            "--agents",
+            "claude,codex",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site_dir = tmp.path().join("sites/blog");
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(agents_md.contains("<!-- seite:context-rules -->"));
+    assert_eq!(
+        fs::read_to_string(site_dir.join("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+    // Only the selected agents: no Gemini shim.
+    assert!(!site_dir.join("GEMINI.md").exists());
+    assert!(site_dir.join(".claude/rules/features.md").is_file());
+    assert!(site_dir.join(".agents/skills/seite/SKILL.md").is_file());
+    assert!(site_dir.join(".codex/hooks.json").is_file());
+    let meta = fs::read_to_string(site_dir.join(".seite/config.json")).unwrap();
+    assert!(
+        meta.contains("\"claude\"") && meta.contains("\"codex\""),
+        "{meta}"
+    );
+    // What `seite upgrade` would give the site: nothing left to do.
+    page_cmd()
+        .args(["upgrade", "--check"])
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+}
+
+/// `workspace add --mcp` writes the MCP config like `seite init --mcp`, and
+/// the AGENTS.md setup table gets its MCP column.
+#[test]
+fn test_workspace_add_mcp_writes_mcp_config_and_column() {
+    let tmp = TempDir::new().unwrap();
+    page_cmd()
+        .args(["workspace", "init", "ws"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    page_cmd()
+        .args([
+            "workspace",
+            "add",
+            "blog",
+            "--collections",
+            "posts",
+            "--agents",
+            "claude",
+            "--mcp",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    let site_dir = tmp.path().join("sites/blog");
+    let mcp: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site_dir.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["seite"]["command"], "seite", "{mcp}");
+    let agents_md = fs::read_to_string(site_dir.join("AGENTS.md")).unwrap();
+    assert!(
+        agents_md.contains("| Agent | Config | MCP config | One-time step |"),
+        "{agents_md}"
+    );
+}
+
+#[test]
+fn test_workspace_deploy_refuses_github_pages_preview() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["blog"]);
+    let blog_toml = tmp.path().join("sites/blog/seite.toml");
+    let toml = fs::read_to_string(&blog_toml).unwrap();
+    assert!(toml.contains("github-pages"), "{toml}");
+
+    page_cmd()
+        .args(["deploy", "--preview", "--skip-checks", "--yes"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "GitHub Pages has no preview deploys",
+        ));
+}
+
+/// Workspace deploy refuses a GitHub Pages site on a non-main branch when
+/// auto-commit is on, like the standalone `seite deploy` (it would replace
+/// the live site); `--no-commit` deploys the working tree as asked.
+#[test]
+fn test_workspace_deploy_refuses_github_pages_from_feature_branch() {
+    let tmp = TempDir::new().unwrap();
+    init_workspace_with_sites(&tmp, &["blog"]);
+    super::deploy::git_repo_on_branch(tmp.path(), "feature");
+
+    page_cmd()
+        .args(["deploy", "--dry-run", "--skip-checks", "--yes"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "GitHub Pages has no preview deploys",
+        ));
+    page_cmd()
+        .args([
+            "deploy",
+            "--dry-run",
+            "--no-commit",
+            "--skip-checks",
+            "--yes",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Would deploy to github-pages"));
 }

@@ -7,28 +7,18 @@ paths:
 > **These are non-negotiable rules for every page on this site.**
 > They apply when writing content, creating templates, or asking the AI agent to build or redesign anything.
 
-### Every page `<head>` MUST include
+### The head comes from seite
 
-1. **Favicon** — `<link rel="icon" href="/favicon.ico">` (user places `favicon.ico` in `public/`)
-2. **Canonical URL** — `<link rel="canonical" href="{{ site.base_url }}{{ page.url | default(value='/') }}">`  (deduplicates indexed URLs)
-3. **Open Graph tags** — `og:type`, `og:url`, `og:title`, `og:description`, `og:site_name`, `og:locale`
-   - `og:type = article` when `page.collection` is set; `website` for the homepage
-   - `og:image` only when `page.image` is set — must be an absolute URL. Use `{% set _abs_image = page.image %}{% if not page.image is starting_with("http") %}{% set _abs_image = site.base_url ~ page.image %}{% endif %}` then reference `{{ _abs_image }}`
-   - `og:image:width` and `og:image:height` — include `1200` and `630` (standard social preview dimensions)
-   - `article:published_time` — emit when `page.collection` and `page.date` are set
-   - `article:modified_time` — emit when `page.collection` and `page.updated` are set
-4. **Twitter Card tags** — `twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`
-   - `twitter:card = summary_large_image` when `page.image` is set; `summary` otherwise
-   - `twitter:image` — same absolutization as `og:image` (use `_abs_image` variable)
-5. **JSON-LD structured data** — `<script type="application/ld+json">` block:
-   - `BlogPosting` for posts (include `datePublished`, `dateModified` if `page.updated` is set)
-   - `Article` for docs and other collection pages
-   - `WebSite` for the homepage/index
-   - `BreadcrumbList` for all collection pages (Home → Collection → Page)
-6. **Markdown alternate link** — `<link rel="alternate" type="text/markdown" title="Markdown" href="{{ site.base_url }}{{ page.url }}.md">` (LLM-native differentiator — must include `title` attribute)
-7. **llms.txt discovery** — `<link rel="alternate" type="text/plain" title="LLM Summary" href="/llms.txt">`
-8. **RSS autodiscovery** — `<link rel="alternate" type="application/rss+xml" ...>`
-9. **Language attribute** — `<html lang="{{ lang }}">` (already in bundled themes)
+`templates/base.html` includes seite's head partial right after `<title>`:
+
+```html
+<title>{% block title %}{{ site.title }}{% endblock %}</title>
+{% include "seite/head.html" %}
+```
+
+`seite/head.html` is managed by seite and updated with it. It renders: the description (`page.description`, else `site.description`), the canonical URL, Open Graph and Twitter Card tags (absolute `og:image` from `page.image`, `article:published_time`/`modified_time`), JSON-LD (`BlogPosting` for posts, `Article` for other collections, `WebSite` for the homepage, plus `BreadcrumbList`), `robots` from `page.robots`, RSS/Atom and `/llms.txt` links, the markdown alternate (only when `page.markdown_url` is set), hreflang links for translations, and the KaTeX stylesheet when math is on.
+
+The theme itself keeps: `<html lang="{{ lang }}">`, `<meta charset>`, the viewport meta, the favicon link (`/favicon.ico`, the file goes in `public/`) and `<title>{% block title %}…{% endblock %}</title>`.
 
 ### Per-page frontmatter best practices
 
@@ -39,8 +29,7 @@ paths:
 
 ### What NOT to do
 
-- Do not remove canonical, OG, Twitter Card, or JSON-LD blocks when customizing `base.html`
-- Do not use `site.description` directly for meta tags — always use `page.description | default(value=site.description)`
-- Do not hardcode URLs — always compose from `site.base_url ~ page.url`
-- Do not use raw `page.image` in OG/Twitter tags — always absolutize relative paths first
-
+- Do not remove `{% include "seite/head.html" %}` when customizing or redesigning `base.html`, and do not copy its contents into `base.html` (the copy stops getting fixes; `seite check` warns with `template-missing-seite-head`).
+- Do not add a second canonical, Open Graph, Twitter Card, or JSON-LD block in a theme: the partial already writes them. Page-specific extra tags go in `{% block head %}`.
+- Do not override `templates/seite/head.html` unless you accept maintaining the SEO head yourself.
+- Do not hardcode URLs in templates — compose them from `site.base_url`, `lang_prefix` and `page.url`.

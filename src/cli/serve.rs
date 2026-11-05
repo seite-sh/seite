@@ -35,6 +35,10 @@ pub struct ServeArgs {
     /// when stdin closes (e.g. `</dev/null` or a background job).
     #[arg(long)]
     pub no_repl: bool,
+
+    /// Start a new server even if `.seite/dev.json` records a live one
+    #[arg(long)]
+    pub force_new: bool,
 }
 
 /// Fail fast (before building) when an explicitly requested port is taken.
@@ -59,15 +63,155 @@ fn serve_until_interrupted(port: u16) -> ! {
     }
 }
 
+/// `.seite/dev.json` bookkeeping so `seite context` (and a second `seite serve`)
+/// can find the running dev server.
+mod devfile {
+    use std::path::{Path, PathBuf};
+
+    use crate::output::human;
+
+    pub fn path(root: &Path) -> PathBuf {
+        root.join(".seite").join("dev.json")
+    }
+
+    /// Write `{pid, port, url, started_at}` atomically (a fresh temp file
+    /// renamed over it), refusing a symlinked `.seite/` or `dev.json`.
+    pub fn write(root: &Path, pid: u32, port: u16, url: &str) -> anyhow::Result<()> {
+        let doc = serde_json::json!({
+            "pid": pid,
+            "port": port,
+            "url": url,
+            "started_at": chrono::Utc::now().to_rfc3339(),
+        });
+        crate::safe_fs::write(root, &path(root), serde_json::to_string_pretty(&doc)?)
+    }
+
+    /// Pid recorded in dev.json, if readable (never through a symlink).
+    pub fn read_pid(root: &Path) -> Option<u32> {
+        crate::safe_fs::guard(root, &path(root)).ok()?;
+        let raw = std::fs::read_to_string(path(root)).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+        u32::try_from(v.get("pid")?.as_u64()?).ok()
+    }
+
+    /// Remove dev.json only if it belongs to this process.
+    pub fn remove_if_ours(root: &Path) -> bool {
+        remove_if_pid(root, std::process::id())
+    }
+
+    pub fn remove_if_pid(root: &Path, pid: u32) -> bool {
+        read_pid(root) == Some(pid) && crate::safe_fs::remove(root, &path(root)).is_ok()
+    }
+
+    /// Removes dev.json (if ours) when dropped.
+    pub struct Guard {
+        root: PathBuf,
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            remove_if_ours(&self.root);
+        }
+    }
+
+    /// Record the running server; failure is a warning, never fatal. Also makes
+    /// Ctrl-C / SIGTERM / SIGHUP remove the file before exiting.
+    pub fn publish(root: &Path, port: u16, url: &str) -> Option<Guard> {
+        if let Err(e) = write(root, std::process::id(), port, url) {
+            human::warning(&format!("Could not write .seite/dev.json: {e:#}"));
+            return None;
+        }
+        install_signal_cleanup(root.to_path_buf());
+        Some(Guard {
+            root: root.to_path_buf(),
+        })
+    }
+
+    #[cfg(unix)]
+    fn install_signal_cleanup(root: PathBuf) {
+        use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+        let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP]) else {
+            return;
+        };
+        std::thread::spawn(move || {
+            if let Some(sig) = signals.forever().next() {
+                remove_if_ours(&root);
+                std::process::exit(128 + sig);
+            }
+        });
+    }
+
+    // No signal handler on Windows; a stale file is detected by the port probe.
+    #[cfg(not(unix))]
+    fn install_signal_cleanup(_root: PathBuf) {}
+}
+
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn serving_anyway() {
+    human::info(
+        "Serving anyway: fix the problem and save, the dev server rebuilds (`seite preview` lists the errors)",
+    );
+}
+
+/// The build `seite serve` runs before serving. A failure doesn't stop the
+/// server: it is printed, recorded, and shown in the browser overlay.
+fn initial_build(
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+) -> server::dev::BuildOutcome {
+    let opts = BuildOptions {
+        include_drafts: true,
+        incremental: false,
+    };
+    let started = std::time::Instant::now();
+    let result = build::build_site(config, paths, &opts);
+    match &result {
+        Ok(r) => human::success(&r.stats.human_display()),
+        Err(e) => {
+            human::error(&format!("Build failed: {e}"));
+            serving_anyway();
+        }
+    }
+    let scope = server::dev::SiteScope {
+        name: String::new(),
+        root: paths.root.clone(),
+        prefix: None,
+    };
+    server::dev::BuildOutcome::from_result(&result, &scope, elapsed_ms(started)).0
+}
+
+fn record_initial(handle: &server::ServerHandle, initial: Option<server::dev::BuildOutcome>) {
+    if let (Some(outcome), Some(dev)) = (initial, handle.dev()) {
+        dev.record_build(outcome, false);
+    }
+}
+
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3000;
 
 pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let host = args.host.as_deref().unwrap_or(DEFAULT_HOST);
+    let ws_root_opt = workspace::find_workspace_root(&cwd);
+    let dev_root = ws_root_opt.clone().unwrap_or_else(|| cwd.clone());
+
+    if !args.force_new {
+        if let Some(running) = crate::cli::context::running_dev_server(&dev_root).filter(|s| {
+            crate::server::remote::confirms(s, &dev_root, std::time::Duration::from_millis(800))
+        }) {
+            human::info(&format!(
+                "Dev server already running at {} (pid {}). Use --force-new to start another.",
+                running.url, running.pid
+            ));
+            return Ok(());
+        }
+    }
 
     // Check for workspace context
-    if let Some(ws_root) = workspace::find_workspace_root(&cwd) {
+    if let Some(ws_root) = ws_root_opt {
         let ws_config = workspace::WorkspaceConfig::load(&ws_root.join("seite-workspace.toml"))?;
 
         // Single-site serve: build and serve just that site standalone, baking
@@ -79,6 +223,8 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
                 .find_site(site_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown site '{site_name}' in workspace"))?;
             let (mut config, paths) = workspace::load_site_in_workspace(&ws_root, ws_site)?;
+            // The dev server previews scheduled content, like drafts.
+            config.build.future = true;
 
             let port = match args.port {
                 Some(p) => ensure_port_free(host, p)?,
@@ -92,17 +238,18 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
             };
             config.site.base_url = server::dev_base_url(host, port);
 
-            if args.build {
+            let initial = args.build.then(|| {
                 human::info(&format!("Building site '{site_name}'..."));
-                let opts = BuildOptions {
-                    include_drafts: true,
-                    incremental: false,
-                };
-                let result = build::build_site(&config, &paths, &opts)?;
-                human::success(&result.stats.human_display());
-            }
+                initial_build(&config, &paths)
+            });
 
             let handle = server::start(&config, &paths, host, port, true, false)?;
+            record_initial(&handle, initial);
+            let _dev = devfile::publish(
+                &dev_root,
+                handle.port(),
+                &server::dev_base_url(host, handle.port()),
+            );
 
             if args.no_repl {
                 serve_until_interrupted(handle.port());
@@ -120,19 +267,61 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
         }
 
         // Multi-site dev server: build every site (each keeps its base_url) and serve.
-        if args.build {
+        // A failed build is reported (and shown in the browser) instead of
+        // stopping the server.
+        let initial = if args.build {
             human::info("Building workspace...");
             let build_opts = workspace::build::WorkspaceBuildOptions {
                 include_drafts: true,
                 strict: false,
                 site_filter: None,
+                future: true,
             };
-            workspace::build::build_workspace(&ws_config, &ws_root, &build_opts)?;
-        }
+            let started = std::time::Instant::now();
+            let result = workspace::build::build_workspace(&ws_config, &ws_root, &build_opts);
+            let ms = elapsed_ms(started);
+            let outcomes = match result {
+                Ok(built) => built
+                    .site_results
+                    .iter()
+                    .map(|(name, r)| {
+                        let scope = server::dev::SiteScope {
+                            name: name.clone(),
+                            root: ws_config
+                                .find_site(name)
+                                .map_or_else(|| ws_root.clone(), |s| ws_root.join(&s.path)),
+                            prefix: ws_config.find_site(name).map(|s| PathBuf::from(&s.path)),
+                        };
+                        let outcome =
+                            server::dev::BuildOutcome::success(r.diagnostics.clone(), &scope, ms);
+                        (name.clone(), outcome)
+                    })
+                    .collect(),
+                Err(e) => {
+                    human::error(&format!("Build failed: {e:#}"));
+                    serving_anyway();
+                    vec![(
+                        String::new(),
+                        server::dev::BuildOutcome::failure_message(format!("{e:#}"), ms),
+                    )]
+                }
+            };
+            Some(outcomes)
+        } else {
+            None
+        };
 
         let port = args.port.unwrap_or(DEFAULT_PORT);
         let auto_increment = args.port.is_none();
         let handle = workspace::server::start(&ws_config, &ws_root, host, port, auto_increment)?;
+        if let Some(outcomes) = initial {
+            handle.dev().record_site_builds(outcomes, false);
+        }
+        let _dev = devfile::publish(
+            &dev_root,
+            handle.port(),
+            &server::dev_base_url(host, handle.port()),
+        );
 
         if args.no_repl {
             serve_until_interrupted(handle.port());
@@ -198,7 +387,14 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     }
 
     let mut config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    // The dev server previews scheduled (future-dated) content, like drafts.
+    config.build.future = true;
     let paths = config.resolve_paths(&cwd);
+    if let Some(line) = crate::content::schedule::hidden_summary(
+        &crate::content::schedule::hidden_pages(&config, &paths),
+    ) {
+        human::info(&line);
+    }
 
     // Resolve the exact port we'll bind *before* building, then point base_url
     // at that live address. Otherwise absolute URLs (og:image, canonical,
@@ -223,17 +419,18 @@ pub fn run(args: &ServeArgs, site_filter: Option<&str>) -> anyhow::Result<()> {
     };
     config.site.base_url = server::dev_base_url(host, port);
 
-    if args.build {
+    let initial = args.build.then(|| {
         human::info("Building site...");
-        let opts = BuildOptions {
-            include_drafts: true,
-            incremental: false,
-        };
-        let result = build::build_site(&config, &paths, &opts)?;
-        human::success(&result.stats.human_display());
-    }
+        initial_build(&config, &paths)
+    });
 
     let handle = server::start(&config, &paths, host, port, true, false)?;
+    record_initial(&handle, initial);
+    let _dev = devfile::publish(
+        &dev_root,
+        handle.port(),
+        &server::dev_base_url(host, handle.port()),
+    );
 
     if !args.no_repl {
         human::info("Type \"help\" for commands, \"stop\" to quit");
@@ -378,9 +575,14 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
 
         "theme" => {
             if args.is_empty() {
-                // List bundled themes
+                // List bundled themes: starters, then the gallery of examples
                 for t in crate::themes::all() {
-                    println!("  {} - {}", console::style(t.name).bold(), t.description);
+                    println!(
+                        "  {} - {} ({})",
+                        console::style(t.name).bold(),
+                        t.description,
+                        t.kind.as_str()
+                    );
                 }
                 // List installed themes
                 let project_root = std::path::PathBuf::from(".");
@@ -397,40 +599,7 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
                     }
                 }
             } else {
-                let name = &args[0];
-                // Try bundled first, then installed
-                let template_content: Option<String> = crate::themes::by_name(name)
-                    .map(|t| t.base_html.to_string())
-                    .or_else(|| {
-                        let project_root = std::path::PathBuf::from(".");
-                        crate::themes::installed_by_name(&project_root, name).map(|t| t.base_html)
-                    });
-
-                match template_content {
-                    Some(content) => {
-                        let template_dir = paths.templates.clone();
-                        let _ = std::fs::create_dir_all(&template_dir);
-                        match std::fs::write(template_dir.join("base.html"), content) {
-                            Ok(()) => {
-                                human::success(&format!("Applied theme '{name}'"));
-                                // Rebuild site to reflect the new theme
-                                human::info("Rebuilding site...");
-                                let opts = BuildOptions {
-                                    include_drafts: true,
-                                    incremental: false,
-                                };
-                                match build::build_site(config, paths, &opts) {
-                                    Ok(result) => human::success(&result.stats.human_display()),
-                                    Err(e) => human::error(&format!("Rebuild failed: {e}")),
-                                }
-                            }
-                            Err(e) => human::error(&format!("Failed to apply theme: {e}")),
-                        }
-                    }
-                    None => human::error(&format!(
-                        "Unknown theme '{name}'. Type 'theme' to list available themes."
-                    )),
-                }
+                repl_apply_theme(config, paths, &args[0]);
             }
         }
 
@@ -455,6 +624,38 @@ fn dispatch(line: &str, config: &SiteConfig, paths: &crate::config::ResolvedPath
     }
 
     LoopAction::Continue
+}
+
+/// REPL `theme <name>`: the same as `seite theme apply` (bundled first,
+/// then installed; a customized base.html is backed up, blank's stylesheet
+/// is written), then a rebuild. Returns whether the theme was applied.
+fn repl_apply_theme(config: &SiteConfig, paths: &crate::config::ResolvedPaths, name: &str) -> bool {
+    match crate::themes::apply_theme(&paths.root, &paths.templates, &paths.static_dir, name) {
+        Ok(applied) => {
+            if let Some(backup) = &applied.backup {
+                human::info(&format!(
+                    "Backed up your customized base.html to {}",
+                    backup.display()
+                ));
+            }
+            human::success(&format!("Applied theme '{name}'"));
+            // Rebuild site to reflect the new theme
+            human::info("Rebuilding site...");
+            let opts = BuildOptions {
+                include_drafts: true,
+                incremental: false,
+            };
+            match build::build_site(config, paths, &opts) {
+                Ok(result) => human::success(&result.stats.human_display()),
+                Err(e) => human::error(&format!("Rebuild failed: {e}")),
+            }
+            true
+        }
+        Err(e) => {
+            human::error(&format!("{e}. Type 'theme' to list available themes."));
+            false
+        }
+    }
 }
 
 fn cmd_new(
@@ -499,7 +700,7 @@ fn cmd_new(
 
     let slug = content::slug_from_title(title);
     let date = if collection.has_date {
-        Some(chrono::Local::now().date_naive())
+        Some(crate::content::schedule::today(config))
     } else {
         None
     };
@@ -511,7 +712,9 @@ fn cmd_new(
     };
 
     let filename = if collection.has_date {
-        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let date_str = crate::content::schedule::today(config)
+            .format("%Y-%m-%d")
+            .to_string();
         if let Some(lang) = lang_suffix {
             format!("{date_str}-{slug}.{lang}.md")
         } else {
@@ -552,6 +755,7 @@ fn cmd_agent(_config: &SiteConfig, _paths: &crate::config::ResolvedPaths, args: 
         },
         once: false,
         with: None,
+        auto_approve: false,
     };
     if let Err(e) = agent::run(&agent_args) {
         human::error(&format!("Agent failed: {e}"));
@@ -580,4 +784,93 @@ fn shell_split(input: &str) -> Vec<String> {
         tokens.push(current);
     }
     tokens
+}
+
+#[cfg(test)]
+mod devfile_tests {
+    #[test]
+    fn test_repl_theme_goes_through_apply_theme() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config: crate::config::SiteConfig =
+            toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
+        let paths = config.resolve_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), "<html>mine</html>").unwrap();
+
+        // blank: base.html replaced, customized one backed up, CSS written.
+        assert!(super::repl_apply_theme(&config, &paths, "blank"));
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            crate::themes::blank().base_html
+        );
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html.bak")).unwrap(),
+            "<html>mine</html>"
+        );
+        assert!(paths.static_dir.join("css/site.css").exists());
+
+        // Unknown or unsafe names are refused without writing.
+        assert!(!super::repl_apply_theme(&config, &paths, "nope"));
+        assert!(!super::repl_apply_theme(&config, &paths, "../evil"));
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            crate::themes::blank().base_html
+        );
+    }
+
+    use super::devfile;
+
+    #[test]
+    fn test_devfile_write_read_remove() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // .seite is created on demand
+        devfile::write(root, 4242, 3001, "http://localhost:3001").unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(devfile::path(root)).unwrap()).unwrap();
+        assert_eq!(v["pid"], 4242);
+        assert_eq!(v["port"], 3001);
+        assert_eq!(v["url"], "http://localhost:3001");
+        assert!(v["started_at"].is_string());
+        assert_eq!(devfile::read_pid(root), Some(4242));
+        // no leftover temp file
+        let leftovers = std::fs::read_dir(root.join(".seite"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name() != "dev.json")
+            .count();
+        assert_eq!(leftovers, 0);
+
+        // Not ours: kept.
+        assert!(!devfile::remove_if_ours(root));
+        assert!(devfile::path(root).exists());
+        // Ours: removed.
+        assert!(devfile::remove_if_pid(root, 4242));
+        assert!(!devfile::path(root).exists());
+        assert_eq!(devfile::read_pid(root), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_devfile_refuses_symlinked_seite_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let outside = tempfile::TempDir::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), tmp.path().join(".seite")).unwrap();
+        let err = devfile::write(tmp.path(), 1, 3000, "x").unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"), "{err:#}");
+        assert!(!outside.path().join("dev.json").exists());
+        // Removal doesn't follow it either.
+        std::fs::write(outside.path().join("dev.json"), r#"{"pid":1}"#).unwrap();
+        assert!(!devfile::remove_if_pid(tmp.path(), 1));
+        assert!(outside.path().join("dev.json").exists());
+    }
+
+    #[test]
+    fn test_devfile_guard_removes_own_file_on_drop() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let guard = devfile::publish(tmp.path(), 1, "http://localhost:1");
+        assert!(devfile::path(tmp.path()).exists());
+        drop(guard);
+        assert!(!devfile::path(tmp.path()).exists());
+    }
 }

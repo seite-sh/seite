@@ -3,10 +3,8 @@
 
 {% block extra_css %}
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 
     :root {
-        --serif: 'Instrument Serif', 'Georgia', serif;
     }
 
     @keyframes tags-fade-in {
@@ -25,21 +23,12 @@
     }
 
     /* ── Header ── */
-    .tgs-eyebrow {
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        color: var(--green);
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        margin-bottom: 0.75rem;
-    }
 
     .tgs-page h1 {
-        font-family: var(--serif);
-        font-size: clamp(2rem, 4.5vw, 2.8rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -0.02em;
+        font-family: var(--display);
+        font-size: clamp(1.75rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.025em;
         color: var(--heading);
         margin: 0 0 2.5rem;
         line-height: 1.1;
@@ -59,8 +48,8 @@
         background: var(--bg-card);
         border: 1px solid var(--border);
         padding: 0.45rem 0.85rem;
-        border-radius: 6px;
-        font-size: 0.875rem;
+        border-radius: var(--radius);
+        font-size: 0.9rem;
         color: var(--text-muted);
         text-decoration: none;
         transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -74,11 +63,11 @@
 
     .tgs-tag-count {
         font-family: var(--mono);
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
         background: var(--bg-raised);
         padding: 0.1rem 0.4rem;
-        border-radius: 3px;
+        border-radius: var(--radius-sm);
         transition: background 0.15s, color 0.15s;
     }
     .tgs-tag:hover .tgs-tag-count {
@@ -96,7 +85,6 @@
 
 {% block content %}
 <div class="tgs-page">
-    <div class="tgs-eyebrow">Browse</div>
     <h1>{{ t.tags | default(value="Tags") }}</h1>
 
     <div class="tgs-cloud">

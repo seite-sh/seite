@@ -1,11 +1,10 @@
-use std::path::PathBuf;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 
 use crate::config::SiteConfig;
-use crate::error::PageError;
 use crate::output::human;
-use crate::platform::npm_cmd;
 use crate::themes;
 
 #[derive(Args)]
@@ -16,8 +15,25 @@ pub struct ThemeArgs {
 
 #[derive(Subcommand)]
 pub enum ThemeCommand {
-    /// List available themes (bundled and installed)
+    /// List available themes: starters, the gallery of examples, installed
     List,
+
+    /// Start a custom design: scaffold the blank starter (templates/base.html
+    /// plus static/css/site.css) and print how to design it with your agent
+    New {
+        /// Name for your theme (used when you export it later)
+        name: Option<String>,
+
+        /// Replace a customized base.html (it is backed up first)
+        #[arg(long)]
+        force: bool,
+
+        /// Start a Tailwind CSS theme: add [build.tailwind] to seite.toml, write
+        /// the entry CSS (static/css/tailwind.css) and link the compiled
+        /// stylesheet from base.html
+        #[arg(long)]
+        tailwind: bool,
+    },
 
     /// Apply a theme to the current site
     Apply {
@@ -25,7 +41,8 @@ pub enum ThemeCommand {
         name: String,
     },
 
-    /// Generate a custom theme using AI (requires Claude Code)
+    /// Design a custom theme with your coding agent (or point you to
+    /// impeccable when it is installed)
     Create {
         /// Design description for the theme (e.g. "dark glassmorphism with teal accents")
         prompt: String,
@@ -57,6 +74,13 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
         ThemeCommand::List => {
             run_list()?;
         }
+        ThemeCommand::New {
+            name,
+            force,
+            tailwind,
+        } => {
+            run_new(name.as_deref(), *force, *tailwind)?;
+        }
         ThemeCommand::Apply { name } => {
             run_apply(name)?;
         }
@@ -73,19 +97,41 @@ pub fn run(args: &ThemeArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_list() -> anyhow::Result<()> {
-    human::header("Bundled themes");
-    // Find the longest theme name for alignment
-    let all_themes = themes::all();
-    let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
-    for theme in &all_themes {
+fn theme_json(t: &themes::Theme) -> serde_json::Value {
+    serde_json::json!({ "name": t.name, "description": t.description, "kind": t.kind.as_str() })
+}
+
+fn print_theme_group(title: &str, group: &[themes::Theme], max_len: usize) {
+    human::header(title);
+    for theme in group {
         crate::human_println!(
             "  {}  {}",
             console::style(format!("{:<max_len$}", theme.name)).bold(),
             theme.description,
         );
     }
+}
+
+fn run_list() -> anyhow::Result<()> {
+    let all_themes = themes::all();
+    let max_len = all_themes.iter().map(|t| t.name.len()).max().unwrap_or(0);
+    let starters = themes::of_kind(themes::ThemeKind::Starter);
+    let gallery = themes::of_kind(themes::ThemeKind::Gallery);
+    print_theme_group("Starters", &starters, max_len);
     crate::human_println!();
+    print_theme_group(
+        "Gallery (examples: seite theme apply <name>)",
+        &gallery,
+        max_len,
+    );
+    crate::human_println!();
+    crate::human_println!(
+        "  {}",
+        console::style(
+            "Bundled themes are examples and starting points. For your own design: seite theme new"
+        )
+        .dim()
+    );
     crate::human_println!(
         "  {} {}",
         console::style("Preview all:").dim(),
@@ -97,10 +143,9 @@ fn run_list() -> anyhow::Result<()> {
     let project_root = PathBuf::from(".");
     let installed = themes::installed_themes(&project_root);
     crate::output::json::set_data(serde_json::json!({
-        "bundled": all_themes
-            .iter()
-            .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
-            .collect::<Vec<_>>(),
+        "starters": starters.iter().map(theme_json).collect::<Vec<_>>(),
+        "gallery": gallery.iter().map(theme_json).collect::<Vec<_>>(),
+        "bundled": all_themes.iter().map(theme_json).collect::<Vec<_>>(),
         "installed": installed
             .iter()
             .map(|t| serde_json::json!({ "name": t.name, "description": t.description }))
@@ -139,11 +184,18 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     let paths = config.resolve_paths(&project_root);
 
     if themes::by_name(name).is_some() || themes::installed_by_name(&project_root, name).is_some() {
-        let applied = themes::apply_theme(&project_root, &paths.templates, name)?;
+        let applied =
+            themes::apply_theme(&project_root, &paths.templates, &paths.static_dir, name)?;
         if let Some(ref backup) = applied.backup {
             human::info(&format!(
                 "Backed up your customized base.html to {}",
                 backup.display()
+            ));
+        }
+        if let Some(ref css) = applied.stylesheet {
+            human::info(&format!(
+                "Wrote the theme's stylesheet to {}",
+                css.display()
             ));
         }
         human::success(&format!(
@@ -165,40 +217,450 @@ fn run_apply(name: &str) -> anyhow::Result<()> {
     ))
 }
 
+/// What `seite theme create` does.
+#[derive(Debug, PartialEq, Eq)]
+enum CreatePlan {
+    /// impeccable is installed: print how to run it (design decisions are
+    /// its job; seite's template rules load automatically).
+    Impeccable {
+        scaffold_blank: bool,
+        lines: Vec<String>,
+    },
+    /// Run the agent one-shot with the `seite` skill's theme workflow.
+    RunAgent {
+        scaffold_blank: bool,
+        prompt: String,
+    },
+}
+
+/// Whether the impeccable design skill is installed in the project.
+fn impeccable_installed(root: &Path) -> bool {
+    crate::cli::skill::impeccable_installed(root)
+}
+
+/// Whether `active` (from [`themes::active_theme`]) is one of the bundled
+/// example looks. A custom design starts from the blank starter instead of
+/// being painted over one of them.
+fn is_bundled_example(active: &str) -> bool {
+    active != themes::BLANK && themes::by_name(active).is_some()
+}
+
+/// How to design the theme with impeccable, including `/impeccable init`
+/// when the project has no PRODUCT.md yet.
+fn impeccable_lines(root: &Path, description: Option<&str>) -> Vec<String> {
+    let design = description.unwrap_or("<describe your design>");
+    let mut lines = Vec::new();
+    if !root.join("PRODUCT.md").exists() {
+        lines.push("impeccable is installed: in your agent, run `/impeccable init` first (it writes PRODUCT.md, the site brief).".to_string());
+    }
+    lines.push(format!(
+        "Design with `/impeccable {design}` (Codex: `$impeccable {design}`). It edits templates/base.html and static/css/site.css; keep the `{{% include \"seite/...\" %}}` lines."
+    ));
+    lines.push("seite's template rules load automatically when the agent edits templates/, and `/seite theme` has the base.html contract.".into());
+    lines.push(
+        "Afterwards: `seite check`, `seite build`, then one `impeccable detect dist/`; preview with `seite serve`."
+            .into(),
+    );
+    lines
+}
+
+fn create_plan(
+    root: &Path,
+    templates_dir: &Path,
+    description: &str,
+    harness: crate::cli::agent::Harness,
+) -> CreatePlan {
+    let scaffold_blank = is_bundled_example(&themes::active_theme(root, templates_dir));
+    if impeccable_installed(root) {
+        return CreatePlan::Impeccable {
+            scaffold_blank,
+            lines: impeccable_lines(root, Some(description)),
+        };
+    }
+    CreatePlan::RunAgent {
+        scaffold_blank,
+        prompt: harness.skill_prompt(&format!("theme {description}")),
+    }
+}
+
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_create(user_prompt: &str) -> anyhow::Result<()> {
-    // Check Claude Code is available
-    match npm_cmd("claude").arg("--version").output() {
-        Ok(o) if o.status.success() => {}
-        _ => return Err(PageError::Agent(
-            "Claude Code is not installed. Install it with: npm install -g @anthropic-ai/claude-code".into()
-        ).into()),
+fn run_create(description: &str) -> anyhow::Result<()> {
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let root = std::env::current_dir()?;
+    let paths = config.resolve_paths(&root);
+    let harness = crate::cli::agent::resolve_harness(None)?;
+    let plan = create_plan(&root, &paths.templates, description, harness);
+    let scaffold = match &plan {
+        CreatePlan::Impeccable { scaffold_blank, .. }
+        | CreatePlan::RunAgent { scaffold_blank, .. } => *scaffold_blank,
+    };
+    // Everything that can refuse runs before any file is written.
+    if matches!(plan, CreatePlan::RunAgent { .. }) {
+        crate::cli::agent::refuse_nested(&format!(
+            "Run `/seite theme {description}` directly in this session (Codex: `$seite theme {description}`)."
+        ))?;
+        crate::cli::agent::ensure_installed(harness)?;
     }
-
-    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
-
-    // Ensure templates/ dir exists so Claude can write into it
-    std::fs::create_dir_all("templates")?;
-
-    let full_prompt = build_theme_prompt(user_prompt);
-
-    human::info(&format!("Generating theme: \"{}\"", user_prompt));
-    human::info("Claude is writing templates/base.html...");
-
-    let status = npm_cmd("claude")
-        .args(["-p", &full_prompt])
-        .args(["--allowedTools", "Write,Edit,Read"])
-        .stdout(crate::output::child_stdout())
-        .status()
-        .map_err(|e| PageError::Agent(format!("failed to run claude: {e}")))?;
-
-    if !status.success() {
-        return Err(PageError::Agent("claude exited with non-zero status".into()).into());
+    if scaffold {
+        let applied = scaffold_blank(&root, &paths, false)?;
+        human::info(&format!(
+            "Started from the blank starter: {} (CSS in static/{}), so the design is not painted over an example theme.",
+            applied.path.display(),
+            themes::BLANK_STYLESHEET
+        ));
     }
-
-    human::success("Theme written to templates/base.html");
-    human::info("Run 'seite build' to apply, or 'seite serve' to preview live.");
+    match plan {
+        CreatePlan::Impeccable { lines, .. } => {
+            for line in lines {
+                human::info(&line);
+            }
+            crate::output::json::set_data(serde_json::json!({
+                "mode": "impeccable",
+                "description": description,
+                "scaffolded_blank": scaffold,
+            }));
+        }
+        CreatePlan::RunAgent { prompt, .. } => {
+            human::info(&format!("Designing theme: \"{description}\""));
+            crate::cli::agent::run_once(harness, &prompt, false)?;
+            human::info(
+                "For deeper design work, add impeccable: `seite skill install impeccable`.",
+            );
+            crate::output::json::set_data(serde_json::json!({
+                "mode": "agent",
+                "agent": harness.name(),
+                "prompt": prompt,
+                "scaffolded_blank": scaffold,
+            }));
+        }
+    }
     Ok(())
+}
+
+/// Scaffold the blank starter into `templates/base.html` and
+/// `static/css/site.css` (an existing stylesheet is kept). A customized
+/// `base.html` is replaced only with `force`, after a backup (as `apply`).
+/// With impeccable installed, also point its live mode at the template.
+fn scaffold_blank(
+    root: &Path,
+    paths: &crate::config::ResolvedPaths,
+    force: bool,
+) -> anyhow::Result<themes::AppliedTheme> {
+    if !force && themes::active_theme(root, &paths.templates) == "custom" {
+        anyhow::bail!(
+            "{} is customized; `seite theme new --force` replaces it (after a backup), or keep it with `seite theme export <name>` first",
+            paths.templates.join("base.html").display()
+        );
+    }
+    let applied = themes::apply_theme(root, &paths.templates, &paths.static_dir, themes::BLANK)?;
+    if impeccable_installed(root) {
+        configure_impeccable_live(root, &paths.templates)?;
+    }
+    Ok(applied)
+}
+
+/// Next steps printed by `seite theme new`.
+fn new_theme_next_steps(root: &Path, name: &str) -> Vec<String> {
+    let mut lines = vec![
+        "Layout lives in templates/base.html, the look in static/css/site.css. Keep the `{% include \"seite/...\" %}` lines: they carry SEO, search and i18n.".to_string(),
+    ];
+    if impeccable_installed(root) {
+        lines.extend(impeccable_lines(root, None));
+    } else {
+        lines.push(
+            "Design it with your agent: `/seite theme <description>` (Codex: `$seite theme <description>`), or `seite theme create \"<description>\"`."
+                .into(),
+        );
+        lines.push("For deeper design tooling: `seite skill install impeccable`.".into());
+        lines.push("Afterwards: `seite check`; preview with `seite serve`.".into());
+    }
+    lines.push(format!(
+        "To reuse it elsewhere: `seite theme export {name}`."
+    ));
+    lines
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_new(name: Option<&str>, force: bool, tailwind: bool) -> anyhow::Result<()> {
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let root = std::env::current_dir()?;
+    let paths = config.resolve_paths(&root);
+    let name = name.unwrap_or("my-theme");
+    themes::validate_theme_name(name)?;
+    let applied = scaffold_blank(&root, &paths, force)?;
+    let tailwind = if tailwind {
+        Some(scaffold_tailwind(&root, &config, &paths)?)
+    } else {
+        None
+    };
+    if let Some(ref backup) = applied.backup {
+        human::info(&format!(
+            "Backed up your customized base.html to {}",
+            backup.display()
+        ));
+    }
+    human::success(&format!(
+        "Scaffolded the blank starter for '{name}': {}{}",
+        applied.path.display(),
+        applied
+            .stylesheet
+            .as_ref()
+            .map(|css| format!(" and {}", css.display()))
+            .unwrap_or_default()
+    ));
+    for line in tailwind.iter().flat_map(|t| &t.notes) {
+        human::info(line);
+    }
+    for line in new_theme_next_steps(&root, name) {
+        human::info(&line);
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "theme": name,
+        "starter": themes::BLANK,
+        "written": applied.path.display().to_string(),
+        "stylesheet": applied.stylesheet.as_ref().map(|p| p.display().to_string()),
+        "backup": applied.backup.as_ref().map(|p| p.display().to_string()),
+        "impeccable": impeccable_installed(&root),
+        "tailwind": tailwind.as_ref().map(|t| serde_json::json!({
+            "input": t.input,
+            "stylesheet": t.stylesheet,
+            "input_written": t.input_written,
+            "config_added": t.config_added,
+        })),
+    }));
+    Ok(())
+}
+
+/// What `seite theme new --tailwind` did on top of the blank starter.
+struct TailwindScaffold {
+    /// The entry CSS, relative to the site root.
+    input: String,
+    /// The compiled stylesheet's URL (`/static/<output>`).
+    stylesheet: String,
+    input_written: bool,
+    config_added: bool,
+    /// Human-readable lines about what was done.
+    notes: Vec<String>,
+}
+
+/// Turn the freshly scaffolded blank starter into a Tailwind theme: add
+/// `[build.tailwind]` to `seite.toml` (when missing), write the entry CSS
+/// (when missing; explicit `@source` paths so the build is deterministic),
+/// and point `base.html`'s stylesheet link at the compiled CSS.
+fn scaffold_tailwind(
+    root: &Path,
+    config: &SiteConfig,
+    paths: &crate::config::ResolvedPaths,
+) -> anyhow::Result<TailwindScaffold> {
+    let mut notes = Vec::new();
+    let tw = config.build.tailwind.clone().unwrap_or_default();
+
+    let config_added = config.build.tailwind.is_none();
+    if config_added {
+        let toml_path = root.join("seite.toml");
+        let text = std::fs::read_to_string(&toml_path)?;
+        let updated = add_tailwind_table(&text, &tw)?;
+        crate::safe_fs::write(root, &toml_path, updated)?;
+        notes.push("Added [build.tailwind] to seite.toml.".into());
+    }
+
+    let input = root.join(&tw.input);
+    let input_written = !input.exists();
+    if input_written {
+        let css = tailwind_entry_css(root, paths, &input);
+        if let Some(parent) = input.parent() {
+            crate::safe_fs::create_dir_all(root, parent)?;
+        }
+        crate::safe_fs::write(root, &input, css)?;
+        notes.push(format!(
+            "Wrote {} (Tailwind entry; `@source` lines list where your classes live).",
+            tw.input
+        ));
+    }
+
+    // Trust (Tailwind plugins run project JavaScript) is granted implicitly
+    // only when a person at a terminal, outside any agent session, just
+    // created both the table and the entry file here. Anything else (an
+    // agent, a script, a cloned repo that already had Tailwind set up)
+    // must run `seite trust` explicitly.
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let auto_trust = auto_trust_allowed(
+        interactive,
+        crate::cli::agent::in_agent_session(),
+        config_added,
+        input_written,
+    );
+    let trusted_now = auto_trust
+        && match crate::trust::set_trusted(root, true) {
+            Ok(_) => true,
+            Err(e) => {
+                notes.push(format!("Could not record trust ({e})."));
+                false
+            }
+        };
+    if trusted_now {
+        notes.push(
+            "Trusted this project for Tailwind builds (`seite trust --revoke` undoes it).".into(),
+        );
+    } else if !crate::trust::is_trusted(root) {
+        notes.push(
+            "Before `seite build`, run `seite trust` yourself in the site root: Tailwind plugins run this project's JavaScript, so seite only runs Tailwind for projects you trust.".into(),
+        );
+    }
+
+    // CI has no trust list: add the opt-in to an unedited generated deploy
+    // workflow / netlify.toml, or say what to add.
+    let mut with_tailwind = config.clone();
+    with_tailwind.build.tailwind = Some(tw.clone());
+    notes.extend(crate::cli::upgrade::apply_ci_tailwind_trust(
+        root,
+        &with_tailwind,
+    )?);
+
+    let stylesheet = format!("/static/{}", tw.output.replace('\\', "/"));
+    let base = paths.templates.join("base.html");
+    let html = std::fs::read_to_string(&base)?;
+    let blank_link = format!("href=\"/static/{}\"", themes::BLANK_STYLESHEET);
+    let linked = if html.contains(&format!("href=\"{stylesheet}\"")) {
+        html
+    } else if html.contains(&blank_link) {
+        html.replacen(&blank_link, &format!("href=\"{stylesheet}\""), 1)
+    } else {
+        html.replacen(
+            "{% block extra_css %}",
+            &format!(
+                "<link rel=\"stylesheet\" href=\"{stylesheet}\">\n    {{% block extra_css %}}"
+            ),
+            1,
+        )
+    };
+    if !linked.contains(&format!("href=\"{stylesheet}\"")) {
+        notes.push(format!(
+            "Add <link rel=\"stylesheet\" href=\"{stylesheet}\"> to {} yourself.",
+            base.display()
+        ));
+    }
+    crate::safe_fs::write(root, &base, linked)?;
+    notes.push(format!(
+        "base.html links {stylesheet}; `seite build` compiles it with Tailwind v{} (downloaded once, checksum-verified). Style with utility classes in templates/ and content/.",
+        tw.version
+            .clone()
+            .unwrap_or_else(|| crate::build::tailwind::PINNED_VERSION.to_string())
+    ));
+    Ok(TailwindScaffold {
+        input: tw.input,
+        stylesheet,
+        input_written,
+        config_added,
+        notes,
+    })
+}
+
+/// Whether `seite theme new --tailwind` may record trust for the project
+/// itself: only at an interactive terminal, outside an agent session, when
+/// this run created both the `[build.tailwind]` table and the input file.
+fn auto_trust_allowed(
+    interactive: bool,
+    in_agent_session: bool,
+    config_added: bool,
+    input_written: bool,
+) -> bool {
+    interactive && !in_agent_session && config_added && input_written
+}
+
+/// `seite.toml` with a `[build.tailwind]` table (input/output spelled out),
+/// comments and formatting kept.
+fn add_tailwind_table(text: &str, tw: &crate::config::TailwindSection) -> anyhow::Result<String> {
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    let build = doc
+        .entry("build")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    let Some(build) = build.as_table_mut() else {
+        anyhow::bail!("[build] in seite.toml is not a table; add [build.tailwind] by hand");
+    };
+    let mut table = toml_edit::Table::new();
+    table.insert("input", toml_edit::value(tw.input.clone()));
+    table.insert("output", toml_edit::value(tw.output.clone()));
+    build.insert("tailwind", toml_edit::Item::Table(table));
+    Ok(doc.to_string())
+}
+
+/// The scaffolded Tailwind entry CSS. `source(none)` plus explicit
+/// `@source` lines (relative to the CSS file) keep class detection to the
+/// site's own sources, so `dist/` and caches never feed into the build.
+fn tailwind_entry_css(root: &Path, paths: &crate::config::ResolvedPaths, input: &Path) -> String {
+    let up = input
+        .parent()
+        .and_then(|dir| dir.strip_prefix(root).ok())
+        .map(|rel| "../".repeat(rel.components().count()))
+        .unwrap_or_default();
+    let rel = |dir: &Path| {
+        dir.strip_prefix(root)
+            .unwrap_or(dir)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let mut css = String::from("@import \"tailwindcss\" source(none);\n");
+    // The blank starter's look, under Tailwind's utilities.
+    let blank_css = paths.static_dir.join(themes::BLANK_STYLESHEET);
+    if blank_css.is_file() && blank_css.parent() == input.parent() {
+        let file = blank_css
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        css.push_str(&format!(
+            "/* The blank starter's styles as Tailwind's base layer; delete this line to start from Tailwind's preflight alone. */\n@import \"./{file}\" layer(base);\n"
+        ));
+    }
+    css.push_str("\n/* Where class names are found (paths relative to this file). */\n");
+    for dir in [&paths.templates, &paths.content, &paths.data_dir] {
+        css.push_str(&format!("@source \"{up}{}\";\n", rel(dir)));
+    }
+    css.push_str("\n@theme {\n  /* Design tokens, e.g. --color-brand: #0057b7; → bg-brand, text-brand */\n}\n");
+    css
+}
+
+/// impeccable's live-mode config (see its `reference/live-setup.md`).
+pub const IMPECCABLE_LIVE_CONFIG: &str = ".impeccable/live/config.json";
+
+/// Point impeccable's live mode at the site's `base.html` (every page
+/// renders through it, and the dev server re-renders on change), merging
+/// add-only: keys the file already has are never changed. Leaves an
+/// unparsable file alone. Returns whether anything was written.
+///
+/// `cspChecked` is left for impeccable to ask about.
+pub fn configure_impeccable_live(root: &Path, templates_dir: &Path) -> anyhow::Result<bool> {
+    let path = root.join(IMPECCABLE_LIVE_CONFIG);
+    let mut config = match std::fs::read_to_string(&path) {
+        Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => return Ok(false),
+        },
+        Err(_) => serde_json::Map::new(),
+    };
+    let base = templates_dir.join("base.html");
+    let base = base
+        .strip_prefix(root)
+        .unwrap_or(&base)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let mut added = false;
+    for (key, value) in [
+        ("files", serde_json::json!([base])),
+        ("insertBefore", serde_json::json!("</body>")),
+        ("commentSyntax", serde_json::json!("html")),
+    ] {
+        if !config.contains_key(key) {
+            config.insert(key.to_string(), value);
+            added = true;
+        }
+    }
+    if !added {
+        return Ok(false);
+    }
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(config))? + "\n";
+    crate::safe_fs::write(root, &path, text)?;
+    Ok(true)
 }
 
 /// Derive a theme name from a URL or explicit override.
@@ -241,10 +703,10 @@ fn save_installed_theme(
     body: &str,
 ) -> anyhow::Result<PathBuf> {
     let themes_dir = root.join("templates").join("themes");
-    std::fs::create_dir_all(&themes_dir)?;
+    crate::safe_fs::create_dir_all(root, &themes_dir)?;
 
     let dest = themes_dir.join(format!("{theme_name}.tera"));
-    std::fs::write(&dest, body)?;
+    crate::safe_fs::write(root, &dest, body)?;
     Ok(dest)
 }
 
@@ -286,7 +748,8 @@ fn run_install(url: &str, name_override: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
-    let _config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let config = SiteConfig::load(&PathBuf::from("seite.toml"))?;
+    let static_dir = config.resolve_paths(&std::env::current_dir()?).static_dir;
 
     let base_path = PathBuf::from("templates").join("base.html");
     if !base_path.exists() {
@@ -298,10 +761,16 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
     validate_theme_name(name)?;
 
     let content = std::fs::read_to_string(&base_path)?;
+    // A theme is one file: the site's own stylesheets go in as <style>.
+    let (content, inlined, refused) = inline_local_stylesheets(&content, &static_dir);
+    for warning in &refused {
+        human::warning(warning);
+    }
     let exported = build_export_content(&content, description);
 
-    let themes_dir = PathBuf::from("templates").join("themes");
-    std::fs::create_dir_all(&themes_dir)?;
+    let root = std::env::current_dir()?;
+    let themes_dir = root.join("templates").join("themes");
+    crate::safe_fs::create_dir_all(&root, &themes_dir)?;
 
     let dest = themes_dir.join(format!("{name}.tera"));
     if dest.exists() {
@@ -312,134 +781,108 @@ fn run_export(name: &str, description: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
-    std::fs::write(&dest, exported)?;
+    crate::safe_fs::write(&root, &dest, exported)?;
 
+    for css in &inlined {
+        human::info(&format!("Inlined {css} into the exported theme"));
+    }
     human::success(&format!("Exported theme '{}' to {}", name, dest.display()));
     human::info("Share this .tera file — others can install it with: seite theme install <url>");
 
     Ok(())
 }
 
+/// Replace each `<link rel="stylesheet" href="/static/….css">` whose file
+/// exists under `static_dir` with a `<style>` element holding that CSS, so
+/// an exported theme (e.g. one built on the blank starter) works on its own
+/// once applied elsewhere. Returns the new template, the inlined hrefs, and
+/// one warning per stylesheet refused because its path leaves `static/`.
+fn inline_local_stylesheets(
+    content: &str,
+    static_dir: &Path,
+) -> (String, Vec<String>, Vec<String>) {
+    let mut out = String::with_capacity(content.len());
+    let mut inlined = Vec::new();
+    let mut refused = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("<link") {
+        let Some(len) = rest[start..].find('>') else {
+            break;
+        };
+        let tag = &rest[start..start + len + 1];
+        out.push_str(&rest[..start]);
+        let href = tag
+            .split_once("href=\"")
+            .and_then(|(_, after)| after.split_once('"'))
+            .map(|(href, _)| href);
+        let css = match href {
+            Some(href) if tag.contains("rel=\"stylesheet\"") && href.ends_with(".css") => {
+                match href.strip_prefix("/static/") {
+                    Some(rel) => match read_static_file(static_dir, rel) {
+                        Ok(css) => css,
+                        Err(reason) => {
+                            refused.push(format!("Not inlining {href}: {reason}"));
+                            None
+                        }
+                    },
+                    None => None,
+                }
+            }
+            _ => None,
+        };
+        match (href, css) {
+            (Some(href), Some(css)) => {
+                // `raw` keeps Tera from reading `{#`/`{{` in the CSS; a
+                // stray `</style` must not end the element early.
+                out.push_str(&format!(
+                    "<style>{{% raw %}}\n{}\n{{% endraw %}}</style>",
+                    css.trim_end().replace("</style", "<\\/style")
+                ));
+                inlined.push(href.to_string());
+            }
+            _ => out.push_str(tag),
+        }
+        rest = &rest[start + len + 1..];
+    }
+    out.push_str(rest);
+    (out, inlined, refused)
+}
+
+/// Read `static_dir/<rel>` only when it is a real file inside `static_dir`:
+/// `rel` must consist of plain path segments (no `..`, no root, no empty
+/// segment as in `/static//etc/x.css`), no component below `static_dir` may
+/// be a symlink, and the canonical path must stay under the canonical
+/// `static_dir`. `Ok(None)` when the file doesn't exist.
+fn read_static_file(static_dir: &Path, rel: &str) -> Result<Option<String>, String> {
+    let rel_path = Path::new(rel);
+    let plain = !rel.is_empty()
+        && !rel.contains('\\')
+        && !rel.split('/').any(str::is_empty)
+        && rel_path
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain {
+        return Err("the path is not a plain path inside static/".to_string());
+    }
+    let path = static_dir.join(rel_path);
+    if std::fs::symlink_metadata(&path).is_err() {
+        return Ok(None);
+    }
+    crate::safe_fs::guard(static_dir, &path).map_err(|e| e.to_string())?;
+    let canonical_dir = static_dir.canonicalize().map_err(|e| e.to_string())?;
+    let canonical = path.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canonical_dir) || !canonical.is_file() {
+        return Err("it resolves outside static/".to_string());
+    }
+    std::fs::read_to_string(&canonical)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
 /// Build exported theme content with metadata header.
 fn build_export_content(content: &str, description: Option<&str>) -> String {
     let desc = description.unwrap_or("Custom theme");
     format!("{{#- theme-description: {} -#}}\n{}", desc, content)
-}
-
-fn build_theme_prompt(user_prompt: &str) -> String {
-    format!(
-        r#"You are generating a custom theme for a `page` static site generator project.
-
-Write a complete, self-contained `templates/base.html` file based on this design direction:
-
-  {user_prompt}
-
-## Requirements
-
-The file must be a valid Tera/Jinja2 template (page uses the Tera engine).
-It IS the base template — it does NOT extend anything.
-It must define these blocks:
-
-  {{% block title %}}Site Title{{% endblock %}}   ← used for <title>
-  {{% block head %}}{{% endblock %}}              ← optional extra <link>/<meta> in <head>
-  {{% block content %}}{{% endblock %}}           ← main page content
-
-## Available Template Variables
-
-| Variable | Description |
-|----------|-------------|
-| `site.title` | Site title |
-| `site.description` | Site description |
-| `site.base_url` | Base URL |
-| `site.language` | Language code (e.g. "en") |
-| `site.author` | Author name |
-| `page.title` | Current page title (may be empty on index) |
-| `page.content` | Rendered HTML body — always use `| safe` filter |
-| `page.description` | Page description |
-| `page.date` | Date string (posts only) |
-| `page.tags` | Array of tag strings |
-| `collections` | Array of `{{name, label, items[]}}` on index pages |
-| `item.title` | Collection item title |
-| `item.url` | Collection item URL |
-| `item.date` | Collection item date |
-| `item.description` | Collection item description |
-| `item.tags` | Collection item tags |
-| `pagination` | Pagination context (may be undefined) |
-| `pagination.current_page` | Current page number |
-| `pagination.total_pages` | Total pages |
-| `pagination.prev_url` | URL of previous page (may be undefined) |
-| `pagination.next_url` | URL of next page (may be undefined) |
-| `translations` | Array of `{{lang, url}}` for language switcher |
-| `lang` | Current language code |
-| `nav` | Docs sidebar nav array `{{label, url, active}}` |
-
-## Template Patterns to Follow
-
-Search box (client-side, always include):
-```html
-<form class="search-form" onsubmit="return false">
-  <input type="search" id="search-input" placeholder="Search..." autocomplete="off">
-</form>
-<div id="search-results"></div>
-```
-
-Search script (copy this exactly, at end of body):
-```html
-<script>
-(function(){{
-    var index = null;
-    var input = document.getElementById('search-input');
-    var results = document.getElementById('search-results');
-    var indexUrl = '/search-index.json';
-    function load(cb) {{ if (index) {{ cb(); return; }} fetch(indexUrl).then(function(r){{return r.json();}}).then(function(d){{index=d;cb();}}).catch(function(){{index=[];}}); }}
-    function search(q) {{
-        q = q.toLowerCase().trim();
-        if (!q) {{ results.innerHTML = ''; return; }}
-        var hits = index.filter(function(e){{
-            return (e.title||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.tags||[]).some(function(t){{return t.toLowerCase().includes(q);}});
-        }}).slice(0, 8);
-        if (!hits.length) {{ results.innerHTML = '<div class="no-results">No results</div>'; return; }}
-        results.innerHTML = hits.map(function(e){{
-            var meta = [e.collection, e.date].filter(Boolean).join(' · ');
-            return '<a href="' + e.url + '"><strong>' + e.title + '</strong>' + (meta ? '<div class="result-meta">' + meta + '</div>' : '') + '</a>';
-        }}).join('');
-    }}
-    input.addEventListener('input', function(){{ load(function(){{ search(input.value); }}); }});
-}})();
-</script>
-```
-
-Pagination nav (include when pagination context exists):
-```html
-{{% if pagination %}}
-<nav class="pagination">
-    {{% if pagination.prev_url %}}<a href="{{{{ pagination.prev_url }}}}">&larr; Newer</a>{{% endif %}}
-    <span>Page {{{{ pagination.current_page }}}} of {{{{ pagination.total_pages }}}}</span>
-    {{% if pagination.next_url %}}<a href="{{{{ pagination.next_url }}}}">Older &rarr;</a>{{% endif %}}
-</nav>
-{{% endif %}}
-```
-
-Language switcher (include when translations exist):
-```html
-{{% if translations %}}<div class="lang-switcher">
-    {{% for t in translations %}}<a href="{{{{ t.url }}}}">{{{{ t.lang }}}}</a>{{% endfor %}}
-</div>{{% endif %}}
-```
-
-Hreflang links in <head>:
-```html
-{{% for t in translations %}}<link rel="alternate" hreflang="{{{{ t.lang }}}}" href="{{{{ site.base_url }}}}{{{{ t.url }}}}">
-{{% endfor %}}
-```
-
-## Output
-
-Write the complete file to `templates/base.html`. Include all CSS inline in a `<style>` block — no external stylesheets. The design should be fully self-contained and production-quality.
-
-Design direction to implement: {user_prompt}
-"#
-    )
 }
 
 #[cfg(test)]
@@ -591,36 +1034,339 @@ mod tests {
         assert!(tmp.path().join("templates/themes").is_dir());
     }
 
-    // --- build_theme_prompt ---
+    // --- theme create ---
+
+    use crate::cli::agent::Harness;
 
     #[test]
-    fn test_build_theme_prompt_contains_user_input() {
-        let prompt = build_theme_prompt("dark glassmorphism with teal accents");
-        assert!(prompt.contains("dark glassmorphism with teal accents"));
+    fn test_create_plan_with_impeccable_installed() {
+        for dir in [".claude/skills/impeccable", ".agents/skills/impeccable"] {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let tpl = tmp.path().join("templates");
+            assert!(!impeccable_installed(tmp.path()));
+            std::fs::create_dir_all(tmp.path().join(dir)).unwrap();
+            assert!(impeccable_installed(tmp.path()));
+            match create_plan(tmp.path(), &tpl, "coral brutalist", Harness::Claude) {
+                CreatePlan::Impeccable {
+                    lines,
+                    scaffold_blank,
+                } => {
+                    // No base.html: the build uses the default example theme.
+                    assert!(scaffold_blank);
+                    let text = lines.join("\n");
+                    assert!(text.contains("/impeccable init"), "{text}");
+                    assert!(text.contains("/impeccable coral brutalist"), "{text}");
+                    assert!(text.contains("$impeccable"), "{text}");
+                    assert!(text.contains("static/css/site.css"), "{text}");
+                    assert!(text.contains("impeccable detect dist/"), "{text}");
+                }
+                other => panic!("{other:?}"),
+            }
+            // With a PRODUCT.md the init step is skipped.
+            std::fs::write(tmp.path().join("PRODUCT.md"), "brief").unwrap();
+            let lines = impeccable_lines(tmp.path(), None).join("\n");
+            assert!(!lines.contains("/impeccable init"), "{lines}");
+            assert!(lines.contains("<describe your design>"), "{lines}");
+        }
     }
 
     #[test]
-    fn test_build_theme_prompt_contains_required_blocks() {
-        let prompt = build_theme_prompt("minimal");
-        assert!(prompt.contains("block title"));
-        assert!(prompt.contains("block head"));
-        assert!(prompt.contains("block content"));
+    fn test_create_plan_without_impeccable_runs_the_seite_skill() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
+        assert_eq!(
+            create_plan(tmp.path(), &tpl, "dark teal", Harness::Claude),
+            CreatePlan::RunAgent {
+                scaffold_blank: true,
+                prompt: "/seite theme dark teal".into()
+            }
+        );
+        assert_eq!(
+            create_plan(tmp.path(), &tpl, "dark teal", Harness::Codex),
+            CreatePlan::RunAgent {
+                scaffold_blank: true,
+                prompt: "$seite theme dark teal".into()
+            }
+        );
     }
 
     #[test]
-    fn test_build_theme_prompt_contains_template_variables() {
-        let prompt = build_theme_prompt("any");
-        assert!(prompt.contains("site.title"));
-        assert!(prompt.contains("page.content"));
-        assert!(prompt.contains("collections"));
-        assert!(prompt.contains("pagination"));
-        assert!(prompt.contains("translations"));
+    fn test_create_plan_scaffolds_blank_only_over_bundled_examples() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
+        std::fs::create_dir_all(&tpl).unwrap();
+        let scaffold = |root: &Path| match create_plan(root, &tpl, "x", Harness::Claude) {
+            CreatePlan::RunAgent { scaffold_blank, .. }
+            | CreatePlan::Impeccable { scaffold_blank, .. } => scaffold_blank,
+        };
+        for theme in ["dark", "docs", "landing", "terminal"] {
+            std::fs::write(
+                tpl.join("base.html"),
+                themes::by_name(theme).unwrap().base_html,
+            )
+            .unwrap();
+            assert!(scaffold(tmp.path()), "{theme}");
+        }
+        // Already on blank, or a custom design: keep it.
+        std::fs::write(tpl.join("base.html"), themes::blank().base_html).unwrap();
+        assert!(!scaffold(tmp.path()));
+        std::fs::write(tpl.join("base.html"), "<html>mine</html>").unwrap();
+        assert!(!scaffold(tmp.path()));
+        assert!(!is_bundled_example("custom"));
+        assert!(!is_bundled_example(themes::BLANK));
+        assert!(is_bundled_example("default"));
+    }
+
+    // --- theme new ---
+
+    fn site_paths(root: &Path) -> crate::config::ResolvedPaths {
+        let config: SiteConfig =
+            toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
+        config.resolve_paths(root)
     }
 
     #[test]
-    fn test_build_theme_prompt_contains_search_pattern() {
-        let prompt = build_theme_prompt("any");
-        assert!(prompt.contains("search-input"));
-        assert!(prompt.contains("search-index.json"));
+    fn test_auto_trust_only_for_a_person_who_just_set_it_up() {
+        assert!(auto_trust_allowed(true, false, true, true));
+        // Inside an agent session, without a terminal, or over an existing
+        // Tailwind setup (a cloned repo): never.
+        assert!(!auto_trust_allowed(true, true, true, true));
+        assert!(!auto_trust_allowed(false, false, true, true));
+        assert!(!auto_trust_allowed(true, false, false, true));
+        assert!(!auto_trust_allowed(true, false, true, false));
+    }
+
+    #[test]
+    fn test_add_tailwind_table_keeps_comments() {
+        let text = "# my site\n[site]\ntitle = \"x\" # keep\n\n[build]\nminify = true\n\n[deploy]\ntarget = \"netlify\"\n";
+        let out = add_tailwind_table(text, &crate::config::TailwindSection::default()).unwrap();
+        assert!(out.contains("# my site") && out.contains("# keep"), "{out}");
+        assert!(
+            out.contains("[build.tailwind]\ninput = \"static/css/tailwind.css\"\noutput = \"css/tailwind.css\"\n"),
+            "{out}"
+        );
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
+        assert_eq!(parsed["build"]["minify"].as_bool(), Some(true));
+        // No [build] yet: it is created.
+        let out = add_tailwind_table("[site]\ntitle = \"x\"\n", &Default::default()).unwrap();
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
+        assert!(parsed["build"]["tailwind"]["input"].is_str());
+    }
+
+    #[test]
+    fn test_tailwind_entry_css_sources_relative_to_input() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = site_paths(tmp.path());
+        let css = tailwind_entry_css(
+            tmp.path(),
+            &paths,
+            &tmp.path().join("static/css/tailwind.css"),
+        );
+        assert!(css.starts_with("@import \"tailwindcss\" source(none);\n"));
+        for dir in ["templates", "content", "data"] {
+            assert!(css.contains(&format!("@source \"../../{dir}\";")), "{css}");
+        }
+        // No blank stylesheet next to it: no import of it.
+        assert!(!css.contains("site.css"));
+    }
+
+    #[test]
+    fn test_scaffold_blank_fresh_writes_base_and_stylesheet() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        let base = std::fs::read_to_string(paths.templates.join("base.html")).unwrap();
+        assert_eq!(base, themes::blank().base_html);
+        assert!(base.contains(r#"{% include "seite/head.html" %}"#));
+        assert!(base.contains(r#"href="/static/css/site.css""#));
+        let css = paths.static_dir.join("css/site.css");
+        assert_eq!(applied.stylesheet.as_deref(), Some(css.as_path()));
+        assert!(std::fs::read_to_string(&css).unwrap().contains(":root"));
+        // No impeccable: no live config.
+        assert!(!tmp.path().join(IMPECCABLE_LIVE_CONFIG).exists());
+    }
+
+    #[test]
+    fn test_scaffold_blank_refuses_custom_base_without_force() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), "<html>mine</html>").unwrap();
+        let err = scaffold_blank(tmp.path(), &paths, false).unwrap_err();
+        assert!(err.to_string().contains("--force"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            "<html>mine</html>"
+        );
+
+        // --force backs the custom file up first.
+        let applied = scaffold_blank(tmp.path(), &paths, true).unwrap();
+        let backup = applied.backup.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(backup).unwrap(),
+            "<html>mine</html>"
+        );
+        assert_eq!(
+            std::fs::read_to_string(paths.templates.join("base.html")).unwrap(),
+            themes::blank().base_html
+        );
+    }
+
+    #[test]
+    fn test_scaffold_blank_over_bundled_theme_needs_no_force_and_keeps_css() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        std::fs::write(paths.templates.join("base.html"), themes::dark().base_html).unwrap();
+        let css = paths.static_dir.join("css/site.css");
+        std::fs::create_dir_all(css.parent().unwrap()).unwrap();
+        std::fs::write(&css, "body { color: red; }").unwrap();
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        // The site's own stylesheet is never overwritten.
+        assert!(applied.stylesheet.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&css).unwrap(),
+            "body { color: red; }"
+        );
+    }
+
+    #[test]
+    fn test_new_theme_next_steps() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let text = new_theme_next_steps(tmp.path(), "coral").join("\n");
+        assert!(text.contains("/seite theme <description>"), "{text}");
+        assert!(text.contains("seite skill install impeccable"), "{text}");
+        assert!(text.contains("seite theme export coral"), "{text}");
+        assert!(text.contains("static/css/site.css"), "{text}");
+
+        std::fs::create_dir_all(tmp.path().join(".claude/skills/impeccable")).unwrap();
+        let text = new_theme_next_steps(tmp.path(), "coral").join("\n");
+        assert!(text.contains("/impeccable init"), "{text}");
+        assert!(!text.contains("seite skill install impeccable"), "{text}");
+    }
+
+    #[test]
+    fn test_scaffold_blank_with_impeccable_configures_live_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(tmp.path().join(".claude/skills/impeccable")).unwrap();
+        scaffold_blank(tmp.path(), &paths, false).unwrap();
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join(IMPECCABLE_LIVE_CONFIG)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(config["files"], serde_json::json!(["templates/base.html"]));
+        assert_eq!(config["insertBefore"], "</body>");
+        assert_eq!(config["commentSyntax"], "html");
+        assert!(config.get("cspChecked").is_none());
+    }
+
+    #[test]
+    fn test_configure_impeccable_live_is_add_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tpl = tmp.path().join("templates");
+        let path = tmp.path().join(IMPECCABLE_LIVE_CONFIG);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"files":["dist/**/*.html"],"cspChecked":true}"#).unwrap();
+        assert!(configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(config["files"], serde_json::json!(["dist/**/*.html"]));
+        assert_eq!(config["cspChecked"], true);
+        assert_eq!(config["insertBefore"], "</body>");
+        // Nothing left to add: no write.
+        assert!(!configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        // Unparsable config is left alone.
+        std::fs::write(&path, "not json").unwrap();
+        assert!(!configure_impeccable_live(tmp.path(), &tpl).unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not json");
+    }
+
+    #[test]
+    fn test_scaffold_blank_over_unedited_pre_partial_theme_needs_no_force() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let paths = site_paths(tmp.path());
+        std::fs::create_dir_all(&paths.templates).unwrap();
+        let legacy = include_str!("../../tests/fixtures/themes-pre-partials/landing.tera");
+        std::fs::write(paths.templates.join("base.html"), legacy).unwrap();
+        // An unedited 0.20.x copy is still "landing", not a custom design.
+        assert_eq!(
+            themes::active_theme(tmp.path(), &paths.templates),
+            "landing"
+        );
+        let applied = scaffold_blank(tmp.path(), &paths, false).unwrap();
+        assert!(applied.backup.is_none());
+        assert!(!paths.templates.join("base.html.bak").exists());
+    }
+
+    #[test]
+    fn test_inline_local_stylesheets() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let static_dir = tmp.path().join("static");
+        std::fs::create_dir_all(static_dir.join("css")).unwrap();
+        std::fs::write(
+            static_dir.join("css/site.css"),
+            "body { color: #123456; }\n/* {# not tera #} </style> */\n",
+        )
+        .unwrap();
+        let base = "<head>\n<link rel=\"stylesheet\" href=\"/static/css/site.css\">\n<link rel=\"stylesheet\" href=\"/static/css/missing.css\">\n<link rel=\"stylesheet\" href=\"https://cdn.example/x.css\">\n<link rel=\"icon\" href=\"/favicon.ico\">\n</head>";
+        let (out, inlined, refused) = inline_local_stylesheets(base, &static_dir);
+        assert_eq!(inlined, ["/static/css/site.css"]);
+        assert!(refused.is_empty(), "{refused:?}");
+        assert!(!out.contains("href=\"/static/css/site.css\""), "{out}");
+        assert!(
+            out.contains("<style>{% raw %}\nbody { color: #123456; }"),
+            "{out}"
+        );
+        assert!(out.contains("<\\/style> */\n{% endraw %}</style>"), "{out}");
+        // Other links stay as they are.
+        assert!(out.contains("href=\"/static/css/missing.css\""));
+        assert!(out.contains("href=\"https://cdn.example/x.css\""));
+        assert!(out.contains("<link rel=\"icon\" href=\"/favicon.ico\">"));
+        // The result is still a valid template.
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template("t", &out).unwrap();
+        let rendered = tera.render("t", &tera::Context::new()).unwrap();
+        assert!(rendered.contains("{# not tera #}"), "{rendered}");
+    }
+
+    #[test]
+    fn test_inline_local_stylesheets_refuses_paths_outside_static() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let static_dir = tmp.path().join("static");
+        std::fs::create_dir_all(static_dir.join("css")).unwrap();
+        std::fs::write(static_dir.join("css/site.css"), "body{}").unwrap();
+        let outside = tmp.path().join("secret.css");
+        std::fs::write(&outside, "SECRET").unwrap();
+        let abs = outside.to_str().unwrap().to_string();
+        let mut links = vec![
+            format!("<link rel=\"stylesheet\" href=\"/static/{abs}\">"),
+            "<link rel=\"stylesheet\" href=\"/static/../secret.css\">".to_string(),
+            "<link rel=\"stylesheet\" href=\"/static/css/../../secret.css\">".to_string(),
+        ];
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, static_dir.join("css/link.css")).unwrap();
+            std::os::unix::fs::symlink(tmp.path(), static_dir.join("up")).unwrap();
+            links.push("<link rel=\"stylesheet\" href=\"/static/css/link.css\">".to_string());
+            links.push("<link rel=\"stylesheet\" href=\"/static/up/secret.css\">".to_string());
+        }
+        let base = links.join("\n");
+        let (out, inlined, refused) = inline_local_stylesheets(&base, &static_dir);
+        assert!(inlined.is_empty(), "{inlined:?}");
+        assert!(!out.contains("SECRET"), "{out}");
+        assert_eq!(out, base);
+        assert_eq!(refused.len(), links.len(), "{refused:?}");
+
+        // A normal file next to them is still inlined.
+        let (out, inlined, refused) = inline_local_stylesheets(
+            "<link rel=\"stylesheet\" href=\"/static/css/site.css\">",
+            &static_dir,
+        );
+        assert_eq!(inlined, ["/static/css/site.css"]);
+        assert!(refused.is_empty());
+        assert!(out.contains("body{}"));
     }
 }

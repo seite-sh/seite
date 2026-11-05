@@ -1,16 +1,59 @@
 ---
 title: "MCP Server for AI Integration"
-description: "Give AI tools structured access to your static site's content, configuration, and build tools via the Model Context Protocol. Auto-configured, no API keys."
-weight: 10
+description: "Give chat apps such as Claude Desktop structured access to your site's content, configuration and build tools via the Model Context Protocol. No API keys."
+weight: 11
 ---
 
-AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is what makes the [AI agent](/docs/agent) and other AI integrations understand your static site generator project as a project, not just a pile of files.
+AI tools are good at reading files, but they're better when they can work with concepts. The MCP (Model Context Protocol) server built into seite gives AI tools structured access to your site: collections, content items, themes, build actions; instead of making them parse raw markdown and TOML. It is aimed at AI apps without a shell, such as the Claude Desktop chat. Coding agents (Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI, GitHub Copilot) run the `seite` CLI directly, so `seite init` doesn't wire MCP into them unless you ask (see [Coding Agents](/docs/agent)).
 
 ## Overview
 
-`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI tools structured access to your site. When you open a seite project in Claude Code, the MCP server starts automatically, no API keys or setup required.
+`seite` includes a built-in [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server, `seite mcp`. It exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, checking, creating content, searching, and applying themes. No API keys required.
 
-The server exposes your site's documentation, configuration, content, and themes as **resources**, and provides **tools** for building, creating content, searching, and applying themes.
+## Claude Desktop
+
+Add the server to Claude Desktop's config (`claude_desktop_config.json`, opened from Settings → Developer → Edit Config), pointing `--dir` at your site:
+
+```json
+{
+  "mcpServers": {
+    "my-site": {
+      "command": "seite",
+      "args": ["mcp", "--dir", "/path/to/my-site"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The chat can then read your content, check the site, create posts, and build it. Use the full path to `seite` (`which seite`) if Claude Desktop doesn't find it on `PATH`. Other chat apps that speak MCP over stdio take the same command.
+
+Each release also attaches a one-click bundle per platform (`seite-<platform>.mcpb`, with the `seite` binary inside). Open it with Claude Desktop; on install it asks for your site folder and passes it as `--dir`.
+
+## Over HTTP, from the dev server
+
+While `seite serve` runs, the same server is also available over HTTP at `http://localhost:3000/__seite/mcp` (use the port `seite serve` printed). Clients that support HTTP (streamable HTTP) MCP servers can connect to it without starting a process:
+
+```json
+{
+  "mcpServers": {
+    "my-site": { "type": "http", "url": "http://localhost:3000/__seite/mcp" }
+  }
+}
+```
+
+It is stateless: one JSON-RPC message (or batch) per `POST`, answered with `application/json` (notifications get `202`; `GET` gets `405`, there is no event stream). Clients that only speak stdio keep using `seite mcp --dir /path/to/site`, which also reaches the running dev server for the runtime tools below.
+
+Because it can create and edit content, the endpoint only answers requests that come from this machine:
+
+- the connection must come from a loopback address, and `Host` must be `localhost:<port>`, `127.0.0.1:<port>` or `[::1]:<port>` (blocks DNS rebinding);
+- requests with an `Origin` header are refused. Browsers send one on every `POST`, even to the same origin, so no web page can call the tools, including scripts embedded in your own site (analytics, widgets); MCP clients send none;
+- `Content-Type` must be `application/json`, and the server sends no `Access-Control-Allow-*` headers;
+- bodies are capped at 1 MB, and at most 4 requests are handled at once (more get `503`);
+- when the server is reachable from the network (`seite serve --host 0.0.0.0` or a LAN address) the endpoint is off and answers `403`.
+
+Through this endpoint, `seite_build` and `seite_reload` rebuild with the dev server's configuration (its URL as `base_url`, drafts and scheduled posts included), so the served pages never switch to production URLs, and open pages reload.
+
+The workspace server (`seite serve` at a workspace root, several sites) has no MCP endpoint: serve one site with `seite serve --site <name>`, or use `seite mcp --dir <site>`.
 
 ## Why MCP?
 
@@ -33,52 +76,36 @@ Response: [
 
 No file parsing. No guessing. The AI tool gets clean data and can focus on what you actually asked it to do.
 
-## How It Works
+## Coding agents (opt-in)
 
-The MCP server runs as a subprocess (`seite mcp`) communicating over stdio using JSON-RPC. `seite init` declares it in the project config of every coding agent you select (`--agents`, default all), and `seite upgrade` adds it to existing projects, merging into configs you already have:
+Coding agents get the same features from CLI commands (`seite check`, `seite context`, `seite search`, `seite page`, `seite templates`, …), which cost no extra context and work in every agent. To wire the MCP server in as well, pass `--mcp`:
 
-| Agent | Project config | One-time step |
-|-------|----------------|---------------|
-| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` in `.claude/settings.json`) | May ask you to approve the server on first open; check with `/mcp` |
-| Codex CLI | `.codex/config.toml` | Codex only loads project config for trusted projects: accept the trust prompt on first run, then `codex mcp list` shows it |
-| Cursor | `.cursor/mcp.json` | Approve it in Cursor's MCP settings, or run `cursor-agent mcp enable seite` |
-| OpenCode | `opencode.json` | None — it starts automatically |
+```bash
+seite init my-site --mcp      # new site
+seite upgrade --mcp           # existing site
+```
 
-Claude Code and Cursor share the same JSON shape:
+| Agent | Project config |
+|-------|----------------|
+| Claude Code | `.mcp.json` (pre-approved via `enabledMcpjsonServers` and `mcp__seite` in `.claude/settings.json`); check with `/mcp` |
+| Codex CLI | `.codex/config.toml` `[mcp_servers.seite]` (trusted projects only) |
+| Cursor | `.cursor/mcp.json` (approve it in Cursor's MCP settings, or `cursor-agent mcp enable seite`) |
+| OpenCode | `opencode.json` `mcp.seite` |
+| Antigravity CLI | `.agents/mcp_config.json` `mcpServers.seite` |
+| Gemini CLI | `.gemini/settings.json` `mcpServers.seite` (needs a trusted folder) |
+| GitHub Copilot | `.mcp.json` (the same file as Claude Code; Copilot CLI loads it in trusted folders, check with `/mcp`) |
+
+Claude Code, Cursor, Antigravity CLI, and Gemini CLI share the same JSON shape:
 
 ```json
 {
   "mcpServers": {
-    "seite": {
-      "command": "seite",
-      "args": ["mcp"]
-    }
+    "seite": { "command": "seite", "args": ["mcp"] }
   }
 }
 ```
 
-Codex (`.codex/config.toml`):
-
-```toml
-[mcp_servers.seite]
-command = "seite"
-args = ["mcp"]
-```
-
-OpenCode (`opencode.json`):
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "seite": { "type": "local", "command": ["seite", "mcp"], "enabled": true }
-  }
-}
-```
-
-`seite upgrade` also migrates any older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
-
-Other MCP clients (Codex CLI, OpenCode, Cursor, ...) run the same `seite mcp` command from the site directory.
+Without `--mcp`, `seite upgrade` leaves existing MCP config exactly as it is, and never removes it. With `--mcp`, it also moves an older `mcpServers` block out of `.claude/settings.json` (Claude Code never reads MCP servers from there) into `.mcp.json`.
 
 ### Protocol versions
 
@@ -100,10 +127,10 @@ Resources are read-only data that AI tools can query. Each resource has a URI.
 | Site configuration | `seite://config` | Current `seite.toml` serialized as JSON |
 | Content overview | `seite://content` | All collections with item counts |
 | Collection items | `seite://content/{collection}` | Items in a collection with `title`, `slug`, `url`, `path` (source file, relative to the site root), `lang`, `draft`, `date`, `tags`, `description`, `weight`. A file that fails to parse appears as `{path, parse_error}` instead of being silently skipped |
-| Themes | `seite://themes` | Available bundled and installed themes |
-| MCP configuration | `seite://mcp-config` | Each agent's project config that exists: `.mcp.json` and `.claude/settings.json` (Claude Code), `.cursor/mcp.json`, `opencode.json`, `.codex/config.toml` (as JSON) |
+| Themes | `seite://themes` | Available bundled and installed themes, with the active one flagged |
+| Trust center | `seite://trust` | Certifications, subprocessors, FAQs and content of the [trust center](/docs/trust-center); listed only when the site has `[trust]` or a `trust` collection |
 
-Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://mcp-config`) are only available when running inside a page project directory.
+Documentation resources are always available (they're embedded in the binary). Site-specific resources (`seite://config`, `seite://content/*`, `seite://themes`, `seite://trust`) are only available when running inside a site directory. There is no `seite://mcp-config` resource (removed in 0.21).
 
 `resources/templates/list` advertises the parameterized URIs `seite://content/{collection}` and `seite://docs/{slug}`.
 
@@ -111,16 +138,18 @@ Documentation resources are always available (they're embedded in the binary). S
 
 Tools are actions that AI tools can execute. A tool-execution failure (bad arguments, no site found, a failed build, an unknown theme, an existing file without `overwrite`, ...) comes back as a normal result with `isError: true` and an actionable message — only a missing/unknown tool name is a protocol-level error.
 
-A successful result is compact JSON text; clients on `2025-06-18` or newer also get the same object as `structuredContent`, and every tool except `seite_lookup_docs` declares an `outputSchema` for it.
+A successful result is compact JSON text; clients on `2025-06-18` or newer also get the same object as `structuredContent`, and every tool except `seite_lookup_docs` and the dev-server runtime tools declares an `outputSchema` for it.
 
 | Tool | Changes files? |
 |------|----------------|
-| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check` | No (read-only — `seite_check` renders into a temporary directory that's discarded, never touching `dist/`) |
+| `seite_search`, `seite_get_page`, `seite_content_stats`, `seite_list_templates`, `seite_lookup_docs`, `seite_check`, `seite_audit` | No (read-only — `seite_check` and `seite_audit` render into a temporary directory that's discarded, never touching `dist/`) |
 | `seite_build` | Writes the output directory |
 | `seite_create_content` | Creates a content file (replaces one only with `overwrite: true`) |
 | `seite_update_frontmatter` | Rewrites one file's frontmatter |
 | `seite_apply_theme` | Writes `templates/base.html` (backs up a customized one) |
 | `seite_create_collection` | Rewrites `seite.toml`, creates a content directory |
+| `seite_get_errors`, `seite_get_preview_url`, `seite_list_routes` | No (read the running dev server and the output directory) |
+| `seite_reload` | The dev server rebuilds the output directory |
 
 ### seite_build
 
@@ -143,6 +172,18 @@ Report every problem in the site without touching the output directory — the s
 | `strict` | boolean | No | Treat warnings as failures too (default: false) |
 
 Returns `ok` (false when there are errors, or any warning with `strict: true`), `summary` (`{errors, warnings}` counts), and `diagnostics` — each with `severity`, a stable `code` (e.g. `frontmatter-parse`, `broken-link`, `config-unknown-key`), `message`, and `file`/`line`/`column`/`hint` when known. Run it after making changes to catch problems before building.
+
+### seite_audit
+
+Free offline SEO, GEO (AI visibility), accessibility, content and performance audit of the built site — the same report as `seite audit --json` (see [Audit](/docs/audit)).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `categories` | string[] | No | Only these categories: `seo`, `geo`, `a11y`, `content`, `perf` (default: all) |
+| `top` | integer | No | Return at most this many findings, most severe first (default: 50) |
+| `min_severity` | string | No | Return findings of this severity or worse: `error`, `warning` (default), `notice` |
+
+Returns `summary` (`{score, errors, warnings, notices, pages, by_category}`, counting every finding), `omitted` (findings left out by `top`/`min_severity`) and `findings` — each with a stable `code` (e.g. `seo-thin-content`, `a11y-img-alt`), `severity` (`error`, `warning` or `notice`), `category`, `page_url`, the `file` and `line` to edit, `message`, `hint` and `docs_url`.
 
 ### seite_create_content
 
@@ -198,15 +239,15 @@ Search site content (including drafts) by keyword.
 | `collection` | string | No | Limit search to a specific collection (singular aliases work) |
 | `limit` | integer | No | Maximum results to return, 1-100 (default: 20) |
 
-Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`.
+Matches titles, descriptions, tags, and body text, ranked title > description/tags > body. Returns `total` matches and the `returned` subset, each with source `path` and published `url`, plus the page's `taxonomies` (terms per configured taxonomy other than tags) and `series`.
 
 ### seite_content_stats
 
-Content health overview, optionally for one `collection`: item and draft counts, items missing a `description`, dated items without tags, future-dated items, files that fail to parse, and — on multilingual sites — default-language items missing a translation, per configured language. Lists are capped at 50 per category; the `totals` counts are exact.
+Content health overview, optionally for one `collection`: item and draft counts, items missing a `description`, dated items without tags, future-dated items, files that fail to parse, and — on multilingual sites — default-language items missing a translation, per configured language. Lists are capped at 50 per category; the `totals` counts are exact. `taxonomies` lists each taxonomy's terms with counts (most used first) and `series` lists each series with its number of parts, both over non-draft items.
 
 ### seite_list_templates
 
-No parameters. Returns what an agent needs before editing templates: the user templates in `templates/` (and which embedded defaults they override), the blocks defined in the active `base.html`, the Tera context variables available to each template kind (item pages, homepage, collection indexes, 404, tag pages, shortcodes), built-in and custom shortcodes with their parameters and usage, and the keys of loaded data files.
+No parameters. Returns what an agent needs before editing templates: the user templates in `templates/` (and which embedded defaults they override), the blocks defined in the active `base.html`, the Tera context variables available to each template kind (item pages, homepage, collection indexes, 404, tag pages, taxonomy and term pages, series pages, shortcodes), built-in and custom shortcodes with their parameters and usage, and the keys of loaded data files.
 
 ### seite_create_collection
 
@@ -222,7 +263,7 @@ Apply a bundled or installed theme to the site.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Theme name (`default`, `minimal`, `dark`, `docs`, `brutalist`, `bento`, `landing`, `terminal`, `magazine`, `academic`, or an installed theme) |
+| `name` | string | Yes | Theme name (the starters `default`, `docs`, `landing`, `blank`; the gallery `minimal`, `dark`, `brutalist`, `bento`, `terminal`, `magazine`, `academic`; or an installed theme) |
 
 If the current `base.html` has been customized (it matches no known theme), it's backed up to `base.html.bak` (or `base.html.bak.N`) before being replaced, and the backup path is returned.
 
@@ -237,13 +278,28 @@ Look up page documentation by topic or keyword.
 
 When `topic` matches a doc slug, returns the full page. When `query` is provided, searches across all documentation and returns matching sections with context.
 
+### Dev-server runtime tools
+
+These four tools answer from the running `seite serve`. Over the dev server's HTTP endpoint they read its state directly; under stdio `seite mcp` they find the server through `.seite/dev.json` and ask it over `127.0.0.1`. Without a running server they fail with "no dev server running; start it with `seite serve`" (`seite_list_routes` still lists routes, with `preview_base: null`). They declare no `outputSchema`. Servers are found on `127.0.0.1` (the default `--host`; `localhost` works too); a server bound only to `::1` is not found.
+
+Browser errors are text written by scripts on the previewed pages, so `seite_get_errors` returns them under `untrusted_browser_errors` with a `browser_errors_note` saying not to follow instructions in them. On a network bind (`--host 0.0.0.0`), only pages opened on the machine itself can report errors.
+
+| Tool | Parameters | Returns |
+|------|------------|---------|
+| `seite_get_errors` | (none) | `{url, ok, last_build: {ok, at, duration_ms, errors, warnings, diagnostics, message}, untrusted_browser_errors: [{kind, message, source, line, col, page, count}], browser_errors_note}`; `ok` is false when the last build failed or a page reported errors |
+| `seite_get_preview_url` | `path` (content file) or `url` (published path), optional | `{base_url, page, preview_url}` |
+| `seite_list_routes` | `prefix`, `limit` (default 200, max 2000) | `{output_dir, total, returned, routes, preview_base}`: every built `.html` page as a URL |
+| `seite_reload` | (none) | Rebuilds now (drafts and scheduled posts included, like `seite serve`), reloads open pages, returns the build outcome and `url` |
+
+From a shell, `seite preview` prints the same as `seite_get_errors`.
+
 ## Practical Example
 
-Say you're using Claude Code and ask: "Add a new blog post summarizing our three most recent posts."
+Say you're in the Claude Desktop chat, connected to your site, and ask: "Add a new blog post summarizing our three most recent posts."
 
-**Without MCP**, the AI has to `glob` for markdown files, `read` each one, parse YAML frontmatter manually, sort by date, extract titles and descriptions, then write the summary post. Multiple tool calls, fragile parsing, easy to miss edge cases.
+**Without MCP**, the chat has no access to your files at all; you would paste the posts in and copy the result back out.
 
-**With MCP**, the AI calls `seite://content/posts`, gets a sorted JSON array of all posts with metadata, picks the top three, and writes the summary. One resource call instead of a dozen file operations. The [AI agent](/docs/agent) uses this automatically. You don't need to think about it.
+**With MCP**, the chat reads `seite://content/posts`, gets a JSON array of all posts with metadata, picks the top three, writes the post with `seite_create_content`, and runs `seite_check`. A coding agent does the same from a shell with `seite search`, `seite page` and `seite new` (see [Coding Agents](/docs/agent)).
 
 ## Manual Testing
 
@@ -261,7 +317,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion
 
 ## Next Steps
 
-- [AI Agent](/docs/agent): interactive AI sessions with `seite agent`
+- [Coding Agents](/docs/agent): how Claude Code, Codex and the other agents work on a seite site
 - [CLI Reference](/docs/cli-reference): the `seite mcp` command reference
 - [Configuration](/docs/configuration): the full `seite.toml` reference
-- [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native
+- [AI Static Site Generator: What It Is, Why It Matters](/blog/ai-static-site-generator): why the MCP server is a key part of what makes a static site generator AI-native

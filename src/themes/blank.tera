@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/favicon.ico">
+    <title>{% block title %}{{ site.title }}{% endblock %}</title>
+    {% include "seite/head.html" %}
+    <link rel="stylesheet" href="/static/css/site.css">
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <a href="#main" class="skip-link">{{ t.skip_to_content }}</a>
+    <header class="site-header">
+    {% block header %}
+        {% block site_title %}<a class="site-title" href="{{ lang_prefix }}/">{{ site.title }}</a>{% endblock %}
+        {% if data.nav %}
+        <nav class="site-nav" aria-label="Main navigation">
+            {% for item in data.nav %}{% if item.external %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ item.url }}">{{ item.title }}</a>{% endif %}{% endfor %}
+        </nav>
+        {% endif %}
+        {% include "seite/lang-switcher.html" %}
+        {% include "seite/search.html" %}
+    {% endblock %}
+    </header>
+    <div class="layout{% if nav %} layout--with-sidebar{% endif %}">
+        {% if nav %}
+        <nav class="docs-nav" aria-label="Documentation">
+            {% for section in nav %}
+            {% if section.label %}<h2 class="docs-nav-label">{{ section.label }}</h2>{% endif %}
+            <ul>
+                {% for item in section.items %}<li{% if item.active %} class="active"{% endif %}><a href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+        </nav>
+        {% endif %}
+        <main id="main">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <footer class="site-footer">
+        {% if data.footer %}{% if data.footer.links %}
+        <nav aria-label="Footer navigation">
+            {% for link in data.footer.links %}{% if link.external %}<a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.title }}</a>{% else %}<a href="{{ lang_prefix }}{{ link.url }}">{{ link.title }}</a>{% endif %}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+        </nav>
+        {% endif %}{% endif %}
+        <p>&copy; {% if data.footer %}{% if data.footer.copyright %}{{ data.footer.copyright }}{% else %}{{ site.author }}{% endif %}{% else %}{{ site.author }}{% endif %}</p>
+    </footer>
+    {% include "seite/scripts.html" %}
+    {% block footer %}{% endblock %}
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

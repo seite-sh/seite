@@ -77,7 +77,7 @@ fn test_mcp_tools_list() {
 
     assert_eq!(responses.len(), 1);
     let tools = responses[0]["result"]["tools"].as_array().unwrap();
-    assert!(tools.len() >= 10 && tools.len() <= 12, "{}", tools.len());
+    assert!(tools.len() >= 10 && tools.len() <= 16, "{}", tools.len());
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"seite_build"));
     assert!(names.contains(&"seite_create_content"));
@@ -131,7 +131,7 @@ fn test_mcp_resources_list_with_project() {
     assert!(resources.iter().any(|r| r["uri"] == "seite://config"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://content"));
     assert!(resources.iter().any(|r| r["uri"] == "seite://themes"));
-    assert!(resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
+    assert!(!resources.iter().any(|r| r["uri"] == "seite://mcp-config"));
     // Per-collection resources
     assert!(resources
         .iter()
@@ -287,7 +287,7 @@ fn test_mcp_read_themes() {
 }
 
 #[test]
-fn test_mcp_read_mcp_config() {
+fn test_mcp_read_mcp_config_is_removed() {
     let tmp = TempDir::new().unwrap();
     init_site(&tmp, "mcpmcp", "MCP Config Test", "posts");
     let site_dir = tmp.path().join("mcpmcp");
@@ -303,11 +303,10 @@ fn test_mcp_read_mcp_config() {
     );
 
     assert_eq!(responses.len(), 1);
-    assert!(responses[0]["error"].is_null());
-    let contents = responses[0]["result"]["contents"].as_array().unwrap();
-    let text = contents[0]["text"].as_str().unwrap();
-    assert!(text.contains("mcpServers"));
-    assert!(text.contains("seite"));
+    assert!(responses[0]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("Unknown resource URI"));
 }
 
 #[test]
@@ -672,7 +671,7 @@ fn test_mcp_initialize_negotiates_2025_06_18_and_gates_tool_fields() {
     assert!(init["capabilities"].get("prompts").is_none());
 
     let tools = responses[1]["result"]["tools"].as_array().unwrap();
-    assert!(tools.len() <= 12);
+    assert!(tools.len() <= 16);
     for tool in tools {
         let name = tool["name"].as_str().unwrap();
         assert!(format!("mcp__seite__{name}").len() <= 60, "{name}");
@@ -935,7 +934,7 @@ fn test_mcp_full_session() {
 
     // tools/list
     let tool_count = responses[1]["result"]["tools"].as_array().unwrap().len();
-    assert!((10..=12).contains(&tool_count), "{tool_count}");
+    assert!((10..=16).contains(&tool_count), "{tool_count}");
     assert_eq!(responses[1]["id"], 2);
 
     // resources/list
@@ -1250,4 +1249,23 @@ fn test_mcp_read_trust_resource() {
     let trust: serde_json::Value = serde_json::from_str(text).unwrap();
     // Trust resource should include content_items from init scaffold
     assert!(trust.get("content_items").is_some());
+}
+
+/// The MCPB bundle manifest (`mcp/manifest.json`, packaged at release):
+/// Claude Desktop starts `seite mcp --dir <the folder the user picked>`.
+#[test]
+fn test_mcp_bundle_manifest_runs_seite_mcp_in_chosen_dir() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("mcp/manifest.json");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    let config = &manifest["server"]["mcp_config"];
+    assert_eq!(
+        config["args"],
+        serde_json::json!(["mcp", "--dir", "${user_config.site_dir}"]),
+        "{config}"
+    );
+    assert_eq!(config["command"], "${__dirname}/server/seite");
+    let site_dir = &manifest["user_config"]["site_dir"];
+    assert_eq!(site_dir["type"], "directory", "{site_dir}");
+    assert_eq!(site_dir["required"], true, "{site_dir}");
 }

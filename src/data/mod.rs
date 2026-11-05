@@ -140,7 +140,7 @@ fn data_error_diagnostic(e: PageError) -> Diagnostic {
 
 /// Parse a single data file into a `serde_json::Value`. Syntax errors are
 /// reported as a `data-file-parse` diagnostic with the line and column.
-fn parse_data_file(path: &Path) -> std::result::Result<serde_json::Value, Box<Diagnostic>> {
+pub fn parse_data_file(path: &Path) -> std::result::Result<serde_json::Value, Box<Diagnostic>> {
     let parse_error =
         |message: String| Diagnostic::error("data-file-parse", message).with_file(path);
     let content = std::fs::read_to_string(path)

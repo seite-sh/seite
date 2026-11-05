@@ -1,248 +1,202 @@
 ---
-title: "AI Agent for Your Static Site"
-description: "Let Claude write content, generate themes, debug builds, and manage your static site generator project, all with full project context. No API keys required."
-weight: 9
+title: "Coding Agents"
+description: "Run your seite site with Claude Code, Codex, OpenCode, Cursor, Antigravity, Gemini CLI or Copilot: one AGENTS.md, one /seite skill, check hooks, no API keys."
+weight: 10
 ---
 
-Most static site generators treat AI as an afterthought: a plugin, a separate API call, a bolted-on chatbot. seite takes a different approach. The `seite agent` command gives Claude Code full context about your site's configuration, content, templates, and conventions. It reads your project, understands the structure, and writes files that actually fit. No other static site generator ships with this kind of native AI integration.
-
-## Overview
-
-`seite` integrates directly with Claude Code. The `seite agent` command spawns a Claude Code session pre-loaded with your site's live context: config, collections, content inventory, and templates. Your project's `AGENTS.md` (created by `seite init`) already covers conventions like content format and file naming, so Claude Code loads that on its own — the agent only adds what changes at runtime. This context is also exposed to other AI tools through the [MCP server](/docs/mcp-server), so your site stays AI-accessible beyond just the agent.
-
-No API keys needed. It uses your Claude Code subscription directly. You can also point `seite agent` at Codex, opencode, or Cursor with `--with` — see [Other Agent Harnesses](#other-agent-harnesses).
-
-## Setup
-
-Install Claude Code (see the [getting started guide](/docs/getting-started) if you haven't set up your project yet):
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-Verify it's available:
-
-```bash
-claude --version
-```
-
-## Interactive Mode
-
-Launch an interactive session:
-
-```bash
-seite agent
-```
-
-Claude receives a system prompt with the live, per-project context it can't get any other way:
-- Site config (title, base URL, language)
-- Collections table (directory, URL prefix, dated, nested)
-- Content inventory (titles, dates, tags of every existing page)
-- Available templates
-- A pointer to `AGENTS.md` for everything else (content format, file naming, available commands, shortcodes)
-
-You can ask it to write blog posts, reorganize content, update templates, debug build errors, or anything else.
-
-{{% callout(type="info") %}}
-The agent can run `seite build` and `seite serve` to verify its own changes. It will catch build errors, broken links, and template issues before you even look at the output.
-{{% end %}}
-
-## One-Shot Mode
-
-Pass a prompt directly for non-interactive use:
-
-```bash
-seite agent "create a blog post about Rust error handling best practices"
-seite agent "add a docs page explaining the deployment process"
-seite agent "update the homepage to include a features section"
-```
-
-Claude writes the files directly and exits.
-
-## Example Prompts
-
-Here are prompts that work well, grouped by use case:
-
-### Content creation
-
-```bash
-seite agent "write a technical tutorial about async Rust, include code examples and a summary"
-seite agent "create a blog post comparing static site generators, with a table of features"
-seite agent "add an FAQ page with 10 common questions about our product"
-```
-
-### Site management
-
-```bash
-seite agent "add the tag 'tutorial' to all posts that contain code blocks"
-seite agent "create Spanish translations for all docs pages"
-seite agent "reorganize the docs into guides/ and reference/ subdirectories"
-```
-
-### Theme and design
-
-```bash
-seite agent "update the homepage to add a testimonials section with three cards"
-seite agent "add a custom footer with social links and a newsletter signup"
-```
-
-### Debugging
-
-```bash
-seite agent "the build is failing on my Spanish translations, help me fix it"
-seite agent "find and fix any broken internal links in my content"
-seite agent "my RSS feed is missing some posts, diagnose the issue"
-```
-
-## Tips for Effective Prompts
-
-{{% callout(type="tip") %}}
-Be specific about format and tone. "Write a 1500-word technical tutorial about Rust error handling with code examples" gives better results than "write a post about Rust".
-{{% end %}}
-
-{{% callout(type="tip") %}}
-The agent already knows your site structure, collections, existing content, and frontmatter format. You don't need to explain where files go or what fields to include, just describe what you want.
-{{% end %}}
-
-## Theme Generation
-
-Generate custom themes with AI:
-
-```bash
-seite theme create "dark mode with neon green accents and brutalist layout"
-```
-
-Claude receives detailed instructions about required template blocks, available variables, SEO requirements, search patterns, and accessibility features. It writes `templates/base.html` directly. For more on themes, see the [theme gallery](/docs/theme-gallery).
-
-## Other Agent Harnesses
-
-`seite agent` defaults to Claude Code, but you can drive other coding agents with the same live site context via `--with`:
-
-```bash
-seite agent --with codex "write a post about our latest release"
-seite agent --with opencode "reorganize the docs into guides/ and reference/"
-seite agent --with cursor "add a testimonials section to the homepage"
-```
-
-Set `SEITE_AGENT` to change the default without passing `--with` every time:
-
-```bash
-export SEITE_AGENT=codex
-seite agent "fix the broken links in my content"
-```
-
-Each harness needs its own CLI installed and on `PATH`:
-
-| Harness | Binary | Install |
-|---|---|---|
-| `claude` (default) | `claude` | `npm install -g @anthropic-ai/claude-code` |
-| `codex` | `codex` | `npm install -g @openai/codex` |
-| `opencode` | `opencode` | `curl -fsSL https://opencode.ai/install \| bash` |
-| `cursor` | `cursor-agent` | `curl https://cursor.com/install -fsS \| bash` |
-
-If the binary isn't found, `seite agent` fails immediately with the install command instead of hanging or falling back silently.
-
-Codex has no system-prompt flag, so for `codex` and `opencode`/`cursor` the site context is prepended to the prompt itself, clearly delimited from your instructions. Auto-approving a harness's own side effects (writes, MCP servers) stays opt-in: pass the global `-y`/`--yes` flag to also pass `opencode run --auto` or `cursor-agent --force --approve-mcps`.
-
-## Stop Hooks
-
-`seite init` installs a turn-end hook for each selected coding agent. When the agent finishes a turn, the hook runs `seite check --hook <agent>`. If the site has **errors**, the agent gets the compiler-style diagnostics back (at most 40 lines) and keeps working until they're fixed; warnings never block, and a clean site produces no output at all.
-
-| Agent | Hook lives in | Notes |
-|---|---|---|
-| Claude Code | `.claude/settings.json` → `hooks.Stop` | Shown to Claude as "Stop hook feedback" |
-| Codex CLI | `.codex/hooks.json` → `hooks.Stop` | Codex runs project hooks only after you review and trust them once: open `/hooks` in Codex (they're skipped until then) |
-| Cursor | `.cursor/hooks.json` → `hooks.stop` | Needs a trusted workspace. Fires in the editor and interactive `cursor-agent`; `cursor-agent -p` doesn't run `stop` hooks |
-| OpenCode | `.opencode/plugins/seite-check.js` | A small plugin that checks on `session.idle` and sends the errors back as a prompt. Works in the TUI and `opencode serve`; one-shot `opencode run` exits before plugins finish |
-
-Loops can't run away: each hook hands the errors back at most once per turn (Claude's and Codex's `stop_hook_active`, Cursor's `loop_count`, the plugin's own flag), then lets the agent stop. The hook exits 0 on every path, stays silent outside a seite site, and never fails the session if seite itself breaks. The hook runs the `seite` found on the agent's `PATH` (often your login shell's), so keep that binary current.
-
-**Opting out:** delete the hook entry (or the plugin file). `seite upgrade` records which hooks it has installed in `.seite/config.json` (`hooks_installed`) and adds a hook only to agents that never had one, so a hook you removed stays removed. Existing projects get the hooks on their next `seite upgrade`, merged into existing hook configs without touching your other hooks.
-
-## REPL Integration
-
-The dev server REPL also supports the agent:
-
-```
-seite> agent "write a post about our latest release"
-```
-
-This is useful for quick content creation while previewing your site.
-
-## What the Agent Can Do
-
-With Claude Code, the agent has access to these tools, scoped to content and theme work:
-- **Read**: read any file in your project
-- **Write**: create new content files
-- **Edit**: modify existing files
-- **Glob**: find files by pattern
-- **Grep**: search file contents
-- **`mcp__seite`**: every tool of the [seite MCP server](/docs/mcp-server)
-- **Bash**, limited to `seite <anything>`, `git status`, `git diff`, `git log`, and `ls` — no general shell access
-
-This keeps the agent able to write content, run builds, and inspect git state without handing it an unrestricted shell.
-
-### Concrete example: writing a blog post
-
-Without the agent, creating a well-structured post means remembering the frontmatter format, putting the file in the right directory with the right filename pattern, picking appropriate tags from your existing taxonomy, and making sure the description is under 160 characters for SEO.
-
-With the agent, you say:
-
-```bash
-seite agent "write a post about our new pricing model, mention the 3 tiers, \
-  keep the tone conversational, and tag it appropriately"
-```
-
-The agent checks your existing posts for tone and tag conventions, creates `content/posts/2026-03-13-new-pricing-model.md` with correct frontmatter (title, date, description, tags), writes the body matching your site's voice, and runs `seite build` to verify everything compiles cleanly. One command, no manual scaffolding.
-
-## How It Compares
-
-Other static site generators require you to set up AI workflows yourself: connect to an LLM API, write prompts that describe your project structure, and hope the output matches your conventions. If your site uses Hugo, you need to explain Hugo's content model. If you use Jekyll, you explain Jekyll's. Every time.
-
-seite's agent understands your project natively. It knows the [configuration](/docs/configuration) format, the collection types, your existing content, and the template system. The system prompt is generated from your actual `seite.toml` and content directory, not a generic "you are a helpful assistant" preamble. This means the agent produces files that build on the first try, use your existing tag taxonomy, and follow your site's established patterns.
-
-## Agent instruction scaffolding
-
-When you run `seite init`, it creates an `AGENTS.md` with site-specific instructions — the one canonical instruction file that Claude Code (through a one-line `CLAUDE.md` import), Codex, OpenCode, and Cursor all read. It then sets the site up for each coding agent you pick with `--agents` (default: all four), generating every agent's files from the same bundled content:
-
-- **Claude Code** — `.mcp.json` (declares the seite MCP server), `.claude/settings.json` (permissions plus `enabledMcpjsonServers`), path-scoped guides in `.claude/rules/`, and skills in `.claude/skills/`
-- **Cursor** — `.cursor/mcp.json` and the same guides as `.cursor/rules/*.mdc` (auto-attached by `globs`)
-- **Codex CLI** — `.codex/config.toml` with `[mcp_servers.seite]`
-- **OpenCode** — `opencode.json` with the MCP server and permission defaults (allow reads, site edits, and `seite build/new/serve/theme`; ask for everything else; deny `.env` reads), plus `.opencode/commands/seite.md` so `/seite` works there too
-
-Codex, Cursor, and OpenCode read the bundled skills (`/seite`, `/theme-builder`, `/brand-identity`, `/landing-page`) from `.agents/skills/`. Agents without path-scoped rules (Codex, OpenCode) find the guides through the "Context Rules" index in `AGENTS.md`, and the "MCP Server" section lists each agent's one-time approval step.
-
-When you run `seite init` interactively, the agent picker preselects the agents it finds on your machine (their CLI on `PATH`, or a config directory like `~/.claude`, `~/.codex`, `~/.config/opencode`, `~/.cursor`). Without a terminal, the default stays all four.
-
-### The `/seite` workflow skill
-
-Every agent gets one entry point for everyday site work. Type `/seite <command>` (in Codex, `$seite <command>`), or just describe the task and the agent picks the command:
+seite is built so a coding agent can run a site end to end: write content, design the theme, check its own work, preview, and deploy. Seven agents are supported: Claude Code, Codex CLI, OpenCode, Cursor, Gemini CLI, GitHub Copilot, and Antigravity CLI. seite itself needs no API keys or paid services; OpenCode can also run free and local models. The agent gets its context from the project itself, and the `seite` CLI does the work that has to be right every time.
+
+## What `seite init` sets up
+
+`seite init --agents claude,codex,opencode,cursor,gemini,copilot,antigravity` (default: all; the interactive picker preselects the agents found on your machine) writes:
+
+- **`AGENTS.md`**: a compact project guide every agent reads. It covers what the site is, the layout, the collections, the content format, the hard rules, and the workflow. Claude Code and Gemini CLI read it through one-line `CLAUDE.md` / `GEMINI.md` files that import it; GitHub Copilot and Antigravity CLI read `AGENTS.md` directly.
+- **The `seite` skill**: one routed skill, `/seite <command>` (Codex: `$seite <command>`), with a short `SKILL.md` and one reference file per command in `reference/`. Claude Code reads it from `.claude/skills/seite/`; Codex, Cursor, OpenCode, Gemini CLI, GitHub Copilot, and Antigravity CLI read `.agents/skills/seite/`. OpenCode gets a `/seite` command wrapper in `.opencode/commands/`, Gemini CLI in `.gemini/commands/seite.toml`.
+- **Context rules**: path-scoped guides (templates, SEO, i18n, shortcodes, data files, config) in `.claude/rules/`, `.cursor/rules/`, and `.github/instructions/*.instructions.md` (Copilot, `applyTo` globs), and `.agents/rules/` (Antigravity CLI, `trigger: glob`), loaded automatically for matching files. Codex, OpenCode, and Gemini CLI find them through the index in `AGENTS.md` (`.agents/rules/` when no Claude, Cursor, or Copilot rules exist).
+- **Local docs**: `.seite/docs/` holds the documentation for the installed seite version, so agents look things up without a network call. `seite docs <query>` searches it. It is gitignored (not committed): `seite context`, `seite docs`, and `seite upgrade` write it when it is missing or from another seite version, and drop pages the version no longer ships.
+- **Permissions**: `.claude/settings.json`, `.cursor/cli.json`, and `opencode.json` let the agent read the site, edit `content/`, `templates/`, `static/`, `data/`, and `seite.toml`, and run these `seite` commands without asking: `build`, `check`, `new`, `serve`, `audit`, `preview`, `og preview`, `context`, `docs`, `page`, `search`, `stats`, `templates`, `frontmatter`, `explain`, `hooks`, and `collection list`. Among the theme commands, only `seite theme apply` and `seite theme list` are allowed; `seite theme create`, `seite agent`, `seite deploy`, and everything else still ask. `.env` files are never readable. `seite upgrade` narrows the broader rules seite 0.20 wrote (`Bash(seite theme:*)`, `Shell(seite)`, `"seite theme*"`) when they are still exactly as written, and adds the newer agent commands (including `audit`, `preview` and `og preview` for Claude Code).
+- **Check hooks**: see [Check hooks](#check-hooks).
+- **Claude desktop preview**: `.claude/launch.json` declares the `seite` dev server, so the Claude desktop app opens the site in its preview pane with live reload.
+
+The MCP server is not wired in by default: coding agents use the CLI. Pass `--mcp` to add it as well (see [MCP Server](/docs/mcp-server)).
+
+Each agent has a one-time step before the project config takes effect. `AGENTS.md` lists them under "Agent setup":
+
+| Agent | One-time step |
+|---|---|
+| Claude Code | Accept the workspace trust prompt |
+| Codex CLI | Trust the project, then approve the hooks in `/hooks` |
+| OpenCode | None |
+| Cursor | Trust the workspace (`cursor-agent --trust` or the prompt) |
+| Gemini CLI | Trust the folder (`gemini trust`) and approve the project hooks |
+| GitHub Copilot | Trust the folder when Copilot CLI asks (repository hooks load only in trusted folders) |
+| Antigravity CLI | None; for `agy -p`, allow seite commands in your user settings (see [Antigravity CLI](#antigravity-cli)) |
+
+## The `/seite` skill
 
 | Command | What the agent does |
-|---------|---------------------|
-| `check` | Runs `seite check` (or the `seite_check` MCP tool), fixes every error at its source file and line, and re-runs until clean |
-| `new <type> "<title>"` | Creates the file with `seite new` / `seite_create_content`, writes it, then checks it |
-| `preview` | Starts `seite serve --no-repl` in the background and reports the URL |
-| `build` | Runs `seite build --json` and reports broken links, missing assets, and diagnostics |
-| `deploy` | Checks, runs `seite deploy --dry-run`, and asks you before a real deploy |
-| `theme` | Lists or applies a bundled theme, or hands off to `/theme-builder` for a custom design |
-| `collection` | Lists collections or adds a preset |
+|---|---|
+| `check` | `seite check`, fixes every error at its file and line, checks once more, then stops |
+| `audit` | `seite audit --json`, fixes SEO, AI-visibility and accessibility findings at the file and line each names, then audits once more |
+| `new <type> "<title>"` | Creates the file with `seite new`, writes it, checks it |
+| `preview` | Opens the running dev server, or starts one (built-in browser in Claude's desktop app and Cursor, else `seite serve --open`) |
+| `build` | `seite build --json`, reports broken links, missing assets, diagnostics |
+| `deploy` | Checks, runs `seite deploy --dry-run`, asks you before the real deploy |
+| `theme [name \| description]` | Applies a bundled theme, or designs a custom one in `templates/base.html` |
+| `brand` | Logo, palette (`data/brand.yaml`), favicon |
+| `landing [page]` | Homepage or landing page: content in `content/pages/`, template in `templates/` |
+| `collection [preset]` | Lists collections or adds a preset |
+| `upgrade` | `seite upgrade --check`, then applies it after you agree |
+| `hooks [on \| off \| status]` | Manages the check hooks |
 
-The skill points at `AGENTS.md` for the details rather than repeating them, and `seite upgrade` keeps it current.
+With no command, the agent picks one from your request and asks once if two fit. Each session starts with `seite context`, which prints the config, collections, theme, dev server, and pending upgrades in one go.
 
-`seite agent` itself drives Claude Code; the other agents work in the project directly.
+### Design with impeccable
 
-Existing sites can migrate without losing their custom instructions:
+For design work, install the optional [impeccable](https://github.com/pbakaus/impeccable) skill: `seite skill install impeccable`. When it is present, `/seite theme` uses `/impeccable` for the design decisions and keeps seite's template contract (required blocks, SEO head, i18n, search). It builds directly in `templates/`, previews with `seite serve`, and finishes with `seite check` plus one `impeccable detect dist/`.
+
+## Check hooks
+
+Each agent gets two hooks that run `seite check` for it and hand errors back. Warnings never block.
+
+- **After each edit**: `seite check --hook <agent> --post-edit` checks only the edited file (frontmatter, shortcodes, template syntax, data-file syntax) and returns its errors with the tool result.
+- **At the end of a turn**: `seite check --hook <agent>` checks the whole site. With errors, the agent keeps working; it is sent back at most once per turn.
+
+| Agent | Hook config | After edit | End of turn |
+|---|---|---|---|
+| Claude Code | `.claude/settings.json` | `PostToolUse` (`Write\|Edit\|MultiEdit`) | `Stop` |
+| Codex CLI | `.codex/hooks.json` | `PostToolUse` (`apply_patch`) | `Stop` |
+| Cursor | `.cursor/hooks.json` | `postToolUse` (`Write`) | `stop` |
+| OpenCode | `.opencode/plugins/seite-check.js` | `tool.execute.after` | `session.idle` |
+| Gemini CLI | `.gemini/settings.json` | `AfterTool` (`write_file\|replace`) | `AfterAgent` |
+| GitHub Copilot | `.github/hooks/seite.json` | `PostToolUse` (`edit\|create\|Edit\|Write\|MultiEdit`) | `Stop` |
+| Antigravity CLI | `.agents/hooks.json` | `PostToolUse` (file tools) + `PostInvocation` | `Stop` |
+
+Every hook command is wrapped so a missing `seite` binary exits 0 silently (`command -v seite >/dev/null 2>&1 && seite check --hook … || true`); a collaborator without seite is never blocked. The wrapper is POSIX shell syntax: on Windows, hooks need Git Bash (Cursor runs hooks in PowerShell there, where the wrapper does not work; Copilot's hooks set only the `bash` command, so they don't run under PowerShell). The hook exits 0 on every path and is silent outside a seite site.
 
 ```bash
-seite upgrade
+seite hooks status                 # installed / missing, per agent
+seite hooks off --agents cursor    # remove seite's hook entries only
+seite hooks off --tier post-edit   # keep the turn-end check, drop the after-edit one
+seite hooks on                     # install them again
 ```
 
-The upgrade moves existing project guidance from `CLAUDE.md` to `AGENTS.md`, then replaces `CLAUDE.md` with the `@AGENTS.md` compatibility import. If both files already exist, Seite preserves the Claude-specific content and adds the import. It also adds any missing files for the selected agents (older sites are treated as `all`), merging into existing configs rather than replacing them. Change the selection with `seite upgrade --agents claude,cursor`; files of deselected agents are left in place but no longer maintained.
+`.seite/config.json` records each hook tier seite installed (`hooks_installed`: `claude` for the turn-end hook, `claude:post-edit` for the after-edit hook). `seite upgrade` adds a tier only when it isn't recorded, so a hook you turned off or deleted stays off, tier by tier. Sites from seite 0.20 recorded only the turn-end tier: upgrade adds their after-edit hook while the turn-end hook is still in place. `seite hooks off` deletes OpenCode's plugin only while it is exactly as seite wrote it, and removes only hook entries whose command is one seite generated.
 
-## Next Steps
+## `seite agent`
 
-- [Theme Gallery](/docs/theme-gallery): browse bundled themes and generate custom ones with AI
-- [CLI Reference](/docs/cli-reference), all `seite agent` flags and options
-- [Getting Started](/docs/getting-started): initial site setup if you haven't started yet
-- [AI Static Site Generator: What It Means and Why It Matters](/blog/ai-static-site-generator): how AI agent integration fits into the bigger picture of AI-native site generation
+`seite agent` opens a coding agent in the site. It adds no context, tool allowlist, or MCP flags: the prompt is passed through unchanged, the agent reads `AGENTS.md` and the `/seite` skill, and it runs with the project's own permissions. It must be run inside a site (a directory with `seite.toml`):
+
+```bash
+seite agent                                     # interactive session
+seite agent "write a post about our launch"     # interactive, starting with this prompt
+seite agent --once "fix all check errors"       # run once and exit
+seite agent --with gemini "add a docs page"     # another agent
+```
+
+| `--with` | Interactive with a prompt | One-shot (`--once`) | Install |
+|---|---|---|---|
+| `claude` (default) | `claude "<prompt>"` | `claude -p "<prompt>"` | `npm install -g @anthropic-ai/claude-code` |
+| `codex` | `codex "<prompt>"` | `codex exec --sandbox workspace-write "<prompt>"` | `npm install -g @openai/codex` |
+| `opencode` | `opencode --prompt "<prompt>"` | `opencode run "<prompt>"` | `curl -fsSL https://opencode.ai/install \| bash` |
+| `cursor` | `cursor-agent "<prompt>"` | `cursor-agent -p "<prompt>" --output-format text` | `curl https://cursor.com/install -fsS \| bash` |
+| `gemini` | `gemini -i "<prompt>"` | `gemini -p "<prompt>"` | `npm install -g @google/gemini-cli` |
+| `copilot` | `copilot -i "<prompt>"` | `copilot -p "<prompt>"` | `npm install -g @github/copilot` |
+| `antigravity` | `agy -i "<prompt>"` | `agy -p "<prompt>"` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+
+`SEITE_AGENT` sets the default harness. If the binary isn't on `PATH`, `seite agent` fails right away with the install command.
+
+Auto-approval is a separate, explicit flag: `seite agent --once --auto-approve "<prompt>"` adds `opencode run --auto`, `cursor-agent --force --approve-mcps`, `gemini --approval-mode=yolo`, `copilot --allow-all-tools`, or `agy --dangerously-skip-permissions`. Claude Code and Codex get no extra flag. It only takes effect with `--once`, from an interactive terminal, outside any agent session; otherwise seite prints a warning and runs without it. The global `--yes` (or `SEITE_YES=1`) never adds it.
+
+`seite agent` and `seite theme create` refuse to start a nested agent when they run inside a coding agent's session (detected from the variables the agents set for their commands: `CLAUDECODE`, `CODEX_THREAD_ID`, `CODEX_SANDBOX`, `GEMINI_CLI`, `OPENCODE`, `CURSOR_AGENT`, `ANTIGRAVITY_AGENT`, `ANTIGRAVITY_CONVERSATION_ID`, and the hook project-dir variables; Copilot documents no such variable, so a session inside Copilot is not detected). The error tells you to run `/seite theme …` (or the request) directly in the session you are in.
+
+## `seite theme create`
+
+```bash
+seite theme create "dark mode with neon green accents"
+```
+
+With impeccable installed, this prints how to run `/impeccable` with your description. Otherwise it runs your agent once with `/seite theme <description>` (`$seite theme …` in Codex), then suggests `seite skill install impeccable` for deeper design work. It never passes an auto-approve flag, so the agent asks before anything its permissions don't allow.
+
+With `SEITE_AGENT=copilot`, the prompt is "Use the /seite skill: theme <description>", since Copilot runs a skill that the prompt names.
+
+With `SEITE_AGENT=gemini`, Gemini CLI may not expand custom commands such as `/seite` in headless (`-p`) mode (unverified); if the theme isn't generated, run `/seite theme <description>` in an interactive `gemini` session instead.
+
+## GitHub Copilot
+
+`seite init --agents copilot` (or `seite upgrade --agents …,copilot`) sets a site up for Copilot CLI, the Copilot cloud agent, and agent mode in VS Code:
+
+- Copilot reads `AGENTS.md` itself, so no extra instructions file is written.
+- The skill goes to `.agents/skills/seite/`, which Copilot loads. Ask for it by name: "Use the /seite skill to check the site".
+- Context rules go to `.github/instructions/<name>.instructions.md` with `applyTo` globs.
+- Hooks go to `.github/hooks/seite.json` (`Stop` and `PostToolUse`), the same two-tier check as the other agents. In the cloud agent, where `seite` is usually not installed, they exit silently.
+- With `--mcp`, Copilot uses the same `.mcp.json` as Claude Code. Copilot gives `.mcp.json` precedence over `.github/mcp.json`, so seite writes only `.mcp.json`.
+- Copilot has no project permissions file, so seite writes none. Approve tools when Copilot asks, or pass `--allow-tool` yourself.
+
+## Antigravity CLI
+
+`seite init --agents antigravity` (or `seite upgrade --agents …,antigravity`) sets a site up for Antigravity CLI (`agy`), Google's successor to Gemini CLI. Gemini CLI stays supported separately.
+
+- Antigravity reads `AGENTS.md` itself, so no extra instructions file is written.
+- The skill goes to `.agents/skills/seite/`; Antigravity turns it into the `/seite` slash command.
+- Context rules go to `.agents/rules/<name>.md` with `trigger: glob` frontmatter (`globs` from each rule's paths), so they load when the agent works on matching files. Antigravity discards a rule file without a valid `trigger`, so every `.agents/rules/` copy carries this frontmatter, also on sites where it only serves Codex, OpenCode, or Gemini CLI; `seite upgrade` rewrites copies an earlier seite wrote with Claude's `paths:` frontmatter (edited copies are kept, with a notice).
+- Hooks go to `.agents/hooks.json` under a hook named `seite-check`. The turn-end check is a `Stop` hook: with errors it answers `{"decision": "continue"}` and the errors become a system message, once per turn. Antigravity's `PostToolUse` hook has no way to talk back to the model, so the after-edit check takes two hooks: `PostToolUse` on the file tools (`write_file`, `edit_file`, and the IDE's `write_to_file`/`replace_file_content`/`multi_replace_file_content`) records the edited file in seite's per-user cache folder (outside the project), and `PostInvocation` checks the recorded files once the tool calls have run and hands errors back as a message before the next model call. Workspace hooks load without a trust step.
+- With `--mcp`, the server goes to `.agents/mcp_config.json` (`mcpServers.seite`).
+- Antigravity has no project permissions file: permissions live only in your `~/.gemini/antigravity-cli/settings.json`. Interactive sessions ask before running a command. Headless `agy -p` (`seite agent --with antigravity --once`) cannot ask and denies any shell command no allow rule covers, so add rules for the seite commands it should run, for example `"permissions": {"allow": ["command(seite check)", "command(seite context)"]}`. A rule matches that exact command line only (in our tests with agy 1.4.10, `command(seite)` and `command(seite *)` did not cover `seite --version`), so headless runs work best for tasks whose commands you can list.
+- `agy` runs shell commands in a login shell: a `seite` on the `PATH` of the terminal you started it from but not in your shell profile is not found by the agent.
+
+## Using seite with an existing site
+
+`seite init` is not required. For a site you already have, or one made with an older seite, two installs give your agent the `/seite` skill without touching the project files:
+
+**Any agent, with the [skills CLI](https://skills.sh)** ([vercel-labs/skills](https://github.com/vercel-labs/skills)):
+
+```bash
+npx skills add seite-sh/seite              # pick agents interactively
+npx skills add seite-sh/seite -a claude-code -a codex   # or name them
+npx skills add seite-sh/seite -g           # install for your user, every project
+```
+
+This copies the `seite` skill (`SKILL.md` and its `reference/` files) from the `skills/seite/` directory of the seite repository into each agent's skills directory (`.claude/skills/` for Claude Code; `.agents/skills/` for Codex, Cursor, OpenCode, Gemini CLI, GitHub Copilot, and Antigravity CLI). It installs only the skill: no hooks, no rules, no permissions.
+
+**Claude Code, as a plugin** (the skill plus the check hooks):
+
+```text
+/plugin marketplace add seite-sh/seite
+/plugin install seite@seite
+```
+
+From a shell, `claude plugin marketplace add seite-sh/seite` and `claude plugin install seite@seite`. The plugin carries the `/seite` skill and the same two hooks as `.claude/settings.json` (after each edit, and at the end of a turn), run as `seite check --hook claude --plugin`. It adds no MCP server.
+
+A plugin's hooks fire in every project where it is enabled, including repositories you only cloned, so the plugin's copy is scoped tightly:
+
+- Outside a seite site it costs almost nothing. `command -v seite` is a shell builtin, and `seite check --hook claude --plugin` looks for a `seite.toml` in the working directory and its parents. Without one, it exits 0 and prints nothing, and it skips the update check and telemetry.
+- The end-of-turn check runs only in a turn where the agent edited a file inside the site. The after-edit hook leaves a marker in `.seite/cache/`, and the end-of-turn hook runs only when it finds the marker, which it removes.
+- When the project's `.claude/settings.json` or `.claude/settings.local.json` already runs seite's hooks (from `seite init` or `seite hooks on`), the plugin's copy steps aside, so each check runs once.
+
+Every hook message starts with a line saying it is `seite check` output about the site's files, and each diagnostic line is cut at 300 characters, since diagnostics quote file content. `seite hooks` manages only the project's hooks; turn the plugin's hooks off by disabling the plugin in `/plugin`.
+
+Both installs need the `seite` CLI on your `PATH` (`curl -fsSL https://seite.sh/install.sh | sh`). The skill checks for it and asks before installing it. They come from the repository's default branch, so they can be newer than your installed `seite`; `seite self-update` brings the binary up to date. `seite upgrade --agents …` later adds the full set (rules, permissions, project hooks) for a project.
+
+## Keeping a site current
+
+```bash
+seite upgrade --check     # list pending changes (exit 1 when there are some)
+seite upgrade             # apply them
+seite upgrade --agents claude,gemini   # change the agent selection
+seite upgrade --mcp       # also wire in the MCP server
+seite upgrade --agent     # upgrade, then hand the release notes to an agent as a migration brief
+seite upgrade --agent --with codex   # the agent to start (default: SEITE_AGENT, else claude)
+```
+
+`seite upgrade --agent` collects the release notes since the project's recorded seite version into a brief and saves it to `.seite/upgrade-brief.md` (gitignored). From a terminal it then starts the agent interactively with "Read .seite/upgrade-brief.md and follow it", never with an auto-approve flag. Inside an agent session, or with `--json` (`data.brief`), it prints the brief instead, so the agent you are talking to applies it. It cannot be combined with `--check`.
+
+Upgrade never adds an agent on its own. Sites from seite 0.20 that store their selection keep it, so Gemini CLI, GitHub Copilot, and Antigravity CLI are added only when `--agents` names them (`seite upgrade --agents <current>,gemini,copilot,antigravity`); upgrade says once that they are available. A project with no stored selection (from before seite 0.20, or added with 0.20's `seite workspace add`) is maintained for Claude Code, Codex, OpenCode, Cursor, and Gemini CLI. Upgrade adds missing files for the selected agents and merges into existing configs without replacing your settings. It replaces the `seite` skill and its references when the bundled version is newer, refreshes `.seite/docs/` after a seite update, and adds `/.seite/docs/` and `/.seite/dev.json` to `.gitignore`. It never deletes files of deselected agents, and it leaves existing MCP config alone unless you pass `--mcp`. Every file it writes or deletes must be a real file inside the project: a symlink anywhere on the path (for example a committed `.claude/skills/seite/SKILL.md` pointing elsewhere) stops the upgrade with an error naming it.
+
+Sites from seite 0.20 and earlier also had the `theme-builder`, `brand-identity`, and `landing-page` skills and a `design-prompts` rule. `/seite theme`, `/seite brand`, and `/seite landing` replace them. Upgrade removes copies that are still exactly as seite wrote them (checked against the content hash of every released version) and keeps edited copies, with a notice shown once. It does the same for the `AGENTS.md` sections 0.20 wrote about those skills and the dev-server REPL, leaving a one-line pointer to `/seite theme`, `/seite brand`, and `/seite landing`.
+
+## Next steps
+
+- [MCP Server](/docs/mcp-server): for chat apps without a shell, such as Claude Desktop
+- [CLI Reference](/docs/cli-reference): every flag of `seite agent`, `seite check`, and `seite hooks`
+- [Getting Started](/docs/getting-started): create your first site

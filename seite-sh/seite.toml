@@ -1,9 +1,9 @@
 [site]
 title = "seite"
-description = "AI-native static site generator for the modern web"
+description = "The static site generator your coding agent can run end to end, for free. HTML, Markdown and llms.txt from one Rust binary."
 base_url = "https://seite.sh"
 language = "en"
-author = ""
+author = "Omar Sanchez"
 
 [[collections]]
 name = "docs"
@@ -62,10 +62,15 @@ default_template = "post.html"
 
 [build]
 minify = true
+search = "full"
 output_dir = "dist"
 content_dir = "content"
 template_dir = "templates"
 static_dir = "static"
+
+# Generated social cards (og:image) in data/brand.yaml colors.
+[og]
+generate = true
 
 [deploy]
 target = "cloudflare"

@@ -4,14 +4,23 @@ pub mod base_path;
 pub mod cache;
 pub mod code_copy;
 pub mod discovery;
+pub mod external_links;
 pub mod feed;
 pub mod images;
 pub mod links;
 pub mod markdown;
 pub mod math;
 pub mod mermaid;
+pub mod og;
 pub mod redirects;
+pub mod search;
 pub mod sitemap;
+pub mod tailwind;
+
+pub(crate) mod content_model;
+pub(crate) mod related;
+pub(crate) mod series;
+pub(crate) mod taxonomy;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -40,7 +49,7 @@ pub struct BuildOptions {
 }
 
 pub struct BuildResult {
-    pub collections: HashMap<String, Vec<ContentItem>>,
+    pub collections: indexmap::IndexMap<String, Vec<ContentItem>>,
     pub stats: BuildStats,
     /// Broken links and missing assets across the whole site: the main
     /// output plus every subdomain output (each subdomain's own results are
@@ -72,7 +81,7 @@ pub struct SubdomainBuildInfo {
 
 #[derive(Debug, Serialize)]
 pub struct BuildStats {
-    pub items_built: HashMap<String, usize>,
+    pub items_built: std::collections::BTreeMap<String, usize>,
     pub static_files_copied: usize,
     pub public_files_copied: usize,
     pub data_files_loaded: usize,
@@ -83,6 +92,11 @@ pub struct BuildStats {
     pub incremental: bool,
     /// Number of content items skipped (unchanged).
     pub items_skipped: usize,
+    /// Full-text search index sizes (all languages), when `[build] search =
+    /// "full"`.
+    pub search_index: Option<search::IndexStats>,
+    /// Social card counts (`None` when `[og]` cards are off).
+    pub og_cards: Option<og::OgStats>,
 }
 
 impl CommandOutput for BuildStats {
@@ -138,6 +152,20 @@ impl BuildStats {
         }
         Some(out)
     }
+
+    /// One-line full-text search index summary for `--verbose` output.
+    pub fn search_display(&self) -> Option<String> {
+        let s = self.search_index.as_ref()?;
+        Some(format!(
+            "  Search index: {} pages, {} terms, {:.1} KB in {} files (largest shard {:.1} KB, meta {:.1} KB)",
+            s.pages,
+            s.terms,
+            s.bytes as f64 / 1024.0,
+            s.files,
+            s.largest_shard_bytes as f64 / 1024.0,
+            s.meta_bytes as f64 / 1024.0,
+        ))
+    }
 }
 
 #[derive(Serialize)]
@@ -150,6 +178,16 @@ struct SiteContext {
     base_path: String,
     language: String,
     author: String,
+    /// Absolute URL of this language's generated site card (`[og]`), the
+    /// `og:image` fallback for pages without their own image or card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    og_image: Option<String>,
+    /// `[comments]` embed settings (`seite/comments.html`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comments: Option<serde_json::Value>,
+    /// `[newsletter]` form settings (`seite/newsletter.html`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    newsletter: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -165,6 +203,12 @@ struct PageContext {
     slug: String,
     tags: Vec<String>,
     url: String,
+    /// Path of the published markdown copy of this page (e.g. `/posts/hello.md`,
+    /// `/posts/index.md`), relative to `site.base_url` like `url`. `None` when the
+    /// build writes no `.md` file for the page (empty homepage, paginated pages
+    /// after the first, tag pages, 404), so themes can gate the
+    /// `<link rel="alternate" type="text/markdown">` tag on it.
+    markdown_url: Option<String>,
     /// Collection name ("posts", "docs", "pages", etc.).
     collection: String,
     /// Per-page robots meta value, e.g. "noindex".
@@ -178,7 +222,16 @@ struct PageContext {
     /// Table of contents entries extracted from heading hierarchy.
     toc: Vec<markdown::TocEntry>,
     /// Arbitrary key-value data from frontmatter `extra` field.
-    extra: std::collections::HashMap<String, serde_yaml_ng::Value>,
+    extra: indexmap::IndexMap<String, serde_yaml_ng::Value>,
+    /// Absolute URL of the page's generated social card (`[og]`); unset when
+    /// the page has `image:` or gets no card of its own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    og_image: Option<String>,
+    /// Absolute URL of the page's collection index (`base_url` + language
+    /// prefix + `url_prefix`), for the BreadcrumbList JSON-LD. Unset for
+    /// root-mounted collections (empty `url_prefix`) and non-collection pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collection_url: Option<String>,
 }
 
 /// Lightweight previous/next post link exposed to templates as `prev_post` / `next_post`.
@@ -263,6 +316,9 @@ impl SiteContext {
             base_path: config.base_path(),
             language: config.site.language.clone(),
             author: config.site.author.clone(),
+            og_image: site_card_url(config, &config.site.language),
+            comments: crate::config::embeds::comments_context(config),
+            newsletter: crate::config::embeds::newsletter_context(config),
         }
     }
 
@@ -274,14 +330,46 @@ impl SiteContext {
             base_path: config.base_path(),
             language: lang.to_string(),
             author: config.site.author.clone(),
+            og_image: site_card_url(config, lang),
+            comments: crate::config::embeds::comments_context(config),
+            newsletter: crate::config::embeds::newsletter_context(config),
         }
     }
+}
+
+/// Absolute URL of `lang`'s site card when `[og]` cards are on.
+fn site_card_url(config: &SiteConfig, lang: &str) -> Option<String> {
+    config
+        .og_enabled()
+        .then(|| og::absolute(&config.site.base_url, &og::site_card_path(config, lang)))
 }
 
 pub fn build_site(
     config: &SiteConfig,
     paths: &ResolvedPaths,
     opts: &BuildOptions,
+) -> Result<BuildResult> {
+    build_site_with(config, paths, opts, true)
+}
+
+/// [`build_site`] into an output that is thrown away (`seite check`, agent
+/// hooks, MCP `seite_check`): `[images]` sources are only checked from their
+/// headers (`image-too-large`), never decoded into resized copies, since
+/// nothing reads them. `seite audit` uses [`build_site`]: its findings look
+/// at the generated `srcset` and image sizes.
+pub fn build_site_scratch(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+) -> Result<BuildResult> {
+    build_site_with(config, paths, opts, false)
+}
+
+fn build_site_with(
+    config: &SiteConfig,
+    paths: &ResolvedPaths,
+    opts: &BuildOptions,
+    image_variants: bool,
 ) -> Result<BuildResult> {
     // Subdomain collections are removed from the main output and rebuilt as
     // independent root-mounted sites.
@@ -315,15 +403,29 @@ pub fn build_site(
                 .subdomain_collections()
                 .iter()
                 .all(|collection| paths.subdomain_output(&collection.name).exists());
-        if cs.is_empty() && all_outputs_exist {
+        // A Tailwind input outside the tracked dirs (e.g. `assets/`) is not
+        // in the change set: never skip the build for it (the dev server
+        // watches that file).
+        let untracked_tailwind_input = config.build.tailwind.as_ref().is_some_and(|tw| {
+            let input = paths.root.join(&tw.input);
+            ![
+                &paths.static_dir,
+                &paths.templates,
+                &paths.content,
+                &paths.data_dir,
+            ]
+            .iter()
+            .any(|dir| input.starts_with(dir))
+        });
+        if cs.is_empty() && all_outputs_exist && !untracked_tailwind_input {
             // Even a content no-op must refresh generated access artifacts so
             // upgrading seite applies security migrations to retained output.
             refresh_access_artifacts(effective_config, paths)?;
             refresh_subdomain_access_artifacts(config, paths)?;
             return Ok(BuildResult {
-                collections: HashMap::new(),
+                collections: indexmap::IndexMap::new(),
                 stats: BuildStats {
-                    items_built: HashMap::new(),
+                    items_built: std::collections::BTreeMap::new(),
                     static_files_copied: 0,
                     public_files_copied: 0,
                     data_files_loaded: 0,
@@ -331,6 +433,8 @@ pub fn build_site(
                     step_timings: Vec::new(),
                     incremental: true,
                     items_skipped: cs.total_content,
+                    search_index: None,
+                    og_cards: None,
                 },
                 link_check: links::LinkCheckResult::default(),
                 subdomain_builds: Vec::new(),
@@ -357,6 +461,19 @@ pub fn build_site(
     // update the existing output in place. They never clean it, so a failure
     // there can leave a mix of old and freshly rendered pages but never wipes
     // the site; the next successful build brings it back in sync.
+    // Before anything reads a content file or template: symlinked source
+    // directories and sources (they could publish files from outside the
+    // project) and template include/extends/import cycles (rendering one
+    // never ends).
+    let mut refused = guard_sources(config, paths);
+    refused.extend(symlinked_source_diagnostics(paths));
+    refused.extend(templates::template_cycle_diagnostics(&paths.templates));
+    if !refused.is_empty() {
+        let mut refused = refused.relative_to(&paths.root);
+        refused.sort();
+        return Err(PageError::Diagnostics(refused));
+    }
+    guard_output(&paths.root, &paths.output)?;
     clean_stale_build_dirs(&paths.output);
     let in_place = changeset
         .as_ref()
@@ -399,6 +516,7 @@ pub fn build_site(
         &changeset,
         &paths.output,
         &main_external,
+        image_variants,
     )?;
 
     let mut warnings = result.warnings;
@@ -414,6 +532,7 @@ pub fn build_site(
             &mut warnings,
             &mut staged,
             &mut diagnostics,
+            image_variants,
         )?
     } else {
         Vec::new()
@@ -632,6 +751,135 @@ impl Drop for StagedOutputs {
     }
 }
 
+/// Every symlink (file or directory) under the content and template
+/// directories, as a `symlinked-source` error. The build reads and
+/// publishes those files, so a committed `content/posts/x.md ->
+/// ~/notes.md` or `templates/shortcodes/x.html -> ~/.aws/credentials` would
+/// put files from outside the project into `dist/`, `llms-full.txt` and the
+/// search index. Every symlink is refused, even one that stays inside the
+/// project: one rule, nothing to resolve, and the same as [`guard_sources`]
+/// for whole directories. (static/, public/ and data/ walks only take
+/// regular files, so their symlinks are skipped already.)
+pub(crate) fn symlinked_source_diagnostics(paths: &ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
+    for dir in [&paths.content, &paths.templates] {
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in WalkDir::new(dir)
+            .min_depth(1)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path_is_symlink())
+        {
+            found.push(
+                Diagnostic::error(
+                    "symlinked-source",
+                    "this file is a symlink: seite does not build from symlinked content or templates (it could publish files from outside the project)",
+                )
+                .with_file(entry.path())
+                .with_hint("replace the link with a copy of the file"),
+            );
+        }
+    }
+    found
+}
+
+/// The build copies and publishes what the source directories hold: refuse
+/// one inside the project that goes through a symlink (a committed
+/// `static -> ~/.ssh` would put private files into `dist/` and the deploy).
+fn guard_sources(config: &SiteConfig, paths: &crate::config::ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
+    let collection_dirs: Vec<PathBuf> = config
+        .collections
+        .iter()
+        .map(|c| paths.content.join(&c.directory))
+        .collect();
+    let dirs = [
+        &paths.content,
+        &paths.templates,
+        &paths.static_dir,
+        &paths.data_dir,
+        &paths.public_dir,
+    ]
+    .into_iter()
+    .chain(collection_dirs.iter());
+    for dir in dirs {
+        if dir.starts_with(&paths.root) && fs::symlink_metadata(dir).is_ok() {
+            if let Err(e) = crate::safe_fs::guard(&paths.root, dir) {
+                found.push(
+                    Diagnostic::error(
+                        "symlinked-source",
+                        format!(
+                            "source directory goes through a symlink ({e:#}): seite does not build from it (it could publish files from outside the project)"
+                        ),
+                    )
+                    .with_file(dir)
+                    .with_hint("replace the link with a real directory holding copies of the files"),
+                );
+            }
+        }
+    }
+    found
+}
+
+/// Symlinks under static/, public/ and data/: those walks take regular
+/// files only, so a link is left out of the build (and its target never
+/// published). One `symlinked-source` warning per link, so a page that
+/// later misses that asset or data file has an explanation.
+pub(crate) fn skipped_symlink_diagnostics(paths: &ResolvedPaths) -> Diagnostics {
+    let mut found = Diagnostics::new();
+    for dir in [&paths.static_dir, &paths.public_dir, &paths.data_dir] {
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in WalkDir::new(dir)
+            .min_depth(1)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path_is_symlink())
+        {
+            found.push(
+                Diagnostic::warning(
+                    "symlinked-source",
+                    "this entry is a symlink: seite skips it (it does not copy or read files through symlinks), so it is not in the build",
+                )
+                .with_file(entry.path())
+                .with_hint("replace the link with a copy of the file to publish it"),
+            );
+        }
+    }
+    found
+}
+
+/// A full build empties its output directory (and replaces a symlinked one's
+/// contents). An output inside the project that goes through a symlink
+/// (e.g. `dist` linked to a web server's docroot) is used only when its
+/// target is empty or already holds a site build (`index.html` and
+/// `sitemap.xml`): a committed `dist -> ~/Documents` must not make a build
+/// empty `~/Documents`. Outputs outside the project (scratch builds) are
+/// seite's own temp dirs; workspace outputs are guarded when it loads.
+pub(crate) fn guard_output(root: &Path, output: &Path) -> Result<()> {
+    if !output.starts_with(root) {
+        return Ok(());
+    }
+    let Err(e) = crate::safe_fs::guard(root, output) else {
+        return Ok(());
+    };
+    let looks_like_output = fs::read_dir(output).is_ok_and(|mut entries| {
+        entries.next().is_none()
+            || (output.join("index.html").is_file() && output.join("sitemap.xml").is_file())
+    });
+    if looks_like_output {
+        return Ok(());
+    }
+    Err(PageError::Build(format!(
+        "output directory: {e:#}; its target is neither empty nor an earlier build (index.html + sitemap.xml), so seite won't empty it"
+    )))
+}
+
 /// Replace `output` with `staging`.
 ///
 /// Renames the previous output aside, renames staging into place, then
@@ -753,12 +1001,16 @@ fn refresh_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Resul
         access::validate_generated_file_conflicts(&paths.public_dir)?;
         images::clear_private_static_output(paths)?;
         access::write_worker(config, &paths.output)?;
+    } else if access::worker_enabled(config) {
+        // `[deploy] markdown_negotiation` without `[access]`.
+        access::validate_markdown_worker_conflicts(&paths.public_dir)?;
+        access::write_worker(config, &paths.output)?;
     }
     Ok(())
 }
 
 fn refresh_subdomain_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths) -> Result<()> {
-    if config.access.is_none() {
+    if !access::worker_enabled(config) {
         return Ok(());
     }
 
@@ -783,6 +1035,7 @@ fn refresh_subdomain_access_artifacts(config: &SiteConfig, paths: &ResolvedPaths
 /// For each collection with `subdomain` set, construct a synthetic `SiteConfig`
 /// with only that collection and call the build pipeline on it with a separate
 /// output directory and subdomain-specific `base_url`.
+#[allow(clippy::too_many_arguments)]
 fn build_subdomain_sites(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -791,6 +1044,7 @@ fn build_subdomain_sites(
     warnings: &mut Vec<String>,
     staged: &mut StagedOutputs,
     diagnostics: &mut Diagnostics,
+    image_variants: bool,
 ) -> Result<Vec<SubdomainBuildInfo>> {
     let mut results = Vec::new();
 
@@ -813,6 +1067,7 @@ fn build_subdomain_sites(
         // Create subdomain-specific paths
         // Subdomain outputs are always rebuilt from scratch, into staging.
         let mut sub_paths = paths.clone();
+        guard_output(&paths.root, &subdomain_output)?;
         clean_stale_build_dirs(&subdomain_output);
         sub_paths.output = staged.stage(&paths.root, &subdomain_output)?;
 
@@ -829,6 +1084,7 @@ fn build_subdomain_sites(
             &None,
             &subdomain_output,
             &external,
+            image_variants,
         )?;
         for warning in sub_result.warnings {
             if !warnings.contains(&warning) {
@@ -959,6 +1215,9 @@ fn needs_plausible_extensions_warning(analytics: Option<&AnalyticsSection>) -> b
 /// `display_output`: the final output directory. `paths.output` may be a
 /// staging directory that is renamed to `display_output` after the build;
 /// reported paths (e.g. broken links on generated pages) use the final one.
+///
+/// `image_variants`: false for scratch builds ([`build_site_scratch`]).
+#[allow(clippy::too_many_arguments)]
 fn build_site_inner(
     config: &SiteConfig,
     paths: &ResolvedPaths,
@@ -967,7 +1226,18 @@ fn build_site_inner(
     changeset: &Option<cache::ChangeSet>,
     display_output: &Path,
     external_sources: &HashMap<PathBuf, String>,
+    image_variants: bool,
 ) -> Result<BuildResult> {
+    // Taxonomy URL collisions would make pages overwrite each other (also
+    // reported when seite.toml is loaded; repeated here for every build path).
+    let taxonomy_errors: Vec<Diagnostic> = taxonomy::config_diagnostics(config, None)
+        .into_iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    if !taxonomy_errors.is_empty() {
+        return Err(PageError::Diagnostics(taxonomy_errors.into()));
+    }
+
     let start = Instant::now();
     let mut step_timings: Vec<(String, f64)> = Vec::new();
     let mut progress = crate::progress::BuildProgress::new();
@@ -1053,6 +1323,15 @@ fn build_site_inner(
             diagnostics.push(d);
         }
     }
+    // Symlinks in static/, public/ and data/ are skipped (warnings).
+    diagnostics.extend(skipped_symlink_diagnostics(paths));
+    // Stale `{{ page.url }}.md` alternate links in user templates (warnings).
+    diagnostics.extend(templates::stale_markdown_link_diagnostics(&paths.templates));
+    // A custom base.html without seite's SEO head partial (warning). Not
+    // when the user templates failed to load: the defaults were used then.
+    if warnings.is_empty() {
+        diagnostics.extend(templates::seite_head_diagnostics(&paths.templates));
+    }
     step_timings.push((
         "Load templates".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -1091,10 +1370,43 @@ fn build_site_inner(
         }
         Err(e) => return Err(e),
     };
+    // Social cards: validate `[og]` (errors fail the build like other
+    // config problems) and load fonts/logo once.
+    let og_plan = match og::OgPlan::new(config, paths, &data) {
+        Ok(plan) => plan,
+        Err(errors) => {
+            fatal.extend(errors);
+            None
+        }
+    };
     step_timings.push((
         "Load data files".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 2.6: Tailwind (`[build.tailwind]`): compile the entry CSS now,
+    // before any page renders (the staging output holds only `public/`
+    // copies while Tailwind scans the site). Step 10 writes it out like any
+    // other static file. Runs on every build, incremental ones included:
+    // class names come from templates, content and data.
+    let tailwind_css = if config.build.tailwind.is_some() {
+        progress.step("Compiling Tailwind CSS");
+        let step_start = Instant::now();
+        let css = match tailwind::run(config, &paths.root) {
+            Ok(css) => css,
+            Err(d) => {
+                fatal.push(*d);
+                None
+            }
+        };
+        step_timings.push((
+            "Tailwind CSS".to_string(),
+            step_start.elapsed().as_secs_f64() * 1000.0,
+        ));
+        css
+    } else {
+        None
+    };
 
     let is_multilingual = config.is_multilingual();
     let default_lang = &config.site.language;
@@ -1114,7 +1426,8 @@ fn build_site_inner(
     // Step 3: Process each collection
     progress.step("Processing content");
     let step_start = Instant::now();
-    let mut all_collections: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    let mut all_collections: indexmap::IndexMap<String, Vec<ContentItem>> =
+        indexmap::IndexMap::new();
 
     // For incremental builds, track changed content paths to skip re-rendering unchanged items.
     // We still parse all items (needed for indexes/feeds), but skip writing unchanged pages.
@@ -1145,9 +1458,14 @@ fn build_site_inner(
     // Pre-compute shortcode site context (identical for every page)
     let sc_site = shortcode_site_context(config);
 
+    // Scheduled publishing (future `date`, `expires`) and frontmatter schema
+    // warnings (errors join `fatal` through the per-file results).
+    let schedule = content::schedule::Schedule::new(config);
+    let schema_warnings = std::sync::Mutex::new(Vec::new());
     for collection in &config.collections {
         let collection_dir = paths.content.join(&collection.directory);
         let mut items = Vec::new();
+        let field_schema = content::schema::Schema::for_site(config, collection);
 
         if !collection_dir.exists() {
             tracing::warn!(
@@ -1158,6 +1476,7 @@ fn build_site_inner(
         }
         if collection_dir.exists() {
             let entries: Vec<_> = WalkDir::new(&collection_dir)
+                .sort_by_file_name()
                 .into_iter()
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
@@ -1172,6 +1491,15 @@ fn build_site_inner(
                     let rel = path.strip_prefix(&collection_dir).unwrap_or(path);
 
                     let parsed = content::parse_content_diagnostic(path).map_err(|d| vec![*d])?;
+                    let (schema_errors, warnings) = content::schema::split(field_schema.validate(
+                        &parsed,
+                        path,
+                        opts.include_drafts,
+                    ));
+                    schema_warnings.lock().map(|mut w| w.extend(warnings)).ok();
+                    if !schema_errors.is_empty() {
+                        return Err(schema_errors);
+                    }
                     let body_line = parsed.body_line;
                     let fm = parsed.frontmatter;
                     let raw_body = parsed.body;
@@ -1187,12 +1515,16 @@ fn build_site_inner(
                     if fm.date.is_none() && collection.has_date {
                         fm.date = parse_date_from_filename(path);
                     }
+                    if !schedule.is_published(collection, &fm) {
+                        return Ok(None);
+                    }
 
                     let sc_i18n = sc_i18n_cache.get(&lang).unwrap_or(&sc_i18n_empty);
                     let RenderedBody {
                         expanded: expanded_body,
                         html: html_body,
                         toc,
+                        warnings: body_warnings,
                     } = render_item_body(
                         config,
                         &shortcode_registry,
@@ -1200,11 +1532,17 @@ fn build_site_inner(
                             path,
                             body: &raw_body,
                             body_line,
-                            page: &shortcode_page_context(&fm, &slug, &collection.name),
+                            page: &shortcode_page_context(&fm, &slug, &collection.name, &lang),
                         },
                         &sc_site,
                         sc_i18n,
                     )?;
+                    if !body_warnings.is_empty() {
+                        schema_warnings
+                            .lock()
+                            .map(|mut w| w.extend(body_warnings))
+                            .ok();
+                    }
                     let excerpt = content::extract_excerpt(&expanded_body);
 
                     let (excerpt_html, _) = markdown::markdown_to_html(&excerpt);
@@ -1258,6 +1596,8 @@ fn build_site_inner(
 
         all_collections.insert(collection.name.clone(), items);
     }
+
+    diagnostics.extend(schema_warnings.into_inner().unwrap_or_default());
 
     // Detect URL collisions: if two content items resolve to the same URL, that's an error.
     {
@@ -1335,6 +1675,20 @@ fn build_site_inner(
         map
     } else {
         HashMap::new()
+    };
+
+    // Taxonomies, related pages and series, computed once for every page.
+    let content_model = content_model::ContentModel::build(config, &all_collections);
+    diagnostics.extend(content_model.diagnostics().iter().cloned());
+    // A changed series part changes its siblings' series box (any collection).
+    let series_dirty_collections: HashSet<String> = match &changed_content_paths {
+        Some(changed) => all_collections
+            .values()
+            .flatten()
+            .filter(|i| changed.contains(&i.source_path))
+            .flat_map(|i| content_model.series_collections(&i.url))
+            .collect(),
+        None => HashSet::new(),
     };
 
     // Render each item in each collection
@@ -1500,8 +1854,10 @@ fn build_site_inner(
             // depend on sibling items, so a change to one post can affect its neighbors.
             let collection_has_changes = changed_content_paths.as_ref().is_some_and(|changed| {
                 items.iter().any(|item| changed.contains(&item.source_path))
-            });
+            }) || series_dirty_collections.contains(&collection.name);
 
+            // Custom schema fields written at the top level are also `page.extra.<name>`.
+            let custom_fields = content::schema::custom_field_names(config, collection);
             let render_results: Vec<std::result::Result<RenderedPage, Box<Diagnostic>>> = items
                 .par_iter()
                 .map(|item| {
@@ -1523,8 +1879,27 @@ fn build_site_inner(
                                 .expect("default language missing from site context cache")
                         });
 
-                    let mut ctx =
-                        build_page_context(site_ctx_for_item, item, &data, collection.private);
+                    let mut ctx = build_page_context(
+                        site_ctx_for_item,
+                        item,
+                        &data,
+                        collection.private,
+                        &custom_fields,
+                        og_plan.as_ref().and_then(|plan| {
+                            match plan.page_card(config, item, collection) {
+                                og::PageCard::Card(path) => {
+                                    Some(og::absolute(&site_ctx_for_item.base_url, &path))
+                                }
+                                _ => None,
+                            }
+                        }),
+                        breadcrumb_collection_url(config, &collection.name, &item.lang),
+                    );
+                    content_model.augment_page(
+                        &mut ctx,
+                        item,
+                        &lang_prefix_for(&item.lang, default_lang),
+                    );
 
                     // Inject adjacent post links (prev_post / next_post).
                     // Always insert both keys so Tera templates can check them without errors.
@@ -1648,7 +2023,8 @@ fn build_site_inner(
     // collection's index page — the same pattern as content/pages/index.md for the
     // site homepage. This also powers subdomain root pages: when a collection is
     // deployed to its own subdomain, its index.md becomes the subdomain root content.
-    let mut collection_index_pages: HashMap<String, Vec<ContentItem>> = HashMap::new();
+    let mut collection_index_pages: indexmap::IndexMap<String, Vec<ContentItem>> =
+        indexmap::IndexMap::new();
     for (name, items) in all_collections.iter_mut() {
         if name == "pages" {
             continue; // pages/index.md is already handled above as the site homepage
@@ -1778,6 +2154,7 @@ fn build_site_inner(
                 ),
                 slug: homepage.slug.clone(),
                 tags: homepage.frontmatter.tags.clone(),
+                markdown_url: Some(index_markdown_url(&index_page_url)),
                 url: index_page_url,
                 collection: homepage.collection.clone(),
                 robots: homepage.frontmatter.robots.clone(),
@@ -1785,7 +2162,9 @@ fn build_site_inner(
                 reading_time: homepage.reading_time,
                 excerpt: homepage.excerpt_html.clone(),
                 toc: homepage.toc.clone(),
-                extra: homepage.frontmatter.extra.clone(),
+                extra: index_page_extra(config, homepage),
+                og_image: None,
+                collection_url: None,
             }
         } else if let Some(col_index) = config
             .collections
@@ -1811,13 +2190,18 @@ fn build_site_inner(
                 slug: col_index.slug.clone(),
                 tags: col_index.frontmatter.tags.clone(),
                 url: index_page_url,
+                // No index.md is written at a subdomain root (steps 4b/4b-extra skip
+                // empty url_prefix collections), so there is no markdown alternate.
+                markdown_url: None,
                 collection: col_index.collection.clone(),
                 robots: col_index.frontmatter.robots.clone(),
                 word_count: col_index.word_count,
                 reading_time: col_index.reading_time,
                 excerpt: col_index.excerpt_html.clone(),
                 toc: col_index.toc.clone(),
-                extra: col_index.frontmatter.extra.clone(),
+                extra: index_page_extra(config, col_index),
+                og_image: None,
+                collection_url: None,
             }
         } else {
             PageContext {
@@ -1830,13 +2214,16 @@ fn build_site_inner(
                 slug: "index".to_string(),
                 tags: Vec::new(),
                 url: index_page_url,
+                markdown_url: None,
                 collection: String::new(),
                 robots: None,
                 word_count: 0,
                 reading_time: 0,
                 excerpt: String::new(),
                 toc: Vec::new(),
-                extra: std::collections::HashMap::new(),
+                extra: indexmap::IndexMap::new(),
+                og_image: None,
+                collection_url: None,
             }
         };
         index_ctx.insert("page", &index_page_ctx);
@@ -2027,13 +2414,16 @@ fn build_site_inner(
                             slug: url_prefix_trimmed.to_string(),
                             tags: ci.frontmatter.tags.clone(),
                             url: page_url(page_num),
+                            markdown_url: (page_num == 1).then(|| index_markdown_url(&page_url(1))),
                             collection: c.name.clone(),
                             robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                             word_count: ci.word_count,
                             reading_time: ci.reading_time,
                             excerpt: ci.excerpt_html.clone(),
                             toc: ci.toc.clone(),
-                            extra: ci.frontmatter.extra.clone(),
+                            extra: index_page_extra(config, ci),
+                            og_image: None,
+                            collection_url: breadcrumb_collection_url(config, &c.name, lang),
                         }
                     } else {
                         PageContext {
@@ -2046,13 +2436,16 @@ fn build_site_inner(
                             slug: String::new(),
                             tags: Vec::new(),
                             url: page_url(page_num),
+                            markdown_url: (page_num == 1).then(|| index_markdown_url(&page_url(1))),
                             collection: String::new(),
                             robots: effective_robots(None, c.private),
                             word_count: 0,
                             reading_time: 0,
                             excerpt: String::new(),
                             toc: Vec::new(),
-                            extra: std::collections::HashMap::new(),
+                            extra: indexmap::IndexMap::new(),
+                            og_image: None,
+                            collection_url: None,
                         }
                     },
                 );
@@ -2092,7 +2485,10 @@ fn build_site_inner(
             }
 
             // Write markdown index (all items, not just one page) alongside page 1
-            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            let md_content = discovery::insert_markdown_pointer(
+                &generate_collection_index_md(&c.label, &lang_items),
+                &discovery::markdown_pointer(config, lang),
+            );
             let md_dir = if *lang == *default_lang {
                 paths.output.join(url_prefix_trimmed)
             } else {
@@ -2207,13 +2603,16 @@ fn build_site_inner(
                         slug: url_prefix_trimmed.to_string(),
                         tags: ci.frontmatter.tags.clone(),
                         url: collection_url.clone(),
+                        markdown_url: Some(index_markdown_url(&collection_url)),
                         collection: c.name.clone(),
                         robots: effective_robots(ci.frontmatter.robots.clone(), c.private),
                         word_count: ci.word_count,
                         reading_time: ci.reading_time,
                         excerpt: ci.excerpt_html.clone(),
                         toc: ci.toc.clone(),
-                        extra: ci.frontmatter.extra.clone(),
+                        extra: index_page_extra(config, ci),
+                        og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 } else {
                     PageContext {
@@ -2226,13 +2625,16 @@ fn build_site_inner(
                         slug: url_prefix_trimmed.to_string(),
                         tags: Vec::new(),
                         url: collection_url.clone(),
+                        markdown_url: Some(index_markdown_url(&collection_url)),
                         collection: c.name.clone(),
                         robots: effective_robots(None, c.private),
                         word_count: 0,
                         reading_time: 0,
                         excerpt: String::new(),
                         toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
+                        extra: indexmap::IndexMap::new(),
+                        og_image: None,
+                        collection_url: breadcrumb_collection_url(config, &c.name, lang),
                     }
                 },
             );
@@ -2256,17 +2658,23 @@ fn build_site_inner(
             fs::write(out_dir.join("index.html"), html)?;
 
             // Write markdown index alongside HTML
-            let md_content = generate_collection_index_md(&c.label, &lang_items);
+            let md_content = discovery::insert_markdown_pointer(
+                &generate_collection_index_md(&c.label, &lang_items),
+                &discovery::markdown_pointer(config, lang),
+            );
             fs::write(out_dir.join("index.md"), md_content)?;
         }
     }
 
     // Write homepage markdown alongside HTML
     for homepage in &homepage_pages {
-        let md_content = format!(
-            "{}\n\n{}",
-            content::generate_frontmatter(&homepage.frontmatter),
-            homepage.raw_body
+        let md_content = discovery::insert_markdown_pointer(
+            &format!(
+                "{}\n\n{}",
+                content::generate_frontmatter(&homepage.frontmatter),
+                homepage.raw_body
+            ),
+            &discovery::markdown_pointer(config, &homepage.lang),
         );
         if homepage.lang == *default_lang {
             fs::write(paths.output.join("index.md"), md_content)?;
@@ -2308,13 +2716,16 @@ fn build_site_inner(
                     slug: "404".to_string(),
                     tags: Vec::new(),
                     url: format!("{lang_prefix}/404"),
+                    markdown_url: None,
                     collection: String::new(),
                     robots: Some("noindex".to_string()),
                     word_count: 0,
                     reading_time: 0,
                     excerpt: String::new(),
                     toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
+                    extra: indexmap::IndexMap::new(),
+                    og_image: None,
+                    collection_url: None,
                 },
             );
             let html_404 = tera
@@ -2331,161 +2742,18 @@ fn build_site_inner(
         }
     }
 
-    // Step 4c: Generate tag pages
-    // Collect all tags per language from all collections
-    let mut tag_page_urls: Vec<String> = Vec::new();
-    if tera.get_template("tags.html").is_ok() && tera.get_template("tag.html").is_ok() {
-        for lang in &config.all_languages() {
-            let lang_prefix = if *lang == *default_lang {
-                String::new()
-            } else {
-                format!("/{lang}")
-            };
-            let tags_base_url = format!("{lang_prefix}/tags");
-
-            // Gather all tags and their items for this language
-            let mut tag_map: HashMap<String, Vec<ItemSummary>> = HashMap::new();
-            for c in &config.collections {
-                // Private collections never contribute to public tag pages.
-                if c.private {
-                    continue;
-                }
-                if let Some(items) = all_collections.get(&c.name) {
-                    for item in items.iter().filter(|i| i.lang == *lang) {
-                        let summary = ItemSummary {
-                            title: item.frontmatter.title.clone(),
-                            date: item.frontmatter.date.map(|d| d.to_string()),
-                            description: item.frontmatter.description.clone(),
-                            slug: item.slug.clone(),
-                            tags: item.frontmatter.tags.clone(),
-                            url: item.url.clone(),
-                            word_count: item.word_count,
-                            reading_time: item.reading_time,
-                            excerpt: item.excerpt_html.clone(),
-                        };
-                        for tag in &item.frontmatter.tags {
-                            let normalized = tag.to_lowercase();
-                            tag_map.entry(normalized).or_default().push(summary.clone());
-                        }
-                    }
-                }
-            }
-
-            if tag_map.is_empty() {
-                continue;
-            }
-
-            // Sort tags alphabetically
-            let mut sorted_tags: Vec<(String, Vec<ItemSummary>)> = tag_map.into_iter().collect();
-            sorted_tags.sort_by(|a, b| a.0.cmp(&b.0));
-
-            let lang_site_ctx = SiteContext::for_lang(config, lang);
-
-            // Generate tags index page
-            #[derive(Serialize)]
-            struct TagIndexEntry {
-                name: String,
-                url: String,
-                count: usize,
-            }
-
-            let tag_entries: Vec<TagIndexEntry> = sorted_tags
-                .iter()
-                .map(|(tag, items)| {
-                    let tag_slug = slug::slugify(tag);
-                    TagIndexEntry {
-                        name: tag.clone(),
-                        url: format!("{tags_base_url}/{tag_slug}/"),
-                        count: items.len(),
-                    }
-                })
-                .collect();
-
-            let mut tags_ctx = tera::Context::new();
-            tags_ctx.insert("site", &lang_site_ctx);
-            tags_ctx.insert("data", &data);
-            tags_ctx.insert("lang", lang);
-            insert_i18n_context(&mut tags_ctx, lang, default_lang, &data);
-            insert_build_flags(&mut tags_ctx, config);
-            tags_ctx.insert("tags", &tag_entries);
-            tags_ctx.insert("translations", &Vec::<TranslationLink>::new());
-            tags_ctx.insert(
-                "page",
-                &PageContext {
-                    title: "Tags".to_string(),
-                    content: String::new(),
-                    date: None,
-                    updated: None,
-                    description: None,
-                    image: None,
-                    slug: "tags".to_string(),
-                    tags: Vec::new(),
-                    url: format!("{tags_base_url}/"),
-                    collection: String::new(),
-                    robots: None,
-                    word_count: 0,
-                    reading_time: 0,
-                    excerpt: String::new(),
-                    toc: Vec::new(),
-                    extra: std::collections::HashMap::new(),
-                },
-            );
-            let tags_html = tera
-                .render("tags.html", &tags_ctx)
-                .map_err(|e| render_failure(&e, "tags.html", None, paths, &tags_ctx))?;
-            let tags_dir = paths.output.join(tags_base_url.trim_start_matches('/'));
-            fs::create_dir_all(&tags_dir)?;
-            fs::write(tags_dir.join("index.html"), tags_html)?;
-            tag_page_urls.push(format!("{tags_base_url}/"));
-
-            // Generate individual tag pages
-            for (tag, items) in &sorted_tags {
-                let tag_slug = slug::slugify(tag);
-                let tag_url = format!("{tags_base_url}/{tag_slug}/");
-                let mut tag_ctx = tera::Context::new();
-                tag_ctx.insert("site", &lang_site_ctx);
-                tag_ctx.insert("data", &data);
-                tag_ctx.insert("lang", lang);
-                insert_i18n_context(&mut tag_ctx, lang, default_lang, &data);
-                insert_build_flags(&mut tag_ctx, config);
-                tag_ctx.insert("tag_name", tag);
-                tag_ctx.insert("items", items);
-                tag_ctx.insert("tags_url", &format!("{tags_base_url}/"));
-                tag_ctx.insert("translations", &Vec::<TranslationLink>::new());
-                tag_ctx.insert(
-                    "page",
-                    &PageContext {
-                        title: format!("Tag: {tag}"),
-                        content: String::new(),
-                        date: None,
-                        updated: None,
-                        description: None,
-                        image: None,
-                        slug: format!("tags/{tag_slug}"),
-                        tags: Vec::new(),
-                        url: tag_url.clone(),
-                        collection: String::new(),
-                        robots: None,
-                        word_count: 0,
-                        reading_time: 0,
-                        excerpt: String::new(),
-                        toc: Vec::new(),
-                        extra: std::collections::HashMap::new(),
-                    },
-                );
-                let tag_html = tera
-                    .render("tag.html", &tag_ctx)
-                    .map_err(|e| render_failure(&e, "tag.html", None, paths, &tag_ctx))?;
-                let tag_dir = paths.output.join(format!(
-                    "{}/{tag_slug}",
-                    tags_base_url.trim_start_matches('/')
-                ));
-                fs::create_dir_all(&tag_dir)?;
-                fs::write(tag_dir.join("index.html"), tag_html)?;
-                tag_page_urls.push(tag_url);
-            }
-        }
-    }
+    // Step 4c: Generate taxonomy pages (tags + `[[taxonomies]]`, with term
+    // feeds) and series index pages; see taxonomy.rs and series.rs.
+    let tag_page_urls: Vec<String> = content_model.render_pages(
+        &taxonomy::RenderEnv {
+            config,
+            tera: &tera,
+            data: &data,
+            paths,
+            default_lang,
+        },
+        &all_collections,
+    )?;
 
     step_timings.push((
         "Render indexes".to_string(),
@@ -2572,6 +2840,38 @@ fn build_site_inner(
     let sitemap_xml =
         sitemap::generate_sitemap(config, &all_items, &translation_map, &tag_page_urls)?;
     fs::write(paths.output.join("sitemap.xml"), sitemap_xml)?;
+    // sitemap.md: the same pages (minus `noindex`), one section per
+    // collection and language, default language first, collections in
+    // seite.toml order, items in their collection's sort order.
+    let sitemap_md_sections: Vec<(String, Vec<&ContentItem>)> = config
+        .all_languages()
+        .iter()
+        .flat_map(|lang| {
+            config
+                .collections
+                .iter()
+                .filter(|c| !private_collections.contains(c.name.as_str()))
+                .map(|c| {
+                    let heading = if is_multilingual {
+                        format!("{} ({lang})", c.label)
+                    } else {
+                        c.label.clone()
+                    };
+                    let items: Vec<&ContentItem> = all_collections
+                        .get(&c.name)
+                        .into_iter()
+                        .flatten()
+                        .filter(|item| item.lang == *lang)
+                        .collect();
+                    (heading, items)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    fs::write(
+        paths.output.join("sitemap.md"),
+        discovery::generate_sitemap_md(config, &sitemap_md_sections),
+    )?;
     step_timings.push((
         "Generate sitemap".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -2637,16 +2937,27 @@ fn build_site_inner(
     // Step 8: Output raw markdown alongside HTML for each page
     progress.step("Writing markdown copies");
     let step_start = Instant::now();
+    let taxonomy_keys = content_model.taxonomy_keys();
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
+            // Configured taxonomy keys plus the collection's declared custom
+            // schema fields; undeclared unknown keys stay out.
+            let mut published_keys = taxonomy_keys.clone();
+            published_keys.extend(content::schema::custom_field_names(config, collection));
             let md_results: Vec<(PathBuf, String)> = items
                 .par_iter()
                 .map(|item| {
                     let md_path = url_to_md_path(&paths.output, &item.url);
-                    let md_content = format!(
-                        "{}\n\n{}",
-                        content::generate_frontmatter(&item.frontmatter),
-                        item.raw_body
+                    let md_content = discovery::insert_markdown_pointer(
+                        &format!(
+                            "{}\n\n{}",
+                            content::generate_published_frontmatter(
+                                &item.frontmatter,
+                                &published_keys
+                            ),
+                            item.raw_body
+                        ),
+                        &discovery::markdown_pointer(config, &item.lang),
                     );
                     (md_path, md_content)
                 })
@@ -2666,34 +2977,16 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 9: Generate search index
+    // Step 9: Generate search indexes (`[build] search`)
     progress.step("Generating search index");
     let step_start = Instant::now();
-    let all_search_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-
-    // Root index: default language only
-    let default_search_items: Vec<&ContentItem> = all_search_items
-        .iter()
-        .filter(|i| i.lang == *default_lang)
-        .copied()
-        .collect();
-    let search_json = generate_search_index(&default_search_items, config);
-    fs::write(paths.output.join("search-index.json"), &search_json)?;
-
-    // Per-language indexes for non-default languages
-    if is_multilingual {
-        for lang_code in config.languages.keys() {
-            let lang_items: Vec<&ContentItem> = all_search_items
-                .iter()
-                .filter(|i| i.lang == *lang_code)
-                .copied()
-                .collect();
-            let lang_json = generate_search_index(&lang_items, config);
-            let lang_dir = paths.output.join(lang_code);
-            fs::create_dir_all(&lang_dir)?;
-            fs::write(lang_dir.join("search-index.json"), lang_json)?;
-        }
-    }
+    let search_index = write_search_indexes(
+        config,
+        &all_collections,
+        &paths.output,
+        default_lang,
+        is_multilingual,
+    )?;
 
     step_timings.push((
         "Generate search index".to_string(),
@@ -2703,7 +2996,13 @@ fn build_site_inner(
     // Step 9b: Generate redirect pages from aliases
     let step_start = Instant::now();
     let all_redirect_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let redirect_count = redirects::generate_redirects(config, &all_redirect_items, &paths.output)?;
+    let (redirect_count, alias_collisions) =
+        redirects::generate_redirects_with_diagnostics(config, &all_redirect_items, &paths.output)?;
+    for d in alias_collisions {
+        crate::output::human::warning_stderr(&d.message);
+        warnings.push(d.message.clone());
+        diagnostics.push(d);
+    }
     if redirect_count > 0 {
         step_timings.push((
             format!("Generate {redirect_count} redirects"),
@@ -2716,14 +3015,21 @@ fn build_site_inner(
     let step_start = Instant::now();
     let mut static_count = 0;
     // manifest: maps "/static/foo.css" → "/static/foo.<hash8>.css" (only when fingerprinting)
-    let mut asset_manifest: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut asset_manifest: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
     let protected_asset_groups = config.password_access_groups();
+    // The Tailwind entry file is compiled (Step 2.6), never copied raw.
+    let tailwind_input = config
+        .build
+        .tailwind
+        .as_ref()
+        .map(|tw| paths.root.join(&tw.input));
     if paths.static_dir.exists() {
         for entry in WalkDir::new(&paths.static_dir)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
+            .filter(|e| tailwind_input.as_deref() != Some(e.path()))
         {
             let rel = entry
                 .path()
@@ -2780,54 +3086,45 @@ fn build_site_inner(
             if (config.build.minify && (is_css || is_js)) || config.build.fingerprint {
                 let content = fs::read(entry.path())?;
                 let processed: Vec<u8> = if config.build.minify && is_css {
-                    minify_css(&content).into_bytes()
+                    // Bundle local `@import`s first (see `inline_css_imports`).
+                    let bundled = inline_css_imports(&content, entry.path(), &paths.static_dir);
+                    minify_css(&bundled).into_bytes()
                 } else if config.build.minify && is_js {
                     minify_js(&content).into_bytes()
                 } else {
-                    content.clone()
+                    content
                 };
-
-                fs::write(&dest, &processed)?;
-
-                if config.build.fingerprint {
-                    let hash = fnv_hash8(&processed);
-                    // Build fingerprinted name: foo.css → foo.<hash>.css
-                    let stem = entry
-                        .path()
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
-                    let fp_name = format!("{stem}.{hash}.{ext}");
-                    let fp_dest = dest
-                        .parent()
-                        .map(|p| p.join(&fp_name))
-                        .unwrap_or_else(|| PathBuf::from(&fp_name));
-                    fs::write(&fp_dest, &processed)?;
-
-                    // Record in manifest using Unix-style paths
-                    let orig_url = format!(
-                        "{url_root}/{}",
-                        output_rel.to_string_lossy().replace('\\', "/")
-                    );
-                    let fp_rel = output_rel
-                        .parent()
-                        .map(|p| {
-                            let p = p.to_string_lossy();
-                            if p.is_empty() {
-                                fp_name.clone()
-                            } else {
-                                format!("{}/{fp_name}", p.replace('\\', "/"))
-                            }
-                        })
-                        .unwrap_or_else(|| fp_name.clone());
-                    let fp_url = format!("{url_root}/{fp_rel}");
-                    asset_manifest.insert(orig_url, fp_url);
-                }
+                write_static_asset(
+                    &dest,
+                    url_root,
+                    &output_rel,
+                    &processed,
+                    config.build.fingerprint,
+                    &mut asset_manifest,
+                )?;
             } else {
                 fs::copy(entry.path(), &dest)?;
             }
             static_count += 1;
         }
+    }
+    // The compiled Tailwind stylesheet (Step 2.6), already minified by the
+    // Tailwind CLI: `static/<output>`, fingerprinted like the files above.
+    if let (Some(css), Some(tw)) = (&tailwind_css, &config.build.tailwind) {
+        let output_rel = PathBuf::from(&tw.output);
+        let dest = paths.output.join("static").join(&output_rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_static_asset(
+            &dest,
+            "/static",
+            &output_rel,
+            css,
+            config.build.fingerprint,
+            &mut asset_manifest,
+        )?;
+        static_count += 1;
     }
 
     // Write asset manifest if fingerprinting is on
@@ -2850,11 +3147,17 @@ fn build_site_inner(
     }
     let image_manifest = if let Some(ref images_config) = config.images {
         if !images_config.widths.is_empty() {
-            images::process_images_with_private_filter(
+            let (manifest, image_problems) = images::process_images_with_private_filter(
                 paths,
                 images_config,
                 config.access.is_some(),
-            )?
+                image_variants,
+            )?;
+            for d in image_problems {
+                warnings.push(d.message.clone());
+                diagnostics.push(d);
+            }
+            manifest
         } else {
             HashMap::new()
         }
@@ -2866,6 +3169,42 @@ fn build_site_inner(
         "Process images".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
+
+    // Step 11b: Social cards (`[og]`): one PNG per page without `image:`,
+    // plus each language's site card; cached in `.seite/cache/og/`.
+    let og_stats = match og_plan.as_ref() {
+        None => None,
+        Some(plan) => {
+            progress.step("Generating social cards");
+            let step_start = Instant::now();
+            let (og_stats, missing) = plan.generate(
+                config,
+                &all_collections,
+                &paths.output,
+                changed_content_paths.as_ref(),
+            )?;
+            if !missing.is_empty() {
+                let n = missing.len();
+                let message = format!(
+                    "{n} page{} got no social card: the title has characters the bundled font lacks (e.g. CJK, emoji). Set [og] font to a .ttf/.otf that has them",
+                    if n == 1 { "" } else { "s" }
+                );
+                crate::output::human::warning_stderr(&message);
+                let mut d = Diagnostic::warning("og-missing-glyphs", message.clone())
+                    .with_hint("e.g. font = \"static/fonts/NotoSansJP-Bold.ttf\" under [og]; pages without a card use the site card");
+                if let Some(first) = missing.first() {
+                    d = d.with_file(first.clone());
+                }
+                diagnostics.push(d);
+                warnings.push(message);
+            }
+            step_timings.push((
+                "Social cards".to_string(),
+                step_start.elapsed().as_secs_f64() * 1000.0,
+            ));
+            Some(og_stats)
+        }
+    };
 
     // Step 12: Post-process all HTML files in a single pass
     // (image srcset, code copy buttons, subdomain link rewriting, base path rewriting, analytics)
@@ -2927,8 +3266,25 @@ fn build_site_inner(
     ));
 
     // Step 13: Generate the Cloudflare Pages advanced-mode Worker for any
-    // password-protected routes in this output.
+    // password-protected routes in this output, or for markdown content
+    // negotiation (`[deploy] markdown_negotiation`).
     access::write_worker(config, &paths.output)?;
+    // Cloudflare applies neither `_headers` nor `_redirects` to requests a
+    // Pages Worker serves; say so instead of dropping them silently.
+    if access::markdown_only_worker(config) {
+        let ignored: Vec<&str> = ["_headers", "_redirects"]
+            .into_iter()
+            .filter(|f| {
+                fs::read_to_string(paths.output.join(f)).is_ok_and(|t| !t.trim().is_empty())
+            })
+            .collect();
+        if !ignored.is_empty() {
+            crate::output::human::warning(&format!(
+                "[deploy] markdown_negotiation: Cloudflare Pages does not apply {} to requests its Worker serves (every page request, outside /static/, /og/, /search/); alias pages still redirect through their HTML pages. Set the headers elsewhere or turn negotiation off — see /docs/deployment#markdown-for-agents",
+                ignored.join(" or ")
+            ));
+        }
+    }
 
     progress.done();
 
@@ -2936,6 +3292,7 @@ fn build_site_inner(
     let known_generated = [
         "robots.txt",
         "sitemap.xml",
+        "sitemap.md",
         "feed.xml",
         "atom.xml",
         "_redirects",
@@ -2947,14 +3304,15 @@ fn build_site_inner(
         "asset-manifest.json",
     ];
     for rel_path in &public_file_paths {
-        if known_generated.contains(&rel_path.as_str()) {
+        let full_search_file = search_index.is_some() && rel_path.starts_with("search/");
+        if known_generated.contains(&rel_path.as_str()) || full_search_file {
             crate::output::human::warning(&format!(
                 "public/{rel_path} was overwritten by the generated {rel_path} — remove it from public/ or configure the feature that generates it"
             ));
         }
     }
 
-    let items_built: HashMap<String, usize> = all_collections
+    let items_built: std::collections::BTreeMap<String, usize> = all_collections
         .iter()
         .map(|(name, items)| (name.clone(), items.len()))
         .collect();
@@ -2981,6 +3339,8 @@ fn build_site_inner(
         step_timings,
         incremental: is_incremental,
         items_skipped,
+        search_index,
+        og_cards: og_stats,
     };
 
     Ok(BuildResult {
@@ -3271,6 +3631,237 @@ fn build_url(url_prefix: &str, slug: &str) -> String {
     }
 }
 
+/// Write a processed static file to `dest` and, with `fingerprint`, also
+/// as `<stem>.<hash8>.<ext>` next to it, recording
+/// `{url_root}/{output_rel}` → the fingerprinted URL in `manifest`.
+fn write_static_asset(
+    dest: &Path,
+    url_root: &str,
+    output_rel: &Path,
+    bytes: &[u8],
+    fingerprint: bool,
+    manifest: &mut std::collections::BTreeMap<String, String>,
+) -> Result<()> {
+    fs::write(dest, bytes)?;
+    if !fingerprint {
+        return Ok(());
+    }
+    let hash = fnv_hash8(bytes);
+    let stem = output_rel
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let ext = output_rel
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    // foo.css → foo.<hash>.css
+    let fp_name = format!("{stem}.{hash}.{ext}");
+    let fp_dest = dest
+        .parent()
+        .map(|p| p.join(&fp_name))
+        .unwrap_or_else(|| PathBuf::from(&fp_name));
+    fs::write(&fp_dest, bytes)?;
+
+    // Record in manifest using Unix-style paths
+    let orig_url = format!(
+        "{url_root}/{}",
+        output_rel.to_string_lossy().replace('\\', "/")
+    );
+    let fp_rel = output_rel
+        .parent()
+        .map(|p| {
+            let p = p.to_string_lossy();
+            if p.is_empty() {
+                fp_name.clone()
+            } else {
+                format!("{}/{fp_name}", p.replace('\\', "/"))
+            }
+        })
+        .unwrap_or_else(|| fp_name.clone());
+    manifest.insert(orig_url, format!("{url_root}/{fp_rel}"));
+    Ok(())
+}
+
+/// Bundle local CSS imports (with `minify`). The `@import` statements at
+/// the top of a stylesheet (before any other rule, as CSS requires; comments
+/// and `@charset` may precede them) are replaced by the imported files'
+/// own (bundled) contents when every one of them is a plain
+/// `@import "x.css";` / `@import url(x.css);` of a file under `static_dir`
+/// that holds no relative `url(...)` (those would resolve against the wrong
+/// directory once moved). Otherwise the file is left exactly as written:
+/// remote or absolute URLs, media queries, `layer()`/`supports()`, missing
+/// files, files outside `static_dir`, cycles. A file already bundled is
+/// not repeated, and bundling stops (file left as is) past
+/// [`MAX_BUNDLED_CSS`] bytes. Imported files are still copied on their own.
+/// Never fetches anything.
+fn inline_css_imports(raw: &[u8], file: &Path, static_dir: &Path) -> Vec<u8> {
+    let Ok(static_root) = static_dir.canonicalize() else {
+        return raw.to_vec();
+    };
+    let css = String::from_utf8_lossy(raw);
+    let mut ctx = InlineCtx {
+        static_root,
+        stack: file.canonicalize().into_iter().collect(),
+        seen: file.canonicalize().into_iter().collect(),
+        total: css.len(),
+    };
+    match bundle_css(&css, file, &mut ctx) {
+        Some(bundled) => bundled.into_bytes(),
+        None => raw.to_vec(),
+    }
+}
+
+/// Bundled CSS stops growing past this many bytes (the file is then left
+/// with its `@import`s).
+const MAX_BUNDLED_CSS: usize = 2 * 1024 * 1024;
+
+struct InlineCtx {
+    static_root: PathBuf,
+    /// Files being bundled (cycle detection).
+    stack: Vec<PathBuf>,
+    /// Files already bundled anywhere (each is included once).
+    seen: Vec<PathBuf>,
+    /// Bytes bundled so far.
+    total: usize,
+}
+
+/// `css` with its leading `@import`s replaced by the files' contents, or
+/// `None` when any of them cannot be bundled (the caller keeps it as is).
+/// `Some(css)` unchanged when it has no leading imports.
+fn bundle_css(css: &str, file: &Path, ctx: &mut InlineCtx) -> Option<String> {
+    let imports = leading_imports(css);
+    if imports.is_empty() {
+        return Some(css.to_string());
+    }
+    let snapshot = (ctx.seen.clone(), ctx.total);
+    let result = (|| {
+        let mut out = String::with_capacity(css.len());
+        let mut last = 0;
+        for (start, end, url) in &imports {
+            out.push_str(&css[last..*start]);
+            last = *end;
+            let url = url.as_deref().filter(|u| is_local_relative_url(u))?;
+            let path = file.parent()?.join(url).canonicalize().ok()?;
+            if !path.starts_with(&ctx.static_root) || !path.is_file() || ctx.stack.contains(&path) {
+                return None;
+            }
+            if ctx.seen.contains(&path) {
+                // Already bundled earlier: not repeated.
+                continue;
+            }
+            let text = fs::read_to_string(&path).ok()?;
+            if has_relative_url(&text) {
+                return None;
+            }
+            ctx.total += text.len();
+            if ctx.total > MAX_BUNDLED_CSS {
+                return None;
+            }
+            ctx.seen.push(path.clone());
+            ctx.stack.push(path.clone());
+            let inner = bundle_css(&text, &path, ctx);
+            ctx.stack.pop();
+            out.push_str(&inner?);
+            out.push('\n');
+        }
+        out.push_str(&css[last..]);
+        Some(out)
+    })();
+    if result.is_none() {
+        (ctx.seen, ctx.total) = snapshot;
+    }
+    result
+}
+
+/// The `@import` statements before the first other rule: (start, end
+/// after `;`, URL of a plain import or `None` when it has a media query,
+/// `layer()`, `supports()` or cannot be parsed).
+fn leading_imports(css: &str) -> Vec<(usize, usize, Option<String>)> {
+    let mut found = Vec::new();
+    let mut i = 0;
+    let bytes = css.as_bytes();
+    while i < bytes.len() {
+        let rest = &css[i..];
+        let trimmed = rest.trim_start();
+        i += rest.len() - trimmed.len();
+        if let Some(comment) = trimmed.strip_prefix("/*") {
+            match comment.find("*/") {
+                Some(close) => i += close + 4,
+                None => break,
+            }
+        } else if trimmed.starts_with("@charset") {
+            match trimmed.find(';') {
+                Some(semi) => i += semi + 1,
+                None => break,
+            }
+        } else if trimmed.starts_with("@import") {
+            let Some(semi) = trimmed.find(';') else {
+                break;
+            };
+            let args = &trimmed["@import".len()..semi];
+            found.push((
+                i,
+                i + semi + 1,
+                parse_simple_import(args).map(str::to_string),
+            ));
+            i += semi + 1;
+        } else {
+            break;
+        }
+    }
+    found
+}
+
+/// Whether `css` has a `url(...)` relative to its own location (not
+/// `data:`, a scheme, root- or protocol-relative, or a `#fragment`).
+fn has_relative_url(css: &str) -> bool {
+    css.match_indices("url(").any(|(at, _)| {
+        let target = css[at + 4..].trim_start().trim_start_matches(['"', '\'']);
+        !(target.starts_with('/')
+            || target.starts_with('#')
+            || target.starts_with("data:")
+            || target
+                .split(['/', ')', '"', '\''])
+                .next()
+                .is_some_and(|first| first.contains(':')))
+    })
+}
+
+/// The URL of `@import <url>;` when the statement has nothing else (no
+/// media query, `layer()` or `supports()`).
+fn parse_simple_import(args: &str) -> Option<&str> {
+    let args = args.trim();
+    let (url, tail) = if let Some(inner) = args.strip_prefix("url(") {
+        let close = inner.find(')')?;
+        let url = inner[..close].trim();
+        let url = url
+            .strip_prefix('"')
+            .and_then(|u| u.strip_suffix('"'))
+            .or_else(|| url.strip_prefix('\'').and_then(|u| u.strip_suffix('\'')))
+            .unwrap_or(url);
+        (url, &inner[close + 1..])
+    } else {
+        let quote = args.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+        let inner = &args[1..];
+        let close = inner.find(quote)?;
+        (&inner[..close], &inner[close + 1..])
+    };
+    tail.trim().is_empty().then_some(url)
+}
+
+/// A relative URL to a local `.css` file (no scheme, not root- or
+/// protocol-relative).
+fn is_local_relative_url(url: &str) -> bool {
+    !url.is_empty()
+        && !url.starts_with('/')
+        && !url.contains(':')
+        && !url.contains('?')
+        && !url.contains('#')
+        && url.to_ascii_lowercase().ends_with(".css")
+}
+
 /// FNV-1a hash → first 8 hex chars, used for cache-busting fingerprints.
 fn fnv_hash8(data: &[u8]) -> String {
     let mut hash: u64 = 14695981039346656037;
@@ -3393,7 +3984,7 @@ fn output_rel_html(url: &str) -> String {
 /// `Markdown`-kind broken link for each relative `.md` link that matched no
 /// content file, located at its line in the source file.
 fn rewrite_source_links(
-    all_collections: &mut HashMap<String, Vec<ContentItem>>,
+    all_collections: &mut indexmap::IndexMap<String, Vec<ContentItem>>,
     paths: &ResolvedPaths,
     default_lang: &str,
     external_sources: &HashMap<PathBuf, String>,
@@ -3467,6 +4058,18 @@ fn url_to_md_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     output_dir.join(format!("{clean}.md"))
 }
 
+/// Published URL of a content item's markdown copy — the URL form of
+/// [`url_to_md_path`], so it always names the file step 8 writes.
+fn item_markdown_url(url: &str) -> Option<String> {
+    let clean = url.trim_matches('/');
+    (!clean.is_empty()).then(|| format!("/{clean}.md"))
+}
+
+/// Published URL of the `index.md` written beside an index page whose URL ends in `/`.
+fn index_markdown_url(index_url: &str) -> String {
+    format!("{}/index.md", index_url.trim_end_matches('/'))
+}
+
 /// Generate a markdown listing for a collection index page.
 fn generate_collection_index_md(label: &str, items: &[ItemSummary]) -> String {
     let mut md = format!("# {label}\n\n");
@@ -3515,6 +4118,9 @@ fn build_page_context(
     item: &ContentItem,
     data: &serde_json::Value,
     collection_private: bool,
+    custom_fields: &[String],
+    og_image: Option<String>,
+    collection_url: Option<String>,
 ) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("site", site);
@@ -3531,16 +4137,34 @@ fn build_page_context(
             slug: item.slug.clone(),
             tags: item.frontmatter.tags.clone(),
             url: item.url.clone(),
+            markdown_url: item_markdown_url(&item.url),
             collection: item.collection.clone(),
             robots: effective_robots(item.frontmatter.robots.clone(), collection_private),
             word_count: item.word_count,
             reading_time: item.reading_time,
             excerpt: item.excerpt_html.clone(),
             toc: item.toc.clone(),
-            extra: item.frontmatter.extra.clone(),
+            extra: content::schema::page_extra(&item.frontmatter, custom_fields),
+            og_image,
+            collection_url,
         },
     );
     ctx
+}
+
+/// `page.extra` of a collection index or homepage page (see
+/// [`content::schema::page_extra`]).
+fn index_page_extra(
+    config: &SiteConfig,
+    item: &ContentItem,
+) -> indexmap::IndexMap<String, serde_yaml_ng::Value> {
+    let custom = config
+        .collections
+        .iter()
+        .find(|c| c.name == item.collection)
+        .map(|c| content::schema::custom_field_names(config, c))
+        .unwrap_or_default();
+    content::schema::page_extra(&item.frontmatter, &custom)
 }
 
 /// Ensure an image URL is absolute by prepending `base_url` if it's a relative path.
@@ -3556,6 +4180,23 @@ fn absolutize_image(image: Option<&str>, base_url: &str) -> Option<String> {
 }
 
 /// Compute the language URL prefix: empty for the default language, `"/{lang}"` for others.
+/// `page.collection_url`: the absolute URL of collection `name`'s index in
+/// `lang`, with the trailing slash of its canonical URL (`site.base_url`
+/// already carries any base path), or `None` for a
+/// root-mounted collection (empty `url_prefix`) or an unknown name.
+fn breadcrumb_collection_url(config: &SiteConfig, name: &str, lang: &str) -> Option<String> {
+    let collection = config.collections.iter().find(|c| c.name == name)?;
+    let prefix = collection.url_prefix.trim_matches('/');
+    if prefix.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}{}/{prefix}/",
+        config.site.base_url.trim_end_matches('/'),
+        lang_prefix_for(lang, &config.site.language)
+    ))
+}
+
 fn lang_prefix_for(lang: &str, default_lang: &str) -> String {
     if lang == default_lang {
         String::new()
@@ -3577,6 +4218,8 @@ pub(crate) fn shortcode_site_context(config: &SiteConfig) -> serde_json::Value {
             "redirect": &c.redirect,
             "subject": &c.subject,
         })),
+        "comments": crate::config::embeds::comments_context(config),
+        "newsletter": crate::config::embeds::newsletter_context(config),
     })
 }
 
@@ -3585,12 +4228,14 @@ pub(crate) fn shortcode_page_context(
     fm: &Frontmatter,
     slug: &str,
     collection: &str,
+    lang: &str,
 ) -> serde_json::Value {
     serde_json::json!({
         "title": fm.title,
         "slug": slug,
         "collection": collection,
         "tags": &fm.tags,
+        "lang": lang,
     })
 }
 
@@ -3613,6 +4258,9 @@ pub(crate) struct RenderedBody {
     /// Body HTML (no page template, no HTML post-processing).
     pub html: String,
     pub toc: Vec<markdown::TocEntry>,
+    /// Non-fatal shortcode problems (`comments-not-configured`,
+    /// `newsletter-not-configured`), with file lines.
+    pub warnings: Vec<Diagnostic>,
 }
 
 /// Render one content item's body exactly as the build's content step does:
@@ -3638,6 +4286,14 @@ pub(crate) fn render_item_body(
                 })
                 .collect::<Vec<_>>()
         })?;
+    let warnings = registry
+        .config_warnings(source.body, source.path, config)
+        .into_iter()
+        .map(|mut d| {
+            d.line = d.line.map(|l| source.body_line + l.saturating_sub(1));
+            d
+        })
+        .collect();
     let (html, toc) = if config.build.math {
         markdown::markdown_to_html_with(&math::render_math(&expanded), config.build.mermaid)
     } else {
@@ -3647,6 +4303,7 @@ pub(crate) fn render_item_body(
         expanded,
         html,
         toc,
+        warnings,
     })
 }
 
@@ -3663,6 +4320,8 @@ pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde
         "older": "Older",
         "page_n_of_total": "Page {n} of {total}",
         "search_label": "Search site content",
+        "search_results": "{n} results",
+        "search_result": "1 result",
         "min_read": "min read",
         "contents": "Contents",
         "tags": "Tags",
@@ -3717,11 +4376,17 @@ pub(crate) fn ui_strings_for_lang(lang: &str, data: &serde_json::Value) -> serde
         "contact_email": "Email",
         "contact_message": "Message",
         "contact_submit": "Send Message",
+        "newsletter_email": "Email address",
+        "newsletter_submit": "Subscribe",
         "documentation": "Documentation",
         "callout_info": "Info",
         "callout_tip": "Tip",
         "callout_warning": "Warning",
-        "callout_danger": "Danger"
+        "callout_danger": "Danger",
+        "categories": "Categories",
+        "related": "Related",
+        "series": "Series",
+        "series_part": "Part {n} of {total}"
     });
 
     // Check data.i18n.{lang} for overrides, merge on top of defaults
@@ -3769,9 +4434,99 @@ fn insert_i18n_context_cached(
 /// Insert build feature flags into template context.
 fn insert_build_flags(ctx: &mut tera::Context, config: &SiteConfig) {
     ctx.insert("math_enabled", &config.build.math);
+    ctx.insert("search_mode", config.build.search.as_str());
     if config.build.math {
         ctx.insert("katex_css_url", math::KATEX_CSS_URL);
     }
+}
+
+/// Step 9: `search-index.json` per language (unchanged format), plus the
+/// full-text index under `search/` (see [`search`]) with `[build] search =
+/// "full"`; nothing with `search = false`. The default language's files go
+/// to the output root, the others' to `<lang>/`.
+fn write_search_indexes(
+    config: &SiteConfig,
+    all_collections: &indexmap::IndexMap<String, Vec<ContentItem>>,
+    output: &Path,
+    default_lang: &str,
+    is_multilingual: bool,
+) -> Result<Option<search::IndexStats>> {
+    use crate::config::SearchMode;
+    let off = config.build.search == SearchMode::Off;
+    let full = config.build.search == SearchMode::Full;
+    let all_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
+    // Full-text: listed, public collections only (private ones must never
+    // leak), no drafts (`--drafts`), no `noindex` pages. Scheduled pages are
+    // already out of `all_collections`.
+    let indexable: HashSet<&str> = config
+        .collections
+        .iter()
+        .filter(|c| c.listed && !c.private)
+        .map(|c| c.name.as_str())
+        .collect();
+    let mut langs: Vec<(&str, PathBuf)> = vec![(default_lang, output.to_path_buf())];
+    if is_multilingual {
+        langs.extend(
+            config
+                .languages
+                .keys()
+                .map(|code| (code.as_str(), output.join(code))),
+        );
+    }
+    let mut total: Option<search::IndexStats> = None;
+    for (lang, dir) in langs {
+        if off {
+            search::prune_index(&dir, None)?;
+            continue;
+        }
+        let items: Vec<&ContentItem> = all_items
+            .iter()
+            .filter(|i| i.lang == lang)
+            .copied()
+            .collect();
+        fs::create_dir_all(&dir)?;
+        fs::write(
+            dir.join("search-index.json"),
+            generate_search_index(&items, config),
+        )?;
+        if !full {
+            // A previous full build's index (incremental serve rebuilds).
+            search::prune_index(&dir, None)?;
+            continue;
+        }
+        let docs: Vec<search::SearchDoc> = items
+            .iter()
+            .filter(|i| indexable.contains(i.collection.as_str()) && !i.frontmatter.draft)
+            .filter(|i| {
+                !i.frontmatter
+                    .robots
+                    .as_deref()
+                    .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
+            })
+            .map(|i| search::SearchDoc {
+                url: &i.url,
+                title: &i.frontmatter.title,
+                description: i.frontmatter.description.as_deref(),
+                tags: &i.frontmatter.tags,
+                collection: &i.collection,
+                date: i.frontmatter.date.map(|d| d.to_string()),
+                html: &i.html_body,
+            })
+            .collect();
+        let built = search::build_index(&docs, lang);
+        search::write_index(&dir, &built)?;
+        let t = total.get_or_insert_with(Default::default);
+        let s = built.stats;
+        t.pages += s.pages;
+        t.terms += s.terms;
+        t.files += s.files;
+        t.bytes += s.bytes;
+        t.shards += s.shards;
+        t.largest_shard_bytes = t.largest_shard_bytes.max(s.largest_shard_bytes);
+        t.meta_bytes = t.meta_bytes.max(s.meta_bytes);
+        t.largest_page_bytes = t.largest_page_bytes.max(s.largest_page_bytes);
+    }
+    Ok(total)
 }
 
 /// Build a JSON search index from a slice of content items.
@@ -3824,7 +4579,7 @@ mod tests {
         SiteSection,
     };
     use crate::content::Frontmatter;
-    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::collections::{BTreeMap, HashSet};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -3856,6 +4611,7 @@ mod tests {
                 base_url: "https://example.com".into(),
                 language: "en".into(),
                 author: "Author".into(),
+                timezone: None,
             },
             collections: vec![CollectionConfig::preset_posts()],
             build: BuildSection::default(),
@@ -3865,7 +4621,12 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
+            taxonomies: Vec::new(),
+            check: None,
+            og: None,
         }
     }
 
@@ -4097,6 +4858,162 @@ mod tests {
         assert_eq!(h, "cbf29ce4");
     }
 
+    // ── inline_css_imports ──────────────────────────────────────────────
+
+    fn css_tree(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        for (path, body) in files {
+            let p = tmp.path().join(path);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        tmp
+    }
+
+    fn inline(tmp: &tempfile::TempDir, file: &str) -> String {
+        let path = tmp.path().join("static").join(file);
+        let raw = fs::read(&path).unwrap();
+        String::from_utf8(inline_css_imports(&raw, &path, &tmp.path().join("static"))).unwrap()
+    }
+
+    #[test]
+    fn test_inline_css_imports_local_files() {
+        let tmp = css_tree(&[
+            (
+                "static/css/main.css",
+                "@import \"base.css\";\n@import url(parts/grid.css);\n@import url('parts/x.css');\nbody{}",
+            ),
+            ("static/css/base.css", "html{color:red}"),
+            ("static/css/parts/grid.css", "@import \"../tokens.css\";.grid{}"),
+            ("static/css/tokens.css", ":root{--a:1}"),
+            ("static/css/parts/x.css", ".x{}"),
+        ]);
+        let out = inline(&tmp, "css/main.css");
+        assert!(!out.contains("@import"), "{out}");
+        assert!(out.contains("html{color:red}"));
+        assert!(out.contains(":root{--a:1}"));
+        assert!(out.contains(".grid{}"));
+        assert!(out.contains(".x{}"));
+        assert!(out.ends_with("body{}"));
+    }
+
+    #[test]
+    fn test_inline_css_imports_leaves_others_alone() {
+        let tmp = css_tree(&[
+            (
+                "static/css/main.css",
+                "@import url(https://fonts.example/x.css);\n@import \"//cdn.example/y.css\";\n@import \"/static/css/abs.css\";\n@import \"print.css\" print;\n@import \"layered.css\" layer(base);\n@import \"missing.css\";\n@import \"../../outside.css\";\n/* @import \"a.css\"; */\n@import \"tailwindcss\";",
+            ),
+            ("static/css/print.css", ".p{}"),
+            ("static/css/layered.css", ".l{}"),
+            ("static/css/a.css", ".a{}"),
+            ("outside.css", ".secret{}"),
+        ]);
+        let raw = fs::read_to_string(tmp.path().join("static/css/main.css")).unwrap();
+        assert_eq!(inline(&tmp, "css/main.css"), raw);
+    }
+
+    #[test]
+    fn test_inline_css_imports_cycle_is_safe() {
+        let tmp = css_tree(&[
+            ("static/a.css", "@import \"b.css\";.a{}"),
+            ("static/b.css", "@import \"a.css\";.b{}"),
+            ("static/self.css", "@import \"self.css\";.s{}"),
+        ]);
+        // b's import of a stays, so a keeps its own import of b.
+        assert_eq!(inline(&tmp, "a.css"), "@import \"b.css\";.a{}");
+        assert_eq!(inline(&tmp, "self.css"), "@import \"self.css\";.s{}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_only_leading_once_and_without_relative_urls() {
+        let tmp = css_tree(&[
+            // An @import after a rule is ignored by browsers: left alone.
+            ("static/late.css", ".x{}\n@import \"a.css\";"),
+            ("static/a.css", ".a{}"),
+            // Relative url() would point elsewhere once moved: not bundled.
+            ("static/uses-url.css", "@import \"img/bg.css\";"),
+            ("static/img/bg.css", ".bg{background:url(bg.png)}"),
+            // Absolute/data URLs are fine.
+            (
+                "static/ok-url.css",
+                "/* c */ @charset \"utf-8\";\n@import \"abs.css\";",
+            ),
+            (
+                "static/abs.css",
+                ".i{background:url(/static/i.png)}.d{background:url(\"data:image/png;base64,x\")}.r{background:url(https://x.example/i.png)}",
+            ),
+            // Each file once.
+            ("static/dup.css", "@import \"b.css\";\n@import \"c.css\";"),
+            ("static/b.css", "@import \"t.css\";.b{}"),
+            ("static/c.css", "@import \"t.css\";.c{}"),
+            ("static/t.css", ".t{}"),
+        ]);
+        assert_eq!(inline(&tmp, "late.css"), ".x{}\n@import \"a.css\";");
+        assert_eq!(inline(&tmp, "uses-url.css"), "@import \"img/bg.css\";");
+        let ok = inline(&tmp, "ok-url.css");
+        assert!(
+            !ok.contains("@import") && ok.contains("url(/static/i.png)"),
+            "{ok}"
+        );
+        let dup = inline(&tmp, "dup.css");
+        assert_eq!(dup.matches(".t{}").count(), 1, "{dup}");
+        assert!(dup.contains(".b{}") && dup.contains(".c{}"), "{dup}");
+    }
+
+    #[test]
+    fn test_inline_css_imports_size_cap() {
+        let big = ".x{}".repeat(MAX_BUNDLED_CSS / 4 + 1);
+        let tmp = css_tree(&[
+            ("static/main.css", "@import \"big.css\";"),
+            ("static/big.css", &big),
+        ]);
+        assert_eq!(inline(&tmp, "main.css"), "@import \"big.css\";");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_inline_css_imports_symlink_outside_static_is_ignored() {
+        let tmp = css_tree(&[
+            ("static/main.css", "@import \"link.css\";"),
+            ("secret.css", ".secret{}"),
+        ]);
+        std::os::unix::fs::symlink(
+            tmp.path().join("secret.css"),
+            tmp.path().join("static/link.css"),
+        )
+        .unwrap();
+        assert_eq!(inline(&tmp, "main.css"), "@import \"link.css\";");
+    }
+
+    #[test]
+    fn test_build_bundles_css_imports_when_minifying() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut config = minimal_config();
+        let paths = config.resolve_paths(tmp.path());
+        fs::write(tmp.path().join("seite.toml"), "# config\n").unwrap();
+        config.build.minify = true;
+        fs::create_dir_all(paths.static_dir.join("css")).unwrap();
+        fs::write(
+            paths.static_dir.join("css/main.css"),
+            "@import \"base.css\";\nbody { margin: 0; }\n",
+        )
+        .unwrap();
+        fs::write(
+            paths.static_dir.join("css/base.css"),
+            "html { color: red; }",
+        )
+        .unwrap();
+        let opts = BuildOptions {
+            include_drafts: false,
+            incremental: false,
+        };
+        build_site(&config, &paths, &opts).unwrap();
+        let main = fs::read_to_string(paths.output.join("static/css/main.css")).unwrap();
+        assert_eq!(main, "html{color:red;}body{margin:0;}");
+        assert!(paths.output.join("static/css/base.css").exists());
+    }
+
     // ── minify_css ──────────────────────────────────────────────────────
 
     #[test]
@@ -4191,6 +5108,32 @@ mod tests {
     fn test_url_to_md_path_basic() {
         let p = url_to_md_path(Path::new("/out"), "/docs/setup");
         assert_eq!(p, PathBuf::from("/out/docs/setup.md"));
+    }
+
+    #[test]
+    fn test_item_markdown_url_matches_written_md_path() {
+        for url in [
+            "/posts/hello",
+            "/about/",
+            "/fr/docs/setup",
+            "/docs/guides/setup",
+        ] {
+            let md_url = item_markdown_url(url).unwrap();
+            assert_eq!(
+                url_to_md_path(Path::new("/out"), url),
+                Path::new("/out").join(md_url.trim_start_matches('/')),
+                "markdown_url for {url} must name the file step 8 writes"
+            );
+        }
+        assert_eq!(item_markdown_url("/"), None);
+    }
+
+    #[test]
+    fn test_index_markdown_url() {
+        assert_eq!(index_markdown_url("/"), "/index.md");
+        assert_eq!(index_markdown_url("/es/"), "/es/index.md");
+        assert_eq!(index_markdown_url("/posts/"), "/posts/index.md");
+        assert_eq!(index_markdown_url("/fr/docs/"), "/fr/docs/index.md");
     }
 
     #[test]
@@ -4526,7 +5469,7 @@ mod tests {
     fn test_build_stats_human_display_basic() {
         let stats = BuildStats {
             items_built: {
-                let mut m = HashMap::new();
+                let mut m = std::collections::BTreeMap::new();
                 m.insert("posts".into(), 5);
                 m
             },
@@ -4537,6 +5480,8 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("5 posts"));
@@ -4549,7 +5494,7 @@ mod tests {
     #[test]
     fn test_build_stats_human_display_with_public_and_data() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 2,
             data_files_loaded: 4,
@@ -4557,6 +5502,8 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("2 public files copied"));
@@ -4566,7 +5513,7 @@ mod tests {
     #[test]
     fn test_build_stats_human_display_with_step_timings() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 0,
             data_files_loaded: 0,
@@ -4574,6 +5521,8 @@ mod tests {
             step_timings: vec![("Fast step".into(), 0.5), ("Slow step".into(), 15.3)],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
+            og_cards: None,
         };
         // Timings are verbose-only: not part of the summary line.
         assert!(!stats.human_display().contains("Timings:"));
@@ -4586,7 +5535,7 @@ mod tests {
     #[test]
     fn test_build_stats_timings_display_empty() {
         let stats = BuildStats {
-            items_built: HashMap::new(),
+            items_built: std::collections::BTreeMap::new(),
             static_files_copied: 0,
             public_files_copied: 0,
             data_files_loaded: 0,
@@ -4594,6 +5543,8 @@ mod tests {
             step_timings: vec![],
             incremental: false,
             items_skipped: 0,
+            search_index: None,
+            og_cards: None,
         };
         assert!(stats.timings_display().is_none());
     }
@@ -4602,7 +5553,7 @@ mod tests {
     fn test_build_stats_human_display_incremental() {
         let stats = BuildStats {
             items_built: {
-                let mut m = HashMap::new();
+                let mut m = std::collections::BTreeMap::new();
                 m.insert("posts".into(), 20);
                 m
             },
@@ -4613,6 +5564,8 @@ mod tests {
             step_timings: vec![],
             incremental: true,
             items_skipped: 18,
+            search_index: None,
+            og_cards: None,
         };
         let display = stats.human_display();
         assert!(display.contains("Incremental build"));
@@ -4855,7 +5808,7 @@ mod tests {
             excerpt_html: "<p>Some body</p>".into(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert_eq!(page["title"], "My Post");
@@ -4897,7 +5850,7 @@ mod tests {
             excerpt_html: String::new(),
         };
 
-        let ctx = build_page_context(&site, &item, &data, false);
+        let ctx = build_page_context(&site, &item, &data, false, &[], None, None);
         let json = ctx.into_json();
         let page = json.get("page").unwrap();
         assert!(page["image"].is_null());
@@ -5141,6 +6094,7 @@ mod tests {
             slug: "my-page".into(),
             tags: vec!["tag1".into()],
             url: "/my-page".into(),
+            markdown_url: Some("/my-page.md".into()),
             collection: "pages".into(),
             robots: Some("noindex".into()),
             word_count: 100,
@@ -5152,15 +6106,18 @@ mod tests {
                 id: "section-one".into(),
             }],
             extra: {
-                let mut m = HashMap::new();
+                let mut m = indexmap::IndexMap::new();
                 m.insert("author".into(), serde_yaml_ng::Value::String("Jane".into()));
                 m
             },
+            og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert_eq!(json["title"], "My Page");
         assert_eq!(json["updated"], "2025-06-01");
         assert_eq!(json["robots"], "noindex");
+        assert_eq!(json["markdown_url"], "/my-page.md");
         assert_eq!(json["toc"][0]["level"], 2);
         assert_eq!(json["toc"][0]["text"], "Section One");
         assert_eq!(json["toc"][0]["id"], "section-one");
@@ -5179,18 +6136,22 @@ mod tests {
             slug: String::new(),
             tags: Vec::new(),
             url: "/".into(),
+            markdown_url: None,
             collection: String::new(),
             robots: None,
             word_count: 0,
             reading_time: 0,
             excerpt: String::new(),
             toc: Vec::new(),
-            extra: HashMap::new(),
+            extra: indexmap::IndexMap::new(),
+            og_image: None,
+            collection_url: None,
         };
         let json = serde_json::to_value(&ctx).unwrap();
         assert!(json["date"].is_null());
         assert!(json["image"].is_null());
         assert!(json["robots"].is_null());
+        assert!(json["markdown_url"].is_null());
         assert_eq!(json["tags"].as_array().unwrap().len(), 0);
     }
 
@@ -5373,6 +6334,8 @@ mod tests {
             "older",
             "page_n_of_total",
             "search_label",
+            "search_results",
+            "search_result",
             "min_read",
             "contents",
             "tags",
@@ -5427,6 +6390,8 @@ mod tests {
             "contact_email",
             "contact_message",
             "contact_submit",
+            "newsletter_email",
+            "newsletter_submit",
             "documentation",
             "callout_info",
             "callout_tip",

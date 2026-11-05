@@ -42,6 +42,11 @@ pub fn output_schema() -> serde_json::Value {
                 "description": "Dated collections only (tags drive tag pages and feeds)"
             },
             "future_dated": { "type": "array", "items": path_date },
+            "expired": {
+                "type": "array",
+                "items": path_date,
+                "description": "Past their `expires:` date (left out of builds when [build] schedule = true); `date` is the expiry date"
+            },
             "parse_errors": { "type": "array", "items": path_error },
             "missing_translations": {
                 "type": "object",
@@ -57,15 +62,29 @@ pub fn output_schema() -> serde_json::Value {
             "missing_description",
             "missing_tags",
             "future_dated",
+            "expired",
             "parse_errors",
             "missing_translations",
             "truncated",
         ],
     );
     let count = || serde_json::json!({ "type": "integer" });
+    let (taxonomies, series) = content_model_schema();
     object_schema(
         serde_json::json!({
+            "taxonomies": taxonomies,
+            "series": series,
             "today": { "type": "string" },
+            "today": prop("string", "Today's date in the site's time zone ([site] timezone, else the local date)"),
+            "next_scheduled": object_schema(
+                serde_json::json!({
+                    "path": { "type": "string" },
+                    "collection": { "type": "string" },
+                    "title": { "type": "string" },
+                    "date": { "type": "string" }
+                }),
+                &["path", "collection", "title", "date"],
+            ),
             "languages": string_array(),
             "collections": { "type": "array", "items": collection },
             "totals": object_schema(
@@ -75,6 +94,7 @@ pub fn output_schema() -> serde_json::Value {
                     "missing_description": count(),
                     "missing_tags": count(),
                     "future_dated": count(),
+                    "expired": count(),
                     "parse_errors": count(),
                     "missing_translations": count()
                 }),
@@ -84,6 +104,7 @@ pub fn output_schema() -> serde_json::Value {
                     "missing_description",
                     "missing_tags",
                     "future_dated",
+                    "expired",
                     "parse_errors",
                     "missing_translations",
                 ],
@@ -93,6 +114,116 @@ pub fn output_schema() -> serde_json::Value {
     )
 }
 
+/// Schema of the add-only `taxonomies` / `series` summaries.
+fn content_model_schema() -> (serde_json::Value, serde_json::Value) {
+    let term = object_schema(
+        serde_json::json!({
+            "name": { "type": "string" },
+            "slug": { "type": "string" },
+            "count": { "type": "integer" }
+        }),
+        &["name", "slug", "count"],
+    );
+    let taxonomies = serde_json::json!({
+        "type": "array",
+        "description": "Terms per taxonomy (tags plus [[taxonomies]]), counted over non-draft items, most used first",
+        "items": object_schema(
+            serde_json::json!({
+                "name": { "type": "string" },
+                "label": { "type": "string" },
+                "url_prefix": { "type": "string" },
+                "terms": { "type": "array", "items": term }
+            }),
+            &["name", "label", "url_prefix", "terms"],
+        )
+    });
+    let series = serde_json::json!({
+        "type": "array",
+        "description": "Series used by non-draft items (`series:` frontmatter) and their part counts",
+        "items": object_schema(
+            serde_json::json!({
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "parts": { "type": "integer" }
+            }),
+            &["name", "slug", "parts"],
+        )
+    });
+    (taxonomies, series)
+}
+
+/// Accumulates term and series usage across the scanned items.
+#[derive(Default)]
+struct ModelCounts {
+    /// (taxonomy index, slug) → (first spelling, count)
+    terms: BTreeMap<(usize, String), (String, usize)>,
+    /// slug → (first spelling, parts)
+    series: BTreeMap<String, (String, usize)>,
+}
+
+impl ModelCounts {
+    fn add(
+        &mut self,
+        taxes: &[crate::build::taxonomy::Taxonomy],
+        fm: &crate::content::Frontmatter,
+    ) {
+        use crate::build::taxonomy::term_slug;
+        for (ti, tax) in taxes.iter().enumerate() {
+            let mut seen = HashSet::new();
+            for term in fm.taxonomy_terms(&tax.name) {
+                let slug = term_slug(&term);
+                if slug.is_empty() || !seen.insert(slug.clone()) {
+                    continue;
+                }
+                self.terms.entry((ti, slug)).or_insert((term, 0)).1 += 1;
+            }
+        }
+        if let Some(name) = fm.series.as_deref() {
+            let slug = term_slug(name);
+            if !slug.is_empty() {
+                self.series
+                    .entry(slug)
+                    .or_insert((name.trim().to_string(), 0))
+                    .1 += 1;
+            }
+        }
+    }
+
+    fn to_json(
+        &self,
+        taxes: &[crate::build::taxonomy::Taxonomy],
+    ) -> (serde_json::Value, serde_json::Value) {
+        let taxonomies: Vec<serde_json::Value> = taxes
+            .iter()
+            .enumerate()
+            .map(|(ti, tax)| {
+                let mut terms: Vec<(&String, &String, usize)> = self
+                    .terms
+                    .iter()
+                    .filter(|((i, _), _)| *i == ti)
+                    .map(|((_, slug), (name, n))| (slug, name, *n))
+                    .collect();
+                terms.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(b.0)));
+                serde_json::json!({
+                    "name": tax.name,
+                    "label": tax.label,
+                    "url_prefix": tax.url_prefix,
+                    "terms": terms
+                        .iter()
+                        .map(|(slug, name, count)| serde_json::json!({ "name": name, "slug": slug, "count": count }))
+                        .collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        let series: Vec<serde_json::Value> = self
+            .series
+            .iter()
+            .map(|(slug, (name, parts))| serde_json::json!({ "name": name, "slug": slug, "parts": parts }))
+            .collect();
+        (serde_json::json!(taxonomies), serde_json::json!(series))
+    }
+}
+
 #[derive(Default)]
 struct Totals {
     items: usize,
@@ -100,6 +231,7 @@ struct Totals {
     missing_description: usize,
     missing_tags: usize,
     future_dated: usize,
+    expired: usize,
     parse_errors: usize,
     missing_translations: usize,
 }
@@ -120,7 +252,9 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         None => config.collections.iter().collect(),
     };
 
-    let today = chrono::Local::now().date_naive();
+    let today = crate::content::schedule::today(config);
+    // Earliest future-dated, non-draft item: (date, path, collection, title).
+    let mut next: Option<(chrono::NaiveDate, String, String, String)> = None;
     let default_lang = config.site.language.as_str();
     let other_langs: Vec<String> = config
         .all_languages()
@@ -129,6 +263,8 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         .collect();
 
     let mut totals = Totals::default();
+    let taxes = crate::build::taxonomy::resolve_taxonomies(config);
+    let mut model = ModelCounts::default();
     let mut out = Vec::new();
     for collection in collections {
         let items = content_index::scan_collection(config, paths, collection);
@@ -137,6 +273,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         let mut missing_description = Vec::new();
         let mut missing_tags = Vec::new();
         let mut future_dated = Vec::new();
+        let mut expired = Vec::new();
         let mut parse_errors = Vec::new();
         let mut present: HashSet<(String, String)> = HashSet::new();
         let mut defaults: Vec<(String, String)> = Vec::new(); // (slug, path)
@@ -153,6 +290,8 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             let fm = &parsed.frontmatter;
             if fm.draft {
                 drafts += 1;
+            } else {
+                model.add(&taxes, fm);
             }
             if fm
                 .description
@@ -164,9 +303,23 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             if collection.has_date && fm.tags.is_empty() {
                 missing_tags.push(item.path.clone());
             }
+            // `expired` and `next_scheduled` follow `[build] schedule`
+            // (dated collections only); `future_dated` is reported always.
+            let scheduling = config.build.schedule && collection.has_date;
             if let Some(date) = parsed.date.filter(|d| *d > today) {
                 future_dated
                     .push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
+                if scheduling && !fm.draft && next.as_ref().is_none_or(|(d, ..)| date < *d) {
+                    next = Some((
+                        date,
+                        item.path.clone(),
+                        collection.name.clone(),
+                        fm.title.clone(),
+                    ));
+                }
+            }
+            if let Some(date) = fm.expires.filter(|e| scheduling && *e < today) {
+                expired.push(serde_json::json!({ "path": item.path, "date": date.to_string() }));
             }
             present.insert((parsed.lang.clone(), parsed.slug.clone()));
             if parsed.lang == default_lang {
@@ -190,6 +343,7 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
         totals.missing_description += missing_description.len();
         totals.missing_tags += missing_tags.len();
         totals.future_dated += future_dated.len();
+        totals.expired += expired.len();
         totals.parse_errors += parse_errors.len();
 
         let mut truncated = false;
@@ -209,26 +363,40 @@ pub fn call_content_stats(state: &ServerState, arguments: &serde_json::Value) ->
             "missing_description": capped(&missing_description, &mut truncated),
             "missing_tags": capped(&missing_tags, &mut truncated),
             "future_dated": capped(&future_dated, &mut truncated),
+            "expired": capped(&expired, &mut truncated),
             "parse_errors": capped(&parse_errors, &mut truncated),
             "missing_translations": missing_translations,
             "truncated": truncated,
         }));
     }
 
-    Ok(serde_json::json!({
+    let (taxonomies, series) = model.to_json(&taxes);
+    let mut result = serde_json::json!({
         "today": today.to_string(),
         "languages": config.all_languages(),
         "collections": out,
+        "taxonomies": taxonomies,
+        "series": series,
         "totals": {
             "items": totals.items,
             "drafts": totals.drafts,
             "missing_description": totals.missing_description,
             "missing_tags": totals.missing_tags,
             "future_dated": totals.future_dated,
+            "expired": totals.expired,
             "parse_errors": totals.parse_errors,
             "missing_translations": totals.missing_translations,
         },
-    }))
+    });
+    if let Some((date, path, collection, title)) = next {
+        result["next_scheduled"] = serde_json::json!({
+            "path": path,
+            "collection": collection,
+            "title": title,
+            "date": date.to_string(),
+        });
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

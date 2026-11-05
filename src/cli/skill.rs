@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
+use crate::cli::harness::{Agent, SkillFrontmatter};
+use crate::config::{CollectionConfig, SiteConfig};
+use crate::mcp::content_index;
 use crate::output::human;
 
 #[derive(Args)]
@@ -15,7 +18,7 @@ pub struct SkillArgs {
 
 #[derive(Subcommand)]
 pub enum SkillCommand {
-    /// Install a skill pack or individual skill from a URL
+    /// Install a known skill pack (seomachine, impeccable) or a single skill from a SKILL.md URL
     Install {
         /// Known pack name (e.g., "seomachine") or URL to a SKILL.md file
         source: String,
@@ -23,6 +26,11 @@ pub enum SkillCommand {
         /// Override the skill name (for URL installs)
         #[arg(long)]
         name: Option<String>,
+
+        /// Coding agents to install a pack for (comma-separated, or `all`).
+        /// Default: the agents in `.seite/config.json`, else all
+        #[arg(long)]
+        agents: Option<String>,
     },
 
     /// List installed skills and skill packs
@@ -34,10 +42,21 @@ pub enum SkillCommand {
         name: String,
     },
 
+    /// Render the bundled `seite` skill (and check hooks) for distribution:
+    /// `skills` writes `<dir>/seite/` for the `skills` CLI; `claude-plugin`
+    /// writes a Claude Code plugin into `<dir>`
+    #[command(hide = true)]
+    Export(crate::cli::skill_export::ExportArgs),
+
     /// Update installed skills from their original sources
     Update {
         /// Specific pack or skill to update (updates all if omitted)
         name: Option<String>,
+
+        /// Coding agents to update a pack for (comma-separated, or `all`).
+        /// Default: the agents the pack was installed for
+        #[arg(long)]
+        agents: Option<String>,
     },
 }
 
@@ -45,16 +64,17 @@ pub enum SkillCommand {
 // Known skill packs
 // ---------------------------------------------------------------------------
 
+/// SEOMachine's pinned release: the commit, and a SHA-256 for every file
+/// seite downloads. `scripts/refresh-seomachine-pin.sh` rewrites it; it
+/// changes only when seite itself is released, so `seite skill update` moves
+/// to the pin of the running binary and never to the upstream `main`.
+const SEOMACHINE_PIN: &str = include_str!("seomachine.pin");
+
 struct SkillPack {
     name: &'static str,
     description: &'static str,
-    repo: &'static str,
-    branch: &'static str,
-    agents: &'static [&'static str],
-    commands: &'static [&'static str],
-    skills: &'static [&'static str],
-    context_files: &'static [&'static str],
-    python_scripts: &'static [&'static str],
+    /// The pin file text (see [`Pin::parse`]).
+    pin: &'static str,
 }
 
 fn known_packs() -> &'static [SkillPack] {
@@ -62,130 +82,433 @@ fn known_packs() -> &'static [SkillPack] {
         name: "seomachine",
         description:
             "SEO content research, writing, and optimization — by SEOMachine (seomachine.com)",
-        repo: "TheCraigHewitt/seomachine",
-        branch: "4e04990d4b79745275a013b613c597d9189fc142",
-        agents: &[
-            "cluster-strategist.md",
-            "content-analyzer.md",
-            "cro-analyst.md",
-            "editor.md",
-            "headline-generator.md",
-            "internal-linker.md",
-            "keyword-mapper.md",
-            "landing-page-optimizer.md",
-            "meta-creator.md",
-            "performance.md",
-            "seo-optimizer.md",
-        ],
-        commands: &[
-            "analyze-existing.md",
-            "article.md",
-            "cluster.md",
-            "content-calendar.md",
-            "landing-audit.md",
-            "landing-competitor.md",
-            "landing-publish.md",
-            "landing-research.md",
-            "landing-write.md",
-            "optimize.md",
-            "performance-review.md",
-            "priorities.md",
-            "publish-draft.md",
-            "research-gaps.md",
-            "research-performance.md",
-            "research-serp.md",
-            "research-topics.md",
-            "research-trending.md",
-            "research.md",
-            "rewrite.md",
-            "scrub.md",
-            "write.md",
-        ],
-        skills: &[
-            "ab-test-setup",
-            "analytics-tracking",
-            "competitor-alternatives",
-            "content-strategy",
-            "copy-editing",
-            "copywriting",
-            "email-sequence",
-            "form-cro",
-            "free-tool-strategy",
-            "launch-strategy",
-            "marketing-ideas",
-            "marketing-psychology",
-            "onboarding-cro",
-            "page-cro",
-            "paid-ads",
-            "paywall-upgrade-cro",
-            "popup-cro",
-            "pricing-strategy",
-            "product-marketing-context",
-            "programmatic-seo",
-            "referral-program",
-            "schema-markup",
-            "seo-audit",
-            "signup-flow-cro",
-            "social-content",
-        ],
-        context_files: &[
-            "brand-voice.md",
-            "competitor-analysis.md",
-            "cro-best-practices.md",
-            "features.md",
-            "internal-links-map.md",
-            "seo-guidelines.md",
-            "style-guide.md",
-            "target-keywords.md",
-            "writing-examples.md",
-        ],
-        python_scripts: &[
-            // Top-level scripts
-            "research_competitor_gaps.py",
-            "research_performance_matrix.py",
-            "research_priorities_comprehensive.py",
-            "research_quick_wins.py",
-            "research_serp_analysis.py",
-            "research_topic_clusters.py",
-            "research_trending.py",
-            "seo_baseline_analysis.py",
-            "seo_bofu_rankings.py",
-            "seo_competitor_analysis.py",
-            "test_dataforseo.py",
-            // data_sources modules
-            "data_sources/modules/above_fold_analyzer.py",
-            "data_sources/modules/article_planner.py",
-            "data_sources/modules/competitor_gap_analyzer.py",
-            "data_sources/modules/content_length_comparator.py",
-            "data_sources/modules/content_scorer.py",
-            "data_sources/modules/content_scrubber.py",
-            "data_sources/modules/cro_checker.py",
-            "data_sources/modules/cta_analyzer.py",
-            "data_sources/modules/data_aggregator.py",
-            "data_sources/modules/dataforseo.py",
-            "data_sources/modules/engagement_analyzer.py",
-            "data_sources/modules/google_analytics.py",
-            "data_sources/modules/google_search_console.py",
-            "data_sources/modules/keyword_analyzer.py",
-            "data_sources/modules/landing_page_scorer.py",
-            "data_sources/modules/landing_performance.py",
-            "data_sources/modules/opportunity_scorer.py",
-            "data_sources/modules/readability_scorer.py",
-            "data_sources/modules/search_intent_analyzer.py",
-            "data_sources/modules/section_writer.py",
-            "data_sources/modules/seo_quality_rater.py",
-            "data_sources/modules/social_research_aggregator.py",
-            "data_sources/modules/trust_signal_analyzer.py",
-            "data_sources/modules/wordpress_publisher.py",
-            // data_sources config
-            "data_sources/config/.env.example",
-            "config/competitors.example.json",
-        ],
+        pin: SEOMACHINE_PIN,
     }]
 }
 
 fn find_pack(name: &str) -> Option<&'static SkillPack> {
     known_packs().iter().find(|p| p.name == name)
+}
+
+/// A pinned upstream release: repo, commit, and the SHA-256 of every file.
+#[derive(Debug, Clone)]
+struct Pin {
+    repo: String,
+    commit: String,
+    date: String,
+    licence: String,
+    files: Vec<PinnedFile>,
+}
+
+#[derive(Debug, Clone)]
+struct PinnedFile {
+    sha256: String,
+    path: String,
+}
+
+impl Pin {
+    /// Header comments (`# repo|commit|date|licence <value>`) then
+    /// `<sha256>  <path>` lines.
+    fn parse(text: &str) -> anyhow::Result<Pin> {
+        let (mut repo, mut commit, mut date, mut licence) =
+            (String::new(), String::new(), String::new(), String::new());
+        let mut files = Vec::new();
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if let Some(comment) = line.strip_prefix('#') {
+                let comment = comment.trim();
+                for (key, slot) in [
+                    ("repo ", &mut repo),
+                    ("commit ", &mut commit),
+                    ("date ", &mut date),
+                    ("licence ", &mut licence),
+                ] {
+                    if let Some(value) = comment.strip_prefix(key) {
+                        *slot = value.trim().to_string();
+                    }
+                }
+                continue;
+            }
+            let (hash, path) = line
+                .split_once(char::is_whitespace)
+                .map(|(h, p)| (h.trim(), p.trim()))
+                .ok_or_else(|| anyhow::anyhow!("malformed pin line: {line}"))?;
+            if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+                anyhow::bail!("pin line has no SHA-256: {line}");
+            }
+            validate_pinned_path(path)?;
+            files.push(PinnedFile {
+                sha256: hash.to_ascii_lowercase(),
+                path: path.to_string(),
+            });
+        }
+        if repo.is_empty() || files.is_empty() {
+            anyhow::bail!("pin is missing its repo or files");
+        }
+        if commit.len() != 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+            anyhow::bail!("pin commit must be a full 40-character SHA, got '{commit}'");
+        }
+        Ok(Pin {
+            repo,
+            commit,
+            date,
+            licence,
+            files,
+        })
+    }
+}
+
+/// Pinned paths are repo-relative and never leave the install directories.
+fn validate_pinned_path(path: &str) -> anyhow::Result<()> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path
+            .split('/')
+            .any(|s| s.is_empty() || s == "." || s == "..")
+    {
+        anyhow::bail!("unsafe path in pin: {path}");
+    }
+    Ok(())
+}
+
+/// Every pack `seite skill install <name>` knows, impeccable included.
+fn known_pack_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = known_packs().iter().map(|p| p.name).collect();
+    names.push(IMPECCABLE);
+    names
+}
+
+/// Description of a known pack (impeccable included).
+fn known_pack_description(name: &str) -> Option<&'static str> {
+    if name == IMPECCABLE {
+        return Some(IMPECCABLE_DESCRIPTION);
+    }
+    find_pack(name).map(|p| p.description)
+}
+
+// ---------------------------------------------------------------------------
+// impeccable (third-party npm installer)
+// ---------------------------------------------------------------------------
+
+/// Pack name of the impeccable design skill (<https://github.com/pbakaus/impeccable>).
+///
+/// Unlike `known_packs`, seite does not download its files: install and
+/// update delegate to the package's own installer, which knows each agent's
+/// layout. The installer is fetched (pinned, [`IMPECCABLE_VERSION`]) into a
+/// fresh temp prefix from a temp working directory, so a project-local
+/// `.npmrc` (e.g. a different registry) or `node_modules/.bin/impeccable`
+/// can't swap it; only then is its binary run in the site root.
+pub const IMPECCABLE: &str = "impeccable";
+
+/// The impeccable version seite installs (`npm view impeccable version`,
+/// 2026-10-22). Bump deliberately after reviewing a new release.
+pub const IMPECCABLE_VERSION: &str = "4.7.0";
+
+const IMPECCABLE_DESCRIPTION: &str =
+    "Design skill for frontend interfaces — by impeccable (npm package `impeccable`)";
+
+/// Manifest `source` recorded for impeccable.
+const IMPECCABLE_SOURCE: &str = "npm:impeccable";
+
+/// Skill folders impeccable creates (Claude's, and the shared `.agents/` one).
+const IMPECCABLE_SKILL_DIRS: [&str; 2] = [".claude/skills/impeccable", ".agents/skills/impeccable"];
+
+/// Whether impeccable is installed: recorded in the manifest, or its skill
+/// folder exists for some agent (e.g. installed with `npx impeccable` directly).
+pub fn impeccable_installed(root: &Path) -> bool {
+    load_manifest(root).packs.contains_key(IMPECCABLE)
+        || IMPECCABLE_SKILL_DIRS
+            .iter()
+            .any(|dir| root.join(dir).is_dir())
+}
+
+/// impeccable `--providers` for the agents recorded in `.seite/config.json`.
+/// seite's agent ids map to impeccable provider names (`Agent::impeccable_provider`);
+/// unknown ids are dropped, and no (known) agents means every agent seite supports.
+fn impeccable_providers(agents: Option<&[String]>) -> Vec<&'static str> {
+    let mut providers: Vec<&'static str> = Vec::new();
+    for id in agents.unwrap_or_default() {
+        if let Some(agent) = crate::cli::harness::Agent::from_id(id.trim()) {
+            if !providers.contains(&agent.impeccable_provider()) {
+                providers.push(agent.impeccable_provider());
+            }
+        }
+    }
+    if providers.is_empty() {
+        providers = crate::cli::harness::Agent::ALL
+            .iter()
+            .map(|a| a.impeccable_provider())
+            .collect();
+    }
+    providers
+}
+
+/// `npm` arguments that fetch the pinned installer into `prefix` (run with
+/// `prefix` as the working directory, never the project).
+fn impeccable_fetch_args(prefix: &Path) -> Vec<String> {
+    vec![
+        "install".into(),
+        "--prefix".into(),
+        prefix.display().to_string(),
+        "--no-save".into(),
+        "--no-package-lock".into(),
+        "--no-audit".into(),
+        "--no-fund".into(),
+        format!("{IMPECCABLE}@{IMPECCABLE_VERSION}"),
+    ]
+}
+
+/// The installer binary npm puts under `prefix`.
+fn impeccable_bin(prefix: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "impeccable.cmd"
+    } else {
+        "impeccable"
+    };
+    prefix.join("node_modules").join(".bin").join(name)
+}
+
+/// Installer arguments that install impeccable into the project for
+/// `providers`.
+fn impeccable_install_args(providers: &[&str]) -> Vec<String> {
+    vec![
+        "install".into(),
+        format!("--providers={}", providers.join(",")),
+        "--scope=project".into(),
+        "-y".into(),
+    ]
+}
+
+/// Installer arguments that update the project's impeccable install
+/// (`update` takes no `--providers`; it updates what is installed).
+fn impeccable_update_args() -> Vec<String> {
+    vec!["update".into(), "--scope=project".into(), "-y".into()]
+}
+
+/// How a run is described to the user and in `--json`.
+fn impeccable_command_label(args: &[String]) -> String {
+    format!("{IMPECCABLE}@{IMPECCABLE_VERSION} {}", args.join(" "))
+}
+
+/// The site root for impeccable: the nearest ancestor with `seite.toml`, so
+/// the third-party installer never runs outside a site.
+fn impeccable_root() -> anyhow::Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    crate::mcp::find_project_root(&cwd).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no seite.toml found in {} or its parents; run this from a seite site",
+            cwd.display()
+        )
+    })
+}
+
+/// Fail with an install hint unless `npm` runs.
+fn ensure_npm() -> anyhow::Result<()> {
+    let ok = crate::platform::npm_cmd("npm")
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        anyhow::bail!(
+            "npm not found: impeccable is installed with npm. Install Node.js (includes npm) from https://nodejs.org, then re-run this command"
+        );
+    }
+    Ok(())
+}
+
+/// Check for npm, confirm, fetch the pinned installer into a temp prefix
+/// (from a temp working directory), then run it with `args` in `root`.
+/// Returns `false` when the user declined.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_impeccable(root: &Path, verb: &str, args: &[String]) -> anyhow::Result<bool> {
+    ensure_npm()?;
+    let question = format!(
+        "`seite skill {verb} impeccable` runs the third-party npm package `{}` in {}, continue?",
+        impeccable_command_label(args),
+        root.display()
+    );
+    if !crate::cli::prompt::confirm(&question, true)? {
+        human::info("Cancelled; nothing was changed.");
+        return Ok(false);
+    }
+    let prefix = tempfile::TempDir::new()?;
+    let status = crate::platform::npm_cmd("npm")
+        .args(impeccable_fetch_args(prefix.path()))
+        .current_dir(prefix.path())
+        .stdin(std::process::Stdio::null())
+        .stdout(crate::output::child_stdout())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run npm: {e}"))?;
+    let bin = impeccable_bin(prefix.path());
+    if !status.success() || !bin.is_file() {
+        anyhow::bail!("fetching {IMPECCABLE}@{IMPECCABLE_VERSION} with npm failed");
+    }
+    let status = std::process::Command::new(&bin)
+        .args(args)
+        .current_dir(root)
+        .stdout(crate::output::child_stdout())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run the impeccable installer: {e}"))?;
+    if !status.success() {
+        let code = status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "a signal".into());
+        anyhow::bail!("`{}` failed (exit {code})", impeccable_command_label(args));
+    }
+    Ok(true)
+}
+
+/// Record impeccable in the skill-packs manifest.
+fn record_impeccable(root: &Path) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
+    manifest.packs.insert(
+        IMPECCABLE.to_string(),
+        PackEntry {
+            source: IMPECCABLE_SOURCE.to_string(),
+            branch: "external".to_string(),
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            files: Vec::new(),
+            ..Default::default()
+        },
+    );
+    save_manifest(root, &manifest)?;
+    ensure_gitignore_entries(root, &[".claude/.seite-skill-packs.json"])
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_impeccable(agents_flag: Option<&str>) -> anyhow::Result<()> {
+    let root = impeccable_root()?;
+    let agents = match agents_flag {
+        Some(flag) => Some(crate::cli::harness::to_ids(
+            &crate::cli::harness::parse_agent_list(flag)?,
+        )),
+        None => crate::meta::load(&root).and_then(|m| m.agents),
+    };
+    let providers = impeccable_providers(agents.as_deref());
+    let args = impeccable_install_args(&providers);
+
+    human::info(&format!(
+        "Installing '{IMPECCABLE}': {IMPECCABLE_DESCRIPTION} (providers: {})",
+        providers.join(", ")
+    ));
+    let ran = run_impeccable(&root, "install", &args)?;
+    if ran {
+        record_impeccable(&root)?;
+        // Point impeccable's live mode at the site's base.html (add-only).
+        if let Ok(config) = crate::config::SiteConfig::load(&root.join("seite.toml")) {
+            let templates = config.resolve_paths(&root).templates;
+            crate::cli::theme::configure_impeccable_live(&root, &templates)?;
+        }
+        human::success(
+            "Installed 'impeccable'. In your agent, run `/impeccable init`, then `/impeccable <describe your design>` (Codex: `$impeccable`). For a fresh design: `seite theme new`.",
+        );
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "install",
+        "installed": ran,
+        "providers": providers,
+        "command": impeccable_command_label(&args),
+    }));
+    Ok(())
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_update_impeccable(root: &Path) -> anyhow::Result<()> {
+    let args = impeccable_update_args();
+    human::info("Updating 'impeccable'...");
+    let ran = run_impeccable(root, "update", &args)?;
+    if ran {
+        record_impeccable(root)?;
+        human::success("Updated 'impeccable'.");
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "update",
+        "updated": ran,
+        "command": impeccable_command_label(&args),
+    }));
+    Ok(())
+}
+
+/// Whether `dir` looks like impeccable's skill folder: a `SKILL.md` whose
+/// frontmatter names it `impeccable`.
+fn looks_like_impeccable_skill(dir: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(dir.join("SKILL.md")) else {
+        return false;
+    };
+    let Some(rest) = content.strip_prefix("---") else {
+        return false;
+    };
+    let frontmatter = rest.split("\n---").next().unwrap_or("");
+    frontmatter.lines().any(|line| {
+        line.strip_prefix("name:")
+            .map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'') == IMPECCABLE)
+            .unwrap_or(false)
+    })
+}
+
+/// Remove impeccable: its manifest entry and the skill folders that look like
+/// impeccable's. Other files its installer added (commands, agents, hooks)
+/// are left in place.
+fn remove_impeccable(root: &Path) -> anyhow::Result<()> {
+    let mut manifest = load_manifest(root);
+    let recorded = manifest.packs.remove(IMPECCABLE).is_some();
+
+    let mut removed: Vec<&str> = Vec::new();
+    let mut kept: Vec<&str> = Vec::new();
+    for dir in IMPECCABLE_SKILL_DIRS {
+        let path = root.join(dir);
+        if fs::symlink_metadata(&path).is_err() {
+            continue;
+        }
+        // Refuse a symlinked skill dir (or parent) before looking inside it.
+        crate::safe_fs::guard(root, &path)?;
+        if !path.is_dir() {
+            continue;
+        }
+        if looks_like_impeccable_skill(&path) {
+            crate::safe_fs::remove(root, &path)?;
+            removed.push(dir);
+        } else {
+            kept.push(dir);
+        }
+    }
+
+    if !recorded && removed.is_empty() && kept.is_empty() {
+        anyhow::bail!("no skill or pack named '{IMPECCABLE}' is installed");
+    }
+    if recorded {
+        save_manifest(root, &manifest)?;
+    }
+    for dir in &kept {
+        human::warning(&format!(
+            "kept {dir}: its SKILL.md is not impeccable's (no `name: impeccable`); remove it by hand if you want it gone"
+        ));
+    }
+    human::success(&format!(
+        "Removed 'impeccable'{}",
+        if removed.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", removed.join(", "))
+        }
+    ));
+    human::info(
+        "Other files impeccable's installer added (agent commands, subagents, hooks) were left in place.",
+    );
+    crate::output::json::set_data(serde_json::json!({
+        "pack": IMPECCABLE,
+        "action": "remove",
+        "removed_dirs": removed,
+        "kept_dirs": kept,
+    }));
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -197,12 +520,32 @@ struct SkillPacksManifest {
     packs: HashMap<String, PackEntry>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+/// One installed pack. Entries written before pinning only have the first
+/// four fields; the rest default, so old manifests keep loading.
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct PackEntry {
     source: String,
+    /// The pinned commit for downloaded packs (kept under its old name).
     branch: String,
     installed_at: String,
     files: Vec<String>,
+    /// Pinned commit SHA (same as `branch` for new entries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    commit: Option<String>,
+    /// Commit date of the pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    /// Agent ids the pack was installed for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    agents: Vec<String>,
+    /// Files an earlier update left in place (edited by the user) and then
+    /// stopped tracking; `remove` reports them instead of forgetting them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    kept: Vec<String>,
+    /// SHA-256 of each installed file as written, to tell later edits apart
+    /// from untouched files on update and remove.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    hashes: BTreeMap<String, String>,
 }
 
 fn manifest_path(root: &Path) -> PathBuf {
@@ -211,6 +554,10 @@ fn manifest_path(root: &Path) -> PathBuf {
 
 fn load_manifest(root: &Path) -> SkillPacksManifest {
     let path = manifest_path(root);
+    // Never read through a symlink planted in the project.
+    if crate::safe_fs::guard(root, &path).is_err() {
+        return SkillPacksManifest::default();
+    }
     if path.exists() {
         let content = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&content).unwrap_or_default()
@@ -220,13 +567,12 @@ fn load_manifest(root: &Path) -> SkillPacksManifest {
 }
 
 fn save_manifest(root: &Path, manifest: &SkillPacksManifest) -> anyhow::Result<()> {
-    ensure_no_symlinks(root, &[".claude/.seite-skill-packs.json"])?;
     let path = manifest_path(root);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        crate::safe_fs::create_dir_all(root, parent)?;
     }
     let json = serde_json::to_string_pretty(manifest)?;
-    fs::write(&path, json)?;
+    crate::safe_fs::write(root, &path, json)?;
     Ok(())
 }
 
@@ -252,14 +598,14 @@ pub struct InstalledPackInfo {
 /// Gather skill pack information for the agent system prompt.
 pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
     let manifest = load_manifest(root);
-    let bundled_skills = ["theme-builder", "brand-identity", "landing-page"];
+    let bundled_skills: Vec<&str> = crate::cli::harness::SKILLS.iter().map(|s| s.name).collect();
 
     let mut packs = Vec::new();
     let mut all_pack_skills: Vec<String> = Vec::new();
 
     for (name, entry) in &manifest.packs {
-        let description = find_pack(name)
-            .map(|p| p.description.to_string())
+        let description = known_pack_description(name)
+            .map(str::to_string)
             .unwrap_or_else(|| format!("from {}", entry.source));
 
         let mut agents = Vec::new();
@@ -275,9 +621,14 @@ pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
                 if let Some(n) = rest.strip_suffix(".md") {
                     commands.push(n.to_string());
                 }
-            } else if let Some(rest) = file.strip_prefix(".claude/skills/") {
+            } else if let Some(rest) = file
+                .strip_prefix(".claude/skills/")
+                .or_else(|| file.strip_prefix(".agents/skills/"))
+            {
                 if let Some(n) = rest.strip_suffix("/SKILL.md") {
-                    skills.push(n.to_string());
+                    if !skills.iter().any(|s| s == n) {
+                        skills.push(n.to_string());
+                    }
                     all_pack_skills.push(n.to_string());
                 }
             }
@@ -345,6 +696,9 @@ pub fn gather_skill_summary(root: &Path) -> SkillPackSummary {
 // HTTP download
 // ---------------------------------------------------------------------------
 
+/// Fetches one URL's body. Injected so tests never touch the network.
+type Fetch<'a> = &'a dyn Fn(&str) -> anyhow::Result<Vec<u8>>;
+
 fn download_text(url: &str) -> anyhow::Result<String> {
     let body = ureq::get(url)
         .call()
@@ -353,6 +707,23 @@ fn download_text(url: &str) -> anyhow::Result<String> {
         .read_to_string()
         .map_err(|e| anyhow::anyhow!("failed to read response ({url}): {e}"))?;
     Ok(body)
+}
+
+fn download_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
+    ureq::get(url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("download failed ({url}): {e}"))?
+        .body_mut()
+        .read_to_vec()
+        .map_err(|e| anyhow::anyhow!("failed to read response ({url}): {e}"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn raw_github_url(repo: &str, branch: &str, path: &str) -> String {
@@ -411,7 +782,7 @@ Instead of WordPress REST API, use:
 
 ### Site context
 - Read `seite.toml` for site configuration (title, collections, base_url, language)
-- Read `data/brand.yaml` for brand identity (if created via `/brand-identity`)
+- Read `data/brand.yaml` for brand identity (if created via `/seite brand`)
 - Read `AGENTS.md` for full site documentation
 "#
 }
@@ -449,115 +820,90 @@ Example: `/publish-draft content/posts/2026-03-12-rust-error-handling.md`
 // Internal links map generation
 // ---------------------------------------------------------------------------
 
-fn generate_internal_links_map(root: &Path) -> String {
+/// Build the internal links map from the site's content. URLs come from the
+/// build's own resolution (collection `url_prefix`, `slug:` overrides, date
+/// prefixes, nested docs, translations), so they match the generated site.
+/// Drafts, scheduled posts, unparseable files, and private collections are
+/// left out.
+fn generate_internal_links_map(root: &Path) -> anyhow::Result<String> {
+    let config = SiteConfig::load(&root.join("seite.toml"))?;
+    let paths = config.resolve_paths(root);
+
     let mut map = String::from("# Internal Links Map\n\n");
     map.push_str("Auto-generated by `seite skill install`. Update with `seite skill update`.\n\n");
 
-    let content_dir = root.join("content");
-    if !content_dir.exists() {
-        return map;
-    }
+    // Scheduled (future-dated or expired) posts are not in the build either.
+    let schedule = crate::content::schedule::Schedule::new(&config);
+    let mut collections: Vec<&CollectionConfig> =
+        config.collections.iter().filter(|c| !c.private).collect();
+    collections.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // Walk content directories (collections)
-    let mut entries: Vec<(String, String, String)> = Vec::new(); // (collection, title, url)
+    for collection in collections {
+        // Subdomain collections are served from their own origin.
+        let origin = if collection.subdomain.is_some() {
+            config.subdomain_base_url(collection)
+        } else {
+            String::new()
+        };
 
-    if let Ok(collections) = fs::read_dir(&content_dir) {
-        for collection_entry in collections.flatten() {
-            if !collection_entry.file_type().is_ok_and(|t| t.is_dir()) {
-                continue;
-            }
-            let collection_name = collection_entry.file_name().to_string_lossy().to_string();
+        let mut links: Vec<(String, String)> =
+            content_index::scan_collection(&config, &paths, collection)
+                .into_iter()
+                .filter_map(|item| item.parsed.ok())
+                .filter(|p| {
+                    !p.frontmatter.draft
+                        && !is_index_slug(&p.slug)
+                        && schedule.is_published(collection, &p.frontmatter)
+                })
+                .map(|p| {
+                    let url = format!("{origin}{}", p.url);
+                    let title = if p.frontmatter.title.is_empty() {
+                        p.slug
+                    } else {
+                        p.frontmatter.title
+                    };
+                    (title, url)
+                })
+                .collect();
+        if links.is_empty() {
+            continue;
+        }
+        links.sort();
 
-            walk_content_dir(
-                &collection_entry.path(),
-                &collection_name,
-                &collection_name,
-                &mut entries,
-            );
+        map.push_str(&format!("\n## {}\n\n", collection.name));
+        for (title, url) in &links {
+            map.push_str(&format!("- [{}]({})\n", title, url));
         }
     }
 
-    // Sort by collection then title
-    entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-
-    let mut current_collection = String::new();
-    for (collection, title, url) in &entries {
-        if *collection != current_collection {
-            map.push_str(&format!("\n## {}\n\n", collection));
-            current_collection.clone_from(collection);
-        }
-        map.push_str(&format!("- [{}]({})\n", title, url));
-    }
-
-    map
+    Ok(map)
 }
 
-fn walk_content_dir(
-    dir: &Path,
-    collection_name: &str,
-    url_prefix: &str,
-    entries: &mut Vec<(String, String, String)>,
-) {
-    let Ok(items) = fs::read_dir(dir) else {
-        return;
-    };
-    for item in items.flatten() {
-        let path = item.path();
-        if path.is_dir() {
-            let subdir = path.file_name().unwrap_or_default().to_string_lossy();
-            walk_content_dir(
-                &path,
-                collection_name,
-                &format!("{url_prefix}/{subdir}"),
-                entries,
-            );
-        } else if path.extension().is_some_and(|e| e == "md") {
-            let filename = path.file_stem().unwrap_or_default().to_string_lossy();
-            if filename == "index" {
-                continue;
-            }
-            // Try to extract title from frontmatter
-            let title = extract_title_from_file(&path).unwrap_or_else(|| filename.to_string());
-            // Build URL: strip date prefix if present (YYYY-MM-DD-)
-            let slug = strip_date_prefix(&filename);
-            let url = format!("/{url_prefix}/{slug}");
-            entries.push((collection_name.to_string(), title, url));
-        }
-    }
+/// The build renders an item whose slug is exactly `index` as the homepage or
+/// its collection's index page instead of a standalone page, so it has no URL
+/// of its own. Nested `section/index` items are ordinary pages.
+fn is_index_slug(slug: &str) -> bool {
+    slug == "index"
 }
 
-fn extract_title_from_file(path: &Path) -> Option<String> {
-    let content = fs::read_to_string(path).ok()?;
-    if !content.starts_with("---") {
-        return None;
-    }
-    for line in content.lines().skip(1) {
-        if line.trim() == "---" {
-            break;
+/// Write `context/internal-links-map.md`. Refuses to write through a symlink.
+/// If the site config can't be loaded, warn and leave any existing map
+/// untouched. Returns whether it was written.
+fn write_internal_links_map(root: &Path) -> anyhow::Result<bool> {
+    match generate_internal_links_map(root) {
+        Ok(map) => {
+            crate::safe_fs::write(
+                root,
+                &root.join("context").join("internal-links-map.md"),
+                map,
+            )?;
+            Ok(true)
         }
-        if let Some(rest) = line.strip_prefix("title:") {
-            let title = rest.trim().trim_matches('"').trim_matches('\'');
-            if !title.is_empty() {
-                return Some(title.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn strip_date_prefix(filename: &str) -> &str {
-    // Strip YYYY-MM-DD- prefix if present
-    if filename.len() > 11 && filename.as_bytes()[4] == b'-' && filename.as_bytes()[7] == b'-' {
-        if let Some(rest) = filename.get(11..) {
-            if filename[..10]
-                .chars()
-                .all(|c| c.is_ascii_digit() || c == '-')
-            {
-                return rest;
-            }
+        Err(e) => {
+            human::warning(&format!("Skipped internal links map: {e}"));
+            Ok(false)
         }
     }
-    filename
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +912,7 @@ fn strip_date_prefix(filename: &str) -> &str {
 
 fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()> {
     let gitignore_path = root.join(".gitignore");
+    crate::safe_fs::guard(root, &gitignore_path)?;
     let existing = if gitignore_path.exists() {
         fs::read_to_string(&gitignore_path)?
     } else {
@@ -589,7 +936,7 @@ fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()>
             content.push_str(entry);
             content.push('\n');
         }
-        fs::write(&gitignore_path, content)?;
+        crate::safe_fs::write(root, &gitignore_path, content)?;
     }
 
     Ok(())
@@ -602,7 +949,7 @@ fn ensure_gitignore_entries(root: &Path, entries: &[&str]) -> anyhow::Result<()>
 const AGENTS_MD_MARKER_START: &str = "<!-- seite-seomachine-start -->";
 const AGENTS_MD_MARKER_END: &str = "<!-- seite-seomachine-end -->";
 
-fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
+fn append_agent_instructions_section(root: &Path, agents: &[Agent]) -> anyhow::Result<()> {
     crate::cli::agent_instructions::migrate(root)?;
 
     // Pack versions installed before AGENTS.md may have left a managed copy in
@@ -627,6 +974,18 @@ fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
     // Remove any existing SEOMachine section
     let cleaned = remove_agent_instructions_section(&existing);
 
+    let agent_note = if agents.contains(&Agent::Claude) {
+        format!(
+            "**Installed for:** {}. Subagents and slash commands are Claude Code-only; the other agents get the skills.\n\n**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`\n",
+            agent_labels(agents)
+        )
+    } else {
+        format!(
+            "**Installed for:** {}. SEOMachine's subagents and slash commands are Claude Code-only and were not installed; ask your agent to use the installed skills (`seo-audit`, `copywriting`, `content-strategy`, `schema-markup`, ...).\n",
+            agent_labels(agents)
+        )
+    };
+
     let section = format!(
         r#"
 {AGENTS_MD_MARKER_START}
@@ -634,8 +993,7 @@ fn append_agent_instructions_section(root: &Path) -> anyhow::Result<()> {
 
 This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) installed for SEO content research, writing, and optimization.
 
-**Key commands:** `/research`, `/write`, `/article`, `/optimize`, `/analyze-existing`, `/rewrite`, `/priorities`, `/publish-draft`, `/cluster`, `/performance-review`
-
+{agent_note}
 **Context files** in `context/` define your brand voice, target keywords, and SEO guidelines. Fill these in for best results.
 
 **Directory layout:**
@@ -652,7 +1010,8 @@ This project has [SEOMachine](https://github.com/TheCraigHewitt/seomachine) inst
 {seite_preamble}
 {AGENTS_MD_MARKER_END}
 "#,
-        seite_preamble = seite_context_preamble()
+        seite_preamble = seite_context_preamble(),
+        agent_note = agent_note
     );
 
     let mut result = cleaned;
@@ -699,7 +1058,8 @@ fn scaffold_env_example(root: &Path) -> anyhow::Result<()> {
     if env_path.exists() {
         return Ok(());
     }
-    fs::write(
+    crate::safe_fs::write(
+        root,
         &env_path,
         r#"# SEOMachine Analytics Configuration
 # Copy this file to .env and fill in your credentials.
@@ -729,33 +1089,6 @@ DATAFORSEO_PASSWORD=
 // ---------------------------------------------------------------------------
 // requirements-seo.txt scaffolding
 // ---------------------------------------------------------------------------
-
-fn scaffold_requirements(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
-    let req_path = root.join("requirements-seo.txt");
-    if req_path.exists() {
-        return Ok(());
-    }
-    let url = raw_github_url(pack.repo, pack.branch, "data_sources/requirements.txt");
-    let content = match download_text(&url) {
-        Ok(body) => body,
-        Err(_) => {
-            // Fallback if download fails
-            "google-analytics-data>=0.18.0\n\
-             google-auth>=2.23.0\n\
-             google-auth-oauthlib>=1.1.0\n\
-             google-auth-httplib2>=0.1.1\n\
-             google-api-python-client>=2.100.0\n\
-             requests>=2.31.0\n\
-             python-dotenv>=1.0.0\n\
-             beautifulsoup4>=4.12.0\n\
-             nltk>=3.8.0\n\
-             scikit-learn>=1.3.0\n"
-                .to_string()
-        }
-    };
-    fs::write(&req_path, content)?;
-    Ok(())
-}
 
 // ---------------------------------------------------------------------------
 // Name derivation and validation
@@ -792,10 +1125,15 @@ fn validate_skill_name(name: &str) -> anyhow::Result<()> {
 
 pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
     match &args.command {
-        SkillCommand::Install { source, name } => run_install(source, name.as_deref()),
+        SkillCommand::Install {
+            source,
+            name,
+            agents,
+        } => run_install(source, name.as_deref(), agents.as_deref()),
         SkillCommand::List => run_list(),
         SkillCommand::Remove { name } => run_remove(name),
-        SkillCommand::Update { name } => run_update(name.as_deref()),
+        SkillCommand::Update { name, agents } => run_update(name.as_deref(), agents.as_deref()),
+        SkillCommand::Export(export) => crate::cli::skill_export::run(export),
     }
 }
 
@@ -804,12 +1142,20 @@ pub fn run(args: &SkillArgs) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> {
+fn run_install(
+    source: &str,
+    name_override: Option<&str>,
+    agents_flag: Option<&str>,
+) -> anyhow::Result<()> {
+    if source == IMPECCABLE {
+        return run_install_impeccable(agents_flag);
+    }
+
     let root = std::env::current_dir()?;
 
     // Check if it's a known pack
     if let Some(pack) = find_pack(source) {
-        return run_install_pack(&root, pack);
+        return run_install_pack(&root, pack, agents_flag, &[]);
     }
 
     // Check if it looks like a URL
@@ -820,196 +1166,545 @@ fn run_install(source: &str, name_override: Option<&str>) -> anyhow::Result<()> 
     Err(anyhow::anyhow!(
         "unknown skill pack '{}'. Known packs: {}. Or provide a URL to a SKILL.md file.",
         source,
-        known_packs()
-            .iter()
-            .map(|p| p.name)
-            .collect::<Vec<_>>()
-            .join(", ")
+        known_pack_names().join(", ")
     ))
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn run_install_pack(root: &Path, pack: &SkillPack) -> anyhow::Result<()> {
+/// Which coding agents a pack install targets: `--agents`, else the agents
+/// the pack was installed for, else `.seite/config.json`, else all.
+fn resolve_agents(
+    root: &Path,
+    flag: Option<&str>,
+    recorded: &[String],
+) -> anyhow::Result<Vec<Agent>> {
+    if let Some(flag) = flag {
+        return crate::cli::harness::parse_agent_list(flag);
+    }
+    let recorded = crate::cli::harness::from_ids(recorded);
+    if !recorded.is_empty() {
+        return Ok(recorded);
+    }
+    if let Some(ids) = crate::meta::load(root).and_then(|m| m.agents) {
+        let configured = crate::cli::harness::from_ids(&ids);
+        if !configured.is_empty() {
+            return Ok(configured);
+        }
+    }
+    Ok(Agent::ALL.to_vec())
+}
+
+/// Reduce a SKILL.md frontmatter to `name` and `description`, the portable
+/// Agent Skills subset every agent accepts (same rule as the seite skill in
+/// `.agents/skills/`). Keys are matched at column 0; indented lines, block
+/// scalars (`>-`, `|`) and list items belong to the key above them, so nested
+/// keys such as `metadata: {name: ..}` never leak through. Line endings are
+/// preserved (CRLF files stay CRLF). A skill with no `name` gets
+/// `fallback_name` (its directory name), which the spec requires. Content
+/// without a closed frontmatter block is returned unchanged.
+fn portable_skill_md(content: &str, fallback_name: &str) -> String {
+    let Some(first) = content.split_inclusive('\n').next() else {
+        return content.to_string();
+    };
+    if first.trim_end() != "---" {
+        return content.to_string();
+    }
+    let eol = if first.ends_with("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let mut kept = String::new();
+    let mut has_name = false;
+    let mut keep = false;
+    let mut consumed = first.len();
+    let mut closed = false;
+    for line in content[first.len()..].split_inclusive('\n') {
+        consumed += line.len();
+        if line.trim_end() == "---" {
+            closed = true;
+            break;
+        }
+        let continuation =
+            line.starts_with([' ', '\t']) || line.trim().is_empty() || line.starts_with("- ");
+        if !continuation {
+            let key = line.split(':').next().unwrap_or("").trim();
+            keep = key == "name" || key == "description";
+            has_name |= key == "name";
+        }
+        if keep {
+            kept.push_str(line);
+            if !line.ends_with('\n') {
+                kept.push_str(eol);
+            }
+        }
+    }
+    if !closed {
+        return content.to_string();
+    }
+    let mut out = format!("---{eol}");
+    if !has_name {
+        out.push_str(&format!("name: {fallback_name}{eol}"));
+    }
+    out.push_str(&kept);
+    out.push_str(&format!("---{eol}"));
+    out.push_str(&content[consumed..]);
+    out
+}
+
+/// `<name>` of `.claude/skills/<name>/SKILL.md`.
+fn pinned_skill_name(path: &str) -> Option<&str> {
+    let name = path
+        .strip_prefix(".claude/skills/")?
+        .strip_suffix("/SKILL.md")?;
+    (!name.is_empty() && !name.contains('/')).then_some(name)
+}
+
+/// Distinct skills directories of the selected agents, with the frontmatter
+/// each takes (`.claude/skills` for Claude, shared `.agents/skills` for the
+/// rest), from `harness::PROVIDERS`.
+fn skill_dirs(agents: &[Agent]) -> Vec<(&'static str, SkillFrontmatter)> {
+    let mut dirs: Vec<(&'static str, SkillFrontmatter)> = Vec::new();
+    for agent in agents {
+        let spec = agent.spec();
+        if !dirs.iter().any(|(d, _)| *d == spec.skills_dir) {
+            dirs.push((spec.skills_dir, spec.skill_frontmatter));
+        }
+    }
+    dirs
+}
+
+/// One file to place in the project.
+struct Planned {
+    dest: String,
+    content: Vec<u8>,
+    /// Template the user is meant to edit: never overwrite an existing file.
+    keep_existing: bool,
+    /// Recorded in the manifest (and so deleted by `remove`).
+    track: bool,
+}
+
+/// Where each verified pinned file goes for the selected agents. Agents and
+/// commands are Claude Code-only; skills go to every selected agent's skills
+/// directory.
+fn plan_files(files: &[(PinnedFile, Vec<u8>)], agents: &[Agent]) -> Vec<Planned> {
+    let claude = agents.contains(&Agent::Claude);
+    let dirs = skill_dirs(agents);
+    let mut plan = Vec::new();
+    let mut push = |dest: String, content: Vec<u8>, keep_existing: bool, track: bool| {
+        plan.push(Planned {
+            dest,
+            content,
+            keep_existing,
+            track,
+        });
+    };
+    for (file, bytes) in files {
+        let path = file.path.as_str();
+        if path.starts_with(".claude/agents/") || path.starts_with(".claude/commands/") {
+            if claude {
+                push(path.to_string(), bytes.clone(), false, true);
+            }
+        } else if let Some(name) = pinned_skill_name(path) {
+            for (dir, frontmatter) in &dirs {
+                let content = match frontmatter {
+                    SkillFrontmatter::ClaudeCode => bytes.clone(),
+                    SkillFrontmatter::Portable => std::str::from_utf8(bytes)
+                        .map(|t| portable_skill_md(t, name).into_bytes())
+                        .unwrap_or_else(|_| bytes.clone()),
+                };
+                push(format!("{dir}/{name}/SKILL.md"), content, false, true);
+            }
+        } else if path.starts_with("context/") {
+            push(path.to_string(), bytes.clone(), true, true);
+        } else if path == "data_sources/requirements.txt" {
+            push(
+                "requirements-seo.txt".to_string(),
+                bytes.clone(),
+                true,
+                false,
+            );
+        } else {
+            push(format!("scripts/seo/{path}"), bytes.clone(), false, true);
+        }
+    }
+    if claude {
+        push(
+            ".claude/commands/publish-draft.md".to_string(),
+            seite_publish_draft_command().as_bytes().to_vec(),
+            false,
+            true,
+        );
+    }
+    plan
+}
+
+#[derive(Debug)]
+struct Applied {
+    files: Vec<String>,
+    hashes: BTreeMap<String, String>,
+    notes: Vec<String>,
+    written: usize,
+    /// Files this run created (not overwrote), for rollback.
+    created: Vec<PathBuf>,
+}
+
+/// Write the plan. A file is overwritten only if it is new, identical, or
+/// tracked by the previous install and still as installed; anything else the
+/// user owns is kept with a note. On a write error, files created by this
+/// run are removed again.
+fn apply_plan(root: &Path, plan: &[Planned], prev: Option<&PackEntry>) -> anyhow::Result<Applied> {
+    let mut created: Vec<PathBuf> = Vec::new();
+    let result = apply_plan_inner(root, plan, prev, &mut created);
+    match result {
+        Ok(mut applied) => {
+            applied.created = created;
+            Ok(applied)
+        }
+        Err(e) => {
+            rollback(root, &created);
+            Err(e)
+        }
+    }
+}
+
+/// Best-effort undo of newly created files after a failed install. Files an
+/// update overwrote are not restored: staging every write in a temp tree
+/// would double the I/O for a failure that can only be a local I/O error,
+/// since all content was already downloaded and hash-verified in memory.
+fn rollback(root: &Path, created: &[PathBuf]) {
+    for path in created {
+        if fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
+            let _ = fs::remove_file(path);
+            if let Some(parent) = path.parent() {
+                if crate::safe_fs::guard(root, parent).is_ok() {
+                    let _ = fs::remove_dir(parent);
+                }
+            }
+        }
+    }
+}
+
+fn apply_plan_inner(
+    root: &Path,
+    plan: &[Planned],
+    prev: Option<&PackEntry>,
+    created: &mut Vec<PathBuf>,
+) -> anyhow::Result<Applied> {
+    enum Act {
+        Write,
+        Adopt,
+        Keep { modified: bool },
+    }
+    let mut applied = Applied {
+        files: Vec::new(),
+        hashes: BTreeMap::new(),
+        notes: Vec::new(),
+        written: 0,
+        created: Vec::new(),
+    };
+    for item in plan {
+        let path = root.join(&item.dest);
+        crate::safe_fs::guard(root, &path)?;
+        let new_hash = sha256_hex(&item.content);
+        let tracked = prev.is_some_and(|e| e.files.iter().any(|f| f == &item.dest));
+        let prev_hash = prev.and_then(|e| e.hashes.get(&item.dest)).cloned();
+        let disk = match fs::symlink_metadata(&path) {
+            Ok(m) if m.is_file() => Some(fs::read(&path)?),
+            Ok(_) => anyhow::bail!("{} is not a regular file", path.display()),
+            Err(_) => None,
+        };
+        let act = match &disk {
+            None => Act::Write,
+            Some(d) if sha256_hex(d) == new_hash => Act::Adopt,
+            Some(_) if item.keep_existing => Act::Keep { modified: false },
+            // No recorded hash (pre-0.21 install): cannot tell an edit from
+            // an old release, so a differing file is kept.
+            Some(d) if tracked => match &prev_hash {
+                Some(h) if *h == sha256_hex(d) => Act::Write,
+                _ => Act::Keep { modified: true },
+            },
+            Some(_) => Act::Keep { modified: false },
+        };
+        match act {
+            Act::Write => {
+                crate::safe_fs::write(root, &path, &item.content)?;
+                if disk.is_none() {
+                    created.push(path);
+                }
+                applied.written += 1;
+                if item.track {
+                    applied.files.push(item.dest.clone());
+                    applied.hashes.insert(item.dest.clone(), new_hash);
+                }
+            }
+            Act::Adopt => {
+                if item.track {
+                    applied.files.push(item.dest.clone());
+                    applied.hashes.insert(item.dest.clone(), new_hash);
+                }
+            }
+            Act::Keep { modified } => {
+                if !item.keep_existing {
+                    applied.notes.push(if modified {
+                        format!(
+                            "kept {} (differs from the pinned version and may be edited; delete it and run `seite skill update` to refresh)",
+                            item.dest
+                        )
+                    } else {
+                        format!("kept {} (existing file not installed by seite)", item.dest)
+                    });
+                }
+                if tracked && item.track {
+                    applied.files.push(item.dest.clone());
+                    if let Some(h) = prev_hash {
+                        applied.hashes.insert(item.dest.clone(), h);
+                    }
+                }
+            }
+        }
+    }
+    Ok(applied)
+}
+
+/// What happened to one manifest entry on remove or update.
+#[derive(Debug, PartialEq, Eq)]
+enum Removal {
+    Removed,
+    /// Edited (hash differs), or a legacy entry that cannot be verified.
+    Kept,
+    /// Not a path the pack can install, or not a regular file: never touched.
+    Skipped,
+}
+
+/// Every path the pinned pack can install for any agent (tracked files
+/// only). The manifest lives in the repository, so it is untrusted input:
+/// only these paths are ever deleted on its say-so.
+fn owned_paths(pack: &SkillPack) -> BTreeSet<String> {
+    let Ok(pin) = Pin::parse(pack.pin) else {
+        return BTreeSet::new();
+    };
+    let files: Vec<(PinnedFile, Vec<u8>)> =
+        pin.files.iter().map(|f| (f.clone(), Vec::new())).collect();
+    plan_files(&files, &Agent::ALL)
+        .into_iter()
+        .filter(|p| p.track)
+        .map(|p| p.dest)
+        .collect()
+}
+
+/// Remove a file the previous install placed if it is still as installed.
+///
+/// Deletes regular files only (never a directory or symlink, so a crafted
+/// manifest cannot wipe `.git` or `content/`), and only paths in `owned`.
+/// Entries without a recorded hash (installed before 0.21) are removed
+/// when `legacy_ok`, except `context/` templates, which are the user's.
+fn remove_if_unmodified(
+    root: &Path,
+    entry: &PackEntry,
+    owned: &BTreeSet<String>,
+    file: &str,
+    legacy_ok: bool,
+) -> anyhow::Result<Removal> {
+    if !owned.contains(file) {
+        return Ok(Removal::Skipped);
+    }
+    let path = root.join(file);
+    let Ok(meta) = fs::symlink_metadata(&path) else {
+        return Ok(Removal::Removed);
+    };
+    if !meta.is_file() {
+        return Ok(Removal::Skipped);
+    }
+    crate::safe_fs::guard(root, &path)?;
+    let unmodified = match (entry.hashes.get(file), fs::read(&path)) {
+        (Some(h), Ok(bytes)) => *h == sha256_hex(&bytes),
+        (Some(_), Err(_)) => false,
+        // Manifests from before hashes were recorded cannot tell: `remove`
+        // deletes (as it always did), an update keeps the file.
+        (None, _) => legacy_ok && !file.starts_with("context/"),
+    };
+    if !unmodified {
+        return Ok(Removal::Kept);
+    }
+    fs::remove_file(&path)?;
+    if let Some(parent) = path.parent() {
+        if crate::safe_fs::guard(root, parent).is_ok() {
+            let _ = fs::remove_dir(parent);
+        }
+    }
+    Ok(Removal::Removed)
+}
+
+/// Install (or update to the binary's pin) a downloaded pack for `agents`.
+///
+/// Every pinned file is fetched and checked against its SHA-256 before
+/// anything is written, so a mismatch or failed download aborts with the
+/// project untouched.
+fn install_pack_with(
+    root: &Path,
+    pack: &SkillPack,
+    agents: &[Agent],
+    fetch: Fetch,
+) -> anyhow::Result<Applied> {
+    let pin = Pin::parse(pack.pin)?;
+    crate::cli::agent_instructions::validate_paths(root)?;
+    let short = &pin.commit[..7.min(pin.commit.len())];
     human::info(&format!(
-        "Installing skill pack '{}': {}",
-        pack.name, pack.description
+        "Installing skill pack '{}': {} (pinned {short}, {}, {} licence)",
+        pack.name,
+        pack.description,
+        pin.date.get(..10).unwrap_or(&pin.date),
+        pin.licence
+    ));
+    human::info(&format!(
+        "Downloading and verifying {} files...",
+        pin.files.len()
     ));
 
-    ensure_no_symlinks(root, &install_targets(pack))?;
-
-    let mut installed_files: Vec<String> = Vec::new();
-    let mut download_errors: Vec<String> = Vec::new();
-
-    // Download agents
-    let agents_dir = root.join(".claude").join("agents");
-    fs::create_dir_all(&agents_dir)?;
-    human::info(&format!("Downloading {} agents...", pack.agents.len()));
-    for agent in pack.agents {
-        let url = raw_github_url(pack.repo, pack.branch, &format!(".claude/agents/{agent}"));
-        match download_text(&url) {
-            Ok(body) => {
-                fs::write(agents_dir.join(agent), &body)?;
-                installed_files.push(format!(".claude/agents/{agent}"));
-            }
-            Err(e) => download_errors.push(format!("  agent {agent}: {e}")),
+    let mut verified: Vec<(PinnedFile, Vec<u8>)> = Vec::with_capacity(pin.files.len());
+    for file in &pin.files {
+        let url = raw_github_url(&pin.repo, &pin.commit, &file.path);
+        let bytes = fetch(&url)?;
+        let got = sha256_hex(&bytes);
+        if got != file.sha256 {
+            anyhow::bail!(
+                "checksum mismatch for {} at {short} (expected {}, got {got}); nothing was installed",
+                file.path,
+                file.sha256
+            );
         }
+        verified.push((file.clone(), bytes));
     }
 
-    // Download commands
-    let commands_dir = root.join(".claude").join("commands");
-    fs::create_dir_all(&commands_dir)?;
-    human::info(&format!("Downloading {} commands...", pack.commands.len()));
-    for command in pack.commands {
-        // Skip publish-draft — we'll write our own seite-native version
-        if *command == "publish-draft.md" {
-            continue;
-        }
-        let url = raw_github_url(
-            pack.repo,
-            pack.branch,
-            &format!(".claude/commands/{command}"),
-        );
-        match download_text(&url) {
-            Ok(body) => {
-                fs::write(commands_dir.join(command), &body)?;
-                installed_files.push(format!(".claude/commands/{command}"));
-            }
-            Err(e) => download_errors.push(format!("  command {command}: {e}")),
-        }
-    }
-
-    // Write seite-native publish-draft override
-    fs::write(
-        commands_dir.join("publish-draft.md"),
-        seite_publish_draft_command(),
-    )?;
-    installed_files.push(".claude/commands/publish-draft.md".to_string());
-
-    // Download skills
-    human::info(&format!("Downloading {} skills...", pack.skills.len()));
-    for skill in pack.skills {
-        let skill_dir = root.join(".claude").join("skills").join(skill);
-        fs::create_dir_all(&skill_dir)?;
-        let url = raw_github_url(
-            pack.repo,
-            pack.branch,
-            &format!(".claude/skills/{skill}/SKILL.md"),
-        );
-        match download_text(&url) {
-            Ok(body) => {
-                fs::write(skill_dir.join("SKILL.md"), &body)?;
-                installed_files.push(format!(".claude/skills/{skill}/SKILL.md"));
-            }
-            Err(e) => download_errors.push(format!("  skill {skill}: {e}")),
-        }
-    }
-
-    // Download context file templates (only if they don't already exist)
-    let context_dir = root.join("context");
-    fs::create_dir_all(&context_dir)?;
-    human::info("Scaffolding context templates...");
-    for context_file in pack.context_files {
-        let dest = context_dir.join(context_file);
-        if dest.exists() {
-            continue; // Don't overwrite user-customized context files
-        }
-        let url = raw_github_url(pack.repo, pack.branch, &format!("context/{context_file}"));
-        match download_text(&url) {
-            Ok(body) => {
-                fs::write(&dest, &body)?;
-                installed_files.push(format!("context/{context_file}"));
-            }
-            Err(e) => download_errors.push(format!("  context {context_file}: {e}")),
-        }
-    }
-
-    // Download Python scripts
-    let scripts_dir = root.join("scripts").join("seo");
-    fs::create_dir_all(&scripts_dir)?;
-    human::info(&format!(
-        "Downloading {} Python scripts...",
-        pack.python_scripts.len()
-    ));
-    for script in pack.python_scripts {
-        let dest = scripts_dir.join(script);
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let url = raw_github_url(pack.repo, pack.branch, script);
-        match download_text(&url) {
-            Ok(body) => {
-                fs::write(&dest, &body)?;
-                installed_files.push(format!("scripts/seo/{script}"));
-            }
-            Err(e) => download_errors.push(format!("  script {script}: {e}")),
-        }
-    }
-
-    // Scaffold supporting files
-    scaffold_env_example(root)?;
-    scaffold_requirements(root, pack)?;
-
-    // Create directories for SEOMachine workflow
-    for dir in &["research", "output", "topics"] {
-        fs::create_dir_all(root.join(dir))?;
-    }
-
-    // Add to .gitignore
-    ensure_gitignore_entries(
-        root,
-        &[
-            "research/",
-            "output/",
-            "topics/",
-            ".env",
-            "credentials/",
-            ".claude/.seite-skill-packs.json",
-        ],
-    )?;
-
-    // Generate internal links map
-    let links_map = generate_internal_links_map(root);
-    fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
-
-    // Append to the canonical cross-agent instructions.
-    append_agent_instructions_section(root)?;
-
-    // Save manifest
-    let mut manifest = load_manifest(root);
-    manifest.packs.insert(
-        pack.name.to_string(),
-        PackEntry {
-            source: format!("github:{}", pack.repo),
-            branch: pack.branch.to_string(),
-            installed_at: chrono::Utc::now().to_rfc3339(),
-            files: installed_files.clone(),
-        },
-    );
-    save_manifest(root, &manifest)?;
-
-    // Report
-    if !download_errors.is_empty() {
+    let claude = agents.contains(&Agent::Claude);
+    if !claude {
         human::info(&format!(
-            "Some files failed to download ({} errors):",
-            download_errors.len()
+            "SEOMachine's subagents and slash commands are Claude Code-only; installing its skills for {} only.",
+            agent_labels(agents)
         ));
-        for err in &download_errors {
-            human::info(err);
-        }
     }
 
-    let total = installed_files.len();
+    let plan = plan_files(&verified, agents);
+    let manifest = load_manifest(root);
+    let prev = manifest.packs.get(pack.name).cloned();
+    let mut applied = apply_plan(root, &plan, prev.as_ref())?;
+    let created = std::mem::take(&mut applied.created);
+
+    // Everything after this point rolls back the files created above if it
+    // fails (see `rollback` for what is not undone).
+    let finish = (|| -> anyhow::Result<Vec<String>> {
+        scaffold_env_example(root)?;
+        for dir in ["context", "research", "output", "topics"] {
+            crate::safe_fs::create_dir_all(root, &root.join(dir))?;
+        }
+        ensure_gitignore_entries(
+            root,
+            &[
+                "research/",
+                "output/",
+                "topics/",
+                ".env",
+                "credentials/",
+                ".claude/.seite-skill-packs.json",
+            ],
+        )?;
+        write_internal_links_map(root)?;
+        append_agent_instructions_section(root, agents)?;
+
+        // Files an earlier install placed that this one no longer does (an
+        // agent dropped, or a file removed from the pin). Only paths the pack
+        // can install are touched; edited ones are kept and remembered.
+        let mut kept: Vec<String> = Vec::new();
+        if let Some(prev) = &prev {
+            let owned = owned_paths(pack);
+            let planned: BTreeSet<&str> = plan.iter().map(|p| p.dest.as_str()).collect();
+            for file in prev.files.iter().filter(|f| !planned.contains(f.as_str())) {
+                match remove_if_unmodified(root, prev, &owned, file, false)? {
+                    Removal::Removed => {}
+                    Removal::Kept => {
+                        applied
+                            .notes
+                            .push(format!("kept {file} (edited since install)"));
+                        kept.push(file.clone());
+                    }
+                    Removal::Skipped => applied
+                        .notes
+                        .push(format!("ignored {file}: not a file this pack installs")),
+                }
+            }
+            // Earlier leftovers still on disk stay on the list.
+            for file in &prev.kept {
+                if !kept.contains(file) && fs::symlink_metadata(root.join(file)).is_ok() {
+                    kept.push(file.clone());
+                }
+            }
+        }
+
+        let mut manifest = load_manifest(root);
+        manifest.packs.insert(
+            pack.name.to_string(),
+            PackEntry {
+                source: format!("github:{}", pin.repo),
+                branch: pin.commit.clone(),
+                installed_at: chrono::Utc::now().to_rfc3339(),
+                files: applied.files.clone(),
+                commit: Some(pin.commit.clone()),
+                date: Some(pin.date.clone()),
+                agents: crate::cli::harness::to_ids(agents),
+                kept: kept.clone(),
+                hashes: applied.hashes.clone(),
+            },
+        );
+        save_manifest(root, &manifest)?;
+        Ok(kept)
+    })();
+    if let Err(e) = finish {
+        rollback(root, &created);
+        return Err(e);
+    }
+
+    for note in &applied.notes {
+        human::info(&format!("  {note}"));
+    }
     human::success(&format!(
-        "Installed '{}' — {} files (agents, commands, skills, context, scripts)",
-        pack.name, total
+        "Installed '{}' at {short} for {} — {} files written, {} tracked",
+        pack.name,
+        agent_labels(agents),
+        applied.written,
+        applied.files.len()
     ));
     human::info("");
     human::info("Next steps:");
     human::info("  1. Fill in context/ files with your brand voice, keywords, and guidelines");
     human::info("  2. (Optional) Set up analytics: copy .env.example to .env, fill in API keys");
     human::info("  3. (Optional) Install Python deps: pip install -r requirements-seo.txt");
-    human::info("  4. Start with: /research \"your topic\" or /write \"your topic\"");
+    if claude {
+        human::info("  4. Start with: /research \"your topic\" or /write \"your topic\"");
+    } else {
+        human::info(
+            "  4. Ask your agent to use the installed skills, e.g. seo-audit or copywriting",
+        );
+    }
+    Ok(applied)
+}
 
+fn agent_labels(agents: &[Agent]) -> String {
+    agents
+        .iter()
+        .map(|a| a.label())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn run_install_pack(
+    root: &Path,
+    pack: &SkillPack,
+    agents_flag: Option<&str>,
+    recorded: &[String],
+) -> anyhow::Result<()> {
+    let agents = resolve_agents(root, agents_flag, recorded)?;
+    install_pack_with(root, pack, &agents, &download_bytes)?;
     Ok(())
 }
 
@@ -1027,19 +1722,12 @@ fn run_install_url(root: &Path, url: &str, name_override: Option<&str>) -> anyho
         return Err(anyhow::anyhow!("downloaded file is empty"));
     }
 
-    ensure_no_symlinks(
-        root,
-        &[
-            format!(".claude/skills/{skill_name}/SKILL.md"),
-            format!(".claude/skills/{skill_name}/.source"),
-        ],
-    )?;
     let skill_dir = root.join(".claude").join("skills").join(&skill_name);
-    fs::create_dir_all(&skill_dir)?;
-    fs::write(skill_dir.join("SKILL.md"), &body)?;
+    crate::safe_fs::create_dir_all(root, &skill_dir)?;
+    crate::safe_fs::write(root, &skill_dir.join("SKILL.md"), &body)?;
 
     // Save source URL for updates
-    fs::write(skill_dir.join(".source"), url)?;
+    crate::safe_fs::write(root, &skill_dir.join(".source"), url)?;
 
     human::success(&format!(
         "Installed skill '{}' to .claude/skills/{}/SKILL.md",
@@ -1058,28 +1746,45 @@ fn run_list() -> anyhow::Result<()> {
     let skills_dir = root.join(".claude").join("skills");
 
     // Bundled skills (always present after init)
-    let bundled = ["theme-builder", "brand-identity", "landing-page"];
+    let bundled: Vec<&str> = crate::cli::harness::SKILLS.iter().map(|s| s.name).collect();
 
     human::info("Bundled skills:");
+    let mut bundled_present: Vec<&str> = Vec::new();
     for name in &bundled {
         let skill_path = skills_dir.join(name).join("SKILL.md");
         if skill_path.exists() {
             human::info(&format!("  {} (bundled)", name));
+            bundled_present.push(name);
         }
     }
 
     // Installed packs
     let manifest = load_manifest(&root);
-    if !manifest.packs.is_empty() {
+    let impeccable = impeccable_installed(&root);
+    let mut installed: Vec<(&str, String)> = manifest
+        .packs
+        .iter()
+        .map(|(name, entry)| {
+            let detail = if entry.source == IMPECCABLE_SOURCE {
+                format!("via npm (from {})", entry.source)
+            } else {
+                format!("{} files (from {})", entry.files.len(), entry.source)
+            };
+            (name.as_str(), detail)
+        })
+        .collect();
+    if impeccable && !manifest.packs.contains_key(IMPECCABLE) {
+        installed.push((
+            IMPECCABLE,
+            "skill folder found (installed outside seite)".into(),
+        ));
+    }
+    installed.sort();
+    if !installed.is_empty() {
         human::info("");
         human::info("Installed packs:");
-        for (name, entry) in &manifest.packs {
-            human::info(&format!(
-                "  {} — {} files (from {})",
-                name,
-                entry.files.len(),
-                entry.source
-            ));
+        for (name, detail) in &installed {
+            human::info(&format!("  {name} — {detail}"));
         }
     }
 
@@ -1096,12 +1801,15 @@ fn run_list() -> anyhow::Result<()> {
         })
         .collect();
 
+    let mut custom_skills = Vec::new();
     if skills_dir.exists() {
-        let mut custom_skills = Vec::new();
         if let Ok(entries) = fs::read_dir(&skills_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if bundled.contains(&name.as_str()) || pack_skills.contains(&name) {
+                if bundled.contains(&name.as_str())
+                    || pack_skills.contains(&name)
+                    || name == IMPECCABLE
+                {
                     continue;
                 }
                 if entry.path().join("SKILL.md").exists() {
@@ -1109,6 +1817,7 @@ fn run_list() -> anyhow::Result<()> {
                 }
             }
         }
+        custom_skills.sort();
         if !custom_skills.is_empty() {
             human::info("");
             human::info("Custom skills:");
@@ -1119,21 +1828,61 @@ fn run_list() -> anyhow::Result<()> {
     }
 
     // Available packs (not yet installed)
-    let available: Vec<_> = known_packs()
-        .iter()
-        .filter(|p| !manifest.packs.contains_key(p.name))
+    let is_installed = |name: &str| {
+        if name == IMPECCABLE {
+            impeccable
+        } else {
+            manifest.packs.contains_key(name)
+        }
+    };
+    let available: Vec<&str> = known_pack_names()
+        .into_iter()
+        .filter(|name| !is_installed(name))
         .collect();
     if !available.is_empty() {
         human::info("");
         human::info("Available packs (not installed):");
-        for pack in &available {
-            human::info(&format!("  {} — {}", pack.name, pack.description));
+        for name in &available {
             human::info(&format!(
-                "    Install with: seite skill install {}",
-                pack.name
+                "  {} — {}",
+                name,
+                known_pack_description(name).unwrap_or_default()
             ));
+            human::info(&format!("    Install with: seite skill install {name}"));
         }
     }
+
+    let mut packs: Vec<serde_json::Value> = known_pack_names()
+        .into_iter()
+        .map(|name| {
+            serde_json::json!({
+                "name": name,
+                "description": known_pack_description(name),
+                "installed": is_installed(name),
+                "source": manifest.packs.get(name).map(|e| e.source.clone()),
+            })
+        })
+        .collect();
+    // Packs recorded in the manifest that this binary no longer knows.
+    let mut unknown: Vec<_> = manifest
+        .packs
+        .iter()
+        .filter(|(name, _)| !known_pack_names().contains(&name.as_str()))
+        .collect();
+    unknown.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, entry) in unknown {
+        packs.push(serde_json::json!({
+            "name": name,
+            "description": null,
+            "installed": true,
+            "source": entry.source,
+        }));
+    }
+    crate::output::json::set_data(serde_json::json!({
+        "bundled": bundled_present,
+        "packs": packs,
+        "custom_skills": custom_skills,
+    }));
 
     Ok(())
 }
@@ -1148,6 +1897,10 @@ fn run_remove(name: &str) -> anyhow::Result<()> {
 }
 
 fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
+    if name == IMPECCABLE {
+        return remove_impeccable(root);
+    }
+
     let mut manifest = load_manifest(root);
 
     // Check if it's an installed pack
@@ -1155,32 +1908,30 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         crate::cli::agent_instructions::validate_paths(root)?;
         human::info(&format!("Removing skill pack '{}'...", name));
 
-        // The manifest lives in the project, so a cloned repository can list
-        // anything in it. Delete only files this pack installs (never
-        // `context/`, which users fill in), and only regular files reached
-        // without a symlink.
         let owned = find_pack(name).map(owned_paths).unwrap_or_default();
-        let mut kept = Vec::new();
+        let (mut removed, mut kept) = (0usize, 0usize);
         for file in &entry.files {
-            if !owned.contains(file) {
-                kept.push(file.clone());
-                continue;
-            }
-            let Some(path) = removable_file(root, file) else {
-                continue;
-            };
-            fs::remove_file(&path)?;
-            // Clean up empty parent directories
-            if let Some(parent) = path.parent() {
-                let _ = fs::remove_dir(parent); // ignore errors (dir not empty)
+            match remove_if_unmodified(root, &entry, &owned, file, true)? {
+                Removal::Removed => removed += 1,
+                Removal::Kept => {
+                    kept += 1;
+                    human::info(&format!(
+                        "  kept {file} ({})",
+                        if file.starts_with("context/") && !entry.hashes.contains_key(file) {
+                            "your template"
+                        } else {
+                            "edited since install"
+                        }
+                    ));
+                }
+                Removal::Skipped => human::warning(&format!(
+                    "  ignored {file}: not a file this pack installs (the manifest is not trusted)"
+                )),
             }
         }
-        if !kept.is_empty() {
-            human::warning(&format!(
-                "Left {} listed file(s) in place that pack '{}' does not install: {}",
-                kept.len(),
-                name,
-                kept.join(", ")
+        for file in &entry.kept {
+            human::info(&format!(
+                "  left {file} (edited, kept by an earlier update)"
             ));
         }
 
@@ -1199,7 +1950,7 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
 
         save_manifest(root, &manifest)?;
         human::success(&format!(
-            "Removed pack '{}'. Context files in context/ were kept.",
+            "Removed pack '{}' ({removed} files removed, {kept} edited or template files kept).",
             name
         ));
         return Ok(());
@@ -1211,14 +1962,8 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         anyhow::bail!("'{}' is not a skill name", name);
     }
     let skill_dir = root.join(".claude").join("skills").join(name);
-    if !no_symlink_below(root, &skill_dir) {
-        anyhow::bail!(
-            "refusing to remove {}: it goes through a symlink",
-            skill_dir.display()
-        );
-    }
-    if skill_dir.is_dir() {
-        fs::remove_dir_all(&skill_dir)?;
+    if fs::symlink_metadata(&skill_dir).is_ok() {
+        crate::safe_fs::remove(root, &skill_dir)?;
         human::success(&format!("Removed skill '{}'", name));
         return Ok(());
     }
@@ -1227,64 +1972,6 @@ fn remove_from(root: &Path, name: &str) -> anyhow::Result<()> {
         "no skill or pack named '{}' is installed",
         name
     ))
-}
-
-/// Every project-relative path `install` can write for `pack`, except
-/// `context/` templates (users fill them in; remove keeps them).
-fn owned_paths(pack: &SkillPack) -> Vec<String> {
-    let mut paths = Vec::new();
-    paths.extend(pack.agents.iter().map(|a| format!(".claude/agents/{a}")));
-    paths.extend(
-        pack.commands
-            .iter()
-            .map(|c| format!(".claude/commands/{c}")),
-    );
-    paths.push(".claude/commands/publish-draft.md".to_string());
-    paths.extend(
-        pack.skills
-            .iter()
-            .map(|s| format!(".claude/skills/{s}/SKILL.md")),
-    );
-    paths.extend(
-        pack.python_scripts
-            .iter()
-            .map(|s| format!("scripts/seo/{s}")),
-    );
-    paths
-}
-
-/// Refuse to write anywhere a symlink could redirect: `rels` (project-relative
-/// files or directories install writes) must be reached without a symlink and
-/// must not be symlinks themselves. Checked before anything is written.
-fn ensure_no_symlinks<S: AsRef<str>>(root: &Path, rels: &[S]) -> anyhow::Result<()> {
-    for rel in rels {
-        let rel = rel.as_ref();
-        let path = root.join(rel);
-        if !no_symlink_below(root, &path) {
-            anyhow::bail!("refusing to write {rel}: it is a symlink or goes through one");
-        }
-    }
-    Ok(())
-}
-
-/// Every path `run_install_pack` writes, for [`ensure_no_symlinks`].
-fn install_targets(pack: &SkillPack) -> Vec<String> {
-    let mut targets = owned_paths(pack);
-    targets.extend(pack.context_files.iter().map(|c| format!("context/{c}")));
-    targets.extend(
-        [
-            ".claude/.seite-skill-packs.json",
-            "context/internal-links-map.md",
-            ".gitignore",
-            ".env.example",
-            "requirements-seo.txt",
-            "research",
-            "output",
-            "topics",
-        ]
-        .map(String::from),
-    );
-    targets
 }
 
 /// A single path component: no separators, no `.`/`..`, not empty.
@@ -1296,64 +1983,31 @@ fn is_plain_name(name: &str) -> bool {
         && !name.contains('\0')
 }
 
-/// True when no existing component of `path` below `root` is a symlink.
-fn no_symlink_below(root: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(root) else {
-        return false;
-    };
-    let mut current = root.to_path_buf();
-    for component in rel.components() {
-        let std::path::Component::Normal(part) = component else {
-            return false;
-        };
-        current.push(part);
-        match fs::symlink_metadata(&current) {
-            Ok(meta) if meta.file_type().is_symlink() => return false,
-            Ok(_) => {}
-            // The rest does not exist yet; any other error fails closed.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
-            Err(_) => return false,
-        }
-    }
-    true
-}
-
-/// `root/file` when it is an existing regular file reached without a
-/// symlink and `file` is a plain relative path.
-fn removable_file(root: &Path, file: &str) -> Option<PathBuf> {
-    let rel = Path::new(file);
-    if rel.is_absolute()
-        || !rel
-            .components()
-            .all(|c| matches!(c, std::path::Component::Normal(_)))
-    {
-        return None;
-    }
-    let path = root.join(rel);
-    if !no_symlink_below(root, &path) {
-        return None;
-    }
-    match fs::symlink_metadata(&path) {
-        Ok(meta) if meta.file_type().is_file() => Some(path),
-        _ => None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn run_update(name: Option<&str>) -> anyhow::Result<()> {
+fn run_update(name: Option<&str>, agents_flag: Option<&str>) -> anyhow::Result<()> {
+    if name == Some(IMPECCABLE) {
+        let root = impeccable_root()?;
+        if !impeccable_installed(&root) {
+            anyhow::bail!(
+                "impeccable is not installed; install it with `seite skill install impeccable`"
+            );
+        }
+        return run_update_impeccable(&root);
+    }
+
     let root = std::env::current_dir()?;
     let manifest = load_manifest(&root);
 
     if let Some(name) = name {
         // Update specific pack
-        if manifest.packs.contains_key(name) {
+        if let Some(entry) = manifest.packs.get(name) {
             if let Some(pack) = find_pack(name) {
                 human::info(&format!("Updating pack '{}'...", name));
-                return run_install_pack(&root, pack);
+                return run_install_pack(&root, pack, agents_flag, &entry.agents);
             }
             return Err(anyhow::anyhow!(
                 "pack '{}' was installed but is no longer in the known packs registry",
@@ -1379,26 +2033,32 @@ fn run_update(name: Option<&str>) -> anyhow::Result<()> {
         ));
     }
 
-    // Update all packs
+    // Update all packs. The links map tracks site content, not packs, so it is
+    // regenerated whenever `context/` exists, even with no packs installed.
     let pack_names: Vec<String> = manifest.packs.keys().cloned().collect();
-    if pack_names.is_empty() {
+    let context_dir = root.join("context");
+    if pack_names.is_empty() && !context_dir.exists() {
         human::info("No skill packs installed. Nothing to update.");
         return Ok(());
     }
 
     for pack_name in &pack_names {
-        if let Some(pack) = find_pack(pack_name) {
+        if pack_name == IMPECCABLE {
+            run_update_impeccable(&root)?;
+        } else if let Some(pack) = find_pack(pack_name) {
             human::info(&format!("Updating pack '{}'...", pack_name));
-            run_install_pack(&root, pack)?;
+            let recorded = manifest
+                .packs
+                .get(pack_name)
+                .map(|e| e.agents.clone())
+                .unwrap_or_default();
+            run_install_pack(&root, pack, agents_flag, &recorded)?;
         }
     }
 
     // Also regenerate internal links map
     let context_dir = root.join("context");
-    if context_dir.exists() {
-        ensure_no_symlinks(&root, &["context/internal-links-map.md"])?;
-        let links_map = generate_internal_links_map(&root);
-        fs::write(context_dir.join("internal-links-map.md"), &links_map)?;
+    if context_dir.exists() && write_internal_links_map(&root)? {
         human::info("Regenerated internal links map");
     }
 
@@ -1456,13 +2116,6 @@ mod tests {
     }
 
     #[test]
-    fn test_strip_date_prefix() {
-        assert_eq!(strip_date_prefix("2026-03-12-hello-world"), "hello-world");
-        assert_eq!(strip_date_prefix("no-date-here"), "no-date-here");
-        assert_eq!(strip_date_prefix("short"), "short");
-    }
-
-    #[test]
     fn test_manifest_roundtrip() {
         let tmp = tempfile::TempDir::new().unwrap();
         let mut manifest = SkillPacksManifest::default();
@@ -1473,6 +2126,7 @@ mod tests {
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec!["file1.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -1481,26 +2135,188 @@ mod tests {
         assert_eq!(loaded.packs["test"].files.len(), 1);
     }
 
-    #[test]
-    fn test_generate_internal_links_map_empty() {
+    /// A site with posts under `/blog`, root-mounted pages, and a private
+    /// collection, matching the shape of `seite-sh/seite.toml`.
+    fn links_map_site() -> tempfile::TempDir {
         let tmp = tempfile::TempDir::new().unwrap();
-        let map = generate_internal_links_map(tmp.path());
-        assert!(map.contains("# Internal Links Map"));
+        fs::write(
+            tmp.path().join("seite.toml"),
+            r#"
+[site]
+title = "Test"
+base_url = "https://example.com"
+
+[[collections]]
+name = "posts"
+label = "Posts"
+directory = "posts"
+has_date = true
+default_template = "post.html"
+url_prefix = "/blog"
+
+[[collections]]
+name = "pages"
+label = "Pages"
+directory = "pages"
+default_template = "page.html"
+url_prefix = ""
+
+[[collections]]
+name = "docs"
+label = "Docs"
+directory = "docs"
+nested = true
+default_template = "doc.html"
+url_prefix = "/docs"
+
+[[collections]]
+name = "members"
+label = "Members"
+directory = "members"
+default_template = "page.html"
+url_prefix = "/members"
+private = true
+"#,
+        )
+        .unwrap();
+        tmp
+    }
+
+    fn write_content(root: &Path, rel: &str, body: &str) {
+        let path = root.join("content").join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
     }
 
     #[test]
-    fn test_generate_internal_links_map_with_content() {
+    fn test_generate_internal_links_map_requires_config() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let posts_dir = tmp.path().join("content").join("posts");
-        fs::create_dir_all(&posts_dir).unwrap();
-        fs::write(
-            posts_dir.join("2026-03-12-hello-world.md"),
-            "---\ntitle: \"Hello World\"\n---\nContent here",
-        )
-        .unwrap();
-        let map = generate_internal_links_map(tmp.path());
-        assert!(map.contains("Hello World"));
-        assert!(map.contains("/posts/hello-world"));
+        assert!(generate_internal_links_map(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_uses_url_prefix() {
+        let tmp = links_map_site();
+        write_content(
+            tmp.path(),
+            "posts/2026-03-13-hugo-alternative.md",
+            "---\ntitle: \"Hugo Alternative\"\n---\nBody",
+        );
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(map.contains("## posts"));
+        assert!(map.contains("- [Hugo Alternative](/blog/hugo-alternative)"));
+        assert!(!map.contains("/posts/"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_empty_url_prefix() {
+        let tmp = links_map_site();
+        write_content(tmp.path(), "pages/about.md", "---\ntitle: About\n---\n");
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(map.contains("- [About](/about)"));
+        assert!(!map.contains("/pages/about"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_slug_override() {
+        let tmp = links_map_site();
+        write_content(
+            tmp.path(),
+            "posts/2026-01-01-original-name.md",
+            "---\ntitle: Renamed\nslug: custom-slug\n---\n",
+        );
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(map.contains("- [Renamed](/blog/custom-slug)"));
+        assert!(!map.contains("original-name"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_excludes_drafts() {
+        let tmp = links_map_site();
+        write_content(
+            tmp.path(),
+            "posts/2026-01-01-published.md",
+            "---\ntitle: Published\n---\n",
+        );
+        write_content(
+            tmp.path(),
+            "posts/2026-01-02-wip.md",
+            "---\ntitle: Work In Progress\ndraft: true\n---\n",
+        );
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(map.contains("Published"));
+        assert!(!map.contains("Work In Progress"));
+        assert!(!map.contains("/blog/wip"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_excludes_private_collections() {
+        let tmp = links_map_site();
+        write_content(tmp.path(), "members/secret.md", "---\ntitle: Secret\n---\n");
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(!map.contains("## members"));
+        assert!(!map.contains("Secret"));
+    }
+
+    #[test]
+    fn test_generate_internal_links_map_nested_docs_and_index() {
+        let tmp = links_map_site();
+        write_content(
+            tmp.path(),
+            "docs/guides/setup.md",
+            "---\ntitle: Setup Guide\n---\n",
+        );
+        write_content(tmp.path(), "pages/index.md", "---\ntitle: Home\n---\n");
+        // Like the build: only a slug of exactly `index` is an index page.
+        write_content(
+            tmp.path(),
+            "docs/guides/index.md",
+            "---\ntitle: Guides Overview\n---\n",
+        );
+        write_content(
+            tmp.path(),
+            "docs/index.md",
+            "---\ntitle: Welcome\nslug: welcome\n---\n",
+        );
+        write_content(
+            tmp.path(),
+            "docs/start.md",
+            "---\ntitle: Docs Landing\nslug: index\n---\n",
+        );
+        let map = generate_internal_links_map(tmp.path()).unwrap();
+        assert!(map.contains("- [Setup Guide](/docs/guides/setup)"));
+        assert!(map.contains("- [Guides Overview](/docs/guides/index)"));
+        assert!(map.contains("- [Welcome](/docs/welcome)"));
+        assert!(!map.contains("Docs Landing"));
+        assert!(!map.contains("Home"));
+        // Collections with no linkable content get no section.
+        assert!(!map.contains("## pages"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_write_internal_links_map_refuses_symlink() {
+        use std::os::unix::fs::symlink;
+        let tmp = links_map_site();
+        let victim = tmp.path().join("victim.md");
+        fs::write(&victim, "keep me").unwrap();
+        fs::create_dir_all(tmp.path().join("context")).unwrap();
+        symlink(&victim, tmp.path().join("context/internal-links-map.md")).unwrap();
+        assert!(write_internal_links_map(tmp.path()).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+    }
+
+    #[test]
+    fn test_write_internal_links_map_keeps_existing_on_bad_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let context = tmp.path().join("context");
+        fs::create_dir_all(&context).unwrap();
+        fs::write(context.join("internal-links-map.md"), "previous").unwrap();
+        assert!(!write_internal_links_map(tmp.path()).unwrap());
+        assert_eq!(
+            fs::read_to_string(context.join("internal-links-map.md")).unwrap(),
+            "previous"
+        );
     }
 
     #[test]
@@ -1514,7 +2330,7 @@ mod tests {
     fn test_agents_md_section_add_and_remove() {
         let tmp = tempfile::TempDir::new().unwrap();
         fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
@@ -1558,38 +2374,6 @@ mod tests {
         scaffold_env_example(tmp.path()).unwrap();
         let content2 = fs::read_to_string(tmp.path().join(".env.example")).unwrap();
         assert_eq!(content2, "custom");
-    }
-
-    #[test]
-    fn test_scaffold_requirements() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let pack = find_pack("seomachine").unwrap();
-        scaffold_requirements(tmp.path(), pack).unwrap();
-        let content = fs::read_to_string(tmp.path().join("requirements-seo.txt")).unwrap();
-        assert!(!content.is_empty());
-    }
-
-    #[test]
-    fn test_extract_title_from_file() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.md");
-        fs::write(
-            &path,
-            "---\ntitle: \"Hello World\"\ndate: 2026-01-01\n---\nBody",
-        )
-        .unwrap();
-        assert_eq!(
-            extract_title_from_file(&path),
-            Some("Hello World".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_title_no_frontmatter() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.md");
-        fs::write(&path, "# Just a heading\n\nBody").unwrap();
-        assert_eq!(extract_title_from_file(&path), None);
     }
 
     #[test]
@@ -1652,7 +2436,7 @@ mod tests {
     fn test_append_agent_instructions_no_existing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         // No AGENTS.md exists
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(content.contains("SEOMachine Integration"));
         assert!(content.contains(AGENTS_MD_MARKER_START));
@@ -1671,7 +2455,7 @@ mod tests {
         )
         .unwrap();
 
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("# Legacy project"));
@@ -1695,7 +2479,7 @@ mod tests {
         )
         .unwrap();
 
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let agents = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert_eq!(agents.matches(AGENTS_MD_MARKER_START).count(), 1);
@@ -1711,8 +2495,8 @@ mod tests {
         fs::write(tmp.path().join("AGENTS.md"), "# My Project\n").unwrap();
 
         // Call twice
-        append_agent_instructions_section(tmp.path()).unwrap();
-        append_agent_instructions_section(tmp.path()).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
+        append_agent_instructions_section(tmp.path(), &Agent::ALL).unwrap();
 
         let content = fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         // Should have exactly one section
@@ -1722,65 +2506,6 @@ mod tests {
             "should not duplicate section"
         );
         assert!(content.contains("# My Project"));
-    }
-
-    #[test]
-    fn test_generate_internal_links_map_multiple_collections() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let posts_dir = tmp.path().join("content").join("posts");
-        let docs_dir = tmp.path().join("content").join("docs");
-        fs::create_dir_all(&posts_dir).unwrap();
-        fs::create_dir_all(&docs_dir).unwrap();
-        fs::write(
-            posts_dir.join("2026-01-01-first.md"),
-            "---\ntitle: \"First Post\"\n---\n",
-        )
-        .unwrap();
-        fs::write(
-            docs_dir.join("getting-started.md"),
-            "---\ntitle: \"Getting Started\"\n---\n",
-        )
-        .unwrap();
-        let map = generate_internal_links_map(tmp.path());
-        assert!(map.contains("First Post"));
-        assert!(map.contains("Getting Started"));
-        assert!(map.contains("## posts"));
-        assert!(map.contains("## docs"));
-    }
-
-    #[test]
-    fn test_generate_internal_links_map_nested_docs() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let nested_dir = tmp.path().join("content").join("docs").join("guides");
-        fs::create_dir_all(&nested_dir).unwrap();
-        fs::write(
-            nested_dir.join("setup.md"),
-            "---\ntitle: \"Setup Guide\"\n---\n",
-        )
-        .unwrap();
-        let map = generate_internal_links_map(tmp.path());
-        assert!(map.contains("Setup Guide"));
-        assert!(map.contains("/docs/guides/setup"));
-    }
-
-    #[test]
-    fn test_generate_internal_links_map_skips_index() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let posts_dir = tmp.path().join("content").join("posts");
-        fs::create_dir_all(&posts_dir).unwrap();
-        fs::write(
-            posts_dir.join("index.md"),
-            "---\ntitle: \"Posts Index\"\n---\n",
-        )
-        .unwrap();
-        fs::write(
-            posts_dir.join("real-post.md"),
-            "---\ntitle: \"Real Post\"\n---\n",
-        )
-        .unwrap();
-        let map = generate_internal_links_map(tmp.path());
-        assert!(!map.contains("Posts Index"));
-        assert!(map.contains("Real Post"));
     }
 
     #[test]
@@ -1803,18 +2528,6 @@ mod tests {
     fn test_validate_skill_name_with_separator() {
         // Platform-dependent path separator
         assert!(validate_skill_name("a/b").is_err());
-    }
-
-    #[test]
-    fn test_strip_date_prefix_edge_cases() {
-        // Exactly 11 chars (YYYY-MM-DD-) — len is not > 11, returns as-is
-        assert_eq!(strip_date_prefix("2026-03-12-"), "2026-03-12-");
-        // Non-date that looks similar — fails digit check
-        assert_eq!(strip_date_prefix("abcd-ef-gh-rest"), "abcd-ef-gh-rest");
-        // Date with 10 chars exactly (no trailing -)
-        assert_eq!(strip_date_prefix("2026-03-12"), "2026-03-12");
-        // Date prefix with one char after
-        assert_eq!(strip_date_prefix("2026-03-12-x"), "x");
     }
 
     #[test]
@@ -1845,8 +2558,16 @@ mod tests {
     fn test_remove_pack_cleans_files_and_manifest() {
         let tmp = tempfile::TempDir::new().unwrap();
         let pack = find_pack("seomachine").unwrap();
-        let agent = format!(".claude/agents/{}", pack.agents[0]);
-        let command = format!(".claude/commands/{}", pack.commands[0]);
+        let owned = owned_paths(pack);
+        let pick = |prefix: &str| {
+            owned
+                .iter()
+                .find(|p| p.starts_with(prefix))
+                .unwrap()
+                .clone()
+        };
+        let agent = pick(".claude/agents/");
+        let command = pick(".claude/commands/");
 
         fs::write(
             tmp.path().join("AGENTS.md"),
@@ -1866,9 +2587,10 @@ mod tests {
             "seomachine".to_string(),
             PackEntry {
                 source: "github:TheCraigHewitt/seomachine".to_string(),
-                branch: pack.branch.to_string(),
+                branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec![agent.clone(), command.clone()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -1899,8 +2621,7 @@ mod tests {
         fs::write(site.join("seite.toml"), "[site]\n").unwrap();
         fs::write(site.join(".env"), "SECRET=1\n").unwrap();
         fs::write(site.join("content/posts/a.md"), "# a").unwrap();
-        let pack = find_pack("seomachine").unwrap();
-        let context = format!("context/{}", pack.context_files[0]);
+        let context = "context/brand-voice.md".to_string();
         fs::write(site.join(&context), "filled in by the user").unwrap();
         fs::write(tmp.path().join("outside.txt"), "outside").unwrap();
         let absolute = tmp.path().join("outside.txt").display().to_string();
@@ -1924,6 +2645,7 @@ mod tests {
                     branch: "main".to_string(),
                     installed_at: "2026-01-01T00:00:00Z".to_string(),
                     files: files.iter().map(|f| f.to_string()).collect(),
+                    ..Default::default()
                 },
             );
         }
@@ -1941,7 +2663,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_remove_pack_skips_pack_paths_behind_a_symlink() {
+    fn test_remove_pack_refuses_pack_paths_behind_a_symlink() {
         use std::os::unix::fs::symlink;
 
         let tmp = tempfile::TempDir::new().unwrap();
@@ -1950,7 +2672,12 @@ mod tests {
         fs::create_dir_all(site.join(".claude")).unwrap();
         fs::create_dir_all(&outside).unwrap();
         let pack = find_pack("seomachine").unwrap();
-        fs::write(outside.join(pack.agents[0]), "not the pack's").unwrap();
+        let agent = owned_paths(pack)
+            .into_iter()
+            .find(|p| p.starts_with(".claude/agents/"))
+            .unwrap();
+        let name = agent.trim_start_matches(".claude/agents/").to_string();
+        fs::write(outside.join(&name), "not the pack's").unwrap();
         symlink(&outside, site.join(".claude/agents")).unwrap();
 
         let mut manifest = SkillPacksManifest::default();
@@ -1960,14 +2687,15 @@ mod tests {
                 source: "github:x/y".to_string(),
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
-                files: vec![format!(".claude/agents/{}", pack.agents[0])],
+                files: vec![agent.clone()],
+                ..Default::default()
             },
         );
         save_manifest(&site, &manifest).unwrap();
 
-        remove_from(&site, "seomachine").unwrap();
-
-        assert!(outside.join(pack.agents[0]).exists());
+        let err = remove_from(&site, "seomachine").unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"), "{err:#}");
+        assert!(outside.join(&name).exists());
     }
 
     #[cfg(unix)]
@@ -1990,13 +2718,9 @@ mod tests {
 
         // Neither is anything under a symlinked install directory.
         symlink(&outside, site.join("context")).unwrap();
-        let pack = find_pack("seomachine").unwrap();
-        assert!(ensure_no_symlinks(&site, &install_targets(pack)).is_err());
-
-        // A clean project passes.
-        let clean = tmp.path().join("clean");
-        fs::create_dir_all(&clean).unwrap();
-        assert!(ensure_no_symlinks(&clean, &install_targets(pack)).is_ok());
+        let links_map = site.join("context").join("internal-links-map.md");
+        assert!(crate::safe_fs::write(&site, &links_map, "x").is_err());
+        assert!(!outside.join("internal-links-map.md").exists());
     }
 
     #[test]
@@ -2024,34 +2748,31 @@ mod tests {
         fs::write(&external, &original_instructions).unwrap();
         symlink(&external, tmp.path().join("AGENTS.md")).unwrap();
 
-        let pack_file = tmp
-            .path()
-            .join(".claude")
-            .join("agents")
-            .join("test-agent.md");
+        let pack_file = tmp.path().join(".claude").join("agents").join("editor.md");
         fs::create_dir_all(pack_file.parent().unwrap()).unwrap();
         fs::write(&pack_file, "# Agent").unwrap();
 
         let mut manifest = SkillPacksManifest::default();
         manifest.packs.insert(
-            "test-pack".to_string(),
+            "seomachine".to_string(),
             PackEntry {
                 source: "github:user/repo".to_string(),
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
-                files: vec![".claude/agents/test-agent.md".to_string()],
+                files: vec![".claude/agents/editor.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
 
-        let result = remove_from(tmp.path(), "test-pack");
+        let result = remove_from(tmp.path(), "seomachine");
 
         assert!(result.is_err());
         assert!(
             pack_file.exists(),
             "pack files must remain after preflight fails"
         );
-        assert!(load_manifest(tmp.path()).packs.contains_key("test-pack"));
+        assert!(load_manifest(tmp.path()).packs.contains_key("seomachine"));
         assert_eq!(fs::read_to_string(external).unwrap(), original_instructions);
     }
 
@@ -2076,53 +2797,8 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_title_single_quotes() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.md");
-        fs::write(&path, "---\ntitle: 'Single Quoted'\n---\nBody").unwrap();
-        assert_eq!(
-            extract_title_from_file(&path),
-            Some("Single Quoted".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_title_unquoted() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.md");
-        fs::write(&path, "---\ntitle: Bare Title\n---\nBody").unwrap();
-        assert_eq!(
-            extract_title_from_file(&path),
-            Some("Bare Title".to_string())
-        );
-    }
-
-    #[test]
-    fn test_extract_title_empty_title() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.md");
-        fs::write(&path, "---\ntitle: \"\"\n---\nBody").unwrap();
-        assert_eq!(extract_title_from_file(&path), None);
-    }
-
-    #[test]
-    fn test_known_packs_seomachine_completeness() {
-        let pack = find_pack("seomachine").unwrap();
-        assert!(!pack.agents.is_empty());
-        assert!(!pack.commands.is_empty());
-        assert!(!pack.skills.is_empty());
-        assert!(!pack.context_files.is_empty());
-        assert!(!pack.python_scripts.is_empty());
-        assert_eq!(pack.agents.len(), 11);
-        assert_eq!(pack.commands.len(), 22);
-        assert_eq!(pack.skills.len(), 25);
-        assert_eq!(pack.context_files.len(), 9);
-        assert_eq!(pack.python_scripts.len(), 37);
-    }
-
-    #[test]
     fn test_run_install_unknown_source() {
-        let result = run_install("completely-unknown-pack", None);
+        let result = run_install("completely-unknown-pack", None, None);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown skill pack"));
@@ -2156,6 +2832,7 @@ mod tests {
                     ".claude/commands/publish-draft.md".to_string(),
                     ".claude/skills/content-strategy/SKILL.md".to_string(),
                 ],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2196,9 +2873,9 @@ mod tests {
         fs::write(custom.join("SKILL.md"), "# My Skill").unwrap();
 
         // Create a bundled skill (should be excluded)
-        let bundled = skills_dir.join("theme-builder");
+        let bundled = skills_dir.join("seite");
         fs::create_dir_all(&bundled).unwrap();
-        fs::write(bundled.join("SKILL.md"), "# Theme Builder").unwrap();
+        fs::write(bundled.join("SKILL.md"), "# seite").unwrap();
 
         let summary = gather_skill_summary(tmp.path());
         assert_eq!(summary.custom_skills, vec!["my-custom-skill"]);
@@ -2215,6 +2892,7 @@ mod tests {
                 branch: "main".to_string(),
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 files: vec![".claude/commands/cool.md".to_string()],
+                ..Default::default()
             },
         );
         save_manifest(tmp.path(), &manifest).unwrap();
@@ -2224,5 +2902,707 @@ mod tests {
         assert!(summary.packs[0]
             .description
             .contains("github:someone/future-pack"));
+    }
+
+    // --- impeccable ---
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_impeccable_providers_map_recorded_agents() {
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["claude", "codex"]))),
+            ["claude", "codex"]
+        );
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["gemini", "cursor", "opencode"]))),
+            ["gemini", "cursor", "opencode"]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_providers_default_to_all_agents() {
+        let all = [
+            "claude",
+            "codex",
+            "opencode",
+            "cursor",
+            "gemini",
+            "github",
+            "antigravity",
+        ];
+        assert_eq!(impeccable_providers(None), all);
+        assert_eq!(impeccable_providers(Some(&[])), all);
+        // Unknown ids are dropped; nothing known left means all.
+        assert_eq!(impeccable_providers(Some(&ids(&["vim"]))), all);
+    }
+
+    #[test]
+    fn test_impeccable_providers_drop_unknown_and_duplicates() {
+        assert_eq!(
+            impeccable_providers(Some(&ids(&["codex", "vim", "codex", " claude "]))),
+            ["codex", "claude"]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_install_args() {
+        assert_eq!(
+            impeccable_install_args(&["claude", "codex"]),
+            [
+                "install",
+                "--providers=claude,codex",
+                "--scope=project",
+                "-y"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_impeccable_update_args_take_no_providers() {
+        let args = impeccable_update_args();
+        assert_eq!(args, ["update", "--scope=project", "-y"]);
+        assert!(!args.iter().any(|a| a.starts_with("--providers")));
+    }
+
+    #[test]
+    fn test_impeccable_fetch_is_pinned_and_confined_to_the_temp_prefix() {
+        let prefix = tempfile::TempDir::new().unwrap();
+        let args = impeccable_fetch_args(prefix.path());
+        assert_eq!(args[0], "install");
+        assert_eq!(args[1], "--prefix");
+        assert_eq!(args[2], prefix.path().display().to_string());
+        assert_eq!(
+            args.last().unwrap(),
+            &format!("impeccable@{IMPECCABLE_VERSION}")
+        );
+        assert!(args.contains(&"--no-save".to_string()));
+        assert!(impeccable_bin(prefix.path()).starts_with(prefix.path()));
+        assert!(impeccable_command_label(&impeccable_update_args()).starts_with("impeccable@"));
+    }
+
+    #[test]
+    fn test_impeccable_is_a_known_pack() {
+        assert!(known_pack_names().contains(&IMPECCABLE));
+        assert!(known_pack_description(IMPECCABLE)
+            .unwrap()
+            .contains("impeccable"));
+        assert!(known_pack_description("seomachine").is_some());
+        assert!(known_pack_description("nope").is_none());
+    }
+
+    #[test]
+    fn test_impeccable_installed_by_manifest_or_dir() {
+        for dir in IMPECCABLE_SKILL_DIRS {
+            let tmp = tempfile::TempDir::new().unwrap();
+            assert!(!impeccable_installed(tmp.path()));
+            fs::create_dir_all(tmp.path().join(dir)).unwrap();
+            assert!(impeccable_installed(tmp.path()), "{dir}");
+        }
+        let tmp = tempfile::TempDir::new().unwrap();
+        record_impeccable(tmp.path()).unwrap();
+        assert!(impeccable_installed(tmp.path()));
+        let entry = &load_manifest(tmp.path()).packs[IMPECCABLE];
+        assert_eq!(entry.source, IMPECCABLE_SOURCE);
+        assert_eq!(entry.branch, "external");
+        assert!(entry.files.is_empty());
+        let summary = gather_skill_summary(tmp.path());
+        assert_eq!(summary.packs[0].name, IMPECCABLE);
+        assert_eq!(summary.packs[0].description, IMPECCABLE_DESCRIPTION);
+    }
+
+    #[test]
+    fn test_looks_like_impeccable_skill() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let dir = tmp.path();
+        assert!(!looks_like_impeccable_skill(dir));
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: impeccable\ndescription: x\n---\nbody\n",
+        )
+        .unwrap();
+        assert!(looks_like_impeccable_skill(dir));
+        fs::write(dir.join("SKILL.md"), "---\nname: \"impeccable\"\n---\n").unwrap();
+        assert!(looks_like_impeccable_skill(dir));
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: my-design\n---\nname: impeccable\n",
+        )
+        .unwrap();
+        assert!(!looks_like_impeccable_skill(dir));
+        fs::write(dir.join("SKILL.md"), "# impeccable\n").unwrap();
+        assert!(!looks_like_impeccable_skill(dir));
+    }
+
+    #[test]
+    fn test_remove_impeccable_keeps_foreign_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        record_impeccable(root).unwrap();
+        let ours = root.join(".claude/skills/impeccable");
+        let foreign = root.join(".agents/skills/impeccable");
+        fs::create_dir_all(&ours).unwrap();
+        fs::create_dir_all(&foreign).unwrap();
+        fs::write(ours.join("SKILL.md"), "---\nname: impeccable\n---\n").unwrap();
+        fs::write(foreign.join("SKILL.md"), "---\nname: other\n---\n").unwrap();
+
+        remove_from(root, IMPECCABLE).unwrap();
+        assert!(!ours.exists());
+        assert!(foreign.exists());
+        assert!(!load_manifest(root).packs.contains_key(IMPECCABLE));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_remove_refuses_symlinked_skill_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("site");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("SKILL.md"), "---\nname: impeccable\n---\n").unwrap();
+        fs::create_dir_all(root.join(".claude/skills")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(".claude/skills/impeccable")).unwrap();
+        record_impeccable(&root).unwrap();
+        let err = remove_from(&root, IMPECCABLE).unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"), "{err:#}");
+        assert!(outside.join("SKILL.md").exists());
+
+        // A symlinked custom skill dir (or a symlinked `.claude/skills`).
+        std::os::unix::fs::symlink(&outside, root.join(".claude/skills/mine")).unwrap();
+        assert!(remove_from(&root, "mine").is_err());
+        assert!(outside.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_remove_impeccable_not_installed_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let err = remove_from(tmp.path(), IMPECCABLE).unwrap_err();
+        assert!(err.to_string().contains("no skill or pack named"));
+    }
+
+    // --- pinned install (fixture fetcher, no network) ---
+
+    const FIXTURE_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+    const FIXTURE_SKILL: &str = "---\nname: seo-audit\nversion: 1.0.0\ndescription: Audit SEO issues,\n  across a whole site.\nmetadata:\n  tags: seo\n---\n\n# SEO Audit\n";
+
+    fn fixture_files() -> Vec<(&'static str, Vec<u8>)> {
+        vec![
+            (".claude/agents/editor.md", b"# Editor".to_vec()),
+            (".claude/commands/write.md", b"# Write".to_vec()),
+            (
+                ".claude/skills/seo-audit/SKILL.md",
+                FIXTURE_SKILL.as_bytes().to_vec(),
+            ),
+            ("context/brand-voice.md", b"# Brand".to_vec()),
+            ("data_sources/requirements.txt", b"requests\n".to_vec()),
+            ("data_sources/modules/scorer.py", b"print('x')\n".to_vec()),
+        ]
+    }
+
+    fn fixture_pack(files: &[(&'static str, Vec<u8>)]) -> SkillPack {
+        let mut pin = format!(
+            "# repo owner/fixture\n# commit {FIXTURE_COMMIT}\n# date 2026-10-23T00:00:00Z\n# licence MIT\n"
+        );
+        for (path, bytes) in files {
+            pin.push_str(&format!("{}  {path}\n", sha256_hex(bytes)));
+        }
+        SkillPack {
+            name: "seomachine",
+            description: "fixture",
+            pin: Box::leak(pin.into_boxed_str()),
+        }
+    }
+
+    fn serve(files: Vec<(&'static str, Vec<u8>)>) -> impl Fn(&str) -> anyhow::Result<Vec<u8>> {
+        move |url: &str| {
+            let prefix =
+                format!("https://raw.githubusercontent.com/owner/fixture/{FIXTURE_COMMIT}/");
+            let path = url
+                .strip_prefix(&prefix)
+                .ok_or_else(|| anyhow::anyhow!("unexpected url {url}"))?;
+            files
+                .iter()
+                .find(|(p, _)| *p == path)
+                .map(|(_, b)| b.clone())
+                .ok_or_else(|| anyhow::anyhow!("404 {url}"))
+        }
+    }
+
+    fn install_fixture(root: &Path, agents: &[Agent]) -> Applied {
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        install_pack_with(root, &pack, agents, &serve(files)).unwrap()
+    }
+
+    #[test]
+    fn test_skill_bundled_seomachine_pin_is_valid() {
+        let pin = Pin::parse(SEOMACHINE_PIN).unwrap();
+        assert_eq!(pin.repo, "TheCraigHewitt/seomachine");
+        assert_eq!(pin.commit.len(), 40);
+        assert_eq!(pin.licence, "MIT");
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| f.path == ".claude/agents/editor.md"));
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| pinned_skill_name(&f.path) == Some("seo-audit")));
+        assert!(pin
+            .files
+            .iter()
+            .any(|f| f.path == "data_sources/requirements.txt"));
+        // publish-draft is seite's own version, never downloaded.
+        assert!(!pin
+            .files
+            .iter()
+            .any(|f| f.path.ends_with("publish-draft.md")));
+    }
+
+    #[test]
+    fn test_skill_pin_rejects_bad_lines() {
+        let good = "# repo a/b\n# commit 0123456789abcdef0123456789abcdef01234567\n";
+        let hash = "a".repeat(64);
+        assert!(Pin::parse(&format!("{good}{hash}  ../etc/passwd\n")).is_err());
+        assert!(Pin::parse(&format!("{good}abc  x.md\n")).is_err());
+        assert!(Pin::parse(&format!("# repo a/b\n# commit main\n{hash}  x.md\n")).is_err());
+        assert!(Pin::parse(&format!("{good}{hash}  x.md\n")).is_ok());
+    }
+
+    #[test]
+    fn test_skill_hash_mismatch_aborts_with_nothing_written() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let mut tampered = files.clone();
+        tampered[4].1 = b"requests\nevil\n".to_vec();
+
+        let err = install_pack_with(tmp.path(), &pack, &[Agent::Claude], &serve(tampered))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("checksum mismatch"), "{err}");
+        assert!(err.contains("requirements.txt"), "{err}");
+        assert_eq!(
+            fs::read_dir(tmp.path()).unwrap().count(),
+            0,
+            "nothing may be written"
+        );
+    }
+
+    #[test]
+    fn test_skill_download_failure_aborts_with_nothing_written() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let missing: Vec<_> = files.iter().take(3).cloned().collect();
+        assert!(install_pack_with(tmp.path(), &pack, &[Agent::Claude], &serve(missing)).is_err());
+        assert_eq!(fs::read_dir(tmp.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn test_skill_install_claude_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Claude]);
+        let root = tmp.path();
+
+        assert!(root.join(".claude/agents/editor.md").is_file());
+        assert!(root.join(".claude/commands/write.md").is_file());
+        assert!(root.join(".claude/commands/publish-draft.md").is_file());
+        assert!(root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .is_file());
+        assert!(root.join("requirements-seo.txt").is_file());
+        assert!(root.join("context/brand-voice.md").is_file());
+        assert!(!root.join(".agents").exists());
+        // Claude keeps the full frontmatter.
+        let skill = fs::read_to_string(root.join(".claude/skills/seo-audit/SKILL.md")).unwrap();
+        assert_eq!(skill, FIXTURE_SKILL);
+
+        let manifest = load_manifest(root);
+        let entry = &manifest.packs["seomachine"];
+        assert_eq!(entry.commit.as_deref(), Some(FIXTURE_COMMIT));
+        assert_eq!(entry.agents, vec!["claude".to_string()]);
+        assert!(entry
+            .files
+            .contains(&".claude/skills/seo-audit/SKILL.md".to_string()));
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(agents_md.contains("Installed for:** Claude Code"));
+        assert!(agents_md.contains("/research"));
+    }
+
+    #[test]
+    fn test_skill_install_codex_and_gemini_use_shared_skills_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Codex, Agent::Gemini]);
+        let root = tmp.path();
+
+        let skill = fs::read_to_string(root.join(".agents/skills/seo-audit/SKILL.md")).unwrap();
+        assert_eq!(
+            skill,
+            "---\nname: seo-audit\ndescription: Audit SEO issues,\n  across a whole site.\n---\n\n# SEO Audit\n"
+        );
+        assert!(!root.join(".claude/agents").exists());
+        assert!(!root.join(".claude/commands").exists());
+        assert!(!root.join(".claude/skills").exists());
+        assert!(root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .is_file());
+
+        let manifest = load_manifest(root);
+        let entry = &manifest.packs["seomachine"];
+        assert_eq!(
+            entry.agents,
+            vec!["codex".to_string(), "gemini".to_string()]
+        );
+        assert!(!entry.files.iter().any(|f| f.starts_with(".claude/")));
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(agents_md.contains("Codex, Gemini CLI") || agents_md.contains("Codex"));
+        assert!(agents_md.contains("Claude Code-only"));
+        assert!(!agents_md.contains("/research"));
+
+        let summary = gather_skill_summary(root);
+        assert_eq!(summary.packs[0].skills, vec!["seo-audit".to_string()]);
+    }
+
+    #[test]
+    fn test_skill_install_claude_and_codex_write_both_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        install_fixture(tmp.path(), &[Agent::Claude, Agent::Codex]);
+        let claude =
+            fs::read_to_string(tmp.path().join(".claude/skills/seo-audit/SKILL.md")).unwrap();
+        let shared =
+            fs::read_to_string(tmp.path().join(".agents/skills/seo-audit/SKILL.md")).unwrap();
+        assert!(claude.contains("version: 1.0.0"));
+        assert!(!shared.contains("version:"));
+    }
+
+    #[test]
+    fn test_skill_portable_frontmatter_without_frontmatter_is_unchanged() {
+        assert_eq!(portable_skill_md("# Just text\n", "n"), "# Just text\n");
+        assert_eq!(
+            portable_skill_md("---\nname: x\nno close\n", "n"),
+            "---\nname: x\nno close\n"
+        );
+    }
+
+    #[test]
+    fn test_skill_update_from_old_manifest_without_hashes() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // A pre-pinning install: branch only, no hashes, Claude paths.
+        fs::create_dir_all(root.join(".claude/agents")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md"), "# Old editor").unwrap();
+        fs::write(root.join(".claude/agents/retired.md"), "# Retired").unwrap();
+        let old = r#"{"packs":{"seomachine":{"source":"github:owner/fixture","branch":"4e04990d","installed_at":"2026-03-05T00:00:00Z","files":[".claude/agents/editor.md",".claude/agents/retired.md"]}}}"#;
+        fs::create_dir_all(root.join(".claude")).unwrap();
+        fs::write(root.join(".claude/.seite-skill-packs.json"), old).unwrap();
+
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        install_pack_with(root, &pack, &[Agent::Claude, Agent::Codex], &serve(files)).unwrap();
+
+        // No hash recorded: a differing legacy file is kept, not overwritten.
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# Old editor"
+        );
+        assert!(root.join(".agents/skills/seo-audit/SKILL.md").is_file());
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(entry.commit.as_deref(), Some(FIXTURE_COMMIT));
+        assert!(!entry.hashes.is_empty());
+        // No recorded hash: a stale legacy file is kept, not guessed at.
+        assert!(root.join(".claude/agents/retired.md").is_file());
+        assert!(!entry
+            .files
+            .contains(&".claude/agents/retired.md".to_string()));
+    }
+
+    #[test]
+    fn test_skill_update_adopts_identical_legacy_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/agents")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md"), "# Editor").unwrap();
+        let old = r#"{"packs":{"seomachine":{"source":"github:owner/fixture","branch":"x","installed_at":"t","files":[".claude/agents/editor.md"]}}}"#;
+        fs::write(root.join(".claude/.seite-skill-packs.json"), old).unwrap();
+        install_fixture(root, &[Agent::Claude]);
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
+    }
+
+    #[test]
+    fn test_skill_update_keeps_edited_files_and_drops_deselected_agents() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".claude/agents/editor.md"), "# My editor").unwrap();
+
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        let applied = install_pack_with(root, &pack, &[Agent::Claude], &serve(files)).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# My editor"
+        );
+        assert!(applied.notes.iter().any(|n| n.contains("editor.md")));
+        // The unedited codex copy is deleted, empty dirs included.
+        assert!(!root.join(".agents/skills/seo-audit").exists());
+        let entry = &load_manifest(root).packs["seomachine"];
+        assert_eq!(
+            entry.hashes[".claude/agents/editor.md"],
+            sha256_hex(b"# Editor")
+        );
+    }
+
+    #[test]
+    fn test_skill_install_does_not_clobber_untracked_user_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".claude/commands")).unwrap();
+        fs::write(root.join(".claude/commands/write.md"), "mine").unwrap();
+        let applied = install_fixture(root, &[Agent::Claude]);
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/commands/write.md")).unwrap(),
+            "mine"
+        );
+        assert!(applied.notes.iter().any(|n| n.contains("write.md")));
+        assert!(!load_manifest(root).packs["seomachine"]
+            .files
+            .contains(&".claude/commands/write.md".to_string()));
+    }
+
+    #[test]
+    fn test_skill_remove_keeps_modified_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".claude/agents/editor.md"), "# My editor").unwrap();
+
+        remove_from(root, "seomachine").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join(".claude/agents/editor.md")).unwrap(),
+            "# My editor"
+        );
+        assert!(!root.join(".claude/commands/write.md").exists());
+        assert!(!root.join(".agents/skills/seo-audit").exists());
+        assert!(!load_manifest(root).packs.contains_key("seomachine"));
+        let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+        assert!(!agents_md.contains(AGENTS_MD_MARKER_START));
+    }
+
+    #[test]
+    fn test_skill_manifest_backward_compat() {
+        let old = r#"{"packs":{"seomachine":{"source":"github:a/b","branch":"abc","installed_at":"t","files":["x.md"]}}}"#;
+        let manifest: SkillPacksManifest = serde_json::from_str(old).unwrap();
+        let entry = &manifest.packs["seomachine"];
+        assert!(entry.commit.is_none() && entry.agents.is_empty() && entry.hashes.is_empty());
+        // Old fields only on the way out when the new ones are empty.
+        let json = serde_json::to_string(entry).unwrap();
+        assert!(!json.contains("hashes") && !json.contains("agents"));
+    }
+
+    #[test]
+    fn test_skill_resolve_agents_precedence() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // No config: all agents.
+        assert_eq!(
+            resolve_agents(tmp.path(), None, &[]).unwrap(),
+            Agent::ALL.to_vec()
+        );
+        // Recorded beats default; the flag beats recorded.
+        let recorded = vec!["codex".to_string()];
+        assert_eq!(
+            resolve_agents(tmp.path(), None, &recorded).unwrap(),
+            vec![Agent::Codex]
+        );
+        assert_eq!(
+            resolve_agents(tmp.path(), Some("claude"), &recorded).unwrap(),
+            vec![Agent::Claude]
+        );
+        assert!(resolve_agents(tmp.path(), Some("nope"), &[]).is_err());
+    }
+
+    // --- hardening: the manifest is repository-controlled input ---
+
+    fn write_manifest(root: &Path, json: &str) {
+        fs::create_dir_all(root.join(".claude")).unwrap();
+        fs::write(root.join(".claude/.seite-skill-packs.json"), json).unwrap();
+    }
+
+    #[test]
+    fn test_skill_crafted_manifest_deletes_nothing_outside_the_pack() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("site");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git/HEAD"), "ref").unwrap();
+        fs::create_dir_all(root.join("content/posts")).unwrap();
+        fs::write(root.join("content/posts/a.md"), "post").unwrap();
+        fs::write(root.join("seite.toml"), "[site]").unwrap();
+        fs::write(root.join(".env"), "SECRET=1").unwrap();
+        fs::write(tmp.path().join("x"), "outside").unwrap();
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "abs").unwrap();
+
+        let files = [
+            ".git",
+            "content",
+            "seite.toml",
+            ".env",
+            "../x",
+            victim.to_str().unwrap(),
+            ".claude",
+            "context/../seite.toml",
+        ];
+        // Legacy (no hashes) and hashed variants.
+        for hashed in [false, true] {
+            let hashes: BTreeMap<String, String> = files
+                .iter()
+                .map(|f| (f.to_string(), sha256_hex(b"")))
+                .collect();
+            let mut manifest = SkillPacksManifest::default();
+            manifest.packs.insert(
+                "seomachine".to_string(),
+                PackEntry {
+                    files: files.iter().map(|f| f.to_string()).collect(),
+                    hashes: if hashed { hashes } else { BTreeMap::new() },
+                    ..Default::default()
+                },
+            );
+            save_manifest(&root, &manifest).unwrap();
+            remove_from(&root, "seomachine").unwrap();
+
+            assert!(root.join(".git/HEAD").is_file());
+            assert!(root.join("content/posts/a.md").is_file());
+            assert!(root.join("seite.toml").is_file());
+            assert!(root.join(".env").is_file());
+            assert!(tmp.path().join("x").is_file());
+            assert!(victim.is_file());
+        }
+    }
+
+    #[test]
+    fn test_skill_update_stale_loop_ignores_paths_the_pack_cannot_install() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("seite.toml"), "[site]").unwrap();
+        fs::create_dir_all(root.join("content")).unwrap();
+        let bad_hash = sha256_hex(b"[site]");
+        let manifest = format!(
+            r#"{{"packs":{{"seomachine":{{"source":"s","branch":"b","installed_at":"t","files":["seite.toml","content"],"hashes":{{"seite.toml":"{bad_hash}"}}}}}}}}"#
+        );
+        write_manifest(root, &manifest);
+        let applied = install_fixture(root, &[Agent::Claude]);
+        assert!(root.join("seite.toml").is_file());
+        assert!(root.join("content").is_dir());
+        assert!(applied
+            .notes
+            .iter()
+            .any(|n| n.contains("ignored seite.toml")));
+        assert!(!load_manifest(root).packs["seomachine"]
+            .files
+            .contains(&"seite.toml".to_string()));
+    }
+
+    #[test]
+    fn test_skill_remove_never_deletes_a_directory_or_symlink_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // A pack path that is a directory (owned name, wrong kind).
+        fs::create_dir_all(root.join(".claude/agents/editor.md/inner")).unwrap();
+        fs::write(root.join(".claude/agents/editor.md/inner/f"), "keep").unwrap();
+        write_manifest(
+            root,
+            r#"{"packs":{"seomachine":{"source":"s","branch":"b","installed_at":"t","files":[".claude/agents/editor.md"]}}}"#,
+        );
+        remove_from(root, "seomachine").unwrap();
+        assert!(root.join(".claude/agents/editor.md/inner/f").is_file());
+    }
+
+    #[test]
+    fn test_skill_legacy_remove_keeps_context_templates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("context")).unwrap();
+        fs::write(root.join("context/brand-voice.md"), "my voice").unwrap();
+        write_manifest(
+            root,
+            r#"{"packs":{"seomachine":{"source":"s","branch":"b","installed_at":"t","files":["context/brand-voice.md"]}}}"#,
+        );
+        remove_from(root, "seomachine").unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("context/brand-voice.md")).unwrap(),
+            "my voice"
+        );
+    }
+
+    #[test]
+    fn test_skill_update_remembers_kept_files_for_remove() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        install_fixture(root, &[Agent::Claude, Agent::Codex]);
+        fs::write(root.join(".agents/skills/seo-audit/SKILL.md"), "edited").unwrap();
+        // Drop codex: its edited skill is kept and remembered.
+        install_fixture(root, &[Agent::Claude]);
+        let entry = load_manifest(root).packs.remove("seomachine").unwrap();
+        assert_eq!(
+            entry.kept,
+            vec![".agents/skills/seo-audit/SKILL.md".to_string()]
+        );
+        assert!(!entry
+            .files
+            .contains(&".agents/skills/seo-audit/SKILL.md".to_string()));
+        // A later update keeps remembering it while it exists.
+        install_fixture(root, &[Agent::Claude]);
+        assert_eq!(load_manifest(root).packs["seomachine"].kept.len(), 1);
+    }
+
+    #[test]
+    fn test_skill_failure_after_apply_rolls_back_created_files() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        // `research` as a file makes the post-apply scaffolding fail.
+        fs::write(root.join("research"), "not a dir").unwrap();
+        let files = fixture_files();
+        let pack = fixture_pack(&files);
+        assert!(install_pack_with(root, &pack, &[Agent::Claude], &serve(files)).is_err());
+        assert!(!root.join(".claude/agents/editor.md").exists());
+        assert!(!root.join("requirements-seo.txt").exists());
+        assert!(!root
+            .join("scripts/seo/data_sources/modules/scorer.py")
+            .exists());
+        assert!(!load_manifest(root).packs.contains_key("seomachine"));
+    }
+
+    #[test]
+    fn test_skill_portable_frontmatter_edge_cases() {
+        // Folded scalar, nested metadata with its own name key.
+        let src = "---\nname: a\nmetadata:\n  name: nested\n  tags: x\ndescription: >-\n  folded line one\n  line two\nversion: 2\n---\nBody\n";
+        assert_eq!(
+            portable_skill_md(src, "fb"),
+            "---\nname: a\ndescription: >-\n  folded line one\n  line two\n---\nBody\n"
+        );
+        // CRLF stays CRLF.
+        let crlf = "---\r\nname: a\r\nversion: 1\r\ndescription: d\r\n---\r\nBody\r\n";
+        assert_eq!(
+            portable_skill_md(crlf, "fb"),
+            "---\r\nname: a\r\ndescription: d\r\n---\r\nBody\r\n"
+        );
+        // Missing name falls back to the directory name; a nested name does not count.
+        let noname = "---\ndescription: d\nmetadata:\n  name: nested\n---\nBody\n";
+        assert_eq!(
+            portable_skill_md(noname, "seo-audit"),
+            "---\nname: seo-audit\ndescription: d\n---\nBody\n"
+        );
     }
 }

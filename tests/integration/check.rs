@@ -490,11 +490,14 @@ fn test_check_hook_blocks_on_errors_per_protocol() {
         .unwrap();
     assert_eq!(claude["hookSpecificOutput"]["hookEventName"], "Stop");
     assert!(
-        context.starts_with("seite check found 1 error:\n"),
+        context.starts_with(&format!(
+            "{}\nseite check found 1 error:\n",
+            seite::cli::harness_hooks::OUTPUT_PREAMBLE
+        )),
         "{context}"
     );
     assert!(context.contains(expected), "{context}");
-    assert!(context.ends_with("then finish. Run `seite check` to confirm."));
+    assert!(context.ends_with("then finish. Run `seite check` once to confirm."));
 
     let codex = hook_json(&run_hook(&site, "codex", r#"{"stop_hook_active":false}"#));
     assert_eq!(codex["decision"], "block");
@@ -816,4 +819,618 @@ fn test_build_broken_user_shortcode_template_is_located() {
         !site.join("dist").exists(),
         "a failed build writes no output"
     );
+}
+
+/// A user template still using `{{ page.url }}.md` gets a located
+/// `template-markdown-link` warning from both `check` and `build`; the
+/// check output ends with the `seite explain` pointer and every JSON
+/// diagnostic carries its `docs_url`.
+#[test]
+fn test_check_warns_on_stale_markdown_link_template() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Stale", "posts");
+    let site = tmp.path().join("site");
+    let base = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    fs::write(
+        site.join("templates/base.html"),
+        base.replacen(
+            "<head>",
+            "<head>\n<link rel=\"alternate\" href=\"{{ page.url }}.md\">",
+            1,
+        ),
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("check")
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("templates/base.html:"))
+        .stdout(predicate::str::contains("warning[template-markdown-link]"))
+        .stdout(predicate::str::contains("page.markdown_url"))
+        .stdout(predicate::str::contains(
+            "Run `seite explain <code>` for details",
+        ));
+
+    let output = page_cmd()
+        .args(["check", "--json"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    // The stale links themselves also show up as broken links (`/.md`).
+    let diagnostics = doc["data"]["diagnostics"].as_array().unwrap();
+    assert!(diagnostics.iter().all(|d| d["docs_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("https://seite.sh/docs/errors#")));
+    let d = diagnostics
+        .iter()
+        .find(|d| d["code"] == "template-markdown-link")
+        .unwrap();
+    assert_eq!(d["file"], "templates/base.html");
+    assert!(d["line"].as_u64().is_some());
+    assert_eq!(
+        d["docs_url"],
+        "https://seite.sh/docs/errors#template-markdown-link"
+    );
+
+    // --strict fails, still with the pointer (on stderr).
+    page_cmd()
+        .args(["check", "--strict"])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Run `seite explain <code>`"));
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warning[template-markdown-link]"));
+}
+
+#[test]
+fn test_check_clean_site_has_no_explain_footer() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Clean", "posts");
+    page_cmd()
+        .arg("check")
+        .current_dir(tmp.path().join("site"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("seite explain").not());
+}
+
+// --- `seite check --file` and the post-edit hook ---
+
+#[test]
+fn test_check_file_checks_only_the_given_files() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Files", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    write_site_file(
+        &site,
+        "content/posts/2024-01-02-ok.md",
+        "---\ntitle: Ok\ndate: 2024-01-02\n---\n{{< nope() >}}\n",
+    );
+    write_site_file(&site, "data/nav.yaml", "items: [unclosed\n");
+    write_site_file(&site, "templates/broken.html", "{% if x %}never closed");
+
+    // Unknown shortcode, reported at its file line.
+    page_cmd()
+        .args([
+            "check",
+            "--file",
+            "content/posts/2024-01-02-ok.md",
+            "--file",
+            "seite.toml",
+        ])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("shortcode-unknown"))
+        .stderr(predicate::str::contains("2024-01-02-ok.md:5"));
+
+    let output = page_cmd()
+        .args([
+            "--json",
+            "check",
+            "--file",
+            "content/posts/2024-01-01-broken.md",
+            "data/nav.yaml",
+            "templates/broken.html",
+            "static/missing.css",
+        ])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    for code in ["frontmatter-parse", "data-file-parse", "template-parse"] {
+        assert!(text.contains(code), "{code}: {text}");
+    }
+    // The other post isn't checked.
+    assert!(!text.contains("2024-01-02-ok.md"), "{text}");
+
+    page_cmd()
+        .args(["check", "--file", "seite.toml"])
+        .current_dir(&site)
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_check_post_edit_hook_reports_errors_in_the_edited_file() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    let broken = site.join("content/posts/2024-01-01-broken.md");
+    let run = |agent: &str, input: String| {
+        let output = page_cmd()
+            .args(["check", "--hook", agent, "--post-edit"])
+            .current_dir(&site)
+            .env_remove("CLAUDE_PROJECT_DIR")
+            .env_remove("CURSOR_PROJECT_DIR")
+            .env_remove("GEMINI_PROJECT_DIR")
+            .write_stdin(input)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "hooks always exit 0");
+        output
+    };
+    let path = broken.to_string_lossy().to_string();
+
+    let claude = hook_json(&run(
+        "claude",
+        serde_json::json!({ "tool_name": "Edit", "tool_input": { "file_path": path } }).to_string(),
+    ));
+    assert_eq!(claude["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+    assert!(claude["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap()
+        .contains("frontmatter-parse"));
+
+    let gemini = hook_json(&run(
+        "gemini",
+        serde_json::json!({ "tool_name": "replace", "tool_input": { "file_path": path } })
+            .to_string(),
+    ));
+    assert_eq!(gemini["hookSpecificOutput"]["hookEventName"], "AfterTool");
+
+    let patch =
+        "*** Begin Patch\n*** Update File: content/posts/2024-01-01-broken.md\n*** End Patch\n";
+    let codex = hook_json(&run(
+        "codex",
+        serde_json::json!({ "cwd": site, "tool_name": "apply_patch", "tool_input": { "command": patch } })
+            .to_string(),
+    ));
+    assert!(codex["hookSpecificOutput"]["additionalContext"].is_string());
+
+    let cursor = hook_json(&run(
+        "cursor",
+        serde_json::json!({ "tool_name": "Write", "tool_input": { "file_path": path } })
+            .to_string(),
+    ));
+    assert!(cursor["additional_context"].is_string());
+
+    // A clean file, a file outside the site, and malformed input: silent.
+    let ok = site.join("content/posts/ok.md");
+    std::fs::write(&ok, "---\ntitle: Ok\ndate: 2024-01-01\n---\nhi\n").unwrap();
+    for input in [
+        serde_json::json!({ "tool_input": { "file_path": ok } }).to_string(),
+        serde_json::json!({ "tool_input": { "file_path": "/elsewhere/x.md" } }).to_string(),
+        "not json".to_string(),
+        String::new(),
+    ] {
+        let out = run("claude", input.clone());
+        assert!(
+            out.stdout.is_empty(),
+            "{input}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        // Cursor always gets a JSON document.
+        assert_eq!(hook_json(&run("cursor", input)), serde_json::json!({}));
+    }
+}
+
+#[test]
+fn test_check_gemini_stop_hook_protocol() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Hooks", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "content/posts/2024-01-01-broken.md", BROKEN_POST);
+    let gemini = hook_json(&run_hook(
+        &site,
+        "gemini",
+        r#"{"hook_event_name":"AfterAgent","stop_hook_active":false}"#,
+    ));
+    assert_eq!(gemini["decision"], "deny");
+    assert!(gemini["reason"]
+        .as_str()
+        .unwrap()
+        .contains("frontmatter-parse"));
+    // Already continued once: let the agent stop.
+    let out = run_hook(&site, "gemini", r#"{"stop_hook_active":true}"#);
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn test_check_file_warns_on_skipped_paths() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Skip", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(&site, "static/a.css", "body{}");
+
+    let output = page_cmd()
+        .args(["--json", "check", "--file", "nope.md", "static/a.css"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "warnings alone must not fail");
+    let doc = json_stdout(&output);
+    let diagnostics = doc["data"]["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2, "{doc}");
+    for d in diagnostics {
+        assert_eq!(d["code"], "check-file-skipped", "{doc}");
+        assert_eq!(d["severity"], "warning", "{doc}");
+    }
+    assert!(diagnostics.iter().any(|d| d["file"] == "nope.md"), "{doc}");
+
+    page_cmd()
+        .args(["check", "--strict", "--file", "nope.md"])
+        .current_dir(&site)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("check-file-skipped"));
+
+    // A real, valid file has no such warning.
+    write_site_file(
+        &site,
+        "content/posts/2024-01-01-ok.md",
+        "---\ntitle: Ok\ndate: 2024-01-01\n---\nfine\n",
+    );
+    let output = page_cmd()
+        .args([
+            "--json",
+            "check",
+            "--strict",
+            "--file",
+            "content/posts/2024-01-01-ok.md",
+        ])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("check-file-skipped"));
+}
+
+#[test]
+fn test_check_hook_claude_inside_cursor_always_prints_json() {
+    let tmp = TempDir::new().unwrap();
+    // Outside a site, and inside one with nothing to report: still `{}`.
+    for dir in [tmp.path().to_path_buf(), {
+        init_site(&tmp, "site", "Hooks", "posts");
+        tmp.path().join("site")
+    }] {
+        for extra in [&[][..], &["--post-edit"][..]] {
+            let output = page_cmd()
+                .args(["check", "--hook", "claude"])
+                .args(extra)
+                .current_dir(&dir)
+                .env_remove("CLAUDE_PROJECT_DIR")
+                .env_remove("CURSOR_PROJECT_DIR")
+                .env_remove("GEMINI_PROJECT_DIR")
+                .write_stdin(r#"{"cursor_version":"1.7","status":"completed","tool_input":{"file_path":"nope.md"}}"#)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(0));
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout).trim(),
+                "{}",
+                "{extra:?} in {}",
+                dir.display()
+            );
+        }
+    }
+}
+
+/// Symlinked content files and templates (shortcodes included) can point
+/// outside the project: check and build refuse them instead of publishing
+/// the target's contents.
+#[cfg(unix)]
+#[test]
+fn test_check_refuses_symlinked_content_and_templates() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Links", "posts");
+    let site = tmp.path().join("site");
+    let secret = tmp.path().join("secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(
+        secret.join("notes.md"),
+        "---\ntitle: Leak\n---\nTOP-SECRET-NOTES\n",
+    )
+    .unwrap();
+    fs::write(secret.join("creds"), "TOP-SECRET-CREDS").unwrap();
+    std::os::unix::fs::symlink(
+        secret.join("notes.md"),
+        site.join("content/posts/2024-01-01-leak.md"),
+    )
+    .unwrap();
+    fs::create_dir_all(site.join("templates/shortcodes")).unwrap();
+    std::os::unix::fs::symlink(
+        secret.join("creds"),
+        site.join("templates/shortcodes/leak.html"),
+    )
+    .unwrap();
+
+    let output = page_cmd()
+        .args(["--json", "check"])
+        .current_dir(&site)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let doc = json_stdout(&output);
+    let files: Vec<&str> = doc["error"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "symlinked-source" && d["severity"] == "error")
+        .map(|d| d["file"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        files,
+        [
+            "content/posts/2024-01-01-leak.md",
+            "templates/shortcodes/leak.html"
+        ],
+        "{doc}"
+    );
+    assert!(!doc.to_string().contains("TOP-SECRET"), "{doc}");
+
+    let output = page_cmd().arg("build").current_dir(&site).output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error[symlinked-source]"), "{stderr}");
+    for file in walkdir::WalkDir::new(site.join("dist"))
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let text = fs::read(file.path()).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&text).contains("TOP-SECRET"),
+            "{} leaked the target",
+            file.path().display()
+        );
+    }
+}
+
+/// A template that includes itself (or an include/extends cycle across
+/// files) is a located error, not a stack overflow that aborts the process.
+#[test]
+fn test_check_reports_template_cycles() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Cycles", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "templates/loop.html",
+        "<p>\n{% include \"loop.html\" %}\n",
+    );
+    // Commented-out and raw tags are not references.
+    write_site_file(
+        &site,
+        "templates/a.html",
+        "{# {% include \"a.html\" %} #}{% raw %}{% include \"a.html\" %}{% endraw %}\n{% include \"b.html\" %}\n",
+    );
+    write_site_file(&site, "templates/b.html", "\n\n{% include \"a.html\" %}\n");
+    // Rendered on every page, so the old build recursed into the cycle.
+    let base = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    fs::write(
+        site.join("templates/base.html"),
+        base.replacen("</body>", "{% include \"loop.html\" %}</body>", 1),
+    )
+    .unwrap();
+
+    for command in ["check", "build"] {
+        let output = page_cmd()
+            .args(["--json", command])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} must exit, not abort"
+        );
+        let doc = json_stdout(&output);
+        let mut cycles: Vec<(String, u64, String)> = doc["error"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["code"] == "template-cycle")
+            .map(|d| {
+                (
+                    d["file"].as_str().unwrap().to_string(),
+                    d["line"].as_u64().unwrap(),
+                    d["message"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        cycles.sort();
+        assert_eq!(cycles.len(), 2, "{command}: {doc}");
+        assert_eq!(cycles[0].0, "templates/b.html");
+        assert_eq!(cycles[0].1, 3);
+        assert!(
+            cycles[0].2.contains("a.html → b.html → a.html"),
+            "{cycles:?}"
+        );
+        assert_eq!(cycles[1].0, "templates/loop.html");
+        assert_eq!(cycles[1].1, 2);
+        assert!(cycles[1].2.contains("loop.html → loop.html"), "{cycles:?}");
+    }
+}
+
+/// A recursive macro that never stops (in a page template or a shortcode)
+/// is a render error, not a stack overflow that aborts the process; one
+/// that terminates still renders.
+#[test]
+fn test_check_reports_runaway_recursive_macros() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Macros", "posts");
+    let site = tmp.path().join("site");
+    write_site_file(
+        &site,
+        "templates/m.html",
+        "{% macro f(n) %}{{ self::f(n=n+1) }}{% endmacro f %}\
+         {% macro t(n) %}{% if n > 0 %}<i>{{ self::t(n=n-1) }}</i>{% endif %}{% endmacro t %}",
+    );
+    let base = fs::read_to_string(site.join("templates/base.html")).unwrap();
+    let with_tree = format!(
+        "{{% import \"m.html\" as m %}}{}",
+        base.replacen("</body>", "{{ m::t(n=12) }}</body>", 1)
+    );
+    fs::write(site.join("templates/base.html"), &with_tree).unwrap();
+    page_cmd()
+        .arg("build")
+        .current_dir(&site)
+        .assert()
+        .success();
+    let index = fs::read_to_string(site.join("dist/index.html")).unwrap();
+    assert_eq!(index.matches("<i>").count(), 12, "{index}");
+
+    fs::write(
+        site.join("templates/base.html"),
+        with_tree.replace("m::t(n=12)", "m::f(n=0)"),
+    )
+    .unwrap();
+    for command in ["check", "build"] {
+        let output = page_cmd()
+            .args(["--json", command])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} must exit, not abort"
+        );
+        let doc = json_stdout(&output);
+        assert!(
+            doc["error"]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["code"] == "template-render"
+                    && d["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains("macro `m.html::f` nests too deeply")),
+            "{command}: {doc}"
+        );
+    }
+
+    // The same in a shortcode template.
+    fs::write(site.join("templates/base.html"), &base).unwrap();
+    write_site_file(
+        &site,
+        "templates/shortcodes/deep.html",
+        "{% macro g(n) %}{{ self::g(n=n+1) }}{% endmacro g %}{{ self::g(n=0) }}",
+    );
+    write_site_file(
+        &site,
+        "content/posts/2026-01-02-deep.md",
+        "---\ntitle: Deep\ndate: 2026-01-02\n---\n\n{{< deep() >}}\n",
+    );
+    let output = page_cmd().arg("check").current_dir(&site).output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "check must exit, not abort");
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    assert!(text.contains("nests too deeply"), "{text}");
+}
+
+/// A PNG whose header claims `width`×`height` (signature, IHDR, an empty
+/// IDAT, IEND): a few dozen bytes on disk.
+fn png_header_only(width: u32, height: u32) -> Vec<u8> {
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffffu32;
+        for &b in bytes {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xedb8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8], data: &[u8]) {
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        let mut body = kind.to_vec();
+        body.extend_from_slice(data);
+        out.extend_from_slice(&body);
+        out.extend_from_slice(&crc32(&body).to_be_bytes());
+    }
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut ihdr = width.to_be_bytes().to_vec();
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
+    chunk(&mut png, b"IHDR", &ihdr);
+    chunk(
+        &mut png,
+        b"IDAT",
+        &[0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01],
+    );
+    chunk(&mut png, b"IEND", &[]);
+    png
+}
+
+/// Images whose header claims more than the pixel cap are never decoded
+/// (a few such files used gigabytes of memory in `seite check`); they are
+/// reported as warnings and published as they are.
+#[test]
+fn test_check_skips_oversized_images() {
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Bomb", "posts");
+    let site = tmp.path().join("site");
+    set_images_config(&site, "[480, 800]");
+    fs::create_dir_all(site.join("static/images")).unwrap();
+    for name in ["bomb-a.png", "bomb-b.png"] {
+        fs::write(
+            site.join("static/images").join(name),
+            png_header_only(10_000, 10_000),
+        )
+        .unwrap();
+    }
+
+    for command in ["check", "build"] {
+        let output = page_cmd()
+            .args(["--json", command])
+            .current_dir(&site)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{command}: {output:?}");
+        let doc = json_stdout(&output);
+        let files: Vec<&str> = doc["data"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["code"] == "image-too-large" && d["severity"] == "warning")
+            .map(|d| d["file"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            files,
+            ["static/images/bomb-a.png", "static/images/bomb-b.png"],
+            "{command}: {doc}"
+        );
+    }
+    assert!(site.join("dist/static/images/bomb-a.png").exists());
+    assert!(!site.join("dist/static/images/bomb-a-480w.png").exists());
 }

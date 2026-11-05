@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::config::{ImageSection, ResolvedPaths};
+use crate::diagnostics::Diagnostic;
 use crate::error::{PageError, Result};
 
 /// Supported input image extensions.
@@ -39,19 +40,83 @@ pub fn process_images(
     paths: &ResolvedPaths,
     config: &ImageSection,
 ) -> Result<HashMap<String, ProcessedImage>> {
-    process_images_with_private_filter(paths, config, false)
+    process_images_with_private_filter(paths, config, false, true).map(|(manifest, _)| manifest)
 }
+
+/// Images decoded at the same time. Each may take up to
+/// `MAX_IMAGE_PIXELS` × 8 bytes (16-bit RGBA): the pixel cap bounds one
+/// image, this bounds the build (one decode per core used ~5 GB on 14 cores).
+const MAX_PARALLEL_DECODES: usize = 4;
+
+/// A counting semaphore: at most `n` holders of a [`SlotGuard`] at once.
+struct Slots {
+    free: std::sync::Mutex<usize>,
+    released: std::sync::Condvar,
+}
+
+struct SlotGuard<'a>(&'a Slots);
+
+impl Slots {
+    fn new(n: usize) -> Self {
+        Self {
+            free: std::sync::Mutex::new(n.max(1)),
+            released: std::sync::Condvar::new(),
+        }
+    }
+
+    fn acquire(&self) -> SlotGuard<'_> {
+        let mut free = self
+            .free
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while *free == 0 {
+            free = self
+                .released
+                .wait(free)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *free -= 1;
+        SlotGuard(self)
+    }
+}
+
+impl Drop for SlotGuard<'_> {
+    fn drop(&mut self) {
+        let mut free = self
+            .0
+            .free
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *free += 1;
+        self.0.released.notify_one();
+    }
+}
+
+/// Largest source image (width × height) decoded into resized copies. A
+/// decoded image takes 4 bytes per pixel and every source is decoded in
+/// parallel, so a few small PNGs claiming 10000×10000 (a "decompression
+/// bomb" in a cloned repository) would otherwise take gigabytes of memory in
+/// `seite check` and the agent hooks. Larger images are copied as they are
+/// and reported as `image-too-large`.
+pub const MAX_IMAGE_PIXELS: u64 = 40_000_000;
 
 /// Process images while keeping password-protected source trees out of public
 /// `/static` derivatives. Protected originals are copied separately by the
 /// build pipeline under `/private-assets/<group>/`.
+///
+/// Every image's dimensions are read from its header first; images over
+/// [`MAX_IMAGE_PIXELS`] are skipped with an `image-too-large` warning
+/// (returned sorted by file). With `variants: false` (scratch builds whose
+/// output is thrown away) nothing is decoded or written and the manifest is
+/// empty: only the header checks run.
 pub fn process_images_with_private_filter(
     paths: &ResolvedPaths,
     config: &ImageSection,
     exclude_private: bool,
-) -> Result<HashMap<String, ProcessedImage>> {
+    variants: bool,
+) -> Result<(HashMap<String, ProcessedImage>, Vec<Diagnostic>)> {
     if !paths.static_dir.exists() {
-        return Ok(HashMap::new());
+        return Ok((HashMap::new(), Vec::new()));
     }
 
     let entries: Vec<_> = WalkDir::new(&paths.static_dir)
@@ -74,9 +139,26 @@ pub fn process_images_with_private_filter(
         })
         .collect();
 
+    let problems = std::sync::Mutex::new(Vec::new());
+    let decode_slots = Slots::new(MAX_PARALLEL_DECODES);
     let manifest: HashMap<String, ProcessedImage> = entries
         .par_iter()
         .filter_map(|entry| {
+            match image_dimensions(entry.path()) {
+                Ok((width, height)) if u64::from(width) * u64::from(height) > MAX_IMAGE_PIXELS => {
+                    let diagnostic = too_large_diagnostic(entry.path(), width, height);
+                    problems.lock().map(|mut p| p.push(diagnostic)).ok();
+                    return None;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("Failed to process image {}: {e}", entry.path().display());
+                    return None;
+                }
+            }
+            if !variants {
+                return None;
+            }
             let ext = entry
                 .path()
                 .extension()
@@ -89,6 +171,7 @@ pub fn process_images_with_private_filter(
                 .strip_prefix(&paths.static_dir)
                 .unwrap_or(entry.path());
 
+            let _slot = decode_slots.acquire();
             match process_single_image(entry.path(), rel, &paths.output, config, &ext) {
                 Ok(processed) => {
                     let key = format!("/static/{}", rel.to_string_lossy().replace('\\', "/"));
@@ -102,7 +185,35 @@ pub fn process_images_with_private_filter(
         })
         .collect();
 
-    Ok(manifest)
+    let mut problems = problems.into_inner().unwrap_or_default();
+    problems.sort_by(|a, b| a.file.cmp(&b.file));
+    Ok((manifest, problems))
+}
+
+/// Width and height from the image header, without decoding the pixels.
+fn image_dimensions(source: &Path) -> Result<(u32, u32)> {
+    let fail = |e: &dyn std::fmt::Display| {
+        PageError::Build(format!("failed to read image '{}': {e}", source.display()))
+    };
+    image::ImageReader::open(source)
+        .map_err(|e| fail(&e))?
+        .with_guessed_format()
+        .map_err(|e| fail(&e))?
+        .into_dimensions()
+        .map_err(|e| fail(&e))
+}
+
+fn too_large_diagnostic(source: &Path, width: u32, height: u32) -> Diagnostic {
+    let megapixels = (u64::from(width) * u64::from(height)).div_ceil(1_000_000);
+    Diagnostic::warning(
+        "image-too-large",
+        format!(
+            "image is {width}×{height} ({megapixels} megapixels, over the {} megapixel limit): no resized copies were generated, it is published as it is",
+            MAX_IMAGE_PIXELS / 1_000_000
+        ),
+    )
+    .with_file(source)
+    .with_hint("scale the image down (e.g. to at most 8000×5000) before adding it to static/")
 }
 
 /// Remove public output left by older builds that generated image variants
@@ -598,6 +709,37 @@ mod tests {
         assert!(!bytes.is_empty(), "JPEG variant must not be 0 bytes");
         let decoded = image::load_from_memory(&bytes).expect("output must be a valid JPEG");
         assert_eq!((decoded.width(), decoded.height()), (32, 24));
+    }
+
+    #[test]
+    fn test_process_images_without_variants_decodes_and_writes_nothing() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let paths = ResolvedPaths {
+            root: root.to_path_buf(),
+            output: root.join("dist"),
+            content: root.join("content"),
+            templates: root.join("templates"),
+            static_dir: root.join("static"),
+            data_dir: root.join("data"),
+            public_dir: root.join("public"),
+            subdomain_output_root: root.join("dist-subdomains"),
+        };
+        std::fs::create_dir_all(&paths.static_dir).unwrap();
+        image::RgbImage::new(900, 10)
+            .save(paths.static_dir.join("photo.png"))
+            .unwrap();
+        let config = ImageSection::default();
+
+        let (manifest, problems) =
+            process_images_with_private_filter(&paths, &config, false, false).unwrap();
+        assert!(manifest.is_empty() && problems.is_empty());
+        assert!(!paths.output.exists(), "scratch mode must write nothing");
+
+        let (manifest, _) =
+            process_images_with_private_filter(&paths, &config, false, true).unwrap();
+        assert!(manifest.contains_key("/static/photo.png"));
+        assert!(paths.output.join("static/photo-480w.png").exists());
     }
 
     #[test]

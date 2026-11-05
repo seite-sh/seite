@@ -1,7 +1,7 @@
 ---
-title: "Deploy a Static Site to Cloudflare Pages in One Command"
+title: "Deploy a Static Site to Cloudflare Pages"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Deploy your static site to Cloudflare Pages with one CLI command. Free global CDN, preview deploys, custom domains, and zero dashboard clicking. Step-by-step."
 tags:
   - cloudflare
@@ -17,7 +17,7 @@ The average Cloudflare Pages tutorial has 14 steps and 8 screenshots. Create a p
 
 You just want to deploy a static site to Cloudflare Pages. You should not need a tutorial for this.
 
-Here is what most guides also skip: Cloudflare [deprecated Pages in April 2025](https://developers.cloudflare.com/workers/static-assets/migration-guides/migrate-from-pages/), pushing everyone toward Workers with Static Assets. The Pages product still works, it's in maintenance mode, but most tutorials haven't caught up. So you're following outdated steps for a product that's on life support.
+Here is what most guides also skip: Cloudflare now steers new projects toward Workers with Static Assets and publishes a [migration guide from Pages](https://developers.cloudflare.com/workers/static-assets/migration-guides/migrate-from-pages/). Pages still works, but many tutorials haven't caught up with that shift.
 
 This guide shows you how to deploy a static site to Cloudflare Pages with one command, covers the Pages-to-Workers situation honestly, and explains when Cloudflare is the right choice versus GitHub Pages and Netlify. No screenshots. No dashboard clicking. Just CLI commands that work regardless of what Cloudflare renames the product next.
 
@@ -54,11 +54,11 @@ This is the part most tutorials skip entirely.
 
 ### What Actually Happened
 
-In April 2025, Cloudflare announced that Pages is deprecated in favor of [Workers with Static Assets](https://developers.cloudflare.com/workers/static-assets/). That sounds alarming, but here's what it actually means:
+Cloudflare now points new projects at [Workers with Static Assets](https://developers.cloudflare.com/workers/static-assets/) rather than Pages, and publishes a guide for migrating from Pages. Here's what that means in practice:
 
-**Pages still works.** Your existing deployments keep running. The `wrangler pages deploy` command still works. Your `*.pages.dev` URLs still resolve. Cloudflare is maintaining the product but not adding new features.
+**Pages still works.** Your existing deployments keep running. The `wrangler pages deploy` command still works. Your `*.pages.dev` URLs still resolve.
 
-**Workers with Static Assets is the replacement.** Instead of a separate "Pages" product, static site hosting is now part of Cloudflare Workers. The deployment mechanism is similar (wrangler CLI), the CDN is the same (330+ edge locations), and static asset requests are still free.
+**Workers with Static Assets is where new work goes.** Instead of a separate "Pages" product, static site hosting is now part of Cloudflare Workers. The deployment mechanism is similar (wrangler CLI), the CDN is the same (330+ edge locations), and static asset requests are still free.
 
 **The practical difference is small.** For static sites, the migration from Pages to Workers involves changing a config file, not rewriting your site. Cloudflare's official migration documentation walks through the handful of changes needed.
 
@@ -66,14 +66,12 @@ In April 2025, Cloudflare announced that Pages is deprecated in favor of [Worker
 
 If you're deploying a static site today, you have two options:
 
-1. **Use Pages.** It still works. Your deploy workflow is unchanged. When Cloudflare eventually sunsets Pages, the migration is mechanical.
+1. **Use Pages.** It still works and your deploy workflow is unchanged. If you migrate later, the change is mechanical.
 2. **Use Workers with Static Assets.** Start on the new platform. Same CDN, same performance, future-proof.
 
 Either way, the underlying infrastructure is identical. Your site gets served from the same edge network, with the same performance characteristics, at the same price (free).
 
-The smarter approach: use a deploy tool that abstracts the Cloudflare API. When Cloudflare renamed their product, developers who hard-coded dashboard workflows had to rewrite their process. Developers who ran `seite deploy` didn't change a thing.
-
-When Tomas, a backend developer, built a documentation site for his team's internal API, he followed a Cloudflare Pages tutorial from 2023. Twenty minutes of dashboard clicking, GitHub integration setup, and build configuration. It worked. Six months later, he saw the deprecation notice and spent an afternoon researching the migration. His colleague Maya, who'd used seite, pointed at the one line in her `seite.toml` that said `target = "cloudflare"` and shrugged. She'd deploy to Workers when seite updates the target. Same command, same workflow.
+`seite deploy` targets Pages today (it runs `wrangler pages deploy`). If you'd rather be on Workers now, the [Wrangler-only section](#deploy-with-wrangler-only-no-ssg-required) below shows how to upload seite's `dist/` with `wrangler deploy`.
 
 ## The 14-Step Tutorial (What Most Guides Tell You)
 
@@ -210,7 +208,7 @@ Not sure what will happen? Preview the deploy without pushing anything:
 seite deploy --dry-run
 ```
 
-This runs the build, shows you what would be deployed, and stops. Always worth running before your first deploy to a new target.
+This builds nothing and pushes nothing: it runs the pre-flight checks and prints the plan (target, project, output directory, preview or production), then stops. Always worth running before your first deploy to a new target.
 
 ### Password-Protected Pages
 
@@ -247,7 +245,7 @@ Then deploy with:
 wrangler deploy
 ```
 
-The key difference: `wrangler pages deploy` uploads to Pages (deprecated but functional). `wrangler deploy` with an `[assets]` block uploads to Workers with Static Assets (the current path). Both serve your files from the same global CDN.
+The key difference: `wrangler pages deploy` uploads to Pages. `wrangler deploy` with an `[assets]` block uploads to Workers with Static Assets (the current path). Both serve your files from the same global CDN.
 
 If you're choosing between manual wrangler commands and a tool like seite, consider what else you need. Wrangler handles the upload. seite handles the build, commit, push, upload, preview routing, and [custom domain attachment](/docs/deployment), plus generates the [complete set of output files](/docs/cli-reference) (sitemap, RSS, llms.txt, search index) that make your site discoverable.
 
@@ -333,11 +331,11 @@ Yes. The free tier includes unlimited bandwidth, unlimited requests, unlimited s
 
 ### Is Cloudflare Pages deprecated?
 
-Yes, partially. Cloudflare deprecated Pages in April 2025 in favor of Workers with Static Assets. Pages continues to work and is maintained, but no new features are being added. New projects should consider using Workers with Static Assets. For static sites, the practical difference is minimal, and migration is straightforward. Tools like seite that abstract the deploy mechanism will handle the transition automatically.
+Not deprecated, but no longer where Cloudflare puts its new work: it recommends Workers with Static Assets for new projects and publishes a migration guide from Pages. Pages continues to work. For static sites the practical difference is small. seite deploys to Pages today with `wrangler pages deploy`; if you move to Workers, follow Cloudflare's migration guide.
 
 ### What is the difference between Cloudflare Pages and Workers?
 
-Cloudflare Pages is (was) a dedicated static site hosting product with GitHub integration, build pipelines, and preview deploys. Cloudflare Workers is a serverless compute platform that now also supports serving static assets. Workers with Static Assets combines server-side code and static file hosting in one product. For pure static sites, the end result is the same: your files get served from Cloudflare's global CDN.
+Cloudflare Pages is a dedicated static site hosting product with GitHub integration, build pipelines, and preview deploys. Cloudflare Workers is a serverless compute platform that now also supports serving static assets. Workers with Static Assets combines server-side code and static file hosting in one product. For pure static sites, the end result is the same: your files get served from Cloudflare's global CDN.
 
 ### Cloudflare Pages vs GitHub Pages: which should I use?
 

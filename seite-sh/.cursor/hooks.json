@@ -3,8 +3,15 @@
   "hooks": {
     "stop": [
       {
-        "command": "seite check --hook cursor",
+        "command": "command -v seite >/dev/null 2>&1 && seite check --hook cursor || true",
         "timeout": 120
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "command -v seite >/dev/null 2>&1 && seite check --hook cursor --post-edit || true",
+        "timeout": 30,
+        "matcher": "Write"
       }
     ]
   }

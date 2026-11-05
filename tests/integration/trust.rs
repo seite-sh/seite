@@ -63,7 +63,7 @@ fn test_init_with_trust_collection() {
 
     // Verify AGENTS.md has brief trust section
     let agents_md = fs::read_to_string(root.join("AGENTS.md")).unwrap();
-    assert!(agents_md.contains("## Trust Center"));
+    assert!(agents_md.contains("Trust center for **Acme Corp**"));
     assert!(agents_md.contains("Acme Corp"));
 
     // Detailed trust content now lives in .claude/rules/trust-center.md

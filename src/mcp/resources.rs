@@ -10,16 +10,6 @@ use walkdir::WalkDir;
 use super::{content_index, JsonRpcError, ServerState};
 use crate::content;
 
-/// Coding-agent project config files exposed by `seite://mcp-config`:
-/// Claude Code (`.mcp.json`, `.claude/settings.json`), Cursor, OpenCode, Codex.
-const MCP_CONFIG_FILES: [&str; 5] = [
-    ".mcp.json",
-    ".claude/settings.json",
-    ".cursor/mcp.json",
-    "opencode.json",
-    ".codex/config.toml",
-];
-
 /// Config and paths, or the actionable "why not" message as a JSON-RPC error.
 fn site(
     state: &ServerState,
@@ -85,16 +75,6 @@ pub fn list(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
                 "uri": "seite://trust",
                 "name": "Trust Center",
                 "description": "Trust center state: certifications, subprocessors, FAQs, and content",
-                "mimeType": "application/json"
-            }));
-        }
-
-        // MCP configuration
-        if MCP_CONFIG_FILES.iter().any(|f| state.cwd.join(f).exists()) {
-            resources.push(serde_json::json!({
-                "uri": "seite://mcp-config",
-                "name": "MCP Configuration",
-                "description": "Coding-agent project configuration: MCP server and permission files for Claude Code (.mcp.json, .claude/settings.json), Cursor (.cursor/mcp.json), OpenCode (opencode.json), and Codex (.codex/config.toml)",
                 "mimeType": "application/json"
             }));
         }
@@ -172,9 +152,6 @@ pub fn read(
     }
     if uri == "seite://trust" {
         return read_trust(state);
-    }
-    if uri == "seite://mcp-config" {
-        return read_mcp_config(state);
     }
 
     Err(JsonRpcError::invalid_params(format!(
@@ -372,6 +349,7 @@ fn read_themes(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
             "name": theme.name,
             "description": theme.description,
             "source": "bundled",
+            "kind": theme.kind.as_str(),
             "active": is_active,
         }));
     }
@@ -498,43 +476,6 @@ fn read_trust(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
     }))
 }
 
-// ---------------------------------------------------------------------------
-// MCP configuration resource
-// ---------------------------------------------------------------------------
-
-/// Returns `{".mcp.json": ..., ".claude/settings.json": ...}` with each file's
-/// parsed JSON (or `{"parse_error": ...}`); missing files are omitted.
-fn read_mcp_config(state: &ServerState) -> Result<serde_json::Value, JsonRpcError> {
-    let mut files = serde_json::Map::new();
-    for rel in MCP_CONFIG_FILES {
-        let Ok(raw) = fs::read_to_string(state.cwd.join(rel)) else {
-            continue;
-        };
-        let parsed = if rel.ends_with(".toml") {
-            toml::from_str::<serde_json::Value>(&raw).map_err(|e| e.to_string())
-        } else {
-            serde_json::from_str::<serde_json::Value>(&raw).map_err(|e| e.to_string())
-        };
-        let value = parsed.unwrap_or_else(|e| serde_json::json!({ "parse_error": e }));
-        files.insert(rel.to_string(), value);
-    }
-    if files.is_empty() {
-        return Err(JsonRpcError::invalid_params(format!(
-            "No coding-agent MCP config (.mcp.json, .cursor/mcp.json, opencode.json, .codex/config.toml) in {}. Run `seite upgrade` to create them.",
-            state.cwd.display()
-        )));
-    }
-    let text = serde_json::to_string_pretty(&serde_json::Value::Object(files)).unwrap_or_default();
-
-    Ok(serde_json::json!({
-        "contents": [{
-            "uri": "seite://mcp-config",
-            "mimeType": "application/json",
-            "text": text
-        }]
-    }))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,6 +494,7 @@ mod tests {
                 base_url: "http://localhost:3000".into(),
                 language: "en".into(),
                 author: "Tester".into(),
+                timezone: None,
             },
             collections,
             build: BuildSection::default(),
@@ -562,7 +504,12 @@ mod tests {
             analytics: None,
             trust: None,
             contact: None,
+            comments: None,
+            newsletter: None,
             access: None,
+            taxonomies: Vec::new(),
+            check: None,
+            og: None,
         }
     }
 
@@ -574,6 +521,7 @@ mod tests {
             paths: Some(paths),
             cwd: dir.to_path_buf(),
             config_error: None,
+            dev: None,
         }
     }
 
@@ -584,6 +532,7 @@ mod tests {
             paths: None,
             cwd: dir.to_path_buf(),
             config_error: None,
+            dev: None,
         }
     }
 
@@ -711,38 +660,6 @@ mod tests {
             .map(|r| r["uri"].as_str().unwrap())
             .collect();
         assert!(uris.contains(&"seite://trust"));
-    }
-
-    #[test]
-    fn test_list_with_mcp_config_file() {
-        let tmp = TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("settings.json"), "{}").unwrap();
-
-        let config = make_config(vec![]);
-        let state = make_state(tmp.path(), config);
-        let result = list(&state).unwrap();
-        let resources = result["resources"].as_array().unwrap();
-        let uris: Vec<&str> = resources
-            .iter()
-            .map(|r| r["uri"].as_str().unwrap())
-            .collect();
-        assert!(uris.contains(&"seite://mcp-config"));
-    }
-
-    #[test]
-    fn test_list_without_mcp_config_file() {
-        let tmp = TempDir::new().unwrap();
-        let config = make_config(vec![]);
-        let state = make_state(tmp.path(), config);
-        let result = list(&state).unwrap();
-        let resources = result["resources"].as_array().unwrap();
-        let uris: Vec<&str> = resources
-            .iter()
-            .map(|r| r["uri"].as_str().unwrap())
-            .collect();
-        assert!(!uris.contains(&"seite://mcp-config"));
     }
 
     // -----------------------------------------------------------------------
@@ -1035,6 +952,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_content_overview(&state).unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1254,6 +1172,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_collection(&state, "posts").unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1310,7 +1229,7 @@ mod tests {
         assert!(bundled_names.contains(&"terminal"));
         assert!(bundled_names.contains(&"magazine"));
         assert!(bundled_names.contains(&"academic"));
-        assert_eq!(bundled_names.len(), 10);
+        assert_eq!(bundled_names.len(), 11);
     }
 
     #[test]
@@ -1564,6 +1483,7 @@ mod tests {
             paths: None,
             cwd: tmp.path().to_path_buf(),
             config_error: None,
+            dev: None,
         };
         let err = read_trust(&state).unwrap_err();
         assert_eq!(err.code, -32602);
@@ -1626,71 +1546,16 @@ mod tests {
         assert_eq!(parsed["faq"]["count"], 0);
     }
 
-    // -----------------------------------------------------------------------
-    // read_mcp_config() tests
-    // -----------------------------------------------------------------------
-
     #[test]
-    fn test_read_mcp_config_with_file() {
+    fn test_mcp_config_resource_is_gone() {
+        // Removed in 0.21: it exposed config files, including `env` blocks.
         let tmp = TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        let settings = serde_json::json!({
-            "mcpServers": {
-                "seite": {
-                    "command": "seite",
-                    "args": ["mcp"]
-                }
-            }
-        });
-        fs::write(
-            claude_dir.join("settings.json"),
-            serde_json::to_string_pretty(&settings).unwrap(),
-        )
-        .unwrap();
-
+        std::fs::write(tmp.path().join(".mcp.json"), "{}").unwrap();
         let state = make_empty_state(tmp.path());
-        let result = read_mcp_config(&state).unwrap();
-        let text = result["contents"][0]["text"].as_str().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert!(parsed[".claude/settings.json"]["mcpServers"]["seite"].is_object());
-        assert!(parsed.get(".mcp.json").is_none());
-        assert_eq!(result["contents"][0]["uri"], "seite://mcp-config");
-        assert_eq!(result["contents"][0]["mimeType"], "application/json");
-    }
-
-    #[test]
-    fn test_read_mcp_config_missing_file() {
-        let tmp = TempDir::new().unwrap();
-        let state = make_empty_state(tmp.path());
-        let err = read_mcp_config(&state).unwrap_err();
-        assert_eq!(err.code, -32602);
-        assert!(err.message.contains("No coding-agent MCP config"));
-    }
-
-    #[test]
-    fn test_read_mcp_config_includes_other_agents() {
-        let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join(".codex")).unwrap();
-        fs::write(
-            tmp.path().join(".codex/config.toml"),
-            crate::cli::harness::codex_config_toml(),
-        )
-        .unwrap();
-        fs::write(
-            tmp.path().join("opencode.json"),
-            crate::cli::harness::pretty_json(&crate::cli::harness::opencode_json()),
-        )
-        .unwrap();
-        let state = make_empty_state(tmp.path());
-        let result = read_mcp_config(&state).unwrap();
-        let parsed: serde_json::Value =
-            serde_json::from_str(result["contents"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(
-            parsed[".codex/config.toml"]["mcp_servers"]["seite"]["command"],
-            "seite"
-        );
-        assert_eq!(parsed["opencode.json"]["mcp"]["seite"]["type"], "local");
+        let listed = list(&state).unwrap();
+        assert!(!listed.to_string().contains("mcp-config"));
+        let params = serde_json::json!({ "uri": "seite://mcp-config" });
+        assert!(read(&state, &params).is_err());
     }
 
     // -----------------------------------------------------------------------
@@ -1744,19 +1609,6 @@ mod tests {
         let params = serde_json::json!({"uri": "seite://trust"});
         let result = read(&state, &params).unwrap();
         assert_eq!(result["contents"][0]["uri"], "seite://trust");
-    }
-
-    #[test]
-    fn test_read_mcp_config_via_read() {
-        let tmp = TempDir::new().unwrap();
-        let claude_dir = tmp.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("settings.json"), "{}").unwrap();
-
-        let state = make_empty_state(tmp.path());
-        let params = serde_json::json!({"uri": "seite://mcp-config"});
-        let result = read(&state, &params).unwrap();
-        assert_eq!(result["contents"][0]["uri"], "seite://mcp-config");
     }
 
     // -----------------------------------------------------------------------
@@ -1982,29 +1834,5 @@ mod tests {
         let themes = themes_of(&state);
         assert_eq!(active(&themes), vec!["custom"]);
         assert_eq!(themes.last().unwrap()["source"], "custom");
-    }
-
-    #[test]
-    fn test_read_mcp_config_prefers_mcp_json() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(
-            tmp.path().join(".mcp.json"),
-            r#"{"mcpServers":{"seite":{"command":"seite","args":["mcp"]}}}"#,
-        )
-        .unwrap();
-        let state = make_state(tmp.path(), make_config(vec![]));
-        let listed = list(&state).unwrap();
-        assert!(listed["resources"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|r| r["uri"] == "seite://mcp-config"));
-        let result = read_mcp_config(&state).unwrap();
-        let parsed: serde_json::Value =
-            serde_json::from_str(result["contents"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(
-            parsed[".mcp.json"]["mcpServers"]["seite"]["command"],
-            "seite"
-        );
     }
 }

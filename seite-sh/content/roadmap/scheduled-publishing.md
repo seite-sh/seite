@@ -1,9 +1,9 @@
 ---
 title: Scheduled Publishing
-description: "Filter content with future publish_date from production builds, enabling schedule-ahead workflows"
+description: "Hide posts with a future date from production builds, enabling schedule-ahead workflows"
 tags:
-- planned
+- done
 weight: 2
 ---
 
-Add `publish_date` frontmatter field to complement existing `draft` support. Content with a `publish_date` in the future is excluded from production builds but visible in dev mode. Enables write-ahead workflows where authors schedule posts days or weeks in advance, and CI rebuilds surface them on the right date. Small extension of the existing draft filtering logic in the build pipeline.
+Shipped in v0.21.0. With `[build] schedule = true` (written by `seite init`), a post in a dated collection whose `date` is in the future is left out of every output until that day, and `expires:` takes a page down after its date. `seite serve`, `seite build --future` and `[build] future = true` include scheduled posts for preview. "Today" follows `[site] timezone`. Build, serve and check print how many posts are hidden and when the next one goes live, and generated GitHub Actions workflows rebuild daily so scheduled posts appear on time.

@@ -128,6 +128,70 @@ unset VERSION
 
 echo ""
 
+# --- Install telemetry opt-out (mirrors src/telemetry.rs) ---
+echo "Telemetry opt-out:"
+
+check_telemetry() {
+  # $1 = expected (send|skip), $2 = label, rest = VAR=value assignments
+  _expected=$1; _label=$2; shift 2
+  if (unset DO_NOT_TRACK SEITE_TELEMETRY CI; HOME=/nonexistent; for kv in "$@"; do export "${kv?}"; done; telemetry_allowed); then
+    _got=send
+  else
+    _got=skip
+  fi
+  if [ "$_got" = "$_expected" ]; then
+    pass "$_label: $_got"
+  else
+    fail "$_label" "expected $_expected, got $_got"
+  fi
+}
+
+check_telemetry send "no opt-out"
+check_telemetry skip "CI set" CI=true
+check_telemetry skip "CI=1" CI=1
+check_telemetry skip "DO_NOT_TRACK" DO_NOT_TRACK=1
+check_telemetry skip "DO_NOT_TRACK beats SEITE_TELEMETRY=on" DO_NOT_TRACK=1 SEITE_TELEMETRY=on
+check_telemetry skip "SEITE_TELEMETRY=0" SEITE_TELEMETRY=0
+check_telemetry skip "SEITE_TELEMETRY=Disabled" SEITE_TELEMETRY=Disabled
+check_telemetry send "SEITE_TELEMETRY=on beats CI" SEITE_TELEMETRY=on CI=true
+check_telemetry skip "unknown SEITE_TELEMETRY falls through to CI" SEITE_TELEMETRY=maybe CI=1
+check_telemetry send "blank CI" "CI= "
+check_telemetry skip "SEITE_TELEMETRY=' off ' (ends trimmed)" "SEITE_TELEMETRY= off "
+check_telemetry send "SEITE_TELEMETRY='o n' is unknown, like the CLI" "SEITE_TELEMETRY=o n"
+
+# A saved `seite telemetry off` in ~/.seite/telemetry.json is honoured.
+_tel_home=$(mktemp -d)
+mkdir -p "$_tel_home/.seite"
+printf '{\n  "enabled": false,\n  "notice_shown": true\n}' > "$_tel_home/.seite/telemetry.json"
+check_telemetry skip "saved telemetry off" "HOME=$_tel_home"
+check_telemetry send "SEITE_TELEMETRY=on beats saved off" "HOME=$_tel_home" SEITE_TELEMETRY=on
+printf '{\n  "enabled": true,\n  "notice_shown": true\n}' > "$_tel_home/.seite/telemetry.json"
+check_telemetry send "saved telemetry on" "HOME=$_tel_home"
+rm -rf "$_tel_home"
+
+# send_telemetry must not call curl when opted out
+CURL_CALLED=0
+# shellcheck disable=SC2329 # invoked by send_telemetry
+curl() { CURL_CALLED=1; }
+# shellcheck disable=SC2034 # read by send_telemetry
+VERSION_TAG=v0.0.0 OS=test ARCH=test
+CI=1 send_telemetry
+if [ "$CURL_CALLED" = 0 ]; then
+  pass "send_telemetry skips the request under CI"
+else
+  fail "send_telemetry under CI" "curl was called"
+fi
+CI=1 SEITE_TELEMETRY=on send_telemetry
+if [ "$CURL_CALLED" = 1 ]; then
+  pass "send_telemetry sends when SEITE_TELEMETRY=on (even under CI)"
+else
+  fail "send_telemetry with SEITE_TELEMETRY=on" "curl was not called"
+fi
+unset -f curl
+unset CI SEITE_TELEMETRY
+
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASSED passed, $FAILED failed ==="
 

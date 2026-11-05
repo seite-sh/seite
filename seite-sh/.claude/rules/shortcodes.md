@@ -35,6 +35,9 @@ Callout types: `info`, `warning`, `danger`, `tip`
 | `gist` | inline | `user` (required), `id` (required) |
 | `figure` | inline | `src` (required), `alt`, `caption`, `width`, `height`, `class` |
 | `callout` | body | `type` (default: `info`) |
+| `contact_form` | inline | see contact form rules; needs `[contact]` |
+| `comments` | inline | none; needs `[comments]` (giscus/utterances), else renders nothing + warning |
+| `newsletter` | inline | `title`, `description`, `button`, `id`; needs `[newsletter]` (buttondown/kit) |
 
 ### Custom shortcodes
 
@@ -47,4 +50,10 @@ Create Tera templates in `templates/shortcodes/`. Example `templates/shortcodes/
 Use in markdown: `{{% alert(level="error") %}}Something went wrong{{% end %}}`
 
 Shortcode templates have access to `{{ page }}` and `{{ site }}` context variables.
+
+Themes can place comments/newsletter without shortcodes: `{% include "seite/comments.html" %}` / `{% include "seite/newsletter.html" %}`.
+
+### Syntax gotcha
+
+Inline shortcodes self-close — `{{< name(args) >}}` — and body shortcodes end with a literal `{{% end %}}`. There is no Hugo-style `{{< /name >}}` closing tag; writing one fails the build with `invalid shortcode syntax`.
 

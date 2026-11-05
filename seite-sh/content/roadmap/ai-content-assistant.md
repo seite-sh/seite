@@ -1,9 +1,9 @@
 ---
 title: AI Content Assistant
-description: "seite agent with full site context, skill packs, streaming output, and REPL integration"
+description: "Coding agents write and maintain site content through AGENTS.md, the /seite skill, check hooks, and skill packs"
 tags:
 - done
 weight: 19
 ---
 
-`seite agent` spawns Claude Code as a subprocess with full site context — config, content inventory, templates, collections, shortcodes, and installed skill packs injected into the system prompt. Supports one-shot and interactive modes, streaming JSON output with real-time thinking/tool/text display, and session resume via `--resume`. Integrated into the dev server REPL. Skill packs (`seite skill install`) extend the agent with domain-specific commands and knowledge. Built-in skills include theme-builder, brand-identity, and landing-page.
+First shipped as `seite agent`, which spawned Claude Code with site context injected into the system prompt. Since v0.21.0 the context lives in the project instead, so any of the seven supported coding agents can use it: a compact `AGENTS.md`, the routed `/seite` skill (`/seite new`, `/seite theme`, `/seite audit`, …), check hooks that hand errors back to the agent, and `seite context` for a once-per-session orientation. `seite agent` is now a thin launcher that passes your prompt to the agent as-is (`--with` picks the agent). Skill packs (`seite skill install seomachine`, `seite skill install impeccable`) add domain-specific skills. The earlier theme-builder, brand-identity and landing-page skills are folded into `/seite theme`, `/seite brand` and `/seite landing`.

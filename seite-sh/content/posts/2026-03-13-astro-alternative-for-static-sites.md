@@ -1,7 +1,7 @@
 ---
-title: "Astro Alternative for Static Sites: JavaScript Framework vs Rust Binary"
+title: "Astro Alternative for Static Sites: Rust vs Node.js"
 date: 2026-03-13
-updated: 2026-09-28
+updated: 2026-10-29
 description: "Astro excels at component islands. For content sites, seite is the astro alternative: a Rust binary, zero Node.js, sub-second builds, and AI-native output."
 tags:
  - static-site-generator
@@ -14,8 +14,6 @@ extra:
  meta_description: "Astro excels at component islands. For content sites, seite is the astro alternative: a Rust binary, zero Node.js, sub-second builds, and AI-native output."
  url_slug: "astro-alternative-for-static-sites"
 ---
-
-# Astro Alternative for Static Sites: JavaScript Framework vs Rust Binary
 
 [Astro](https://astro.build/) calls itself a web framework for content-driven websites. seite calls itself a static site generator. The difference is not marketing; it is architecture. One is a JavaScript framework that outputs static files. The other is a Rust binary that takes markdown and outputs HTML, markdown, and llms.txt. For a blog or docs site, understanding which problem you are actually solving determines which tool fits.
 
@@ -56,7 +54,7 @@ npm create astro@latest mysite
 # seite
 curl -fsSL https://seite.sh/install.sh | sh
 seite init mysite --collections posts,docs,pages
-# Binary: ~8 MB
+# Binary: ~24 MB (a ~8 MB download)
 # Dependencies: 0
 ```
 
@@ -64,7 +62,7 @@ seite init mysite --collections posts,docs,pages
 
 Astro's `.astro` file format adds a JSX-like component syntax over HTML. It is well-designed for the use case it is solving. For a blog where every page is markdown text with a header and footer, it adds a layer of syntax with no functional benefit.
 
-Build times reflect this. A 200-post blog with no interactive components builds in 15 to 45 seconds with Astro. seite builds the same content in under one second. Multiplied across a development day of frequent saves and preview checks, the difference is felt.
+Build times reflect this. seite builds a 200-post blog in well under a second on a laptop (0.2 s in our test), because there is no JavaScript bundling step at all. Multiplied across a development day of frequent saves and preview checks, the difference is felt.
 
 ### No AI-Native Architecture
 
@@ -81,8 +79,8 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | Language / Runtime | JavaScript / Node.js | Rust (single binary) |
 | Installation | `npm create astro@latest` | `curl -fsSL https://seite.sh/install.sh \| sh` |
 | Dependencies | 100-300+ npm packages | 0 (no runtime) |
-| Install size | ~150-400 MB (node_modules) | ~8 MB binary |
-| Build speed (medium site) | 5-45 seconds | Under 1 second |
+| Install size | ~150-400 MB (node_modules) | ~24 MB binary (~8 MB download) |
+| Build pipeline | Node.js + Vite bundling | Compiled Rust, no bundler |
 | Template language | .astro (JSX-like) | Tera (Jinja2-compatible) |
 | Component model | Component islands (React/Vue/Svelte) | Tera templates + HTML |
 | Markdown content | Yes (MDX + frontmatter) | Yes (Markdown + YAML frontmatter) |
@@ -91,11 +89,11 @@ This is the gap that [generative engine optimization](/blog/generative-engine-op
 | Contact forms | Integration required | Built-in shortcode |
 | llms.txt output | No | Every build |
 | Markdown copies per page | No | Every build |
-| AI agent integration | No | `seite agent` |
-| MCP server | No | Built-in |
+| AI agent integration | No | `/seite` skill + check hooks, 7 agents |
+| MCP server | No | Built-in (opt-in) |
 | AGENTS.md context | No | Auto-generated |
-| Bundled themes | Via Starlight / community | 10 compiled into binary |
-| AI theme generation | No | `seite theme create` |
+| Bundled themes | Via Starlight / community | 11 compiled into binary |
+| AI theme generation | No | `/seite theme` |
 | RSS feed | Integration required | Built-in |
 | Sitemap with hreflang | Integration required | Built-in |
 | JSON-LD structured data | Manual | Automatic every build |
@@ -119,11 +117,11 @@ If you checked one or more items above, use Astro. These are real advantages for
 
 ## Who Should Use an Astro Alternative for Static Sites
 
-seite is the right astro alternative for static sites when. As a Rust-based astro alternative, seite compiles to a single 8 MB binary with zero runtime overhead. Use it when:
+As a Rust-based astro alternative, seite compiles to a single binary (about 24 MB) with no runtime to install. It is the right choice when:
 
 - Every page is markdown. Blog posts, docs pages, a landing page written as markdown. No interactive islands needed.
 - You want zero runtime dependencies. Single binary, curl install, no Node.js, no npm.
-- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the CLAUDE.md compatibility import, MCP server, and `seite agent` handle the integration automatically.
+- You use AI coding agents and want your site to be agent-aware out of the box. AGENTS.md, the `/seite` skill and check hooks handle the integration for Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Copilot; an MCP server is one flag away.
 - You want your site content to appear in AI search (ChatGPT, Perplexity, Claude's web browsing). llms.txt, markdown copies, and AI-aware robots.txt handle the GEO layer without configuration.
 - You are a startup that needs blog, docs, landing page, and changelog from one init command. Not four separate tools, not four deploys, not four billing accounts.
 - You want sub-second builds without a Node.js build pipeline.
@@ -144,10 +142,10 @@ seite's CI integration is a single binary download:
 ```yaml
 # GitHub Actions example
 - name: Install seite
- run: curl -fsSL https://seite.sh/install.sh | sh
+  run: curl -fsSL https://seite.sh/install.sh | sh
 
 - name: Build
- run: seite build
+  run: seite build
 ```
 
 No cache needed. No Node.js version specification. No package lock file. The binary is self-contained. The [configuration reference](/docs/configuration) covers the full `seite.toml` options that control the build output.
@@ -160,7 +158,7 @@ The astro vs seite decision comes down to whether your project needs component i
 
 Markdown content with YAML frontmatter is directly compatible. Astro's `src/content/` structure maps to seite's `content/{collection}/` directories. Copy the files, rename the directory structure, and your content is ready.
 
-Static assets from Astro's `public/` directory move to seite's `static/` directory. The files are served as-is in both tools.
+Static assets from Astro's `public/` directory move to seite's `public/` directory, which is likewise copied to the site root as-is (seite's `static/` is served under `/static/`).
 
 Site configuration (title, description, base URL) maps to `seite.toml` with simpler syntax than `astro.config.mjs`.
 
@@ -183,13 +181,13 @@ seite init mysite --title "Your Site" --collections posts,docs,pages
 cp -r astro-project/src/content/blog/* mysite/content/posts/
 cp -r astro-project/src/content/docs/* mysite/content/docs/
 
-# 4. Apply a theme
+# 4. Apply a theme (from inside the site)
+cd mysite
 seite theme apply minimal
 # or describe your current design:
 # seite theme create "clean sans-serif matching my current brand colors"
 
 # 5. Build and verify
-cd mysite
 seite build
 
 # 6. Deploy
@@ -210,11 +208,11 @@ Yes. Astro requires Node.js to run its build pipeline. You cannot build an Astro
 
 ### Can I build a docs site without Astro?
 
-Yes. seite generates a docs collection with sidebar navigation, nested page support, full-text search, and RSS out of the box. No Starlight required. Run `seite init mysite --collections docs` and your docs site is ready to build.
+Yes. seite generates a docs collection with sidebar navigation, nested page support, full-text search, and llms.txt out of the box. No Starlight required. Run `seite init mysite --collections docs` and your docs site is ready to build.
 
 ### Is seite faster than Astro?
 
-For pure content sites, yes, measurably. Astro builds a 200-post blog in 15 to 45 seconds. seite builds comparable content in under one second. The difference is the build pipeline: Astro runs a Node.js process; seite is a compiled Rust binary with no interpreter overhead.
+For pure content sites, typically yes. seite builds a 200-post blog in about 0.2 seconds on a laptop; benchmark Astro on your own content to compare. The difference is the build pipeline: Astro runs a Node.js process and a bundler; seite is a compiled Rust binary with no interpreter overhead.
 
 ### What is the best astro alternative for a content blog?
 

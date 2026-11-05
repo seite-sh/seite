@@ -8,11 +8,11 @@ weight: 5
 
 The #1 pain point across all SSG communities: editing content without touching a terminal, YAML frontmatter, or git. This is the largest addressable audience gap between SSGs and WordPress/AI app builders.
 
-**Status: exploring approaches.** In the age of AI assistants, the traditional WYSIWYG editor may not be the right answer. We're evaluating several directions:
+**Status: partly addressed.** Since v0.21.0, `seite cms setup pages-cms` or `seite cms setup decap` writes the configuration for a Git-based CMS from your collections and frontmatter schema, so non-technical editors can change content in a browser form and your normal deploy publishes it (see [CMS](/docs/cms)).
 
-- **Deeper Claude Code integration**: using `seite agent` as the primary editing interface, where natural language replaces form fields
-- **Browser-based preview with AI**: a `seite edit` mode that opens a live preview where users describe changes conversationally
-- **Hybrid approach**: lightweight web UI for frontmatter and content, with AI assistance for layout and design decisions
-- **MCP-powered editing**: leveraging the existing MCP server to enable editing from any AI-capable client
+Still open:
 
-The goal is to find the approach that reduces activation energy to zero without building a full CMS. The AI-native angle may be seite's unique answer to this problem.
+- **Browser-based visual editing**: a `seite edit` mode that opens a live preview and edits the page in place
+- **Hybrid approach**: lightweight local web UI for frontmatter and content without a hosted CMS
+
+The goal is to reduce activation energy for editors to near zero without building a full CMS into seite.

@@ -95,14 +95,17 @@ impl BuildCache {
         }
     }
 
-    /// Save cache to disk.
+    /// Save cache to disk, never through a symlink: `.seite/` is project
+    /// content (a cloned repository could link `build-cache.json` to a file
+    /// outside it, and the cache holds file names it chose).
     pub fn save(&self, project_root: &Path) -> std::io::Result<()> {
         let path = Self::cache_path(project_root);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let json = serde_json::to_string(self)?;
-        fs::write(&path, json)
+        let confined = |e: anyhow::Error| std::io::Error::other(format!("{e:#}"));
+        if let Some(parent) = path.parent() {
+            crate::safe_fs::create_dir_all(project_root, parent).map_err(confined)?;
+        }
+        crate::safe_fs::write(project_root, &path, json).map_err(confined)
     }
 
     /// Compare current file state against the cache to determine what changed.
@@ -382,6 +385,19 @@ fn scan_all_files(dir: &Path) -> HashMap<PathBuf, u64> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[cfg(unix)]
+    #[test]
+    fn save_refuses_a_symlinked_cache_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().join("site");
+        fs::create_dir_all(root.join(".seite")).unwrap();
+        let victim = tmp.path().join("victim.txt");
+        fs::write(&victim, "keep me").unwrap();
+        std::os::unix::fs::symlink(&victim, BuildCache::cache_path(&root)).unwrap();
+        assert!(BuildCache::default().save(&root).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+    }
 
     #[test]
     fn test_empty_cache_triggers_full_rebuild() {

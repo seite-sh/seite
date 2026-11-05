@@ -1,0 +1,4 @@
+{# seite partial: search — managed by seite, updated on upgrade. The search box and results container; the script is in seite/search-script.html. Renders nothing with [build] search = false. #}{% if search_mode | default(value="basic") != "off" %}<form class="search-form" role="search" aria-label="{{ t.search_label | escape_attr }}" onsubmit="return false">
+            <input type="search" id="search-input" placeholder="{{ t.search_placeholder | escape_attr }}" autocomplete="off" aria-label="{{ t.search_label | escape_attr }}"{% if search_collections is defined and search_collections %} data-collections="{{ search_collections | escape_attr }}"{% endif %}>
+        </form>
+        <div id="search-results" aria-live="polite"></div>{% endif %}

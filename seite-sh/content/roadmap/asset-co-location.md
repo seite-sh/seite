@@ -8,7 +8,7 @@ weight: 7
 
 Allow `content/posts/my-post/index.md` to reference `./hero.jpg` from the same directory instead of requiring all images in `static/`. Modern SSGs (Astro, Hugo page bundles) support this natively. Reduces friction: authors keep content and its assets together.
 
-### Implementation
+## Implementation
 
 - Detect `index.md` inside a subdirectory as a page bundle
 - Resolve relative image paths against the content file's directory

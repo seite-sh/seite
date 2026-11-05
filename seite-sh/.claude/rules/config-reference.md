@@ -10,10 +10,14 @@ These sections in `seite.toml` enable additional features. Omit them entirely to
 
 ```toml
 [build]
-math = true  # enable $inline$ and $$display$$ math rendering via KaTeX
+math = true     # enable $inline$ and $$display$$ math rendering via KaTeX
+mermaid = true  # render fenced ```mermaid blocks as client-side Mermaid diagrams
+search = "full" # full-text search index under dist/search/; "basic" = search-index.json only (default); false = off
 ```
 
 When `math = true`, the build pipeline renders LaTeX math expressions to HTML using server-side KaTeX. KaTeX CSS is automatically loaded from CDN. Code blocks and inline code spans are skipped.
+
+When `mermaid = true`, fenced ` ```mermaid ` code blocks in markdown are left intact and rendered client-side by an injected Mermaid script — no server-side rendering. Default: `false`.
 
 ### Image Processing
 
@@ -36,13 +40,13 @@ When enabled, the build pipeline auto-resizes images, generates WebP and/or AVIF
 provider = "plausible"     # "google", "gtm", "plausible", "fathom", "umami"
 id = "example.com"         # measurement/tracking ID
 cookie_consent = true      # show consent banner and gate analytics on acceptance
-# script_url = "..."       # unique snippet URL (recommended for Plausible; required for self-hosted Umami)
-# extensions = ["tagged-events", "outbound-links"]  # legacy Plausible script extensions
+# script_url = "..."       # Plausible: paste your unique snippet URL from Settings → Installation
+# extensions = ["tagged-events", "outbound-links"]  # legacy: Plausible pre-Oct 2025 script only
 ```
 
 Analytics scripts are injected into all HTML files at build time. When `cookie_consent = true`, a banner is shown and analytics only load after the user accepts. Consent is stored in `localStorage`.
 
-For Plausible, use `script_url` with the unique snippet URL from your dashboard (Settings → Installation). This uses `async` loading, drops `data-domain`, and includes the `plausible.init()` bootstrapper for custom events. The legacy `extensions` field still works but is deprecated — it appends [script extensions](https://plausible.io/docs/script-extensions) to the filename (e.g., `script.tagged-events.outbound-links.js`). Ignored when `script_url` is set or for non-Plausible providers.
+For new Plausible installations, retrieve your unique snippet URL from Plausible → Settings → Installation and set it as `script_url`. seite generates the correct `async` script tag and `plausible.init()` bootstrapper for custom event support. The legacy `extensions` field (e.g., `script.tagged-events.js`) still works but is deprecated. See the [Plausible script update guide](https://plausible.io/docs/script-update-guide).
 
 ### Subdomain Deploys
 
@@ -55,3 +59,29 @@ deploy_project = "my-site-docs" # Cloudflare/Netlify project (optional)
 
 When `subdomain` is set on a collection, it gets its own output directory (`dist-subdomains/{name}/`), own sitemap, RSS, robots.txt, and search index. Internal links targeting subdomain collections are auto-rewritten to absolute URLs. The dev server previews subdomain content at `/{name}-preview/`. `deploy_project` sets the Cloudflare Pages or Netlify project name for that subdomain (auto-created by `seite deploy --setup`).
 
+### Password Access (Cloudflare Pages only)
+
+```toml
+[access]
+mode = "password"       # only supported mode today
+session_hours = 168     # 1-8760; how long a visitor's password session lasts
+```
+
+Adding `[access]` turns on password protection, enforced by a generated Cloudflare Pages Worker, for every collection with `private = true`. See `.claude/rules/private-collections.md` for `access_group`, protected static assets, and private subdomains. Manage passwords with `seite access groups` and `seite access set-password <group>`.
+
+### Comments & Newsletter
+
+```toml
+[comments]
+provider = "giscus"        # or "utterances" (repo, issue_term, label, theme)
+repo = "owner/repo"
+repo_id = "R_kgDO..."      # giscus ids from https://giscus.app
+category = "Announcements"
+category_id = "DIC_kwDO..."
+
+[newsletter]
+provider = "buttondown"    # or "kit" with form_id = "1234567"
+username = "my-news"
+```
+
+Use `{{< comments() >}}` and `{{< newsletter() >}}`. Git-based CMS: `seite cms setup pages-cms|decap` (see `.seite/docs/cms.md`).

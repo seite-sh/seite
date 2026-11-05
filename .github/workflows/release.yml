@@ -44,7 +44,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
         with:
           key: ${{ matrix.target }}
 
@@ -73,7 +73,9 @@ jobs:
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../seite-${{ matrix.target }}.tar.gz seite
+          # The bundled social-card font (Inter, SIL OFL 1.1) ships its licence.
+          cp ../../../assets/fonts/OFL.txt LICENSE-Inter-OFL.txt
+          tar czf ../../../seite-${{ matrix.target }}.tar.gz seite LICENSE-Inter-OFL.txt
           cd ../../..
 
       - name: Upload artifact
@@ -92,7 +94,7 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
         with:
           key: windows
 
@@ -105,12 +107,14 @@ jobs:
       - name: Package x86_64
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-x86_64-pc-windows-msvc.zip"
+          Copy-Item "assets/fonts/OFL.txt" "target/x86_64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt"
+          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release/seite.exe","target/x86_64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt" -DestinationPath "seite-x86_64-pc-windows-msvc.zip"
 
       - name: Package aarch64
         shell: pwsh
         run: |
-          Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
+          Copy-Item "assets/fonts/OFL.txt" "target/aarch64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt"
+          Compress-Archive -Path "target/aarch64-pc-windows-msvc/release/seite.exe","target/aarch64-pc-windows-msvc/release/LICENSE-Inter-OFL.txt" -DestinationPath "seite-aarch64-pc-windows-msvc.zip"
 
       - name: Upload x86_64 artifact
         uses: actions/upload-artifact@v7
@@ -241,9 +245,10 @@ jobs:
             echo "Built ${BUNDLE}"
           done
 
-          # Windows x86_64
+          # Windows x86_64: the binary in the bundle is seite.exe
           WORKDIR=$(mktemp -d)
-          cp /tmp/manifest.json "$WORKDIR/manifest.json"
+          sed 's#server/seite"#server/seite.exe"#g' /tmp/manifest.json > "$WORKDIR/manifest.json"
+          grep -q 'server/seite.exe"' "$WORKDIR/manifest.json"
           mkdir -p "$WORKDIR/server"
           unzip -o "artifacts/seite-x86_64-pc-windows-msvc.zip" -d "$WORKDIR/server/"
           (cd "$WORKDIR" && zip -r /tmp/seite-windows-x64.mcpb manifest.json server/)
@@ -344,7 +349,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
 
       - name: Publish to crates.io
         run: cargo publish --locked
@@ -353,7 +358,9 @@ jobs:
 
   deploy-site:
     name: Deploy docs site
-    needs: build
+    # After the release exists: the site publishes version.txt, which
+    # install.sh downloads from the release.
+    needs: [build, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
