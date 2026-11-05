@@ -313,72 +313,75 @@ fn watch_and_rebuild(
     // Debounce: wait for events, then pause briefly to batch rapid changes
     let debounce = Duration::from_millis(200);
 
+    // Set when a source changed while a build ran: build again right away.
+    let mut pending = false;
     while !stop.load(Ordering::Relaxed) {
-        // Block until we get an event or timeout (so we can check `stop`)
-        match rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(Ok(event)) => {
-                // Ignore metadata-only events (e.g. atime updates from file reads on
-                // strictatime/relatime systems) — only react to content changes.
-                if matches!(
-                    event.kind,
-                    notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
-                        | notify::EventKind::Access(_)
-                ) {
+        if !pending {
+            // Block until we get an event or timeout (so we can check `stop`)
+            match rx.recv_timeout(Duration::from_secs(1)) {
+                Ok(Ok(event)) if is_source_change(&event, paths) => {}
+                Ok(Ok(_)) | Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Ok(Err(e)) => {
+                    human::error(&format!("Watch error: {e}"));
                     continue;
                 }
-                // Ignore writes to build output (including the staging dir a
-                // full build writes into), in case an output dir is configured
-                // inside a watched source directory.
-                if !event.paths.is_empty()
-                    && event
-                        .paths
-                        .iter()
-                        .all(|p| build::is_build_output_path(paths, p))
-                {
-                    continue;
-                }
-
-                // Drain any additional events within the debounce window
-                while rx.recv_timeout(debounce).is_ok() {}
-
-                human::info("Changes detected, rebuilding...");
-                let opts = BuildOptions {
-                    include_drafts,
-                    incremental: true,
-                };
-                let scope = dev::SiteScope {
-                    name: String::new(),
-                    root: paths.root.clone(),
-                    prefix: None,
-                };
-                // Records the outcome and tells open pages (reload / overlay).
-                match dev.run_build(&scope, || build::build_site(config, paths, &opts)) {
-                    Ok(result) => {
-                        if result.stats.duration_ms > 0 {
-                            human::success(&result.stats.human_display());
-                        }
-                    }
-                    Err(e) => {
-                        human::error(&format!("Rebuild failed: {e}"));
-                    }
-                }
-
-                // Drain events that accumulated during the build so they don't
-                // immediately trigger another rebuild.
-                while rx.try_recv().is_ok() {}
-            }
-            Ok(Err(e)) => {
-                human::error(&format!("Watch error: {e}"));
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // No events — loop back to check `stop`
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
                 // Watcher dropped — exit
-                break;
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
+
+        // Drain any additional events within the debounce window
+        while rx.recv_timeout(debounce).is_ok() {}
+
+        human::info("Changes detected, rebuilding...");
+        let opts = BuildOptions {
+            include_drafts,
+            incremental: true,
+        };
+        let scope = dev::SiteScope {
+            name: String::new(),
+            root: paths.root.clone(),
+            prefix: None,
+        };
+        // Records the outcome and tells open pages (reload / overlay).
+        match dev.run_build(&scope, || build::build_site(config, paths, &opts)) {
+            Ok(result) => {
+                if result.stats.duration_ms > 0 {
+                    human::success(&result.stats.human_display());
+                }
+            }
+            Err(e) => {
+                human::error(&format!("Rebuild failed: {e}"));
+            }
+        }
+
+        // Events that arrived during the build: the build's own (output
+        // writes, metadata) are dropped, but an edit saved meanwhile — even
+        // right after open pages got this build's reload — builds again.
+        pending = rx
+            .try_iter()
+            .any(|e| e.is_ok_and(|event| is_source_change(&event, paths)));
     }
+}
+
+/// A watcher event that changes a source: not metadata or access only, and
+/// not only paths inside the build output (in case an output dir is
+/// configured inside a watched source directory).
+fn is_source_change(event: &notify::Event, paths: &ResolvedPaths) -> bool {
+    // Ignore metadata-only events (e.g. atime updates from file reads on
+    // strictatime/relatime systems) — only react to content changes.
+    if matches!(
+        event.kind,
+        notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
+            | notify::EventKind::Access(_)
+    ) {
+        return false;
+    }
+    event.paths.is_empty()
+        || !event
+            .paths
+            .iter()
+            .all(|p| build::is_build_output_path(paths, p))
 }
 
 /// Check if a port is available by attempting to bind it.
@@ -503,6 +506,38 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_is_source_change_ignores_metadata_access_and_output() {
+        use notify::event::{AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind};
+        use notify::{Event, EventKind};
+        let config: SiteConfig =
+            toml::from_str("collections = []\n[site]\ntitle = \"T\"\n").unwrap();
+        let root = Path::new("/site");
+        let paths = config.resolve_paths(root);
+        let ev = |kind, p: &str| Event::new(kind).add_path(root.join(p));
+        let edit = EventKind::Modify(ModifyKind::Data(DataChange::Content));
+
+        assert!(is_source_change(&ev(edit, "content/posts/a.md"), &paths));
+        assert!(is_source_change(
+            &ev(EventKind::Create(CreateKind::File), "templates/post.html"),
+            &paths
+        ));
+        // An event with no paths still means something changed.
+        assert!(is_source_change(&Event::new(edit), &paths));
+        assert!(!is_source_change(
+            &ev(
+                EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any)),
+                "content/a.md"
+            ),
+            &paths
+        ));
+        assert!(!is_source_change(
+            &ev(EventKind::Access(AccessKind::Any), "content/a.md"),
+            &paths
+        ));
+        assert!(!is_source_change(&ev(edit, "dist/posts/a.html"), &paths));
+    }
 
     // =========================================================================
     // LIVERELOAD_SCRIPT constant

@@ -310,64 +310,97 @@ fn watch_and_rebuild_workspace(
 
     let debounce = Duration::from_millis(200);
 
+    // Paths changed while the last build ran: build again right away.
+    let mut pending: Vec<PathBuf> = Vec::new();
     while !stop.load(Ordering::Relaxed) {
-        match rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(Ok(event)) => {
-                // Ignore metadata-only events (e.g. atime updates from file reads on
-                // strictatime/relatime systems) — only react to content changes.
-                if matches!(
-                    event.kind,
-                    notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
-                        | notify::EventKind::Access(_)
-                ) {
+        let mut changed_paths = std::mem::take(&mut pending);
+        if changed_paths.is_empty() {
+            match rx.recv_timeout(Duration::from_secs(1)) {
+                Ok(Ok(event)) if is_content_change(&event) => changed_paths.extend(event.paths),
+                Ok(Ok(_)) | Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Ok(Err(e)) => {
+                    human::error(&format!("Watch error: {e}"));
                     continue;
                 }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
 
-                // Drain additional events within debounce window
-                while rx.recv_timeout(debounce).is_ok() {}
-
-                // Determine which site(s) changed based on the event path
-                let changed_path = event.paths.first();
-                let affected_site = changed_path.and_then(|p| {
-                    sites
-                        .iter()
-                        .find(|(_, dirs)| dirs.iter().any(|d| p.starts_with(d)))
-                });
-
-                let targets: Vec<&super::WorkspaceSite> = match affected_site {
-                    Some((site_name, _)) => {
-                        human::info(&format!("Changes detected in '{site_name}', rebuilding..."));
-                        ws_config.find_site(site_name).into_iter().collect()
-                    }
-                    None => {
-                        human::info("Changes detected, rebuilding all sites...");
-                        ws_config.sites.iter().collect()
-                    }
-                };
-                {
-                    let _guard = dev.build_guard();
-                    let mut outcomes = Vec::new();
-                    let mut changed = false;
-                    for ws_site in targets {
-                        let (outcome, site_changed) = rebuild_site(ws_root, ws_site);
-                        changed |= site_changed;
-                        outcomes.push((ws_site.name.clone(), outcome));
-                    }
-                    // One merged outcome per batch: pages reload once.
-                    dev.record_site_builds(outcomes, changed);
+        // Collect additional events within the debounce window
+        while let Ok(next) = rx.recv_timeout(debounce) {
+            if let Ok(event) = next {
+                if is_content_change(&event) {
+                    changed_paths.extend(event.paths);
                 }
+            }
+        }
 
-                // Drain events that accumulated during the build so they don't
-                // immediately trigger another rebuild.
-                while rx.try_recv().is_ok() {}
+        // Rebuild every site a changed path belongs to; a path in no site
+        // (or an event without paths) rebuilds them all.
+        let mut affected: Vec<&str> = Vec::new();
+        let mut all = changed_paths.is_empty();
+        for p in &changed_paths {
+            match sites
+                .iter()
+                .find(|(_, dirs)| dirs.iter().any(|d| p.starts_with(d)))
+            {
+                Some((name, _)) if !affected.contains(&name.as_str()) => affected.push(name),
+                Some(_) => {}
+                None => all = true,
             }
-            Ok(Err(e)) => {
-                human::error(&format!("Watch error: {e}"));
+        }
+        let targets: Vec<&super::WorkspaceSite> = if all {
+            human::info("Changes detected, rebuilding all sites...");
+            ws_config.sites.iter().collect()
+        } else {
+            human::info(&format!(
+                "Changes detected in {}, rebuilding...",
+                affected
+                    .iter()
+                    .map(|n| format!("'{n}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            affected
+                .iter()
+                .filter_map(|n| ws_config.find_site(n))
+                .collect()
+        };
+        {
+            let _guard = dev.build_guard();
+            let mut outcomes = Vec::new();
+            let mut changed = false;
+            for ws_site in targets {
+                let (outcome, site_changed) = rebuild_site(ws_root, ws_site);
+                changed |= site_changed;
+                outcomes.push((ws_site.name.clone(), outcome));
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            // One merged outcome per batch: pages reload once.
+            dev.record_site_builds(outcomes, changed);
+        }
+
+        // Edits saved while the build ran (even right after open pages got
+        // its reload) build again instead of being dropped.
+        for event in rx.try_iter().flatten() {
+            if is_content_change(&event) {
+                pending.extend(event.paths);
+                if pending.is_empty() {
+                    // An event without paths still means "something changed".
+                    pending.push(ws_root.to_path_buf());
+                }
+            }
         }
     }
+}
+
+/// Not a metadata-only or access event (e.g. atime updates from file reads
+/// on strictatime/relatime systems): only content changes rebuild.
+fn is_content_change(event: &notify::Event) -> bool {
+    !matches!(
+        event.kind,
+        notify::EventKind::Modify(notify::event::ModifyKind::Metadata(_))
+            | notify::EventKind::Access(_)
+    )
 }
 
 /// Rebuild one workspace site the way the dev server does; print and return
