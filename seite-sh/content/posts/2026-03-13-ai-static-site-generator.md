@@ -88,7 +88,7 @@ The AI-readable web stopped being a niche idea this year. Several tools that sei
 
 **Astro 6** shipped on [March 10, 2026](https://astro.build/blog/astro-6/) with a redesigned dev server, a Fonts API, a Content Security Policy API and Live Content Collections. The release doesn't add llms.txt or an MCP server for sites you build. Astro does run an MCP server for its own documentation, which helps you write Astro code but isn't something your site gets. For a fuller comparison, see the [Astro alternative for static sites](/blog/astro-alternative-for-static-sites) breakdown.
 
-**Hugo** hasn't added AI features. As noted above, llms.txt is achievable with custom output formats, so the accurate framing is "possible with manual setup," not "impossible."
+**Hugo**'s core doesn't ship AI-specific features. As noted above, llms.txt is achievable with custom output formats, so the accurate framing is "possible with manual setup," not "impossible."
 
 **Docusaurus** has community plugins that generate llms.txt, llms-full.txt and per-page markdown for docs sites, with some configuration.
 
@@ -102,11 +102,11 @@ Four architectural decisions separate an AI-first SSG from a traditional one.
 
 When you run `seite init`, it generates an `AGENTS.md` file that describes your site to AI agents, plus a one-line `CLAUDE.md` compatibility import. The file is short (about 4 KB): what the site is, its layout, collections, content format, hard rules and the workflow. An agent reads it once and understands your project.
 
-`seite init` also writes a routed `/seite` skill (`$seite` in Codex) for checking, writing, theming, auditing and deploying, plus check hooks for each agent you set up. After each edit a hook runs `seite check` on that file, and at the end of a turn the full check runs and hands any errors back so the agent fixes them before it stops. Warnings never block.
+`seite init` also writes a routed `/seite` skill (`$seite` in Codex) for checking, writing, theming, auditing and deploying, plus check hooks for each agent you set up. After each edit a hook runs `seite check` on that file, and at the end of a turn the full check runs and hands any errors back so the agent fixes them before it stops. Warnings never block. The guide to [validating a static site before deploy](/blog/validate-static-site-before-deploy) shows what those checks catch.
 
 ### MCP Server for AI Tools
 
-seite also ships an [MCP server](/docs/mcp-server) for tools that want typed access: 16 tools such as `seite_check`, `seite_get_page` and `seite_search`, plus resources like `seite://config` and `seite://content`. It's opt-in: `seite init --mcp` (or `seite upgrade --mcp`) registers it for each agent you set up. Every tool has a CLI equivalent (`seite context`, `seite search`, `seite page`, `seite check --json`), so coding agents get the same answers without MCP.
+seite also ships an [MCP server](/docs/mcp-server) for tools that want typed access: 16 tools such as `seite_check`, `seite_get_page` and `seite_search`, plus resources like `seite://config` and `seite://content`. It's opt-in: `seite init --mcp` (or `seite upgrade --mcp`) registers it for each agent you set up. All but two of the 16 tools have a CLI equivalent (`seite search`, `seite page`, `seite check --json` and more), and `seite context` covers what the resources do, so coding agents get the same answers without MCP.
 
 For when an agent should reach for MCP and when the CLI is enough, read [what an MCP server for websites can do](/blog/mcp-server-for-websites).
 
@@ -143,7 +143,7 @@ seite theme create "coral brutalist with lime accents and hard shadows"
 
 This runs `/seite theme` in your coding agent (or in your current session: type `/seite theme coral brutalist …` there directly). The skill carries the template variables, Tera block requirements, and SEO guardrails. The agent writes a complete `templates/base.html` with proper Open Graph tags, JSON-LD structured data, accessibility features, and responsive design. You review the output, tweak what you want, and ship.
 
-11 bundled themes are compiled into the binary and work without downloads: 4 starters (default, docs, landing, and blank for designing your own) and a 7-theme gallery (minimal, dark, brutalist, bento, terminal, magazine, academic). Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding, see why seite ships themes in the binary in [Static Site Generator with 11 Built-In Themes](/blog/compiled-themes-binary). But the real power is describing what you want in plain English and getting a production-ready theme in seconds.
+11 bundled themes are compiled into the binary and work without downloads: 4 starters (default, docs, landing, and blank for designing your own) and a 7-theme gallery (minimal, dark, brutalist, bento, terminal, magazine, academic). Browse them in the [theme gallery](/docs/theme-gallery). For the engineering rationale behind compile-time theme embedding, see why seite ships themes in the binary in [Static Site Generator with 11 Built-In Themes](/blog/compiled-themes-binary). Or describe what you want in plain English and get a complete theme to review.
 
 ## How AI Discoverability Changes the Game
 
@@ -171,7 +171,7 @@ Here's what creating a blog post looks like with Hugo and with seite.
 ```bash
 hugo new posts/my-post.md          # creates file with default frontmatter
 # edit content in your editor
-hugo build                          # HTML; llms.txt/markdown only if you configure output formats
+hugo                                # HTML; llms.txt/markdown only if you configure output formats
 ```
 
 **seite:**
@@ -310,7 +310,7 @@ Claude Code, Codex, OpenCode, Cursor, Antigravity CLI, Gemini CLI and GitHub Cop
 
 ### Is seite free?
 
-Yes. seite is free, open source and MIT licensed. No paid tiers, no API keys. The agent features use the coding agent you already run, and the static site generator itself is completely free.
+Yes. seite is free, open source and MIT licensed. No paid tiers, no API keys. The agent features use the coding agent you already run, including free ones such as Gemini CLI or OpenCode with a free or local model, and the static site generator itself is completely free.
 
 ### What deploy targets does seite support?
 
