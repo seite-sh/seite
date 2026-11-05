@@ -461,7 +461,7 @@ Based on GitHub stars, npm downloads, community adoption, and architectural rele
 - OS: Ubuntu 22.04 LTS, kernel 5.15.x
 - CPU Governor: performance (fixed frequency)
 - SSG Versions:
-  - seite 0.2.x
+  - seite 0.21.x
   - Hugo 0.145.0
   - Zola 0.20.0
   - Eleventy 3.1.0

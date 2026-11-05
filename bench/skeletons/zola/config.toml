@@ -3,5 +3,5 @@ title = "Benchmark Site"
 compile_sass = false
 build_search_index = false
 
-[markdown]
-highlight_code = false
+# Zola 0.22+ dropped `highlight_code`; leaving out [markdown.highlighting]
+# keeps syntax highlighting off, as in the other skeletons.

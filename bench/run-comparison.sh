@@ -10,6 +10,14 @@
 #   ./bench/run-comparison.sh --tiers "100 1000" # Specific tiers
 #   ./bench/run-comparison.sh --runs 10          # Fewer runs
 #   ./bench/run-comparison.sh --skip astro       # Skip an SSG
+#   SEITE_BIN=/path/to/seite ./bench/run-comparison.sh  # Other seite binary
+#   SEITE_BASELINE_BIN=/path/to/old/seite ./bench/run-comparison.sh  # Also time a second seite
+#
+# Timed: the build only; deleting the previous output runs in --prepare.
+#
+# Requires: hyperfine, hugo, zola, Node.js + npm (Eleventy, Astro), Ruby +
+# Bundler (Jekyll). Everything it installs or generates lives under
+# bench/sites/ and bench/results/ (both gitignored).
 #
 
 set -euo pipefail
@@ -20,7 +28,7 @@ BENCH_DIR="$SCRIPT_DIR"
 SITES_DIR="$BENCH_DIR/sites"
 RESULTS_DIR="$BENCH_DIR/results"
 SKELETONS_DIR="$BENCH_DIR/skeletons"
-SEITE_BIN="$PROJECT_DIR/target/release/seite"
+SEITE_BIN="${SEITE_BIN:-$PROJECT_DIR/target/release/seite}"
 
 # Defaults
 TIERS="100 1000 5000 10000"
@@ -169,7 +177,7 @@ setup_jekyll() {
   if [ ! -f "$s/Gemfile.lock" ]; then
     rm -rf "$s"
     cp -r "$SKELETONS_DIR/jekyll" "$s"
-    (cd "$s" && bundle install --quiet 2>/dev/null) || true
+    (cd "$s" && bundle config set --local path vendor/bundle >/dev/null && bundle install --quiet 2>/dev/null) || true
   fi
 }
 
@@ -242,11 +250,14 @@ main() {
   echo ""
   echo "SSG Versions:"
   echo "  seite:    $("$SEITE_BIN" --version 2>/dev/null || echo 'unknown')"
-  echo "  hugo:     $(hugo version 2>/dev/null | head -c 60)"
-  echo "  zola:     $(zola --version 2>/dev/null)"
-  ! should_skip "eleventy" && echo "  eleventy: $(cd "$SITES_DIR/eleventy" && npx @11ty/eleventy --version 2>/dev/null || echo 'unknown')"
-  echo "  jekyll:   $(jekyll --version 2>/dev/null)"
-  ! should_skip "astro" && echo "  astro:    $(cd "$SITES_DIR/astro" && npx astro --version 2>/dev/null | tr -d ' ' || echo 'unknown')"
+  [ -n "${SEITE_BASELINE_BIN:-}" ] && echo "  seite-baseline: $("$SEITE_BASELINE_BIN" --version 2>/dev/null || echo 'unknown')"
+  should_skip hugo     || echo "  hugo:     $(hugo version 2>/dev/null | cut -d' ' -f2 || echo 'unknown')"
+  should_skip zola     || echo "  zola:     $(zola --version 2>/dev/null || echo 'unknown')"
+  should_skip eleventy || echo "  eleventy: $("$SITES_DIR/eleventy/node_modules/.bin/eleventy" --version 2>/dev/null || echo 'unknown')"
+  should_skip jekyll   || echo "  jekyll:   $(cd "$SITES_DIR/jekyll" && bundle exec jekyll --version 2>/dev/null || echo 'unknown') (ruby $(ruby -e 'print RUBY_VERSION' 2>/dev/null))"
+  should_skip astro    || echo "  astro:    $("$SITES_DIR/astro/node_modules/.bin/astro" --version 2>/dev/null | tr -d ' ' || echo 'unknown')"
+  echo "  node:     $(node --version 2>/dev/null || echo 'none')"
+  echo "  hyperfine: $(hyperfine --version 2>/dev/null || echo 'none')"
   echo ""
   echo "Hardware:"
   if [ "$(uname)" = "Darwin" ]; then
@@ -255,8 +266,8 @@ main() {
   else
     echo "  CPU: $(lscpu 2>/dev/null | grep 'Model name' | sed 's/.*: *//' || echo 'unknown')"
     echo "  RAM: $(free -h 2>/dev/null | awk '/Mem:/ {print $2}' || echo 'unknown')"
-    echo "  OS:  $(uname -sr)"
   fi
+  echo "  OS:  $(uname -sr)"
 
   # Run per tier
   for tier in $TIERS; do
@@ -269,7 +280,7 @@ main() {
     for ssg in "${ssgs[@]}"; do
       echo -n "    $ssg... "
       "fill_$ssg" "$tier"
-      echo "done ($(find "$SITES_DIR/$ssg" -name '*.md' -not -path '*/node_modules/*' | wc -l | tr -d ' ') .md files)"
+      echo "done ($(find "$SITES_DIR/$ssg" -name '*.md' -not -path '*/node_modules/*' -not -path '*/vendor/*' | wc -l | tr -d ' ') .md files)"
     done
 
     # Verify builds
@@ -293,9 +304,9 @@ main() {
         seite)    (cd "$SITES_DIR/seite"    && "$SEITE_BIN" build) >/dev/null 2>&1 || build_ok=false ;;
         hugo)     (cd "$SITES_DIR/hugo"     && hugo --quiet) >/dev/null 2>&1 || build_ok=false ;;
         zola)     (cd "$SITES_DIR/zola" && zola build) >/dev/null 2>&1 || build_ok=false ;;
-        eleventy) (cd "$SITES_DIR/eleventy" && npx @11ty/eleventy --quiet) >/dev/null 2>&1 || build_ok=false ;;
+        eleventy) (cd "$SITES_DIR/eleventy" && node_modules/.bin/eleventy --quiet) >/dev/null 2>&1 || build_ok=false ;;
         jekyll)   (cd "$SITES_DIR/jekyll"   && bundle exec jekyll build --quiet) >/dev/null 2>&1 || build_ok=false ;;
-        astro)    (cd "$SITES_DIR/astro"    && npx astro build --silent) >/dev/null 2>&1 || build_ok=false ;;
+        astro)    (cd "$SITES_DIR/astro"    && node_modules/.bin/astro build --silent) >/dev/null 2>&1 || build_ok=false ;;
       esac
 
       if $build_ok; then
@@ -316,22 +327,37 @@ main() {
     # Build hyperfine command
     local hf_args=(
       hyperfine
+      --shell bash
       --warmup "$WARMUP"
       --runs "$RUNS"
       --export-json "$RESULTS_DIR/comparison-${tier}.json"
       --export-markdown "$RESULTS_DIR/comparison-${tier}.md"
     )
 
+    # Cold builds: each SSG's output dir is deleted in --prepare, which
+    # hyperfine does not time (deleting 10,000+ files takes about as long as
+    # building them, and differs per output layout).
+    local cmd_args=()
     for ssg in "${active[@]}"; do
+      local dir out cmd
+      dir="$SITES_DIR/$ssg"
       case "$ssg" in
-        seite)    hf_args+=(-n seite    "cd $SITES_DIR/seite    && rm -rf dist   && $SEITE_BIN build 2>/dev/null") ;;
-        hugo)     hf_args+=(-n hugo     "cd $SITES_DIR/hugo     && rm -rf public && hugo --quiet 2>/dev/null") ;;
-        zola)     hf_args+=(-n zola     "cd $SITES_DIR/zola     && rm -rf public && zola build 2>/dev/null") ;;
-        eleventy) hf_args+=(-n eleventy "cd $SITES_DIR/eleventy && rm -rf _site  && npx @11ty/eleventy --quiet 2>/dev/null") ;;
-        jekyll)   hf_args+=(-n jekyll   "cd $SITES_DIR/jekyll   && rm -rf _site  && bundle exec jekyll build --quiet 2>/dev/null") ;;
-        astro)    hf_args+=(-n astro    "cd $SITES_DIR/astro    && rm -rf dist   && npx astro build --silent 2>/dev/null") ;;
+        seite)    out=dist;   cmd="'$SEITE_BIN' build" ;;
+        hugo)     out=public; cmd="hugo --quiet" ;;
+        zola)     out=public; cmd="zola build" ;;
+        eleventy) out=_site;  cmd="node_modules/.bin/eleventy --quiet" ;;
+        jekyll)   out=_site;  cmd="bundle exec jekyll build --quiet" ;;
+        astro)    out=dist;   cmd="node_modules/.bin/astro build --silent" ;;
       esac
+      hf_args+=(--prepare "rm -rf '$dir/$out'")
+      cmd_args+=(-n "$ssg" "cd '$dir' && $cmd 2>/dev/null")
     done
+    # Optional second seite binary on the same site (e.g. a release vs. a branch)
+    if [ -n "${SEITE_BASELINE_BIN:-}" ] && [[ " ${active[*]} " == *" seite "* ]]; then
+      hf_args+=(--prepare "rm -rf '$SITES_DIR/seite/dist'")
+      cmd_args+=(-n seite-baseline "cd '$SITES_DIR/seite' && '$SEITE_BASELINE_BIN' build 2>/dev/null")
+    fi
+    hf_args+=("${cmd_args[@]}")
 
     echo ""
     echo "  Running hyperfine ($RUNS runs, $WARMUP warmup)..."

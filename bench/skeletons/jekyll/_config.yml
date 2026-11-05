@@ -5,3 +5,4 @@ highlighter: none
 exclude:
   - Gemfile
   - Gemfile.lock
+  - vendor
