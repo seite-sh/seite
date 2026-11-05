@@ -26,6 +26,7 @@ impl ShortcodeRegistry {
     pub fn new(shortcodes_dir: &Path) -> Result<Self> {
         let mut tera = tera::Tera::default();
         tera.autoescape_on(vec![]); // disable auto-escaping for shortcode HTML output
+        crate::templates::disable_env_access(&mut tera);
         let mut known = HashSet::new();
         let mut user_defined = HashSet::new();
 

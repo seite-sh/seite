@@ -722,6 +722,24 @@ fn macro_guard(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value>
     Ok(tera::Value::String(String::new()))
 }
 
+/// Replace Tera's built-in `get_env()` (registered in every instance) with
+/// one that fails the render. Build environments hold secrets (deploy
+/// tokens, API keys) and rendered pages are published, so no template or
+/// shortcode may read the environment: a cloned site's templates are
+/// untrusted input.
+pub(crate) fn disable_env_access(tera: &mut tera::Tera) {
+    tera.register_function(
+        "get_env",
+        |_: &std::collections::HashMap<String, tera::Value>| -> tera::Result<tera::Value> {
+            Err(tera::Error::msg(
+                "`get_env()` is disabled in seite templates: rendered pages are published, so \
+                 templates cannot read environment variables; put the value in seite.toml or a \
+                 data/ file instead",
+            ))
+        },
+    );
+}
+
 /// Register the filters seite's partials use: `escape_attr` (HTML attribute
 /// values) and `json_script` (JSON inside `<script>`).
 pub fn register_filters(tera: &mut tera::Tera) {
@@ -856,6 +874,7 @@ pub fn load_templates_with_warnings(
     // in href attributes (e.g. `href="&#x2F;posts"` instead of `href="/posts"`).
     tera.autoescape_on(vec![]);
     register_filters(&mut tera);
+    disable_env_access(&mut tera);
 
     // seite-owned partials: the embedded copy unless the site overrides it
     // with templates/seite/<name>.
@@ -1978,6 +1997,22 @@ mod tests {
         let ld: serde_json::Value = serde_json::from_str(head[start..end].trim()).unwrap();
         assert_eq!(ld["headline"], "A \"quoted\" title");
         assert_eq!(ld["description"], "Ends </script><script>alert(1)</script>");
+    }
+
+    #[test]
+    fn test_templates_cannot_read_environment() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("base.html"),
+            r#"{{ get_env(name="PATH", default="x") }}"#,
+        )
+        .unwrap();
+        let tera = load_templates(tmp.path(), &[]).unwrap();
+        let err = tera.render("base.html", &tera::Context::new()).unwrap_err();
+        assert!(
+            error_chain(&err).contains("`get_env()` is disabled"),
+            "{err:?}"
+        );
     }
 
     /// Tera with one template `t.html` importing `m.html`, optionally guarded.
