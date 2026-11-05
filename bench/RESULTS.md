@@ -4,11 +4,11 @@ Measured 2026-11-05 on one machine. These numbers replace the July 2026 results 
 
 ## Headline
 
-- **seite 0.21.2 is the fastest at 5,000 and 10,000 pages**: Zola 0.23.6 takes 1.16× and 1.15× seite's median time. At 1,000 pages the two are within noise (88 vs 92 ms); at 100 pages Zola is faster (22 vs 26 ms).
-- **0.21.2 builds 1.3–2.5× faster than 0.21.1** (10,000 pages: 1.81 s → 718 ms; 0.21.1 was 2.2× Zola's time) with byte-identical output. See [Why Zola was faster](#why-zola-was-faster) for what changed.
-- **Hugo 0.169** takes 1.65–2.06× seite 0.21.2's time.
-- seite's peak memory is less than half of Hugo's at every tier and up to a quarter above Zola's. 0.21.2 uses 2–14% more peak memory than 0.21.1 on the minimal templates (10,000 pages: 311 vs 304 MiB) and 15% more with the default theme (683 vs 595 MiB), because pages stay in memory until post-processing.
-- Jekyll, Eleventy and Astro trail at every size. Astro's fixed startup cost (about 0.9 s) dominates small sites.
+- **seite 0.21.2 is the fastest at 1,000 pages and above**: Zola 0.23.6 takes 1.14× seite's median time at 1,000 pages, 1.20× at 5,000 and 1.17× at 10,000. At 100 pages the two are within noise (Zola 22 ms, seite 23 ms). The 1,000-page lead varies between runs: in an earlier quiet run the same evening it was 4%.
+- **0.21.2 builds 1.5–2.6× faster than 0.21.1** (10,000 pages: 1.84 s → 712 ms; 0.21.1 took 2.2× Zola's time) with byte-identical output. See [Why Zola was faster](#why-zola-was-faster) for what changed.
+- **Hugo 0.169** takes 1.8–2.1× seite 0.21.2's time.
+- seite's peak memory is less than half of Hugo's at every tier and up to a quarter above Zola's. 0.21.2 uses up to 14% more peak memory than 0.21.1 on the minimal templates (1,000 pages: 58 vs 51 MiB; 10,000 pages: 301 vs 303 MiB) and 13% more with the default theme (667 vs 592 MiB), because pages stay in memory until post-processing.
+- Jekyll, Eleventy and Astro trail at every size. Astro's fixed startup cost (about 0.8 s) dominates small sites.
 - Every SSG built every tier. The Zola segfault at ~8,000 pages reported for Zola 0.20.0 in July did not occur with Zola 0.23.6.
 
 ## Machine and versions
@@ -30,7 +30,7 @@ Measured 2026-11-05 on one machine. These numbers replace the July 2026 results 
 - **Content**: the same generated posts for every SSG: YAML frontmatter (TOML for Zola), 1–3 random tags from 20, 3–5 Lorem Ipsum paragraphs and one fenced Rust code block. Content is regenerated per tier.
 - **Templates**: a minimal template per SSG: `<h1>` + rendered content for a post, `<h1>` + a list of links for the index. seite uses `bench/skeletons/seite/templates/` (until now the seite skeleton fell back to seite's full default theme, unlike every other SSG).
 - **Measurement**: `hyperfine --shell bash --warmup 1 --runs 5`. Cold builds: the output directory is deleted in hyperfine's `--prepare` step, which is not timed. (Earlier versions of this script deleted it inside the timed command; at 10,000 pages that deletion took 1.0 s for seite and 1.5 s for Zola, as long as the builds themselves.) Node SSGs run from `node_modules/.bin` (not `npx`, which adds resolution time to every run); Jekyll via `bundle exec`.
-- **One run**: all four tiers and all seven commands ran back to back in one invocation, 18:46–19:02, after waiting for the machine to be idle (no Ollama model loaded, 1-minute load average under 5 for 3 minutes). Load during the run: median 2.8, max 7.5.
+- **One run**: all four tiers and all seven commands ran back to back in one invocation, 22:14–22:29, after waiting for the machine to be idle (no Ollama model loaded, 1-minute load average under 5 for 3 minutes). Load during the run: median 2.9, max 5.7.
 - **Medians**: the tables are sorted by median wall time; mean ± σ, min and max are shown too.
 - **Desktop machine, not an isolated runner**: CPU frequency was not pinned and other apps were open. Treat differences under ~10% as noise.
 
@@ -51,58 +51,58 @@ All of this costs seite time, so the comparison does not favour it.
 
 | SSG | Median | Mean ± σ | Min | Max | Peak RSS | vs fastest | vs seite 0.21.2 |
 |:----|-----:|-----:|----:|----:|-----:|-----:|-----:|
-| zola | 22 ms | 22 ms ± 1 ms | 22 ms | 24 ms | 31 MiB | 1.00× | 0.83× |
-| **seite 0.21.2** | **26 ms** | 26 ms ± 1 ms | 23 ms | 27 ms | 26 MiB | 1.20× | 1.00× |
-| seite 0.21.1 | 34 ms | 34 ms ± 1 ms | 33 ms | 35 ms | 25 MiB | 1.55× | 1.29× |
-| hugo | 43 ms | 43 ms ± 1 ms | 43 ms | 45 ms | 74 MiB | 1.98× | 1.65× |
-| eleventy | 205 ms | 208 ms ± 5 ms | 203 ms | 215 ms | 102 MiB | 9.38× | 7.83× |
-| jekyll | 236 ms | 243 ms ± 11 ms | 234 ms | 260 ms | 52 MiB | 10.79× | 9.00× |
-| astro | 865 ms | 863 ms ± 3 ms | 859 ms | 867 ms | 297 MiB | 39.55× | 33.01× |
+| zola | 22 ms | 22 ms ± 1 ms | 21 ms | 23 ms | 31 MiB | 1.00× | 0.94× |
+| **seite 0.21.2** | **23 ms** | 23 ms ± 1 ms | 22 ms | 24 ms | 27 MiB | 1.06× | 1.00× |
+| seite 0.21.1 | 34 ms | 34 ms ± 1 ms | 33 ms | 35 ms | 25 MiB | 1.57× | 1.48× |
+| hugo | 42 ms | 43 ms ± 1 ms | 42 ms | 44 ms | 74 MiB | 1.95× | 1.84× |
+| eleventy | 198 ms | 199 ms ± 4 ms | 195 ms | 206 ms | 101 MiB | 9.12× | 8.59× |
+| jekyll | 219 ms | 220 ms ± 1 ms | 218 ms | 222 ms | 52 MiB | 10.08× | 9.50× |
+| astro | 833 ms | 831 ms ± 6 ms | 824 ms | 839 ms | 300 MiB | 38.32× | 36.12× |
 
 ### 1,000 pages (5 runs)
 
 | SSG | Median | Mean ± σ | Min | Max | Peak RSS | vs fastest | vs seite 0.21.2 |
 |:----|-----:|-----:|----:|----:|-----:|-----:|-----:|
-| **seite 0.21.2** | **88 ms** | 94 ms ± 13 ms | 82 ms | 112 ms | 58 MiB | 1.00× | 1.00× |
-| zola | 92 ms | 92 ms ± 2 ms | 89 ms | 94 ms | 52 MiB | 1.04× | 1.04× |
-| hugo | 151 ms | 151 ms ± 1 ms | 149 ms | 152 ms | 133 MiB | 1.70× | 1.70× |
-| seite 0.21.1 | 186 ms | 187 ms ± 7 ms | 181 ms | 199 ms | 51 MiB | 2.10× | 2.10× |
-| eleventy | 485 ms | 487 ms ± 7 ms | 481 ms | 498 ms | 137 MiB | 5.48× | 5.48× |
-| jekyll | 523 ms | 521 ms ± 14 ms | 508 ms | 542 ms | 73 MiB | 5.91× | 5.91× |
-| astro | 1.31 s | 1.31 s ± 0.02 s | 1.29 s | 1.34 s | 444 MiB | 14.84× | 14.84× |
+| **seite 0.21.2** | **83 ms** | 84 ms ± 3 ms | 81 ms | 90 ms | 58 MiB | 1.00× | 1.00× |
+| zola | 94 ms | 93 ms ± 3 ms | 89 ms | 96 ms | 52 MiB | 1.14× | 1.14× |
+| hugo | 148 ms | 148 ms ± 2 ms | 145 ms | 151 ms | 134 MiB | 1.79× | 1.79× |
+| seite 0.21.1 | 178 ms | 182 ms ± 11 ms | 176 ms | 201 ms | 51 MiB | 2.15× | 2.15× |
+| eleventy | 462 ms | 466 ms ± 7 ms | 462 ms | 479 ms | 138 MiB | 5.59× | 5.59× |
+| jekyll | 484 ms | 485 ms ± 4 ms | 483 ms | 493 ms | 71 MiB | 5.85× | 5.85× |
+| astro | 1.29 s | 1.28 s ± 0.00 s | 1.28 s | 1.29 s | 451 MiB | 15.54× | 15.54× |
 
 ### 5,000 pages (5 runs)
 
 | SSG | Median | Mean ± σ | Min | Max | Peak RSS | vs fastest | vs seite 0.21.2 |
 |:----|-----:|-----:|----:|----:|-----:|-----:|-----:|
-| **seite 0.21.2** | **356 ms** | 357 ms ± 8 ms | 351 ms | 370 ms | 173 MiB | 1.00× | 1.00× |
-| zola | 415 ms | 418 ms ± 16 ms | 406 ms | 446 ms | 138 MiB | 1.16× | 1.16× |
-| hugo | 644 ms | 646 ms ± 8 ms | 639 ms | 658 ms | 379 MiB | 1.81× | 1.81× |
-| seite 0.21.1 | 896 ms | 895 ms ± 25 ms | 857 ms | 927 ms | 162 MiB | 2.51× | 2.51× |
-| jekyll | 1.59 s | 1.59 s ± 0.02 s | 1.58 s | 1.62 s | 162 MiB | 4.45× | 4.45× |
-| eleventy | 1.79 s | 1.79 s ± 0.01 s | 1.78 s | 1.81 s | 239 MiB | 5.01× | 5.01× |
-| astro | 3.12 s | 3.12 s ± 0.01 s | 3.11 s | 3.14 s | 1,058 MiB | 8.77× | 8.77× |
+| **seite 0.21.2** | **344 ms** | 347 ms ± 5 ms | 343 ms | 354 ms | 172 MiB | 1.00× | 1.00× |
+| zola | 412 ms | 412 ms ± 2 ms | 410 ms | 415 ms | 138 MiB | 1.20× | 1.20× |
+| hugo | 640 ms | 641 ms ± 6 ms | 634 ms | 649 ms | 372 MiB | 1.86× | 1.86× |
+| seite 0.21.1 | 846 ms | 853 ms ± 19 ms | 834 ms | 881 ms | 162 MiB | 2.46× | 2.46× |
+| jekyll | 1.56 s | 1.56 s ± 0.01 s | 1.54 s | 1.58 s | 156 MiB | 4.53× | 4.53× |
+| eleventy | 1.77 s | 1.78 s ± 0.01 s | 1.77 s | 1.79 s | 239 MiB | 5.15× | 5.15× |
+| astro | 3.10 s | 3.10 s ± 0.02 s | 3.07 s | 3.11 s | 1,057 MiB | 9.00× | 9.00× |
 
 ### 10,000 pages (5 runs)
 
 | SSG | Median | Mean ± σ | Min | Max | Peak RSS | vs fastest | vs seite 0.21.2 |
 |:----|-----:|-----:|----:|----:|-----:|-----:|-----:|
-| **seite 0.21.2** | **718 ms** | 752 ms ± 56 ms | 707 ms | 840 ms | 311 MiB | 1.00× | 1.00× |
-| zola | 823 ms | 819 ms ± 15 ms | 794 ms | 831 ms | 248 MiB | 1.15× | 1.15× |
-| hugo | 1.48 s | 1.48 s ± 0.02 s | 1.46 s | 1.51 s | 698 MiB | 2.06× | 2.06× |
-| seite 0.21.1 | 1.81 s | 1.81 s ± 0.01 s | 1.80 s | 1.83 s | 304 MiB | 2.52× | 2.52× |
-| jekyll | 2.98 s | 2.99 s ± 0.03 s | 2.97 s | 3.05 s | 268 MiB | 4.14× | 4.14× |
-| eleventy | 4.20 s | 4.22 s ± 0.03 s | 4.19 s | 4.26 s | 352 MiB | 5.85× | 5.85× |
-| astro | 5.39 s | 5.43 s ± 0.10 s | 5.32 s | 5.56 s | 1,618 MiB | 7.51× | 7.51× |
+| **seite 0.21.2** | **712 ms** | 713 ms ± 5 ms | 708 ms | 719 ms | 301 MiB | 1.00× | 1.00× |
+| zola | 833 ms | 831 ms ± 3 ms | 828 ms | 834 ms | 248 MiB | 1.17× | 1.17× |
+| hugo | 1.49 s | 1.50 s ± 0.02 s | 1.49 s | 1.53 s | 692 MiB | 2.10× | 2.10× |
+| seite 0.21.1 | 1.84 s | 1.83 s ± 0.02 s | 1.80 s | 1.85 s | 303 MiB | 2.58× | 2.58× |
+| jekyll | 2.93 s | 2.94 s ± 0.05 s | 2.91 s | 3.02 s | 269 MiB | 4.11× | 4.11× |
+| eleventy | 4.21 s | 4.21 s ± 0.02 s | 4.19 s | 4.24 s | 357 MiB | 5.91× | 5.91× |
+| astro | 5.32 s | 5.36 s ± 0.10 s | 5.28 s | 5.48 s | 1,629 MiB | 7.46× | 7.46× |
 
 ## Scaling (median wall time)
 
 ```
 Pages    seite 0.21.2  Zola      Hugo      seite 0.21.1
-  100     26 ms         22 ms     43 ms     34 ms
-1,000     88 ms         92 ms    151 ms    186 ms
-5,000    356 ms        415 ms    644 ms    896 ms
-10,000   718 ms        823 ms    1.48 s    1.81 s
+  100     23 ms         22 ms     42 ms     34 ms
+1,000     83 ms         94 ms    148 ms    178 ms
+5,000    344 ms        412 ms    640 ms    846 ms
+10,000   712 ms        833 ms    1.49 s    1.84 s
 ```
 
 ## Why Zola was faster
@@ -113,15 +113,15 @@ seite 0.21.1 did about two and a half times Zola's file operations (about 50,000
 
 | Stage, 10,000 pages (`seite build -v`, mean of 3) | 0.21.1 | 0.21.2 |
 |:--|--:|--:|
-| Render pages (now render only) | 494 ms | 30 ms |
-| Output markdown copies (now written in the background; this is the remaining wait) | 498 ms | 82 ms |
-| Post-process HTML (now also the only page write) | 475 ms | 235 ms |
-| Process collections (read, parse, Markdown, highlighting) | 160 ms | 159 ms |
-| Render indexes, tags (tags now in parallel) | 98 ms | 71 ms |
+| Render pages (now render only) | 489 ms | 29 ms |
+| Output markdown copies (now written in the background; this is the remaining wait) | 485 ms | 89 ms |
+| Post-process HTML (now also the only page write) | 507 ms | 239 ms |
+| Process collections (read, parse, Markdown, highlighting) | 158 ms | 161 ms |
+| Render indexes, tags (tags now in parallel) | 97 ms | 70 ms |
 
 On macOS seite now writes with 4 threads: file creation there is kernel-bound, and 8–14 writer threads were slower than 4 because they contend in the kernel.
 
-With that, seite 0.21.2 (718 ms) is ahead of Zola (823 ms) at 10,000 pages, even though it still writes the 10,000 `.md` copies next to the HTML and highlights code and checks links, which the Zola skeleton does not. Zola keeps the lead at 100 pages, where fixed startup costs dominate.
+With that, seite 0.21.2 (712 ms) is ahead of Zola (833 ms) at 10,000 pages, even though it still writes the 10,000 `.md` copies next to the HTML and highlights code and checks links, which the Zola skeleton does not. At 100 pages, where fixed startup costs dominate, the two are even.
 
 ## seite with its default theme
 
@@ -129,8 +129,8 @@ The seite skeleton's minimal templates are what the tables above use. With seite
 
 | 10,000 pages, default theme | Median | Mean ± σ | Peak RSS |
 |:--|--:|--:|--:|
-| seite 0.21.2 | 882 ms | 909 ms ± 61 ms | 683 MiB |
-| seite 0.21.1 | 2.39 s | 2.42 s ± 0.05 s | 595 MiB |
+| seite 0.21.2 | 963 ms | 983 ms ± 56 ms | 667 MiB |
+| seite 0.21.1 | 2.33 s | 2.38 s ± 0.13 s | 592 MiB |
 
 Same machine and content, hyperfine 10 runs, 1 warmup, output deleted in `--prepare`, measured right after the main run.
 
