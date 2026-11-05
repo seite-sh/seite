@@ -11,6 +11,7 @@ pub mod links;
 pub mod markdown;
 pub mod math;
 pub mod mermaid;
+mod names;
 pub mod og;
 pub mod redirects;
 pub mod search;
@@ -1261,6 +1262,9 @@ fn build_site_inner(
         fs::remove_dir_all(&paths.output)?;
     }
     fs::create_dir_all(&paths.output)?;
+    // Deferred and parallel writes decide path collisions themselves, so they
+    // compare paths the way this file system does (case, Unicode form).
+    let folding = names::NameFolding::probe(&paths.output);
     step_timings.push((
         "Clean output".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -1991,7 +1995,7 @@ fn build_site_inner(
                     Err(d) => render_errors.push(*d),
                 }
             }
-            write_files_parallel(&write_now)?;
+            write_files_parallel(&write_now, folding)?;
         }
     }
 
@@ -2079,7 +2083,7 @@ fn build_site_inner(
                 }));
             }
         }
-        BackgroundWrites::spawn(md_files, is_listing_md_name)
+        BackgroundWrites::spawn(md_files, is_listing_md_name, folding)
     };
 
     // Step 4: Render index page(s)
@@ -3007,12 +3011,15 @@ fn build_site_inner(
     // Step 9b: Generate redirect pages from aliases
     let step_start = Instant::now();
     let all_redirect_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let pending_pages: HashSet<&Path> = deferred_pages.iter().map(|(p, _)| p.as_path()).collect();
+    let pending_pages: HashSet<std::borrow::Cow<'_, Path>> = deferred_pages
+        .iter()
+        .map(|(p, _)| folding.key(p.as_path()))
+        .collect();
     let (redirect_count, alias_collisions) = redirects::generate_redirects_with_pending(
         config,
         &all_redirect_items,
         &paths.output,
-        &pending_pages,
+        &|path: &Path| pending_pages.contains(&folding.key(path)),
     )?;
     drop(pending_pages);
     for d in alias_collisions {
@@ -3255,7 +3262,8 @@ fn build_site_inner(
         analytics: config.analytics.as_ref(),
         mermaid: config.build.mermaid,
     };
-    let mut link_check = post_process_html_files(&paths.output, &post_ctx, deferred_pages)?;
+    let mut link_check =
+        post_process_html_files(&paths.output, &post_ctx, deferred_pages, folding)?;
     link_check.broken_links.extend(md_link_problems);
     {
         // Report problems against the file they were written in (markdown
@@ -3415,7 +3423,8 @@ type PostProcessed = (links::PageRefCheck, Option<(PathBuf, String)>);
 /// whose path held no file when they were rendered): they are post-processed in
 /// memory and written here for the first time, and count as valid link
 /// targets. A deferred page whose path a later step wrote meanwhile is
-/// dropped, so that later file still wins.
+/// dropped, so that later file still wins. Paths are compared with
+/// `folding`, the way the output file system compares names.
 ///
 /// Consolidates image srcset rewriting, code copy button injection, base path
 /// URL rewriting, analytics injection, and link extraction into a single pass.
@@ -3423,6 +3432,7 @@ fn post_process_html_files(
     output_dir: &Path,
     ctx: &HtmlPostProcessContext,
     deferred_pages: Vec<(PathBuf, String)>,
+    folding: names::NameFolding,
 ) -> Result<links::LinkCheckResult> {
     // Walk ALL files once to build valid URL set and collect HTML entries
     let all_files: Vec<PathBuf> = WalkDir::new(output_dir)
@@ -3433,21 +3443,25 @@ fn post_process_html_files(
         .collect();
 
     // A file a later step wrote to the same path replaced the page before
-    // pages were deferred; keep it that way. Among deferred pages the last one
-    // for a path wins, as with the sequential writes they replace.
-    let on_disk: HashSet<&Path> = all_files.iter().map(PathBuf::as_path).collect();
-    let mut deferred: HashMap<PathBuf, String> = HashMap::with_capacity(deferred_pages.len());
+    // pages were deferred; keep it that way. Among deferred pages for one file
+    // the last one's HTML wins under the first one's name, as with the
+    // sequential writes they replace.
+    let on_disk: HashSet<std::borrow::Cow<'_, Path>> =
+        all_files.iter().map(|p| folding.key(p)).collect();
+    let mut deferred = DedupWrites::new(folding);
     for (path, html) in deferred_pages {
-        if !on_disk.contains(path.as_path()) {
-            deferred.insert(path, html);
+        if !on_disk.contains(&folding.key(&path)) {
+            deferred.push(path, html);
         }
     }
+    drop(on_disk);
+    let deferred = deferred.into_files();
 
     let valid_urls = links::build_valid_urls_from_paths(
         output_dir,
         all_files
             .iter()
-            .chain(deferred.keys())
+            .chain(deferred.iter().map(|(p, _)| p))
             .map(PathBuf::as_path),
     );
 
@@ -4165,9 +4179,9 @@ type GeneratedFiles = Vec<(PathBuf, String)>;
 impl BackgroundWrites {
     /// Write `files` in the background; `finish` hands back the ones `keep`
     /// selects, and the rest are freed as soon as they are written.
-    fn spawn(files: GeneratedFiles, keep: fn(&Path) -> bool) -> Self {
+    fn spawn(files: GeneratedFiles, keep: fn(&Path) -> bool, folding: names::NameFolding) -> Self {
         Self(Some(std::thread::spawn(move || {
-            write_files_parallel(&files)?;
+            write_files_parallel(&files, folding)?;
             Ok(files.into_iter().filter(|(path, _)| keep(path)).collect())
         })))
     }
@@ -4191,18 +4205,56 @@ impl Drop for BackgroundWrites {
     }
 }
 
-fn write_files_parallel(files: &[(PathBuf, String)]) -> Result<()> {
-    let mut last: HashMap<&Path, &str> = HashMap::with_capacity(files.len());
-    for (path, contents) in files {
-        last.insert(path.as_path(), contents.as_str());
+/// Files to write, one per file the output file system sees: entries whose
+/// paths name the same file (by [`names::NameFolding::key`]) collapse into the
+/// first entry's path with the last entry's contents, which is what writing
+/// them one after another leaves on disk. So parallel writes never race on one
+/// file, and the result is the same on every run.
+struct DedupWrites<P, C> {
+    folding: names::NameFolding,
+    index: HashMap<PathBuf, usize>,
+    files: Vec<(P, C)>,
+}
+
+impl<P: AsRef<Path>, C> DedupWrites<P, C> {
+    fn new(folding: names::NameFolding) -> Self {
+        Self {
+            folding,
+            index: HashMap::new(),
+            files: Vec::new(),
+        }
     }
+
+    fn push(&mut self, path: P, contents: C) {
+        let key = self.folding.key(path.as_ref()).into_owned();
+        match self.index.get(&key) {
+            Some(&i) => self.files[i].1 = contents,
+            None => {
+                self.index.insert(key, self.files.len());
+                self.files.push((path, contents));
+            }
+        }
+    }
+
+    fn into_files(self) -> Vec<(P, C)> {
+        self.files
+    }
+}
+
+fn write_files_parallel(files: &[(PathBuf, String)], folding: names::NameFolding) -> Result<()> {
+    let mut dedup = DedupWrites::new(folding);
+    for (path, contents) in files {
+        dedup.push(path.as_path(), contents.as_str());
+    }
+    let files = dedup.into_files();
     let parents: std::collections::BTreeSet<&Path> =
-        last.keys().filter_map(|path| path.parent()).collect();
+        files.iter().filter_map(|(path, _)| path.parent()).collect();
     for parent in parents {
         fs::create_dir_all(parent)?;
     }
     on_io_pool(|| {
-        last.par_iter()
+        files
+            .par_iter()
             .try_for_each(|(path, contents)| fs::write(path, contents))
     })?;
     Ok(())
@@ -4788,7 +4840,7 @@ mod tests {
             (b.clone(), "b".to_string()),
             (a.clone(), "second".to_string()),
         ];
-        write_files_parallel(&files).unwrap();
+        write_files_parallel(&files, names::NameFolding::default()).unwrap();
         assert_eq!(fs::read_to_string(&a).unwrap(), "second");
         assert_eq!(fs::read_to_string(&b).unwrap(), "b");
     }
@@ -4808,8 +4860,13 @@ mod tests {
             "<html><body><pre><code>fn main() {}</code></pre></body></html>".to_string(),
         )];
         let (manifest, rewrites) = (HashMap::new(), HashMap::new());
-        let check =
-            post_process_html_files(out, &post_ctx(&manifest, &rewrites), deferred).unwrap();
+        let check = post_process_html_files(
+            out,
+            &post_ctx(&manifest, &rewrites),
+            deferred,
+            names::NameFolding::default(),
+        )
+        .unwrap();
 
         // Written, and post-processed (code-copy button injected) before the write.
         let written = fs::read_to_string(out.join("posts/hello.html")).unwrap();
@@ -4835,7 +4892,13 @@ mod tests {
             (out.join("a.html"), "<p>second</p>".to_string()),
         ];
         let (manifest, rewrites) = (HashMap::new(), HashMap::new());
-        post_process_html_files(out, &post_ctx(&manifest, &rewrites), deferred).unwrap();
+        post_process_html_files(
+            out,
+            &post_ctx(&manifest, &rewrites),
+            deferred,
+            names::NameFolding::default(),
+        )
+        .unwrap();
         assert_eq!(
             fs::read_to_string(out.join("tags/rust.html")).unwrap(),
             "<p>tag page</p>"
