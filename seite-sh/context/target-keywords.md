@@ -57,6 +57,7 @@
 - static site generator with contact forms
 - static site generator multilingual
 - static site generator image optimization
+- static site generator with built-in themes  (covered: /blog/compiled-themes-binary)
 - static site generator syntax highlighting
 - markdown to website with AI
 - static site generator with RSS
@@ -68,6 +69,16 @@
 - deploy static site netlify
 - one command deploy website
 - static site CI/CD
+- password protect cloudflare pages  (covered: /blog/password-protect-cloudflare-pages)
+
+## Opened by v0.21 (Nov 2026, not yet covered)
+- migrate from hugo / jekyll / ghost / wordpress to a static site generator  (`seite import`, old URLs kept as aliases)
+- static site generator with full-text search  (`search = "full"`, any static host)
+- static site social card generator / og image generator  (`[og] generate = true`)
+- free AI coding agent website / build a website with gemini cli  (free agents, no API keys)
+- static site seo audit  (`seite audit`)
+- check external links static site  (`seite check --external`)
+- git-based cms static site  (`seite cms setup pages-cms|decap`)
 
 ## Long-Tail Keywords
 - how to build a website with AI coding agent
