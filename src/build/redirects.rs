@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -33,6 +34,17 @@ pub fn generate_redirects_with_diagnostics(
     items: &[&ContentItem],
     output_dir: &Path,
 ) -> Result<(usize, Vec<Diagnostic>)> {
+    generate_redirects_with_pending(config, items, output_dir, &HashSet::new())
+}
+
+/// [`generate_redirects_with_diagnostics`], where `pending` holds rendered
+/// pages the build has not written to disk yet; they count as already written.
+pub fn generate_redirects_with_pending(
+    config: &SiteConfig,
+    items: &[&ContentItem],
+    output_dir: &Path,
+    pending: &HashSet<&Path>,
+) -> Result<(usize, Vec<Diagnostic>)> {
     let base = config.site.base_url.trim_end_matches('/');
     let mut diagnostics = Vec::new();
 
@@ -45,7 +57,7 @@ pub fn generate_redirects_with_diagnostics(
                 continue;
             }
             let output_path = output_dir.join(format!("{clean}.html"));
-            if output_path.exists() {
+            if pending.contains(output_path.as_path()) || output_path.exists() {
                 let mut d = Diagnostic::warning(
                     "alias-collision",
                     format!(

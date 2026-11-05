@@ -1,6 +1,6 @@
 [package]
 name = "seite"
-version = "0.21.1"
+version = "0.21.2"
 edition = "2021"
 description = "The static site generator your coding agent can run end to end, for free."
 license = "MIT"

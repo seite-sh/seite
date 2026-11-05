@@ -12,6 +12,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 
+use rayon::prelude::*;
 use serde::Serialize;
 
 use super::{
@@ -395,21 +396,31 @@ fn render_one(
     let label = tax.label_for_lang(env.data, lang);
 
     // Feeds first, so term entries can say which terms have one.
+    // Terms are independent files, so they render in parallel; results are
+    // taken in term order, and the first error in that order is reported.
     let mut feed_urls: HashMap<&str, String> = HashMap::new();
     if tax.feed {
-        for group in groups {
-            let feed_items: Vec<&ContentItem> = group
-                .items
-                .iter()
-                .copied()
-                .filter(|i| feed_collections.contains(i.collection.as_str()))
-                .collect();
-            if feed_items.is_empty() {
-                continue;
+        let written: Vec<Result<Option<(&str, String)>>> = groups
+            .par_iter()
+            .map(|group| {
+                let feed_items: Vec<&ContentItem> = group
+                    .items
+                    .iter()
+                    .copied()
+                    .filter(|i| feed_collections.contains(i.collection.as_str()))
+                    .collect();
+                if feed_items.is_empty() {
+                    return Ok(None);
+                }
+                let term_url = tax.term_url(&lang_prefix, &group.slug);
+                write_term_feeds(env, &label, lang, &group.name, &term_url, &feed_items)?;
+                Ok(Some((group.slug.as_str(), format!("{term_url}feed.xml"))))
+            })
+            .collect();
+        for result in written {
+            if let Some((slug, url)) = result? {
+                feed_urls.insert(slug, url);
             }
-            let term_url = tax.term_url(&lang_prefix, &group.slug);
-            write_term_feeds(env, &label, lang, &group.name, &term_url, &feed_items)?;
-            feed_urls.insert(group.slug.as_str(), format!("{term_url}feed.xml"));
         }
     }
 
@@ -444,50 +455,59 @@ fn render_one(
     urls.push(index_url.clone());
 
     // Term pages.
-    for (group, entry) in groups.iter().zip(&entries) {
-        let summaries: Vec<ItemSummary> = group.items.iter().map(|i| item_summary(i)).collect();
-        let page_size = tax.paginate.unwrap_or(summaries.len().max(1));
-        let chunks: Vec<&[ItemSummary]> = summaries.chunks(page_size).collect();
-        let total_pages = chunks.len();
-        let page_url = |n: usize| {
-            if n == 1 {
-                entry.url.clone()
-            } else {
-                format!("{}page/{n}/", entry.url)
-            }
-        };
-        for (i, chunk) in chunks.iter().enumerate() {
-            let n = i + 1;
-            let url = page_url(n);
-            let mut ctx = env.base_context(lang);
-            ctx.insert("taxonomy", &tax_ctx);
-            ctx.insert("term", entry);
-            ctx.insert("terms", &entries);
-            ctx.insert("items", chunk);
-            ctx.insert("tag_name", &group.name);
-            ctx.insert("tags_url", &index_url);
-            if tax.paginate.is_some() {
-                ctx.insert(
-                    "pagination",
-                    &PaginationContext {
-                        current_page: n,
-                        total_pages,
-                        prev_url: (n > 1).then(|| page_url(n - 1)),
-                        next_url: (n < total_pages).then(|| page_url(n + 1)),
-                        base_url: entry.url.trim_end_matches('/').to_string(),
-                    },
-                );
-            }
-            let title = if tax.implicit {
-                format!("Tag: {}", group.name)
-            } else {
-                format!("{label}: {}", group.name)
+    let term_pages: Vec<Result<Vec<String>>> = groups
+        .par_iter()
+        .zip(entries.par_iter())
+        .map(|(group, entry)| {
+            let mut urls = Vec::new();
+            let summaries: Vec<ItemSummary> = group.items.iter().map(|i| item_summary(i)).collect();
+            let page_size = tax.paginate.unwrap_or(summaries.len().max(1));
+            let chunks: Vec<&[ItemSummary]> = summaries.chunks(page_size).collect();
+            let total_pages = chunks.len();
+            let page_url = |n: usize| {
+                if n == 1 {
+                    entry.url.clone()
+                } else {
+                    format!("{}page/{n}/", entry.url)
+                }
             };
-            let slug = format!("{}/{}", tax.url_prefix.trim_matches('/'), group.slug);
-            ctx.insert("page", &listing_page(title, slug, url.clone()));
-            env.write_page(&tax.term_template, &ctx, &url)?;
-            urls.push(url);
-        }
+            for (i, chunk) in chunks.iter().enumerate() {
+                let n = i + 1;
+                let url = page_url(n);
+                let mut ctx = env.base_context(lang);
+                ctx.insert("taxonomy", &tax_ctx);
+                ctx.insert("term", entry);
+                ctx.insert("terms", &entries);
+                ctx.insert("items", chunk);
+                ctx.insert("tag_name", &group.name);
+                ctx.insert("tags_url", &index_url);
+                if tax.paginate.is_some() {
+                    ctx.insert(
+                        "pagination",
+                        &PaginationContext {
+                            current_page: n,
+                            total_pages,
+                            prev_url: (n > 1).then(|| page_url(n - 1)),
+                            next_url: (n < total_pages).then(|| page_url(n + 1)),
+                            base_url: entry.url.trim_end_matches('/').to_string(),
+                        },
+                    );
+                }
+                let title = if tax.implicit {
+                    format!("Tag: {}", group.name)
+                } else {
+                    format!("{label}: {}", group.name)
+                };
+                let slug = format!("{}/{}", tax.url_prefix.trim_matches('/'), group.slug);
+                ctx.insert("page", &listing_page(title, slug, url.clone()));
+                env.write_page(&tax.term_template, &ctx, &url)?;
+                urls.push(url);
+            }
+            Ok(urls)
+        })
+        .collect();
+    for result in term_pages {
+        urls.extend(result?);
     }
     Ok(urls)
 }

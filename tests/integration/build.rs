@@ -1884,3 +1884,51 @@ fn test_build_refuses_traversal_slug_and_env_access() {
         }
     }
 }
+
+#[test]
+fn test_build_item_page_replaces_public_file_at_same_path() {
+    // `public/` is copied before pages render; a page at the same path has
+    // always replaced the copy (pages are written after post-processing now).
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "posts");
+    let site_dir = tmp.path().join("site");
+    fs::create_dir_all(site_dir.join("public/posts")).unwrap();
+    fs::write(
+        site_dir.join("public/posts/hello-world.html"),
+        "<p>public copy</p>",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let post = fs::read_to_string(site_dir.join("dist/posts/hello-world.html")).unwrap();
+    assert!(!post.contains("public copy"));
+    assert!(post.contains("Hello World"));
+}
+
+#[test]
+fn test_build_item_markdown_copy_replaces_generated_sitemap_md() {
+    // Item `.md` copies are written in the background while sitemap.md is
+    // generated; an item at /sitemap has always owned sitemap.md.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join("content/pages/sitemap.md"),
+        "---\ntitle: Sitemap page\n---\nITEM-SITEMAP-BODY\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let md = fs::read_to_string(site_dir.join("dist/sitemap.md")).unwrap();
+    assert!(md.contains("ITEM-SITEMAP-BODY"), "{md}");
+}

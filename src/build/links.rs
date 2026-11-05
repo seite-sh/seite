@@ -227,13 +227,19 @@ pub fn build_valid_urls_from_entries(
     output_dir: &Path,
     entries: &[walkdir::DirEntry],
 ) -> HashSet<String> {
+    build_valid_urls_from_paths(output_dir, entries.iter().map(|e| e.path()))
+}
+
+/// [`build_valid_urls_from_entries`] for plain file paths, including files the
+/// build has not written yet.
+pub fn build_valid_urls_from_paths<'a>(
+    output_dir: &Path,
+    files: impl IntoIterator<Item = &'a Path>,
+) -> HashSet<String> {
     let mut urls = HashSet::new();
 
-    for entry in entries {
-        let rel = entry
-            .path()
-            .strip_prefix(output_dir)
-            .unwrap_or(entry.path());
+    for file in files {
+        let rel = file.strip_prefix(output_dir).unwrap_or(file);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
 
         // Exact file path is always valid
