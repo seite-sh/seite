@@ -10,7 +10,7 @@ import os
 import sys
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -163,8 +163,8 @@ def main():
                 if serp_data and 'features' in serp_data:
                     serp_features = serp_data.get('features', [])
                     gap['serp_features'] = serp_features
-            except:
-                pass
+            except Exception:
+                pass  # SERP features are optional extra detail
 
             # Analyze search intent
             intent_result = intent_analyzer.analyze(

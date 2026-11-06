@@ -12,7 +12,7 @@ Categorizes all content into performance quadrants:
 import os
 import sys
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -99,7 +99,7 @@ def main():
                 trend = ga.get_page_trends(path, days=180)
                 trend_direction = trend.get('trend_direction', 'stable')
                 trend_percent = trend.get('trend_percent', 0)
-            except:
+            except Exception:
                 trend_direction = 'stable'
                 trend_percent = 0
 

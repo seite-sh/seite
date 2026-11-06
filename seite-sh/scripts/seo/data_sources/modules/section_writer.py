@@ -7,7 +7,7 @@ Routes sections to specialized approaches based on their type.
 Used by the /article command during the section-by-section writing phase.
 """
 
-from typing import Dict, List, Optional
+from typing import List
 from dataclasses import dataclass
 from enum import Enum
 

@@ -6,7 +6,7 @@ Provides scoring (0-100) and specific recommendations for improvement.
 """
 
 import re
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 
 
 class SEOQualityRater:

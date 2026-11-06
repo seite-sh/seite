@@ -13,7 +13,7 @@ Checks for:
 """
 
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 
 class AboveFoldAnalyzer:

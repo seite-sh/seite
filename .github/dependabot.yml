@@ -13,6 +13,16 @@ updates:
       # macro recursion guard); migrate in its own change, not a group bump.
       - dependency-name: "tera"
         update-types: ["version-update:semver-major"]
+      # Pinned to the version htmd uses (its Node type); it moves with htmd.
+      - dependency-name: "markup5ever_rcdom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Kept at the version resvg's usvg uses (else two copies are built); it
+      # moves with resvg.
+      - dependency-name: "skrifa"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Kept at Tera 1's version (else two time zone databases are built).
+      - dependency-name: "chrono-tz"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     commit-message:
       prefix: "deps"
 

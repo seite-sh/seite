@@ -10,7 +10,7 @@ This module ensures content appears naturally human-written.
 
 import re
 import unicodedata
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 
 class ContentScrubber:

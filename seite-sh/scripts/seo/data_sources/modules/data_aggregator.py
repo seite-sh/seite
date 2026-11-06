@@ -5,7 +5,7 @@ Combines data from multiple sources (GA4, GSC, DataForSEO) for comprehensive ana
 """
 
 import os
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime
 from dotenv import load_dotenv
 

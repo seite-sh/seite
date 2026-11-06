@@ -6,9 +6,8 @@ to identify keyword usage patterns and topic clusters within content.
 """
 
 import re
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Optional, Any
 from collections import Counter
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 
@@ -238,7 +237,6 @@ class KeywordAnalyzer:
         keyword: str
     ) -> Dict[str, bool]:
         """Check if keyword appears in critical locations"""
-        content_lower = content.lower()
         keyword_lower = keyword.lower()
 
         # First 100 words
@@ -505,7 +503,7 @@ class KeywordAnalyzer:
 
             return lsi_keywords[:15]
 
-        except Exception as e:
+        except Exception:
             return []
 
     def _generate_recommendations(

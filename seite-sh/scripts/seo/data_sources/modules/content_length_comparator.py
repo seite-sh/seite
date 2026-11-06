@@ -128,7 +128,7 @@ class ContentLengthComparator:
                 words = re.findall(r'\b[a-zA-Z]{2,}\b', text)
                 return len(words)
 
-        except Exception as e:
+        except Exception:
             # Silently fail for individual URLs
             pass
 
@@ -312,13 +312,6 @@ def compare_content_length(
 
 # Example usage
 if __name__ == "__main__":
-    # Example with mock SERP data
-    mock_serp = [
-        {'url': 'https://example1.com/podcast-guide', 'domain': 'example1.com', 'title': 'How to Start a Podcast'},
-        {'url': 'https://example2.com/podcast-tutorial', 'domain': 'example2.com', 'title': 'Podcast Tutorial'},
-        {'url': 'https://example3.com/podcasting-101', 'domain': 'example3.com', 'title': 'Podcasting 101'},
-    ]
-
     # Note: In real usage, this would fetch actual content
     # For demo, we'll create mock data
     print("=== Content Length Comparison ===")

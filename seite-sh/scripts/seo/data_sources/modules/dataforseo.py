@@ -8,7 +8,6 @@ import os
 import base64
 import requests
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 
 class DataForSEO:
     """DataForSEO API client"""
@@ -408,8 +407,8 @@ class DataForSEO:
                 task = response['tasks'][0]
                 if task['status_code'] == 20000:
                     return task['result'][0].get('items', [])
-        except:
-            pass
+        except Exception:
+            pass  # optional lookup: fall back to no items
 
         return []
 

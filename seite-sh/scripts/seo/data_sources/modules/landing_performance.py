@@ -11,9 +11,7 @@ Metrics tracked:
 - SEO (for SEO landing pages via GSC)
 """
 
-import os
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
 
 # Try to import GA4 module (may not be available in all environments)
 try:
@@ -150,21 +148,18 @@ class LandingPagePerformance:
         if not self.ga4:
             return {'error': 'GA4 not configured'}
 
-        try:
-            return {
-                'bounce_rate': 0.0,
-                'avg_time_on_page': 0,
-                'engagement_rate': 0.0,
-                'scroll_depth': {
-                    '25%': 0,
-                    '50%': 0,
-                    '75%': 0,
-                    '100%': 0
-                },
-                'exit_rate': 0.0
-            }
-        except Exception as e:
-            return {'error': str(e)}
+        return {
+            'bounce_rate': 0.0,
+            'avg_time_on_page': 0,
+            'engagement_rate': 0.0,
+            'scroll_depth': {
+                '25%': 0,
+                '50%': 0,
+                '75%': 0,
+                '100%': 0
+            },
+            'exit_rate': 0.0
+        }
 
     def _get_conversion_metrics(
         self,
@@ -178,35 +173,29 @@ class LandingPagePerformance:
 
         events = self.CONVERSION_EVENTS.get(goal, [])
 
-        try:
-            return {
-                'total_conversions': 0,
-                'conversion_rate': 0.0,
-                'by_event': {event: 0 for event in events},
-                'by_source': {
-                    'organic': {'conversions': 0, 'rate': 0.0},
-                    'paid': {'conversions': 0, 'rate': 0.0},
-                    'direct': {'conversions': 0, 'rate': 0.0}
-                }
+        return {
+            'total_conversions': 0,
+            'conversion_rate': 0.0,
+            'by_event': {event: 0 for event in events},
+            'by_source': {
+                'organic': {'conversions': 0, 'rate': 0.0},
+                'paid': {'conversions': 0, 'rate': 0.0},
+                'direct': {'conversions': 0, 'rate': 0.0}
             }
-        except Exception as e:
-            return {'error': str(e)}
+        }
 
     def _get_seo_metrics(self, url: str, days: int) -> Dict[str, Any]:
         """Get SEO metrics from Google Search Console"""
         if not self.gsc:
             return {'error': 'GSC not configured'}
 
-        try:
-            return {
-                'impressions': 0,
-                'clicks': 0,
-                'ctr': 0.0,
-                'avg_position': 0.0,
-                'top_queries': []
-            }
-        except Exception as e:
-            return {'error': str(e)}
+        return {
+            'impressions': 0,
+            'clicks': 0,
+            'ctr': 0.0,
+            'avg_position': 0.0,
+            'top_queries': []
+        }
 
     def _generate_recommendations(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate recommendations based on performance data"""
@@ -270,7 +259,6 @@ class LandingPagePerformance:
 
         if total > 0:
             paid_pct = by_source.get('paid', 0) / total * 100 if total else 0
-            organic_pct = by_source.get('organic', 0) / total * 100 if total else 0
 
             if paid_pct > 80:
                 recommendations.append({
@@ -387,29 +375,26 @@ class LandingPagePerformance:
         if not self.ga4:
             return {'error': 'GA4 not configured'}
 
-        try:
-            return {
-                'url': url,
-                'campaign': campaign,
-                'period_days': days,
-                'ppc_traffic': {
-                    'sessions': 0,
-                    'users': 0,
-                    'by_campaign': {}
-                },
-                'ppc_engagement': {
-                    'bounce_rate': 0.0,
-                    'avg_time_on_page': 0
-                },
-                'ppc_conversions': {
-                    'total': 0,
-                    'rate': 0.0,
-                    'by_campaign': {}
-                },
-                'recommendations': []
-            }
-        except Exception as e:
-            return {'error': str(e)}
+        return {
+            'url': url,
+            'campaign': campaign,
+            'period_days': days,
+            'ppc_traffic': {
+                'sessions': 0,
+                'users': 0,
+                'by_campaign': {}
+            },
+            'ppc_engagement': {
+                'bounce_rate': 0.0,
+                'avg_time_on_page': 0
+            },
+            'ppc_conversions': {
+                'total': 0,
+                'rate': 0.0,
+                'by_campaign': {}
+            },
+            'recommendations': []
+        }
 
 
 # Convenience functions

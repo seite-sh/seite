@@ -7,7 +7,7 @@ Flesch-Kincaid Grade Level, and other readability indicators.
 
 import re
 import textstat
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 
 class ReadabilityScorer:

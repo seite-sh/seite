@@ -9,8 +9,8 @@ Used by the /article command during SERP analysis phase.
 """
 
 import re
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
+from typing import Dict, List, Any
+from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
@@ -339,7 +339,6 @@ class CompetitorGapAnalyzer:
     ) -> List[ContentGap]:
         """Find missing structural elements."""
         gaps = []
-        content_lower = content.lower()
         section_headers_lower = [s['header'].lower() for s in sections]
 
         # Check for FAQ section
