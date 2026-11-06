@@ -12,7 +12,7 @@ import sys
 import re
 import statistics
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from collections import Counter
 from dotenv import load_dotenv
 
@@ -95,7 +95,6 @@ def main():
     for i, result in enumerate(organic_results, 1):
         title = result.get('title', '')
         url = result.get('url', '')
-        description = result.get('description', '')
         domain = extract_domain(url)
 
         analysis['domains'].append(domain)
@@ -114,7 +113,7 @@ def main():
             if word_count and word_count > 100:  # Sanity check
                 analysis['word_counts'].append(word_count)
                 print(f"   [{i}] {domain} - {word_count:,} words - {content_type}")
-        except Exception as e:
+        except Exception:
             print(f"   [{i}] {domain} - Word count unavailable - {content_type}")
 
     # Calculate statistics

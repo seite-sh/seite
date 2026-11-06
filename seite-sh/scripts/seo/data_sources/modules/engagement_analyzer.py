@@ -88,7 +88,6 @@ class EngagementAnalyzer:
         lines = content.split('\n')
         first_para = ""
 
-        in_metadata = True
         for line in lines:
             line = line.strip()
             if not line:

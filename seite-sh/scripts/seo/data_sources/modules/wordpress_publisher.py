@@ -8,7 +8,7 @@ Supports Yoast SEO meta fields (title, description, focus keyphrase).
 import os
 import re
 import requests
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 from pathlib import Path
 
 

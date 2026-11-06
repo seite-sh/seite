@@ -9,7 +9,7 @@ Combines: Quick wins, competitor gaps, performance matrix, topic clusters, and t
 import os
 import sys
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Dict, Any
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,9 +18,6 @@ load_dotenv()
 # Add data_sources to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'data_sources'))
 
-from modules.google_search_console import GoogleSearchConsole
-from modules.dataforseo import DataForSEO
-from modules.google_analytics import GoogleAnalytics
 
 
 def main():
@@ -55,7 +52,6 @@ def main():
     print("1/5: QUICK WINS ANALYSIS")
     print("=" * 80)
     try:
-        from research_quick_wins import main as quick_wins_main
         # Capture quick wins data (would need to modify research_quick_wins to return data)
         print("Running quick wins research...")
         # For now, indicate it's running

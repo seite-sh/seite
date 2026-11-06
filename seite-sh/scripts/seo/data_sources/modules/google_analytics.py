@@ -5,7 +5,6 @@ Fetches traffic, engagement, and conversion data from GA4 properties.
 """
 
 import os
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import (

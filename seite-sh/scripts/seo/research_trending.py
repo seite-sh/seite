@@ -8,8 +8,8 @@ These are time-sensitive opportunities - strike while the trend is hot!
 
 import os
 import sys
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import List, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -92,8 +92,8 @@ def main():
                     search_volume = keyword_data[0].get('search_volume')
                     difficulty = keyword_data[0].get('difficulty')
                     cpc = keyword_data[0].get('cpc')
-            except:
-                pass
+            except Exception:
+                pass  # keyword metrics are optional extra detail
 
         # Analyze intent
         try:
@@ -102,7 +102,7 @@ def main():
             if hasattr(primary_intent, 'value'):
                 primary_intent = primary_intent.value
             search_intent = str(primary_intent)
-        except:
+        except Exception:
             search_intent = 'unknown'
 
         # Calculate opportunity score

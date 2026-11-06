@@ -9,10 +9,9 @@ Identifies which topics you dominate and where you have gaps.
 import os
 import sys
 from datetime import datetime
-from typing import List, Dict, Any, Set
+from typing import List, Dict
 from collections import Counter, defaultdict
 from dotenv import load_dotenv
-import re
 
 # Load environment variables
 load_dotenv()
@@ -110,8 +109,8 @@ def main():
                 # Get related keywords we might be missing
                 seed_keyword = keywords_in_cluster[0]['keyword']
                 coverage_gaps = find_cluster_gaps(seed_keyword, keywords_in_cluster, dfs)
-            except:
-                pass
+            except Exception:
+                pass  # gap lookup is optional extra detail
 
         cluster_analysis.append({
             'topic': topic_name,
@@ -415,7 +414,7 @@ def find_cluster_gaps(
 
         return gaps[:limit]
 
-    except Exception as e:
+    except Exception:
         return []
 
 

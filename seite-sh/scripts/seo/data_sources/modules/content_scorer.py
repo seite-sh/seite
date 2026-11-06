@@ -17,8 +17,7 @@ Composite score must be >= 70 to pass quality threshold.
 """
 
 import re
-from typing import Dict, List, Optional, Any, Tuple
-from pathlib import Path
+from typing import Dict, Optional, Any
 
 # Import existing modules
 try:

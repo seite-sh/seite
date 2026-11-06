@@ -9,7 +9,7 @@ Analyzes Call-to-Action elements in landing pages:
 """
 
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 
 class CTAAnalyzer:
