@@ -15,9 +15,14 @@
 #
 # Timed: the build only; deleting the previous output runs in --prepare.
 #
-# Requires: hyperfine, hugo, zola, Node.js + npm (Eleventy, Astro), Ruby +
-# Bundler (Jekyll). Everything it installs or generates lives under
-# bench/sites/ and bench/results/ (both gitignored).
+# Requires: hyperfine, hugo, zola, Node.js + npm (Eleventy; Astro needs
+# Node.js >= 22.23.4), Ruby + Bundler (Jekyll). Everything it installs or
+# generates lives under bench/sites/ and bench/results/ (both gitignored).
+#
+# The Node and Ruby SSGs are pinned below and their package.json / Gemfile
+# are written into bench/sites/ at setup, never committed: the repo carries
+# no manifest for tools it only measures (no Dependabot alerts or PRs for
+# them). Override a pin with e.g. ASTRO_VERSION=7.4.7.
 #
 
 set -euo pipefail
@@ -29,6 +34,11 @@ SITES_DIR="$BENCH_DIR/sites"
 RESULTS_DIR="$BENCH_DIR/results"
 SKELETONS_DIR="$BENCH_DIR/skeletons"
 SEITE_BIN="${SEITE_BIN:-$PROJECT_DIR/target/release/seite}"
+
+# Exact versions of the SSGs installed into bench/sites/.
+ELEVENTY_VERSION="${ELEVENTY_VERSION:-3.1.8}"
+JEKYLL_VERSION="${JEKYLL_VERSION:-4.4.1}"
+ASTRO_VERSION="${ASTRO_VERSION:-7.4.7}"
 
 # Defaults
 TIERS="100 1000 5000 10000"
@@ -163,31 +173,43 @@ sort_by = "date"
 EOF
 }
 
-setup_eleventy() {
-  local s="$SITES_DIR/eleventy"
-  if [ ! -d "$s/node_modules" ]; then
-    rm -rf "$s"
-    cp -r "$SKELETONS_DIR/eleventy" "$s"
-    (cd "$s" && npm install --silent 2>/dev/null) || true
+# Copy a skeleton into bench/sites/<ssg> and write its manifest there, unless
+# that site is already installed from the same manifest. $1 = ssg, $2 =
+# manifest file name, $3 = manifest contents, $4 = install command.
+setup_installed() {
+  local ssg="$1" manifest="$2" contents="$3" install="$4"
+  local s="$SITES_DIR/$ssg"
+  if [ -f "$s/.installed" ] && [ "$(cat "$s/$manifest" 2>/dev/null)" = "$contents" ]; then
+    return
   fi
+  rm -rf "$s"
+  cp -r "$SKELETONS_DIR/$ssg" "$s"
+  printf '%s\n' "$contents" > "$s/$manifest"
+  if (cd "$s" && eval "$install"); then
+    touch "$s/.installed"
+  else
+    echo "  warning: installing $ssg failed; its runs will fail" >&2
+  fi
+}
+
+# $1 = ssg, $2 = package, $3 = version, $4 = extra top-level JSON line (optional)
+npm_manifest() {
+  printf '{\n  "name": "bench-%s",\n  "private": true,\n%s  "dependencies": {\n    "%s": "%s"\n  }\n}' "$1" "${4:+  $4$'\n'}" "$2" "$3"
+}
+
+NPM_INSTALL="npm install --silent --no-audit --no-fund --save-exact >/dev/null 2>&1"
+
+setup_eleventy() {
+  setup_installed eleventy package.json "$(npm_manifest eleventy @11ty/eleventy "$ELEVENTY_VERSION")" "$NPM_INSTALL"
 }
 
 setup_jekyll() {
-  local s="$SITES_DIR/jekyll"
-  if [ ! -f "$s/Gemfile.lock" ]; then
-    rm -rf "$s"
-    cp -r "$SKELETONS_DIR/jekyll" "$s"
-    (cd "$s" && bundle config set --local path vendor/bundle >/dev/null && bundle install --quiet 2>/dev/null) || true
-  fi
+  setup_installed jekyll Gemfile "$(printf 'source "https://rubygems.org"\ngem "jekyll", "%s"' "$JEKYLL_VERSION")" \
+    "bundle config set --local path vendor/bundle >/dev/null && bundle install --quiet >/dev/null 2>&1"
 }
 
 setup_astro() {
-  local s="$SITES_DIR/astro"
-  if [ ! -d "$s/node_modules" ]; then
-    rm -rf "$s"
-    cp -r "$SKELETONS_DIR/astro" "$s"
-    (cd "$s" && npm install --silent 2>/dev/null) || true
-  fi
+  setup_installed astro package.json "$(npm_manifest astro astro "$ASTRO_VERSION" '"type": "module",')" "$NPM_INSTALL"
 }
 
 # ── Fill content for a tier ──────────────────────────────────────────

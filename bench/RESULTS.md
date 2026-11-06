@@ -23,7 +23,7 @@ Measured 2026-11-05 on one machine. These numbers replace the July 2026 results 
 | Zola | 0.23.6 (Homebrew) |
 | Eleventy | 3.1.8 (Node.js 20.18.2) |
 | Jekyll | 4.4.1 (Ruby 3.4.1 from Homebrew, gems bundled into `bench/sites/jekyll/vendor`) |
-| Astro | 5.18.2 (Node.js 20.18.2) |
+| Astro | 5.18.2 (Node.js 20.18.2); the script now installs 7.4.7, which has fixes for 11 Astro advisories and needs Node.js >= 22.23.4 |
 
 ## Methodology
 
@@ -142,4 +142,4 @@ brew install hyperfine hugo zola        # plus Node.js and Ruby + Bundler
 ./bench/run-comparison.sh --tiers "100 1000 5000 10000" --runs 5 --warmup 1
 ```
 
-`SEITE_BIN=/path/to/seite` benchmarks another seite binary, `SEITE_BASELINE_BIN=/path/to/seite` adds a second one to the same run (this run: `SEITE_BIN` = 0.21.2, `SEITE_BASELINE_BIN` = 0.21.1), and `--skip <ssg>` drops an SSG. The script installs Eleventy, Astro and Jekyll into `bench/sites/` and writes hyperfine JSON and Markdown to `bench/results/`; both directories are gitignored.
+`SEITE_BIN=/path/to/seite` benchmarks another seite binary, `SEITE_BASELINE_BIN=/path/to/seite` adds a second one to the same run (this run: `SEITE_BIN` = 0.21.2, `SEITE_BASELINE_BIN` = 0.21.1), and `--skip <ssg>` drops an SSG. The script installs pinned versions of Eleventy, Astro and Jekyll (`ELEVENTY_VERSION`, `ASTRO_VERSION`, `JEKYLL_VERSION` override them) into `bench/sites/`, writing their `package.json` / `Gemfile` there rather than committing them, and writes hyperfine JSON and Markdown to `bench/results/`; both directories are gitignored.
