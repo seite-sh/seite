@@ -1,7 +1,6 @@
 ---
 title: "Static Site Generator Benchmark: Closing a 2.2x Gap"
 date: 2026-11-05
-draft: true
 description: "Our static site generator benchmark found Zola 2.2x faster at 10,000 pages. A profile pointed at file I/O, and seite 0.21.2 now builds them in 712 ms."
 tags:
   - performance
